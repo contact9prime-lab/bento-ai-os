@@ -1,0 +1,23 @@
+[project]
+name = "agentos"
+version = "0.1.0"
+description = "AgentOS — a local-first agentic OS: one interface, any AI (local or cloud), real actions on your machine."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "websockets>=12",
+    "mcp>=1.28.1",
+]
+
+[project.scripts]
+agentos = "agentos.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentos"]
