@@ -339,6 +339,30 @@ class Toolbox:
         cfgmod.save_soul(content)
         return f"soul updated ({len(content)} chars)"
 
+    async def create_theme(self, name: str, mode: str = "dark", vars: str = "",
+                           css: str = "", font_url: str = "", font_family: str = "") -> str:
+        """Design a full OS theme and apply it live. `vars` is a JSON object of CSS variables
+        (bg, bg2, bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, err, ok, glass — hex/rgba).
+        `css` is extra CSS to restyle the desktop chrome, windows, taskbar, icons, and widgets
+        (target #taskbar, .win, .dimg, .widget, #desktop, etc.). Optional web font via font_url +
+        font_family. This changes the whole look & feel, not just colors."""
+        import json as _j
+        try:
+            v = _j.loads(vars) if isinstance(vars, str) and vars.strip() else (vars or {})
+        except Exception as e:
+            return f"[error] vars must be a JSON object of CSS variables: {e}"
+        theme = {"name": name.strip(), "mode": mode if mode in ("dark", "light") else "dark",
+                 "v": v, "css": css or "", "custom": True, "apply": True}
+        if font_url:
+            theme["font"] = {"url": font_url, "family": font_family or ""}
+        self.store.save_theme(theme["name"], _j.dumps(theme))
+        if self.broadcast:
+            await self.broadcast({"type": "themes"})
+            await self.broadcast({"type": "theme_apply", "theme": theme})
+        self.store.log("system", f"theme created by agent: {theme['name']}")
+        return (f"theme '{theme['name']}' created and applied live. It restyles the desktop via "
+                f"{len(v)} color variables{' + custom CSS' if css else ''}. Open the Themes app to keep or tweak it.")
+
     async def configure_agentos(self, changes: str) -> str:
         """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
         from . import config as cfgmod
@@ -472,6 +496,90 @@ class Toolbox:
         self.store.log("system", "AgentOS restart requested by agent")
         return "restarting AgentOS — the UI will reconnect in a few seconds"
 
+    async def manage_models(self, action: str = "list", name: str = "") -> str:
+        """Manage local Ollama models. action: 'list' (installed + GPU), 'pull' (download `name`),
+        'remove' (delete `name`). Pulling can take minutes; it runs in the background."""
+        base = self.cfg["providers"]["ollama"]["base_url"]
+        async with httpx.AsyncClient(timeout=None) as c:
+            if action == "list":
+                tags = (await c.get(f"{base}/api/tags", timeout=8)).json()
+                names = [m["name"] for m in tags.get("models", [])]
+                gpu = ""
+                if shutil.which("nvidia-smi"):
+                    gpu = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,memory.used",
+                                          "--format=csv,noheader"], capture_output=True, text=True).stdout.strip()
+                return f"installed models: {', '.join(names) or '(none)'}" + (f"\nGPU: {gpu}" if gpu else "")
+            if action == "remove":
+                await c.request("DELETE", f"{base}/api/delete", json={"model": name}, timeout=15)
+                if self.broadcast:
+                    await self.broadcast({"type": "models"})
+                return f"removed model {name}"
+            if action == "pull":
+                async def bg():
+                    try:
+                        await c.post(f"{base}/api/pull", json={"model": name, "stream": False}, timeout=None)
+                    except Exception:
+                        pass
+                    if self.broadcast:
+                        await self.broadcast({"type": "models"})
+                asyncio.create_task(bg())
+                return f"started downloading {name} in the background — check the Model Manager for progress"
+        return "[error] action must be list | pull | remove"
+
+    async def launch_native_app(self, name: str) -> str:
+        """Launch an installed native (Ubuntu) app by name, e.g. 'Firefox', 'Files', 'Settings'."""
+        from . import host
+        apps = host.list_apps()
+        q = name.strip().lower()
+        app = (next((a for a in apps if a["name"].lower() == q), None)
+               or next((a for a in apps if q in a["name"].lower()), None))
+        if not app:
+            return f"[error] no installed app matching '{name}'"
+        ok, msg = host.launch_app(app["id"])
+        return f"launched {app['name']}" if ok else f"[error] {msg}"
+
+    async def list_windows(self) -> str:
+        """List the native app windows open on the desktop (their titles), if window control is available."""
+        from . import host
+        w = host.list_windows()
+        if not w.get("available"):
+            return f"[error] {w.get('reason', 'window control unavailable')}"
+        if not w["windows"]:
+            return "no native windows open"
+        return "\n".join(f"- {x['title']} ({x['app']}) [{x['id']}]" for x in w["windows"])
+
+    async def focus_window(self, title: str) -> str:
+        """Bring a native app window to the front by (part of) its title — like alt-tabbing to it."""
+        from . import host
+        w = host.list_windows()
+        if not w.get("available"):
+            return f"[error] {w.get('reason', 'window control unavailable')}"
+        q = title.strip().lower()
+        win = next((x for x in w["windows"] if q in x["title"].lower() or q in x["app"].lower()), None)
+        if not win:
+            return f"[error] no open window matching '{title}'"
+        ok, msg = host.focus_window(win["id"])
+        return f"switched to {win['title']}" if ok else f"[error] {msg}"
+
+    async def system_control(self, action: str, value: str = "") -> str:
+        """Control the host: action = 'volume' (value 0-100), 'mute'/'unmute', or 'settings'
+        (value = panel: sound|network|bluetooth|display|power)."""
+        from . import host
+        a = action.strip().lower()
+        if a == "volume":
+            try:
+                host.set_volume(percent=int(value))
+            except ValueError:
+                return "[error] volume needs a number 0-100"
+            return f"volume set to {value}%"
+        if a in ("mute", "unmute"):
+            host.set_volume(mute=(a == "mute"))
+            return a + "d"
+        if a == "settings":
+            ok, msg = host.open_settings(value)
+            return msg if ok else f"[error] {msg}"
+        return "[error] action must be volume | mute | unmute | settings"
+
     async def add_mcp_server(self, name: str, command: str = "", url: str = "",
                              args: str = "", env: str = "", action: str = "add") -> str:
         """Add/remove an MCP server ('channel') the agent can then use. stdio: give `command` (+ optional
@@ -568,6 +676,15 @@ class Toolbox:
             msg += f" · telegram: {r}"
         return msg
 
+    async def read_app_data(self, name: str) -> str:
+        """Read the data an app stores (its own data store) — e.g. a notes app's notes, a tracker's
+        entries. Every built app persists to this; use it to answer questions about an app's contents."""
+        app = next((a for a in self.store.list_apps() if a["name"].lower() == name.strip().lower()), None)
+        if not app:
+            return f"[error] no app named '{name}'"
+        data = self.store.get_app_data(app["id"])
+        return f"data for '{app['name']}':\n{data}" if data and data != "{}" else f"'{app['name']}' has no stored data yet"
+
     async def use_skill(self, name: str) -> str:
         s = self.store.get_skill(name)
         if not s:
@@ -637,6 +754,8 @@ class Toolbox:
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
         if name == "configure_agentos":
             return "risky", "Changes AgentOS configuration (autonomy, policies, integrations)."
+        if name == "create_theme":
+            return "safe", ""
         if name == "create_app":
             return "risky", "Installs a UI app (HTML/JS) onto the AgentOS desktop."
         if name in ("develop_agentos", "restart_agentos"):
@@ -645,6 +764,16 @@ class Toolbox:
             return "safe", ""
         if name == "add_mcp_server":
             return "risky", "Connects/removes an external MCP tool server."
+        if name == "launch_native_app":
+            return "risky", "Launches a native application on your desktop."
+        if name == "manage_models":
+            return "risky" if args.get("action") in ("pull", "remove") else "safe", "Downloads or removes an AI model."
+        if name == "system_control":
+            return "risky", "Changes system settings (volume, opens settings panels)."
+        if name == "focus_window":
+            return "safe", ""
+        if name == "list_windows":
+            return "safe", ""
         if name.startswith("mcp_"):
             return "risky", "Calls a tool on an external MCP server."
         return "safe", ""
@@ -816,6 +945,27 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "create_theme",
+        "description": "Design and apply a complete OS theme — the whole look & feel of the desktop, not "
+                       "just colors. `vars` is a JSON object of CSS variables (bg, bg2, bg3, bg4, line, txt, "
+                       "dim, dim2, acc, acc2, warn, err, ok, glass). `css` is extra CSS to restyle chrome, "
+                       "windows (.win, .ttl), the taskbar (#taskbar), desktop icons (.dimg), widgets (.widget), "
+                       "and the desktop background (#desktop). Optional web font (font_url + font_family, e.g. a "
+                       "Google Fonts URL). Applies live and is saved to the Themes app. Use when the user asks to "
+                       "restyle or redesign the desktop (e.g. 'make it a frosted-glass theme', 'terminal green').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "mode": {"type": "string", "enum": ["dark", "light"]},
+                "vars": {"type": "string", "description": "JSON object of CSS variables"},
+                "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets"},
+                "font_url": {"type": "string"}, "font_family": {"type": "string"},
+            },
+            "required": ["name", "vars"],
+        },
+    },
+    {
         "name": "configure_agentos",
         "description": "Reconfigure AgentOS itself. Pass a JSON object with any of: agent_name, "
                        "default_model, autonomy ('paranoid'|'balanced'|'full'), max_steps, workspace, "
@@ -884,6 +1034,44 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {}},
     },
     {
+        "name": "manage_models",
+        "description": "Manage local Ollama models. action='list' shows installed models + GPU; "
+                       "action='pull' downloads a model by name (e.g. 'llama3.2', 'qwen2.5:14b'); "
+                       "action='remove' deletes one. Use when the user wants to add/remove/inspect models.",
+        "parameters": {
+            "type": "object",
+            "properties": {"action": {"type": "string", "enum": ["list", "pull", "remove"]},
+                           "name": {"type": "string"}},
+        },
+    },
+    {
+        "name": "launch_native_app",
+        "description": "Launch an installed native app on the host (any Ubuntu/GNOME app, e.g. Firefox, "
+                       "Files, Settings, Calculator, Terminal, VS Code).",
+        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    },
+    {
+        "name": "list_windows",
+        "description": "List the native app windows currently open on the desktop.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "focus_window",
+        "description": "Switch to (raise/focus) an open native window by part of its title — like alt-tab.",
+        "parameters": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+    },
+    {
+        "name": "system_control",
+        "description": "Control the host system: action 'volume' (value 0-100), 'mute'/'unmute', or "
+                       "'settings' (value = panel like sound/network/bluetooth/display/power to open the "
+                       "native settings).",
+        "parameters": {
+            "type": "object",
+            "properties": {"action": {"type": "string"}, "value": {"type": "string"}},
+            "required": ["action"],
+        },
+    },
+    {
         "name": "add_mcp_server",
         "description": "Add or remove an MCP server (an external tool 'channel') so you gain new tools. "
                        "For a stdio server pass `command` (e.g. 'npx') and `args` (e.g. '-y @playwright/mcp@latest'); "
@@ -931,6 +1119,12 @@ TOOL_SCHEMAS = [
             },
             "required": ["title", "content"],
         },
+    },
+    {
+        "name": "read_app_data",
+        "description": "Read the data stored by a built app (its own data store), by app name. Use this to "
+                       "answer questions about what's inside an app (notes, tasks, tracked entries, etc.).",
+        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
     },
     {
         "name": "use_skill",

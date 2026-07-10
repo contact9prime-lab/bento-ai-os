@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#020508}a{color:#5eead4}a:hover{color:#99f6e4}</style>
+</helmet>
+<div data-screen-label="Jarvis — Voice OS" style="width:1440px;height:900px;position:relative;overflow:hidden;background:radial-gradient(900px 600px at 72% 55%,oklch(0.3 0.06 220 / 0.5) 0%,transparent 60%),linear-gradient(160deg,#040810 0%,#03060c 60%,#051018 100%);color:#c8e6f2;font-family:'IBM Plex Mono',monospace;box-sizing:border-box">
+
+  <div style="position:absolute;top:0;left:0;right:0;height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid rgba(94,234,212,0.14);box-sizing:border-box;z-index:20">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:15px;letter-spacing:0.18em;color:#5eead4">AGENTOS</div>
+      <div style="font-size:10px;letter-spacing:0.2em;color:#3d6a75;border:1px solid rgba(94,234,212,0.2);border-radius:3px;padding:3px 8px">JARVIS CORE</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;font-size:11px;color:#4d8494">
+      <div>MCP LINKS <span style="color:#5eead4">{{ mcpCount }}</span></div>
+      <div>TOKENS 1.2M</div>
+      <div>NET ▲ 42ms</div>
+      <div style="color:#a5e8f5">{{ time }}</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:24px;top:66px;bottom:24px;width:330px;display:flex;flex-direction:column;gap:14px;z-index:20">
+    <div style="border:1px solid rgba(94,234,212,0.16);border-radius:10px;background:rgba(4,14,20,0.6);backdrop-filter:blur(8px);padding:14px 16px">
+      <div style="font-size:9.5px;letter-spacing:0.22em;color:#3d6a75;margin-bottom:10px">VOICE LINK</div>
+      <div style="font-size:13px;color:#a5e8f5;line-height:1.5">{{ voiceStatus }}</div>
+      <div style="font-size:11px;color:#4d8494;margin-top:6px">{{ voiceHint }}</div>
+    </div>
+    <div style="flex:1;min-height:0;border:1px solid rgba(94,234,212,0.16);border-radius:10px;background:rgba(4,14,20,0.6);backdrop-filter:blur(8px);padding:14px 16px;display:flex;flex-direction:column">
+      <div style="font-size:9.5px;letter-spacing:0.22em;color:#3d6a75;margin-bottom:12px">MCP ACTIVITY STREAM</div>
+      <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ feed }}" as="f" hint-placeholder-count="4">
+          <div style="display:flex;gap:10px;font-size:11.5px;line-height:1.5">
+            <span style="color:#3d6a75;flex:none">{{ f.t }}</span>
+            <span style="{{ f.style }}">{{ f.msg }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:380px;top:46px;right:0;bottom:0">
+    <sc-if value="{{ ringVisible }}" hint-placeholder-val="{{ false }}">
+    <sc-for list="{{ ringNodes }}" as="rn" hint-placeholder-count="8">
+      <div onClick="{{ rn.invoke }}" style="{{ rn.style }}" style-hover="border-color:rgba(94,234,212,0.7);box-shadow:0 0 24px rgba(94,234,212,0.25);color:#d8f7ff">
+        <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700">{{ rn.glyph }}</div>
+        <div style="font-size:9.5px;letter-spacing:0.08em;margin-top:3px">{{ rn.name }}</div>
+        <div style="{{ rn.dotStyle }}"></div>
+      </div>
+    </sc-for>
+
+    <div style="{{ ringStyle }}"></div>
+    <div style="{{ ring2Style }}"></div>
+    </sc-if>
+
+    <div onClick="{{ toggleListen }}" style="{{ orbWrapStyle }}" style-hover="filter:brightness(1.15)">
+      <canvas width="340" height="340" ref="{{ orbRef }}" style="width:340px;height:340px;display:block"></canvas>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+        <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:0.3em;color:#5eead4">{{ orbLabel }}</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ ringVisible }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ rotateCtrlStyle }}">
+      <div onClick="{{ rotateLeft }}" style="width:38px;height:38px;border-radius:99px;border:1px solid rgba(94,234,212,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#5eead4;font-size:16px" style-hover="background:rgba(94,234,212,0.12)">⟲</div>
+      <div style="font-size:9.5px;letter-spacing:0.2em;color:#3d6a75">ROTATE RING</div>
+      <div onClick="{{ rotateRight }}" style="width:38px;height:38px;border-radius:99px;border:1px solid rgba(94,234,212,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#5eead4;font-size:16px" style-hover="background:rgba(94,234,212,0.12)">⟳</div>
+    </div>
+    </sc-if>
+
+    <div style="{{ searchWrapStyle }}">
+      <div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:52px;border-radius:12px;border:1px solid rgba(94,234,212,0.3);background:rgba(4,14,20,0.8);backdrop-filter:blur(10px);box-shadow:0 0 30px rgba(94,234,212,0.08)">
+        <span style="color:#5eead4;font-size:14px">⌕</span>
+        <input value="{{ search }}" onChange="{{ setSearch }}" onKeyDown="{{ searchKey }}" placeholder="Ask Jarvis or search apps… (Enter invokes)" style="flex:1;background:transparent;border:none;outline:none;color:#d8f7ff;font-family:'IBM Plex Mono',monospace;font-size:13px;caret-color:#5eead4" />
+        <div onClick="{{ toggleListen }}" style="{{ micStyle }}" style-hover="filter:brightness(1.2)">{{ micGlyph }}</div>
+      </div>
+      <sc-if value="{{ hasResults }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:8px;border-radius:12px;border:1px solid rgba(94,234,212,0.22);background:rgba(4,14,20,0.92);backdrop-filter:blur(12px);overflow:hidden">
+          <sc-for list="{{ results }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.invoke }}" style="{{ r.style }}" style-hover="background:rgba(94,234,212,0.1);color:#d8f7ff">
+              <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;width:30px">{{ r.glyph }}</span>
+              <span style="flex:1">{{ r.full }}</span>
+              <span style="color:#3d6a75;font-size:10.5px">mcp://{{ r.full }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="position:absolute;right:24px;top:66px;display:flex;flex-direction:column;gap:8px;z-index:20;align-items:flex-end">
+    <div style="font-size:9.5px;letter-spacing:0.22em;color:#3d6a75">ALL SYSTEMS · MCP MESH</div>
+    <sc-for list="{{ meshStats }}" as="m" hint-placeholder-count="3">
+      <div style="display:flex;gap:10px;font-size:11px;align-items:center">
+        <span style="color:#4d8494">{{ m.name }}</span>
+        <span style="color:#5eead4">{{ m.val }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;showRing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;orbPosition&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;center&quot;,&quot;top-right&quot;,&quot;bottom-right&quot;],&quot;default&quot;:&quot;center&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;autoRotate&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  tools = [
+    { name: 'CHAT', glyph: 'C', full: 'agent-chat' },
+    { name: 'MODELS', glyph: 'M', full: 'model-manager' },
+    { name: 'SCHEDULER', glyph: 'S', full: 'scheduler' },
+    { name: 'K-GRAPH', glyph: 'K', full: 'knowledge-graph' },
+    { name: 'MEMORY', glyph: 'Me', full: 'memory' },
+    { name: 'FILES', glyph: 'F', full: 'files' },
+    { name: 'LOGS', glyph: 'L', full: 'logs' },
+    { name: 'TERMINAL', glyph: 'T', full: 'terminal' },
+    { name: 'SKILLS', glyph: 'Sk', full: 'skills' },
+    { name: 'POLICIES', glyph: 'P', full: 'policies' }
+  ];
+  state = {
+    listening: false, rotation: 0, time: '', activeTool: null, search: '',
+    feed: [
+      { t: '14:31', msg: 'mcp://scheduler → run #482 ok (2.4s)', kind: 'ok' },
+      { t: '14:30', msg: 'mcp://knowledge-graph → query 48k nodes', kind: 'info' },
+      { t: '14:28', msg: 'voice → "summarize today\'s research"', kind: 'voice' },
+      { t: '14:28', msg: 'mcp://memory → snapshot saved', kind: 'ok' }
+    ]
+  };
+
+  componentDidMount() {
+    const tick = () => {
+      const d = new Date();
+      this.setState({ time: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0') });
+    };
+    tick();
+    this._t = setInterval(tick, 1000);
+    this._raf = requestAnimationFrame(this.drawOrb);
+    this._spin = setInterval(() => {
+      if (this.props.autoRotate ?? true) this.setState(s => ({ rotation: s.rotation + 0.15 }));
+    }, 50);
+  }
+  componentWillUnmount() { clearInterval(this._t); clearInterval(this._spin); cancelAnimationFrame(this._raf); }
+
+  drawOrb = () => {
+    this._raf = requestAnimationFrame(this.drawOrb);
+    const c = this._canvas;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const W = c.width, H = c.height, cx = W / 2, cy = H / 2;
+    const now = performance.now() / 1000;
+    const amp = this.state.listening ? 16 : 5;
+    ctx.clearRect(0, 0, W, H);
+    for (let ring = 0; ring < 3; ring++) {
+      const base = 62 + ring * 20;
+      ctx.beginPath();
+      for (let i = 0; i <= 120; i++) {
+        const a = (i / 120) * Math.PI * 2;
+        const w = Math.sin(a * (5 + ring * 2) + now * (2 + ring)) * amp * (1 - ring * 0.25)
+                + Math.sin(a * 3 - now * 1.4) * amp * 0.4;
+        const r = base + w;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(94,234,212,' + (0.55 - ring * 0.16) + ')';
+      ctx.lineWidth = 1.6 - ring * 0.4;
+      ctx.stroke();
+    }
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 58);
+    g.addColorStop(0, this.state.listening ? 'rgba(94,234,212,0.5)' : 'rgba(94,234,212,0.25)');
+    g.addColorStop(1, 'rgba(94,234,212,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, 58, 0, Math.PI * 2); ctx.fill();
+  };
+
+  center() {
+    const pos = this.props.orbPosition ?? 'center';
+    if (pos === 'bottom-right') return { x: 800, y: 690 };
+    if (pos === 'top-right') return { x: 800, y: 250 };
+    return { x: 520, y: 430 };
+  }
+
+  invoke(tool) {
+    const t = new Date();
+    const stamp = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    this.setState(s => ({
+      activeTool: tool.full,
+      feed: [{ t: stamp, msg: 'mcp://' + tool.full + ' → invoked via ring', kind: 'ok' }, ...s.feed].slice(0, 12)
+    }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const c = this.center();
+    const R = 240;
+    const ringNodes = this.tools.map((tool, i) => {
+      const a = (i / this.tools.length) * Math.PI * 2 + (s.rotation * Math.PI / 180);
+      const x = c.x + Math.cos(a) * R, y = c.y + Math.sin(a) * R;
+      const active = s.activeTool === tool.full;
+      return {
+        ...tool,
+        invoke: () => this.invoke(tool),
+        style: {
+          position: 'absolute', left: (x - 46) + 'px', top: (y - 34) + 'px', width: '92px', height: '68px',
+          borderRadius: '10px', border: '1px solid ' + (active ? 'rgba(94,234,212,0.8)' : 'rgba(94,234,212,0.25)'),
+          background: active ? 'rgba(94,234,212,0.12)' : 'rgba(4,14,20,0.75)', backdropFilter: 'blur(6px)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: active ? '#d8f7ff' : '#7fb5c4', transition: 'border-color 0.15s, box-shadow 0.15s',
+          boxShadow: active ? '0 0 28px rgba(94,234,212,0.35)' : 'none', zIndex: 10
+        },
+        dotStyle: { position: 'absolute', top: '6px', right: '6px', width: '5px', height: '5px', borderRadius: '99px', background: active ? '#5eead4' : 'rgba(94,234,212,0.25)' }
+      };
+    });
+    const mkRing = (r, op) => ({
+      position: 'absolute', left: (c.x - r) + 'px', top: (c.y - r) + 'px', width: (r * 2) + 'px', height: (r * 2) + 'px',
+      borderRadius: '99px', border: '1px dashed rgba(94,234,212,' + op + ')', pointerEvents: 'none',
+      transform: 'rotate(' + s.rotation + 'deg)'
+    });
+    if (!this._orbRef) this._orbRef = el => { this._canvas = el; };
+    const showRing = this.props.showRing ?? false;
+    const q = s.search.trim().toLowerCase();
+    const results = q ? this.tools.filter(t => t.full.includes(q) || t.name.toLowerCase().includes(q)).slice(0, 5).map(t => ({
+      ...t,
+      invoke: () => { this.invoke(t); this.setState({ search: '' }); },
+      style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 18px', cursor: 'pointer', fontSize: '12.5px', color: '#7fb5c4', borderBottom: '1px solid rgba(94,234,212,0.08)', transition: 'background 0.12s' }
+    })) : [];
+    return {
+      ringVisible: showRing,
+      search: s.search,
+      setSearch: e => this.setState({ search: e.target.value }),
+      searchKey: e => {
+        if (e.key === 'Enter' && results.length) { this.invoke(this.tools.find(t => t.full === results[0].full)); this.setState({ search: '' }); }
+      },
+      hasResults: results.length > 0,
+      results,
+      searchWrapStyle: { position: 'absolute', left: (c.x - 240) + 'px', top: (c.y + 190) + 'px', width: '480px', zIndex: 30 },
+      micStyle: { width: '32px', height: '32px', borderRadius: '99px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none', fontSize: '13px', background: s.listening ? 'rgba(94,234,212,0.25)' : 'rgba(94,234,212,0.08)', color: '#5eead4', border: '1px solid rgba(94,234,212,' + (s.listening ? '0.6' : '0.25') + ')' },
+      micGlyph: s.listening ? '●' : '🎙',
+      time: s.time,
+      mcpCount: this.tools.length,
+      ringNodes,
+      orbRef: this._orbRef,
+      orbWrapStyle: { position: 'absolute', left: (c.x - 170) + 'px', top: (c.y - 170) + 'px', width: '340px', height: '340px', cursor: 'pointer', zIndex: 5 },
+      orbLabel: s.listening ? 'LISTENING' : 'JARVIS',
+      toggleListen: () => {
+        const on = !s.listening;
+        const t = new Date();
+        const stamp = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+        this.setState(st => ({ listening: on, feed: [{ t: stamp, msg: on ? 'voice → mic open, streaming to jarvis-core' : 'voice → mic closed', kind: 'voice' }, ...st.feed].slice(0, 12) }));
+      },
+      voiceStatus: s.listening ? '● Listening — speak naturally' : '○ Standing by',
+      voiceHint: s.listening ? 'Every app is reachable as an MCP tool — just ask.' : 'Click the orb to open the voice link.',
+      ringStyle: mkRing(240, 0.22),
+      ring2Style: mkRing(300, 0.1),
+      rotateLeft: () => this.setState(st => ({ rotation: st.rotation - 36 })),
+      rotateRight: () => this.setState(st => ({ rotation: st.rotation + 36 })),
+      rotateCtrlStyle: { position: 'absolute', left: (c.x - 110) + 'px', top: (c.y + 330 > 810 ? c.y - 368 : c.y + 330) + 'px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 20 },
+      feed: s.feed.map(f => ({ ...f, style: { color: f.kind === 'ok' ? '#5eead4' : f.kind === 'voice' ? '#a5b8f5' : '#7fb5c4' } })),
+      meshStats: [
+        { name: 'tools exposed', val: String(this.tools.length) },
+        { name: 'active sessions', val: '3' },
+        { name: 'avg latency', val: '42ms' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

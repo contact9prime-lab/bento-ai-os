@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# AgentOS local state & secrets (never commit)
+.agentos/
+config.json
+*.db
+soul.md
+wallpapers/
+snapshots/
+
+# Packaging artifacts
+packaging/build/
+packaging/dist/
+
+# OS / editor
+.DS_Store
+*.swp

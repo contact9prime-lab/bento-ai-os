@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#eae5da}a{color:oklch(0.5 0.12 50)}a:hover{color:oklch(0.4 0.12 50)}</style>
+</helmet>
+<div data-screen-label="Field — Spatial Board" style="width:1440px;height:900px;position:relative;overflow:hidden;background:linear-gradient(180deg,#f6f2e9 0%,#f2edE2 100%);color:#2b2620;font-family:system-ui,-apple-system,sans-serif;box-sizing:border-box">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;padding:38px 48px 26px">
+    <div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.14em;color:#8a8172;margin-bottom:8px">FRIDAY · JULY 10 · {{ time }}</div>
+      <div style="font-family:'Source Serif 4',serif;font-size:36px;font-weight:600;line-height:1.1">Good afternoon</div>
+      <div style="font-size:13.5px;color:#6f6656;margin-top:6px">5 agents working · everything on schedule</div>
+    </div>
+    <input value="{{ query }}" onChange="{{ setQuery }}" placeholder="Search apps and agents…" style="width:320px;padding:12px 18px;border-radius:99px;border:1px solid #d8d0bf;background:#fffdf7;outline:none;font-size:13.5px;color:#2b2620;box-shadow:0 1px 3px rgba(60,50,30,0.06)" />
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:26px;padding:0 48px">
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.16em;color:#8a8172;padding:0 4px 4px">{{ g.title }}</div>
+        <sc-for list="{{ g.apps }}" as="app" hint-placeholder-count="4">
+          <div onClick="{{ app.open }}" style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:14px;background:#fffdf7;border:1px solid #e4dcc9;cursor:pointer;box-shadow:0 1px 2px rgba(60,50,30,0.05);transition:transform 0.15s,box-shadow 0.15s" style-hover="transform:translateY(-2px);box-shadow:0 6px 18px rgba(60,50,30,0.1)">
+            <div style="{{ app.iconStyle }}">{{ app.glyph }}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14.5px;font-weight:600">{{ app.name }}</div>
+              <div style="font-size:12px;color:#8a8172;margin-top:2px">{{ app.sub }}</div>
+            </div>
+            <div style="color:#c4bba7;font-size:14px">›</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ showTray }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:99px;background:#fffdf7;border:1px solid #e4dcc9;box-shadow:0 10px 30px rgba(60,50,30,0.14)">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;color:#8a8172;padding:0 6px">NOW</div>
+      <div style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;background:oklch(0.55 0.12 50 / 0.1);font-size:12.5px;color:oklch(0.42 0.1 50)"><div style="width:7px;height:7px;border-radius:99px;background:oklch(0.55 0.12 50)"></div>Scheduler · next run 15:00</div>
+      <div style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;background:oklch(0.55 0.12 155 / 0.1);font-size:12.5px;color:oklch(0.4 0.1 155)"><div style="width:7px;height:7px;border-radius:99px;background:oklch(0.55 0.12 155)"></div>Agent Chat · 3 sessions</div>
+      <div style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;background:rgba(60,50,30,0.06);font-size:12.5px;color:#6f6656">Battery 100%</div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeApp }}" style="position:absolute;inset:0;background:rgba(43,38,32,0.28);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:40">
+      <div onClick="{{ stop }}" style="width:660px;background:#fffdf7;border-radius:20px;box-shadow:0 30px 80px rgba(40,32,18,0.35);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:14px;padding:20px 24px;border-bottom:1px solid #eee6d4">
+          <div style="{{ openIconStyle }}">{{ openGlyph }}</div>
+          <div style="flex:1">
+            <div style="font-family:'Source Serif 4',serif;font-size:20px;font-weight:600">{{ openName }}</div>
+            <div style="font-size:12.5px;color:#8a8172">{{ openSub }}</div>
+          </div>
+          <div onClick="{{ closeApp }}" style="width:30px;height:30px;border-radius:99px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8a8172;border:1px solid #e4dcc9" style-hover="background:#f2ecdd">✕</div>
+        </div>
+        <div style="height:300px;margin:22px 24px;border-radius:14px;border:1px dashed #d8d0bf;background:repeating-linear-gradient(45deg,rgba(60,50,30,0.03) 0 10px,transparent 10px 20px);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8a8172">{{ openName }} — app canvas</div>
+        <div style="display:flex;gap:10px;padding:0 24px 22px">
+          <div style="padding:10px 22px;border-radius:99px;background:oklch(0.55 0.12 50);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.08)">Open full app</div>
+          <div style="padding:10px 22px;border-radius:99px;border:1px solid #d8d0bf;font-size:13.5px;cursor:pointer;color:#6f6656" style-hover="background:#f2ecdd">Pin to board</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;showTray&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  groupsData = [
+    { title: 'AGENTS', apps: [
+      { name: 'Agent Chat', glyph: 'C', hue: 155, sub: '3 conversations open' },
+      { name: 'Model Manager', glyph: 'M', hue: 300, sub: '4 models · Claude default' },
+      { name: 'Skills', glyph: 'S', hue: 210, sub: '12 installed, 2 updates' },
+      { name: 'Soul', glyph: 'Ø', hue: 260, sub: 'persona: default' }
+    ]},
+    { title: 'WORKSPACE', apps: [
+      { name: 'Files', glyph: 'F', hue: 50, sub: '82 GB free' },
+      { name: 'Knowledge Graph', glyph: 'K', hue: 180, sub: '48k nodes' },
+      { name: 'Memory', glyph: 'Me', hue: 230, sub: 'last snapshot 14:12' },
+      { name: 'Scheduler', glyph: 'Sc', hue: 90, sub: 'next run 15:00' },
+      { name: 'App Studio', glyph: 'A', hue: 20, sub: '2 drafts in progress' }
+    ]},
+    { title: 'SYSTEM', apps: [
+      { name: 'Terminal', glyph: 'T', hue: 140, sub: 'zsh · 1 session' },
+      { name: 'Logs', glyph: 'L', hue: 60, sub: 'tailing live' },
+      { name: 'Policies', glyph: 'P', hue: 280, sub: '9 rules active' },
+      { name: 'Settings', glyph: 'St', hue: 0, sub: 'up to date' }
+    ]}
+  ];
+  state = { query: '', open: null, time: '' };
+
+  componentDidMount() {
+    const tick = () => {
+      const d = new Date();
+      let h = d.getHours(); const m = String(d.getMinutes()).padStart(2, '0');
+      const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+      this.setState({ time: h + ':' + m + ' ' + ap });
+    };
+    tick();
+    this._t = setInterval(tick, 15000);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  iconStyle(hue) {
+    return { width: '40px', height: '40px', flex: 'none', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Source Serif 4',serif", fontSize: '17px', fontWeight: 600, background: 'oklch(0.9 0.045 ' + hue + ')', color: 'oklch(0.42 0.1 ' + hue + ')', border: '1px solid oklch(0.82 0.06 ' + hue + ')' };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const q = s.query.trim().toLowerCase();
+    const groups = this.groupsData.map(g => ({
+      title: g.title,
+      apps: g.apps.filter(a => !q || a.name.toLowerCase().includes(q)).map(a => ({
+        ...a,
+        iconStyle: this.iconStyle(a.hue),
+        open: () => this.setState({ open: a })
+      }))
+    })).filter(g => g.apps.length > 0);
+    const open = s.open;
+    return {
+      time: s.time,
+      query: s.query,
+      setQuery: e => this.setState({ query: e.target.value }),
+      groups,
+      showTray: this.props.showTray ?? true,
+      hasOpen: !!open,
+      openName: open ? open.name : '', openGlyph: open ? open.glyph : '', openSub: open ? open.sub : '',
+      openIconStyle: open ? this.iconStyle(open.hue) : {},
+      closeApp: () => this.setState({ open: null }),
+      stop: e => e.stopPropagation()
+    };
+  }
+}
+</script>
+</body>
+</html>

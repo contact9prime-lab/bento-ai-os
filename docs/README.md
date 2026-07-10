@@ -1,0 +1,54 @@
+# AgentOS Documentation
+
+**Your machine, with a brain.** AgentOS is a local-first *agentic operating system*: a complete
+desktop environment, driven by an AI agent that takes real actions on your computer — running
+commands, managing files, building its own apps, and integrating with the host desktop. It runs
+locally with Ollama or connects to cloud models, and everything happens with your approval.
+
+---
+
+## Contents
+
+| Guide | What's inside |
+|---|---|
+| [Installation](installation.md) | Requirements, running from source, the `.deb` package, boot & login autostart |
+| [Getting Started](getting-started.md) | First launch, choosing a model, autonomy, your first tasks |
+| [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
+| [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
+| [Building Apps](building-apps.md) | App Studio, the App Store, app data stores, letting apps call the OS |
+| [Integrations](integrations.md) | Telegram, MCP tool servers, native Ubuntu apps, system control, files & reports |
+| [Models & Appearance](models.md) | Providers, the Ollama Model Manager, wallpapers & themes |
+| [Configuration](configuration.md) | `config.json`, the sandbox, Settings, environment variables |
+| [API Reference](api-reference.md) | REST endpoints, WebSocket streams, and the agent tool catalog |
+| [Architecture](architecture.md) | How it's built — modules, data, request flow |
+| [Troubleshooting](troubleshooting.md) | Common issues and fixes |
+
+---
+
+## In one minute
+
+```bash
+uv sync            # install
+uv run agentos     # launch the desktop at http://127.0.0.1:8321
+```
+
+Then open **⚙ Settings**, pick a model, and start giving instructions in **Agent Chat** — or press
+**Alt+Space** anywhere to launch an app or ask the agent directly.
+
+> **Model note:** the agent uses tools to do real work. Choose a tool-capable model — any `qwen`
+> model locally, or a cloud model. Some small local models won't reliably call tools.
+
+---
+
+## What makes it different
+
+- **It acts.** The agent runs shell commands, edits files, browses, schedules jobs, and reports back
+  with real output — not just chat.
+- **It's a real desktop.** Draggable windows, a taskbar and dock, virtual desktops, pinnable live
+  widgets, themes, and a command palette.
+- **It builds itself.** Describe a tool and the agent builds a working app for it on the spot; apps
+  get their own data store and can call the OS.
+- **It integrates with your machine.** Launch any installed application, control sound and settings,
+  browse and open your files, and reach the agent from Telegram.
+- **It's yours and private.** Runs on `127.0.0.1`; with a local model, nothing leaves the machine.
+  Risky actions ask for approval, destructive ones are blocked, and you can snapshot and roll back.

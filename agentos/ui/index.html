@@ -39,6 +39,48 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 #jarvis.on{opacity:1}
 #icons{z-index:2}
 #widgets{position:absolute;inset:0;z-index:2;pointer-events:none}
+
+/* ===== experience shells (a theme can replace the whole desktop layout) ===== */
+#jarvis-shell{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;font-family:var(--sans)}
+body.exp-jarvis #jarvis-shell{display:flex}
+body.exp-jarvis #icons{display:none}
+body.exp-jarvis #taskbar{display:none}                 /* fully immersive — no taskbar */
+body.exp-jarvis #desktop{inset:0}                      /* reclaim the taskbar's space */
+#js-top{display:flex;align-items:center;justify-content:space-between;padding:14px 26px;font-size:11px;letter-spacing:.14em;color:var(--dim2)}
+#js-top .brand{font-family:'Orbitron',var(--sans);font-weight:700;font-size:15px;letter-spacing:.2em;color:var(--acc)}
+#js-top .tag{font-size:9.5px;border:1px solid var(--line);border-radius:4px;padding:3px 8px;color:var(--dim2);margin-left:10px}
+#js-top .stats{display:flex;gap:20px}
+#js-top .stats b{color:var(--acc);font-weight:500}
+#js-mid{flex:1;display:flex;min-height:0}
+#js-side{width:300px;padding:0 0 20px 26px;display:flex;flex-direction:column;gap:14px}
+.js-panel{border:1px solid var(--line);border-radius:12px;background:var(--glass);backdrop-filter:blur(10px);padding:14px 16px}
+.js-panel .h{font-size:9.5px;letter-spacing:.22em;color:var(--dim2);margin-bottom:10px}
+#js-stream{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;font-size:11.5px}
+#js-stream .ln{display:flex;gap:9px;line-height:1.5}
+#js-stream .ln .t{color:var(--dim2);flex:none}
+#js-stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center}
+#js-ring{position:absolute;inset:0}
+.js-node{position:absolute;width:78px;height:78px;border-radius:16px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(8px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:.15s;transform:translate(-50%,-50%)}
+.js-node:hover{border-color:var(--acc);box-shadow:0 0 24px rgba(94,234,212,.25);transform:translate(-50%,-50%) scale(1.06)}
+.js-node .g{font-size:22px}
+.js-node .n{font-size:8.5px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+#js-orb{width:220px;height:220px;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#js-orb .core{width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--acc),var(--acc2));box-shadow:0 0 60px 10px rgba(94,234,212,.45);transition:.3s}
+#js-orb .rg{position:absolute;border-radius:50%;border:1.5px solid rgba(94,234,212,.24)}
+#js-orb .rg.a{width:140px;height:140px}#js-orb .rg.b{width:180px;height:180px}#js-orb .rg.c{width:220px;height:220px}
+#js-orb .lbl{position:absolute;font-family:'Orbitron',var(--sans);font-size:10px;letter-spacing:.3em;color:var(--acc);pointer-events:none}
+body.exp-jarvis.js-listening #js-orb .rg{animation:jpulse 1.6s ease-in-out infinite}
+body.exp-jarvis.js-listening #js-orb .core{box-shadow:0 0 70px 14px rgba(94,234,212,.65)}
+body.exp-jarvis.js-thinking #js-orb{animation:jspin 2.4s linear infinite}
+body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infinite}
+#js-bottom{padding:0 26px 26px;display:flex;justify-content:center}
+#js-ask{width:min(680px,86%);display:flex;align-items:center;gap:12px;padding:0 18px;height:54px;border-radius:14px;
+  border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);box-shadow:0 0 30px rgba(94,234,212,.06)}
+#js-ask input{flex:1;background:none;border:none;outline:none;color:var(--txt);font-family:var(--sans);font-size:14px}
+#js-ask .mic{cursor:pointer;font-size:16px;color:var(--acc)}
+#js-exit{position:absolute;top:12px;right:26px;z-index:3;font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:5px 12px;background:var(--glass)}
+#js-exit:hover{color:var(--txt);border-color:var(--acc)}
 /* frameless by default — the app's own look shows through; controls appear on hover */
 .widget{position:absolute;display:flex;flex-direction:column;pointer-events:auto;
   background:transparent;border:1px solid transparent;border-radius:16px;overflow:hidden;
@@ -57,10 +99,16 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 .widget iframe{flex:1;border:none;background:transparent;width:100%;border-radius:16px}
 
 /* desktop icons */
-#icons{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;flex-wrap:wrap;gap:6px;height:calc(100% - 28px);align-content:flex-start}
-.dicon{width:88px;padding:10px 4px 8px;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:default;border:1px solid transparent}
-.dicon .dimg{width:46px;height:46px;border-radius:13px;background:linear-gradient(145deg,var(--bg4),var(--bg2));border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:23px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
-.dicon .dlbl{font-size:11.5px;color:#cfd6e2;text-align:center;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.8);max-width:84px}
+#icons{position:absolute;inset:0}
+.dicon{position:absolute;width:88px;padding:10px 4px 8px;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:grab;border:1px solid transparent;touch-action:none}
+.dicon.dragging{cursor:grabbing;opacity:.85;z-index:5}
+.dicon .dimg{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:27px;position:relative;
+  box-shadow:0 8px 18px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.07);transition:transform .12s ease,box-shadow .12s ease}
+.dicon .dimg::after{content:'';position:absolute;inset:0;border-radius:inherit;background:linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,0) 46%);pointer-events:none}
+.dicon:hover .dimg{transform:translateY(-2px);box-shadow:0 12px 24px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.2)}
+.dicon:active .dimg{transform:translateY(0) scale(.96)}
+.dicon .dlbl{font-size:11.5px;font-weight:500;color:#eef1f6;text-align:center;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.9);max-width:84px}
 .dicon:hover{background:rgba(94,234,212,.06);border-color:rgba(94,234,212,.15)}
 .dicon.sel{background:rgba(94,234,212,.12);border-color:rgba(94,234,212,.35)}
 
@@ -95,6 +143,10 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 .pgb:hover{background:var(--bg3);color:var(--txt)}
 .pgb.on{background:var(--bg4);color:var(--acc);border-color:var(--line)}
 .pgb.add{color:var(--dim2);font-size:15px}
+#dock{display:flex;gap:3px;padding:0 6px;border-right:1px solid var(--line);margin-right:2px}
+.dockb{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;position:relative}
+.dockb:hover{background:var(--bg4)}
+.dockb.running::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--acc)}
 #tbwins{flex:1;display:flex;gap:5px;overflow-x:auto;padding:0 2px}
 .tbwin{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:9px;font-size:12.5px;color:var(--dim);border:1px solid transparent;white-space:nowrap;max-width:190px}
 .tbwin .tl{overflow:hidden;text-overflow:ellipsis}
@@ -107,6 +159,31 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 #spin{display:none;width:13px;height:13px;border:2px solid var(--acc);border-top-color:transparent;border-radius:50%;animation:rot .8s linear infinite}
 #spin.on{display:block}
 @keyframes rot{to{transform:rotate(360deg)}}
+#tbnative{display:flex;gap:5px;overflow-x:auto;max-width:38%}
+#tbnative.has{padding-left:8px;margin-left:2px;border-left:1px solid var(--line)}
+.tbnat{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:9px;font-size:12.5px;color:var(--dim);border:1px solid transparent;white-space:nowrap;max-width:180px}
+.tbnat:hover{background:var(--bg3);color:var(--txt)}
+.tbnat .tl{overflow:hidden;text-overflow:ellipsis}
+.tbnat::before{content:'▭';font-size:10px;color:var(--dim2)}
+#tray-ctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);padding:4px 8px;border-radius:7px}
+#tray-ctl:hover{background:var(--bg4);color:var(--txt)}
+.naicon{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:11px;border:1px solid transparent}
+.naicon:hover{background:var(--bg3);border-color:var(--line)}
+.naicon img{width:44px;height:44px;object-fit:contain}
+.naicon .nafallback{width:44px;height:44px;border-radius:11px;background:linear-gradient(145deg,var(--bg4),var(--bg2));border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:var(--acc);text-transform:uppercase}
+.naicon .nalbl{font-size:11px;color:#cfd6e2;text-align:center;line-height:1.2;max-width:88px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* ===== light theme overrides (Ubuntu Light / Yaru) ===== */
+:root[data-theme=light] #desktop{background:
+  radial-gradient(1100px 700px at 78% 18%,rgba(233,84,32,.10),transparent 60%),
+  radial-gradient(900px 650px at 15% 85%,rgba(119,33,111,.07),transparent 60%),
+  linear-gradient(160deg,#f3f1ef,#eceae8 55%,#e7e4e1)}
+:root[data-theme=light] #desktop::after{color:rgba(0,0,0,.05)}
+:root[data-theme=light] .body strong{color:#000}
+:root[data-theme=light] #wall.has::after{background:linear-gradient(rgba(250,249,248,.12),rgba(250,249,248,.30))}
+:root[data-theme=light] .dicon .dlbl,:root[data-theme=light] .naicon .nalbl,:root[data-theme=light] .widget .wgt{text-shadow:none;color:#1d1b19}
+:root[data-theme=light] .msg.assistant .body strong{color:#000}
+:root[data-theme=light] #send,:root[data-theme=light] .save{color:#fff}
 #tbclock{text-align:right;line-height:1.25;cursor:default}
 #tbclock .tm{font-size:13px;font-weight:600}
 #tbclock .dt{font-size:10.5px;color:var(--dim2)}
@@ -123,7 +200,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 #smapps{padding:8px}
 .smapp{display:flex;align-items:center;gap:12px;width:100%;padding:9px 10px;border-radius:9px;text-align:left}
 .smapp:hover{background:var(--bg4)}
-.smapp .i{width:34px;height:34px;border-radius:9px;background:var(--bg3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.smapp .i{width:36px;height:36px;border-radius:11px;background:var(--bg3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;flex:none;box-shadow:0 3px 8px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.14)}
 .smapp .n{font-size:13px;font-weight:600}
 .smapp .d{font-size:11px;color:var(--dim2)}
 #smfoot{border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
@@ -299,6 +376,121 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .fitem .fi{font-size:16px;flex:none}.fitem .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fitem .fmeta{color:var(--dim2);font-size:11px;white-space:nowrap}
 
+/* ================= jarvis voice mode ================= */
+#jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
+#jarvis-ov.show{display:flex;animation:fadein .25s}
+.jbox{display:flex;flex-direction:column;align-items:center;gap:22px;max-width:640px;padding:0 24px;text-align:center}
+.jorb{position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center}
+.jorb .jcore{width:74px;height:74px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--acc),var(--acc2));
+  box-shadow:0 0 50px 6px rgba(94,234,212,.5);transition:.3s}
+.jorb .jring{position:absolute;border-radius:50%;border:1.5px solid rgba(94,234,212,.28)}
+.jring.r1{width:120px;height:120px}.jring.r2{width:160px;height:160px;border-color:rgba(34,211,238,.2)}
+.jring.r3{width:200px;height:200px;border-color:rgba(94,234,212,.12)}
+#jarvis-ov.listening .jorb .jring{animation:jpulse 1.6s ease-in-out infinite}
+#jarvis-ov.listening .jorb .jcore{background:radial-gradient(circle at 50% 40%,#7dffdf,#22d3ee);box-shadow:0 0 60px 10px rgba(94,234,212,.6)}
+#jarvis-ov.thinking .jorb{animation:jspin 2.2s linear infinite}
+#jarvis-ov.thinking .jorb .jring{border-top-color:var(--acc);border-right-color:var(--acc2)}
+#jarvis-ov.speaking .jorb .jcore{animation:jspeak .5s ease-in-out infinite}
+@keyframes jpulse{0%,100%{transform:scale(.92);opacity:.6}50%{transform:scale(1.06);opacity:1}}
+@keyframes jspin{to{transform:rotate(360deg)}}
+@keyframes jspeak{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+#j-status{font-size:15px;color:var(--acc);font-weight:600;letter-spacing:.4px}
+#j-transcript{font-size:20px;color:var(--txt);min-height:28px;font-weight:500}
+#j-reply{font-size:14px;color:var(--dim);line-height:1.6;max-height:34vh;overflow-y:auto;user-select:text}
+.jbtns{display:flex;gap:12px;align-items:center;margin-top:6px}
+#j-mic{width:58px;height:58px;border-radius:50%;background:var(--bg4);border:1px solid var(--line);font-size:22px;display:flex;align-items:center;justify-content:center}
+#j-mic:hover{border-color:var(--acc)}
+#jarvis-ov.listening #j-mic{background:var(--err);border-color:var(--err);animation:jpulse 1.2s infinite}
+
+let JARVIS={on:false,phase:'idle',rec:null,cid:null,busy:false};
+function jarvisSetPhase(p,status){
+  JARVIS.phase=p;const ov=$('#jarvis-ov');
+  ov.classList.remove('listening','thinking','speaking');
+  if(p!=='idle')ov.classList.add(p);
+  document.body.classList.remove('js-listening','js-thinking','js-speaking');
+  if(p!=='idle')document.body.classList.add('js-'+p);       // animate the Jarvis-experience orb too
+  if(status){$('#j-status').textContent=status;const jv=$('#js-voice');if(jv)jv.textContent=status}
+}
+function jarvisMode(on){
+  const ov=$('#jarvis-ov');
+  if(on){
+    if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window))return toast('speech recognition not available in this browser');
+    JARVIS.on=true;ov.classList.add('show');
+    $('#j-transcript').textContent='';$('#j-reply').textContent='';
+    JARVIS.cid=JARVIS.cid||currentConv;
+    jarvisListen();
+  }else{
+    JARVIS.on=false;ov.classList.remove('show');
+    try{JARVIS.rec&&JARVIS.rec.stop()}catch(e){}
+    try{speechSynthesis.cancel()}catch(e){}
+    jarvisSetPhase('idle');
+  }
+}
+function jarvisListen(){
+  if(!JARVIS.on)return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  try{JARVIS.rec&&JARVIS.rec.abort()}catch(e){}
+  const rec=new SR();JARVIS.rec=rec;
+  rec.lang=(VOICE&&VOICE.lang)||'en-IN';rec.interimResults=true;rec.continuous=false;
+  let finalText='';
+  jarvisSetPhase('listening','listening…');
+  rec.onresult=e=>{
+    let interim='';finalText='';
+    for(let i=0;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)finalText+=r[0].transcript;else interim+=r[0].transcript}
+    $('#j-transcript').textContent=(finalText||interim).trim();
+  };
+  rec.onerror=ev=>{if(ev.error==='no-speech'&&JARVIS.on){jarvisListen()}};
+  rec.onend=()=>{
+    const t=$('#j-transcript').textContent.trim();
+    if(!JARVIS.on)return;
+    if(t){jarvisAsk(t)}else{jarvisListen()}   // nothing heard → keep listening
+  };
+  try{rec.start()}catch(e){setTimeout(jarvisListen,400)}
+}
+function jarvisAsk(text){
+  if(!ws||ws.readyState!==1){jarvisSetPhase('idle','not connected');return}
+  jarvisSetPhase('thinking',agentName()+' is working…');
+  $('#j-reply').textContent='';
+  JARVIS.busy=true;jarvisReply='';
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:($('#modelsel')&&$('#modelsel').value)||undefined}));
+  setRunning(true);
+}
+let jarvisReply='';
+function jarvisSpeakAndListen(text){
+  jarvisSetPhase('speaking',agentName()+' is speaking…');
+  const clean=(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
+  if(!clean.trim()||!window.speechSynthesis){if(JARVIS.on)jarvisListen();return}
+  const u=new SpeechSynthesisUtterance(clean);
+  u.rate=(VOICE&&VOICE.rate)||1;
+  const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
+  u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
+  u.onerror=()=>{if(JARVIS.on)jarvisListen()};
+  speechSynthesis.cancel();speechSynthesis.speak(u);
+}
+
+/* ================= window switcher (Ctrl+Tab) ================= */
+#switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
+#switcher.show{display:flex}
+#swbox{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:80vw;padding:22px;border-radius:18px;
+  background:var(--glass);backdrop-filter:blur(22px);border:1px solid #2f3947;box-shadow:0 30px 80px rgba(0,0,0,.7)}
+.swcard{width:120px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 8px;border-radius:12px;border:2px solid transparent}
+.swcard.sel{background:rgba(94,234,212,.12);border-color:var(--acc)}
+.swcard .si{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.swcard .sn{font-size:11.5px;color:var(--txt);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+
+/* ================= keyboard shortcuts help ================= */
+#keyshelp{position:fixed;inset:0;z-index:9710;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)}
+#keyshelp.show{display:flex}
+#keysbox{width:min(720px,92vw);max-height:82vh;overflow-y:auto;background:var(--glass);backdrop-filter:blur(20px);border:1px solid #2f3947;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.65)}
+#keysbox .kh{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);font-weight:700}
+#keysbox .kbody{padding:14px 20px 20px;columns:2;column-gap:34px}
+.kgrp{break-inside:avoid;margin-bottom:16px}
+.kgrp h4{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px}
+.krow{display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12.5px}
+.krow .kk{display:flex;gap:4px}
+kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 6px;color:var(--txt)}
+
 /* ================= command palette ================= */
 #palette{position:fixed;inset:0;z-index:9700;display:none;background:rgba(5,7,10,.45);backdrop-filter:blur(3px);align-items:flex-start;justify-content:center;padding-top:16vh}
 #palette.show{display:flex}
@@ -322,6 +514,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   <div id="wall"></div>
   <canvas id="jarvis"></canvas>
   <div id="widgets"></div>
+  <div id="jarvis-shell"></div>
   <div id="icons"></div>
 </div>
 
@@ -332,6 +525,19 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 </div>
 
 <div id="ctxmenu"></div>
+<div id="switcher"><div id="swbox"></div></div>
+<div id="keyshelp"><div id="keysbox"></div></div>
+
+<div id="jarvis-ov"><div class="jbox">
+  <div class="jorb" id="j-orb"><span class="jring r1"></span><span class="jring r2"></span><span class="jring r3"></span><span class="jcore"></span></div>
+  <div id="j-status">tap the mic to talk</div>
+  <div id="j-transcript"></div>
+  <div id="j-reply"></div>
+  <div class="jbtns">
+    <button id="j-mic" title="talk">🎙</button>
+    <button id="j-close" class="endbtn">✕ Exit voice</button>
+  </div>
+</div></div>
 
 <div id="palette"><div id="palbox">
   <input id="palin" placeholder="Type to launch an app, act, or ask…" autocomplete="off">
@@ -342,8 +548,12 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 <div id="taskbar">
   <button id="startbtn"><span class="mark">▲</span>Start</button>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
+  <div id="dock" title="Quick launch"></div>
   <div id="tbwins"></div>
+  <div id="tbnative" title="Windows open on your Ubuntu desktop — click to switch"></div>
   <div id="tray">
+    <button id="tray-voice" title="Voice mode (Jarvis) — Alt+J" style="font-size:15px;padding:4px 8px;border-radius:7px;color:var(--dim)">🎙</button>
+    <button id="tray-ctl" title="Sound & battery — click for Control Center"></button>
     <div id="spin" title="agent is working"></div>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><div class="tm">--:--</div><div class="dt"></div></div>
@@ -356,6 +566,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 'use strict';
 const $=s=>document.querySelector(s);
 let ws=null, running=false, currentConv=null, cfg=null;
+let APPS_READY=false;   // APPS (const) is in the temporal dead zone until its definition — gate on this
 let curBody=null, curThink=null, curText='';
 let feed=null, chatEl=null, input=null, sendBtn=null;   // bound when the Chat window is open
 
@@ -377,6 +588,153 @@ function md(src){
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
 function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
+
+/* ================= themes ================= */
+// A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
+// desktop (taskbar, windows, icons, widgets). Built-in themes:
+const THEMES={
+  agentos:{label:'AgentOS (teal)',mode:'dark',v:{bg:'#0b0d10',bg2:'#111419',bg3:'#171b22',bg4:'#1e242e',line:'#232a35',txt:'#e6ebf2',dim:'#8a94a6',dim2:'#5c6577',acc:'#5eead4',acc2:'#22d3ee',warn:'#fbbf24',err:'#f87171',ok:'#4ade80',glass:'rgba(17,20,25,.82)'}},
+  ubuntu:{label:'Ubuntu (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
+  'ubuntu-light':{label:'Ubuntu (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
+  dracula:{label:'Dracula',mode:'dark',v:{bg:'#191a21',bg2:'#21222c',bg3:'#282a36',bg4:'#343746',line:'#3b3d4d',txt:'#f8f8f2',dim:'#b8bcc8',dim2:'#6272a4',acc:'#bd93f9',acc2:'#ff79c6',warn:'#f1fa8c',err:'#ff5555',ok:'#50fa7b',glass:'rgba(33,34,44,.86)'}},
+  nord:{label:'Nord',mode:'dark',v:{bg:'#242933',bg2:'#2e3440',bg3:'#3b4252',bg4:'#434c5e',line:'#4c566a',txt:'#eceff4',dim:'#d8dee9',dim2:'#7b88a1',acc:'#88c0d0',acc2:'#81a1c1',warn:'#ebcb8b',err:'#bf616a',ok:'#a3be8c',glass:'rgba(46,52,64,.86)'}},
+  aero:{label:'Aero (glass)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap',family:'Space Grotesk'},
+    v:{bg:'#141628',bg2:'#1b2036',bg3:'#222844',bg4:'#2b3352',line:'#3a4470',txt:'#eef1f8',dim:'#aab2c8',dim2:'#6b7699',acc:'#7aa2f7',acc2:'#b892f6',warn:'#f6c177',err:'#f26d6d',ok:'#7bd88f',glass:'rgba(28,32,52,.62)'},
+    css:`#desktop{background:radial-gradient(1200px 700px at 70% 110%,rgba(150,90,220,.42),transparent 60%),radial-gradient(900px 600px at 15% -10%,rgba(70,120,230,.42),transparent 55%),linear-gradient(170deg,#181c30,#141628 45%,#201a33)}
+#taskbar{background:rgba(20,24,40,.5);backdrop-filter:blur(24px)}
+.win{background:rgba(28,32,52,.66)!important;backdrop-filter:blur(26px);border:1px solid rgba(255,255,255,.12)}
+.win .ttl{background:rgba(255,255,255,.05)}
+.dicon .dimg{box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.28)}
+.widget{border:1px solid rgba(255,255,255,.12)}`},
+  field:{label:'Field (warm light)',mode:'light',
+    v:{bg:'#f6f2e9',bg2:'#fffdf7',bg3:'#f1ece0',bg4:'#e9e2d2',line:'#e4dcc9',txt:'#2b2620',dim:'#6f6656',dim2:'#8a8172',acc:'#b0693a',acc2:'#c98a4a',warn:'#b98900',err:'#c0492c',ok:'#5a8a3c',glass:'rgba(255,253,247,.92)'},
+    css:`#desktop{background:linear-gradient(180deg,#f6f2e9,#f1ece0)}
+#taskbar{background:#fffdf7;border-top:1px solid #e4dcc9}
+.win{background:#fffdf7!important;border:1px solid #e4dcc9}
+.win .ttl{background:#f7f2e6}
+.dicon .dimg{box-shadow:0 3px 10px rgba(60,50,30,.14),inset 0 1px 0 rgba(255,255,255,.5)}`},
+  shell:{label:'Shell (terminal)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap',family:'JetBrains Mono'},
+    v:{bg:'#0a0e0b',bg2:'#0d130f',bg3:'#111a13',bg4:'#16231a',line:'#1e3323',txt:'#a7c4ad',dim:'#6f9578',dim2:'#46614d',acc:'#86efac',acc2:'#4ade80',warn:'#e3d34d',err:'#f87171',ok:'#4ade80',glass:'rgba(13,19,15,.9)'},
+    css:`#desktop{background:#070a08}
+#taskbar{background:#0a0e0b;border-top:1px solid #1e3323}
+.win{background:#0a0e0b!important;border:1px solid #1e3323}
+.win .ttl{background:#0d130f}
+.dicon .dimg{border-radius:7px}
+*{letter-spacing:.1px}`},
+  jarvis:{label:'Jarvis (Voice OS)',mode:'dark',exp:'jarvis',font:{url:'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap',family:'IBM Plex Mono'},
+    v:{bg:'#03060c',bg2:'#061019',bg3:'#0a1722',bg4:'#10222e',line:'#15353c',txt:'#c8e6f2',dim:'#6fa8b8',dim2:'#3d6a75',acc:'#5eead4',acc2:'#22d3ee',warn:'#f6c177',err:'#f87171',ok:'#4ade80',glass:'rgba(4,14,20,.78)'},
+    css:`#desktop{background:radial-gradient(900px 600px at 72% 55%,rgba(30,74,94,.5),transparent 60%),linear-gradient(160deg,#040810,#03060c 60%,#051018)}
+#taskbar{background:rgba(4,12,18,.72);backdrop-filter:blur(14px);border-top:1px solid rgba(94,234,212,.16)}
+.win{background:rgba(6,16,24,.82)!important;backdrop-filter:blur(10px);border:1px solid rgba(94,234,212,.18);box-shadow:0 0 40px rgba(94,234,212,.07)}
+.win.active{box-shadow:0 0 50px rgba(94,234,212,.14)}
+.win .ttl{background:rgba(94,234,212,.04);border-bottom:1px solid rgba(94,234,212,.14)}
+.win .tname{font-family:'Orbitron',sans-serif;letter-spacing:.12em;font-size:11px;text-transform:uppercase}
+#welcome h1,#startbtn{font-family:'Orbitron',sans-serif;letter-spacing:.12em}
+.widget{border:1px solid rgba(94,234,212,.18);box-shadow:0 0 26px rgba(94,234,212,.07)}
+.dicon .dimg{border:1px solid rgba(94,234,212,.2);box-shadow:0 0 18px rgba(94,234,212,.16),inset 0 1px 0 rgba(255,255,255,.14)}
+.dicon .dlbl{letter-spacing:.04em}
+.tbwin.on{box-shadow:inset 0 -2px 0 var(--acc),0 0 14px rgba(94,234,212,.25)}`},
+};
+const CUSTOM_THEMES={};   // name -> theme object, loaded from the server
+function allThemes(){const m={};for(const k in THEMES)m[k]={...THEMES[k],id:k};for(const n in CUSTOM_THEMES)m[n]={...CUSTOM_THEMES[n],id:n};return m}
+let CURRENT_THEME=localStorage.getItem('theme')||'agentos';
+function applyThemeObj(t){
+  const r=document.documentElement,v=t.v||t.vars||{};
+  Object.entries(v).forEach(([k,val])=>r.style.setProperty('--'+k,val));
+  r.dataset.theme=(t.mode==='light')?'light':'dark';
+  let fl=document.getElementById('theme-font');
+  if(t.font&&t.font.url){
+    if(!fl){fl=document.createElement('link');fl.id='theme-font';fl.rel='stylesheet';document.head.appendChild(fl)}
+    fl.href=t.font.url;
+    if(t.font.family)r.style.setProperty('--sans',"'"+t.font.family+"',system-ui,sans-serif");
+  }else{if(fl)fl.remove();r.style.removeProperty('--sans')}
+  let st=document.getElementById('theme-extra');
+  if(!st){st=document.createElement('style');st.id='theme-extra';document.head.appendChild(st)}
+  st.textContent=t.css||'';
+  setExperience(t.exp||'standard');
+}
+
+/* ================= experience shells ================= */
+let EXPERIENCE='standard';
+function setExperience(exp){
+  if(exp===EXPERIENCE)return;
+  EXPERIENCE=exp;
+  document.body.classList.toggle('exp-jarvis',exp==='jarvis');
+  if(exp==='jarvis')buildJarvisShell();
+  else{const sh=$('#jarvis-shell');if(sh){clearInterval(sh._t);sh.innerHTML=''}}
+}
+const JS_RING=['chat','models','scheduler','kg','memory','files','logs','terminal'];
+function buildJarvisShell(){
+  const sh=$('#jarvis-shell');if(!sh||!APPS_READY)return;   // APPS loads later; init re-builds
+  sh.innerHTML=`
+    <button id="js-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
+    <div id="js-top">
+      <div style="display:flex;align-items:center"><span class="brand">AGENTOS</span><span class="tag">JARVIS CORE</span></div>
+      <div class="stats"><span>MCP <b id="js-mcp">–</b></span><span>MODEL <b id="js-model">–</b></span><span id="js-clock">–</span></div>
+    </div>
+    <div id="js-mid">
+      <div id="js-side">
+        <div class="js-panel"><div class="h">VOICE LINK</div><div id="js-voice" style="font-size:13px;color:var(--acc)">tap the orb to speak</div></div>
+        <div class="js-panel" style="flex:1;display:flex;flex-direction:column;min-height:0"><div class="h">ACTIVITY STREAM</div><div id="js-stream"></div></div>
+      </div>
+      <div id="js-stage">
+        <div id="js-ring"></div>
+        <div id="js-orb"><span class="rg a"></span><span class="rg b"></span><span class="rg c"></span><span class="core"></span><span class="lbl">TAP TO SPEAK</span></div>
+      </div>
+    </div>
+    <div id="js-bottom"><div id="js-ask">
+      <span style="color:var(--acc);font-size:15px">⌕</span>
+      <input id="js-input" placeholder="Ask ${esc(agentName())} or search apps… (Enter)">
+      <span class="mic" onclick="jarvisMode(true)">🎙</span>
+    </div></div>`;
+  // ring of app nodes
+  const ring=$('#js-ring');
+  JS_RING.forEach((id,i)=>{
+    const a=APPS[id];if(!a)return;
+    const ang=(i/JS_RING.length)*2*Math.PI - Math.PI/2;
+    const rx=50+Math.cos(ang)*34, ry=50+Math.sin(ang)*40;   // % of stage
+    const n=document.createElement('div');n.className='js-node';
+    n.style.left=rx+'%';n.style.top=ry+'%';
+    n.innerHTML=`<span class="g">${a.icon}</span><span class="n">${esc(a.title)}</span>`;
+    n.onclick=()=>openApp(id);
+    ring.appendChild(n);
+  });
+  $('#js-orb').onclick=()=>jarvisMode(true);
+  const inp=$('#js-input');
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const q=inp.value.trim();if(!q)return;
+    const app=Object.keys(APPS).find(k=>APPS[k].title.toLowerCase()===q.toLowerCase());
+    if(app){openApp(app)}else{openApp('chat');if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}}
+    inp.value='';}});
+  jarvisShellRefresh();
+  clearInterval(sh._t);sh._t=setInterval(jarvisShellRefresh,4000);
+}
+async function jarvisShellRefresh(){
+  if(EXPERIENCE!=='jarvis')return;
+  const cl=$('#js-clock');if(cl)cl.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const mo=$('#js-model');if(mo&&$('#modelsel'))mo.textContent=(($('#modelsel').value||'').split('/').pop()||'–').slice(0,14);
+  try{const m=await (await fetch('/api/mcp')).json();const c=$('#js-mcp');if(c)c.textContent=(m.servers||[]).filter(s=>s.status==='connected').length}catch(e){}
+  try{const d=await (await fetch('/api/logs?limit=8')).json();const s=$('#js-stream');
+    if(s)s.innerHTML=(d.logs||[]).slice(0,8).map(l=>`<div class="ln"><span class="t">${new Date(l.created_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span><span>${esc((l.kind+' · '+l.message).slice(0,60))}</span></div>`).join('');
+  }catch(e){}
+}
+function applyTheme(name){
+  const t=allThemes()[name];if(!t)return;
+  applyThemeObj(t);CURRENT_THEME=name;localStorage.setItem('theme',name);
+}
+async function loadThemes(){
+  try{const d=await (await fetch('/api/themes')).json();
+    for(const k in CUSTOM_THEMES)delete CUSTOM_THEMES[k];
+    (d.themes||[]).forEach(t=>{CUSTOM_THEMES[t.name]=t});
+  }catch(e){}
+  if(allThemes()[CURRENT_THEME])applyTheme(CURRENT_THEME);   // re-apply if it's a custom theme
+}
+applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'agentos');
+
+/* ================= fullscreen ================= */
+function toggleFullscreen(){
+  if(document.fullscreenElement)document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.().catch(()=>toast('fullscreen blocked by the browser'));
+}
 
 /* ================= virtual desktops ================= */
 let DESKS=+localStorage.getItem('desks')||2;
@@ -461,6 +819,7 @@ function focusWin(w){
   if(w.min)return;
   w.el.style.zIndex=++WM.z;
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
+  if(typeof buildDock==='function')buildDock();
 }
 function minimizeWin(w){w.min=true;w.el.style.display='none';w.tb.classList.add('mini');w.tb.classList.remove('on');
   // hand focus to the topmost remaining window
@@ -479,6 +838,7 @@ function closeWin(w){
   w.el.remove();w.tb.remove();WM.wins.delete(w.id);
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);
+  if(typeof buildDock==='function')buildDock();
 }
 function dragify(w,handle){
   handle.addEventListener('pointerdown',e=>{
@@ -515,6 +875,9 @@ const APPS={
     render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true}},
   browser:{id:'browser',title:'Web',icon:'🌐',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
   files:{id:'files',title:'Files',icon:'🗂',w:720,h:560,desc:'Your workspace files & reports',render:renderFiles},
+  apps:{id:'apps',title:'Applications',icon:'🗔',w:760,h:600,desc:'All your installed Ubuntu apps',render:renderNativeApps},
+  control:{id:'control',title:'Control Center',icon:'🎛',w:520,h:520,desc:'Sound, network, battery & system settings',render:renderControl},
+  models:{id:'models',title:'Model Manager',icon:'🧠',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
   memory:{id:'memory',title:'Memory',icon:'◈',w:560,h:480,desc:'What the agent remembers',render:renderMemory},
   kg:{id:'kg',title:'Knowledge Graph',icon:'🕸',w:820,h:600,desc:'What the agent knows, as a graph',
     render:renderKG,onClose(w){cancelAnimationFrame(w.raf);return true}},
@@ -526,7 +889,9 @@ const APPS={
   tasks:{id:'tasks',title:'Scheduler',icon:'⏱',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
   skills:{id:'skills',title:'Skills',icon:'🧩',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'🛡',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
+  store:{id:'store',title:'App Store',icon:'🛍',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'🧰',w:720,h:600,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
+  themes:{id:'themes',title:'Themes',icon:'🎨',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'🖼',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'🕰',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'📈',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
@@ -535,7 +900,7 @@ const APPS={
 };
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','browser','files','terminal','taskmgr','kg','soul','memory','skills','studio','mcp','telegram','policies','logs','tokens','tasks','personalize','snapshots','settings','about'];
+const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','skills','studio','mcp','telegram','policies','logs','tokens','tasks','themes','personalize','snapshots','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -550,25 +915,59 @@ async function loadUserApps(){
   renderWidgets();
 }
 function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)]}
+let ICONPOS=JSON.parse(localStorage.getItem('iconpos')||'{}');
+function saveIconPos(){localStorage.setItem('iconpos',JSON.stringify(ICONPOS))}
+// give each app a distinct, pleasant tile color (like a real app grid) derived from its id
+function tileBg(id){
+  let h=0;for(const c of id)h=(h*33+c.charCodeAt(0))%360;
+  const h2=(h+34)%360;
+  return `linear-gradient(150deg,hsl(${h} 46% 40%),hsl(${h2} 52% 26%))`;
+}
 function rebuildLaunchers(){
   const box=$('#icons');box.innerHTML='';
-  launcherIds().forEach(id=>{
+  launcherIds().forEach((id,i)=>{
     const a=APPS[id];if(!a)return;
-    const d=document.createElement('div');d.className='dicon';d.tabIndex=0;
-    d.innerHTML=`<div class="dimg">${a.icon}</div><div class="dlbl">${esc(a.title)}</div>`;
-    d.onclick=e=>{document.querySelectorAll('.dicon.sel').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');e.stopPropagation()};
-    d.ondblclick=()=>openApp(id);
+    const d=document.createElement('div');d.className='dicon';d.tabIndex=0;d.dataset.id=id;
+    d.innerHTML=`<div class="dimg" style="background:${tileBg(id)}">${a.icon}</div><div class="dlbl">${esc(a.title)}</div>`;
+    // position: saved, else a default column-major grid down the left edge
+    const pos=ICONPOS[id]||{x:14,y:14+i%8*94,_c:Math.floor(i/8)};
+    if(!ICONPOS[id]&&pos._c)pos.x=14+pos._c*96;
+    d.style.left=(pos.x||14)+'px';d.style.top=(pos.y||14)+'px';
     d.onkeydown=e=>{if(e.key==='Enter')openApp(id)};
+    iconDrag(d,id);
     box.appendChild(d);
   });
   const sm=$('#smapps');sm.innerHTML='';
   launcherIds().forEach(id=>{
     const a=APPS[id];if(!a)return;
     const b=document.createElement('button');b.className='smapp';
-    b.innerHTML=`<span class="i">${a.icon}</span><span><div class="n">${esc(a.title)}</div><div class="d">${esc(a.desc)}</div></span>`;
+    b.innerHTML=`<span class="i" style="background:${tileBg(id)};border-color:rgba(255,255,255,.08)">${a.icon}</span><span><div class="n">${esc(a.title)}</div><div class="d">${esc(a.desc)}</div></span>`;
     b.onclick=()=>{toggleStart(false);openApp(id)};
     sm.appendChild(b);
   });
+}
+function iconDrag(d,id){
+  d.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    const sx=e.clientX,sy=e.clientY,ox=d.offsetLeft,oy=d.offsetTop,desk=$('#desktop');
+    let moved=false;
+    d.setPointerCapture(e.pointerId);
+    const move=ev=>{
+      if(!moved&&Math.hypot(ev.clientX-sx,ev.clientY-sy)<5)return;
+      moved=true;d.classList.add('dragging');
+      let x=Math.max(0,Math.min(ox+ev.clientX-sx,desk.clientWidth-88));
+      let y=Math.max(0,Math.min(oy+ev.clientY-sy,desk.clientHeight-90));
+      d.style.left=x+'px';d.style.top=y+'px';
+    };
+    const up=()=>{
+      d.removeEventListener('pointermove',move);d.removeEventListener('pointerup',up);
+      d.classList.remove('dragging');
+      if(moved){ICONPOS[id]={x:d.offsetLeft,y:d.offsetTop};saveIconPos();}
+    };
+    d.addEventListener('pointermove',move);d.addEventListener('pointerup',up);
+  });
+  d.onclick=e=>{document.querySelectorAll('.dicon.sel').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');e.stopPropagation()};
+  d.ondblclick=()=>openApp(id);
 }
 function buildDesktop(){
   rebuildLaunchers();
@@ -598,6 +997,19 @@ function toggleStart(force){
   $('#startmenu').classList.toggle('show',on);
   $('#startbtn').classList.toggle('on',on);
 }
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['chat','store','browser','files','terminal','taskmgr'];
+function buildDock(){
+  const box=$('#dock');if(!box)return;box.innerHTML='';
+  DOCK.forEach(id=>{
+    const a=APPS[id];if(!a)return;
+    const b=document.createElement('button');b.className='dockb';b.title=a.title;b.textContent=a.icon;
+    b.classList.toggle('running',WM.wins.has(id)&&!WM.wins.get(id).min);
+    b.onclick=()=>openApp(id);
+    b.oncontextmenu=e=>{e.preventDefault();DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('removed from dock')};
+    box.appendChild(b);
+  });
+}
+function pinToDock(id){if(!DOCK.includes(id)){DOCK.push(id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('📌 added to dock')}}
 function tickClock(){
   const n=new Date();
   $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -811,6 +1223,7 @@ function handle(ev){
     case 'turn_start': break;
     case 'text_delta':{
       curText+=ev.text;
+      if(JARVIS.busy){const r=$('#j-reply');if(r){r.textContent=curText;r.scrollTop=r.scrollHeight}}
       if(!curBody)startAssistant();
       if(curBody){curBody.innerHTML=md(curText);scrollDown()} break;}
     case 'thinking_delta':{
@@ -856,7 +1269,11 @@ function handle(ev){
       flushText();
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
-    case 'turn_end': removeWorking(); speak(curText); setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;
+    case 'turn_end':{
+      removeWorking();const reply=curText;
+      if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
+      else speak(reply);
+      setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'task_started': toast('⏱ background task running…'); break;
     case 'task_finished': toast('⏱ task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
     case 'wallpaper': loadWallpaper(); toast('🖼 wallpaper updated'); break;
@@ -865,7 +1282,12 @@ function handle(ev){
     case 'apps': loadUserApps(); refreshApp('studio'); toast('🧰 app library updated'); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
+    case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
+    case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('🎨 theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'files': refreshApp('files'); break;
+    case 'models': refreshApp('models'); loadModels(); break;
+    case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':('⬇ '+ev.name+': '+ev.status);
+      if(ev.done){refreshApp('models');toast('🧠 '+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
     case 'telegram_in':{
       toast('✈️ Telegram: '+ev.text); jarvisOn(3);
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!running)openConv(currentConv); break;}
@@ -1071,6 +1493,18 @@ async function renderSettings(body){
       <label>Base URL (e.g. http://localhost:1234/v1)</label><input id="s-cus-url" value="${esc(p.custom.base_url||'')}">
       <label>API key (optional)</label><input id="s-cus-key" value="${esc(p.custom.api_key||'')}">
       <label>Models</label><input id="s-cus-models" value="${esc((p.custom.models||[]).join(', '))}"></div>
+    <div class="provbox"><div class="ptitle">🎨 Appearance</div>
+      <label>Theme</label>
+      <div class="row">
+        <select id="s-theme">${Object.entries(allThemes()).map(([k,t])=>`<option value="${k}" ${CURRENT_THEME===k?'selected':''}>${esc(t.label||t.name||k)}${t.custom?' ·':''}</option>`).join('')}</select>
+        <button class="endbtn" style="flex:0 0 auto" onclick="openApp('themes')">🎨 Themes</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="endbtn" onclick="toggleFullscreen()">⛶ Toggle fullscreen (F11)</button>
+        <button class="endbtn" onclick="wpSystem()">🖼 Use system wallpaper</button>
+      </div>
+      <p class="mut" style="margin-top:8px">Ubuntu themes use the Yaru palette. Fullscreen hides the host taskbar; the app also launches fullscreen via <code>agentos app</code>.</p>
+    </div>
     <div class="provbox"><div class="ptitle">📦 Sandbox (folder jail) <input type="checkbox" id="s-sb-on" ${(cfg.sandbox&&cfg.sandbox.enabled)?'checked':''}></div>
       <label>Folder the agent &amp; Terminal can control</label>
       <input id="s-sb-root" value="${esc((cfg.sandbox&&cfg.sandbox.root)||cfg.workspace)}">
@@ -1092,6 +1526,7 @@ async function renderSettings(body){
       <div><label>Max steps per turn</label><input id="s-steps" type="number" value="${cfg.max_steps}"></div>
     </div>
     <button class="save" onclick="saveSettings()">Save</button></div>`;
+  $('#s-theme').onchange=()=>{applyTheme($('#s-theme').value);toast('theme applied')};
   const vsel=$('#v-voice');
   const fillVoices=()=>{
     if(!window.speechSynthesis||!vsel)return;
@@ -1494,6 +1929,108 @@ async function kgClear(){
   await fetch('/api/kg',{method:'DELETE'});refreshApp('kg');
 }
 
+/* ================= themes app ================= */
+async function renderThemes(body){
+  await loadThemes();
+  const swatch=t=>{const v=t.v||t.vars||{};
+    return `<span style="display:flex;gap:3px">${['bg2','acc','acc2','txt'].map(k=>`<i style="width:14px;height:14px;border-radius:4px;background:${v[k]||'#333'};border:1px solid rgba(255,255,255,.15)"></i>`).join('')}</span>`;};
+  const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
+      <span class="cn">${esc(t.label||t.name||k)} ${CURRENT_THEME===k?'✓':''}</span>
+      <div style="margin:6px 0 4px">${swatch(t)}</div>
+      <span class="cd">${t.mode||'dark'}${t.font?' · '+esc(t.font.family||'custom font'):''}${t.css?' · custom CSS':''}</span>
+      ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
+    </div>`).join('');
+  body.innerHTML=`<div class="pad">
+    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, taskbar, icons and widgets. Click one to apply instantly.</p>
+    <div class="cat">${cards}</div>
+    <div class="row" style="margin-top:14px">
+      <button class="save" style="margin:0" onclick="themeBuilder()">🎛 Open Theme Builder</button>
+    </div>
+    <label style="margin-top:16px">✨ Design a theme with AI</label>
+    <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
+      <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>
+    <p class="mut" style="margin:6px 0 0">${esc(agentName())} will generate a full theme (colors, font, chrome) and apply it live.</p>
+    <label style="margin-top:16px">Import / export</label>
+    <div class="row">
+      <button class="endbtn" onclick="themeExport()">⤓ Export current theme (JSON)</button>
+      <button class="endbtn" onclick="document.getElementById('th-imp').style.display='block'">⤒ Import…</button>
+    </div>
+    <textarea id="th-imp" placeholder='Paste a theme JSON: { "name":"My Theme","mode":"dark","v":{…},"css":"…","font":{"url":"…","family":"…"} }' rows="5" style="display:none;margin-top:8px;font-family:var(--mono);font-size:12px"></textarea>
+    <button class="save" id="th-imp-btn" style="display:none" onclick="themeImport()">Save & apply imported theme</button>
+  </div>`;
+  const ta=$('#th-imp');ta&&ta.addEventListener('input',()=>{$('#th-imp-btn').style.display=ta.value.trim()?'block':'none'});
+}
+function themeAI(){
+  const p=$('#th-ai').value.trim();if(!p)return toast('describe the theme');
+  openApp('chat');
+  if(input){input.value='Design and apply an AgentOS desktop theme: '+p+'. Use the create_theme tool with a full set of CSS variables and custom css for the chrome.';input.dispatchEvent(new Event('input'));send()}
+  toast('🎨 designing your theme…');
+}
+async function themeSave(theme,apply){
+  theme.custom=true;theme.apply=!!apply;
+  await fetch('/api/themes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(theme)});
+}
+function themeExport(){
+  const t=allThemes()[CURRENT_THEME];if(!t)return;
+  const out={name:(t.label||t.name||CURRENT_THEME),mode:t.mode||'dark',v:t.v||t.vars||{},css:t.css||'',font:t.font||undefined};
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out.name.replace(/\s+/g,'-')+'.theme.json';a.click();
+}
+async function themeImport(){
+  try{const t=JSON.parse($('#th-imp').value);if(!t.name)return toast('theme needs a "name"');
+    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('🎨 imported '+t.name);refreshApp('themes');
+  }catch(e){toast('invalid JSON: '+e.message)}
+}
+async function themeDel(name){
+  await fetch('/api/themes/'+encodeURIComponent(name),{method:'DELETE'});
+  if(CURRENT_THEME===name)applyTheme('agentos');
+  await loadThemes();refreshApp('themes');
+}
+function themeBuilder(){
+  const w=WM.wins.get('themes');if(!w)return;
+  const body=w.el.querySelector('.wbody');
+  const base=allThemes()[CURRENT_THEME]||THEMES.agentos;
+  const WB={name:'My Theme',mode:base.mode||'dark',v:{...(base.v||base.vars||{})},css:base.css||'',font:base.font?{...base.font}:null};
+  const hex=v=>{v=(v||'').trim();if(/^#([0-9a-f]{6})$/i.test(v))return v;if(/^#([0-9a-f]{3})$/i.test(v))return '#'+v.slice(1).split('').map(c=>c+c).join('');return '#222222'};
+  const COLORS=[['bg','Background'],['bg2','Surface'],['bg3','Surface 2'],['bg4','Raised'],['line','Border'],['txt','Text'],['dim','Muted'],['dim2','Faint'],['acc','Accent'],['acc2','Accent 2'],['warn','Warning'],['err','Error'],['ok','Success']];
+  body.innerHTML=`<div class="pad">
+    <div class="apptop" style="border:none;padding:0 0 10px;gap:8px">
+      <button class="endbtn" onclick="refreshApp('themes')">← Back</button>
+      <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1">
+      <select id="tb-mode" style="flex:0 0 90px"><option value="dark"${WB.mode==='dark'?' selected':''}>dark</option><option value="light"${WB.mode==='light'?' selected':''}>light</option></select>
+    </div>
+    <p class="mut" style="margin-bottom:10px">Pick colors — the whole desktop updates live as you edit. 🎨</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
+      ${COLORS.map(([k,lab])=>`<label style="display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400">
+        <input type="color" data-k="${k}" value="${hex(WB.v[k])}" style="width:36px;height:26px;padding:0;border:1px solid var(--line);background:none;border-radius:6px;cursor:pointer">
+        <span style="flex:1">${lab}</span><code style="font-size:10.5px;color:var(--dim2)" id="tb-h-${k}">${esc(WB.v[k]||'')}</code></label>`).join('')}
+    </div>
+    <label>Glass / overlay (rgba)</label><input id="tb-glass" value="${esc(WB.v.glass||'rgba(20,20,25,.85)')}">
+    <label>Web font URL (optional)</label><input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…">
+    <label>Font family (optional)</label><input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="e.g. Space Grotesk">
+    <label>Advanced CSS (optional — restyle .win, #taskbar, .dimg, .widget, #desktop)</label>
+    <textarea id="tb-css" rows="4" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="save" style="margin:0" onclick="tbSave()">💾 Save &amp; apply</button>
+      <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">Cancel</button>
+    </div>
+  </div>`;
+  const preview=()=>applyThemeObj(WB);
+  body.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{WB.v[inp.dataset.k]=inp.value;const h=$('#tb-h-'+inp.dataset.k);if(h)h.textContent=inp.value;preview()});
+  $('#tb-glass').oninput=e=>{WB.v.glass=e.target.value;preview()};
+  $('#tb-mode').onchange=e=>{WB.mode=e.target.value;preview()};
+  $('#tb-css').oninput=e=>{WB.css=e.target.value;preview()};
+  $('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value};
+  $('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
+  window._WB=WB;preview();
+}
+async function tbSave(){
+  const WB=window._WB;if(!WB)return;
+  WB.name=$('#tb-name').value.trim()||'My Theme';WB.custom=true;
+  if(WB.font&&!WB.font.url)WB.font=null;
+  await themeSave(WB,true);await loadThemes();applyTheme(WB.name);toast('🎨 saved '+WB.name);refreshApp('themes');
+}
+
 /* ================= personalize app + wallpaper gallery ================= */
 async function renderPersonalize(body){
   let gal=[];try{gal=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
@@ -1502,7 +2039,8 @@ async function renderPersonalize(body){
     <textarea id="pz-prompt" rows="2" placeholder="e.g. dark cyberpunk skyline at dusk, teal neon reflections, rain, cinematic"></textarea>
     <div class="row" style="margin-top:10px">
       <button class="save" style="margin:0" id="pz-gen" onclick="pzGen()">✨ Generate wallpaper</button>
-      <button class="endbtn" onclick="fetch('/api/wallpaper',{method:'DELETE'})">Reset to default</button>
+      <button class="endbtn" onclick="wpSystem()">🖼 Use Ubuntu wallpaper</button>
+      <button class="endbtn" onclick="fetch('/api/wallpaper',{method:'DELETE'})">Reset</button>
     </div>
     <label style="margin-top:16px">Gallery — every wallpaper you've generated (click to apply)</label>
     <div id="pz-gal" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px">
@@ -1524,6 +2062,7 @@ async function pzGen(){
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='✨ Generate wallpaper'}
 }
 async function pzSet(id){await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('🖼 applied')}
+async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'POST'});const d=await r.json();toast(d.ok?'🖼 using your Ubuntu wallpaper':(d.error||'failed'))}
 async function pzDel(id){await fetch('/api/wallpapers/'+id,{method:'DELETE'});refreshApp('personalize')}
 
 /* ================= token analytics app ================= */
@@ -1702,6 +2241,133 @@ function renderBrowser(body,w){
   if(w._pending){openHost({url:w._pending});w._pending=null}
 }
 
+/* ================= native applications launcher ================= */
+async function renderNativeApps(body,w){
+  body.innerHTML=`<div class="apptop"><input id="na-q" placeholder="Search installed apps…" style="flex:1"><span class="mut" id="na-n"></span></div>
+    <div id="na-grid" style="flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;align-content:start"></div>`;
+  let apps=[];try{apps=(await (await fetch('/api/native/apps')).json()).apps||[]}catch(e){}
+  const grid=$('#na-grid');
+  const draw=q=>{
+    const list=apps.filter(a=>!q||a.name.toLowerCase().includes(q)||(a.comment||'').toLowerCase().includes(q));
+    $('#na-n').textContent=list.length+' apps';
+    grid.innerHTML=list.map(a=>`<button class="naicon" data-id="${esc(a.id)}" title="${esc(a.comment||a.name)}">
+      ${a.has_icon?`<img src="/api/native/icon/${encodeURIComponent(a.id)}" loading="lazy">`:`<span class="nafallback">${esc(a.name[0]||'?')}</span>`}
+      <span class="nalbl">${esc(a.name)}</span></button>`).join('')||'<p class="mut">no apps found</p>';
+    grid.querySelectorAll('.naicon').forEach(b=>b.onclick=()=>launchNative(b.dataset.id,b.title));
+  };
+  draw('');
+  $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
+}
+async function launchNative(id,name){
+  const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const d=await r.json();
+  toast(d.ok?'↗ launched '+(name||id):'launch failed: '+(d.message||''));
+}
+
+/* ================= model manager ================= */
+const MODEL_SUGGEST=['llama3.2','qwen2.5:7b','qwen2.5:14b','gemma2:9b','phi3.5','mistral','llava','nomic-embed-text'];
+async function renderModels(body){
+  const d=await (await fetch('/api/models/manage')).json();
+  const fmtB=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':(n/1e6).toFixed(0)+' MB';
+  const running=new Set((d.running||[]).map(m=>m.name));
+  const gpu=(d.gpu||[]).map(g=>`<div class="stat"><div class="lbl">${esc(g.name)}</div>
+    <div class="val">${(g.mem_used_mb/1024).toFixed(1)}<small> / ${(g.mem_total_mb/1024).toFixed(0)} GB · ${g.util}%</small></div>
+    <div class="bar"><i style="width:${100*g.mem_used_mb/g.mem_total_mb}%" class="${g.mem_used_mb/g.mem_total_mb>.85?'hot':''}"></i></div></div>`).join('');
+  body.innerHTML=`<div class="pad">
+    ${gpu?`<div class="tmsec">GPU</div><div class="tmgrid" style="grid-template-columns:1fr">${gpu}</div>`:'<p class="mut">No NVIDIA GPU detected (models run on CPU).</p>'}
+    <div class="tmsec">Installed models</div>
+    <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item">
+      <div class="grow"><b>${esc(m.name)}</b> ${running.has(m.name)?'<span class="badge ok">● loaded</span>':''}
+        <div class="sub">${fmtB(m.size)}${m.params?' · '+esc(m.params):''}${m.family?' · '+esc(m.family):''}</div></div>
+      <button onclick="modelDelete('${esc(m.name)}')" title="delete">🗑</button></div>`).join('')||'<p class="mut">no models yet — pull one below</p>'}</div>
+    <div id="mdl-prog" class="mut" style="margin:8px 0"></div>
+    <label>Download a model</label>
+    <div class="row"><input id="mdl-name" placeholder="e.g. qwen2.5:14b" list="mdl-sug">
+      <datalist id="mdl-sug">${MODEL_SUGGEST.map(s=>`<option value="${s}">`).join('')}</datalist>
+      <button class="save" style="margin:0;flex:0 0 90px" onclick="modelPull()">Pull</button></div>
+    <div class="presets">${MODEL_SUGGEST.slice(0,6).map(s=>`<button class="preset" onclick="modelPull('${s}')">${s}</button>`).join('')}</div>
+    <p class="mut" style="margin-top:10px">Downloads run in the background. Pick sizes your GPU can hold — a ~14B model needs roughly 9–10 GB of VRAM.</p>
+  </div>`;
+  $('#mdl-name').addEventListener('keydown',e=>{if(e.key==='Enter')modelPull()});
+}
+async function modelPull(name){
+  name=(name||$('#mdl-name')?.value||'').trim();if(!name)return toast('enter a model name');
+  await fetch('/api/models/pull',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  toast('⬇ downloading '+name);
+}
+async function modelDelete(name){
+  if(!confirm('Delete model '+name+'?'))return;
+  await fetch('/api/models/'+encodeURIComponent(name),{method:'DELETE'});
+  toast('removed '+name);refreshApp('models');loadModels();
+}
+
+/* ================= control center + tray ================= */
+async function renderControl(body){
+  const d=await (await fetch('/api/control')).json();
+  const a=d.audio||{},b=d.battery||{},n=d.network||{};
+  body.innerHTML=`<div class="pad">
+    <div class="provbox"><div class="ptitle">🔊 Sound</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <button class="endbtn" id="c-mute" style="flex:0 0 40px">${a.muted?'🔇':'🔊'}</button>
+        <input type="range" id="c-vol" min="0" max="100" value="${a.volume??50}" style="flex:1">
+        <span id="c-voln" class="mut" style="flex:0 0 40px;text-align:right">${a.volume??'–'}%</span>
+      </div>
+      <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('sound')">Open Sound Settings ↗</button>
+    </div>
+    <div class="provbox"><div class="ptitle">🔋 Battery</div>
+      <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery detected'}</p>
+      ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
+      <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('power')">Open Power Settings ↗</button>
+    </div>
+    <div class="provbox"><div class="ptitle">🌐 Network</div>
+      <p class="mut" style="margin-top:6px">${n.online?n.connections.map(c=>`${c.type==='wifi'?'📶':'🔌'} ${esc(c.name)}`).join(', '):'offline'}</p>
+      <div class="row" style="margin-top:10px">
+        <button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button>
+        <button class="endbtn" onclick="ctlSettings('network')">Network ↗</button>
+        <button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>
+      </div>
+    </div>
+    <div class="provbox"><div class="ptitle">⚙ System</div>
+      <div class="row" style="margin-top:10px">
+        <button class="endbtn" onclick="ctlSettings('display')">Display ↗</button>
+        <button class="endbtn" onclick="ctlSettings('background')">Background ↗</button>
+        <button class="endbtn" onclick="ctlSettings('')">All Settings ↗</button>
+      </div>
+    </div>
+  </div>`;
+  const vol=$('#c-vol');let vt;
+  vol.oninput=()=>{$('#c-voln').textContent=vol.value+'%';clearTimeout(vt);vt=setTimeout(()=>ctlSet({volume:+vol.value}),200)};
+  $('#c-mute').onclick=async()=>{const cur=$('#c-mute').textContent==='🔊';await ctlSet({mute:cur});refreshApp('control');updateTray()};
+}
+async function ctlSet(opts){await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)});updateTray()}
+async function ctlSettings(panel){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:panel})});const d=await r.json();toast(d.ok?'↗ opened settings':d.message)}
+
+const NAT_ICON={firefox:'🦊',chrome:'🌐','google-chrome':'🌐',code:'🧑‍💻','code-oss':'🧑‍💻',nautilus:'🗂',
+  gnome:'🖥','org.gnome.nautilus':'🗂',terminal:'🖥','gnome-terminal':'🖥',libreoffice:'📄',anydesk:'🖥️',
+  thunderbird:'✉️',slack:'💬',telegram:'✈️',spotify:'🎵',vlc:'🎬',blender:'🧊',gimp:'🎨'};
+function natIcon(app){app=(app||'').toLowerCase();for(const k in NAT_ICON)if(app.includes(k))return NAT_ICON[k];return '▭'}
+async function updateNativeWindows(){
+  const box=$('#tbnative');if(!box)return;
+  let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
+  if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';return}
+  box.classList.toggle('has',d.windows.length>0);
+  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat" data-id="${esc(w.id)}" title="${esc(w.title)} — click to switch, right-click to close">
+    <span style="font-size:13px">${natIcon(w.app)}</span><span class="tl">${esc(w.title)}</span></button>`).join('');
+  box.querySelectorAll('.tbnat').forEach(b=>{
+    b.onclick=()=>fetch('/api/windows/focus',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
+    b.oncontextmenu=e=>{e.preventDefault();if(confirm('Close this window?'))fetch('/api/windows/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}).then(()=>updateNativeWindows())};
+  });
+}
+async function updateTray(){
+  try{
+    const d=await (await fetch('/api/control')).json();
+    const a=d.audio||{},b=d.battery||{};
+    const el=$('#tray-ctl');if(!el)return;
+    const vi=a.muted?'🔇':(a.volume>50?'🔊':a.volume>0?'🔉':'🔈');
+    el.innerHTML=`<span title="volume ${a.volume??'?'}%">${vi}</span>${b.percent!=null?`<span title="battery ${b.percent}%">${b.percent<20?'🪫':'🔋'} ${b.percent}%</span>`:''}`;
+  }catch(e){}
+}
+
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
   w.path=w.path||'';
@@ -1734,6 +2400,70 @@ async function renderFiles(body,w){
 function openFile(rel,ext){
   // open the real file in the HOST OS default app (browser for html/pdf, viewer for images, etc.)
   openHost({path:rel});
+}
+
+/* ================= app store ================= */
+let STORE_TAB='apps';
+async function renderStore(body,w){
+  body.innerHTML=`<div class="apptop" style="gap:6px">
+      ${['apps','channels','skills','build'].map(t=>`<button class="endbtn store-tab${t===STORE_TAB?' on':''}" data-t="${t}">${({apps:'🛍 Apps',channels:'🔌 Channels',skills:'🧩 Skills',build:'✨ Build with AI'})[t]}</button>`).join('')}
+    </div>
+    <div id="store-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
+  body.querySelectorAll('.store-tab').forEach(b=>b.onclick=()=>{STORE_TAB=b.dataset.t;renderStore(body,w)});
+  const box=$('#store-body');
+  if(STORE_TAB==='apps'){
+    const d=await (await fetch('/api/store/templates')).json();
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
+      <div class="cat">${d.templates.map(t=>`<div class="catcard">
+        <span class="cn">${t.icon} ${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
+        <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
+      </div>`).join('')}</div>`;
+  } else if(STORE_TAB==='channels'){
+    const r=await fetch('/api/mcp');const md=await r.json();
+    MCPCFG={};   // keep the full current config so adding one doesn't wipe the rest
+    md.servers.forEach(s=>{MCPCFG[s.name]={transport:s.transport,command:s.command,args:s.args,url:s.url,enabled:s.enabled}});
+    const have=new Set(md.servers.map(s=>s.name));
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Tool channels (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
+      <div class="cat">${MCP_CATALOG.map(e=>`<div class="catcard${have.has(e.k)?' inst':''}">
+        <span class="cn">${e.i} ${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
+        ${e.env?`<span class="ck">🔑 needs a key</span>`:''}
+        <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${e.k}');toast('connecting ${esc(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
+      </div>`).join('')}</div>`;
+  } else if(STORE_TAB==='skills'){
+    const d=await (await fetch('/api/skills')).json();
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Skills are reusable procedures the agent follows. Install from a git repo or a raw .md URL.</p>
+      <div class="row"><input id="store-sk" placeholder="https://github.com/user/repo.git  ·  or a raw .md URL">
+        <button class="save" style="margin:0;flex:0 0 90px" onclick="storeInstallSkill()">Install</button></div>
+      <div class="tmsec">Installed (${d.skills.length})</div>
+      ${d.skills.map(s=>`<div class="item"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}`;
+  } else {
+    box.innerHTML=`<div style="text-align:center;padding:24px">
+      <div style="font-size:34px">✨</div>
+      <div style="font-size:16px;font-weight:700;margin:8px 0">Build any app with AI</div>
+      <p class="mut" style="max-width:420px;margin:0 auto 16px">Describe what you want and ${esc(agentName())} builds a working app for it — live. It can call the OS, run tools, and fetch data.</p>
+      <input id="store-build" placeholder="e.g. a habit tracker with daily checkboxes" style="width:100%;max-width:460px">
+      <div style="margin-top:10px"><button class="save" style="display:inline-block;width:auto;padding:9px 22px" onclick="storeBuild()">✨ Build it</button></div>
+      <p class="mut" style="margin-top:12px;font-size:11px">Tip: builds work best with a tool-capable model (a qwen model) selected in chat.</p>
+    </div>`;
+    $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
+  }
+}
+async function storeInstall(id){
+  const r=await fetch('/api/store/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const d=await r.json();
+  if(d.ok)toast('🛍 installed '+d.name);
+  refreshApp('store');
+}
+async function storeInstallSkill(){
+  const src=$('#store-sk').value.trim();if(!src)return toast('enter a git or raw URL');
+  toast('⏳ installing…');
+  const r=await fetch('/api/skills/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:src})});
+  const d=await r.json();toast(d.ok?`🧩 installed ${d.count} skill(s)`:d.error);refreshApp('store');
+}
+function storeBuild(){
+  const p=$('#store-build').value.trim();if(!p)return;
+  openApp('studio');
+  setTimeout(()=>{if($('#st-prompt')){$('#st-prompt').value=p;studioBuild()}},200);
 }
 
 /* ================= app studio (agentic builder) ================= */
@@ -1886,6 +2616,70 @@ function renderAbout(body){
   }).catch(()=>{});
 }
 
+/* ================= keyboard / shortcuts system ================= */
+// "Command key": Cmd on Mac (metaKey), Ctrl on Linux/Windows — both accepted so it feels native.
+const IS_MAC=/Mac/i.test(navigator.platform);
+const CMD='⌘/Ctrl';
+function cmd(e){return e.metaKey||e.ctrlKey}
+const KEYMAP=[
+  {group:'General',keys:[
+    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Command palette / ask AI'},
+    {k:[CMD,'K'],label:'Command palette'},
+    {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
+    {k:[CMD,','],label:'Settings'},
+    {k:['F11'],label:'Toggle fullscreen'},
+    {k:['Alt','J'],label:'Voice mode (Jarvis)'},
+  ]},
+  {group:'Windows',keys:[
+    {k:['Ctrl','Tab'],alt:['Alt','Tab'],label:'Switch window (hold, Tab to cycle)'},
+    {k:['Ctrl','Shift','Tab'],label:'Switch window (backwards)'},
+    {k:[CMD,'W'],label:'Close active window'},
+    {k:[CMD,'M'],label:'Minimize active window'},
+    {k:[CMD,'F'],label:'Maximize / restore active window'},
+  ]},
+  {group:'Desktops',keys:[
+    {k:['Ctrl','1…6'],label:'Switch virtual desktop'},
+  ]},
+  {group:'Apps',keys:[
+    {k:[CMD,'Enter'],label:'New chat'},
+    {k:['Ctrl','Alt','T'],label:'Open terminal'},
+  ]},
+];
+function activeWin(){let a=null;WM.wins.forEach(w=>{if(w.el.classList.contains('active'))a=w});return a}
+
+// --- Ctrl+Tab window switcher (Cmd+Tab-style) ---
+let SW={open:false,list:[],idx:0};
+function switcherList(){
+  const arr=[];WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)arr.push(w)});
+  return arr.sort((a,b)=>(+b.el.style.zIndex||0)-(+a.el.style.zIndex||0));
+}
+function switcherOpen(dir){
+  SW.list=switcherList();
+  if(SW.list.length<2){if(SW.list.length===1)focusWin(SW.list[0]);return}
+  if(!SW.open){SW.open=true;SW.idx=1;$('#switcher').classList.add('show')}
+  else{SW.idx=(SW.idx+dir+SW.list.length)%SW.list.length}
+  switcherRender();
+}
+function switcherRender(){
+  $('#swbox').innerHTML=SW.list.map((w,i)=>`<div class="swcard${i===SW.idx?' sel':''}">
+    <span class="si" style="background:${tileBg(w.id)}">${w.app.icon}</span><span class="sn">${esc(w.app.title)}</span></div>`).join('');
+}
+function switcherCommit(){
+  if(!SW.open)return;SW.open=false;$('#switcher').classList.remove('show');
+  const w=SW.list[SW.idx];if(w)focusWin(w);
+}
+
+// --- shortcuts help overlay ---
+function keysHelp(on){
+  const ov=$('#keyshelp');const show=on!==undefined?on:!ov.classList.contains('show');
+  if(show){
+    $('#keysbox').innerHTML=`<div class="kh"><span>⌨ Keyboard shortcuts</span><button class="mclose" onclick="keysHelp(false)">✕</button></div>
+      <div class="kbody">${KEYMAP.map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
+  }
+  ov.classList.toggle('show',show);
+}
+$('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keysHelp(false)});
+
 /* ================= command palette (quicksilver) ================= */
 let palIdx=0,palMatches=[];
 function paletteOpen(){return $('#palette').classList.contains('show')}
@@ -1943,23 +2737,62 @@ $('#palin').addEventListener('keydown',e=>{
   else if(e.key==='Escape'){togglePalette(false)}
 });
 $('#palette').addEventListener('mousedown',e=>{if(e.target.id==='palette')togglePalette(false)});
+document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
   const inTerm=e.target.closest&&e.target.closest('.xterm');
   const k=e.key.toLowerCase();
+  const typing=/^(input|textarea|select)$/i.test((e.target.tagName||''));
+  // window switcher — Ctrl/Cmd+Tab (reliable), Alt+Tab (best-effort; the OS may grab it)
+  if((cmd(e)||e.altKey)&&e.key==='Tab'){e.preventDefault();switcherOpen(e.shiftKey?-1:1);return}
+  // Command-key window controls (Cmd on Mac, Ctrl elsewhere)
+  if(cmd(e)&&!e.altKey){
+    const a=activeWin();
+    if(k==='w'&&a){e.preventDefault();closeWin(a);return}
+    if(k==='m'&&a){e.preventDefault();minimizeWin(a);return}
+    if(k==='f'&&a){e.preventDefault();toggleMax(a);return}
+    if(k===','){e.preventDefault();openApp('settings');return}
+    if(e.key==='Enter'){e.preventDefault();openApp('chat');newChat();return}
+    if(k==='/'){e.preventDefault();keysHelp();return}
+  }
+  if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
+  if(e.key==='Escape'){if(SW.open){switcherCommit();return}if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
   if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();togglePalette()}          // works everywhere, incl. terminal
+  else if(e.key==='F11'){e.preventDefault();toggleFullscreen()}
+  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();togglePalette()}   // Alt+Space quick launch / ask AI
   else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();togglePalette()}
   else if(e.ctrlKey&&e.altKey&&k==='t'){e.preventDefault();togglePalette(false);openApp('terminal')}
+  else if(e.altKey&&!e.ctrlKey&&!e.shiftKey&&k==='j'){e.preventDefault();jarvisMode(!JARVIS.on)}
   else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
     const n=+e.key;if(n<=DESKS){e.preventDefault();switchDesk(n)}}
 });
 
+/* ================= logo ================= */
+// A refined AgentOS mark: a rounded upward triangle (agency/ascent) with an agent "eye" node.
+const LOGO_GLYPH=`<svg viewBox="0 0 24 24" width="64%" height="64%" style="display:block">
+  <path d="M12 4.3 L19.6 18.4 Q20.1 19.3 19.1 19.3 L4.9 19.3 Q3.9 19.3 4.4 18.4 Z" fill="#04211c"/>
+  <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
+  <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/>
+</svg>`;
+function paintLogo(){document.querySelectorAll('.mark').forEach(m=>{m.innerHTML=LOGO_GLYPH})}
+
 /* ================= init ================= */
+paintLogo();
 buildDesktop();
 buildPager();
+buildDock();
+$('#tray-ctl').onclick=()=>openApp('control');
+$('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
+$('#j-mic').onclick=()=>{if(JARVIS.phase==='listening'){try{JARVIS.rec.stop()}catch(e){}}else jarvisListen()};
+$('#j-close').onclick=()=>jarvisMode(false);
+updateTray();setInterval(updateTray,15000);
+updateNativeWindows();setInterval(updateNativeWindows,3000);
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadConfig();
+loadThemes();
 loadUserApps().then(loadWidgets);
+APPS_READY=true;
+if(EXPERIENCE==='jarvis')buildJarvisShell();   // APPS now defined — populate the shell if a theme selected it early
 connect();
 setTimeout(()=>{
   $('#boot').classList.add('off');

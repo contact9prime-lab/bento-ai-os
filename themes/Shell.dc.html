@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#070a08}a{color:#86efac}a:hover{color:#bbf7d0}</style>
+</helmet>
+<div data-screen-label="Shell — Terminal First" style="width:1440px;height:900px;position:relative;overflow:hidden;background:#0a0e0b;color:#a7c4ad;font-family:'JetBrains Mono',monospace;display:flex;flex-direction:column;box-sizing:border-box">
+
+  <div style="flex:none;padding:22px 28px 14px;border-bottom:1px solid rgba(134,239,172,0.12)">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:#5d7263">
+      <div><span style="color:#86efac;font-weight:700">agentos</span> v2.1 — {{ headline }}</div>
+      <div>uptime 6d 4h · mem 41% · tokens 1.2M</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+      <span style="color:#86efac;font-weight:700">❯</span>
+      <input value="{{ query }}" onChange="{{ setQuery }}" onKeyDown="{{ queryKey }}" placeholder="filter apps · Enter opens first match" style="flex:1;background:transparent;border:none;outline:none;color:#d7ecd9;font-family:'JetBrains Mono',monospace;font-size:14px;caret-color:#86efac" />
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <div style="width:520px;flex:none;overflow:auto;padding:14px 0;border-right:1px solid rgba(134,239,172,0.12)">
+      <sc-for list="{{ rows }}" as="row" hint-placeholder-count="12">
+        <div onClick="{{ row.open }}" style="{{ row.style }}" style-hover="background:rgba(134,239,172,0.09);color:#d7ecd9">
+          <span style="color:#5d7263;width:36px;flex:none">{{ row.idx }}</span>
+          <span style="flex:1">{{ row.name }}</span>
+          <span style="{{ row.statusStyle }}">{{ row.status }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto">
+      <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#3f4f44;font-size:12.5px;text-align:center;line-height:2">no panes open<br/>click an app on the left, or type + Enter</div>
+      </sc-if>
+      <sc-for list="{{ panes }}" as="p" hint-placeholder-count="1">
+        <div style="border:1px solid rgba(134,239,172,0.25);border-radius:8px;background:rgba(134,239,172,0.03);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid rgba(134,239,172,0.15);font-size:12px">
+            <span style="color:#86efac;font-weight:700">■</span>
+            <span style="color:#d7ecd9;flex:1">{{ p.name }}</span>
+            <span style="color:#5d7263">{{ p.status }}</span>
+            <span onClick="{{ p.close }}" style="cursor:pointer;color:#5d7263;padding:0 4px" style-hover="color:#f8bcbc">✕</span>
+          </div>
+          <div style="padding:12px 14px;font-size:12px;line-height:1.9;color:#79947f">
+            <div><span style="color:#5d7263">14:31:07</span>  run #482 completed <span style="color:#86efac">ok</span> (2.4s)</div>
+            <div><span style="color:#5d7263">14:31:02</span>  invoking tool: knowledge_graph.query</div>
+            <div><span style="color:#5d7263">14:30:58</span>  {{ p.name }} ready · listening for events</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:none;height:34px;display:flex;align-items:center;gap:0;background:rgba(134,239,172,0.07);border-top:1px solid rgba(134,239,172,0.15);font-size:11.5px">
+    <div style="background:#86efac;color:#0a0e0b;font-weight:700;padding:0 14px;height:100%;display:flex;align-items:center">AGENTOS</div>
+    <div style="padding:0 14px;color:#79947f">[0] main</div>
+    <div style="padding:0 14px;color:#5d7263">{{ paneCount }} panes</div>
+    <div style="margin-left:auto;display:flex">
+      <div style="padding:0 14px;color:#79947f">NET wifi</div>
+      <div style="padding:0 14px;color:#79947f">BAT 100%</div>
+      <div style="padding:0 14px;color:#d7ecd9">{{ time }}</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  appsData = [
+    { name: 'agent-chat', status: '3 sessions', on: true },
+    { name: 'model-manager', status: '4 models', on: true },
+    { name: 'scheduler', status: 'next 15:00', on: true },
+    { name: 'mcp-servers', status: '6 up', on: true },
+    { name: 'knowledge-graph', status: '48k nodes', on: true },
+    { name: 'logs', status: 'tail', on: false },
+    { name: 'memory', status: 'synced', on: false },
+    { name: 'skills', status: '12 pkgs', on: false },
+    { name: 'token-analytics', status: '1.2M', on: false },
+    { name: 'files', status: '82G free', on: false },
+    { name: 'terminal', status: 'zsh', on: false },
+    { name: 'policies', status: '9 rules', on: false },
+    { name: 'app-studio', status: '2 drafts', on: false },
+    { name: 'settings', status: 'ok', on: false }
+  ];
+  state = { query: '', panes: [], time: '' };
+
+  componentDidMount() {
+    const tick = () => {
+      const d = new Date();
+      this.setState({ time: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') });
+    };
+    tick();
+    this._t = setInterval(tick, 15000);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  openPane(a) {
+    this.setState(s => {
+      if (s.panes.some(p => p.name === a.name)) return s;
+      return { panes: [...s.panes, a].slice(-3) };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const q = s.query.trim().toLowerCase();
+    const filtered = this.appsData.filter(a => !q || a.name.includes(q));
+    const rows = filtered.map((a, i) => ({
+      ...a,
+      idx: '[' + (i + 1) + ']',
+      open: () => this.openPane(a),
+      style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 24px', cursor: 'pointer', fontSize: '13px', color: s.panes.some(p => p.name === a.name) ? '#d7ecd9' : '#79947f', transition: 'background 0.1s' },
+      statusStyle: { fontSize: '11.5px', color: a.on ? '#86efac' : '#3f4f44' }
+    }));
+    return {
+      headline: this.appsData.length + ' apps · ' + this.appsData.filter(a => a.on).length + ' running',
+      query: s.query,
+      setQuery: e => this.setState({ query: e.target.value }),
+      queryKey: e => {
+        if (e.key === 'Enter' && filtered.length) { this.openPane(filtered[0]); this.setState({ query: '' }); }
+      },
+      rows,
+      panes: s.panes.map(p => ({ ...p, close: () => this.setState(st => ({ panes: st.panes.filter(x => x.name !== p.name) })) })),
+      paneCount: s.panes.length,
+      empty: s.panes.length === 0,
+      time: s.time
+    };
+  }
+}
+</script>
+</body>
+</html>

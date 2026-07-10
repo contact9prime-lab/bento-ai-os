@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#101321}a{color:#9db8f5}a:hover{color:#c3d4fa}</style>
+</helmet>
+<div data-screen-label="Aero — Glass Desktop" onMouseMove="{{ dragMove }}" onMouseUp="{{ dragEnd }}" style="width:1440px;height:900px;position:relative;overflow:hidden;font-family:'Space Grotesk',system-ui,sans-serif;color:#eef1f8;background:radial-gradient(1200px 700px at 70% 110%,oklch(0.5 0.13 300 / 0.55) 0%,transparent 60%),radial-gradient(900px 600px at 15% -10%,oklch(0.55 0.12 250 / 0.5) 0%,transparent 55%),linear-gradient(170deg,#181c30 0%,#141628 45%,#201a33 100%);box-sizing:border-box;user-select:none">
+
+  <div style="position:absolute;top:0;left:0;right:0;height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:rgba(255,255,255,0.06);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.08);z-index:200;box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:20px;font-size:13px">
+      <div style="width:16px;height:16px;border-radius:5px;background:linear-gradient(135deg,oklch(0.75 0.13 250),oklch(0.65 0.15 300))"></div>
+      <div style="font-weight:600">AgentOS</div>
+      <div style="color:#aab2c8;cursor:default" style-hover="color:#eef1f8">File</div>
+      <div style="color:#aab2c8;cursor:default" style-hover="color:#eef1f8">Agents</div>
+      <div style="color:#aab2c8;cursor:default" style-hover="color:#eef1f8">View</div>
+      <div style="color:#aab2c8;cursor:default" style-hover="color:#eef1f8">Help</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c6cddf">
+      <div>wifi</div>
+      <div>100%</div>
+      <div>{{ time }}</div>
+      <div onClick="{{ toggleCc }}" style="width:26px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,0.12)">☰</div>
+    </div>
+  </div>
+
+  <sc-if value="{{ ccOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:44px;right:12px;width:320px;border-radius:18px;background:rgba(30,34,54,0.72);backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 60px rgba(0,0,0,0.45);padding:16px;z-index:300;display:flex;flex-direction:column;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <sc-for list="{{ ccToggles }}" as="t" hint-placeholder-count="4">
+          <div onClick="{{ t.onClick }}" style="{{ t.style }}" style-hover="filter:brightness(1.12)">
+            <div style="font-size:13px;font-weight:500">{{ t.name }}</div>
+            <div style="{{ t.subStyle }}">{{ t.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#c6cddf;margin-bottom:8px"><span>Sound</span><span style="font-family:'IBM Plex Mono',monospace">{{ volume }}%</span></div>
+        <input type="range" min="0" max="100" value="{{ volume }}" onChange="{{ setVolume }}" style="width:100%;accent-color:oklch(0.75 0.13 250)" />
+      </div>
+      <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#c6cddf;margin-bottom:8px"><span>Brightness</span><span style="font-family:'IBM Plex Mono',monospace">{{ brightness }}%</span></div>
+        <input type="range" min="0" max="100" value="{{ brightness }}" onChange="{{ setBrightness }}" style="width:100%;accent-color:oklch(0.75 0.13 250)" />
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-for list="{{ windows }}" as="w" hint-placeholder-count="0">
+    <div onMouseDown="{{ w.focus }}" style="{{ w.style }}">
+      <div onMouseDown="{{ w.dragStart }}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.09);cursor:grab">
+        <div onClick="{{ w.close }}" style="width:12px;height:12px;border-radius:99px;background:#f26d6d;cursor:pointer" style-hover="filter:brightness(1.2)"></div>
+        <div style="width:12px;height:12px;border-radius:99px;background:#f2c14d"></div>
+        <div style="width:12px;height:12px;border-radius:99px;background:#5ec46f"></div>
+        <div style="flex:1;text-align:center;font-size:12.5px;color:#c6cddf;font-weight:500">{{ w.name }}</div>
+        <div style="width:60px"></div>
+      </div>
+      <sc-if value="{{ w.isChat }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:10px;min-height:0">
+          <div style="align-self:flex-start;max-width:75%;background:rgba(255,255,255,0.09);border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:13px;line-height:1.5">Morning! I finished the research digest — 12 sources summarized in Memory.</div>
+          <div style="align-self:flex-end;max-width:75%;background:oklch(0.55 0.13 250);border-radius:14px 14px 4px 14px;padding:10px 14px;font-size:13px;line-height:1.5">Great — schedule the follow-up run for 3 PM.</div>
+          <div style="align-self:flex-start;max-width:75%;background:rgba(255,255,255,0.09);border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:13px;line-height:1.5">Done. Scheduler run #483 created for 15:00 today.</div>
+          <div style="margin-top:auto;display:flex;gap:8px">
+            <input placeholder="Message your agent…" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:99px;padding:10px 16px;color:#eef1f8;outline:none;font-size:13px;font-family:'Space Grotesk',sans-serif" />
+            <div style="width:38px;height:38px;border-radius:99px;background:oklch(0.55 0.13 250);display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="filter:brightness(1.15)">↑</div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ w.isGeneric }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;margin:16px;border-radius:12px;border:1px dashed rgba(255,255,255,0.2);background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0 10px,transparent 10px 20px);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8791a8">{{ w.name }} — app canvas</div>
+      </sc-if>
+    </div>
+  </sc-for>
+
+  <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:flex-end;gap:10px;padding:10px 14px;border-radius:22px;background:rgba(255,255,255,0.08);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.12);box-shadow:0 16px 40px rgba(0,0,0,0.4);z-index:250">
+    <sc-for list="{{ dock }}" as="d" hint-placeholder-count="9">
+      <div onClick="{{ d.onClick }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:transform 0.12s" style-hover="transform:translateY(-6px) scale(1.08)">
+        <div style="{{ d.iconStyle }}">{{ d.glyph }}</div>
+        <div style="{{ d.dotStyle }}"></div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;openChatOnLoad&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  appsData = [
+    { name: 'Agent Chat', glyph: 'C', hue: 250, chat: true },
+    { name: 'Model Manager', glyph: 'M', hue: 300 },
+    { name: 'Knowledge Graph', glyph: 'K', hue: 180 },
+    { name: 'Scheduler', glyph: 'S', hue: 90 },
+    { name: 'Files', glyph: 'F', hue: 50 },
+    { name: 'Terminal', glyph: 'T', hue: 140 },
+    { name: 'Logs', glyph: 'L', hue: 60 },
+    { name: 'App Store', glyph: 'A', hue: 20 },
+    { name: 'Settings', glyph: 'St', hue: 0 }
+  ];
+  state = { windows: [], cc: false, volume: 76, brightness: 88, time: '', wifi: true, bt: true, focus: false, agents: true, drag: null, zTop: 10 };
+
+  componentDidMount() {
+    const tick = () => {
+      const d = new Date();
+      let h = d.getHours(); const m = String(d.getMinutes()).padStart(2, '0');
+      const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+      this.setState({ time: 'Fri ' + h + ':' + m + ' ' + ap });
+    };
+    tick();
+    this._t = setInterval(tick, 15000);
+    if (this.props.openChatOnLoad ?? true) this.openApp(this.appsData[0]);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  openApp(a) {
+    this.setState(s => {
+      const ex = s.windows.find(w => w.name === a.name);
+      if (ex) return { windows: s.windows.map(w => w.name === a.name ? { ...w, z: s.zTop + 1 } : w), zTop: s.zTop + 1 };
+      const n = s.windows.length;
+      return { windows: [...s.windows, { ...a, x: 380 + n * 44, y: 120 + n * 36, z: s.zTop + 1 }], zTop: s.zTop + 1 };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const windows = s.windows.map(w => ({
+      name: w.name,
+      isChat: !!w.chat,
+      isGeneric: !w.chat,
+      style: {
+        position: 'absolute', left: w.x + 'px', top: w.y + 'px', width: w.chat ? '560px' : '520px', height: w.chat ? '440px' : '360px',
+        zIndex: w.z, display: 'flex', flexDirection: 'column',
+        borderRadius: '16px', background: 'rgba(26,30,48,0.78)', backdropFilter: 'blur(28px)',
+        border: '1px solid rgba(255,255,255,0.14)', boxShadow: '0 30px 70px rgba(0,0,0,0.5)', overflow: 'hidden'
+      },
+      focus: () => this.setState(st => ({ windows: st.windows.map(x => x.name === w.name ? { ...x, z: st.zTop + 1 } : x), zTop: st.zTop + 1 })),
+      dragStart: e => {
+        this.setState({ drag: { name: w.name, dx: e.clientX - w.x, dy: e.clientY - w.y } });
+      },
+      close: () => this.setState(st => ({ windows: st.windows.filter(x => x.name !== w.name) }))
+    }));
+    const dock = this.appsData.map(a => {
+      const openWin = s.windows.some(w => w.name === a.name);
+      return {
+        glyph: a.glyph,
+        onClick: () => this.openApp(a),
+        iconStyle: { width: '46px', height: '46px', borderRadius: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, oklch(0.62 0.12 ' + a.hue + '), oklch(0.48 0.13 ' + (a.hue + 30) + '))', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' },
+        dotStyle: { width: '4px', height: '4px', borderRadius: '99px', background: openWin ? '#fff' : 'transparent' }
+      };
+    });
+    const mkT = (name, key, sub) => ({
+      name, sub: s[key] ? sub : 'Off',
+      onClick: () => this.setState({ [key]: !s[key] }),
+      style: { borderRadius: '12px', padding: '11px 13px', cursor: 'pointer', transition: 'background 0.15s', background: s[key] ? 'oklch(0.55 0.13 250)' : 'rgba(255,255,255,0.07)' },
+      subStyle: { fontSize: '11px', marginTop: '2px', color: s[key] ? 'rgba(255,255,255,0.75)' : '#8791a8' }
+    });
+    return {
+      time: s.time,
+      windows, dock,
+      ccOpen: s.cc,
+      toggleCc: () => this.setState({ cc: !s.cc }),
+      ccToggles: [mkT('Wi-Fi', 'wifi', 'airtel_piyu'), mkT('Bluetooth', 'bt', 'On'), mkT('Focus', 'focus', 'On'), mkT('Agents', 'agents', '5 running')],
+      volume: s.volume, setVolume: e => this.setState({ volume: +e.target.value }),
+      brightness: s.brightness, setBrightness: e => this.setState({ brightness: +e.target.value }),
+      dragMove: e => {
+        const d = s.drag;
+        if (!d) return;
+        this.setState(st => ({ windows: st.windows.map(w => w.name === d.name ? { ...w, x: e.clientX - d.dx, y: Math.max(40, e.clientY - d.dy) } : w) }));
+      },
+      dragEnd: () => { if (s.drag) this.setState({ drag: null }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

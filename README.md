@@ -7,6 +7,10 @@ your approval. It can even build apps for itself, extend its own code, and reach
 
 Runs at `http://127.0.0.1:8321` — private by default, and installable as a boot-time service.
 
+📖 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the
+desktop and every app, the agent and its tools, building apps, integrations, the API reference, and
+troubleshooting.
+
 ---
 
 ## Quickstart
@@ -26,7 +30,24 @@ If **Ollama** is running, your local models are picked up automatically. Add clo
 
 ---
 
-## Install as a real app (auto-start on boot)
+## Install as a Debian/Ubuntu package (.deb)
+
+A self-contained `.deb` (bundles the app **and** a Python venv with all dependencies — no network
+needed at install) can be built and installed:
+
+```bash
+./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_amd64.deb
+sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + app launcher + service
+systemctl --user enable --now agentos                      # start at login (per user)
+agentos app                                                # or launch "AgentOS" from your menu
+```
+
+`apt`/`dpkg` handles updates and removal (`sudo apt remove agentos`). The package targets the build
+machine's Python (currently 3.13 / Ubuntu 25.10) — rebuild on the target's Python for other versions.
+It **Recommends** `bubblewrap` (sandbox) and `xdg-utils` (host-open), and **Suggests** `ollama`,
+`nodejs`, and `git` for the optional features.
+
+## Install as a real app (auto-start on boot) — from source
 
 ```bash
 uv run agentos install      # adds an app-launcher entry + a systemd user service (starts at boot)

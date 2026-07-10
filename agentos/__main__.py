@@ -92,10 +92,18 @@ def main():
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
     sub.add_parser("app", help="open AgentOS as a desktop app window")
-    p_install = sub.add_parser("install", help="install app launcher + boot service")
+    sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
+    p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
                            help="launcher only; skip the systemd boot service")
+    p_install.add_argument("--no-login", action="store_true",
+                           help="don't open AgentOS automatically at login")
     sub.add_parser("uninstall", help="remove launcher + boot service")
+    p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
+    p_auto.add_argument("--off", action="store_true", help="disable login autostart")
+    p_sess = sub.add_parser("install-session",
+                            help="add AgentOS as a login session (boots into kiosk as the desktop shell)")
+    p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
 
     args = parser.parse_args()
     if args.cmd == "ask":
@@ -103,12 +111,29 @@ def main():
     elif args.cmd == "app":
         from . import desktop
         desktop.app_mode()
+    elif args.cmd == "tui":
+        try:
+            from . import tui_app          # full-screen Textual UI
+            tui_app.run()
+        except ImportError:
+            import asyncio as _a            # fallback: simple REPL
+            from . import clitui
+            try:
+                _a.run(clitui.run_tui())
+            except KeyboardInterrupt:
+                pass
     elif args.cmd == "install":
         from . import desktop
-        desktop.install(autostart=not args.no_service)
+        desktop.install(autostart=not args.no_service, open_at_login=not args.no_login)
     elif args.cmd == "uninstall":
         from . import desktop
         desktop.uninstall()
+    elif args.cmd == "autostart":
+        from . import desktop
+        desktop.enable_login_app(not args.off)
+    elif args.cmd == "install-session":
+        from . import desktop
+        desktop.uninstall_session() if args.remove else desktop.install_session()
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 0)

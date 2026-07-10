@@ -215,6 +215,72 @@ async def api_file_raw(path: str, download: int = 0):
     return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
+@app.get("/api/native/apps")
+async def api_native_apps():
+    from . import host
+    apps = host.list_apps()
+    for a in apps:
+        a["has_icon"] = bool(host.resolve_icon(a["icon"]))
+    return {"apps": apps}
+
+
+@app.get("/api/native/icon/{app_id}")
+async def api_native_icon(app_id: str):
+    from . import host
+    apps = {a["id"]: a for a in host.list_apps()}
+    a = apps.get(app_id)
+    path = host.resolve_icon(a["icon"]) if a else None
+    if not path:
+        return JSONResponse({"error": "no icon"}, status_code=404)
+    mt = "image/svg+xml" if path.endswith(".svg") else "image/png"
+    return FileResponse(path, media_type=mt, headers={"Cache-Control": "max-age=86400"})
+
+
+@app.post("/api/native/launch")
+async def api_native_launch(body: dict):
+    from . import host
+    ok, msg = host.launch_app(body.get("id", ""))
+    if ok:
+        state["store"].log("system", f"launched native app: {body.get('id','')}")
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/windows")
+async def api_windows():
+    from . import host
+    return host.list_windows()
+
+
+@app.post("/api/windows/focus")
+async def api_windows_focus(body: dict):
+    from . import host
+    ok, msg = host.focus_window(body.get("id", ""))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/close")
+async def api_windows_close(body: dict):
+    from . import host
+    ok, msg = host.close_window(body.get("id", ""))
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/control")
+async def api_control():
+    from . import host
+    return host.control_state()
+
+
+@app.post("/api/control")
+async def api_control_set(body: dict):
+    from . import host
+    if "settings" in body:
+        ok, msg = host.open_settings(body.get("settings", ""))
+        return {"ok": ok, "message": msg}
+    host.set_volume(percent=body.get("volume"), mute=body.get("mute"))
+    return host.get_volume()
+
+
 @app.get("/api/system")
 async def api_system():
     """Live system stats for the Task Manager app (Linux, stdlib only)."""
@@ -258,6 +324,103 @@ async def api_system():
             "mem": {"total_kb": mem_total, "used_kb": mem_used},
             "disk": {"total": du.total, "used": du.used},
             "uptime": uptime, "cores": os.cpu_count() or 1, "procs": procs}
+
+
+def _gpu_info() -> list[dict]:
+    import shutil
+    import subprocess
+    if not shutil.which("nvidia-smi"):
+        return []
+    try:
+        out = subprocess.run(["nvidia-smi",
+                              "--query-gpu=name,memory.total,memory.used,utilization.gpu",
+                              "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        return []
+    gpus = []
+    for line in out.splitlines():
+        p = [x.strip() for x in line.split(",")]
+        if len(p) >= 4:
+            gpus.append({"name": p[0], "mem_total_mb": int(float(p[1])),
+                         "mem_used_mb": int(float(p[2])), "util": int(float(p[3]))})
+    return gpus
+
+
+@app.get("/api/models/manage")
+async def api_models_manage():
+    """Installed Ollama models (sizes), what's loaded, and GPU capacity."""
+    import httpx
+    base = state["cfg"]["providers"]["ollama"]["base_url"]
+    models, running = [], []
+    try:
+        async with httpx.AsyncClient(timeout=6) as c:
+            tags = (await c.get(f"{base}/api/tags")).json()
+            models = [{"name": m["name"], "size": m.get("size", 0),
+                       "family": (m.get("details") or {}).get("family", ""),
+                       "params": (m.get("details") or {}).get("parameter_size", "")}
+                      for m in tags.get("models", [])]
+            try:
+                ps = (await c.get(f"{base}/api/ps")).json()
+                running = [{"name": m["name"], "size_vram": m.get("size_vram", 0)} for m in ps.get("models", [])]
+            except Exception:
+                pass
+    except Exception as e:
+        return {"error": str(e), "models": [], "running": [], "gpu": _gpu_info()}
+    return {"models": models, "running": running, "gpu": _gpu_info()}
+
+
+@app.post("/api/models/pull")
+async def api_models_pull(body: dict):
+    """Download an Ollama model in the background; broadcasts progress + 'models' when done."""
+    import httpx
+    name = (body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "no model name"}, status_code=400)
+    base = state["cfg"]["providers"]["ollama"]["base_url"]
+
+    async def pull():
+        state["store"].log("system", f"pulling model {name}")
+        try:
+            async with httpx.AsyncClient(timeout=None) as c:
+                async with c.stream("POST", f"{base}/api/pull", json={"model": name}) as r:
+                    last = ""
+                    async for line in r.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            d = json.loads(line)
+                        except Exception:
+                            continue
+                        status = d.get("status", "")
+                        if d.get("total"):
+                            pct = int(100 * d.get("completed", 0) / d["total"])
+                            status = f"{status} {pct}%"
+                        if status != last:
+                            last = status
+                            await state["broadcast"]({"type": "model_pull", "name": name, "status": status})
+            await state["broadcast"]({"type": "model_pull", "name": name, "status": "done", "done": True})
+            state["store"].log("system", f"pulled model {name}")
+        except Exception as e:
+            await state["broadcast"]({"type": "model_pull", "name": name, "status": f"error: {e}", "done": True})
+        await state["broadcast"]({"type": "models"})
+
+    asyncio.create_task(pull())
+    return {"ok": True}
+
+
+@app.delete("/api/models/{name:path}")
+async def api_models_delete(name: str):
+    import httpx
+    base = state["cfg"]["providers"]["ollama"]["base_url"]
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            await c.request("DELETE", f"{base}/api/delete", json={"model": name})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    state["store"].log("system", f"deleted model {name}")
+    await state["broadcast"]({"type": "models"})
+    return {"ok": True}
 
 
 @app.get("/api/models")
@@ -425,6 +588,69 @@ async def api_kg_delete_node(nid: str):
     return {"ok": True}
 
 
+# ---- App Store: curated one-click templates (install without needing a model) ----
+
+STORE_TEMPLATES = [
+    {"id": "pomodoro", "name": "Pomodoro", "icon": "🍅", "desc": "25/5 focus timer",
+     "html": """<h2 style='margin:0 0 6px'>🍅 Pomodoro</h2>
+<div id='t' style='font-size:56px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums'>25:00</div>
+<div style='display:flex;gap:8px;justify-content:center;margin-top:10px'>
+<button id='s'>Start</button><button id='r'>Reset</button><button id='b'>Break</button></div>
+<script>let left=1500,run=0,iv;const el=document.getElementById('t');
+function fmt(){el.textContent=String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0')}
+function tick(){if(left>0){left--;fmt()}else{clearInterval(iv);run=0;document.getElementById('s').textContent='Start';try{new Audio('data:audio/wav;base64,UklGRl9vAAA=').play()}catch(e){}}}
+document.getElementById('s').onclick=function(){if(run){clearInterval(iv);run=0;this.textContent='Start'}else{run=1;this.textContent='Pause';iv=setInterval(tick,1000)}};
+document.getElementById('r').onclick=()=>{clearInterval(iv);run=0;left=1500;fmt();document.getElementById('s').textContent='Start'};
+document.getElementById('b').onclick=()=>{clearInterval(iv);run=0;left=300;fmt();document.getElementById('s').textContent='Start'};
+fmt();</script>"""},
+    {"id": "notes", "name": "Quick Notes", "icon": "📝", "desc": "a scratchpad that saves itself",
+     "html": """<h2 style='margin:0 0 8px'>📝 Quick Notes</h2>
+<textarea id='n' style='width:100%;height:calc(100vh - 90px);background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:12px;font-size:14px;line-height:1.6' placeholder='Type… saved automatically'></textarea>
+<div id='st' style='color:#5c6577;font-size:11px;margin-top:6px'>saved</div>
+<script>const n=document.getElementById('n'),st=document.getElementById('st');
+n.value=localStorage.getItem('quicknotes')||'';let t;
+n.oninput=()=>{st.textContent='saving…';clearTimeout(t);t=setTimeout(()=>{localStorage.setItem('quicknotes',n.value);st.textContent='saved '+new Date().toLocaleTimeString()},400)};</script>"""},
+    {"id": "calc", "name": "Calculator", "icon": "🧮", "desc": "a simple calculator",
+     "html": """<h2 style='margin:0 0 8px'>🧮 Calculator</h2>
+<input id='d' readonly style='width:100%;text-align:right;font-size:26px;padding:10px;background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;font-variant-numeric:tabular-nums'>
+<div id='pad' style='display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px'></div>
+<script>const d=document.getElementById('d');let s='';
+const keys=['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+','C'];
+const pad=document.getElementById('pad');
+keys.forEach(k=>{const b=document.createElement('button');b.textContent=k;b.style.padding='14px';b.style.fontSize='17px';
+b.onclick=()=>{if(k==='C'){s='';}else if(k==='='){try{s=String(Function('return '+s)())}catch(e){s='error'}}else{s+=k}d.value=s};pad.appendChild(b)});</script>"""},
+    {"id": "worldclock", "name": "World Clock", "icon": "🌍", "desc": "times around the world",
+     "html": """<h2 style='margin:0 0 10px'>🌍 World Clock</h2><div id='z'></div>
+<script>const zones=[['🇮🇳 Mumbai','Asia/Kolkata'],['🇬🇧 London','Europe/London'],['🇺🇸 New York','America/New_York'],['🇺🇸 San Francisco','America/Los_Angeles'],['🇯🇵 Tokyo','Asia/Tokyo'],['🇦🇺 Sydney','Australia/Sydney']];
+function tick(){document.getElementById('z').innerHTML=zones.map(([n,tz])=>{const t=new Date().toLocaleTimeString('en-GB',{timeZone:tz,hour:'2-digit',minute:'2-digit'});return "<div style='display:flex;justify-content:space-between;padding:10px 12px;margin-bottom:7px;background:#171b22;border:1px solid #232a35;border-radius:9px'><span>"+n+"</span><b style='font-variant-numeric:tabular-nums;font-size:16px'>"+t+"</b></div>"}).join('')}
+tick();setInterval(tick,1000);</script>"""},
+    {"id": "sysmon", "name": "System Monitor", "icon": "📟", "desc": "live CPU, memory & disk",
+     "html": """<h2 style='margin:0 0 10px'>📟 System Monitor</h2><div id='m'>loading…</div>
+<script>function bar(p,c){return "<div style='height:8px;border-radius:5px;background:#1e242e;overflow:hidden;margin:4px 0 12px'><div style='height:100%;width:"+Math.min(p,100)+"%;background:"+(p>85?'#f87171':c)+"'></div></div>"}
+async function tick(){try{const d=await (await fetch('/api/system')).json();const mp=100*d.mem.used_kb/d.mem.total_kb,dp=100*d.disk.used/d.disk.total;
+document.getElementById('m').innerHTML="<b>CPU "+d.cpu.toFixed(0)+"%</b>"+bar(d.cpu,'#5eead4')+"<b>Memory "+mp.toFixed(0)+"%</b>"+bar(mp,'#22d3ee')+"<b>Disk "+dp.toFixed(0)+"%</b>"+bar(dp,'#5eead4')+"<div style='color:#5c6577;font-size:12px'>"+d.cores+" cores · load "+d.load.map(x=>x.toFixed(2)).join(' ')+"</div>"}catch(e){}}
+tick();setInterval(tick,2000);</script>"""},
+]
+
+
+@app.get("/api/store/templates")
+async def api_store_templates():
+    installed = {a["name"] for a in state["store"].list_apps()}
+    return {"templates": [{**{k: v for k, v in t.items() if k != "html"},
+                           "installed": t["name"] in installed} for t in STORE_TEMPLATES]}
+
+
+@app.post("/api/store/install")
+async def api_store_install(body: dict):
+    t = next((x for x in STORE_TEMPLATES if x["id"] == body.get("id")), None)
+    if not t:
+        return JSONResponse({"error": "unknown template"}, status_code=404)
+    aid = state["store"].save_app(t["name"], t["icon"], t["desc"], t["html"])
+    state["store"].log("system", f"app store install: {t['name']}")
+    await state["broadcast"]({"type": "apps"})
+    return {"ok": True, "id": aid, "name": t["name"]}
+
+
 # ---- User apps (AI-built UI tools) --------------------------------------------
 
 APP_SHELL = """<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -442,6 +668,30 @@ a{{color:#22d3ee}}
 @app.get("/api/apps")
 async def api_apps(html: int = 0):
     return {"apps": state["store"].list_apps(with_html=bool(html))}
+
+
+@app.get("/api/themes")
+async def api_themes():
+    return {"themes": state["store"].list_themes()}
+
+
+@app.post("/api/themes")
+async def api_save_theme(body: dict):
+    name = (body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "theme needs a name"}, status_code=400)
+    state["store"].save_theme(name, json.dumps(body))
+    await state["broadcast"]({"type": "themes"})
+    if body.get("apply"):
+        await state["broadcast"]({"type": "theme_apply", "theme": body})
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/themes/{name}")
+async def api_delete_theme(name: str):
+    state["store"].delete_theme(name)
+    await state["broadcast"]({"type": "themes"})
+    return {"ok": True}
 
 
 @app.get("/api/widgets")
@@ -475,6 +725,20 @@ async def api_delete_app(aid: str):
     return {"ok": True}
 
 
+APP_RUNTIME = """<script>
+window.APP_ID = %r;
+// Every built app gets its own data store (its "MCP"): appData.get()/set() persist server-side
+// and are readable by the agent. Also appTool(name,args) runs any OS/MCP tool.
+window.appData = {
+  async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data')).json(); }catch(e){ return {}; } },
+  async set(obj){ try{ await fetch('/api/apps/'+window.APP_ID+'/data',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); }catch(e){} },
+};
+window.appTool = async (name,args={}) => {
+  try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
+};
+</script>"""
+
+
 @app.get("/api/apps/{aid}/page")
 async def api_app_page(aid: str):
     from fastapi.responses import HTMLResponse
@@ -484,7 +748,27 @@ async def api_app_page(aid: str):
     html = a["html"] or ""
     if not html.lstrip().lower().startswith(("<!doctype", "<html")):
         html = APP_SHELL.format(body=html)
+    runtime = APP_RUNTIME % aid
+    # inject the runtime right after <body>, or prepend it
+    low = html.lower()
+    if "<body" in low:
+        i = low.index("<body")
+        i = low.index(">", i) + 1
+        html = html[:i] + runtime + html[i:]
+    else:
+        html = runtime + html
     return HTMLResponse(html)
+
+
+@app.get("/api/apps/{aid}/data")
+async def api_app_data_get(aid: str):
+    return json.loads(state["store"].get_app_data(aid) or "{}")
+
+
+@app.put("/api/apps/{aid}/data")
+async def api_app_data_set(aid: str, body: dict):
+    state["store"].set_app_data(aid, json.dumps(body)[:200_000])
+    return {"ok": True}
 
 
 def _extract_html(text: str) -> str:
@@ -516,29 +800,37 @@ def _extract_html_from_steps(steps: list) -> str:
 
 
 BUILDER_PERSONA = """=== APP BUILDER MODE ===
-You are the AgentOS App Builder — an agent that builds and refines UI apps INSIDE this operating system.
-Your ONE job this turn: produce a working app by calling the `create_app` tool.
+You are the AgentOS App Builder — a senior product designer + front-end engineer who ships polished,
+genuinely useful desktop apps. Your ONE job this turn: produce a COMPLETE, working, good-looking app by
+calling `create_app(name, icon, description, html)`. If you truly cannot call the tool, output the whole
+app as a single ```html fenced block instead. NEVER reply with only a description, a stub, or a TODO.
+When refining an existing app, call create_app with the SAME name to update it in place.
 
-Rules:
-- Preferred: call create_app(name, icon, description, html) with COMPLETE self-contained HTML/CSS/JS.
-- If you cannot call the tool, INSTEAD output the complete app as a single ```html fenced code block
-  (nothing else needed) — the system will install it. Never reply with only a description.
-- When refining an existing app, call create_app with the SAME name to update it in place.
-- Match the OS dark theme: background #0e1116, text #e6ebf2, accents #5eead4 / #22d3ee, rounded corners.
-- Keep all JS inline in a <script> tag. No external CDNs (they are blocked). Make it actually functional.
-- Apps run in a same-origin iframe and CAN call the AgentOS REST API. Use it to make apps that DO things:
-    GET  /api/system        -> {cpu, mem:{used_kb,total_kb}, disk, load, procs}
-    GET  /api/tasks , /api/memories , /api/kg , /api/logs
-    POST /api/chat  {text}  -> {content}   (one-shot agent turn — for AI-powered apps)
-    POST /api/tool  {name, args}  -> {output}   (run ANY agent or MCP tool, e.g. run_command,
-         fetch_url, or a connected mcp_* server tool — this is how an app gets live output from the OS)
-- If the user asks what tools/MCP servers exist, you may call list-type tools first, then build.
-- Apps can be full, LIVE apps — their JS may: poll on a schedule (setInterval), open a WebSocket to
-  `ws(s)://{location.host}/ws` for realtime, call the REST API, run OS/MCP tools via POST /api/tool,
-  and respond to user interaction (buttons, inputs). Build for the behaviour the user asks for.
-- If the user wants it "on the desktop", "as a widget", "pinned", or "always visible", call
-  `pin_widget(name)` after create_app so it lives on the desktop and restores on startup.
-- After create_app succeeds, reply with one short sentence describing what you built.
+BUILD QUALITY — this matters; make it look and feel professional, not a demo:
+- Real, finished features. If it's a tracker it adds/edits/deletes/persists; if it's a dashboard it shows
+  real data; handle empty states and errors. No dead buttons, no lorem ipsum.
+- Design like a modern native app, matching the OS. Use this dark palette exactly:
+    page #0e1116 · surface #171b22 · raised #1e242e · border #232a35 · text #e6ebf2 · muted #8a94a6 ·
+    accent gradient #5eead4 → #22d3ee (one accent, used sparingly).
+  Generous padding (16-20px), 10-14px radii, a clear header/title, comfortable line-height (~1.5),
+  hover/focus states on every interactive element, subtle shadows, and a layout that fills the window
+  responsively (flex/grid). Crisp and breathable — never cramped or flat. Ship something you're proud of.
+- System font stack; restrained micro-interactions. NO external CDNs, fonts, or images (blocked) — inline
+  all CSS/JS, embed any assets as data URIs.
+
+DATA — every app has its OWN data store (its "MCP"), pre-injected as page globals:
+- `await appData.get()` returns the app's saved object; `await appData.set(obj)` saves it. USE THIS for
+  anything the user creates so it survives reloads AND the agent can read it later. Prefer it to localStorage.
+- `await appTool(name, args)` runs ANY OS/MCP tool from the app and returns its output — the way to pull
+  LIVE data, e.g. appTool('fetch_url',{url:…}), appTool('system_info'), appTool('run_command',{command:…}),
+  or a connected mcp_* tool. Plain REST also works: GET /api/system · POST /api/chat {text} (AI answers).
+- Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
+
+PROCESS:
+- If the app needs live data or specific tools, you MAY call one read-only tool first to learn the shape,
+  then build; otherwise go straight to create_app. Pick a fitting emoji icon and concise name.
+- If the user wants it pinned / on the desktop / as a widget, call pin_widget(name) after create_app.
+- Do the work in THIS turn — never ask questions. Finish with one short sentence on what you built.
 """
 
 
@@ -752,6 +1044,28 @@ async def api_wallpaper():
 async def api_wallpaper_generate(body: dict):
     result = await state["toolbox"].generate_wallpaper(body.get("prompt", ""))
     return {"ok": not result.startswith("[error]"), "result": result}
+
+
+@app.post("/api/wallpaper/system")
+async def api_wallpaper_system():
+    """Adopt the host GNOME desktop wallpaper as the AgentOS wallpaper."""
+    import shutil
+    import subprocess
+    import urllib.parse
+    try:
+        uri = subprocess.run(["gsettings", "get", "org.gnome.desktop.background", "picture-uri-dark"],
+                             capture_output=True, text=True, timeout=5).stdout.strip().strip("'")
+        if not uri:
+            uri = subprocess.run(["gsettings", "get", "org.gnome.desktop.background", "picture-uri"],
+                                 capture_output=True, text=True, timeout=5).stdout.strip().strip("'")
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    path = urllib.parse.unquote(uri.replace("file://", ""))
+    if not path or not Path(path).is_file():
+        return JSONResponse({"error": "could not read the system wallpaper"}, status_code=404)
+    shutil.copy2(path, cfgmod.AGENTOS_HOME / "wallpaper.png")
+    await state["broadcast"]({"type": "wallpaper"})
+    return {"ok": True, "source": path}
 
 
 @app.get("/api/wallpapers")

@@ -1,0 +1,377 @@
+"""AgentOS TUI — a full terminal management interface (for SSH / headless use).
+
+A navigable, full-screen text UI over the running AgentOS server: chat with the agent, watch
+the system live, switch models, launch installed apps, view tasks and logs, and edit config.
+
+    agentos tui
+"""
+
+import asyncio
+import json
+
+import httpx
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
+from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, Label,
+                             ListItem, ListView, RichLog, Select, Static, TabbedContent, TabPane)
+
+from . import config as cfgmod
+
+
+def _base(port):
+    return f"http://127.0.0.1:{port}"
+
+
+class ApprovalScreen(ModalScreen):
+    """A yes/no modal for a risky action the agent wants to run."""
+    def __init__(self, name, detail, reason):
+        super().__init__()
+        self._name, self._detail, self._reason = name, detail, reason
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ap-box"):
+            yield Label("⚠  Approval needed", id="ap-title")
+            yield Static(f"[b]{self._name}[/b]  {self._detail}", id="ap-cmd")
+            yield Static(self._reason or "", id="ap-reason")
+            with Horizontal(id="ap-btns"):
+                yield Button("Allow", variant="success", id="ap-allow")
+                yield Button("Deny", variant="error", id="ap-deny")
+
+    def on_button_pressed(self, e: Button.Pressed):
+        self.dismiss(e.button.id == "ap-allow")
+
+
+class AgentTUI(App):
+    CSS = """
+    Screen { background: $surface; }
+    #ap-box { width: 70; height: auto; padding: 1 2; border: round $accent; background: $panel; }
+    #ap-title { color: $warning; text-style: bold; }
+    #ap-cmd { margin: 1 0; }
+    #ap-reason { color: $text-muted; }
+    #ap-btns { height: auto; align-horizontal: center; margin-top: 1; }
+    #ap-btns Button { margin: 0 1; }
+    #chatlog, #logslog { border: round $primary; padding: 0 1; }
+    #chatinput { dock: bottom; }
+    DataTable { height: 1fr; }
+    #sysbars { height: auto; padding: 1 1; }
+    .barlabel { color: $text-muted; }
+    #cfg-box { padding: 1 2; }
+    #cfg-box Label { margin-top: 1; color: $text-muted; }
+    #cfg-box .section { margin: 1 0; color: $accent; text-style: bold; }
+    #cfg-box Checkbox { margin-top: 1; }
+    #cfg-save { margin-top: 1; }
+    #modellist, #applist { height: 1fr; border: round $primary; }
+    #appfilter { dock: top; }
+    """
+    BINDINGS = [
+        Binding("ctrl+c,ctrl+q", "quit", "Quit"),
+        Binding("1", "tab('chat')", "Chat"),
+        Binding("2", "tab('system')", "System"),
+        Binding("3", "tab('models')", "Models"),
+        Binding("4", "tab('apps')", "Apps"),
+        Binding("5", "tab('tasks')", "Tasks"),
+        Binding("6", "tab('logs')", "Logs"),
+        Binding("7", "tab('config')", "Config"),
+    ]
+
+    def __init__(self, port: int, cfg: dict):
+        super().__init__()
+        self.port = port
+        self.cfg = cfg
+        self.model = cfg.get("default_model", "")
+        self.agent_name = cfg.get("agent_name", "Aria")
+        self.cid = None
+        self.title = "AgentOS"
+
+    # ---- layout ----
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with TabbedContent(initial="chat", id="tabs"):
+            with TabPane("💬 Chat", id="chat"):
+                yield RichLog(id="chatlog", wrap=True, markup=True, highlight=True)
+                yield Input(placeholder=f"Ask {self.agent_name}…  (Enter to send)", id="chatinput")
+            with TabPane("📊 System", id="system"):
+                yield Static(id="sysbars")
+                yield DataTable(id="systable")
+            with TabPane("🧠 Models", id="models"):
+                yield Static(id="gpuinfo")
+                yield ListView(id="modellist")
+            with TabPane("🗔 Apps", id="apps"):
+                yield Input(placeholder="Filter installed apps…  (Enter on a row to launch)", id="appfilter")
+                yield ListView(id="applist")
+            with TabPane("⏱ Tasks", id="tasks"):
+                yield DataTable(id="taskstable")
+            with TabPane("📜 Logs", id="logs"):
+                yield RichLog(id="logslog", wrap=True, markup=True)
+            with TabPane("⚙ Config", id="config"):
+                with VerticalScroll(id="cfg-box"):
+                    yield Label("Agent name")
+                    yield Input(value=self.agent_name, id="cfg-name")
+                    yield Label("Autonomy")
+                    yield Select([("Paranoid", "paranoid"), ("Balanced", "balanced"), ("Full", "full")],
+                                 value=self.cfg.get("autonomy", "balanced"), id="cfg-autonomy", allow_blank=False)
+                    yield Label("Default model")
+                    yield Select([], id="cfg-model", allow_blank=True)
+                    yield Static("── Providers ──", classes="section")
+                    yield Label("Ollama base URL")
+                    yield Input(id="cfg-ollama")
+                    yield Checkbox("Anthropic (Claude)", id="cfg-ant-on")
+                    yield Input(placeholder="sk-ant-… API key", id="cfg-ant-key")
+                    yield Input(placeholder="models, comma-separated (e.g. claude-sonnet-4.5)", id="cfg-ant-models")
+                    yield Checkbox("OpenAI", id="cfg-oai-on")
+                    yield Input(placeholder="sk-… API key", id="cfg-oai-key")
+                    yield Input(placeholder="models (e.g. gpt-4o, gpt-4o-mini)", id="cfg-oai-models")
+                    yield Checkbox("OpenRouter", id="cfg-or-on")
+                    yield Input(placeholder="sk-or-… API key", id="cfg-or-key")
+                    yield Input(placeholder="models (e.g. anthropic/claude-sonnet-4.5)", id="cfg-or-models")
+                    yield Button("Save", variant="primary", id="cfg-save")
+                    yield Static("", id="cfg-status")
+        yield Footer()
+
+    # ---- lifecycle ----
+    def on_mount(self):
+        self.sub_title = f"{self.agent_name} · {self.model or 'no model'}"
+        self.query_one("#systable", DataTable).add_columns("PID", "Process", "CPU%", "MEM%")
+        self.query_one("#taskstable", DataTable).add_columns("Prompt", "Schedule", "Next / last")
+        self.query_one("#chatlog", RichLog).write(
+            f"[b cyan]{self.agent_name}[/]  ready. Type below. Use number keys to switch tabs, Ctrl-Q to quit.\n")
+        self.refresh_system()
+        self.refresh_models()
+        self.refresh_apps()
+        self.refresh_tasks()
+        self.refresh_logs()
+        self.load_cfg_form()
+        self.set_interval(2.0, self.refresh_system)
+        self.set_interval(6.0, self.refresh_logs)
+
+    @work(group="cfgload")
+    async def load_cfg_form(self):
+        d = await self.api_get("/api/config")
+        p = d.get("providers", {})
+        try:
+            self.query_one("#cfg-ollama", Input).value = p.get("ollama", {}).get("base_url", "")
+            for prov, pre in (("anthropic", "ant"), ("openai", "oai"), ("openrouter", "or")):
+                pr = p.get(prov, {})
+                self.query_one(f"#cfg-{pre}-on", Checkbox).value = bool(pr.get("enabled"))
+                self.query_one(f"#cfg-{pre}-key", Input).value = pr.get("api_key", "")  # masked from server
+                self.query_one(f"#cfg-{pre}-models", Input).value = ", ".join(pr.get("models", []))
+        except Exception:
+            pass
+
+    async def api_get(self, path):
+        try:
+            async with httpx.AsyncClient(timeout=6) as c:
+                return (await c.get(_base(self.port) + path)).json()
+        except Exception:
+            return {}
+
+    async def api(self, method, path, body=None):
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.request(method, _base(self.port) + path, json=body)
+                return r.json() if r.content else {}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ---- tabs ----
+    def action_tab(self, tab: str):
+        self.query_one("#tabs", TabbedContent).active = tab
+
+    # ---- system ----
+    @work(exclusive=True, group="sys")
+    async def refresh_system(self):
+        d = await self.api_get("/api/system")
+        if not d:
+            return
+        mem = d.get("mem", {}); du = d.get("disk", {})
+        memp = 100 * mem.get("used_kb", 0) / max(mem.get("total_kb", 1), 1)
+        dskp = 100 * du.get("used", 0) / max(du.get("total", 1), 1)
+        def bar(p):
+            n = int(p / 5)
+            col = "red" if p > 85 else "cyan"
+            return f"[{col}]{'█'*n}[/][grey37]{'░'*(20-n)}[/]"
+        self.query_one("#sysbars", Static).update(
+            f"[b]CPU[/]  {bar(d.get('cpu',0))} {d.get('cpu',0):4.0f}%\n"
+            f"[b]MEM[/]  {bar(memp)} {memp:4.0f}%   {mem.get('used_kb',0)/1e6:.1f}/{mem.get('total_kb',1)/1e6:.0f} GB\n"
+            f"[b]DISK[/] {bar(dskp)} {dskp:4.0f}%   {du.get('used',0)/1e9:.0f}/{du.get('total',0)/1e9:.0f} GB\n"
+            f"[grey58]{d.get('cores','?')} cores · load {' '.join(f'{x:.2f}' for x in d.get('load',[]))}[/]")
+        t = self.query_one("#systable", DataTable)
+        t.clear()
+        for p in d.get("procs", [])[:14]:
+            t.add_row(str(p["pid"]), p["name"][:28], f"{p['cpu']:.1f}", f"{p['mem']:.1f}")
+
+    # ---- models ----
+    @work(exclusive=True, group="models")
+    async def refresh_models(self):
+        d = await self.api_get("/api/models")
+        mgr = await self.api_get("/api/models/manage")
+        gpus = mgr.get("gpu", [])
+        if gpus:
+            g = gpus[0]
+            self.query_one("#gpuinfo", Static).update(
+                f"[b]GPU[/] {g['name']} · {g['mem_used_mb']/1024:.1f}/{g['mem_total_mb']/1024:.0f} GB · {g['util']}%")
+        lv = self.query_one("#modellist", ListView)
+        lv.clear()
+        opts = []
+        for m in d.get("models", []):
+            mark = "● " if m["id"] == self.model else "  "
+            lv.append(ListItem(Label(f"{mark}{m['id']}"), id="m_" + m["id"].replace("/", "__").replace(".", "_").replace(":", "_")))
+            opts.append((m["id"], m["id"]))
+        try:
+            sel = self.query_one("#cfg-model", Select)
+            sel.set_options(opts)
+            if self.model:
+                sel.value = self.model
+        except Exception:
+            pass
+        self._model_ids = [m["id"] for m in d.get("models", [])]
+
+    async def on_list_view_selected(self, e: ListView.Selected):
+        if e.list_view.id == "modellist":
+            idx = list(e.list_view.children).index(e.item)
+            ids = getattr(self, "_model_ids", [])
+            if idx < len(ids):
+                self.model = ids[idx]
+                await self.api("PUT", "/api/config", {"default_model": self.model})
+                self.sub_title = f"{self.agent_name} · {self.model}"
+                self.refresh_models()
+                self.notify(f"model → {self.model}")
+        elif e.list_view.id == "applist":
+            app = getattr(e.item, "_appid", None)
+            if app:
+                r = await self.api("POST", "/api/native/launch", {"id": app})
+                self.notify("launched" if r.get("ok") else f"failed: {r.get('message','')}")
+
+    # ---- apps ----
+    @work(exclusive=True, group="apps")
+    async def refresh_apps(self, flt: str = ""):
+        d = await self.api_get("/api/native/apps")
+        self._apps = d.get("apps", [])
+        self._render_apps(flt)
+
+    def _render_apps(self, flt=""):
+        lv = self.query_one("#applist", ListView)
+        lv.clear()
+        q = flt.lower()
+        for a in getattr(self, "_apps", []):
+            if q and q not in a["name"].lower():
+                continue
+            it = ListItem(Label(a["name"]))
+            it._appid = a["id"]
+            lv.append(it)
+
+    # ---- tasks ----
+    @work(exclusive=True, group="tasks")
+    async def refresh_tasks(self):
+        d = await self.api_get("/api/tasks")
+        t = self.query_one("#taskstable", DataTable)
+        t.clear()
+        for tk in d.get("tasks", []):
+            sch = (tk.get("schedule_type") or "")
+            when = tk.get("last_result", "") or ("enabled" if tk.get("enabled") else "disabled")
+            t.add_row(tk.get("prompt", "")[:44], sch, str(when)[:30])
+
+    # ---- logs ----
+    @work(exclusive=True, group="logs")
+    async def refresh_logs(self):
+        d = await self.api_get("/api/logs?limit=40")
+        rl = self.query_one("#logslog", RichLog)
+        rl.clear()
+        col = {"error": "red", "tool": "cyan", "turn": "green", "telegram": "blue",
+               "mcp": "magenta", "system": "grey58"}
+        for L in reversed(d.get("logs", [])):
+            c = col.get(L["kind"], "white")
+            rl.write(f"[grey37]{L['kind']:>8}[/] [{c}]{L['message'][:90]}[/]")
+
+    # ---- input / chat ----
+    def on_input_submitted(self, e: Input.Submitted):
+        if e.input.id == "appfilter":
+            self._render_apps(e.value.strip())
+        elif e.input.id == "chatinput":
+            text = e.value.strip()
+            if text:
+                e.input.value = ""
+                self.query_one("#chatlog", RichLog).write(f"\n[b]you[/]  {text}")
+                self.send_chat(text)
+
+    def on_button_pressed(self, e: Button.Pressed):
+        if e.button.id == "cfg-save":
+            self.save_config()
+
+    @work(group="cfg")
+    async def save_config(self):
+        name = self.query_one("#cfg-name", Input).value.strip() or "Aria"
+        model = self.query_one("#cfg-model", Select).value
+        auton = self.query_one("#cfg-autonomy", Select).value
+        patch = {"agent_name": name, "autonomy": auton}
+        if model and model != Select.BLANK:
+            patch["default_model"] = model
+            self.model = model
+        # providers — a masked key ("•••…") is treated as "unchanged" by the server
+        def models(pre):
+            return [m.strip() for m in self.query_one(f"#cfg-{pre}-models", Input).value.split(",") if m.strip()]
+        providers = {"ollama": {"base_url": self.query_one("#cfg-ollama", Input).value.strip()}}
+        for prov, pre in (("anthropic", "ant"), ("openai", "oai"), ("openrouter", "or")):
+            providers[prov] = {
+                "enabled": self.query_one(f"#cfg-{pre}-on", Checkbox).value,
+                "api_key": self.query_one(f"#cfg-{pre}-key", Input).value.strip(),
+                "models": models(pre),
+            }
+        patch["providers"] = providers
+        await self.api("PUT", "/api/config", patch)
+        self.agent_name = name
+        self.sub_title = f"{self.agent_name} · {self.model}"
+        self.query_one("#cfg-status", Static).update("[green]saved ✓  (switch models in the Models tab)[/]")
+        self.refresh_models()
+
+    @work(group="chat")
+    async def send_chat(self, text: str):
+        import websockets
+        log = self.query_one("#chatlog", RichLog)
+        ws_url = f"ws://127.0.0.1:{self.port}/ws"
+        try:
+            async with websockets.connect(ws_url, max_size=None) as ws:
+                await ws.send(json.dumps({"type": "chat", "text": text,
+                                          "conversation_id": self.cid, "model": self.model}))
+                log.write(f"[b cyan]{self.agent_name}[/]  ")
+                buf = ""
+                while True:
+                    ev = json.loads(await ws.recv())
+                    t = ev.get("type")
+                    if t == "conversation":
+                        self.cid = ev["id"]
+                    elif t == "text_delta":
+                        buf += ev["text"]
+                    elif t == "tool_start":
+                        arg = ev["args"].get("command", "") if ev["name"] == "run_command" else ""
+                        log.write(f"[grey58]▸ {ev['name']} {arg[:80]}[/]")
+                    elif t == "tool_end":
+                        pass
+                    elif t == "approval_request":
+                        detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
+                        ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))
+                        await ws.send(json.dumps({"type": "approval", "id": ev["id"], "approved": bool(ok)}))
+                    elif t == "error":
+                        log.write(f"[red]error: {ev.get('message','')}[/]")
+                    elif t == "turn_end":
+                        break
+                if buf:
+                    log.write(buf.strip())
+        except Exception as ex:
+            log.write(f"[red]connection error: {ex}[/]")
+
+
+def run():
+    import socket
+    cfg = cfgmod.load_config()
+    port = cfg.get("port", 8321)
+    # start the server if it isn't already up
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=0.5).close()
+    except OSError:
+        from . import desktop
+        desktop._start_server_thread(port)
+    AgentTUI(port, cfg).run()

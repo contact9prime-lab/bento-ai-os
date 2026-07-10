@@ -22,15 +22,23 @@ APP_ID = "agentos"
 DESKTOP_FILE = Path.home() / ".local/share/applications" / f"{APP_ID}.desktop"
 ICON_FILE = Path.home() / ".local/share/icons/hicolor/scalable/apps" / f"{APP_ID}.svg"
 SERVICE_FILE = Path.home() / ".config/systemd/user" / f"{APP_ID}.service"
+AUTOSTART_FILE = Path.home() / ".config/autostart" / f"{APP_ID}-app.desktop"
 
 ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-  <stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#22d3ee"/>
-</linearGradient></defs>
-<rect width="128" height="128" rx="28" fill="#0b0d10"/>
-<rect x="4" y="4" width="120" height="120" rx="24" fill="none" stroke="url(#g)" stroke-width="2" opacity=".35"/>
-<path d="M64 26 L102 96 L26 96 Z" fill="url(#g)"/>
-<path d="M64 47 L86 88 L42 88 Z" fill="#0b0d10"/>
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#22d3ee"/>
+  </linearGradient>
+  <linearGradient id="tri" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#0a2c26"/><stop offset="1" stop-color="#04211c"/>
+  </linearGradient>
+</defs>
+<rect width="128" height="128" rx="30" fill="url(#g)"/>
+<rect x="3" y="3" width="122" height="122" rx="28" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
+<path d="M64 24 L104 98 Q107 103 101 103 L27 103 Q21 103 24 98 Z" fill="url(#tri)"/>
+<path d="M64 55 L85 94 L43 94 Z" fill="rgba(255,255,255,.16)"/>
+<circle cx="64" cy="47" r="7.5" fill="#04211c"/>
+<circle cx="64" cy="47" r="3" fill="#5eead4"/>
 </svg>
 """
 
@@ -76,10 +84,15 @@ def app_mode():
     if browser:
         profile = cfgmod.AGENTOS_HOME / "appwindow"
         profile.mkdir(parents=True, exist_ok=True)
-        proc = subprocess.Popen(
-            [browser, f"--app={url}", f"--user-data-dir={profile}",
-             "--window-size=1500,900", f"--class={APP_ID}", "--no-first-run"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # true fullscreen (hides the host top bar / taskbar). --start-maximized would keep them,
+        # so it must NOT be combined with --start-fullscreen.
+        args = [browser, f"--app={url}", f"--user-data-dir={profile}",
+                "--start-fullscreen", f"--class={APP_ID}", "--no-first-run",
+                "--no-default-browser-check"]
+        if os.environ.get("AGENTOS_KIOSK") == "1":
+            args = [browser, f"--app={url}", f"--user-data-dir={profile}",
+                    "--kiosk", f"--class={APP_ID}", "--no-first-run"]
+        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc.wait()   # keep the in-process server alive while the window is open
         return
 
@@ -112,7 +125,7 @@ def _run(cmd: list[str]) -> tuple[bool, str]:
         return False, str(e)
 
 
-def install(autostart: bool = True):
+def install(autostart: bool = True, open_at_login: bool = True):
     python = sys.executable
     port = _port()
 
@@ -160,17 +173,129 @@ WantedBy=default.target
         print("✓ boot start     linger enabled — server starts at boot, even before login"
               if lok else "· starts at login (run `loginctl enable-linger $USER` for boot-time start)")
 
+    if open_at_login:
+        enable_login_app(True)
+
     for cmd in (["update-desktop-database", str(DESKTOP_FILE.parent)],
                 ["gtk-update-icon-cache", str(Path.home() / ".local/share/icons/hicolor")]):
         if shutil.which(cmd[0]):
             _run(cmd)
 
-    print("\n▲ AgentOS installed. Find it in your app launcher, or run `agentos app`.")
+    print("\n▲ AgentOS installed. It will open automatically at login, or run `agentos app`.")
+
+
+def enable_login_app(on: bool = True):
+    """Open the AgentOS window fullscreen automatically at every login."""
+    if on:
+        python = sys.executable
+        AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
+        AUTOSTART_FILE.write_text(f"""[Desktop Entry]
+Type=Application
+Name=AgentOS
+Comment=Open AgentOS at login
+Exec={python} -m agentos app
+Icon={APP_ID}
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=2
+""")
+        print(f"✓ autostart      {AUTOSTART_FILE} — AgentOS opens at login")
+    else:
+        if AUTOSTART_FILE.exists():
+            AUTOSTART_FILE.unlink()
+            print("✓ autostart disabled")
+        else:
+            print("· autostart was not enabled")
+
+
+SESSION_SCRIPT = Path.home() / ".local/bin" / f"{APP_ID}-session"
+SESSION_DESKTOP_STAGE = cfgmod.AGENTOS_HOME / f"{APP_ID}-session.desktop"
+XSESSIONS = Path("/usr/share/xsessions")
+
+
+def install_session():
+    """Make AgentOS a desktop session you can choose at the login screen — it boots straight
+    into AgentOS in kiosk mode, replacing the normal desktop shell.
+
+    The session file must go in /usr/share/xsessions (root-owned), so this stages everything and
+    either installs it with sudo (if available non-interactively) or prints the exact commands.
+    """
+    python = sys.executable
+    SESSION_SCRIPT.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_SCRIPT.write_text(f"""#!/bin/sh
+# AgentOS desktop session — runs AgentOS as the shell (kiosk).
+export AGENTOS_SESSION=1
+# 1) make sure the server is up (start one only if nothing is already listening)
+if ! curl -s -o /dev/null http://127.0.0.1:8321/ 2>/dev/null; then
+  "{python}" -m agentos serve --no-browser >/dev/null 2>&1 &
+fi
+for i in $(seq 1 60); do
+  curl -s -o /dev/null http://127.0.0.1:8321/ 2>/dev/null && break
+  sleep 0.25
+done
+# 2) a minimal window manager so any native apps AgentOS launches are movable/closable (optional)
+for wm in openbox matchbox-window-manager icewm; do
+  if command -v "$wm" >/dev/null 2>&1; then "$wm" & break; fi
+done
+# 3) launch AgentOS fullscreen kiosk (this blocks; when it exits, the session ends → logout)
+prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
+for b in chromium chromium-browser google-chrome google-chrome-stable brave-browser microsoft-edge vivaldi; do
+  if command -v "$b" >/dev/null 2>&1; then
+    exec "$b" --app=http://127.0.0.1:8321 --kiosk --user-data-dir="$prof" \\
+         --no-first-run --no-default-browser-check --class={APP_ID}
+  fi
+done
+command -v xmessage >/dev/null 2>&1 && xmessage "AgentOS session: no chromium-based browser found."
+sleep 5
+""")
+    SESSION_SCRIPT.chmod(0o755)
+    print(f"✓ session script  {SESSION_SCRIPT}")
+
+    desktop = f"""[Desktop Entry]
+Name=AgentOS
+Comment=AgentOS — your machine, with a brain
+Exec={SESSION_SCRIPT}
+Type=Application
+DesktopNames=AgentOS
+Keywords=agent;ai;
+"""
+    SESSION_DESKTOP_STAGE.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_DESKTOP_STAGE.write_text(desktop)
+
+    target = XSESSIONS / f"{APP_ID}.desktop"
+    # try to install it system-wide without prompting; otherwise hand the user the commands
+    if _run(["sudo", "-n", "true"])[0]:
+        _run(["sudo", "mkdir", "-p", str(XSESSIONS)])
+        ok, out = _run(["sudo", "cp", str(SESSION_DESKTOP_STAGE), str(target)])
+        _run(["loginctl", "enable-linger", os.environ.get("USER", "")])
+        if ok:
+            print(f"✓ session entry   {target}")
+            print("\n▲ AgentOS session installed. Log out, then pick 'AgentOS' (gear icon) at the login screen.")
+            return
+        print(f"! could not copy the session file: {out}")
+
+    print(f"✓ session entry   staged at {SESSION_DESKTOP_STAGE}")
+    print("\nOne step needs root. Run these, then log out and pick 'AgentOS' at the login screen:\n")
+    print(f"  sudo cp '{SESSION_DESKTOP_STAGE}' '{target}'")
+    print(f"  loginctl enable-linger \"$USER\"")
+    print("\n  (Optional, for movable native app windows in the session:  sudo apt install openbox )")
+
+
+def uninstall_session():
+    if SESSION_SCRIPT.exists():
+        SESSION_SCRIPT.unlink()
+        print(f"✓ removed {SESSION_SCRIPT}")
+    target = XSESSIONS / f"{APP_ID}.desktop"
+    if _run(["sudo", "-n", "true"])[0]:
+        _run(["sudo", "rm", "-f", str(target)])
+        print(f"✓ removed {target}")
+    else:
+        print(f"To finish removing the session, run:  sudo rm -f '{target}'")
 
 
 def uninstall():
     _run(["systemctl", "--user", "disable", "--now", f"{APP_ID}.service"])
-    for f in (SERVICE_FILE, DESKTOP_FILE, ICON_FILE):
+    for f in (SERVICE_FILE, DESKTOP_FILE, ICON_FILE, AUTOSTART_FILE):
         if f.exists():
             f.unlink()
             print(f"✓ removed {f}")

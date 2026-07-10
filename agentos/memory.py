@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS user_apps (
     created_at REAL,
     updated_at REAL
 );
+CREATE TABLE IF NOT EXISTS app_data (
+    app_id TEXT PRIMARY KEY,
+    data TEXT,
+    updated_at REAL
+);
+CREATE TABLE IF NOT EXISTS themes (
+    name TEXT PRIMARY KEY,
+    data TEXT,
+    created_at REAL
+);
 CREATE TABLE IF NOT EXISTS telegram_chats (
     chat_id INTEGER PRIMARY KEY,
     title TEXT,
@@ -306,6 +316,43 @@ class Store:
 
     def delete_app(self, aid: str):
         self.db.execute("DELETE FROM user_apps WHERE id=?", (aid,))
+        self.db.execute("DELETE FROM app_data WHERE app_id=?", (aid,))
+        self.db.commit()
+
+    # -- themes ---------------------------------------------------------------
+
+    def save_theme(self, name: str, data: str):
+        self.db.execute(
+            "INSERT INTO themes (name, data, created_at) VALUES (?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET data=excluded.data",
+            (name.strip(), data, time.time()))
+        self.db.commit()
+
+    def list_themes(self) -> list[dict]:
+        rows = self.db.execute("SELECT name, data FROM themes ORDER BY name COLLATE NOCASE").fetchall()
+        out = []
+        for r in rows:
+            try:
+                d = json.loads(r["data"])
+            except Exception:
+                d = {}
+            d["name"] = r["name"]
+            out.append(d)
+        return out
+
+    def delete_theme(self, name: str):
+        self.db.execute("DELETE FROM themes WHERE name=?", (name,))
+        self.db.commit()
+
+    def get_app_data(self, aid: str) -> str:
+        row = self.db.execute("SELECT data FROM app_data WHERE app_id=?", (aid,)).fetchone()
+        return row["data"] if row else "{}"
+
+    def set_app_data(self, aid: str, data: str):
+        self.db.execute(
+            "INSERT INTO app_data (app_id, data, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(app_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+            (aid, data, time.time()))
         self.db.commit()
 
     # -- telegram chats --------------------------------------------------------
