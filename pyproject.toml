@@ -22,3 +22,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentos"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# the manual ships with the product: served at /api/docs -> Docs app + TUI tab 8
+"docs" = "agentos/docs"

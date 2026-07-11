@@ -46,7 +46,8 @@ class MCPServer:
         try:
             transport = self.conf.get("transport", "stdio")
             if transport == "http":
-                ctx = streamablehttp_client(self.conf.get("url", ""))
+                headers = {k: str(v) for k, v in (self.conf.get("headers") or {}).items()}
+                ctx = streamablehttp_client(self.conf.get("url", ""), headers=headers or None)
                 async with ctx as (read, write, _):
                     await self._serve(read, write, on_change)
             else:
@@ -180,6 +181,8 @@ class MCPManager:
                 "command": srv.conf.get("command", ""),
                 "args": srv.conf.get("args", ""),
                 "url": srv.conf.get("url", ""),
+                "env": srv.conf.get("env") or {},
+                "headers": srv.conf.get("headers") or {},
                 "enabled": srv.conf.get("enabled", True),
                 "status": srv.status,
                 "error": srv.error,

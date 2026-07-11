@@ -43,9 +43,10 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 | GET | `/api/files/raw?path=` | fetch a file's contents |
 | POST | `/api/open` | open a URL or workspace file in the host browser/app |
 
-### Tools
+### Tools & registry
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/api/registry` | **the API registry** — self-describing list of every REST/WS endpoint, tool, realtime event and injected page global. The contract AI-built apps, themes and full replacement shells code against |
 | GET | `/api/tools` | list callable tools (built-in + MCP) |
 | POST | `/api/tool` | run a tool: `{ name, args }` → `{ output }` (risk-gated) |
 
@@ -63,8 +64,28 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 ### Memory, knowledge, skills, soul
 | Method | Path | Purpose |
 |---|---|---|
-| GET/POST | `/api/memories`, DELETE `/{id}` | long-term memory |
+| GET/POST | `/api/memories`, PUT/DELETE `/{id}` | memory. GET filters: `?scope=user\|session`, `conversation_id`, `q`. POST: `{content, scope, conversation_id, pinned}`. PUT: `{content, pinned, scope}` — scope `user` promotes a session memory |
 | GET/POST | `/api/kg`, DELETE `/api/kg`, DELETE `/api/kg/nodes/{id}` | knowledge graph |
+| GET | `/api/knowledge/status` | memory/KG counts, embedding model, auto-learn state |
+| POST | `/api/knowledge/maintain` | run maintenance now: embed memories, roll up idle sessions, dedup the graph |
+
+### Fabric (subagents & workflows — the control plane)
+| Method | Path | Purpose |
+|---|---|---|
+| GET/POST | `/api/subagents`, DELETE `/{id}`, POST `/{name}/run` | subagent definitions + fire a test run |
+| GET/POST | `/api/workflows`, DELETE `/{id}`, POST `/{name}/run` | workflow DAGs + start a run |
+| GET | `/api/fabric/runs`, `/api/fabric/runs/{id}` | run history; detail includes step runs + events (heartbeats, steps, faults) |
+| POST | `/api/fabric/runs/{id}/cancel` | control → data plane: abort a run and its steps |
+| GET | `/api/fabric/observability` | faults / performance / tokens per data plane, incl. the main agent; live heartbeats |
+| POST | `/api/plane/llm` | model plane: run a completion through the control plane's provider config (the surface L1+ workers call over mTLS) |
+
+### Docs & setup
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/docs`, `/api/docs/{file}` | the bundled manual (markdown) — powers the Docs app and TUI tab 8 |
+| GET | `/api/setup` | wizard state: first_run flag, detected Ollama models, provider/key status, autostart state |
+| POST | `/api/setup` | apply wizard choices `{agent_name, autonomy, default_model, providers, autostart, open_at_login}`; autostart installs the launcher + systemd user service (+ boot-time linger where allowed) |
+| POST | `/api/setup/reset` | factory reset `{confirm: true}` — wipes all data + config, deletes the soul, re-arms the wizard |
 | GET/POST | `/api/skills`, DELETE `/{id}`, POST `/api/skills/install` | skills (incl. git/URL install) |
 | GET/PUT | `/api/soul` | the agent's identity file |
 

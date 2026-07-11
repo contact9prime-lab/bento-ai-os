@@ -21,7 +21,7 @@ AgentOS runs on Linux. It's a Python application that serves a desktop environme
 | `xdg-utils` (`xdg-open`) | opening files and links in your **host** browser and apps |
 | Node/`npx` and/or `uvx` | running **MCP tool servers** (browser automation, filesystem, git, …) |
 | `git` | installing **skills** from repositories |
-| `gtk-launch`, `wpctl`, `upower`, `nmcli`, `gnome-control-center` | launching native apps and the **Control Center** (sound, battery, network, settings) |
+| `gtk-launch`, `wpctl`, `upower`, `nmcli`, `gnome-control-center` | launching native apps and the **Quick Settings** (sound, battery, network, settings) |
 
 Missing optional tools degrade gracefully — the related feature simply isn't offered.
 

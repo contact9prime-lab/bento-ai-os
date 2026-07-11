@@ -122,6 +122,7 @@ class Toolbox:
         self.mcp = None        # MCPManager, wired up in server startup
         self.telegram = None   # TelegramBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
+        self.fabric = None     # ControlPlane, wired up in server startup
 
     def schemas(self) -> list[dict]:
         """Built-in tool schemas plus tools from connected MCP servers."""
@@ -258,18 +259,74 @@ class Toolbox:
             return "notification sent"
         return "[error] notify-send not available"
 
-    async def remember(self, content: str) -> str:
-        mid = self.store.add_memory(content)
-        return f"remembered (id {mid})"
+    async def remember(self, content: str, scope: str = "user",
+                       conversation_id: str = "") -> str:
+        if scope == "session" and not conversation_id:
+            scope = "user"  # headless contexts have no session to attach to
+        mid = self.store.add_memory(content, scope=scope,
+                                    conversation_id=conversation_id or None, source="agent")
+        if self.broadcast:
+            await self.broadcast({"type": "knowledge_update"})
+        return f"remembered ({scope} memory, id {mid})"
 
     async def recall(self, query: str = "") -> str:
         mems = self.store.search_memories(query, limit=15)
+        if query:
+            # semantic recall finds what keyword LIKE misses ("job" → "works at Accacia")
+            try:
+                from . import knowledge
+                ranked = await knowledge.semantic_rank(
+                    self.cfg, self.store.search_memories("", limit=500), query)
+                if ranked:
+                    seen = {m["id"] for m in mems}
+                    mems += [m for m in ranked[:10] if m["id"] not in seen]
+                    mems = mems[:15]
+            except Exception:
+                pass
         if not mems:
             return "(no memories found)"
         return "\n".join(
-            f"- [{m['id']}] {time.strftime('%Y-%m-%d', time.localtime(m['created_at']))}: {m['content']}"
+            f"- [{m['id']}|{m.get('scope', 'user')}] "
+            f"{time.strftime('%Y-%m-%d', time.localtime(m['created_at']))}: {m['content']}"
             for m in mems
         )
+
+    async def delegate(self, subagent: str, task: str, conversation_id: str = "") -> str:
+        """Hand a task to a specialist subagent; its steps run in a separate data plane
+        with its own model, tool allow-list, and budget (see the Team app)."""
+        if not self.fabric:
+            return "[error] fabric not available"
+        defn = self.store.get_subagent(subagent)
+        if not defn:
+            names = ", ".join(s["name"] for s in self.store.list_subagents()) or "(none)"
+            return f"[error] no subagent named '{subagent}'. Available: {names}"
+        res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id)
+        head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
+        body = res["content"] or res["fault"] or "(no output)"
+        return f"{head}\n{body[:3500]}"
+
+    async def run_workflow(self, workflow: str, input: str, conversation_id: str = "") -> str:
+        """Run a stored multi-subagent workflow (a DAG of steps) and return its result."""
+        if not self.fabric:
+            return "[error] fabric not available"
+        wf = self.store.get_workflow(workflow)
+        if not wf:
+            names = ", ".join(w["name"] for w in self.store.list_workflows()) or "(none)"
+            return f"[error] no workflow named '{workflow}'. Available: {names}"
+        res = await self.fabric.run_workflow(wf, input, conversation_id=conversation_id)
+        head = f"[workflow {wf['name']} · {res['status']}]"
+        if res["status"] != "ok":
+            return f"{head}\n{res['fault']}"
+        return f"{head}\n{res['content'][:3500]}"
+
+    async def forget(self, memory_id: str) -> str:
+        mems = {m["id"] for m in self.store.search_memories("", limit=10**6)}
+        if memory_id not in mems:
+            return f"[error] no memory with id {memory_id} — use recall to find the right id"
+        self.store.delete_memory(memory_id)
+        if self.broadcast:
+            await self.broadcast({"type": "knowledge_update"})
+        return f"forgotten (id {memory_id})"
 
     async def generate_wallpaper(self, prompt: str) -> str:
         """AI-generate a high-res desktop wallpaper from a text prompt (pollinations.ai flux, free, no key).
@@ -339,29 +396,56 @@ class Toolbox:
         cfgmod.save_soul(content)
         return f"soul updated ({len(content)} chars)"
 
-    async def create_theme(self, name: str, mode: str = "dark", vars: str = "",
-                           css: str = "", font_url: str = "", font_family: str = "") -> str:
-        """Design a full OS theme and apply it live. `vars` is a JSON object of CSS variables
-        (bg, bg2, bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, err, ok, glass — hex/rgba).
-        `css` is extra CSS to restyle the desktop chrome, windows, taskbar, icons, and widgets
-        (target #taskbar, .win, .dimg, .widget, #desktop, etc.). Optional web font via font_url +
-        font_family. This changes the whole look & feel, not just colors."""
+    async def create_theme(self, name: str, mode: str = "", vars: str = "",
+                           css: str = None, font_url: str = "", font_family: str = "",
+                           shell_html: str = None) -> str:
+        """Design a full OS theme and apply it live — or REFINE an existing one. If a theme with
+        this `name` already exists, the call is a refinement: pass ONLY the fields to change and
+        everything else is kept (vars merge key-by-key; css/font/shell stay unless given). When
+        the user is iterating on a theme in this session, keep calling with the SAME name —
+        never fork a new theme for a tweak. `vars` is a JSON object of CSS variables (bg, bg2,
+        bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, err, ok, glass — hex/rgba). `css` is
+        extra CSS to restyle the desktop chrome (#menubar, #taskbar, .win, .aicon, .widget,
+        #desktop). Optional web font via font_url + font_family. `shell_html` (optional) is a
+        COMPLETE replacement interface — full HTML+CSS+JS that takes over the whole screen
+        instead of the stock desktop; it can call every endpoint in GET /api/registry (fetch +
+        /ws websocket). Pass shell_html="" to remove an existing shell."""
         import json as _j
         try:
             v = _j.loads(vars) if isinstance(vars, str) and vars.strip() else (vars or {})
         except Exception as e:
             return f"[error] vars must be a JSON object of CSS variables: {e}"
-        theme = {"name": name.strip(), "mode": mode if mode in ("dark", "light") else "dark",
-                 "v": v, "css": css or "", "custom": True, "apply": True}
+        name = name.strip()
+        existing = next((t for t in self.store.list_themes()
+                         if t.get("name", "").lower() == name.lower()), None)
+        refining = existing is not None
+        theme = existing or {"mode": "dark", "v": {}, "css": ""}
+        if mode in ("dark", "light"):
+            theme["mode"] = mode
+        theme["v"] = {**(theme.get("v") or theme.pop("vars", None) or {}), **v}
+        if css is not None:
+            theme["css"] = css
         if font_url:
-            theme["font"] = {"url": font_url, "family": font_family or ""}
-        self.store.save_theme(theme["name"], _j.dumps(theme))
+            theme["font"] = {"url": font_url,
+                             "family": font_family or (theme.get("font") or {}).get("family", "")}
+        elif font_family and theme.get("font"):
+            theme["font"]["family"] = font_family
+        if shell_html is not None:
+            if shell_html.strip():
+                theme["shell"] = shell_html
+            else:
+                theme.pop("shell", None)   # explicit empty string removes the shell
+        theme.update(name=name, custom=True, apply=True)
+        self.store.save_theme(name, _j.dumps(theme))
         if self.broadcast:
             await self.broadcast({"type": "themes"})
             await self.broadcast({"type": "theme_apply", "theme": theme})
-        self.store.log("system", f"theme created by agent: {theme['name']}")
-        return (f"theme '{theme['name']}' created and applied live. It restyles the desktop via "
-                f"{len(v)} color variables{' + custom CSS' if css else ''}. Open the Themes app to keep or tweak it.")
+        self.store.log("system", f"theme {'refined' if refining else 'created'} by agent: {name}")
+        extras = (" + custom CSS" if theme.get("css") else "") + (" + a full replacement shell" if theme.get("shell") else "")
+        changed = ", ".join(sorted(v)) if v else "no color changes"
+        return (f"theme '{name}' {'refined in place (changed: ' + changed + ')' if refining else 'created'} "
+                f"and applied live — {len(theme.get('v') or {})} color variables{extras}. "
+                f"To iterate further, call create_theme again with the SAME name and only the fields to change.")
 
     async def configure_agentos(self, changes: str) -> str:
         """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
@@ -373,13 +457,13 @@ class Toolbox:
         if not isinstance(patch, dict):
             return "[error] changes must be a JSON object"
         allowed = {"agent_name", "default_model", "autonomy", "max_steps", "workspace",
-                   "policies", "telegram", "mcp_servers", "sandbox"}
+                   "policies", "telegram", "mcp_servers", "sandbox", "memory"}
         applied, skipped = [], []
         for k, v in patch.items():
             if k not in allowed:
                 skipped.append(k)
                 continue
-            if k in ("telegram", "mcp_servers") and isinstance(v, dict):
+            if k in ("telegram", "mcp_servers", "memory") and isinstance(v, dict):
                 target = self.cfg.setdefault(k, {})
                 for kk, vv in v.items():
                     if vv is None:
@@ -404,7 +488,7 @@ class Toolbox:
         """Create/update a UI app that appears on the AgentOS desktop (rendered in a window)."""
         if len(html.strip()) < 20:
             return "[error] html too short — pass the full app markup (HTML/CSS/JS)"
-        aid = self.store.save_app(name, icon or "🧰", description, html)
+        aid = self.store.save_app(name, icon or "", description, html)
         self.store.log("system", f"app created by agent: {name}")
         if self.broadcast:
             await self.broadcast({"type": "apps"})
@@ -527,7 +611,7 @@ class Toolbox:
         return "[error] action must be list | pull | remove"
 
     async def launch_native_app(self, name: str) -> str:
-        """Launch an installed native (Ubuntu) app by name, e.g. 'Firefox', 'Files', 'Settings'."""
+        """Launch an installed native desktop app by name, e.g. 'Firefox', 'Files', 'Settings'."""
         from . import host
         apps = host.list_apps()
         q = name.strip().lower()
@@ -581,9 +665,10 @@ class Toolbox:
         return "[error] action must be volume | mute | unmute | settings"
 
     async def add_mcp_server(self, name: str, command: str = "", url: str = "",
-                             args: str = "", env: str = "", action: str = "add") -> str:
+                             args: str = "", env: str = "", bearer_token: str = "",
+                             action: str = "add") -> str:
         """Add/remove an MCP server ('channel') the agent can then use. stdio: give `command` (+ optional
-        `args`); http: give `url`. `env` is optional 'KEY=val,KEY2=val2' for API keys."""
+        `args`); http: give `url` (+ optional `bearer_token`). `env` is optional 'KEY=val,KEY2=val2' for API keys."""
         from . import config as cfgmod
         servers = self.cfg.setdefault("mcp_servers", {})
         key = name.strip().replace(" ", "-")
@@ -593,6 +678,8 @@ class Toolbox:
         else:
             if url.strip():
                 conf = {"transport": "http", "url": url.strip(), "enabled": True}
+                if bearer_token.strip():
+                    conf["headers"] = {"Authorization": f"Bearer {bearer_token.strip()}"}
             elif command.strip():
                 conf = {"transport": "stdio", "command": command.strip(),
                         "args": args.strip(), "enabled": True}
@@ -874,19 +961,66 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "remember",
-        "description": "Save a fact to long-term memory so future conversations can use it.",
+        "description": "Save a fact to memory. scope='user' (default) is durable and shared across all "
+                       "conversations — use it for who the user is, preferences, projects, machine facts. "
+                       "scope='session' only lives inside the current conversation — use it for decisions, "
+                       "constraints, and working state of the task at hand.",
         "parameters": {
             "type": "object",
-            "properties": {"content": {"type": "string", "description": "The fact to remember."}},
+            "properties": {
+                "content": {"type": "string", "description": "The fact to remember, one self-contained sentence."},
+                "scope": {"type": "string", "enum": ["user", "session"],
+                          "description": "user = durable across conversations (default); session = this conversation only."},
+            },
             "required": ["content"],
         },
     },
     {
         "name": "recall",
-        "description": "Search long-term memory. Empty query returns the most recent memories.",
+        "description": "Search memory (user + session). Empty query returns the most recent memories. "
+                       "Results are tagged [id|scope] — use the id with `forget`.",
         "parameters": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
+        },
+    },
+    {
+        "name": "forget",
+        "description": "Delete a memory by id (find ids with `recall`). Use when the user corrects or "
+                       "retracts something you had remembered.",
+        "parameters": {
+            "type": "object",
+            "properties": {"memory_id": {"type": "string"}},
+            "required": ["memory_id"],
+        },
+    },
+    {
+        "name": "delegate",
+        "description": "Delegate a task to a specialist subagent (see the Team app: e.g. researcher, "
+                       "writer, validator). It runs with its own model, restricted tools, and budget, "
+                       "and returns its result. Use for focused subtasks or to get a second model's "
+                       "judgement on work.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "subagent": {"type": "string", "description": "Subagent name, e.g. 'researcher'."},
+                "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
+            },
+            "required": ["subagent", "task"],
+        },
+    },
+    {
+        "name": "run_workflow",
+        "description": "Run a stored multi-subagent workflow (a DAG where each step is executed by a "
+                       "subagent, possibly on different models — e.g. draft locally, validate on a "
+                       "frontier model). Returns the final step's output.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow": {"type": "string", "description": "Workflow name, e.g. 'draft-and-validate'."},
+                "input": {"type": "string", "description": "The input/request the workflow operates on."},
+            },
+            "required": ["workflow", "input"],
         },
     },
     {
@@ -946,21 +1080,29 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_theme",
-        "description": "Design and apply a complete OS theme — the whole look & feel of the desktop, not "
-                       "just colors. `vars` is a JSON object of CSS variables (bg, bg2, bg3, bg4, line, txt, "
-                       "dim, dim2, acc, acc2, warn, err, ok, glass). `css` is extra CSS to restyle chrome, "
-                       "windows (.win, .ttl), the taskbar (#taskbar), desktop icons (.dimg), widgets (.widget), "
-                       "and the desktop background (#desktop). Optional web font (font_url + font_family, e.g. a "
-                       "Google Fonts URL). Applies live and is saved to the Themes app. Use when the user asks to "
-                       "restyle or redesign the desktop (e.g. 'make it a frosted-glass theme', 'terminal green').",
+        "description": "Design and apply a complete OS theme — or REFINE one you already made. Calling it with "
+                       "an EXISTING theme name updates that theme in place: vars merge key-by-key and css/font/"
+                       "shell are kept unless passed, so send only what changes. When the user iterates on a "
+                       "theme ('make it warmer', 'bigger radius', 'now add a font'), reuse the SAME name from "
+                       "earlier in the conversation — only start a new name for a genuinely new theme. `vars` is "
+                       "a JSON object of CSS variables (bg, bg2, bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, "
+                       "err, ok, glass). `css` is extra CSS to restyle chrome: windows (.win, .ttl), the top menu "
+                       "bar (#menubar), the dock (#taskbar), app icons (.aicon), widgets (.widget), the desktop "
+                       "(#desktop). Optional web font (font_url + font_family, e.g. a Google Fonts URL). For a "
+                       "TOTAL redesign pass shell_html: complete HTML+CSS+JS that replaces the stock desktop with "
+                       "your own interface — it runs same-origin and may use every endpoint listed by GET "
+                       "/api/registry (REST + the /ws websocket), so it can do anything the stock UI does. "
+                       "Applies live; saved to the Themes app. Use when the user asks to restyle, redesign, "
+                       "tweak, or completely reimagine the UI.",
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {"type": "string"},
+                "name": {"type": "string", "description": "theme name; reuse the same name to refine instead of forking"},
                 "mode": {"type": "string", "enum": ["dark", "light"]},
-                "vars": {"type": "string", "description": "JSON object of CSS variables"},
-                "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets"},
+                "vars": {"type": "string", "description": "JSON object of CSS variables — when refining, only the keys to change"},
+                "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets; omit when refining to keep the current css"},
                 "font_url": {"type": "string"}, "font_family": {"type": "string"},
+                "shell_html": {"type": "string", "description": "optional full replacement interface (HTML+CSS+JS) that takes over the screen; omit to keep an existing shell, pass \"\" to remove it; call GET /api/registry for the endpoints it can use"},
             },
             "required": ["name", "vars"],
         },
@@ -984,14 +1126,15 @@ TOOL_SCHEMAS = [
         "description": "Create or update a UI tool/app inside AgentOS itself: it gets a desktop icon and opens "
                        "in a window. Pass self-contained HTML/CSS/JS (a fragment is fine; it is wrapped in a "
                        "dark-themed page). The app runs in an iframe on the same origin, so its JS can call the "
-                       "AgentOS REST API: GET /api/system (cpu/mem/disk), /api/tasks, /api/memories, /api/kg, "
-                       "/api/logs, and POST /api/chat {text} for one-shot agent calls. Use this when the user asks "
-                       "for a new tool, widget, dashboard, or UI enhancement.",
+                       "ENTIRE AgentOS REST API — GET /api/registry lists every endpoint, tool and realtime "
+                       "event it may use (e.g. /api/system, /api/tasks, /api/memories, POST /api/chat {text}, "
+                       "POST /api/tool {name,args}, the /ws websocket). Use this when the user asks for a new "
+                       "tool, widget, dashboard, or UI enhancement.",
         "parameters": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "icon": {"type": "string", "description": "single emoji"},
+                "icon": {"type": "string", "description": "leave empty — the OS renders a clean monogram tile (the user dislikes emoji icons)"},
                 "description": {"type": "string"},
                 "html": {"type": "string"},
             },
@@ -1046,7 +1189,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "launch_native_app",
-        "description": "Launch an installed native app on the host (any Ubuntu/GNOME app, e.g. Firefox, "
+        "description": "Launch an installed native app on the host desktop (e.g. Firefox, "
                        "Files, Settings, Calculator, Terminal, VS Code).",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
     },
@@ -1075,14 +1218,17 @@ TOOL_SCHEMAS = [
         "name": "add_mcp_server",
         "description": "Add or remove an MCP server (an external tool 'channel') so you gain new tools. "
                        "For a stdio server pass `command` (e.g. 'npx') and `args` (e.g. '-y @playwright/mcp@latest'); "
-                       "for an HTTP server pass `url`. Optional `env` = 'KEY=value,KEY2=value2' for API keys. "
-                       "Set action='remove' to delete one. Common: playwright (browser), filesystem, git, github.",
+                       "for an HTTP server pass `url` and, if it needs auth, `bearer_token` "
+                       "(sent as 'Authorization: Bearer …'). Optional `env` = 'KEY=value,KEY2=value2' for stdio API keys. "
+                       "OAuth remote servers work via the mcp-remote bridge: command 'npx', args '-y mcp-remote <url>'. "
+                       "Set action='remove' to delete one. Common: playwright (browser), filesystem, git, github, notion, linear.",
         "parameters": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
                 "command": {"type": "string"}, "args": {"type": "string"},
                 "url": {"type": "string"}, "env": {"type": "string"},
+                "bearer_token": {"type": "string"},
                 "action": {"type": "string", "enum": ["add", "remove"]},
             },
             "required": ["name"],

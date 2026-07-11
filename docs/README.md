@@ -15,12 +15,14 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Getting Started](getting-started.md) | First launch, choosing a model, autonomy, your first tasks |
 | [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
-| [Building Apps](building-apps.md) | App Studio, the App Store, app data stores, letting apps call the OS |
-| [Integrations](integrations.md) | Telegram, MCP tool servers, native Ubuntu apps, system control, files & reports |
+| [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
+| [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [Models & Appearance](models.md) | Providers, the Ollama Model Manager, wallpapers & themes |
 | [Configuration](configuration.md) | `config.json`, the sandbox, Settings, environment variables |
 | [API Reference](api-reference.md) | REST endpoints, WebSocket streams, and the agent tool catalog |
 | [Architecture](architecture.md) | How it's built — modules, data, request flow |
+| [Roadmap](roadmap.md) | Product vision, differentiation vs chat-first assistants, feature pillars |
+| [Design: Subagents](design/subagents.md) | The execution fabric — subagents, task envelopes, mTLS enrollment, docker/remote workers |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
 ---
@@ -32,7 +34,7 @@ uv sync            # install
 uv run agentos     # launch the desktop at http://127.0.0.1:8321
 ```
 
-Then open **⚙ Settings**, pick a model, and start giving instructions in **Agent Chat** — or press
+Then open **Settings**, pick a model, and start giving instructions in **Agent Chat** — or press
 **Alt+Space** anywhere to launch an app or ask the agent directly.
 
 > **Model note:** the agent uses tools to do real work. Choose a tool-capable model — any `qwen`

@@ -1,6 +1,6 @@
 # Configuration
 
-Most settings are managed visually in **⚙ Settings**, but everything is stored in a single JSON file
+Most settings are managed visually in **Settings**, but everything is stored in a single JSON file
 you can also edit directly.
 
 ---
@@ -36,6 +36,7 @@ Override the config/data location with the `AGENTOS_HOME` environment variable.
 | `mcp_servers` | connected MCP tool servers |
 | `telegram` | `{ enabled, bot_token, owner_chat_id }` |
 | `widgets` | pinned desktop widgets |
+| `memory` | `{ auto_extract, model, inject_user, inject_session, inject_facts, embed_model, rollup_after_hours, kg_dedup }` — auto-learn mines every chat turn for user memories, session memories, and knowledge-graph facts, and applies corrections/retractions. `model` picks the extraction model (empty = `default_model`; a small fast model works well). `inject_*` counts control how many of each go into the system prompt. `embed_model` enables semantic recall (empty = auto-detect an installed Ollama embedding model such as `nomic-embed-text`). `rollup_after_hours` distills idle conversations' session memory into user memory (0 disables). `kg_dedup` periodically merges duplicate graph entities |
 
 Edit through the UI when possible; the agent can also change most of these with its
 `configure_agentos` tool. If you edit the file by hand, restart the service
@@ -83,8 +84,7 @@ other home directories are hidden. Turn it on/off and set the folder in **Settin
 ```
 
 Patterns use `*` wildcards and are matched against `<tool> <command-or-args>`. **Deny wins** over
-allow, and hard-blocked destructive commands stay blocked regardless. Manage these in the **🛡
-Policies** app, or click **"Always allow"** on any approval prompt.
+allow, and hard-blocked destructive commands stay blocked regardless. Manage these in the **Policies** app, or click **"Always allow"** on any approval prompt.
 
 ---
 

@@ -4,7 +4,7 @@
 
 ## Model providers
 
-Configure providers in **⚙ Settings**. AgentOS works with local and cloud models, and you can switch
+Configure providers in **Settings**. AgentOS works with local and cloud models, and you can switch
 between them from the chat window's model dropdown at any time.
 
 | Provider | Notes |
@@ -26,7 +26,7 @@ These environment variables are picked up automatically if set: `ANTHROPIC_API_K
 
 ## The Model Manager
 
-The **🧠 Model Manager** app manages your local Ollama models and shows your hardware:
+The **Model Manager** app manages your local Ollama models and shows your hardware:
 
 - **GPU** — name, VRAM used / total, and utilization (via `nvidia-smi` when available).
 - **Installed models** — each with its size, parameter count, and a "loaded" indicator when running;
@@ -42,11 +42,11 @@ needs roughly 9–10 GB of VRAM. The agent can manage models too: *"pull qwen2.5
 
 ## Themes
 
-**⚙ Settings → Appearance** offers several themes that recolor the entire interface instantly:
+**Settings → Appearance** offers several themes that recolor the entire interface instantly:
 
 - **AgentOS** (teal, default)
-- **Ubuntu** dark (Yaru palette, Ubuntu orange accent)
-- **Ubuntu** light
+- **Ember** dark (warm orange accent)
+- **Ember** light
 - **Dracula**
 - **Nord**
 
@@ -56,15 +56,15 @@ Your selection is remembered across sessions.
 
 ## Wallpapers
 
-The **🖼 Personalize** app manages the desktop background:
+The **Personalize** app manages the desktop background:
 
-- **Use Ubuntu wallpaper** — adopts the current host desktop background so AgentOS matches your
+- **Use system wallpaper** — adopts the current host desktop background so AgentOS matches your
   system.
 - **Generate wallpaper** — creates a background from a text description using a built-in AI image
   service. Every generated image is saved to a **local gallery** you can re-apply or delete later.
 - **Reset** — return to the built-in background.
 
-The agent can set wallpapers too: *"use my Ubuntu wallpaper," "change my wallpaper to a snowy forest,"
+The agent can set wallpapers too: *"use my system wallpaper," "change my wallpaper to a snowy forest,"
 or "set my wallpaper to <a photo file or image URL>"* (the latter gives you full-resolution control).
 
 > The built-in generator uses a free image service that caps resolution. For a crisp, full-resolution

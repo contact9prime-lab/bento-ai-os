@@ -299,6 +299,20 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list) -> AsyncIt
         yield ev
 
 
+async def complete(cfg: dict, model_id: str, prompt: str, system: str = "") -> str:
+    """One-shot, non-streaming, tool-free completion. Used for background jobs
+    (knowledge extraction, summaries) that need a plain text answer."""
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    parts: list[str] = []
+    async for ev in chat(cfg, model_id, messages, []):
+        if ev["type"] == "text":
+            parts.append(ev["text"])
+    return "".join(parts)
+
+
 async def available_models(cfg: dict) -> list[dict]:
     """All usable models as [{'id': 'provider/model', 'provider': ..., 'name': ...}]."""
     out = []

@@ -12,7 +12,8 @@
   --glass:rgba(17,20,25,.82);
   --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;
-  --tbh:46px;
+  --mbh:30px;      /* top menu bar */
+  --tbh:78px;      /* clearance reserved above the floating dock (toasts, start menu) */
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -24,8 +25,18 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
 ::-webkit-scrollbar-track{background:transparent}
 
+/* ================= app icons (SVG squircle tiles) ================= */
+.aicon{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;
+  border-radius:24.5%;border:.5px solid rgba(255,255,255,.14);
+  box-shadow:0 5px 14px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.32);
+  background:linear-gradient(180deg,#6b7280,#374151)}
+.aicon::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.04) 40%,rgba(0,0,0,.06) 88%)}
+.aicon svg{width:56%;height:56%;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))}
+.aicon .em{line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+
 /* ================= desktop ================= */
-#desktop{position:fixed;inset:0 0 var(--tbh) 0;overflow:hidden;
+#desktop{position:fixed;inset:var(--mbh) 0 0 0;overflow:hidden;
   background:
     radial-gradient(1100px 700px at 78% 18%,rgba(34,211,238,.13),transparent 60%),
     radial-gradient(900px 650px at 15% 85%,rgba(94,234,212,.10),transparent 60%),
@@ -44,8 +55,18 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
 #jarvis-shell{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;font-family:var(--sans)}
 body.exp-jarvis #jarvis-shell{display:flex}
 body.exp-jarvis #icons{display:none}
-body.exp-jarvis #taskbar{display:none}                 /* fully immersive — no taskbar */
-body.exp-jarvis #desktop{inset:0}                      /* reclaim the taskbar's space */
+body.exp-jarvis #taskbar,body.exp-jarvis #menubar{display:none}   /* fully immersive — no chrome */
+body.exp-jarvis #desktop{inset:0}                      /* reclaim the menu bar's space */
+/* custom AI-designed shells: a theme can carry `shell` HTML that fully replaces the desktop */
+#custom-shell{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;overflow:auto}
+body.exp-custom #custom-shell{display:flex}
+body.exp-custom #icons{display:none}
+body.exp-custom #taskbar,body.exp-custom #menubar{display:none}
+body.exp-custom #desktop{inset:0}
+#shell-exit{position:fixed;top:10px;right:12px;z-index:9400;font-size:11px;color:var(--dim);
+  border:1px solid var(--line);border-radius:8px;padding:5px 12px;background:var(--glass);display:none}
+body.exp-custom #shell-exit{display:block}
+#shell-exit:hover{color:var(--txt);border-color:var(--acc)}
 #js-top{display:flex;align-items:center;justify-content:space-between;padding:14px 26px;font-size:11px;letter-spacing:.14em;color:var(--dim2)}
 #js-top .brand{font-family:'Orbitron',var(--sans);font-weight:700;font-size:15px;letter-spacing:.2em;color:var(--acc)}
 #js-top .tag{font-size:9.5px;border:1px solid var(--line);border-radius:4px;padding:3px 8px;color:var(--dim2);margin-left:10px}
@@ -100,80 +121,117 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 
 /* desktop icons */
 #icons{position:absolute;inset:0}
-.dicon{position:absolute;width:88px;padding:10px 4px 8px;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:grab;border:1px solid transparent;touch-action:none}
-.dicon.dragging{cursor:grabbing;opacity:.85;z-index:5}
-.dicon .dimg{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:27px;position:relative;
-  box-shadow:0 8px 18px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.16);
-  border:1px solid rgba(255,255,255,.07);transition:transform .12s ease,box-shadow .12s ease}
-.dicon .dimg::after{content:'';position:absolute;inset:0;border-radius:inherit;background:linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,0) 46%);pointer-events:none}
-.dicon:hover .dimg{transform:translateY(-2px);box-shadow:0 12px 24px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.2)}
-.dicon:active .dimg{transform:translateY(0) scale(.96)}
+.dicon{position:absolute;width:88px;padding:10px 4px 8px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:grab;border:1px solid transparent;touch-action:none}
+.dicon.dragging{cursor:grabbing;opacity:.9;z-index:6}
+.dicon.dragging .aicon{transform:scale(1.1);box-shadow:0 18px 40px rgba(0,0,0,.6),inset 0 .5px 0 rgba(255,255,255,.35)}
+.dicon.settle{transition:left .24s cubic-bezier(.2,.8,.25,1),top .24s cubic-bezier(.2,.8,.25,1)}
+.dicon .aicon{transition:transform .13s ease,box-shadow .13s ease}
+.dicon:hover .aicon{transform:translateY(-2px) scale(1.03);box-shadow:0 12px 26px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.35)}
+.dicon:active .aicon{transform:translateY(0) scale(.95)}
 .dicon .dlbl{font-size:11.5px;font-weight:500;color:#eef1f6;text-align:center;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.9);max-width:84px}
-.dicon:hover{background:rgba(94,234,212,.06);border-color:rgba(94,234,212,.15)}
+.dicon:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08)}
 .dicon.sel{background:rgba(94,234,212,.12);border-color:rgba(94,234,212,.35)}
+#marquee{position:absolute;display:none;z-index:5;pointer-events:none;border-radius:4px;
+  border:1px solid rgba(94,234,212,.55);background:rgba(94,234,212,.10)}
+.bento{position:absolute;border-radius:18px;pointer-events:none;
+  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
+.bento .blbl{position:absolute;top:8px;left:15px;font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:rgba(255,255,255,.5);text-shadow:0 1px 3px rgba(0,0,0,.6)}
+:root[data-theme=light] .bento{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08)}
+:root[data-theme=light] .bento .blbl{color:rgba(0,0,0,.45);text-shadow:none}
 
-/* ================= windows ================= */
+/* ================= windows (desktop chrome) ================= */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
-  background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.55);
+  background:var(--glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  border:1px solid rgba(255,255,255,.09);border-radius:13px;
+  box-shadow:0 24px 68px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.3);
   resize:both;overflow:hidden}
-.win.active{border-color:#2f3947;box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 0 1px rgba(94,234,212,.10)}
+.win.active{border-color:rgba(255,255,255,.14);box-shadow:0 32px 90px rgba(0,0,0,.62),0 3px 10px rgba(0,0,0,.35)}
 .win.maxed{inset:0!important;width:auto!important;height:auto!important;border-radius:0;resize:none}
-.win .ttl{display:flex;align-items:center;gap:9px;padding:0 8px 0 12px;height:38px;flex:none;
-  background:linear-gradient(180deg,rgba(30,36,46,.9),rgba(23,27,34,.9));border-bottom:1px solid var(--line);cursor:default}
-.win.active .ttl{background:linear-gradient(180deg,rgba(38,46,58,.95),rgba(26,31,40,.95))}
-.win .ticon{font-size:15px}
-.win .tname{font-size:12.5px;font-weight:600;color:var(--dim);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.win .ttl{display:grid;grid-template-columns:66px 1fr 66px;align-items:center;height:40px;flex:none;padding:0 10px;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-bottom:1px solid rgba(0,0,0,.28);cursor:default}
+.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03))}
+.win .tmid{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
+.win .ticon{display:flex}
+.win .ticon .aicon{width:17px;height:17px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.win .tname{font-size:12.5px;font-weight:600;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .win.active .tname{color:var(--txt)}
-.win .tbtns{display:flex;gap:2px}
-.win .tbtns button{width:32px;height:26px;border-radius:6px;color:var(--dim);font-size:13px;display:flex;align-items:center;justify-content:center}
-.win .tbtns button:hover{background:var(--bg4);color:var(--txt)}
-.win .tbtns .cls:hover{background:var(--err);color:#fff}
+.win .tbtns{display:flex;gap:8px;justify-self:start}
+.win .tbtns button{width:13px;height:13px;border-radius:50%;padding:0;position:relative;
+  border:.5px solid rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
+  color:transparent;font-size:9px;font-weight:800;line-height:1;transition:.12s}
+.win .tbtns .cls{background:#ff5f57}.win .tbtns .mn{background:#febc2e}.win .tbtns .mx{background:#28c840}
+.win:not(.active) .tbtns button{background:#5a606c}
+.win .tbtns:hover button{color:rgba(0,0,0,.55)}
+.win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
 .win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .pad{padding:16px 18px;overflow-y:auto;user-select:text}
 
-/* ================= taskbar ================= */
-#taskbar{position:fixed;left:0;right:0;bottom:0;height:var(--tbh);display:flex;align-items:center;gap:6px;padding:0 10px 0 6px;
-  background:rgba(13,16,21,.92);backdrop-filter:blur(16px);border-top:1px solid var(--line);z-index:9000}
-#startbtn{display:flex;align-items:center;gap:8px;padding:6px 13px;border-radius:9px;font-weight:700;font-size:13px}
-#startbtn .mark{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:12px;font-weight:900}
-#startbtn:hover,#startbtn.on{background:var(--bg4)}
-#pager{display:flex;gap:3px;padding:0 6px;border-right:1px solid var(--line);margin-right:2px}
-.pgb{width:26px;height:28px;border-radius:7px;font-size:12px;font-weight:600;color:var(--dim);border:1px solid transparent;display:flex;align-items:center;justify-content:center}
-.pgb:hover{background:var(--bg3);color:var(--txt)}
-.pgb.on{background:var(--bg4);color:var(--acc);border-color:var(--line)}
-.pgb.add{color:var(--dim2);font-size:15px}
-#dock{display:flex;gap:3px;padding:0 6px;border-right:1px solid var(--line);margin-right:2px}
-.dockb{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;position:relative}
-.dockb:hover{background:var(--bg4)}
-.dockb.running::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--acc)}
-#tbwins{flex:1;display:flex;gap:5px;overflow-x:auto;padding:0 2px}
-.tbwin{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:9px;font-size:12.5px;color:var(--dim);border:1px solid transparent;white-space:nowrap;max-width:190px}
-.tbwin .tl{overflow:hidden;text-overflow:ellipsis}
-.tbwin:hover{background:var(--bg3);color:var(--txt)}
-.tbwin.on{background:var(--bg4);color:var(--txt);border-color:var(--line);box-shadow:inset 0 -2px 0 var(--acc)}
-.tbwin.mini{opacity:.55}
-#tray{display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-left:1px solid var(--line)}
-#statdot{width:9px;height:9px;border-radius:50%;background:var(--err);transition:.3s}
+/* ================= top menu bar ================= */
+#menubar{position:fixed;left:0;right:0;top:0;height:var(--mbh);display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  border-bottom:1px solid rgba(255,255,255,.06);z-index:9000;font-size:12.5px;color:var(--txt)}
+#mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:12.5px;padding:2px 8px;border-radius:6px;cursor:default}
+#mb-brand .mark{width:17px;height:17px;border-radius:5px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#mb-spacer{flex:1}
+#pager{display:flex;gap:4px;align-items:center}
+.pgb{width:22px;height:20px;border-radius:6px;font-size:10.5px;font-weight:700;color:var(--dim);border:1px solid transparent;display:flex;align-items:center;justify-content:center}
+.pgb:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+.pgb.on{background:rgba(255,255,255,.14);color:var(--txt)}
+.pgb.add{color:var(--dim2);font-size:13px}
+#tray{display:flex;align-items:center;gap:11px;padding:0 0 0 10px}
+#statdot{width:8px;height:8px;border-radius:50%;background:var(--err);transition:.3s}
 #statdot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-#spin{display:none;width:13px;height:13px;border:2px solid var(--acc);border-top-color:transparent;border-radius:50%;animation:rot .8s linear infinite}
+#spin{display:none;width:12px;height:12px;border:2px solid var(--acc);border-top-color:transparent;border-radius:50%;animation:rot .8s linear infinite}
 #spin.on{display:block}
 @keyframes rot{to{transform:rotate(360deg)}}
-#tbnative{display:flex;gap:5px;overflow-x:auto;max-width:38%}
-#tbnative.has{padding-left:8px;margin-left:2px;border-left:1px solid var(--line)}
-.tbnat{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:9px;font-size:12.5px;color:var(--dim);border:1px solid transparent;white-space:nowrap;max-width:180px}
-.tbnat:hover{background:var(--bg3);color:var(--txt)}
-.tbnat .tl{overflow:hidden;text-overflow:ellipsis}
-.tbnat::before{content:'▭';font-size:10px;color:var(--dim2)}
-#tray-ctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);padding:4px 8px;border-radius:7px}
-#tray-ctl:hover{background:var(--bg4);color:var(--txt)}
+#tray-ctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--txt);padding:2px 7px;border-radius:6px}
+#tray-ctl:hover{background:rgba(255,255,255,.1)}
+#tray-voice{font-size:13px;padding:2px 7px;border-radius:6px;color:var(--txt)}
+#tray-voice:hover{background:rgba(255,255,255,.1)}
+
+/* ================= dock (floating, centered) ================= */
+#taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;height:auto;max-width:min(94vw,1100px);
+  display:flex;align-items:flex-end;gap:4px;padding:7px 10px;border-radius:22px;
+  background:rgba(17,20,26,.58);backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.12);z-index:9000}
+#startbtn{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;border-radius:14px;
+  transition:transform .14s ease}
+#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;border:.5px solid rgba(255,255,255,.16);
+  box-shadow:0 5px 14px rgba(0,0,0,.42),inset 0 .5px 0 rgba(255,255,255,.32)}
+#startbtn:hover{transform:translateY(-7px) scale(1.12)}
+#startbtn.on .mark{box-shadow:0 0 0 2px rgba(94,234,212,.5),0 5px 14px rgba(0,0,0,.42)}
+.dsep{width:1px;align-self:stretch;margin:4px 5px;background:rgba(255,255,255,.14);flex:none}
+#dock,#tbwins,#tbnative{display:flex;align-items:flex-end;gap:4px}
+#tbwins{overflow:visible}
+#tbnative{max-width:30vw;overflow-x:auto}
+.dockb,.tbwin,.tbnat{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;border-radius:14px;
+  transition:transform .14s ease;font-size:0}
+.dockb .aicon,.tbwin .aicon,.tbnat .aicon{width:46px;height:46px}
+.dockb:hover,.tbwin:hover,.tbnat:hover,.dicon:focus-visible{transform:translateY(-7px) scale(1.12)}
+.dockb:active,.tbwin:active{transform:translateY(-3px) scale(1.02)}
+.dockb.running::after,.tbwin::after{content:'';position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+  width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 5px rgba(255,255,255,.6)}
+.tbwin.mini::after{background:rgba(255,255,255,.35);box-shadow:none}
+.tbwin.on::after{background:var(--acc);box-shadow:0 0 7px var(--acc)}
+.tbwin.indock{display:none!important}
+.dockb .aicon,.tbwin .aicon,.tbnat .aicon,#startbtn .mark{pointer-events:none}
+/* dock tooltips */
+.dockb::before,.tbwin::before,.tbnat::before,#startbtn::before{content:attr(data-tip);position:absolute;bottom:calc(100% + 12px);left:50%;
+  transform:translateX(-50%) translateY(3px);padding:4px 10px;border-radius:7px;white-space:nowrap;font-size:11.5px;font-weight:600;
+  color:var(--txt);background:rgba(20,24,31,.92);border:1px solid rgba(255,255,255,.12);box-shadow:0 6px 18px rgba(0,0,0,.4);
+  opacity:0;pointer-events:none;transition:.12s;z-index:2}
+.dockb:hover::before,.tbwin:hover::before,.tbnat:hover::before,#startbtn:hover::before{opacity:1;transform:translateX(-50%) translateY(0)}
+.tbnat .aicon{background:linear-gradient(180deg,#3f4653,#242a34)}
+.tbnat .aicon .em{font-size:20px;color:#fff;font-weight:700}
 .naicon{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:11px;border:1px solid transparent}
 .naicon:hover{background:var(--bg3);border-color:var(--line)}
 .naicon img{width:44px;height:44px;object-fit:contain}
 .naicon .nafallback{width:44px;height:44px;border-radius:11px;background:linear-gradient(145deg,var(--bg4),var(--bg2));border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:var(--acc);text-transform:uppercase}
 .naicon .nalbl{font-size:11px;color:#cfd6e2;text-align:center;line-height:1.2;max-width:88px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
-/* ===== light theme overrides (Ubuntu Light / Yaru) ===== */
+/* ===== light theme overrides ===== */
 :root[data-theme=light] #desktop{background:
   radial-gradient(1100px 700px at 78% 18%,rgba(233,84,32,.10),transparent 60%),
   radial-gradient(900px 650px at 15% 85%,rgba(119,33,111,.07),transparent 60%),
@@ -184,26 +242,35 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 :root[data-theme=light] .dicon .dlbl,:root[data-theme=light] .naicon .nalbl,:root[data-theme=light] .widget .wgt{text-shadow:none;color:#1d1b19}
 :root[data-theme=light] .msg.assistant .body strong{color:#000}
 :root[data-theme=light] #send,:root[data-theme=light] .save{color:#fff}
-#tbclock{text-align:right;line-height:1.25;cursor:default}
-#tbclock .tm{font-size:13px;font-weight:600}
-#tbclock .dt{font-size:10.5px;color:var(--dim2)}
+:root[data-theme=light] #menubar{background:rgba(250,249,248,.72);border-bottom-color:rgba(0,0,0,.08);color:#1d1b19}
+:root[data-theme=light] #taskbar{background:rgba(250,249,248,.6);border-color:rgba(0,0,0,.1)}
+:root[data-theme=light] .pgb:hover,:root[data-theme=light] #tray-ctl:hover,:root[data-theme=light] #tray-voice:hover{background:rgba(0,0,0,.07)}
+:root[data-theme=light] .pgb.on{background:rgba(0,0,0,.12);color:#1d1b19}
+:root[data-theme=light] .dockb.running::after,:root[data-theme=light] .tbwin::after{background:rgba(0,0,0,.55);box-shadow:none}
+:root[data-theme=light] .win .ttl{border-bottom-color:rgba(0,0,0,.12)}
+#tbclock{text-align:right;line-height:1;cursor:default;display:flex;gap:8px;align-items:center}
+#tbclock .tm{font-size:12.5px;font-weight:600}
+#tbclock .dt{font-size:11.5px;color:var(--dim)}
 
-/* ================= start menu ================= */
-#startmenu{position:fixed;left:8px;bottom:calc(var(--tbh) + 8px);width:320px;z-index:9500;display:none;
-  background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden}
-#startmenu.show{display:block;animation:pop .13s ease-out}
+/* ================= start menu (launcher) ================= */
+#startmenu{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tbh) + 16px);width:min(680px,92vw);z-index:9500;display:none;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid rgba(255,255,255,.12);border-radius:20px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden}
+#startmenu.show{display:block;animation:smpop .14s ease-out}
+@keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
-#smhead{display:flex;align-items:center;gap:10px;padding:15px 16px 11px;border-bottom:1px solid var(--line)}
-#smhead .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:17px;font-weight:900}
-#smhead b{font-size:15px}
+#smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
+#smhead .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#smhead b{font-size:14px}
 #smhead small{display:block;color:var(--dim2);font-size:11px;font-weight:400}
-#smapps{padding:8px}
-.smapp{display:flex;align-items:center;gap:12px;width:100%;padding:9px 10px;border-radius:9px;text-align:left}
-.smapp:hover{background:var(--bg4)}
-.smapp .i{width:36px;height:36px;border-radius:11px;background:var(--bg3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;flex:none;box-shadow:0 3px 8px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.14)}
-.smapp .n{font-size:13px;font-weight:600}
-.smapp .d{font-size:11px;color:var(--dim2)}
-#smfoot{border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;max-height:52vh;overflow-y:auto}
+.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:13px;text-align:center}
+.smapp:hover{background:rgba(255,255,255,.07)}
+.smapp .aicon{width:48px;height:48px}
+.smapp .n{font-size:11.5px;font-weight:500;color:var(--txt);line-height:1.2;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#smfoot{border-top:1px solid rgba(255,255,255,.08);padding:9px 18px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+:root[data-theme=light] .smapp:hover{background:rgba(0,0,0,.06)}
+:root[data-theme=light] #smfoot{border-top-color:rgba(0,0,0,.08)}
 
 /* ================= context menu ================= */
 #ctxmenu{position:fixed;z-index:9600;display:none;min-width:190px;background:var(--glass);backdrop-filter:blur(18px);
@@ -510,13 +577,28 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
 </head>
 <body>
 
+<div id="menubar">
+  <div id="mb-brand"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+  <div id="mb-spacer"></div>
+  <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
+  <div id="tray">
+    <button id="tray-voice" title="Voice mode — Alt+J"></button>
+    <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
+    <div id="spin" title="agent is working"></div>
+    <div id="statdot" title="server connection"></div>
+    <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
+  </div>
+</div>
+
 <div id="desktop">
   <div id="wall"></div>
   <canvas id="jarvis"></canvas>
   <div id="widgets"></div>
   <div id="jarvis-shell"></div>
+  <div id="custom-shell"></div>
   <div id="icons"></div>
 </div>
+<button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 
 <div id="startmenu">
   <div id="smhead"><div class="mark">▲</div><div><b>AgentOS</b><small>your machine, with a brain</small></div></div>
@@ -534,7 +616,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
   <div id="j-transcript"></div>
   <div id="j-reply"></div>
   <div class="jbtns">
-    <button id="j-mic" title="talk">🎙</button>
+    <button id="j-mic" title="talk"></button>
     <button id="j-close" class="endbtn">✕ Exit voice</button>
   </div>
 </div></div>
@@ -546,18 +628,12 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
 </div></div>
 
 <div id="taskbar">
-  <button id="startbtn"><span class="mark">▲</span>Start</button>
-  <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
-  <div id="dock" title="Quick launch"></div>
+  <button id="startbtn" data-tip="Launcher"><span class="mark"></span></button>
+  <span class="dsep"></span>
+  <div id="dock"></div>
+  <span class="dsep"></span>
   <div id="tbwins"></div>
-  <div id="tbnative" title="Windows open on your Ubuntu desktop — click to switch"></div>
-  <div id="tray">
-    <button id="tray-voice" title="Voice mode (Jarvis) — Alt+J" style="font-size:15px;padding:4px 8px;border-radius:7px;color:var(--dim)">🎙</button>
-    <button id="tray-ctl" title="Sound & battery — click for Control Center"></button>
-    <div id="spin" title="agent is working"></div>
-    <div id="statdot" title="server connection"></div>
-    <div id="tbclock"><div class="tm">--:--</div><div class="dt"></div></div>
-  </div>
+  <div id="tbnative" title="Windows open on your host desktop — click to switch"></div>
 </div>
 
 <div id="boot"><div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div></div>
@@ -566,6 +642,8 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
 'use strict';
 const $=s=>document.querySelector(s);
 let ws=null, running=false, currentConv=null, cfg=null;
+const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
+const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen
 let APPS_READY=false;   // APPS (const) is in the temporal dead zone until its definition — gate on this
 let curBody=null, curThink=null, curText='';
 let feed=null, chatEl=null, input=null, sendBtn=null;   // bound when the Chat window is open
@@ -589,22 +667,74 @@ function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
 function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
+/* ================= app icon system =================
+   Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
+   Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
+const ICONS={
+  chat:['#4AA9FF','#0A5FD9','<path d="M12 4.3c-4.5 0-8.1 2.9-8.1 6.5 0 2 1.1 3.9 2.9 5.1l-.6 3.6 3.6-1.9c.7.1 1.4.2 2.2.2 4.5 0 8.1-2.9 8.1-6.5S16.5 4.3 12 4.3Z"/><path d="M8.6 10.8h.01M12 10.8h.01M15.4 10.8h.01" stroke-width="2.3"/>'],
+  taskmgr:['#6B7684','#39414E','<path d="M3.8 12.2h3.6l2.4-5.8 4.2 11.2 2.4-5.4h3.8"/>'],
+  terminal:['#4A5160','#1E222B','<path d="M6.5 8.2l4 3.8-4 3.8"/><path d="M12.8 16.4h4.7"/>'],
+  browser:['#38BDF8','#0369A1','<circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6"/><path d="M12 4.2c2.3 2.2 3.6 4.9 3.6 7.8s-1.3 5.6-3.6 7.8c-2.3-2.2-3.6-4.9-3.6-7.8S9.7 6.4 12 4.2Z"/>'],
+  files:['#60A5FA','#2563EB','<path d="M4 7.3c0-.8.6-1.4 1.4-1.4h4.1l1.9 2.4h7.2c.8 0 1.4.6 1.4 1.4v7.9c0 .8-.6 1.4-1.4 1.4H5.4c-.8 0-1.4-.6-1.4-1.4Z"/><path d="M4 10.7h16"/>'],
+  apps:['#A78BFA','#6D28D9','<rect x="4.6" y="4.6" width="6" height="6" rx="1.7"/><rect x="13.4" y="4.6" width="6" height="6" rx="1.7"/><rect x="4.6" y="13.4" width="6" height="6" rx="1.7"/><rect x="13.4" y="13.4" width="6" height="6" rx="1.7"/>'],
+  control:['#94A3B8','#475569','<path d="M4.5 8.2h6.6m4.2 0h4.2M4.5 15.8h2.4m4.2 0h8.4"/><circle cx="13.5" cy="8.2" r="2.1"/><circle cx="9" cy="15.8" r="2.1"/>'],
+  models:['#C084FC','#7C3AED','<rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2"/><path d="M10 4.2v3M14 4.2v3M10 16.8v3M14 16.8v3M4.2 10h3M4.2 14h3M16.8 10h3M16.8 14h3"/>'],
+  memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
+  profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
+  fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
+  kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
+  soul:['#818CF8','#4F46E5','<circle cx="12" cy="12" r="7.8"/><path d="M12 4.2a3.9 3.9 0 0 1 0 7.8 3.9 3.9 0 0 0 0 7.8"/><circle cx="12" cy="8.1" r=".95" fill="#fff" stroke="none"/><circle cx="12" cy="15.9" r=".95" fill="#fff" stroke="none"/>'],
+  mcp:['#FBBF24','#D97706','<path d="M9.2 4.4v3.4M14.8 4.4v3.4"/><path d="M7 7.8h10v3.2a5 5 0 0 1-10 0Z"/><path d="M12 16v3.6"/>'],
+  telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
+  logs:['#A8A29E','#57534E','<path d="M7 4.6h6.8l3.8 3.8v11H7Z"/><path d="M13.6 4.8v3.8h3.8"/><path d="M9.6 12.6h4.8M9.6 15.6h4.8"/>'],
+  tasks:['#F87171','#DC2626','<circle cx="12" cy="12" r="7.8"/><path d="M12 7.6V12l3 1.8"/>'],
+  skills:['#34D399','#059669','<path d="M5.4 5.6c0-.9.7-1.6 1.6-1.6h11.6v14.4H7a1.6 1.6 0 0 0-1.6 1.6Z"/><path d="M5.4 5.6V20M9.3 8h5.4"/>'],
+  policies:['#7C8CA3','#3A4759','<path d="M12 4.2 18.8 6.6v5c0 4-2.7 6.9-6.8 8.2-4.1-1.3-6.8-4.2-6.8-8.2v-5Z"/><path d="M9.3 12l1.9 1.9 3.5-3.7"/>'],
+  store:['#3B82F6','#1E40AF','<path d="M6.2 8.6h11.6l-1 10.8H7.2Z"/><path d="M9.1 8.6V7.2a2.9 2.9 0 0 1 5.8 0v1.4"/>'],
+  studio:['#FB7185','#E11D48','<path d="M14.9 6.1a4 4 0 0 0-5.3 5L4.5 16.2l3.3 3.3 5.1-5.1a4 4 0 0 0 5-5.3l-2.7 2.7-2-2Z"/>'],
+  themes:['#F472B6','#DB2777','<path d="M12 4.2a7.8 7.8 0 1 0 0 15.6c1.2 0 1.9-.7 1.9-1.7 0-.6-.3-1-.7-1.4-.3-.4-.5-.7-.5-1.1 0-.9.8-1.6 1.9-1.6h1.6a3.5 3.5 0 0 0 3.5-3.4C19.6 6.9 16.1 4.2 12 4.2Z"/><circle cx="8.2" cy="9" r=".9" fill="#fff" stroke="none"/><circle cx="12" cy="7.4" r=".9" fill="#fff" stroke="none"/><circle cx="15.8" cy="9" r=".9" fill="#fff" stroke="none"/><circle cx="7.6" cy="13" r=".9" fill="#fff" stroke="none"/>'],
+  personalize:['#2DD4BF','#0EA5E9','<rect x="4" y="5.2" width="16" height="13.6" rx="2"/><circle cx="9" cy="9.8" r="1.5"/><path d="M4.4 16.2l4.3-3.8 3.4 2.9 3-2.5 4.5 3.6"/>'],
+  snapshots:['#67E8F9','#0E7490','<path d="M5.4 5.6v3.8h3.8"/><path d="M5.7 9.2A7.8 7.8 0 1 1 4.2 12"/><path d="M12 8.6V12l2.6 1.6"/>'],
+  tokens:['#86EFAC','#16A34A','<path d="M5.2 19.4v-5.6M9.8 19.4V9.4M14.4 19.4v-7.6M19 19.4V5.2"/>'],
+  settings:['#9CA3AF','#4B5563','<circle cx="12" cy="12" r="3.1"/><path d="M12 3.8v2.4M12 17.8v2.4M20.2 12h-2.4M6.2 12H3.8M17.8 6.2l-1.7 1.7M7.9 16.1l-1.7 1.7M17.8 17.8l-1.7-1.7M7.9 7.9 6.2 6.2"/>'],
+  about:['#5EEAD4','#0D9488','<path d="M12 4.8 19.4 18.2H4.6Z"/><circle cx="12" cy="9.6" r="1" fill="#fff" stroke="none"/>'],
+  docs:['#D9A66C','#A16207','<path d="M12 6.6C10.6 5.5 8.7 4.9 6.6 4.9c-.9 0-1.8.1-2.6.4v13c.8-.3 1.7-.4 2.6-.4 2.1 0 4 .6 5.4 1.7 1.4-1.1 3.3-1.7 5.4-1.7.9 0 1.8.1 2.6.4v-13c-.8-.3-1.7-.4-2.6-.4-2.1 0-4 .6-5.4 1.7Z"/><path d="M12 6.6v13"/>'],
+};
+function appIcon(id,px,cls){
+  px=px||46;
+  const st=`width:${px}px;height:${px}px`;
+  const ic=ICONS[id];
+  if(ic)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:linear-gradient(180deg,${ic[0]},${ic[1]})">`+
+    `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ic[2]}</svg></span>`;
+  const a=(APPS_READY&&APPS[id])||null;   // APPS is a const in TDZ until defined — gate on APPS_READY first
+  const emoji=((a&&a.icon)||'').trim();
+  if(emoji)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(id)}">`+
+    `<span class="em" style="font-size:${Math.round(px*.5)}px">${emoji}</span></span>`;
+  const ch=((a&&a.title)||id).replace(/^ua_/,'').trim().charAt(0).toUpperCase()||'?';
+  return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(id)}">`+
+    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${ch}</span></span>`;
+}
+function emojiIcon(emoji,px,cls){
+  return `<span class="aicon${cls?' '+cls:''}" style="width:${px}px;height:${px}px;background:linear-gradient(180deg,#3f4653,#242a34)">`+
+    `<span class="em" style="font-size:${Math.round(px*.5)}px">${emoji||'▭'}</span></span>`;
+}
+
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
 const THEMES={
   agentos:{label:'AgentOS (teal)',mode:'dark',v:{bg:'#0b0d10',bg2:'#111419',bg3:'#171b22',bg4:'#1e242e',line:'#232a35',txt:'#e6ebf2',dim:'#8a94a6',dim2:'#5c6577',acc:'#5eead4',acc2:'#22d3ee',warn:'#fbbf24',err:'#f87171',ok:'#4ade80',glass:'rgba(17,20,25,.82)'}},
-  ubuntu:{label:'Ubuntu (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
-  'ubuntu-light':{label:'Ubuntu (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
+  ubuntu:{label:'Ember (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
+  'ubuntu-light':{label:'Ember (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
   dracula:{label:'Dracula',mode:'dark',v:{bg:'#191a21',bg2:'#21222c',bg3:'#282a36',bg4:'#343746',line:'#3b3d4d',txt:'#f8f8f2',dim:'#b8bcc8',dim2:'#6272a4',acc:'#bd93f9',acc2:'#ff79c6',warn:'#f1fa8c',err:'#ff5555',ok:'#50fa7b',glass:'rgba(33,34,44,.86)'}},
   nord:{label:'Nord',mode:'dark',v:{bg:'#242933',bg2:'#2e3440',bg3:'#3b4252',bg4:'#434c5e',line:'#4c566a',txt:'#eceff4',dim:'#d8dee9',dim2:'#7b88a1',acc:'#88c0d0',acc2:'#81a1c1',warn:'#ebcb8b',err:'#bf616a',ok:'#a3be8c',glass:'rgba(46,52,64,.86)'}},
-  aero:{label:'Aero (glass)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap',family:'Space Grotesk'},
+  aero:{label:'Frost (glass)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap',family:'Space Grotesk'},
     v:{bg:'#141628',bg2:'#1b2036',bg3:'#222844',bg4:'#2b3352',line:'#3a4470',txt:'#eef1f8',dim:'#aab2c8',dim2:'#6b7699',acc:'#7aa2f7',acc2:'#b892f6',warn:'#f6c177',err:'#f26d6d',ok:'#7bd88f',glass:'rgba(28,32,52,.62)'},
     css:`#desktop{background:radial-gradient(1200px 700px at 70% 110%,rgba(150,90,220,.42),transparent 60%),radial-gradient(900px 600px at 15% -10%,rgba(70,120,230,.42),transparent 55%),linear-gradient(170deg,#181c30,#141628 45%,#201a33)}
 #taskbar{background:rgba(20,24,40,.5);backdrop-filter:blur(24px)}
 .win{background:rgba(28,32,52,.66)!important;backdrop-filter:blur(26px);border:1px solid rgba(255,255,255,.12)}
 .win .ttl{background:rgba(255,255,255,.05)}
-.dicon .dimg{box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.28)}
+.dicon .aicon{box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.28)}
 .widget{border:1px solid rgba(255,255,255,.12)}`},
   field:{label:'Field (warm light)',mode:'light',
     v:{bg:'#f6f2e9',bg2:'#fffdf7',bg3:'#f1ece0',bg4:'#e9e2d2',line:'#e4dcc9',txt:'#2b2620',dim:'#6f6656',dim2:'#8a8172',acc:'#b0693a',acc2:'#c98a4a',warn:'#b98900',err:'#c0492c',ok:'#5a8a3c',glass:'rgba(255,253,247,.92)'},
@@ -612,16 +742,16 @@ const THEMES={
 #taskbar{background:#fffdf7;border-top:1px solid #e4dcc9}
 .win{background:#fffdf7!important;border:1px solid #e4dcc9}
 .win .ttl{background:#f7f2e6}
-.dicon .dimg{box-shadow:0 3px 10px rgba(60,50,30,.14),inset 0 1px 0 rgba(255,255,255,.5)}`},
+.dicon .aicon{box-shadow:0 3px 10px rgba(60,50,30,.14),inset 0 1px 0 rgba(255,255,255,.5)}`},
   shell:{label:'Shell (terminal)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap',family:'JetBrains Mono'},
     v:{bg:'#0a0e0b',bg2:'#0d130f',bg3:'#111a13',bg4:'#16231a',line:'#1e3323',txt:'#a7c4ad',dim:'#6f9578',dim2:'#46614d',acc:'#86efac',acc2:'#4ade80',warn:'#e3d34d',err:'#f87171',ok:'#4ade80',glass:'rgba(13,19,15,.9)'},
     css:`#desktop{background:#070a08}
 #taskbar{background:#0a0e0b;border-top:1px solid #1e3323}
 .win{background:#0a0e0b!important;border:1px solid #1e3323}
 .win .ttl{background:#0d130f}
-.dicon .dimg{border-radius:7px}
+.dicon .aicon{border-radius:7px}
 *{letter-spacing:.1px}`},
-  jarvis:{label:'Jarvis (Voice OS)',mode:'dark',exp:'jarvis',font:{url:'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap',family:'IBM Plex Mono'},
+  jarvis:{label:'Aura (Voice OS)',mode:'dark',exp:'jarvis',font:{url:'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap',family:'IBM Plex Mono'},
     v:{bg:'#03060c',bg2:'#061019',bg3:'#0a1722',bg4:'#10222e',line:'#15353c',txt:'#c8e6f2',dim:'#6fa8b8',dim2:'#3d6a75',acc:'#5eead4',acc2:'#22d3ee',warn:'#f6c177',err:'#f87171',ok:'#4ade80',glass:'rgba(4,14,20,.78)'},
     css:`#desktop{background:radial-gradient(900px 600px at 72% 55%,rgba(30,74,94,.5),transparent 60%),linear-gradient(160deg,#040810,#03060c 60%,#051018)}
 #taskbar{background:rgba(4,12,18,.72);backdrop-filter:blur(14px);border-top:1px solid rgba(94,234,212,.16)}
@@ -631,7 +761,7 @@ const THEMES={
 .win .tname{font-family:'Orbitron',sans-serif;letter-spacing:.12em;font-size:11px;text-transform:uppercase}
 #welcome h1,#startbtn{font-family:'Orbitron',sans-serif;letter-spacing:.12em}
 .widget{border:1px solid rgba(94,234,212,.18);box-shadow:0 0 26px rgba(94,234,212,.07)}
-.dicon .dimg{border:1px solid rgba(94,234,212,.2);box-shadow:0 0 18px rgba(94,234,212,.16),inset 0 1px 0 rgba(255,255,255,.14)}
+.dicon .aicon{border:1px solid rgba(94,234,212,.2);box-shadow:0 0 18px rgba(94,234,212,.16),inset 0 1px 0 rgba(255,255,255,.14)}
 .dicon .dlbl{letter-spacing:.04em}
 .tbwin.on{box-shadow:inset 0 -2px 0 var(--acc),0 0 14px rgba(94,234,212,.25)}`},
 };
@@ -651,15 +781,31 @@ function applyThemeObj(t){
   let st=document.getElementById('theme-extra');
   if(!st){st=document.createElement('style');st.id='theme-extra';document.head.appendChild(st)}
   st.textContent=t.css||'';
-  setExperience(t.exp||'standard');
+  setExperience(t.shell?'custom':(t.exp||'standard'),t.shell);
 }
 
 /* ================= experience shells ================= */
 let EXPERIENCE='standard';
-function setExperience(exp){
-  if(exp===EXPERIENCE)return;
+function setExperience(exp,shellHtml){
+  const cs=$('#custom-shell');
+  if(exp==='custom'&&cs){
+    // An AI-designed shell fully replaces the desktop. It runs in a same-origin iframe:
+    // its scripts get their own global scope (no collisions with the desktop's globals)
+    // while keeping full access to the REST API and the /ws websocket.
+    try{
+      cs.innerHTML='';
+      const f=document.createElement('iframe');
+      f.style.cssText='flex:1;width:100%;height:100%;border:none;background:var(--bg)';
+      cs.appendChild(f);
+      f.contentDocument.open();
+      f.contentDocument.write(shellHtml||'');
+      f.contentDocument.close();
+    }catch(e){cs.innerHTML='';toast('shell failed to load: '+e.message);exp='standard'}
+  }else if(cs){cs.innerHTML=''}
+  if(exp===EXPERIENCE&&exp!=='custom')return;
   EXPERIENCE=exp;
   document.body.classList.toggle('exp-jarvis',exp==='jarvis');
+  document.body.classList.toggle('exp-custom',exp==='custom');
   if(exp==='jarvis')buildJarvisShell();
   else{const sh=$('#jarvis-shell');if(sh){clearInterval(sh._t);sh.innerHTML=''}}
 }
@@ -669,7 +815,7 @@ function buildJarvisShell(){
   sh.innerHTML=`
     <button id="js-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
     <div id="js-top">
-      <div style="display:flex;align-items:center"><span class="brand">AGENTOS</span><span class="tag">JARVIS CORE</span></div>
+      <div style="display:flex;align-items:center"><span class="brand">AGENTOS</span><span class="tag">VOICE CORE</span></div>
       <div class="stats"><span>MCP <b id="js-mcp">–</b></span><span>MODEL <b id="js-model">–</b></span><span id="js-clock">–</span></div>
     </div>
     <div id="js-mid">
@@ -685,7 +831,7 @@ function buildJarvisShell(){
     <div id="js-bottom"><div id="js-ask">
       <span style="color:var(--acc);font-size:15px">⌕</span>
       <input id="js-input" placeholder="Ask ${esc(agentName())} or search apps… (Enter)">
-      <span class="mic" onclick="jarvisMode(true)">🎙</span>
+      <span class="mic" onclick="jarvisMode(true)">${svgMic(16)}</span>
     </div></div>`;
   // ring of app nodes
   const ring=$('#js-ring');
@@ -695,7 +841,7 @@ function buildJarvisShell(){
     const rx=50+Math.cos(ang)*34, ry=50+Math.sin(ang)*40;   // % of stage
     const n=document.createElement('div');n.className='js-node';
     n.style.left=rx+'%';n.style.top=ry+'%';
-    n.innerHTML=`<span class="g">${a.icon}</span><span class="n">${esc(a.title)}</span>`;
+    n.innerHTML=`${appIcon(id,36)}<span class="n">${esc(a.title)}</span>`;
     n.onclick=()=>openApp(id);
     ring.appendChild(n);
   });
@@ -790,13 +936,17 @@ function createWin(app){
   el.style.width=width+'px'; el.style.height=height+'px';
   el.style.left=Math.max(8,Math.min((dw-width)/2+off,dw-width-8))+'px';
   el.style.top=Math.max(8,Math.min((dh-height)/2-40+off,dh-height-8))+'px';
-  el.innerHTML=`<div class="ttl"><span class="ticon">${app.icon}</span><span class="tname">${esc(app.title)}</span>
-    <div class="tbtns"><button class="mn" title="minimize">–</button><button class="mx" title="maximize">▢</button><button class="cls" title="close">✕</button></div></div>
+  el.innerHTML=`<div class="ttl">
+    <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
+    <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
+    <span></span></div>
     <div class="wbody"></div>`;
   desk.appendChild(el);
 
   const tb=document.createElement('button'); tb.className='tbwin';
-  tb.innerHTML=`<span>${app.icon}</span><span class="tl">${esc(app.title)}</span>`;
+  if(DOCK.includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
+  tb.dataset.tip=app.title;
+  tb.innerHTML=appIcon(app.id,46);
   $('#tbwins').appendChild(tb);
 
   const w={id:app.id,app,el,tb,min:false,max:false,prev:null,desk:curDesk};
@@ -824,8 +974,8 @@ function focusWin(w){
 function minimizeWin(w){w.min=true;w.el.style.display='none';w.tb.classList.add('mini');w.tb.classList.remove('on');
   // hand focus to the topmost remaining window
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
-  if(top)focusWin(top);}
-function restoreWin(w){w.min=false;w.el.style.display='';w.tb.classList.remove('mini')}
+  if(top)focusWin(top);else if(typeof buildDock==='function')buildDock();}
+function restoreWin(w){w.min=false;w.el.style.display='';w.tb.classList.remove('mini');if(typeof buildDock==='function')buildDock()}
 function toggleMax(w){
   if(w.max){w.el.classList.remove('maxed');w.max=false;
     if(w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;w.el.style.width=w.prev.w;w.el.style.height=w.prev.h}}
@@ -862,45 +1012,48 @@ function refreshApp(id){const w=WM.wins.get(id);if(w)w.app.render(w.el.querySele
 
 /* ================= apps ================= */
 const APPS={
-  chat:{id:'chat',title:'Agent Chat',icon:'💬',w:920,h:620,desc:'Talk to your machine',
+  chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
     render:renderChat,
     onClose(w){
       if(running){minimizeWin(w);toast('agent is still working — window minimized');return false}
       feed=chatEl=input=sendBtn=null;curBody=null;curThink=null;curText='';
       return true;
     }},
-  taskmgr:{id:'taskmgr',title:'Task Manager',icon:'📊',w:660,h:560,desc:'CPU, memory, processes',
+  taskmgr:{id:'taskmgr',title:'Task Manager',icon:'',w:660,h:560,desc:'CPU, memory, processes',
     render:renderTaskMgr,onClose(w){clearInterval(w.timer);return true}},
-  terminal:{id:'terminal',title:'Terminal',icon:'🖥',w:860,h:520,desc:'A real shell on this machine',
+  terminal:{id:'terminal',title:'Terminal',icon:'',w:860,h:520,desc:'A real shell on this machine',
     render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true}},
-  browser:{id:'browser',title:'Web',icon:'🌐',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
-  files:{id:'files',title:'Files',icon:'🗂',w:720,h:560,desc:'Your workspace files & reports',render:renderFiles},
-  apps:{id:'apps',title:'Applications',icon:'🗔',w:760,h:600,desc:'All your installed Ubuntu apps',render:renderNativeApps},
-  control:{id:'control',title:'Control Center',icon:'🎛',w:520,h:520,desc:'Sound, network, battery & system settings',render:renderControl},
-  models:{id:'models',title:'Model Manager',icon:'🧠',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
-  memory:{id:'memory',title:'Memory',icon:'◈',w:560,h:480,desc:'What the agent remembers',render:renderMemory},
-  kg:{id:'kg',title:'Knowledge Graph',icon:'🕸',w:820,h:600,desc:'What the agent knows, as a graph',
+  browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
+  files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',render:renderFiles},
+  apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
+  control:{id:'control',title:'Quick Settings',icon:'',w:520,h:520,desc:'Sound, network, battery & system settings',render:renderControl},
+  models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
+  memory:{id:'memory',title:'Memory',icon:'◈',w:640,h:540,desc:'User & session memory — what the agent remembers',render:renderMemory},
+  profile:{id:'profile',title:'Profile',icon:'',w:700,h:620,desc:'Everything the agent knows about you, in one place',render:renderProfile},
+  fabric:{id:'fabric',title:'Team',icon:'',w:860,h:660,desc:'Subagents, visual workflows & data-plane observability',render:renderFabric},
+  docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
+  kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
     render:renderKG,onClose(w){cancelAnimationFrame(w.raf);return true}},
-  soul:{id:'soul',title:'Soul',icon:'☯',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
-  mcp:{id:'mcp',title:'MCP Servers',icon:'🔌',w:680,h:600,desc:'External tools via Model Context Protocol',render:renderMCP},
-  telegram:{id:'telegram',title:'Telegram',icon:'✈️',w:560,h:560,desc:'Chat with your machine from anywhere',render:renderTelegram},
-  logs:{id:'logs',title:'Logs',icon:'📜',w:760,h:560,desc:'Everything the system did',
+  soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
+  mcp:{id:'mcp',title:'MCP Servers',icon:'',w:680,h:600,desc:'External tools via Model Context Protocol',render:renderMCP},
+  telegram:{id:'telegram',title:'Telegram',icon:'',w:560,h:560,desc:'Chat with your machine from anywhere',render:renderTelegram},
+  logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
     render:renderLogs,onClose(w){clearInterval(w.timer);return true}},
-  tasks:{id:'tasks',title:'Scheduler',icon:'⏱',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
-  skills:{id:'skills',title:'Skills',icon:'🧩',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
-  policies:{id:'policies',title:'Policies',icon:'🛡',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
-  store:{id:'store',title:'App Store',icon:'🛍',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
-  studio:{id:'studio',title:'App Studio',icon:'🧰',w:720,h:600,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
-  themes:{id:'themes',title:'Themes',icon:'🎨',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
-  personalize:{id:'personalize',title:'Personalize',icon:'🖼',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
-  snapshots:{id:'snapshots',title:'Snapshots',icon:'🕰',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
-  tokens:{id:'tokens',title:'Token Analytics',icon:'📈',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
-  settings:{id:'settings',title:'Settings',icon:'⚙',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
+  tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
+  skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
+  policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
+  store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
+  studio:{id:'studio',title:'App Studio',icon:'',w:720,h:600,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
+  themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
+  personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
+  snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
+  tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
+  settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','skills','studio','mcp','telegram','policies','logs','tokens','tasks','themes','personalize','snapshots','settings','about'];
+const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','mcp','telegram','policies','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -908,7 +1061,7 @@ async function loadUserApps(){
     if(!USERAPPS.find(a=>'ua_'+a.id===k)){const w=WM.wins.get(k);if(w)closeWin(w);delete APPS[k]}
   });
   USERAPPS.forEach(a=>{
-    APPS['ua_'+a.id]={id:'ua_'+a.id,title:a.name,icon:a.icon||'🧰',w:640,h:520,desc:a.description||'user app',
+    APPS['ua_'+a.id]={id:'ua_'+a.id,title:a.name,icon:a.icon||'',w:640,h:520,desc:a.description||'user app',
       render(body){body.innerHTML=`<iframe src="/api/apps/${a.id}/page" style="flex:1;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`}};
   });
   rebuildLaunchers();
@@ -928,50 +1081,208 @@ function rebuildLaunchers(){
   launcherIds().forEach((id,i)=>{
     const a=APPS[id];if(!a)return;
     const d=document.createElement('div');d.className='dicon';d.tabIndex=0;d.dataset.id=id;
-    d.innerHTML=`<div class="dimg" style="background:${tileBg(id)}">${a.icon}</div><div class="dlbl">${esc(a.title)}</div>`;
+    d.innerHTML=`${appIcon(id,54)}<div class="dlbl">${esc(a.title)}</div>`;
     // position: saved, else a default column-major grid down the left edge
-    const pos=ICONPOS[id]||{x:14,y:14+i%8*94,_c:Math.floor(i/8)};
-    if(!ICONPOS[id]&&pos._c)pos.x=14+pos._c*96;
-    d.style.left=(pos.x||14)+'px';d.style.top=(pos.y||14)+'px';
+    if(!ICONPOS[id])ICONPOS[id]={x:GRID.ox+Math.floor(i/8)*GRID.cx,y:GRID.oy+(i%8)*GRID.cy};
+    d.style.left=ICONPOS[id].x+'px';d.style.top=ICONPOS[id].y+'px';
     d.onkeydown=e=>{if(e.key==='Enter')openApp(id)};
     iconDrag(d,id);
     box.appendChild(d);
   });
+  renderBento();
+  ensureMarquee();
   const sm=$('#smapps');sm.innerHTML='';
   launcherIds().forEach(id=>{
     const a=APPS[id];if(!a)return;
-    const b=document.createElement('button');b.className='smapp';
-    b.innerHTML=`<span class="i" style="background:${tileBg(id)};border-color:rgba(255,255,255,.08)">${a.icon}</span><span><div class="n">${esc(a.title)}</div><div class="d">${esc(a.desc)}</div></span>`;
+    const b=document.createElement('button');b.className='smapp';b.title=a.desc||'';
+    b.innerHTML=`${appIcon(id,48)}<span class="n">${esc(a.title)}</span>`;
     b.onclick=()=>{toggleStart(false);openApp(id)};
     sm.appendChild(b);
   });
 }
+/* ===== icon layout engine: grid snap, multi-select, marquee, arrangements ===== */
+const GRID={ox:14,oy:14,cx:96,cy:104};
+const SEL=new Set();          // selected icon ids
+function iconEls(){return [...document.querySelectorAll('#icons .dicon')]}
+function iconEl(id){return document.querySelector(`.dicon[data-id="${CSS.escape(id)}"]`)}
+function setSel(id,on){const el=iconEl(id);if(!el)return;
+  if(on){SEL.add(id);el.classList.add('sel')}else{SEL.delete(id);el.classList.remove('sel')}}
+function clearSel(){SEL.clear();document.querySelectorAll('.dicon.sel').forEach(x=>x.classList.remove('sel'))}
+function snapXY(x,y){
+  const desk=$('#desktop');
+  let gx=GRID.ox+Math.round((x-GRID.ox)/GRID.cx)*GRID.cx;
+  let gy=GRID.oy+Math.round((y-GRID.oy)/GRID.cy)*GRID.cy;
+  gx=Math.max(GRID.ox,Math.min(gx,desk.clientWidth-92));
+  gy=Math.max(GRID.oy,Math.min(gy,desk.clientHeight-100));
+  return {x:gx,y:gy};
+}
+function occupiedMap(excludeIds){
+  const m=new Set();
+  launcherIds().forEach(id=>{if(excludeIds.has(id))return;const p=ICONPOS[id];if(p)m.add(p.x+','+p.y)});
+  return m;
+}
+function freeCellNear(x,y,occ){
+  // nearest free snapped cell, scanning outward ring by ring
+  for(let r=0;r<14;r++){
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+      const c=snapXY(x+dx*GRID.cx,y+dy*GRID.cy);
+      const k=c.x+','+c.y;
+      if(!occ.has(k)){occ.add(k);return c}
+    }
+  }
+  return snapXY(x,y);
+}
+function settle(el){el.classList.add('settle');setTimeout(()=>el.classList.remove('settle'),280)}
+function applyIconPositions(animate){
+  iconEls().forEach(el=>{
+    const p=ICONPOS[el.dataset.id];if(!p)return;
+    if(animate)settle(el);
+    el.style.left=p.x+'px';el.style.top=p.y+'px';
+  });
+  renderBento();
+}
 function iconDrag(d,id){
   d.addEventListener('pointerdown',e=>{
     if(e.button!==0)return;
-    const sx=e.clientX,sy=e.clientY,ox=d.offsetLeft,oy=d.offsetTop,desk=$('#desktop');
-    let moved=false;
+    e.stopPropagation();                     // an icon press never starts a marquee
+    const desk=$('#desktop');
+    d._moved=false;
+    // dragging an unselected icon (no modifier) makes it the sole selection;
+    // dragging a selected icon moves the whole selection together
+    if(!SEL.has(id)&&!(e.ctrlKey||e.metaKey)){clearSel();setSel(id,true)}
+    if(!SEL.has(id)&&(e.ctrlKey||e.metaKey)){setSel(id,true);d._addedOnDown=true}else d._addedOnDown=false;
+    const members=[...SEL].map(mid=>({mid,el:iconEl(mid)})).filter(m=>m.el);
+    const sx=e.clientX,sy=e.clientY;
+    members.forEach(m=>{m.ox=m.el.offsetLeft;m.oy=m.el.offsetTop});
     d.setPointerCapture(e.pointerId);
     const move=ev=>{
-      if(!moved&&Math.hypot(ev.clientX-sx,ev.clientY-sy)<5)return;
-      moved=true;d.classList.add('dragging');
-      let x=Math.max(0,Math.min(ox+ev.clientX-sx,desk.clientWidth-88));
-      let y=Math.max(0,Math.min(oy+ev.clientY-sy,desk.clientHeight-90));
-      d.style.left=x+'px';d.style.top=y+'px';
+      if(!d._moved&&Math.hypot(ev.clientX-sx,ev.clientY-sy)<5)return;
+      d._moved=true;
+      members.forEach(m=>{
+        m.el.classList.add('dragging');
+        const x=Math.max(0,Math.min(m.ox+ev.clientX-sx,desk.clientWidth-92));
+        const y=Math.max(0,Math.min(m.oy+ev.clientY-sy,desk.clientHeight-100));
+        m.el.style.left=x+'px';m.el.style.top=y+'px';
+      });
     };
     const up=()=>{
       d.removeEventListener('pointermove',move);d.removeEventListener('pointerup',up);
-      d.classList.remove('dragging');
-      if(moved){ICONPOS[id]={x:d.offsetLeft,y:d.offsetTop};saveIconPos();}
+      if(!d._moved)return;
+      const movedIds=new Set(members.map(m=>m.mid));
+      const occ=occupiedMap(movedIds);
+      members.forEach(m=>{                    // snap each to the nearest free cell, animated
+        m.el.classList.remove('dragging');
+        const c=freeCellNear(m.el.offsetLeft,m.el.offsetTop,occ);
+        settle(m.el);
+        m.el.style.left=c.x+'px';m.el.style.top=c.y+'px';
+        ICONPOS[m.mid]={x:c.x,y:c.y};
+      });
+      saveIconPos();
     };
     d.addEventListener('pointermove',move);d.addEventListener('pointerup',up);
   });
-  d.onclick=e=>{document.querySelectorAll('.dicon.sel').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');e.stopPropagation()};
+  d.onclick=e=>{
+    e.stopPropagation();
+    if(d._moved)return;                      // a drag is not a click
+    if(e.ctrlKey||e.metaKey){if(!d._addedOnDown)setSel(id,!SEL.has(id))}
+    else{clearSel();setSel(id,true)}
+  };
   d.ondblclick=()=>openApp(id);
+}
+/* rubber-band selection on empty desktop space */
+function ensureMarquee(){
+  const icons=$('#icons');
+  if(!document.getElementById('marquee')){
+    const mq=document.createElement('div');mq.id='marquee';icons.appendChild(mq);
+  }
+  if(icons._mqWired)return;
+  icons._mqWired=true;
+  icons.addEventListener('pointerdown',e=>{
+    if(e.target!==icons||e.button!==0)return;
+    const r=icons.getBoundingClientRect();
+    const sx=e.clientX-r.left,sy=e.clientY-r.top;
+    let active=false;
+    icons.setPointerCapture(e.pointerId);
+    const move=ev=>{
+      const x=ev.clientX-r.left,y=ev.clientY-r.top;
+      if(!active&&Math.hypot(x-sx,y-sy)<4)return;
+      active=true;
+      const L=Math.min(sx,x),T=Math.min(sy,y),W=Math.abs(x-sx),H=Math.abs(y-sy);
+      const mq=$('#marquee');if(!mq)return;
+      mq.style.display='block';
+      mq.style.left=L+'px';mq.style.top=T+'px';mq.style.width=W+'px';mq.style.height=H+'px';
+      iconEls().forEach(el=>{
+        const hit=el.offsetLeft<L+W&&el.offsetLeft+el.offsetWidth>L&&el.offsetTop<T+H&&el.offsetTop+el.offsetHeight>T;
+        el.classList.toggle('sel',hit);
+        if(hit)SEL.add(el.dataset.id);else SEL.delete(el.dataset.id);
+      });
+    };
+    const up=()=>{
+      icons.removeEventListener('pointermove',move);icons.removeEventListener('pointerup',up);
+      const mq=$('#marquee');if(mq)mq.style.display='none';
+      if(!active)clearSel();                 // a plain click on empty space clears the selection
+    };
+    icons.addEventListener('pointermove',move);icons.addEventListener('pointerup',up);
+  });
+}
+/* arrangements: auto grid, sort by name, bento groups */
+function arrangeIcons(byName){
+  const desk=$('#desktop');
+  const rows=Math.max(1,Math.floor((desk.clientHeight-GRID.oy-6)/GRID.cy));
+  let ids=launcherIds().filter(id=>APPS[id]);
+  if(byName)ids=ids.slice().sort((a,b)=>APPS[a].title.localeCompare(APPS[b].title));
+  ids.forEach((id,i)=>{ICONPOS[id]={x:GRID.ox+Math.floor(i/rows)*GRID.cx,y:GRID.oy+(i%rows)*GRID.cy}});
+  localStorage.removeItem('bentoBoxes');
+  saveIconPos();applyIconPositions(true);
+  toast(byName?'icons sorted by name':'icons auto-arranged');
+}
+const BENTO_GROUPS=[
+  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Create',['store','studio','themes','personalize']],
+  ['Intelligence',['models','memory','kg','soul','profile']],
+  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['System',['taskmgr','control','settings','policies','snapshots','logs','tokens']],
+  ['Library',['docs','about']],
+];
+function arrangeBento(){
+  const desk=$('#desktop'),PADX=16,PADT=32,PADB=12,GAP=18;
+  const groups=BENTO_GROUPS.map(([label,ids])=>[label,ids.filter(id=>APPS[id])]).filter(g=>g[1].length);
+  const ua=launcherIds().filter(id=>id.startsWith('ua_')&&APPS[id]);
+  if(ua.length)groups.push(['Your apps',ua]);
+  const known=new Set(groups.flatMap(g=>g[1]));
+  const rest=launcherIds().filter(id=>APPS[id]&&!known.has(id));
+  if(rest.length)groups.push(['More',rest]);
+  const boxes=[];
+  let x=GRID.ox,y=GRID.oy,rowH=0;
+  const maxW=desk.clientWidth-16;
+  groups.forEach(([label,ids])=>{
+    const cols=Math.min(ids.length,ids.length<=4?2:3);
+    const rows=Math.ceil(ids.length/cols);
+    const w=PADX*2+cols*GRID.cx-8, h=PADT+PADB+rows*GRID.cy-8;
+    if(x+w>maxW&&x>GRID.ox){x=GRID.ox;y+=rowH+GAP;rowH=0}
+    ids.forEach((id,i)=>{ICONPOS[id]={x:x+PADX+(i%cols)*GRID.cx,y:y+PADT+Math.floor(i/cols)*GRID.cy}});
+    boxes.push({label,x,y,w,h});
+    x+=w+GAP;rowH=Math.max(rowH,h);
+  });
+  localStorage.setItem('bentoBoxes',JSON.stringify(boxes));
+  saveIconPos();applyIconPositions(true);
+  toast('bento layout applied');
+}
+function renderBento(){
+  document.querySelectorAll('#icons .bento').forEach(b=>b.remove());
+  let boxes=[];try{boxes=JSON.parse(localStorage.getItem('bentoBoxes')||'[]')}catch(e){}
+  const box=$('#icons');if(!box)return;
+  boxes.forEach(b=>{
+    const d=document.createElement('div');d.className='bento';
+    d.style.left=b.x+'px';d.style.top=b.y+'px';d.style.width=b.w+'px';d.style.height=b.h+'px';
+    d.innerHTML=`<span class="blbl">${esc(b.label)}</span>`;
+    box.prepend(d);
+  });
 }
 function buildDesktop(){
   rebuildLaunchers();
-  $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop'||e.target.id==='icons')document.querySelectorAll('.dicon.sel').forEach(x=>x.classList.remove('sel'))});
+  $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
   $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
   document.addEventListener('click',e=>{
     if(!e.target.closest('#startmenu'))toggleStart(false);
@@ -981,14 +1292,23 @@ function buildDesktop(){
     if(e.target.closest('.win'))return;
     e.preventDefault();
     const m=$('#ctxmenu');
-    m.innerHTML=`<button data-a="chat">💬 New chat</button><button data-a="taskmgr">📊 Task Manager</button>
-      <button data-a="studio">🧰 App Studio</button><button data-x="arrange">▦ Arrange widgets</button><hr>
-      <button data-a="personalize">🖼 Change wallpaper</button>
-      <button data-a="settings">⚙ Settings</button><button data-a="about">▲ About AgentOS</button>`;
+    m.innerHTML=`<button data-a="chat">New chat</button><button data-a="taskmgr">Task Manager</button>
+      <button data-a="studio">App Studio</button><hr>
+      <button data-x="arr-grid">Auto arrange icons</button>
+      <button data-x="arr-name">Sort icons by name</button>
+      <button data-x="arr-bento">Group icons (bento)</button>
+      <button data-x="arrange">Arrange widgets</button><hr>
+      <button data-a="personalize">Change wallpaper</button>
+      <button data-a="settings">Settings</button><button data-a="about">About AgentOS</button>`;
     m.querySelectorAll('button').forEach(b=>b.onclick=()=>{m.classList.remove('show');
-      if(b.dataset.x==='arrange')arrangeWidgets();else openApp(b.dataset.a)});
+      const x=b.dataset.x;
+      if(x==='arrange')arrangeWidgets();
+      else if(x==='arr-grid')arrangeIcons(false);
+      else if(x==='arr-name')arrangeIcons(true);
+      else if(x==='arr-bento')arrangeBento();
+      else openApp(b.dataset.a)});
     m.style.left=Math.min(e.clientX,innerWidth-200)+'px';
-    m.style.top=Math.min(e.clientY,innerHeight-190)+'px';
+    m.style.top=Math.min(e.clientY,innerHeight-290)+'px';
     m.classList.add('show');
   });
 }
@@ -1002,14 +1322,25 @@ function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{
     const a=APPS[id];if(!a)return;
-    const b=document.createElement('button');b.className='dockb';b.title=a.title;b.textContent=a.icon;
+    const b=document.createElement('button');b.className='dockb';b.dataset.tip=a.title;
+    b.innerHTML=appIcon(id,46);
     b.classList.toggle('running',WM.wins.has(id)&&!WM.wins.get(id).min);
     b.onclick=()=>openApp(id);
     b.oncontextmenu=e=>{e.preventDefault();DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('removed from dock')};
     box.appendChild(b);
   });
+  // a pinned app's open window lives on its dock tile, not as a second tile in #tbwins
+  WM.wins.forEach(w=>w.tb.classList.toggle('indock',DOCK.includes(w.id)));
+  updateDockSeps();
 }
-function pinToDock(id){if(!DOCK.includes(id)){DOCK.push(id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('📌 added to dock')}}
+function updateDockSeps(){
+  // the second separator only shows when something actually sits to its right
+  const seps=document.querySelectorAll('#taskbar .dsep');
+  const any=[...document.querySelectorAll('#tbwins .tbwin')].some(b=>!b.classList.contains('indock'))
+    ||($('#tbnative')&&$('#tbnative').children.length>0);
+  if(seps[1])seps[1].style.display=any?'':'none';
+}
+function pinToDock(id){if(!DOCK.includes(id)){DOCK.push(id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('added to dock')}}
 function tickClock(){
   const n=new Date();
   $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -1042,7 +1373,7 @@ function renderWidgets(){
 }
 function createWidgetEl(a){
   const el=document.createElement('div');el.className='widget';el.dataset.app=a.id;
-  el.innerHTML=`<div class="wgh"><span class="wgt">${a.icon||'🧰'} ${esc(a.name)}</span>
+  el.innerHTML=`<div class="wgh"><span class="wgt">${esc(a.name)}</span>
     <button class="rf" title="refresh">⟳</button><button class="op" title="open in window">⤢</button><button class="x" title="unpin">✕</button></div>
     <iframe src="/api/apps/${a.id}/page" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
   const ifr=el.querySelector('iframe');
@@ -1097,7 +1428,7 @@ function pinWidget(appId){
   if(WIDGETS.some(w=>w.app_id===appId&&(w.desk||1)===curDesk))return toast('already on this desktop');
   const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length;
   WIDGETS.push({app_id:appId,desk:curDesk,x:170+(n%3)*320,y:40+(n%2)*235,w:300,h:210});
-  renderWidgets();saveWidgets();toast('📌 pinned to Desktop '+curDesk);
+  renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk);
 }
 function unpinWidget(appId){
   WIDGETS=WIDGETS.filter(w=>!(w.app_id===appId&&(w.desk||1)===curDesk));
@@ -1208,7 +1539,7 @@ function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
-  ws.onclose=()=>{setStatus(false);setRunning(false);setTimeout(connect,1500)};
+  ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];setTimeout(connect,1500)};
   ws.onmessage=e=>handle(JSON.parse(e.data));
 }
 function setStatus(on){
@@ -1218,82 +1549,110 @@ function setStatus(on){
 }
 function handle(ev){
   if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
+  const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
   switch(ev.type){
     case 'conversation': currentConv=ev.id; loadConvs(); break;
-    case 'turn_start': break;
+    case 'turn_start':{
+      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
+      if(_cur)setRunning(true);
+      loadConvs(); break;}
     case 'text_delta':{
+      if(_s)_s.text+=ev.text;
+      if(!_cur)break;
       curText+=ev.text;
       if(JARVIS.busy){const r=$('#j-reply');if(r){r.textContent=curText;r.scrollTop=r.scrollHeight}}
       if(!curBody)startAssistant();
       if(curBody){curBody.innerHTML=md(curText);scrollDown()} break;}
     case 'thinking_delta':{
+      if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
+      const argStr=ev.name==='run_command'?(ev.args.command||''):JSON.stringify(ev.args);
+      if(_s){ // mirror into the buffer so switching chats mid-turn is lossless
+        if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
+        _s.text='';
+        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}">running</span></div><div class="out"></div></div>`;}
+      if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
       flushText();
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
-      const argStr=ev.name==='run_command'?(ev.args.command||''):JSON.stringify(ev.args);
       card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run">${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'tool_end':{
+      if(_s)_s.html=_s.html.replace(`class="tstat run" data-b="${ev.call_id}">running`,
+        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}">${ev.ok?'done':'failed'}`);
+      if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
         card.querySelector('.out').textContent=ev.output||'(no output)';
         if(!ev.ok)card.classList.add('open');}
       scrollDown(); break;}
     case 'approval_request':{
-      if(!curBody)startAssistant();
-      const target=curBody?curBody.parentNode:null;
-      if(!target){openApp('chat');}  // approval needs eyes — surface the chat window
       const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
       const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
-      box.innerHTML=`<div class="atitle">⚠ Approval needed</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">Always allow</button></div>`;
+      box.innerHTML=`<div class="atitle">Approval needed${_cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">Always allow</button></div>`;
       box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
       box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
       box.querySelector('.always').onclick=async()=>{
         const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
         await addPolicy('allow',pat);
         resolveApproval(ev.id,true);
-        toast('🛡 policy added: always allow "'+pat+'"');
+        toast('policy added: always allow "'+pat+'"');
       };
-      if(curBody)curBody.parentNode.insertBefore(box,curBody);
-      toast('⚠ approval needed'); scrollDown(); break;}
+      if(_cur&&feed){
+        if(!curBody)startAssistant();
+        if(curBody)curBody.parentNode.insertBefore(box,curBody);
+      }else{ // approval from a chat you're not looking at — float it, never deadlock
+        box.style.cssText='position:fixed;right:18px;bottom:70px;z-index:9999;max-width:440px;box-shadow:0 18px 50px rgba(0,0,0,.5)';
+        document.body.appendChild(box);
+        box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
+      }
+      toast('approval needed'); scrollDown(); break;}
     case 'error':{
+      if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
+        _s.html+='<div class="errmsg">'+esc(ev.message)+'</div>';}
+      if(!_cur){toast('chat error: '+ev.message);break}
       if(!curBody)startAssistant();
       if(!curBody){toast('error: '+ev.message);break}
       flushText();
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];}
+      if(!_cur){toast('✓ background chat finished');loadConvs();break}
       removeWorking();const reply=curText;
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
       else speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
-    case 'task_started': toast('⏱ background task running…'); break;
-    case 'task_finished': toast('⏱ task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
-    case 'wallpaper': loadWallpaper(); toast('🖼 wallpaper updated'); break;
-    case 'config': loadConfig().then(()=>{loadModels()}); toast('⚙ configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'task_started': toast('background task running…'); break;
+    case 'task_finished': toast('task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
+    case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
+    case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'telegram_chats': refreshApp('telegram'); break;
-    case 'apps': loadUserApps(); refreshApp('studio'); toast('🧰 app library updated'); break;
+    case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
+    case 'fabric_event': fabricLiveRefresh(); break;
+    case 'fabric_defs': refreshApp('fabric'); break;
+    case 'setup': location.reload(); break;
+    case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
-    case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('🎨 theme applied: '+(t.name||''));refreshApp('themes')} break;}
+    case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'files': refreshApp('files'); break;
     case 'models': refreshApp('models'); loadModels(); break;
-    case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':('⬇ '+ev.name+': '+ev.status);
-      if(ev.done){refreshApp('models');toast('🧠 '+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
+    case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);
+      if(ev.done){refreshApp('models');toast(''+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
     case 'telegram_in':{
-      toast('✈️ Telegram: '+ev.text); jarvisOn(3);
-      loadConvs(); if(feed&&currentConv===ev.conversation_id&&!running)openConv(currentConv); break;}
+      toast('Telegram: '+ev.text); jarvisOn(3);
+      loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
     case 'telegram_out':{
       jarvisOff();
-      loadConvs(); if(feed&&currentConv===ev.conversation_id&&!running)openConv(currentConv); break;}
+      loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
@@ -1328,18 +1687,18 @@ function renderChat(body){
       <div id="topbar">
         <select id="modelsel" title="Model"></select>
         <select id="autosel" title="Autonomy">
-          <option value="paranoid">🛡 Paranoid</option>
-          <option value="balanced">⚖ Balanced</option>
-          <option value="full">⚡ Full autonomy</option>
+          <option value="paranoid">Paranoid</option>
+          <option value="balanced">Balanced</option>
+          <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
-        <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">🧹 Clear session</button>
+        <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="combox">
           <textarea id="input" rows="1" placeholder="Ask, or tell it what to do on this machine…"></textarea>
-          <button id="mic" title="dictate (mic)">🎤</button>
+          <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
       </div>
@@ -1351,16 +1710,16 @@ function renderChat(body){
   input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';if(!running)sendBtn.disabled=!input.value.trim()});
   $('#newchat').onclick=newChat;
   $('#clearses').onclick=clearSession;
-  $('#mic').onclick=micToggle;
+  $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
   const tb=$('#ttsbtn');
-  const setTts=()=>{tb.textContent=VOICE.tts?'🔊 Voice on':'🔇 Voice off'};
+  const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
   tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
   $('#modelsel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_model:$('#modelsel').value})});
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
   loadModels();loadConfig();loadConvs();
   if(currentConv)openConv(currentConv);else showWelcome();
-  setRunning(running);
+  setRunning(RUNNING.has(currentConv));
 }
 function setRunning(r){running=r;
   $('#spin').classList.toggle('on',r);
@@ -1371,7 +1730,7 @@ function setRunning(r){running=r;
   sendBtn.disabled=r?false:!input.value.trim();
 }
 function send(){
-  if(running){ws.send(JSON.stringify({type:'abort'}));return}
+  if(running){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
   const text=input.value.trim(); if(!text||!ws||ws.readyState!==1)return;
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
@@ -1397,20 +1756,21 @@ async function loadConvs(){
   d.conversations.forEach(c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
-    el.querySelector('.t').textContent=c.title||'untitled';
+    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
     el.querySelector('.del').onclick=async e=>{e.stopPropagation();
+      if(RUNNING.has(c.id))return toast('that chat has a turn running — stop it first');
       await fetch('/api/conversations/'+c.id,{method:'DELETE'});
       if(currentConv===c.id)newChat(); else loadConvs();};
     box.appendChild(el);
   });
 }
 async function openConv(cid){
-  if(running&&cid!==currentConv)return toast('a turn is running — stop it first');
   currentConv=cid;
   const r=await fetch('/api/conversations/'+cid);const d=await r.json();
   if(!feed)return;
-  if(!running){curBody=null;curText='';}
+  curBody=null;curThink=null;curText='';
   feed.innerHTML='';
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
@@ -1427,34 +1787,49 @@ async function openConv(cid){
       const b=document.createElement('div');b.className='body';b.innerHTML=md(msg.content||'');m.appendChild(b);}
     feed.appendChild(m);
   });
+  // a turn is live in this conversation: replay its buffered stream and keep streaming
+  if(RUNNING.has(cid)){
+    startAssistant();
+    const s=STREAMS[cid];
+    if(s&&curBody){
+      if(s.html){const holder=document.createElement('div');holder.innerHTML=s.html;
+        [...holder.children].forEach(el=>{
+          const h=el.querySelector?.('.head');
+          if(h)h.onclick=()=>el.classList.toggle('open');
+          curBody.parentNode.insertBefore(el,curBody)});}
+      curText=s.text;curBody.innerHTML=md(curText);
+    }
+    showWorking();
+  }
+  setRunning(RUNNING.has(cid));
   loadConvs();scrollDown();
 }
 function newChat(){
-  if(running)return toast('a turn is running — stop it first');
-  currentConv=null;curBody=null;curText='';
+  currentConv=null;curBody=null;curThink=null;curText='';
   if(feed){feed.innerHTML='';showWelcome()}
+  setRunning(false);
   loadConvs();
 }
 async function clearSession(){
-  if(running)return toast('a turn is running — stop it first');
+  if(RUNNING.has(currentConv))return toast('a turn is running in this chat — stop it first');
   if(currentConv)await fetch('/api/conversations/'+currentConv+'/clear',{method:'POST'});
   curBody=null;curText='';
   if(feed){feed.innerHTML='';showWelcome()}
-  toast('🧹 session cleared');loadConvs();
+  toast('session cleared');loadConvs();
 }
 function showWelcome(){
   if(!feed)return;
   const w=document.createElement('div');w.id='welcome';
   w.innerHTML=`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>
   <div class="chips">
-    <button class="chip">🖥 How is this machine doing? Check CPU, memory, disk.</button>
-    <button class="chip">📁 What's taking up the most space in my home folder?</button>
-    <button class="chip">🌐 Fetch the top Hacker News stories and summarize them.</button>
-    <button class="chip">📝 Create a project folder with a starter README in my workspace.</button>
-    <button class="chip">⏱ Every morning at 9:00, check disk space and notify me if it's low.</button>
-    <button class="chip">🧠 Remember that I prefer concise answers.</button>
+    <button class="chip">How is this machine doing? Check CPU, memory, disk.</button>
+    <button class="chip">What's taking up the most space in my home folder?</button>
+    <button class="chip">Fetch the top Hacker News stories and summarize them.</button>
+    <button class="chip">Create a project folder with a starter README in my workspace.</button>
+    <button class="chip">Every morning at 9:00, check disk space and notify me if it's low.</button>
+    <button class="chip">Remember that I prefer concise answers.</button>
   </div>`;
-  w.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent.replace(/^\S+\s/,'');input.dispatchEvent(new Event('input'));input.focus()});
+  w.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent.trim();input.dispatchEvent(new Event('input'));input.focus()});
   feed.appendChild(w);
 }
 async function loadModels(){
@@ -1464,7 +1839,7 @@ async function loadModels(){
     sel.innerHTML='';
     if(!d.models.length){sel.innerHTML='<option value="">no models — check Settings</option>';return}
     d.models.forEach(m=>{const o=document.createElement('option');o.value=m.id;
-      o.textContent=(m.provider==='ollama'?'🖥 ':'☁ ')+m.name+' · '+m.provider;sel.appendChild(o)});
+      o.textContent=m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':'');sel.appendChild(o)});
     sel.value=d.default&&[...sel.options].some(o=>o.value===d.default)?d.default:d.models[0].id;
   }catch(e){}
 }
@@ -1478,54 +1853,57 @@ async function renderSettings(body){
   await loadConfig();
   const p=cfg.providers;
   body.innerHTML=`<div class="pad">
-    <div class="provbox"><div class="ptitle">🖥 Ollama (local)</div>
+    <div class="provbox"><div class="ptitle">Ollama (local)</div>
       <label>Base URL</label><input id="s-ollama-url" value="${esc(p.ollama.base_url)}"></div>
-    <div class="provbox"><div class="ptitle">☁ Anthropic <input type="checkbox" id="s-ant-on" ${p.anthropic.enabled?'checked':''}></div>
+    <div class="provbox"><div class="ptitle">Anthropic <input type="checkbox" id="s-ant-on" ${p.anthropic.enabled?'checked':''}></div>
       <label>API key ${p.anthropic._has_key?'(set)':''}</label><input id="s-ant-key" placeholder="sk-ant-…" value="${esc(p.anthropic.api_key||'')}">
       <label>Models (comma-separated)</label><input id="s-ant-models" value="${esc((p.anthropic.models||[]).join(', '))}"></div>
-    <div class="provbox"><div class="ptitle">☁ OpenAI <input type="checkbox" id="s-oai-on" ${p.openai.enabled?'checked':''}></div>
+    <div class="provbox"><div class="ptitle">OpenAI <input type="checkbox" id="s-oai-on" ${p.openai.enabled?'checked':''}></div>
       <label>API key ${p.openai._has_key?'(set)':''}</label><input id="s-oai-key" placeholder="sk-…" value="${esc(p.openai.api_key||'')}">
       <label>Models</label><input id="s-oai-models" value="${esc((p.openai.models||[]).join(', '))}"></div>
-    <div class="provbox"><div class="ptitle">🔀 OpenRouter — one key, hundreds of models <input type="checkbox" id="s-or-on" ${p.openrouter.enabled?'checked':''}></div>
+    <div class="provbox"><div class="ptitle">OpenRouter — one key, hundreds of models <input type="checkbox" id="s-or-on" ${p.openrouter.enabled?'checked':''}></div>
       <label>API key ${p.openrouter._has_key?'(set)':''}</label><input id="s-or-key" placeholder="sk-or-…" value="${esc(p.openrouter.api_key||'')}">
       <label>Models (comma-separated, e.g. anthropic/claude-sonnet-4.5)</label><input id="s-or-models" value="${esc((p.openrouter.models||[]).join(', '))}"></div>
-    <div class="provbox"><div class="ptitle">🔌 Custom (OpenAI-compatible) <input type="checkbox" id="s-cus-on" ${p.custom.enabled?'checked':''}></div>
+    <div class="provbox"><div class="ptitle">Custom (OpenAI-compatible) <input type="checkbox" id="s-cus-on" ${p.custom.enabled?'checked':''}></div>
       <label>Base URL (e.g. http://localhost:1234/v1)</label><input id="s-cus-url" value="${esc(p.custom.base_url||'')}">
       <label>API key (optional)</label><input id="s-cus-key" value="${esc(p.custom.api_key||'')}">
       <label>Models</label><input id="s-cus-models" value="${esc((p.custom.models||[]).join(', '))}"></div>
-    <div class="provbox"><div class="ptitle">🎨 Appearance</div>
+    <div class="provbox"><div class="ptitle">Appearance</div>
       <label>Theme</label>
       <div class="row">
         <select id="s-theme">${Object.entries(allThemes()).map(([k,t])=>`<option value="${k}" ${CURRENT_THEME===k?'selected':''}>${esc(t.label||t.name||k)}${t.custom?' ·':''}</option>`).join('')}</select>
-        <button class="endbtn" style="flex:0 0 auto" onclick="openApp('themes')">🎨 Themes</button>
+        <button class="endbtn" style="flex:0 0 auto" onclick="openApp('themes')">Themes</button>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="toggleFullscreen()">⛶ Toggle fullscreen (F11)</button>
-        <button class="endbtn" onclick="wpSystem()">🖼 Use system wallpaper</button>
+        <button class="endbtn" onclick="toggleFullscreen()">Toggle fullscreen (F11)</button>
+        <button class="endbtn" onclick="wpSystem()">Use system wallpaper</button>
       </div>
-      <p class="mut" style="margin-top:8px">Ubuntu themes use the Yaru palette. Fullscreen hides the host taskbar; the app also launches fullscreen via <code>agentos app</code>.</p>
+      <p class="mut" style="margin-top:8px">Fullscreen hides the host taskbar; the app also launches fullscreen via <code>agentos app</code>.</p>
     </div>
-    <div class="provbox"><div class="ptitle">📦 Sandbox (folder jail) <input type="checkbox" id="s-sb-on" ${(cfg.sandbox&&cfg.sandbox.enabled)?'checked':''}></div>
+    <div class="provbox"><div class="ptitle">Sandbox (folder jail) <input type="checkbox" id="s-sb-on" ${(cfg.sandbox&&cfg.sandbox.enabled)?'checked':''}></div>
       <label>Folder the agent &amp; Terminal can control</label>
       <input id="s-sb-root" value="${esc((cfg.sandbox&&cfg.sandbox.root)||cfg.workspace)}">
       <p class="mut" style="margin-top:8px">Commands and the Terminal run jailed to this folder (bubblewrap): everything else is read-only,
       other files in /home are hidden, and sessions always start here. File tools refuse paths outside it.</p>
     </div>
-    <div class="provbox"><div class="ptitle">🎙 Voice</div>
+    <div class="provbox"><div class="ptitle">Voice</div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="v-tts" style="width:auto" ${VOICE.tts?'checked':''}> Speak replies aloud (TTS)</label>
       <label>TTS voice</label><select id="v-voice"></select>
       <div class="row">
         <div><label>Speech rate</label><input id="v-rate" type="number" step="0.1" min="0.5" max="2" value="${VOICE.rate||1}"></div>
         <div><label>Mic language</label><input id="v-lang" value="${esc(VOICE.lang||'en-IN')}" placeholder="en-IN, en-US, hi-IN…"></div>
       </div>
-      <p class="mut" style="margin-top:8px">Dictate with the 🎤 button in chat; toggle speech with 🔊 in the chat toolbar.</p>
+      <p class="mut" style="margin-top:8px">Dictate with the button in chat; toggle speech with in the chat toolbar.</p>
     </div>
     <div class="row">
       <div><label>Agent name</label><input id="s-name" value="${esc(cfg.agent_name||'Aria')}"></div>
       <div><label>Workspace directory</label><input id="s-workspace" value="${esc(cfg.workspace)}"></div>
       <div><label>Max steps per turn</label><input id="s-steps" type="number" value="${cfg.max_steps}"></div>
     </div>
-    <button class="save" onclick="saveSettings()">Save</button></div>`;
+    <button class="save" onclick="saveSettings()">Save</button>
+    <div class="provbox" style="margin-top:14px;border-color:var(--err,#f87171)"><div class="ptitle" style="color:var(--err,#f87171)">Danger zone</div>
+      <p class="mut" style="margin:4px 0 8px">Start fresh: wipes memory, knowledge, conversations, apps, subagents, soul and settings, then runs the first-time setup wizard again. Take a Snapshot first if you might want to come back.</p>
+      <button class="endbtn" style="border-color:var(--err,#f87171);color:var(--err,#f87171)" onclick="factoryReset()">Factory reset…</button></div></div>`;
   $('#s-theme').onchange=()=>{applyTheme($('#s-theme').value);toast('theme applied')};
   const vsel=$('#v-voice');
   const fillVoices=()=>{
@@ -1555,14 +1933,435 @@ async function saveSettings(){
 }
 
 /* ================= memory app ================= */
+let memTab='user';
 async function renderMemory(body){
+  await loadConfig();
   const r=await fetch('/api/memories');const d=await r.json();
-  const items=d.memories.map(m=>`<div class="item"><div class="grow">${esc(m.content)}<div class="sub">${new Date(m.created_at*1000).toLocaleString()}</div></div><button onclick="delMemory('${m.id}')">✕</button></div>`).join('')||'<p class="mut">Nothing remembered yet. The agent saves facts here with the <code>remember</code> tool — or add one below.</p>';
-  body.innerHTML=`<div class="pad">${items}<label>Add a memory</label><div class="row"><input id="mem-new" placeholder="e.g. My name is Piyush; I work at Accacia."><button class="save" style="margin:0;flex:0 0 90px" onclick="addMemory()">Add</button></div></div>`;
+  const auto=(cfg.memory||{}).auto_extract!==false;
+  const srcBadge=m=>m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'';
+  const when=m=>new Date(m.created_at*1000).toLocaleString();
+  const user=d.memories.filter(m=>(m.scope||'user')==='user');
+  const sess=d.memories.filter(m=>m.scope==='session');
+  let items='';
+  if(memTab==='user'){
+    items=user.map(m=>`<div class="item"><div class="grow">${srcBadge(m)}${esc(m.content)}<div class="sub">${when(m)}</div></div>
+      <button title="${m.pinned?'unpin':'pin (always injected first)'}" style="${m.pinned?'':'opacity:.45'};font-size:11px" onclick="pinMemory('${m.id}',${m.pinned?0:1})">${m.pinned?'pinned':'pin'}</button>
+      <button title="edit" onclick="editMemory('${m.id}')">✎</button>
+      <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')
+      ||'<p class="mut">No user memories yet. They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.</p>';
+  }else{
+    const groups={};
+    sess.forEach(m=>{(groups[m.conversation_id||'?']=groups[m.conversation_id||'?']||{title:m.conversation_title||'(deleted conversation)',items:[]}).items.push(m)});
+    items=Object.entries(groups).map(([cid,g])=>`<div class="ptitle" style="margin-top:10px">${esc(g.title)}</div>`+
+      g.items.map(m=>`<div class="item"><div class="grow">${srcBadge(m)}${esc(m.content)}<div class="sub">${when(m)}</div></div>
+        <button title="promote to user memory (durable)" onclick="promoteMemory('${m.id}')">⤴</button>
+        <button title="edit" onclick="editMemory('${m.id}')">✎</button>
+        <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')).join('')
+      ||'<p class="mut">No session memories yet. These capture the working context of each conversation (goals, decisions, constraints) and are injected only into that conversation.</p>';
+  }
+  window.__mems=Object.fromEntries(d.memories.map(m=>[m.id,m.content]));
+  body.innerHTML=`<div class="pad">
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <button class="${memTab==='user'?'save':''}" style="margin:0;flex:1" onclick="memTab='user';refreshApp('memory')">User (${user.length})</button>
+      <button class="${memTab==='session'?'save':''}" style="margin:0;flex:1" onclick="memTab='session';refreshApp('memory')">Sessions (${sess.length})</button>
+      <label class="row" style="flex:0 0 auto;align-items:center;gap:6px;margin:0" title="After every chat turn, a background pass extracts user memories, session memories and knowledge-graph facts">
+        <input type="checkbox" id="mem-auto" ${auto?'checked':''} onchange="setAutoLearn(this.checked)">auto-learn</label>
+      <button class="endbtn" style="flex:0 0 auto" title="merge duplicate entities, roll up idle sessions, re-index memory" onclick="tidyKnowledge()">Tidy</button>
+    </div>
+    ${items}
+    <label>Add a ${memTab==='user'?'user':'session'} memory</label>
+    <div class="row"><input id="mem-new" placeholder="${memTab==='user'?'e.g. My name is Piyush; I work at Accacia.':'e.g. We decided to use SQLite for this project.'}">
+      <button class="save" style="margin:0;flex:0 0 90px" onclick="addMemory()">Add</button></div>
+    ${memTab==='session'&&!currentConv?'<p class="mut">Session memories attach to the active chat — open a conversation first.</p>':''}
+  </div>`;
 }
 async function addMemory(){const v=$('#mem-new').value.trim();if(!v)return;
-  await fetch('/api/memories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:v})});refreshApp('memory');}
+  const b={content:v,scope:memTab};
+  if(memTab==='session'){if(!currentConv){toast('open a conversation first');return}b.conversation_id=currentConv}
+  await fetch('/api/memories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});refreshApp('memory');}
 async function delMemory(id){await fetch('/api/memories/'+id,{method:'DELETE'});refreshApp('memory');}
+async function pinMemory(id,p){await fetch('/api/memories/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned:p})});refreshApp('memory');}
+async function promoteMemory(id){await fetch('/api/memories/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope:'user'})});toast('promoted to user memory');refreshApp('memory');}
+async function editMemory(id){
+  const cur=(window.__mems||{})[id]||'';
+  const v=prompt('Edit memory:',cur);
+  if(v===null||!v.trim()||v.trim()===cur)return;
+  await fetch('/api/memories/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:v.trim()})});refreshApp('memory');}
+async function setAutoLearn(on){
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({memory:{auto_extract:!!on}})});
+  toast(on?'auto-learn on — memory & knowledge graph populate from every chat':'auto-learn off');}
+async function tidyKnowledge(){
+  await fetch('/api/knowledge/maintain',{method:'POST'});
+  toast('tidying knowledge in the background — merging duplicates, rolling up idle sessions, indexing memory');}
+
+/* ================= profile app — everything the agent knows about you ================= */
+async function renderProfile(body){
+  const [ms,kg,soul,st]=await Promise.all([
+    fetch('/api/memories').then(r=>r.json()),
+    fetch('/api/kg').then(r=>r.json()),
+    fetch('/api/soul').then(r=>r.json()),
+    fetch('/api/knowledge/status').then(r=>r.json()).catch(()=>({}))]);
+  const user=ms.memories.filter(m=>(m.scope||'user')==='user');
+  const byid={};kg.nodes.forEach(n=>byid[n.id]=n.name);
+  const facts=kg.edges.map(e=>({s:byid[e.src]||'?',r:e.relation,o:byid[e.dst]||'?'}));
+  const stat=(n,l)=>`<div class="stat" style="text-align:center"><div class="val">${n}</div><div class="lbl">${l}</div></div>`;
+  body.innerHTML=`<div class="pad">
+    <div class="tmgrid" style="margin-bottom:12px">
+      ${stat(user.length,'user memories')}${stat(st.session_memories??ms.memories.length-user.length,'session memories')}
+      ${stat(facts.length,'known facts')}${stat(st.kg_nodes??kg.nodes.length,'entities')}
+    </div>
+    <p class="mut" style="margin:0 0 12px">Semantic recall: ${st.embed_model?('<b>on</b> · '+esc(st.embed_model)+(st.unembedded?` (${st.unembedded} to index)`:'')):'<b>off</b> — install an Ollama embedding model (e.g. <code>nomic-embed-text</code>)'} ·
+      Auto-learn: <b>${st.auto_extract===false?'off':'on'}</b></p>
+    <div class="ptitle">What the agent knows about you</div>
+    ${user.slice(0,50).map(m=>`<div class="item"><div class="grow">${m.pinned?'<span class="badge" style="font-size:9px;padding:1px 6px;margin-right:4px">pinned</span>':''}${esc(m.content)}</div></div>`).join('')||'<p class="mut">Nothing yet — it learns as you chat.</p>'}
+    <div class="ptitle" style="margin-top:14px">How things connect</div>
+    ${facts.slice(0,50).map(f=>`<div class="item"><div class="grow">${esc(f.s)} <span class="mut">—${esc(f.r)}→</span> ${esc(f.o)}</div></div>`).join('')||'<p class="mut">The knowledge graph is empty.</p>'}
+    <div class="ptitle" style="margin-top:14px">Soul</div>
+    <pre style="white-space:pre-wrap;font-size:12px;opacity:.85;max-height:180px;overflow:auto">${esc((soul.content||'').slice(0,2500))}</pre>
+    <div class="row" style="margin-top:10px">
+      <button class="endbtn" onclick="openApp('memory')">◈ Manage memory</button>
+      <button class="endbtn" onclick="openApp('kg')">Knowledge graph</button>
+      <button class="endbtn" onclick="openApp('soul')">Edit soul</button>
+      <button class="endbtn" onclick="tidyKnowledge()">Tidy now</button>
+    </div></div>`;
+}
+
+/* ================= fabric app — subagents, workflows, observability ================= */
+let fabTab='team';
+async function renderFabric(body){
+  if(fabTab==='team')return renderFabTeam(body);
+  if(fabTab==='flows')return renderFabFlows(body);
+  return renderFabRuns(body);
+}
+function fabTabs(){
+  return `<div class="row" style="margin-bottom:10px">
+    <button class="${fabTab==='team'?'save':''}" style="margin:0;flex:1" onclick="fabTab='team';refreshApp('fabric')">Subagents</button>
+    <button class="${fabTab==='flows'?'save':''}" style="margin:0;flex:1" onclick="fabTab='flows';refreshApp('fabric')">Workflows</button>
+    <button class="${fabTab==='runs'?'save':''}" style="margin:0;flex:1" onclick="fabTab='runs';refreshApp('fabric')">Observability</button>
+  </div>`;
+}
+async function renderFabTeam(body){
+  const sa=await fetch('/api/subagents').then(r=>r.json());
+  window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
+  const cards=sa.subagents.map(s=>`<div class="item" style="cursor:pointer" onclick="openSAW('${esc(s.name)}')">
+      <div class="grow"><b>🤖 ${esc(s.name)}</b> ${s.builtin?'<span class="mut">· built-in</span>':''}
+        <div class="sub">🧠 ${esc(s.model||'inherits OS model')} · 🔧 ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · 🧩 '+s.skills.length+' skills':''} · 🛡 ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
+        <div class="sub">${esc((s.soul||'').slice(0,110))}</div></div>
+      <button title="test run" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">▶</button>
+      <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
+    ||'<p class="mut">No subagents yet — create your first specialist.</p>';
+  body.innerHTML=`<div class="pad">${fabTabs()}
+    <button class="save" style="margin:0 0 10px" onclick="openSAW()">＋ New subagent</button>
+    ${cards}
+    <p class="mut" style="margin-top:10px">Click a subagent to edit it in the wizard. The control plane owns the model — <i>inherit</i> follows the OS default; pin one to mix (e.g. generation local, validation on Claude). Every subagent can always use skills and memory (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>).</p></div>`;
+}
+async function delSubagent(id){if(!confirm('Delete this subagent?'))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
+
+/* --- subagent wizard: pick from what exists (tools, skills, models), don't type it --- */
+let SAW=null;
+const SAW_PRESETS={
+  'Read-only':['fetch_url','read_file','list_dir','recall','kg_query','system_info'],
+  'Research':['fetch_url','read_file','list_dir','recall','kg_query','save_report'],
+  'Files & shell':['run_command','read_file','write_file','list_dir','system_info'],
+  'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
+};
+async function openSAW(name){
+  const [tools,skills,models]=await Promise.all([
+    fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
+    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+  const ex=name?(window.__subagents||{})[name]:null;
+  SAW={step:1,exists:!!ex,tools:tools.tools||[],skills:skills.skills||[],models:models.models||[],q:'',
+    d:ex?{...ex,tools:[...(ex.tools||[])],skills:[...(ex.skills||[])]}
+        :{name:'',soul:'',model:'',tools:[],skills:[],autonomy_cap:'balanced',max_steps:12,max_seconds:300,builtin:0,target:'local'}};
+  drawSAW();
+}
+function drawSAW(){
+  let ov=$('#saw-ov');
+  if(!SAW){ov&&ov.remove();return}
+  if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center';
+    ov.onclick=e=>{if(e.target===ov){SAW=null;drawSAW()}};document.body.appendChild(ov);}
+  const d=SAW.d,st=SAW.step;
+  const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=st?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
+  let inner='';
+  if(st===1){
+    const opts=['<option value="">🧠 inherit from control plane (OS default)</option>']
+      .concat(SAW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+    inner=`<h3 style="margin:0 0 4px">${SAW.exists?'Edit':'New'} subagent — identity</h3>
+      <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''}>
+      <label>Persona — who is it, how does it work? (its soul)</label>
+      <textarea id="sw-soul" rows="4" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <label>Brain</label><select id="sw-model">${opts}</select>
+      <p class="mut">Pin a model to mix smartness across the team — e.g. this one on Claude while others run local.</p>`;
+  }else if(st===2){
+    const q=SAW.q.toLowerCase();
+    const rows=SAW.tools
+      .filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
+      .slice(0,60)
+      .map(t=>`<label class="item" style="cursor:pointer;padding:6px 8px"><input type="checkbox" style="width:auto;margin-right:8px" ${d.tools.includes(t.name)?'checked':''} onchange="sawTool('${esc(t.name)}',this.checked)">
+        <div class="grow"><b>${t.name.startsWith('mcp_')?'🔌 ':''}${esc(t.name)}</b><div class="sub">${esc((t.description||'').slice(0,100))}</div></div></label>`).join('')
+      ||'<p class="mut">no tools match</p>';
+    const chips=Object.keys(SAW_PRESETS).map(p=>`<button style="flex:0 0 auto" onclick="sawPreset('${p}')">${p}</button>`).join('')+`<button style="flex:0 0 auto" onclick="SAW.d.tools=[];drawSAW()">Clear</button>`;
+    const skl=SAW.skills.map(s=>`<label class="item" style="cursor:pointer;padding:6px 8px"><input type="checkbox" style="width:auto;margin-right:8px" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked)">
+        <div class="grow">🧩 <b>${esc(s.name)}</b><div class="sub">${esc((s.description||'').slice(0,90))}</div></div></label>`).join('')
+      ||'<p class="mut">no skills installed — add some in the Skills app</p>';
+    inner=`<h3 style="margin:0 0 4px">Capabilities — pick from what exists</h3>
+      <div class="row" style="margin:6px 0">${chips}</div>
+      <input id="sw-q" placeholder="🔎 search ${SAW.tools.length} tools (incl. MCP)…" value="${esc(SAW.q)}" oninput="SAW.q=this.value;drawSAW();setTimeout(()=>{const i=$('#sw-q');i&&i.focus();i&&i.setSelectionRange(i.value.length,i.value.length)},0)">
+      <div style="max-height:200px;overflow:auto;margin:6px 0">${rows}</div>
+      <div class="sub" style="margin:2px 0 6px">selected: <b>${d.tools.length||0}</b>${d.tools.length?' — '+d.tools.slice(0,8).map(esc).join(', ')+(d.tools.length>8?'…':''):' (empty = safe read-only set)'}</div>
+      <div class="ptitle">Skills it should follow</div>
+      <div style="max-height:130px;overflow:auto">${skl}</div>
+      <p class="mut" style="margin-top:4px">use_skill · recall · kg_query · remember are always available — every subagent builds on the OS's skills, memory and knowledge.</p>`;
+  }else{
+    inner=`<h3 style="margin:0 0 4px">Limits & trust</h3>
+      <label>Autonomy cap (never exceeds the OS level)</label>
+      <select id="sw-cap"><option value="paranoid" ${d.autonomy_cap==='paranoid'?'selected':''}>paranoid — everything needs approval</option>
+        <option value="balanced" ${d.autonomy_cap==='balanced'?'selected':''}>balanced — risky actions auto-denied when unattended</option>
+        <option value="full" ${d.autonomy_cap==='full'?'selected':''}>full — may act freely (careful)</option></select>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1"><label>Max steps</label><input id="sw-steps" type="number" value="${d.max_steps}"></div>
+        <div style="flex:1"><label>Max seconds</label><input id="sw-secs" type="number" value="${d.max_seconds}"></div>
+      </div>
+      <div class="provbox" style="margin-top:12px"><div class="ptitle">Summary</div>
+        <div class="sub">🤖 <b>${esc(d.name||'?')}</b> · 🧠 ${esc(d.model||'inherit')} · 🔧 ${d.tools.length||'safe set'} tools${d.skills.length?' · 🧩 '+d.skills.length+' skills':''}</div>
+        <div class="sub">${esc((d.soul||'').slice(0,140))}</div></div>`;
+  }
+  ov.innerHTML=`<div style="width:600px;max-width:94vw;max-height:88vh;overflow:auto;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:22px 24px" onclick="event.stopPropagation()">
+    ${inner}
+    <div class="row" style="margin-top:14px;align-items:center">
+      <div class="grow">${dot(1)}${dot(2)}${dot(3)}</div>
+      <button onclick="SAW=null;drawSAW()">Cancel</button>
+      ${st>1?`<button onclick="sawStep(-1)">← Back</button>`:''}
+      ${st<3?`<button class="save" style="margin:0;flex:0 0 100px" onclick="sawStep(1)">Next →</button>`
+            :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save ✓</button>`}
+    </div></div>`;
+}
+function sawCollect(){
+  const d=SAW.d;
+  if(SAW.step===1){if($('#sw-name'))d.name=$('#sw-name').value.trim();d.soul=$('#sw-soul').value;d.model=$('#sw-model').value;}
+  if(SAW.step===3){d.autonomy_cap=$('#sw-cap').value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
+}
+function sawStep(delta){sawCollect();if(SAW.step===1&&delta>0&&!SAW.d.name)return toast('give it a name');SAW.step=Math.min(3,Math.max(1,SAW.step+delta));drawSAW()}
+function sawTool(name,on){const t=SAW.d.tools;if(on&&!t.includes(name))t.push(name);if(!on)SAW.d.tools=t.filter(x=>x!==name);drawSAW()}
+function sawSkill(name,on){const s=SAW.d.skills;if(on&&!s.includes(name))s.push(name);if(!on)SAW.d.skills=s.filter(x=>x!==name);drawSAW()}
+function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];drawSAW()}
+async function sawSave(){
+  sawCollect();
+  const d=SAW.d;if(!d.name)return toast('name required');
+  await fetch('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  SAW=null;drawSAW();toast('🤖 subagent saved');refreshApp('fabric');
+}
+async function testSubagent(name){
+  const task=prompt('Task for '+name+':');if(!task)return;
+  await fetch('/api/subagents/'+encodeURIComponent(name)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task})});
+  toast('▶ '+name+' running — see Observability');fabTab='runs';refreshApp('fabric');}
+
+function wfLayers(steps){
+  const done=new Set(),layers=[];let rem=[...steps];
+  while(rem.length){
+    let layer=rem.filter(s=>(s.depends_on||[]).every(d=>done.has(d)));
+    if(!layer.length)layer=[rem[0]];
+    layer.forEach(s=>done.add(s.id));rem=rem.filter(s=>!layer.includes(s));layers.push(layer);
+  }return layers;
+}
+function wfSvg(wf,stepStatus){
+  const layers=wfLayers(wf.steps||[]);
+  const BW=158,BH=46,GX=200,GY=64,pos={};
+  layers.forEach((layer,c)=>layer.forEach((s,r)=>pos[s.id]={x:16+c*GX,y:14+r*GY,s}));
+  const H=Math.max(...layers.map(l=>l.length))*GY+22, W=16+layers.length*GX;
+  const col=st=>st==='ok'?'var(--ok,#34d399)':st==='running'||st==='start'?'var(--acc,#5eead4)':(st==='error'||st==='timeout')?'var(--err,#f87171)':'var(--line,#333)';
+  let lines='',boxes='';
+  (wf.steps||[]).forEach(s=>{(s.depends_on||[]).forEach(d=>{const a=pos[d],b=pos[s.id];if(!a||!b)return;
+    lines+=`<path d="M${a.x+BW} ${a.y+BH/2} C ${a.x+BW+24} ${a.y+BH/2}, ${b.x-24} ${b.y+BH/2}, ${b.x} ${b.y+BH/2}" fill="none" stroke="rgba(138,148,166,.5)" stroke-width="1.5" marker-end="url(#arr)"/>`;})});
+  Object.values(pos).forEach(({x,y,s})=>{const st=(stepStatus||{})[s.id]||'';
+    boxes+=`<g><rect x="${x}" y="${y}" rx="9" width="${BW}" height="${BH}" fill="rgba(255,255,255,.04)" stroke="${col(st)}" stroke-width="1.6">${st==='running'||st==='start'?'<animate attributeName="stroke-opacity" values="1;.3;1" dur="1.2s" repeatCount="indefinite"/>':''}</rect>
+      <text x="${x+10}" y="${y+19}" fill="var(--txt,#e6ebf2)" font-size="12" font-weight="600">${esc(s.name||s.id)}</text>
+      <text x="${x+10}" y="${y+35}" fill="var(--dim,#8a94a6)" font-size="10">${esc(s.subagent)}${s.model?' · '+esc(s.model.split('/').pop()):''}${st?' · '+st:''}</text></g>`;});
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:${H+10}px"><defs><marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="rgba(138,148,166,.7)"/></marker></defs>${lines}${boxes}</svg>`;
+}
+async function renderFabFlows(body){
+  const [wfs,runs]=await Promise.all([fetch('/api/workflows').then(r=>r.json()),
+                                      fetch('/api/fabric/runs?limit=30').then(r=>r.json())]);
+  // live step status per workflow: read events of its latest run
+  const latest={};runs.runs.filter(r=>r.kind==='workflow').forEach(r=>{if(!latest[r.ref])latest[r.ref]=r});
+  const statuses={};
+  await Promise.all(Object.entries(latest).map(async([name,run])=>{
+    try{const d=await fetch('/api/fabric/runs/'+run.id).then(r=>r.json());
+      const st={};d.events.forEach(e=>{if(e.type==='step'&&e.payload.wf_step)st[e.payload.wf_step]=e.payload.status});
+      statuses[name]={st,run};}catch(e){}}));
+  const blocks=wfs.workflows.map(wf=>{
+    const live=statuses[wf.name]||{};const run=live.run;
+    return `<div class="provbox"><div class="ptitle">${esc(wf.name)} ${wf.builtin?'<span class="mut">· built-in</span>':''}
+        <span style="float:right">${run?`<span class="mut">last: ${esc(run.status)}${run.tokens_out?' · '+run.tokens_out+' tok':''}</span>`:''}
+        <button title="edit JSON" onclick="editWorkflow('${esc(wf.name)}')">✎</button>
+        <button onclick="delWorkflow('${wf.id}')">✕</button></span></div>
+      <div class="sub" style="margin:2px 0 8px">${esc(wf.description||'')}</div>
+      ${wfSvg(wf,live.st)}
+      <div class="row" style="margin-top:6px"><input id="wf-in-${wf.id}" placeholder="input for this workflow…">
+        <button class="save" style="margin:0;flex:0 0 70px" onclick="runWorkflow('${esc(wf.name)}','${wf.id}')">Run</button></div>
+      ${run&&run.status==='ok'&&run.output?`<details style="margin-top:6px"><summary class="mut">last output</summary><pre style="white-space:pre-wrap;font-size:11.5px;max-height:180px;overflow:auto">${esc(run.output.slice(0,3000))}</pre></details>`:''}
+      ${run&&run.fault?`<div class="sub" style="color:var(--err,#f87171)">fault: ${esc(run.fault.slice(0,200))}</div>`:''}</div>`;
+  }).join('')||'<p class="mut">No workflows yet.</p>';
+  body.innerHTML=`<div class="pad">${fabTabs()}${blocks}
+    <div class="ptitle" style="margin-top:10px">New / edit workflow (JSON)</div>
+    <div class="row"><input id="wfj-name" placeholder="name"><input id="wfj-desc" placeholder="description"></div>
+    <textarea id="wfj-steps" rows="5" placeholder='[{"id":"draft","name":"Draft","subagent":"writer","prompt":"{input}","depends_on":[]},{"id":"validate","subagent":"validator","model":"anthropic/claude-sonnet-5","prompt":"Validate: {draft}","depends_on":["draft"]}]'></textarea>
+    <button class="save" onclick="saveWorkflow()">Save workflow</button>
+    <p class="mut">Each step runs in its own data plane. <code>{input}</code> and <code>{stepId}</code> substitute into prompts; <code>model</code> per step overrides the subagent (e.g. generate on Ollama, validate on Claude).</p></div>`;
+  window.__workflows=Object.fromEntries(wfs.workflows.map(w=>[w.name,w]));
+}
+function editWorkflow(name){const w=(window.__workflows||{})[name];if(!w)return;
+  $('#wfj-name').value=w.name;$('#wfj-desc').value=w.description||'';
+  $('#wfj-steps').value=JSON.stringify(w.steps,null,1);}
+async function saveWorkflow(){
+  const name=$('#wfj-name').value.trim();if(!name)return toast('name required');
+  let steps;try{steps=JSON.parse($('#wfj-steps').value)}catch(e){return toast('steps: invalid JSON')}
+  const old=(window.__workflows||{})[name]||{};
+  await fetch('/api/workflows',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,description:$('#wfj-desc').value,steps,builtin:old.builtin||0})});
+  toast('workflow saved');refreshApp('fabric');}
+async function delWorkflow(id){await fetch('/api/workflows/'+id,{method:'DELETE'});refreshApp('fabric');}
+async function runWorkflow(name,id){
+  const input=$('#wf-in-'+id).value.trim();if(!input)return toast('give the workflow an input');
+  await fetch('/api/workflows/'+encodeURIComponent(name)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input})});
+  toast('workflow running');}
+
+async function renderFabRuns(body){
+  const o=await fetch('/api/fabric/observability').then(r=>r.json());
+  const runs=(await fetch('/api/fabric/runs?limit=40').then(r=>r.json()));
+  const dur=r=>r.finished_at?`${Math.round(r.finished_at-r.started_at)}s`:'…';
+  const badge=s=>`<b style="color:${s==='ok'?'var(--ok,#34d399)':s==='running'?'var(--acc,#5eead4)':'var(--err,#f87171)'}">${esc(s)}</b>`;
+  const live=runs.live.map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b> <span class="sub">beat ${Math.round(Date.now()/1000-i.last_beat)}s ago${i.stale?' · <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
+      <button onclick="cancelRun('${i.run_id}')">⏹</button></div>`).join('');
+  const planes=Object.entries(o.per_plane).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td><td>${p.ok}</td>
+      <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
+      <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
+  const rows=runs.runs.map(r=>`<div class="item" style="cursor:pointer" onclick="showRun('${r.id}')">
+      <div class="grow"><span class="lbadge" style="margin-right:4px">${r.kind==='workflow'?'flow':'agent'}</span><b>${esc(r.ref)}</b> ${badge(r.status)}
+        <div class="sub">${new Date(r.started_at*1000).toLocaleString()} · ${dur(r)} · ${(r.tokens_in||0)+(r.tokens_out||0)} tok · model ${esc(r.model||'—')}${r.fault?' · <span style="color:var(--err,#f87171)">'+esc(r.fault.slice(0,80))+'</span>':''}</div></div>
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}</div>`).join('')
+    ||'<p class="mut">No fabric runs yet — delegate a task or run a workflow.</p>';
+  body.innerHTML=`<div class="pad">${fabTabs()}
+    ${live?`<div class="ptitle">Live data planes</div>${live}`:''}
+    <div class="ptitle">Data planes — faults · performance · usage</div>
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr class="mut"><th style="text-align:left">plane</th><th>runs</th><th>ok</th><th>faults</th><th>avg</th><th>tokens</th></tr>
+      <tr><td>main agent (L0 — this OS)</td><td>${o.main_agent.runs}</td><td>—</td>
+        <td>${o.main_agent.faults?`<b style="color:var(--err,#f87171)">${o.main_agent.faults}</b>`:0}</td><td>—</td><td>${o.main_agent.tokens_in+o.main_agent.tokens_out}</td></tr>
+      ${planes}</table>
+    <div class="ptitle" style="margin-top:12px">Runs</div><div id="fab-run-detail"></div>${rows}</div>`;
+}
+async function cancelRun(id){await fetch('/api/fabric/runs/'+id+'/cancel',{method:'POST'});toast('⏹ cancel sent');}
+async function showRun(id){
+  const d=await fetch('/api/fabric/runs/'+id).then(r=>r.json());
+  const ev=d.events.filter(e=>e.type!=='heartbeat').map(e=>`<div class="sub">${new Date(e.ts*1000).toLocaleTimeString()} · ${esc(e.type)} ${esc(JSON.stringify(e.payload).slice(0,140))}</div>`).join('');
+  const steps=(d.steps||[]).map(s=>`<div class="sub">↳ step <b>${esc(s.ref)}</b> ${esc(s.status)} · ${(s.tokens_in||0)+(s.tokens_out||0)} tok · model ${esc(s.model||'—')}</div>`).join('');
+  $('#fab-run-detail').innerHTML=`<div class="provbox"><div class="ptitle">${esc(d.run.ref)} · ${esc(d.run.status)}</div>
+    ${steps}${d.run.output?`<pre style="white-space:pre-wrap;font-size:11.5px;max-height:160px;overflow:auto">${esc(d.run.output.slice(0,2500))}</pre>`:''}
+    <details><summary class="mut">events (${d.events.length})</summary>${ev}</details></div>`;
+}
+let fabRefreshT=0;
+function fabricLiveRefresh(){
+  const now=Date.now();
+  if(now-fabRefreshT<800)return;
+  fabRefreshT=now;
+  if(WM.wins.get('fabric'))refreshApp('fabric');
+}
+
+/* ================= docs app ================= */
+let docsCur='';
+async function renderDocs(body){
+  const d=await fetch('/api/docs').then(r=>r.json());
+  if(!d.docs.length){body.innerHTML='<div class="pad"><p class="mut">No documentation found on this install.</p></div>';return}
+  docsCur=docsCur||d.docs[0].file;
+  const items=d.docs.map(x=>`<div class="item" style="cursor:pointer;${x.file===docsCur?'border-left:3px solid var(--acc,#5eead4)':''}" onclick="docsCur='${esc(x.file)}';refreshApp('docs')">
+    <div class="grow">${esc(x.title)}</div></div>`).join('');
+  const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
+  body.innerHTML=`<div style="display:flex;height:100%;min-height:0">
+    <div style="flex:0 0 230px;overflow:auto;border-right:1px solid var(--line,#232a35);padding:10px">${items}</div>
+    <div style="flex:1;overflow:auto;padding:14px 20px" class="docbody">${md(doc.content||'(not found)')}</div></div>`;
+}
+
+/* ================= first-run setup wizard ================= */
+let WIZ={agent_name:'Aria',autonomy:'balanced',default_model:'',providers:{},autostart:true,open_at_login:true,step:1,info:null};
+async function checkSetup(){
+  try{
+    const s=await fetch('/api/setup').then(r=>r.json());
+    if(s.first_run){WIZ.info=s;WIZ.agent_name=s.agent_name||'Aria';showWizard()}
+  }catch(e){}
+}
+function wizCss(){return 'position:fixed;inset:0;z-index:99999;background:rgba(5,7,9,.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center'}
+function showWizard(){
+  let ov=$('#setup-wiz');
+  if(!ov){ov=document.createElement('div');ov.id='setup-wiz';ov.style.cssText=wizCss();document.body.appendChild(ov)}
+  const s=WIZ.info||{},step=WIZ.step;
+  const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=step?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
+  let inner='';
+  if(step===1)inner=`<h2 style="margin:0 0 6px">▲ Welcome to AgentOS</h2>
+    <p class="mut">Your machine, with a brain. Four quick steps and it's yours.</p>
+    <label>What should your agent be called?</label>
+    <input id="wz-name" value="${esc(WIZ.agent_name)}" style="font-size:16px">`;
+  else if(step===2){
+    const local=(s.ollama_models||[]).map(m=>`<label class="item" style="cursor:pointer"><input type="radio" name="wz-model" value="ollama/${esc(m)}" style="width:auto;margin-right:8px" ${WIZ.default_model==='ollama/'+m?'checked':''}> ollama/${esc(m)}</label>`).join('');
+    inner=`<h2 style="margin:0 0 6px">Pick a brain</h2>
+    <p class="mut">${local?'Local models found — private, free, already on this machine:':'No local Ollama models found — use a cloud key, or install Ollama later.'}</p>
+    <div style="max-height:180px;overflow:auto">${local}</div>
+    <label class="item" style="cursor:pointer"><input type="radio" name="wz-model" value="cloud" style="width:auto;margin-right:8px" ${WIZ.default_model&&!WIZ.default_model.startsWith('ollama/')?'checked':''}> Cloud model (API key)</label>
+    <div id="wz-cloud" style="display:none;margin-top:8px">
+      <div class="row"><select id="wz-prov"><option value="anthropic">Anthropic (Claude)</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option></select>
+      <input id="wz-key" placeholder="API key"></div>
+      <input id="wz-cmodel" placeholder="model, e.g. claude-sonnet-5" style="margin-top:6px"></div>`;
+  }
+  else if(step===3)inner=`<h2 style="margin:0 0 6px">Autonomy</h2>
+    <p class="mut">How much can ${esc(WIZ.agent_name)} do without asking you first? (change anytime)</p>
+    ${[['paranoid','Paranoid','asks before every action'],['balanced','Balanced','acts freely, asks for risky things (recommended)'],['full','Full','never asks — for the brave']]
+      .map(([v,t,d])=>`<label class="item" style="cursor:pointer"><input type="radio" name="wz-auto" value="${v}" style="width:auto;margin-right:8px" ${WIZ.autonomy===v?'checked':''}> <div><b>${t}</b><div class="sub">${d}</div></div></label>`).join('')}`;
+  else if(step===4)inner=`<h2 style="margin:0 0 6px">Always on</h2>
+    <p class="mut">AgentOS is most useful when it's always running — background jobs, Telegram, automations.</p>
+    <label class="item" style="cursor:pointer"><input type="checkbox" id="wz-boot" style="width:auto;margin-right:8px" ${WIZ.autostart?'checked':''}> <div><b>Start automatically</b><div class="sub">installs the app launcher + a systemd user service (starts at login; at boot where lingering is allowed)</div></div></label>
+    <label class="item" style="cursor:pointer"><input type="checkbox" id="wz-login" style="width:auto;margin-right:8px" ${WIZ.open_at_login?'checked':''}> <div><b>Open the AgentOS window at login</b></div></label>`;
+  else inner=`<h2 style="margin:0 0 6px">You're all set</h2>
+    ${(WIZ.report?.applied||[]).map(l=>`<div class="sub">· ${esc(l)}</div>`).join('')}
+    ${WIZ.report?.autostart?`<div class="sub">· ${esc(WIZ.report.autostart)}</div>`:''}
+    ${WIZ.report?.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}
+    <p class="mut" style="margin-top:10px">Tips: Docs has the full guide · ◈ Memory learns as you chat · Team runs multi-model workflows.</p>`;
+  ov.innerHTML=`<div style="width:540px;max-width:92vw;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:26px 28px;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+    ${inner}
+    <div class="row" style="margin-top:18px;align-items:center">
+      <div class="grow">${dot(1)}${dot(2)}${dot(3)}${dot(4)}</div>
+      ${step>1&&step<5?`<button onclick="wizStep(-1)">← Back</button>`:''}
+      ${step<4?`<button class="save" style="margin:0;flex:0 0 110px" onclick="wizStep(1)">Next →</button>`
+        :step===4?`<button class="save" style="margin:0;flex:0 0 130px" onclick="wizFinish()">Finish ✓</button>`
+        :`<button class="save" style="margin:0;flex:0 0 160px" onclick="$('#setup-wiz').remove();openApp('chat')">Enter AgentOS →</button>`}
+    </div></div>`;
+  const cloud=$('#wz-cloud');
+  if(cloud){const upd=()=>{cloud.style.display=document.querySelector('input[name="wz-model"]:checked')?.value==='cloud'?'block':'none'};
+    document.querySelectorAll('input[name="wz-model"]').forEach(r=>r.onchange=upd);upd();}
+}
+function wizCollect(){
+  const s=WIZ.step;
+  if(s===1&&$('#wz-name'))WIZ.agent_name=$('#wz-name').value.trim()||'Aria';
+  if(s===2){const v=document.querySelector('input[name="wz-model"]:checked')?.value||'';
+    if(v==='cloud'){const p=$('#wz-prov').value,k=$('#wz-key').value.trim(),m=$('#wz-cmodel').value.trim();
+      if(k)WIZ.providers={[p]:{api_key:k}};
+      WIZ.default_model=m?(p+'/'+m):'';}
+    else WIZ.default_model=v;}
+  if(s===3)WIZ.autonomy=document.querySelector('input[name="wz-auto"]:checked')?.value||'balanced';
+  if(s===4){WIZ.autostart=$('#wz-boot').checked;WIZ.open_at_login=$('#wz-login').checked;}
+}
+function wizStep(d){wizCollect();WIZ.step=Math.max(1,WIZ.step+d);showWizard()}
+async function wizFinish(){
+  wizCollect();
+  const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(WIZ)}).then(r=>r.json()).catch(()=>({}));
+  WIZ.report=r.report||{};WIZ.step=5;showWizard();loadConfig();loadModels();
+}
+async function factoryReset(){
+  if(!confirm('Factory reset AgentOS?\n\nThis wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.'))return;
+  if(!confirm('Really wipe everything? This cannot be undone.'))return;
+  await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+  location.reload();
+}
 
 /* ================= scheduler app ================= */
 async function renderTasks(body){
@@ -1629,7 +2428,7 @@ function renderTaskMgr(body,w){
     if(wl){wl.innerHTML='';
       WM.wins.forEach(o=>{
         const row=document.createElement('div');row.className='item';
-        row.innerHTML=`<div class="grow">${o.app.icon} ${esc(o.app.title)}<div class="sub">${o.min?'minimized':o.max?'maximized':'windowed'}</div></div>`;
+        row.innerHTML=`${appIcon(o.id,26)}<div class="grow">${esc(o.app.title)}<div class="sub">${o.min?'minimized':o.max?'maximized':'windowed'}</div></div>`;
         const b=document.createElement('button');b.className='endbtn';b.textContent='End task';
         b.onclick=()=>{closeWin(o)};
         row.appendChild(b);wl.appendChild(row);
@@ -1643,10 +2442,19 @@ function renderTaskMgr(body,w){
 
 /* ================= mcp app ================= */
 let MCPCFG={};
+function mcpSnap(s){
+  const c={transport:s.transport,command:s.command,args:s.args,url:s.url,enabled:s.enabled};
+  if(s.env&&Object.keys(s.env).length)c.env=s.env;
+  if(s.headers&&Object.keys(s.headers).length)c.headers=s.headers;
+  return c;
+}
+const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your browser</span>'
+  :e.env?`<span class="ck">needs ${esc(e.auth||'an API key')}</span>`
+  :e.bearer?`<span class="ck">needs ${esc(e.auth||'a token')}${e.opt?' (optional)':''}</span>`:'';
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
   MCPCFG={};
-  d.servers.forEach(s=>{MCPCFG[s.name]={transport:s.transport,command:s.command,args:s.args,url:s.url,enabled:s.enabled}});
+  d.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
   const badge=s=>s.status==='connected'?`<span class="badge ok">● connected</span>`
     :s.status==='connecting'?`<span class="badge run">connecting…</span>`
     :s.status==='disabled'?`<span class="badge">disabled</span>`
@@ -1662,13 +2470,14 @@ async function renderMCP(body){
   body.innerHTML=`<div class="pad">
     ${d.available?'':'<div class="errmsg">python package <code>mcp</code> is not installed — run <code>uv add mcp</code> and restart.</div>'}
     ${items}
-    <label>Catalog — standard servers, one click to add</label>
-    <div class="cat">${MCP_CATALOG.map(e=>`
+    ${MCP_GROUPS.map((g,gi)=>`
+    <label>${esc(g)}</label>
+    <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`
       <button class="catcard${MCPCFG[e.k]?' inst':''}" onclick="mcpPreset('${e.k}')">
-        <span class="cn">${e.i} ${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
-        ${e.env?`<span class="ck">🔑 needs ${e.env.map(x=>x.split('_')[0]).join(', ')} key</span>`:''}
+        <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
+        ${mcpBadge(e)}
       </button>`).join('')}
-    </div>
+    </div>`).join('')}
     <label>Add a custom server</label>
     <div class="row"><input id="mcp-name" placeholder="name (e.g. playwright)">
       <select id="mcp-tr"><option value="stdio">stdio (command)</option><option value="http">http (url)</option></select></div>
@@ -1690,44 +2499,95 @@ function mcpAdd(){
     :{transport:'stdio',command:val.split(/\s+/)[0],args:val.split(/\s+/).slice(1).join(' '),enabled:true};
   mcpSave();
 }
+/* Catalog entry: k id · g group index · i icon · n name · d description
+   stdio: c command, a args ({WS}=workspace, {ASK:question} prompts the user)
+   http:  t:'http', u url ({ASK:…} works too), bearer:'prompt' → Authorization: Bearer <answer> (opt:true = skippable)
+   env:   [[VAR, where-to-get-it], …] prompted one by one and stored in the server's env
+   oauth: true → server signs you in via browser on first connect (mcp-remote)
+   auth:  short label for the card badge */
+const MCP_GROUPS=['Essentials — no key needed','Web & search','Developer & data','Apps & SaaS'];
 const MCP_CATALOG=[
-  {k:'playwright',i:'🎭',n:'Playwright',d:'Full browser automation: navigate, click, fill, screenshot',c:'npx',a:'-y @playwright/mcp@latest'},
-  {k:'filesystem',i:'📁',n:'Filesystem',d:'Read/write files in your workspace',c:'npx',a:'-y @modelcontextprotocol/server-filesystem {WS}'},
-  {k:'fetch',i:'🌐',n:'Fetch',d:'Fetch web pages as clean markdown',c:'uvx',a:'mcp-server-fetch'},
-  {k:'memory',i:'🧠',n:'Memory',d:'Official knowledge-graph memory server',c:'npx',a:'-y @modelcontextprotocol/server-memory'},
-  {k:'sequential-thinking',i:'🪜',n:'Sequential Thinking',d:'Structured step-by-step reasoning',c:'npx',a:'-y @modelcontextprotocol/server-sequentialthinking'},
-  {k:'git',i:'🌿',n:'Git',d:'Inspect and search git repositories',c:'uvx',a:'mcp-server-git'},
-  {k:'github',i:'🐙',n:'GitHub',d:'Repos, issues, PRs via API',c:'npx',a:'-y @modelcontextprotocol/server-github',env:['GITHUB_PERSONAL_ACCESS_TOKEN']},
-  {k:'time',i:'🕐',n:'Time',d:'Time and timezone conversions',c:'uvx',a:'mcp-server-time'},
-  {k:'sqlite',i:'🗃',n:'SQLite',d:'Query local .db files',c:'uvx',a:'mcp-server-sqlite --db-path {ASK:Full path to the .db file}'},
-  {k:'postgres',i:'🐘',n:'Postgres',d:'Query a PostgreSQL database',c:'npx',a:'-y @modelcontextprotocol/server-postgres {ASK:Postgres connection string (postgres://…)}'},
-  {k:'puppeteer',i:'🎪',n:'Puppeteer',d:'Headless Chrome automation',c:'npx',a:'-y @modelcontextprotocol/server-puppeteer'},
-  {k:'brave-search',i:'🦁',n:'Brave Search',d:'Web search API',c:'npx',a:'-y @modelcontextprotocol/server-brave-search',env:['BRAVE_API_KEY']},
-  {k:'duckduckgo',i:'🦆',n:'DuckDuckGo',d:'Free web search, no key needed',c:'uvx',a:'duckduckgo-mcp-server'},
-  {k:'slack',i:'💬',n:'Slack',d:'Read/post in your Slack workspace',c:'npx',a:'-y @modelcontextprotocol/server-slack',env:['SLACK_BOT_TOKEN','SLACK_TEAM_ID']},
-  {k:'google-maps',i:'🗺',n:'Google Maps',d:'Places, geocoding, directions',c:'npx',a:'-y @modelcontextprotocol/server-google-maps',env:['GOOGLE_MAPS_API_KEY']},
-  {k:'context7',i:'📚',n:'Context7',d:'Up-to-date library documentation',c:'npx',a:'-y @upstash/context7-mcp'},
-  {k:'everything',i:'🧪',n:'Everything',d:'MCP demo server for testing',c:'npx',a:'-y @modelcontextprotocol/server-everything'},
+  // ---- essentials (no auth) ----
+  {k:'playwright',g:0,i:'',n:'Playwright',d:'Full browser automation: navigate, click, fill, screenshot',c:'npx',a:'-y @playwright/mcp@latest'},
+  {k:'filesystem',g:0,i:'',n:'Filesystem',d:'Read/write files in your workspace',c:'npx',a:'-y @modelcontextprotocol/server-filesystem {WS}'},
+  {k:'fetch',g:0,i:'',n:'Fetch',d:'Fetch web pages as clean markdown',c:'uvx',a:'mcp-server-fetch'},
+  {k:'memory',g:0,i:'',n:'Memory',d:'Official knowledge-graph memory server',c:'npx',a:'-y @modelcontextprotocol/server-memory'},
+  {k:'sequential-thinking',g:0,i:'',n:'Sequential Thinking',d:'Structured step-by-step reasoning',c:'npx',a:'-y @modelcontextprotocol/server-sequentialthinking'},
+  {k:'git',g:0,i:'',n:'Git',d:'Inspect and search git repositories',c:'uvx',a:'mcp-server-git'},
+  {k:'time',g:0,i:'',n:'Time',d:'Time and timezone conversions',c:'uvx',a:'mcp-server-time'},
+  {k:'sqlite',g:0,i:'',n:'SQLite',d:'Query local .db files',c:'uvx',a:'mcp-server-sqlite --db-path {ASK:Full path to the .db file}'},
+  {k:'everything',g:0,i:'',n:'Everything',d:'MCP demo server for testing',c:'npx',a:'-y @modelcontextprotocol/server-everything'},
+  // ---- web & search ----
+  {k:'duckduckgo',g:1,i:'',n:'DuckDuckGo',d:'Free web search, no key needed',c:'uvx',a:'duckduckgo-mcp-server'},
+  {k:'brave-search',g:1,i:'',n:'Brave Search',d:'Web search API (generous free tier)',c:'npx',a:'-y @modelcontextprotocol/server-brave-search',env:[['BRAVE_API_KEY','free key from brave.com/search/api']],auth:'API key'},
+  {k:'tavily',g:1,i:'',n:'Tavily',d:'AI-grade web search, extract & crawl',c:'npx',a:'-y tavily-mcp@latest',env:[['TAVILY_API_KEY','free key from app.tavily.com']],auth:'API key'},
+  {k:'exa',g:1,i:'',n:'Exa',d:'Semantic web search built for AI agents',c:'npx',a:'-y exa-mcp-server',env:[['EXA_API_KEY','from dashboard.exa.ai/api-keys']],auth:'API key'},
+  {k:'perplexity',g:1,i:'',n:'Perplexity',d:'Ask questions answered by live web research',c:'npx',a:'-y server-perplexity-ask',env:[['PERPLEXITY_API_KEY','from perplexity.ai → Settings → API']],auth:'API key'},
+  {k:'firecrawl',g:1,i:'',n:'Firecrawl',d:'Scrape & crawl any site into clean markdown',c:'npx',a:'-y firecrawl-mcp',env:[['FIRECRAWL_API_KEY','from firecrawl.dev → API keys']],auth:'API key'},
+  {k:'context7',g:1,i:'',n:'Context7',d:'Up-to-date library documentation',c:'npx',a:'-y @upstash/context7-mcp'},
+  {k:'deepwiki',g:1,i:'',n:'DeepWiki',d:'Ask questions about any public GitHub repo',t:'http',u:'https://mcp.deepwiki.com/mcp'},
+  {k:'microsoft-learn',g:1,i:'',n:'Microsoft Learn',d:'Official Microsoft & Azure documentation',t:'http',u:'https://learn.microsoft.com/api/mcp'},
+  {k:'huggingface',g:1,i:'',n:'Hugging Face',d:'Search models, datasets, papers & Spaces',t:'http',u:'https://huggingface.co/mcp',bearer:'Hugging Face token from hf.co/settings/tokens — leave empty for anonymous access',opt:true,auth:'token'},
+  // ---- developer & data ----
+  {k:'github',g:2,i:'',n:'GitHub',d:'Official GitHub MCP: repos, issues, PRs, actions, code search',t:'http',u:'https://api.githubcopilot.com/mcp/',bearer:'GitHub personal access token — create at github.com/settings/tokens',auth:'GitHub PAT'},
+  {k:'postgres',g:2,i:'',n:'Postgres',d:'Query a PostgreSQL database',c:'npx',a:'-y @modelcontextprotocol/server-postgres {ASK:Postgres connection string (postgres://…)}',auth:'connection string'},
+  {k:'mongodb',g:2,i:'',n:'MongoDB',d:'Query & manage MongoDB / Atlas',c:'npx',a:'-y mongodb-mcp-server',env:[['MDB_MCP_CONNECTION_STRING','mongodb+srv:// string from Atlas → Connect → Drivers']],auth:'connection string'},
+  {k:'supabase',g:2,i:'',n:'Supabase',d:'Tables, SQL, migrations, edge functions, logs',c:'npx',a:'-y @supabase/mcp-server-supabase@latest --project-ref {ASK:Supabase project ref (dashboard → Project Settings → General)}',env:[['SUPABASE_ACCESS_TOKEN','personal access token from supabase.com/dashboard/account/tokens']],auth:'access token'},
+  {k:'sentry',g:2,i:'',n:'Sentry',d:'Errors, issues & performance from your Sentry org',c:'npx',a:'-y mcp-remote https://mcp.sentry.dev/mcp',oauth:true},
+  {k:'kubernetes',g:2,i:'☸',n:'Kubernetes',d:'Manage clusters via your local kubeconfig',c:'npx',a:'-y mcp-server-kubernetes'},
+  {k:'aws-docs',g:2,i:'',n:'AWS Docs',d:'Search official AWS documentation',c:'uvx',a:'awslabs.aws-documentation-mcp-server@latest'},
+  {k:'cloudflare-docs',g:2,i:'',n:'Cloudflare Docs',d:'Cloudflare product documentation',c:'npx',a:'-y mcp-remote https://docs.mcp.cloudflare.com/sse'},
+  {k:'vercel',g:2,i:'▲',n:'Vercel',d:'Projects, deployments & logs on Vercel',c:'npx',a:'-y mcp-remote https://mcp.vercel.com',oauth:true},
+  // ---- apps & saas ----
+  {k:'notion',g:3,i:'',n:'Notion',d:'Read & write pages and databases',c:'npx',a:'-y @notionhq/notion-mcp-server',env:[['NOTION_TOKEN','internal-integration secret (ntn_…) from notion.so/profile/integrations — then share the target pages with that integration']],auth:'integration secret'},
+  {k:'linear',g:3,i:'',n:'Linear',d:'Issues, projects & cycles in Linear',c:'npx',a:'-y mcp-remote https://mcp.linear.app/sse',oauth:true},
+  {k:'atlassian',g:3,i:'',n:'Atlassian',d:'Jira issues & Confluence pages',c:'npx',a:'-y mcp-remote https://mcp.atlassian.com/v1/sse',oauth:true},
+  {k:'slack',g:3,i:'',n:'Slack',d:'Read/post in your Slack workspace',c:'npx',a:'-y @modelcontextprotocol/server-slack',env:[['SLACK_BOT_TOKEN','xoxb-… bot token from api.slack.com/apps → OAuth & Permissions'],['SLACK_TEAM_ID','workspace ID (starts with T) from your Slack URL or workspace settings']],auth:'bot token'},
+  {k:'airtable',g:3,i:'',n:'Airtable',d:'Read & write bases, tables and records',c:'npx',a:'-y airtable-mcp-server',env:[['AIRTABLE_API_KEY','personal access token from airtable.com/create/tokens']],auth:'access token'},
+  {k:'stripe',g:3,i:'',n:'Stripe',d:'Customers, payments, invoices, subscriptions',c:'npx',a:'-y @stripe/mcp --tools=all --api-key={ASK:Stripe secret key (sk_…) from dashboard.stripe.com/apikeys — a restricted key is safest}',auth:'secret key'},
+  {k:'figma',g:3,i:'',n:'Figma',d:'Pull designs & components for code generation',c:'npx',a:'-y figma-developer-mcp --stdio',env:[['FIGMA_API_KEY','personal access token from Figma → Settings → Security']],auth:'access token'},
+  {k:'google-maps',g:3,i:'',n:'Google Maps',d:'Places, geocoding, directions',c:'npx',a:'-y @modelcontextprotocol/server-google-maps',env:[['GOOGLE_MAPS_API_KEY','from console.cloud.google.com → APIs & Services → Credentials']],auth:'API key'},
+  {k:'zapier',g:3,i:'',n:'Zapier',d:'8,000+ apps through your Zapier account',t:'http',u:'{ASK:Your personal MCP server URL from mcp.zapier.com (includes its own auth)}',auth:'personal URL'},
+  {k:'elevenlabs',g:3,i:'',n:'ElevenLabs',d:'Text-to-speech & voice generation',c:'uvx',a:'elevenlabs-mcp',env:[['ELEVENLABS_API_KEY','from elevenlabs.io → profile → API keys']],auth:'API key'},
 ];
 function mcpPreset(key){
   const e=MCP_CATALOG.find(x=>x.k===key);
   if(!e||MCPCFG[e.k])return;
-  let args=e.a.replace('{WS}',(cfg&&cfg.workspace)||'~');
-  const ask=args.match(/\{ASK:([^}]+)\}/);
-  if(ask){
-    const v=prompt(ask[1]);
-    if(!v)return;
-    args=args.replace(ask[0],v.trim());
-  }
-  const conf={transport:'stdio',command:e.c,args,enabled:true};
-  if(e.env){
-    conf.env={};
-    for(const k of e.env){
-      const v=prompt('Enter '+k+' (from the service\'s developer settings):');
-      if(!v)return;
-      conf.env[k]=v.trim();
+  const fill=(s)=>{           // resolve {WS} and every {ASK:question}; null = user cancelled
+    s=s.replace('{WS}',(cfg&&cfg.workspace)||'~');
+    let m;
+    while((m=s.match(/\{ASK:([^}]+)\}/))){
+      const v=prompt(m[1]);
+      if(!v)return null;
+      s=s.replace(m[0],v.trim());
+    }
+    return s;
+  };
+  let conf;
+  if(e.t==='http'){
+    const url=fill(e.u);
+    if(url===null)return;
+    conf={transport:'http',url,enabled:true};
+    if(e.bearer){
+      const v=prompt(e.bearer);
+      if(v===null)return;
+      if(v.trim())conf.headers={Authorization:'Bearer '+v.trim()};
+      else if(!e.opt)return;
+    }
+  }else{
+    const args=fill(e.a);
+    if(args===null)return;
+    conf={transport:'stdio',command:e.c,args,enabled:true};
+    if(e.env){
+      conf.env={};
+      for(const [k,hint] of e.env){
+        const v=prompt(k+' — '+hint+':');
+        if(!v)return;
+        conf.env[k]=v.trim();
+      }
     }
   }
+  if(e.oauth)toast('first connect opens a browser tab to sign in — approve it there');
   MCPCFG[e.k]=conf;mcpSave();
 }
 function mcpToggle(name){if(MCPCFG[name]){MCPCFG[name].enabled=!MCPCFG[name].enabled;mcpSave()}}
@@ -1740,7 +2600,7 @@ async function renderTelegram(body){
     :d.status==='error'?`<span class="badge err">error</span>`:`<span class="badge">off</span>`;
   body.innerHTML=`<div class="pad">
     <div class="provbox">
-      <div class="ptitle">✈️ Telegram bridge ${st}</div>
+      <div class="ptitle">Telegram bridge ${st}</div>
       ${d.error?`<div class="sub" style="color:var(--err);margin-top:6px">${esc(d.error)}</div>`:''}
       <p class="mut" style="margin-top:8px">
         <span class="stepnum">1</span>Open Telegram, message <b>@BotFather</b> → <code>/newbot</code> → copy the token.<br><br>
@@ -1768,7 +2628,7 @@ async function renderTelegram(body){
       <div class="ptitle">Chats &amp; groups</div>
       <p class="mut" style="margin:6px 0 10px">Every user or group that messages the bot is registered here. Only <b>enabled</b> chats can talk to the agent; groups need the bot added as a member.</p>
       ${(d.chats||[]).map(c=>`<div class="item">
-        <span>${c.type==='private'?'👤':'👥'}</span>
+        <span class="lbadge">${c.type==='private'?'user':'group'}</span>
         <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
           <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
         <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
@@ -1810,7 +2670,7 @@ function renderLogs(body,w){
       </select>
       <span class="mut" id="log-count" style="flex:1"></span>
       <button class="endbtn" onclick="refreshApp('logs')">↻ Refresh</button>
-      <button class="endbtn" onclick="logsClear()">🗑 Clear all</button>
+      <button class="endbtn" onclick="logsClear()">Clear all</button>
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;
@@ -1846,7 +2706,7 @@ async function renderSoul(body){
 async function soulSave(){
   await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({content:$('#soul-ta').value})});
-  toast('☯ soul saved');
+  toast('soul saved');
 }
 
 /* ================= knowledge graph app ================= */
@@ -1854,7 +2714,8 @@ async function renderKG(body,w){
   body.innerHTML=`<div class="apptop">
       <input id="kg-s" placeholder="subject"><input id="kg-r" placeholder="relation"><input id="kg-o" placeholder="object">
       <button class="save" style="margin:0;flex:0 0 64px;padding:8px" onclick="kgAdd()">Add</button>
-      <button class="endbtn" onclick="kgClear()">🗑 Clear graph</button>
+      <button class="endbtn" title="merge duplicate entities, roll up idle sessions, re-index memory" onclick="tidyKnowledge()">Tidy</button>
+      <button class="endbtn" onclick="kgClear()">Clear graph</button>
     </div>
     <div style="flex:1;min-height:0;position:relative">
       <canvas id="kgc" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
@@ -1937,16 +2798,16 @@ async function renderThemes(body){
   const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
       <span class="cn">${esc(t.label||t.name||k)} ${CURRENT_THEME===k?'✓':''}</span>
       <div style="margin:6px 0 4px">${swatch(t)}</div>
-      <span class="cd">${t.mode||'dark'}${t.font?' · '+esc(t.font.family||'custom font'):''}${t.css?' · custom CSS':''}</span>
+      <span class="cd">${t.mode||'dark'}${t.font?' · '+esc(t.font.family||'custom font'):''}${t.css?' · custom CSS':''}${t.shell?' · full shell':''}</span>
       ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
     </div>`).join('');
   body.innerHTML=`<div class="pad">
-    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, taskbar, icons and widgets. Click one to apply instantly.</p>
+    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, menu bar, dock, icons and widgets. A theme can even carry a <b>full replacement shell</b>: a completely different interface built by AI against the OS API (<code>GET /api/registry</code>). Click one to apply instantly.</p>
     <div class="cat">${cards}</div>
     <div class="row" style="margin-top:14px">
-      <button class="save" style="margin:0" onclick="themeBuilder()">🎛 Open Theme Builder</button>
+      <button class="save" style="margin:0" onclick="themeBuilder()">Open Theme Builder</button>
     </div>
-    <label style="margin-top:16px">✨ Design a theme with AI</label>
+    <label style="margin-top:16px">Design a theme with AI</label>
     <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>
     <p class="mut" style="margin:6px 0 0">${esc(agentName())} will generate a full theme (colors, font, chrome) and apply it live.</p>
@@ -1962,9 +2823,11 @@ async function renderThemes(body){
 }
 function themeAI(){
   const p=$('#th-ai').value.trim();if(!p)return toast('describe the theme');
+  const t=allThemes()[CURRENT_THEME]||{};
+  const cur=`Currently applied theme: "${t.label||t.name||CURRENT_THEME}"${t.custom?' (custom — refine it in place)':' (built-in)'}, mode ${t.mode||'dark'}, vars ${JSON.stringify(t.v||t.vars||{})}${t.css?', has custom css':''}${t.shell?', has a full replacement shell':''}.`;
   openApp('chat');
-  if(input){input.value='Design and apply an AgentOS desktop theme: '+p+'. Use the create_theme tool with a full set of CSS variables and custom css for the chrome.';input.dispatchEvent(new Event('input'));send()}
-  toast('🎨 designing your theme…');
+  if(input){input.value='Theme request: '+p+'\n\n'+cur+'\nUse the create_theme tool. If this is a REFINEMENT of the theme we are already working on (or of the applied custom theme), call create_theme with that SAME name and only the fields to change — vars merge key-by-key and css/font/shell are kept unless passed. Only pick a new name for a genuinely new theme. For a new theme, give a full set of CSS variables and custom css for the chrome (#menubar, #taskbar dock, .win, .aicon). If I asked for a completely different interface (not just a restyle), fetch GET /api/registry to see every endpoint available and pass shell_html — a full replacement UI.';input.dispatchEvent(new Event('input'));send()}
+  toast('designing your theme…');
 }
 async function themeSave(theme,apply){
   theme.custom=true;theme.apply=!!apply;
@@ -1972,13 +2835,13 @@ async function themeSave(theme,apply){
 }
 function themeExport(){
   const t=allThemes()[CURRENT_THEME];if(!t)return;
-  const out={name:(t.label||t.name||CURRENT_THEME),mode:t.mode||'dark',v:t.v||t.vars||{},css:t.css||'',font:t.font||undefined};
+  const out={name:(t.label||t.name||CURRENT_THEME),mode:t.mode||'dark',v:t.v||t.vars||{},css:t.css||'',font:t.font||undefined,shell:t.shell||undefined};
   const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out.name.replace(/\s+/g,'-')+'.theme.json';a.click();
 }
 async function themeImport(){
   try{const t=JSON.parse($('#th-imp').value);if(!t.name)return toast('theme needs a "name"');
-    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('🎨 imported '+t.name);refreshApp('themes');
+    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('imported '+t.name);refreshApp('themes');
   }catch(e){toast('invalid JSON: '+e.message)}
 }
 async function themeDel(name){
@@ -1999,7 +2862,7 @@ function themeBuilder(){
       <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1">
       <select id="tb-mode" style="flex:0 0 90px"><option value="dark"${WB.mode==='dark'?' selected':''}>dark</option><option value="light"${WB.mode==='light'?' selected':''}>light</option></select>
     </div>
-    <p class="mut" style="margin-bottom:10px">Pick colors — the whole desktop updates live as you edit. 🎨</p>
+    <p class="mut" style="margin-bottom:10px">Pick colors — the whole desktop updates live as you edit. </p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
       ${COLORS.map(([k,lab])=>`<label style="display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400">
         <input type="color" data-k="${k}" value="${hex(WB.v[k])}" style="width:36px;height:26px;padding:0;border:1px solid var(--line);background:none;border-radius:6px;cursor:pointer">
@@ -2011,7 +2874,7 @@ function themeBuilder(){
     <label>Advanced CSS (optional — restyle .win, #taskbar, .dimg, .widget, #desktop)</label>
     <textarea id="tb-css" rows="4" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea>
     <div class="row" style="margin-top:12px">
-      <button class="save" style="margin:0" onclick="tbSave()">💾 Save &amp; apply</button>
+      <button class="save" style="margin:0" onclick="tbSave()">Save &amp; apply</button>
       <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">Cancel</button>
     </div>
   </div>`;
@@ -2028,7 +2891,7 @@ async function tbSave(){
   const WB=window._WB;if(!WB)return;
   WB.name=$('#tb-name').value.trim()||'My Theme';WB.custom=true;
   if(WB.font&&!WB.font.url)WB.font=null;
-  await themeSave(WB,true);await loadThemes();applyTheme(WB.name);toast('🎨 saved '+WB.name);refreshApp('themes');
+  await themeSave(WB,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
 }
 
 /* ================= personalize app + wallpaper gallery ================= */
@@ -2038,8 +2901,8 @@ async function renderPersonalize(body){
     <label>Describe your wallpaper</label>
     <textarea id="pz-prompt" rows="2" placeholder="e.g. dark cyberpunk skyline at dusk, teal neon reflections, rain, cinematic"></textarea>
     <div class="row" style="margin-top:10px">
-      <button class="save" style="margin:0" id="pz-gen" onclick="pzGen()">✨ Generate wallpaper</button>
-      <button class="endbtn" onclick="wpSystem()">🖼 Use Ubuntu wallpaper</button>
+      <button class="save" style="margin:0" id="pz-gen" onclick="pzGen()">Generate wallpaper</button>
+      <button class="endbtn" onclick="wpSystem()">Use system wallpaper</button>
       <button class="endbtn" onclick="fetch('/api/wallpaper',{method:'DELETE'})">Reset</button>
     </div>
     <label style="margin-top:16px">Gallery — every wallpaper you've generated (click to apply)</label>
@@ -2057,12 +2920,12 @@ async function pzGen(){
   const b=$('#pz-gen');b.disabled=true;b.textContent='⏳ generating…';
   try{
     const r=await fetch('/api/wallpaper/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})});
-    const d=await r.json();if(!d.ok)toast(d.result);else{toast('🖼 generated');refreshApp('personalize')}
+    const d=await r.json();if(!d.ok)toast(d.result);else{toast('generated');refreshApp('personalize')}
   }catch(e){toast('generation failed — offline?')}
-  const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='✨ Generate wallpaper'}
+  const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
-async function pzSet(id){await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('🖼 applied')}
-async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'POST'});const d=await r.json();toast(d.ok?'🖼 using your Ubuntu wallpaper':(d.error||'failed'))}
+async function pzSet(id){await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('applied')}
+async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'POST'});const d=await r.json();toast(d.ok?'using your system wallpaper':(d.error||'failed'))}
 async function pzDel(id){await fetch('/api/wallpapers/'+id,{method:'DELETE'});refreshApp('personalize')}
 
 /* ================= token analytics app ================= */
@@ -2106,14 +2969,14 @@ async function renderSnapshots(body){
     ||'<p class="mut">No snapshots yet. Take one before risky changes — especially before letting the agent modify its own code.</p>';
   body.innerHTML=`<div class="pad">
     <div class="row"><input id="snap-label" placeholder="label (e.g. before WhatsApp experiment)">
-      <button class="save" style="margin:0;flex:0 0 120px" onclick="snapCreate()">📸 Snapshot now</button></div>
+      <button class="save" style="margin:0;flex:0 0 120px" onclick="snapCreate()">Snapshot now</button></div>
     <p class="mut" style="margin:8px 0 14px">A snapshot saves your settings, data (apps, widgets, memory), and the OS source code. Restoring rolls everything back and restarts.</p>
     ${items}</div>`;
 }
 async function snapCreate(){
   const label=$('#snap-label').value.trim();
   await fetch('/api/snapshots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
-  toast('📸 snapshot saved');refreshApp('snapshots');
+  toast('snapshot saved');refreshApp('snapshots');
 }
 async function snapRestore(id){
   if(!confirm('Restore this snapshot? Current config, data, and source will be replaced and AgentOS will restart.'))return;
@@ -2161,6 +3024,38 @@ async function delPolicy(i){
 }
 
 /* ================= skills app ================= */
+/* Curated open-source skills — every entry is MIT or Apache-2.0 licensed.
+   src is either a git repo (pack — installs every SKILL.md) or a raw SKILL.md URL (single skill). */
+const SK_RAW='https://raw.githubusercontent.com/anthropics/skills/main/skills/';
+const SKILLS_CATALOG=[
+  {k:'superpowers',n:'Superpowers (pack)',d:'TDD, systematic debugging, brainstorming, planning, code review — battle-tested engineering skills',lic:'MIT',src:'https://github.com/obra/superpowers.git'},
+  {k:'react-best-practices',n:'React Best Practices',d:'Vercel’s official React & Next.js performance rules',lic:'MIT',src:'https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/react-best-practices/SKILL.md'},
+  {k:'skill-creator',n:'Skill Creator',d:'Teaches the agent to write new high-quality skills',lic:'Apache-2.0',src:SK_RAW+'skill-creator/SKILL.md'},
+  {k:'mcp-builder',n:'MCP Builder',d:'Build new MCP servers (Python/Node) the right way',lic:'Apache-2.0',src:SK_RAW+'mcp-builder/SKILL.md'},
+  {k:'webapp-testing',n:'Webapp Testing',d:'Test local web apps with Playwright: screenshots, logs, flows',lic:'Apache-2.0',src:SK_RAW+'webapp-testing/SKILL.md'},
+  {k:'frontend-design',n:'Frontend Design',d:'Production-grade, distinctive web interfaces',lic:'Apache-2.0',src:SK_RAW+'frontend-design/SKILL.md'},
+  {k:'canvas-design',n:'Canvas Design',d:'Visual art, posters & static designs on HTML canvas',lic:'Apache-2.0',src:SK_RAW+'canvas-design/SKILL.md'},
+  {k:'algorithmic-art',n:'Algorithmic Art',d:'Generative art: flow fields, particles, fractals',lic:'Apache-2.0',src:SK_RAW+'algorithmic-art/SKILL.md'},
+  {k:'brand-guidelines',n:'Brand Guidelines',d:'Apply consistent brand styling to everything produced',lic:'Apache-2.0',src:SK_RAW+'brand-guidelines/SKILL.md'},
+  {k:'theme-factory',n:'Theme Factory',d:'Ready-made visual themes for slides, docs & pages',lic:'Apache-2.0',src:SK_RAW+'theme-factory/SKILL.md'},
+  {k:'internal-comms',n:'Internal Comms',d:'Status reports, newsletters & FAQs that inform fast',lic:'Apache-2.0',src:SK_RAW+'internal-comms/SKILL.md'},
+];
+function skillsCatalogHTML(installed){
+  const have=e=>installed.some(x=>(x.source||'')===e.src);
+  return `<label>Catalog — open-source skills (MIT / Apache-2.0), one click to install</label>
+    <div class="cat">${SKILLS_CATALOG.map(e=>`
+      <button class="catcard${have(e)?' inst':''}" onclick="installSkillFrom('${e.src}','${esc(e.n)}')">
+        <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
+        <span class="ck" style="color:var(--ok)">${e.lic}</span>
+      </button>`).join('')}
+    </div>`;
+}
+async function installSkillFrom(src,label){
+  toast('installing '+label+'…');
+  const r=await fetch('/api/skills/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:src})});
+  const d=await r.json();toast(d.ok?`installed ${d.count} skill(s) from ${label}`:d.error);
+  refreshApp('skills');refreshApp('store');
+}
 async function renderSkills(body){
   const r=await fetch('/api/skills');const d=await r.json();
   const items=d.skills.map(s=>`<div class="item">
@@ -2169,12 +3064,13 @@ async function renderSkills(body){
       <button onclick="delSkill('${s.id}')">✕</button></div>`).join('')
     ||'<p class="mut">No skills yet. A skill is a reusable procedure the agent can pull in when relevant — house rules, runbooks, how-tos. The agent sees the list and loads one with <code>use_skill</code>.</p>';
   body.innerHTML=`<div class="pad">${items}
+    ${skillsCatalogHTML(d.skills)}
     <label>Install from git or URL</label>
     <div class="row">
       <input id="sk-src" placeholder="https://github.com/user/repo.git  ·  or a raw .md URL">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="installSkill()">Install</button>
     </div>
-    <p class="mut" style="margin:8px 0 0">Git repos are scanned for <code>*.md</code> skill files (first heading = name).</p>
+    <p class="mut" style="margin:8px 0 0">Git repos are scanned for <code>SKILL.md</code> files (falling back to all <code>*.md</code>); YAML frontmatter or the first heading names the skill.</p>
     <label style="margin-top:16px">Write a skill</label>
     <input id="sk-name" placeholder="name, e.g. deploy-checklist">
     <input id="sk-desc" placeholder="one-line description (the agent reads this to decide relevance)" style="margin-top:8px">
@@ -2187,7 +3083,7 @@ async function saveSkill(){
   if(!name||!content.trim())return toast('name and content required');
   await fetch('/api/skills',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name,description:desc,content})});
-  toast('🧩 skill saved');refreshApp('skills');
+  toast('skill saved');refreshApp('skills');
 }
 async function editSkill(id){
   const r=await fetch('/api/skills');const d=await r.json();
@@ -2200,7 +3096,7 @@ async function installSkill(){
   const src=$('#sk-src').value.trim();if(!src)return toast('enter a git or raw URL');
   toast('⏳ installing…');
   const r=await fetch('/api/skills/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:src})});
-  const d=await r.json();toast(d.ok?`🧩 installed ${d.count} skill(s)`:d.error);
+  const d=await r.json();toast(d.ok?`installed ${d.count} skill(s)`:d.error);
   refreshApp('skills');
 }
 
@@ -2214,11 +3110,11 @@ async function openHost(opts){
 }
 function openInBrowser(url){openHost({url})}
 function renderBrowser(body,w){
-  const links=[['🦆 DuckDuckGo','https://duckduckgo.com'],['📰 Hacker News','https://news.ycombinator.com'],
-    ['🐙 GitHub','https://github.com'],['📈 Finance','https://finance.yahoo.com'],['🔍 Google','https://google.com']];
+  const links=[['DuckDuckGo','https://duckduckgo.com'],['Hacker News','https://news.ycombinator.com'],
+    ['GitHub','https://github.com'],['Finance','https://finance.yahoo.com'],['Google','https://google.com']];
   body.innerHTML=`<div class="pad" style="display:flex;flex-direction:column;gap:14px">
     <div style="text-align:center;padding-top:6px">
-      <div style="font-size:15px;font-weight:700">🌐 Web</div>
+      <div style="font-size:15px;font-weight:700">Web</div>
       <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox) — full sites, logins, extensions.</p>
     </div>
     <div class="apptop" style="border:none;padding:0">
@@ -2279,7 +3175,7 @@ async function renderModels(body){
     <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item">
       <div class="grow"><b>${esc(m.name)}</b> ${running.has(m.name)?'<span class="badge ok">● loaded</span>':''}
         <div class="sub">${fmtB(m.size)}${m.params?' · '+esc(m.params):''}${m.family?' · '+esc(m.family):''}</div></div>
-      <button onclick="modelDelete('${esc(m.name)}')" title="delete">🗑</button></div>`).join('')||'<p class="mut">no models yet — pull one below</p>'}</div>
+      <button onclick="modelDelete('${esc(m.name)}')" title="delete">✕</button></div>`).join('')||'<p class="mut">no models yet — pull one below</p>'}</div>
     <div id="mdl-prog" class="mut" style="margin:8px 0"></div>
     <label>Download a model</label>
     <div class="row"><input id="mdl-name" placeholder="e.g. qwen2.5:14b" list="mdl-sug">
@@ -2293,7 +3189,7 @@ async function renderModels(body){
 async function modelPull(name){
   name=(name||$('#mdl-name')?.value||'').trim();if(!name)return toast('enter a model name');
   await fetch('/api/models/pull',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  toast('⬇ downloading '+name);
+  toast('downloading '+name);
 }
 async function modelDelete(name){
   if(!confirm('Delete model '+name+'?'))return;
@@ -2301,33 +3197,33 @@ async function modelDelete(name){
   toast('removed '+name);refreshApp('models');loadModels();
 }
 
-/* ================= control center + tray ================= */
+/* ================= quick settings + tray ================= */
 async function renderControl(body){
   const d=await (await fetch('/api/control')).json();
   const a=d.audio||{},b=d.battery||{},n=d.network||{};
   body.innerHTML=`<div class="pad">
-    <div class="provbox"><div class="ptitle">🔊 Sound</div>
+    <div class="provbox"><div class="ptitle">Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-        <button class="endbtn" id="c-mute" style="flex:0 0 40px">${a.muted?'🔇':'🔊'}</button>
+        <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
         <input type="range" id="c-vol" min="0" max="100" value="${a.volume??50}" style="flex:1">
         <span id="c-voln" class="mut" style="flex:0 0 40px;text-align:right">${a.volume??'–'}%</span>
       </div>
       <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('sound')">Open Sound Settings ↗</button>
     </div>
-    <div class="provbox"><div class="ptitle">🔋 Battery</div>
+    <div class="provbox"><div class="ptitle">Battery</div>
       <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery detected'}</p>
       ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
       <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('power')">Open Power Settings ↗</button>
     </div>
-    <div class="provbox"><div class="ptitle">🌐 Network</div>
-      <p class="mut" style="margin-top:6px">${n.online?n.connections.map(c=>`${c.type==='wifi'?'📶':'🔌'} ${esc(c.name)}`).join(', '):'offline'}</p>
+    <div class="provbox"><div class="ptitle">Network</div>
+      <p class="mut" style="margin-top:6px">${n.online?n.connections.map(c=>`${c.type==='wifi'?'Wi-Fi':'wired'} · ${esc(c.name)}`).join(', '):'offline'}</p>
       <div class="row" style="margin-top:10px">
         <button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button>
         <button class="endbtn" onclick="ctlSettings('network')">Network ↗</button>
         <button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>
       </div>
     </div>
-    <div class="provbox"><div class="ptitle">⚙ System</div>
+    <div class="provbox"><div class="ptitle">System</div>
       <div class="row" style="margin-top:10px">
         <button class="endbtn" onclick="ctlSettings('display')">Display ↗</button>
         <button class="endbtn" onclick="ctlSettings('background')">Background ↗</button>
@@ -2337,49 +3233,70 @@ async function renderControl(body){
   </div>`;
   const vol=$('#c-vol');let vt;
   vol.oninput=()=>{$('#c-voln').textContent=vol.value+'%';clearTimeout(vt);vt=setTimeout(()=>ctlSet({volume:+vol.value}),200)};
-  $('#c-mute').onclick=async()=>{const cur=$('#c-mute').textContent==='🔊';await ctlSet({mute:cur});refreshApp('control');updateTray()};
+  $('#c-mute').onclick=async()=>{await ctlSet({mute:!a.muted});refreshApp('control');updateTray()};
 }
 async function ctlSet(opts){await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)});updateTray()}
 async function ctlSettings(panel){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:panel})});const d=await r.json();toast(d.ok?'↗ opened settings':d.message)}
 
-const NAT_ICON={firefox:'🦊',chrome:'🌐','google-chrome':'🌐',code:'🧑‍💻','code-oss':'🧑‍💻',nautilus:'🗂',
-  gnome:'🖥','org.gnome.nautilus':'🗂',terminal:'🖥','gnome-terminal':'🖥',libreoffice:'📄',anydesk:'🖥️',
-  thunderbird:'✉️',slack:'💬',telegram:'✈️',spotify:'🎵',vlc:'🎬',blender:'🧊',gimp:'🎨'};
-function natIcon(app){app=(app||'').toLowerCase();for(const k in NAT_ICON)if(app.includes(k))return NAT_ICON[k];return '▭'}
+function natIcon(app){const c=(app||'?').trim().charAt(0).toUpperCase();return /[A-Z0-9]/.test(c)?c:'▭'}
 async function updateNativeWindows(){
   const box=$('#tbnative');if(!box)return;
   let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
   if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';return}
   box.classList.toggle('has',d.windows.length>0);
-  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat" data-id="${esc(w.id)}" title="${esc(w.title)} — click to switch, right-click to close">
-    <span style="font-size:13px">${natIcon(w.app)}</span><span class="tl">${esc(w.title)}</span></button>`).join('');
+  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat" data-id="${esc(w.id)}" data-tip="${esc(w.title)}">
+    ${emojiIcon(natIcon(w.app),46)}</button>`).join('');
   box.querySelectorAll('.tbnat').forEach(b=>{
     b.onclick=()=>fetch('/api/windows/focus',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
     b.oncontextmenu=e=>{e.preventDefault();if(confirm('Close this window?'))fetch('/api/windows/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}).then(()=>updateNativeWindows())};
   });
+  if(typeof updateDockSeps==='function')updateDockSeps();
+}
+function svgMic(px){
+  px=px||15;
+  return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v2.5"/></svg>`;
+}
+function svgSpeaker(muted){
+  return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block">
+    <path d="M11 5.5 6.8 9H4v6h2.8L11 18.5Z"/>${muted
+      ?'<path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>'
+      :'<path d="M14.5 9.5a3.6 3.6 0 0 1 0 5"/><path d="M17 7.4a7 7 0 0 1 0 9.2"/>'}</svg>`;
+}
+function svgBattery(pct){
+  const w=Math.max(1,Math.round(15*Math.min(pct,100)/100));
+  const fill=pct<20?'var(--err)':'currentColor';
+  return `<svg width="23" height="12" viewBox="0 0 27 13" style="display:block"><rect x="1" y="1.5" width="21" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".55"/><rect x="23.6" y="4.5" width="2.4" height="4" rx="1.1" fill="currentColor" opacity=".55"/><rect x="3" y="3.5" width="${w}" height="6" rx="1.6" fill="${fill}"/></svg>`;
 }
 async function updateTray(){
   try{
     const d=await (await fetch('/api/control')).json();
     const a=d.audio||{},b=d.battery||{};
     const el=$('#tray-ctl');if(!el)return;
-    const vi=a.muted?'🔇':(a.volume>50?'🔊':a.volume>0?'🔉':'🔈');
-    el.innerHTML=`<span title="volume ${a.volume??'?'}%">${vi}</span>${b.percent!=null?`<span title="battery ${b.percent}%">${b.percent<20?'🪫':'🔋'} ${b.percent}%</span>`:''}`;
+    el.innerHTML=`<span title="volume ${a.volume??'?'}%">${svgSpeaker(a.muted)}</span>`+
+      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span style="font-size:11.5px">${b.percent}%</span></span>`:'');
   }catch(e){}
 }
 
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
   w.path=w.path||'';
-  const icon=e=>e.dir?'📁':({html:'🌐',htm:'🌐',md:'📝',txt:'📄',json:'🧾',csv:'📊',log:'📜',
-    png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',pdf:'📕',sh:'⚙',py:'🐍'})[e.ext]||'📄';
+  const FCOLORS={html:'#38BDF8',htm:'#38BDF8',md:'#a5b4fc',txt:'#8a94a6',json:'#fbbf24',csv:'#4ade80',
+    log:'#8a94a6',pdf:'#f87171',sh:'#94a3b8',py:'#60a5fa'};
+  const IMG_EXT=new Set(['png','jpg','jpeg','gif','webp','svg']);
+  const icon=e=>{
+    const s='width:17px;height:17px;display:block';
+    if(e.dir)return `<svg viewBox="0 0 24 24" style="${s}"><path d="M3.5 7c0-.9.7-1.6 1.5-1.6h4.2l2 2.4h7.8c.8 0 1.5.7 1.5 1.6v8c0 .9-.7 1.6-1.5 1.6H5c-.8 0-1.5-.7-1.5-1.6Z" fill="#5EA3F7"/></svg>`;
+    if(IMG_EXT.has(e.ext))return `<svg viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="${s}"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M4.4 16.4l4.3-3.8 3.4 2.9 3-2.5 4.5 3.6"/></svg>`;
+    const c=FCOLORS[e.ext]||'#8a94a6';
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="${s}"><path d="M6.5 4h7l4 4v12h-11Z"/><path d="M13.5 4v4h4"/></svg>`;
+  };
   const fmt=n=>n<1024?n+' B':n<1e6?(n/1024).toFixed(0)+' KB':(n/1e6).toFixed(1)+' MB';
   let d;try{d=await (await fetch('/api/files?path='+encodeURIComponent(w.path))).json()}catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
   w.path=d.path;
-  const crumbs=['<span class="fcrumb" data-p="">🏠 workspace</span>'];
+  const crumbs=['<span class="fcrumb" data-p="">workspace</span>'];
   let acc='';d.path.split('/').filter(Boolean).forEach(seg=>{acc=acc?acc+'/'+seg:seg;crumbs.push('<span class="fsep">/</span><span class="fcrumb" data-p="'+esc(acc)+'">'+esc(seg)+'</span>')});
   body.innerHTML=`<div class="apptop">
-      ${w.path?'<button class="endbtn" id="f-up">⬆ Up</button>':''}
+      ${w.path?'<button class="endbtn" id="f-up">Up</button>':''}
       <div style="flex:1;font-size:12.5px" id="f-crumbs">${crumbs.join('')}</div>
       <button class="endbtn" onclick="refreshApp('files')">⟳</button>
     </div>
@@ -2402,11 +3319,11 @@ function openFile(rel,ext){
   openHost({path:rel});
 }
 
-/* ================= app store ================= */
+/* ================= store ================= */
 let STORE_TAB='apps';
 async function renderStore(body,w){
   body.innerHTML=`<div class="apptop" style="gap:6px">
-      ${['apps','channels','skills','build'].map(t=>`<button class="endbtn store-tab${t===STORE_TAB?' on':''}" data-t="${t}">${({apps:'🛍 Apps',channels:'🔌 Channels',skills:'🧩 Skills',build:'✨ Build with AI'})[t]}</button>`).join('')}
+      ${['apps','channels','skills','build'].map(t=>`<button class="endbtn store-tab${t===STORE_TAB?' on':''}" data-t="${t}">${({apps:'Apps',channels:'Channels',skills:'Skills',build:'Build with AI'})[t]}</button>`).join('')}
     </div>
     <div id="store-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
   body.querySelectorAll('.store-tab').forEach(b=>b.onclick=()=>{STORE_TAB=b.dataset.t;renderStore(body,w)});
@@ -2415,34 +3332,36 @@ async function renderStore(body,w){
     const d=await (await fetch('/api/store/templates')).json();
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
       <div class="cat">${d.templates.map(t=>`<div class="catcard">
-        <span class="cn">${t.icon} ${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
+        <span class="cn">${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
         <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
       </div>`).join('')}</div>`;
   } else if(STORE_TAB==='channels'){
     const r=await fetch('/api/mcp');const md=await r.json();
     MCPCFG={};   // keep the full current config so adding one doesn't wipe the rest
-    md.servers.forEach(s=>{MCPCFG[s.name]={transport:s.transport,command:s.command,args:s.args,url:s.url,enabled:s.enabled}});
+    md.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
     const have=new Set(md.servers.map(s=>s.name));
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">Tool channels (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
-      <div class="cat">${MCP_CATALOG.map(e=>`<div class="catcard${have.has(e.k)?' inst':''}">
-        <span class="cn">${e.i} ${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
-        ${e.env?`<span class="ck">🔑 needs a key</span>`:''}
+      ${MCP_GROUPS.map((g,gi)=>`<label>${esc(g)}</label>
+      <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`<div class="catcard${have.has(e.k)?' inst':''}">
+        <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
+        ${mcpBadge(e)}
         <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${e.k}');toast('connecting ${esc(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
-      </div>`).join('')}</div>`;
+      </div>`).join('')}</div>`).join('')}`;
   } else if(STORE_TAB==='skills'){
     const d=await (await fetch('/api/skills')).json();
-    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Skills are reusable procedures the agent follows. Install from a git repo or a raw .md URL.</p>
-      <div class="row"><input id="store-sk" placeholder="https://github.com/user/repo.git  ·  or a raw .md URL">
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Skills are reusable procedures the agent follows. Install from the catalog, a git repo, or a raw .md URL.</p>
+      ${skillsCatalogHTML(d.skills)}
+      <div class="row" style="margin-top:8px"><input id="store-sk" placeholder="https://github.com/user/repo.git  ·  or a raw .md URL">
         <button class="save" style="margin:0;flex:0 0 90px" onclick="storeInstallSkill()">Install</button></div>
       <div class="tmsec">Installed (${d.skills.length})</div>
       ${d.skills.map(s=>`<div class="item"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}`;
   } else {
     box.innerHTML=`<div style="text-align:center;padding:24px">
-      <div style="font-size:34px">✨</div>
+      <div style="font-size:34px"></div>
       <div style="font-size:16px;font-weight:700;margin:8px 0">Build any app with AI</div>
       <p class="mut" style="max-width:420px;margin:0 auto 16px">Describe what you want and ${esc(agentName())} builds a working app for it — live. It can call the OS, run tools, and fetch data.</p>
       <input id="store-build" placeholder="e.g. a habit tracker with daily checkboxes" style="width:100%;max-width:460px">
-      <div style="margin-top:10px"><button class="save" style="display:inline-block;width:auto;padding:9px 22px" onclick="storeBuild()">✨ Build it</button></div>
+      <div style="margin-top:10px"><button class="save" style="display:inline-block;width:auto;padding:9px 22px" onclick="storeBuild()">Build it</button></div>
       <p class="mut" style="margin-top:12px;font-size:11px">Tip: builds work best with a tool-capable model (a qwen model) selected in chat.</p>
     </div>`;
     $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
@@ -2451,14 +3370,14 @@ async function renderStore(body,w){
 async function storeInstall(id){
   const r=await fetch('/api/store/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   const d=await r.json();
-  if(d.ok)toast('🛍 installed '+d.name);
+  if(d.ok)toast('installed '+d.name);
   refreshApp('store');
 }
 async function storeInstallSkill(){
   const src=$('#store-sk').value.trim();if(!src)return toast('enter a git or raw URL');
   toast('⏳ installing…');
   const r=await fetch('/api/skills/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:src})});
-  const d=await r.json();toast(d.ok?`🧩 installed ${d.count} skill(s)`:d.error);refreshApp('store');
+  const d=await r.json();toast(d.ok?`installed ${d.count} skill(s)`:d.error);refreshApp('store');
 }
 function storeBuild(){
   const p=$('#store-build').value.trim();if(!p)return;
@@ -2470,12 +3389,12 @@ function storeBuild(){
 let STUDIO={apps:[],sel:'',building:false,log:null,preview:null};
 async function renderStudio(body,w){
   const r=await fetch('/api/apps?html=1');const d=await r.json();STUDIO.apps=d.apps;
-  const opts='<option value="">✨ New app</option>'+d.apps.map(a=>`<option value="${a.id}" ${a.id===STUDIO.sel?'selected':''}>${esc(a.icon||'🧰')} ${esc(a.name)}</option>`).join('');
+  const opts='<option value="">＋ New app</option>'+d.apps.map(a=>`<option value="${a.id}" ${a.id===STUDIO.sel?'selected':''}>${esc(a.name)}</option>`).join('');
   body.innerHTML=`
     <div class="apptop">
       <select id="st-app" style="flex:0 0 190px">${opts}</select>
       <input id="st-prompt" placeholder="Describe the app to build — or a change to make…">
-      <button class="save" style="margin:0;flex:0 0 90px" id="st-build" onclick="studioBuild()">✨ Build</button>
+      <button class="save" style="margin:0;flex:0 0 90px" id="st-build" onclick="studioBuild()">Build</button>
     </div>
     <div style="flex:1;min-height:0;display:flex">
       <div style="flex:0 0 40%;display:flex;flex-direction:column;border-right:1px solid var(--line)">
@@ -2506,8 +3425,8 @@ function studioActions(){
   const pinned=WIDGETS.some(w=>w.app_id===STUDIO.sel&&(w.desk||1)===curDesk);
   box.innerHTML=STUDIO.sel
     ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
-      <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'📌 Unpin':'📌 Pin to Desktop '+curDesk}</button>
-      <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">🗑 Delete</button>`:'';
+      <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+      <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
 function studioShowPreview(){
   if(!STUDIO.preview)return;
@@ -2554,7 +3473,7 @@ function studioBuildEvent(ev){
         studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready</span>`);
         // re-render to refresh the picker, then preview + open action
         const w=WM.wins.get('studio');if(w){renderStudio(w.el.querySelector('.wbody'),w);}
-        toast('🧰 '+(ev.name||'app')+' built');
+        toast(''+(ev.name||'app')+' built');
       } else studioLog('<span class="mut">no app was produced — try rephrasing</span>');
       break;
   }
@@ -2628,7 +3547,7 @@ const KEYMAP=[
     {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
     {k:[CMD,','],label:'Settings'},
     {k:['F11'],label:'Toggle fullscreen'},
-    {k:['Alt','J'],label:'Voice mode (Jarvis)'},
+    {k:['Alt','J'],label:'Voice mode'},
   ]},
   {group:'Windows',keys:[
     {k:['Ctrl','Tab'],alt:['Alt','Tab'],label:'Switch window (hold, Tab to cycle)'},
@@ -2662,7 +3581,7 @@ function switcherOpen(dir){
 }
 function switcherRender(){
   $('#swbox').innerHTML=SW.list.map((w,i)=>`<div class="swcard${i===SW.idx?' sel':''}">
-    <span class="si" style="background:${tileBg(w.id)}">${w.app.icon}</span><span class="sn">${esc(w.app.title)}</span></div>`).join('');
+    ${appIcon(w.id,48)}<span class="sn">${esc(w.app.title)}</span></div>`).join('');
 }
 function switcherCommit(){
   if(!SW.open)return;SW.open=false;$('#switcher').classList.remove('show');
@@ -2673,7 +3592,7 @@ function switcherCommit(){
 function keysHelp(on){
   const ov=$('#keyshelp');const show=on!==undefined?on:!ov.classList.contains('show');
   if(show){
-    $('#keysbox').innerHTML=`<div class="kh"><span>⌨ Keyboard shortcuts</span><button class="mclose" onclick="keysHelp(false)">✕</button></div>
+    $('#keysbox').innerHTML=`<div class="kh"><span>Keyboard shortcuts</span><button class="mclose" onclick="keysHelp(false)">✕</button></div>
       <div class="kbody">${KEYMAP.map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
   }
   ov.classList.toggle('show',show);
@@ -2689,12 +3608,13 @@ function togglePalette(force){
   if(on){$('#palin').value='';palRender('');setTimeout(()=>$('#palin').focus(),10)}
 }
 function palActions(){
-  const items=Object.keys(APPS).map(id=>({icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
+  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
+  const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
   items.push(
     {icon:'＋',label:'New chat',hint:'start a fresh conversation',run:()=>{openApp('chat');newChat()}},
-    {icon:'🧹',label:'Clear session',hint:'wipe the current conversation',run:()=>{openApp('chat');clearSession()}},
-    {icon:'🔊',label:'Toggle voice',hint:'speak replies on/off',run:()=>{VOICE.tts=!VOICE.tts;saveVoice();toast(VOICE.tts?'🔊 voice on':'🔇 voice off')}},
-    {icon:'🖼',label:'Reset wallpaper',hint:'back to the default background',run:()=>fetch('/api/wallpaper',{method:'DELETE'})},
+    {icon:g('<path d="M4.5 7h15M9.5 7V5.2h5V7M7 7l.9 12.3h8.2L17 7"/>'),label:'Clear session',hint:'wipe the current conversation',run:()=>{openApp('chat');clearSession()}},
+    {icon:svgSpeaker(false),label:'Toggle voice',hint:'speak replies on/off',run:()=>{VOICE.tts=!VOICE.tts;saveVoice();toast(VOICE.tts?'voice on':'voice off')}},
+    {icon:g('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4.4 16.4l4.3-3.8 3.4 2.9 3-2.5 4.5 3.6"/>'),label:'Reset wallpaper',hint:'back to the default background',run:()=>fetch('/api/wallpaper',{method:'DELETE'})},
   );
   return items;
 }
@@ -2713,7 +3633,7 @@ function palRender(q){
   if(q)palMatches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent',run:()=>palAsk(q)});
   palIdx=Math.min(palIdx,palMatches.length-1)||0;
   $('#pallist').innerHTML=palMatches.map((it,i)=>`<div class="palitem${i===palIdx?' sel':''}" data-i="${i}">
-    <span class="pi">${it.icon}</span><span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
+    ${it.id?appIcon(it.id,32):`<span class="pi">${it.icon}</span>`}<span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
   $('#pallist').querySelectorAll('.palitem').forEach(el=>{
     el.onclick=()=>{palRun(+el.dataset.i)};
     el.onmousemove=()=>{palIdx=+el.dataset.i;palHighlight()};
@@ -2747,6 +3667,7 @@ document.addEventListener('keydown',e=>{
   // Command-key window controls (Cmd on Mac, Ctrl elsewhere)
   if(cmd(e)&&!e.altKey){
     const a=activeWin();
+    if(k==='a'&&!typing&&!inTerm&&!a){e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}
     if(k==='w'&&a){e.preventDefault();closeWin(a);return}
     if(k==='m'&&a){e.preventDefault();minimizeWin(a);return}
     if(k==='f'&&a){e.preventDefault();toggleMax(a);return}
@@ -2782,6 +3703,8 @@ buildPager();
 buildDock();
 $('#tray-ctl').onclick=()=>openApp('control');
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
+$('#tray-voice').innerHTML=svgMic(14);
+$('#j-mic').innerHTML=svgMic(22);
 $('#j-mic').onclick=()=>{if(JARVIS.phase==='listening'){try{JARVIS.rec.stop()}catch(e){}}else jarvisListen()};
 $('#j-close').onclick=()=>jarvisMode(false);
 updateTray();setInterval(updateTray,15000);
@@ -2789,6 +3712,7 @@ updateNativeWindows();setInterval(updateNativeWindows,3000);
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadConfig();
+checkSetup();
 loadThemes();
 loadUserApps().then(loadWidgets);
 APPS_READY=true;

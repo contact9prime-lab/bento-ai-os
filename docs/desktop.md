@@ -54,19 +54,19 @@ real time.
 
 ## Themes
 
-Open **⚙ Settings → Appearance** and pick a theme; the entire interface recolors instantly:
+Open **Settings → Appearance** and pick a theme; the entire interface recolors instantly:
 
 - **AgentOS** (teal, default)
-- **Ubuntu** (dark — Yaru palette with the Ubuntu orange accent)
-- **Ubuntu** (light)
+- **Ember** (dark — warm orange accent)
+- **Ember** (light)
 - **Dracula**
 - **Nord**
 
 Your choice is remembered.
 
 ### Wallpaper
-In **🖼 Personalize** you can:
-- **Use your Ubuntu wallpaper** — adopts the host desktop background so AgentOS matches your system.
+In **Personalize** you can:
+- **Use your system wallpaper** — adopts the host desktop background so AgentOS matches your system.
 - **Generate a wallpaper** with AI from a text description (saved to a local gallery you can pick
   from later).
 - **Reset** to the built-in background.
@@ -92,29 +92,29 @@ See [Models & Appearance](models.md) for more.
 
 | App | Purpose |
 |---|---|
-| 💬 **Agent Chat** | talk to the agent — streaming replies, tool activity, approvals, voice |
-| 🗔 **Applications** | launch any program installed on your computer |
-| 🌐 **Web** | open web pages in your real system browser |
-| 🗂 **Files** | browse your workspace; click a file to open it |
-| 🖥 **Terminal** | a real shell on your machine (sandboxed if enabled) |
-| 🎛 **Control Center** | sound, network, battery, and shortcuts to native settings |
-| 🛍 **App Store** | install ready-made apps, add tool channels, or build with AI |
-| 🧰 **App Studio** | build and refine apps by describing them |
-| 📊 **Task Manager** | live CPU / memory / disk, processes, open windows |
-| 🧠 **Model Manager** | manage local Ollama models and view GPU usage |
-| 🕸 **Knowledge Graph** | what the agent knows, as a live graph |
-| ☯ **Soul** | the agent's persistent identity and personality |
+| **Agent Chat** | talk to the agent — streaming replies, tool activity, approvals, voice |
+| **Applications** | launch any program installed on your computer |
+| **Web** | open web pages in your real system browser |
+| **Files** | browse your workspace; click a file to open it |
+| **Terminal** | a real shell on your machine (sandboxed if enabled) |
+| **Quick Settings** | sound, network, battery, and shortcuts to native settings |
+| **Store** | install ready-made apps, add tool channels, or build with AI |
+| **App Studio** | build and refine apps by describing them |
+| **Task Manager** | live CPU / memory / disk, processes, open windows |
+| **Model Manager** | manage local Ollama models and view GPU usage |
+| **Knowledge Graph** | what the agent knows, as a live graph |
+| **Soul** | the agent's persistent identity and personality |
 | ◈ **Memory** | long-term facts the agent remembers |
-| 🧩 **Skills** | reusable procedures; install from git or a URL |
-| 🔌 **MCP Servers** | connect external tool servers |
-| ✈️ **Telegram** | control the agent from your phone |
-| 🛡 **Policies** | always-allow / always-deny rules for the agent |
-| 📜 **Logs** | everything the system did |
-| 📈 **Token Analytics** | model token usage over time |
-| ⏱ **Scheduler** | recurring background jobs |
-| 🖼 **Personalize** | wallpapers and gallery |
-| 🕰 **Snapshots** | restore points for the whole system |
-| ⚙ **Settings** | providers, model, autonomy, appearance, voice, sandbox |
+| **Skills** | reusable procedures; install from git or a URL |
+| **MCP Servers** | connect external tool servers |
+| **Telegram** | control the agent from your phone |
+| **Policies** | always-allow / always-deny rules for the agent |
+| **Logs** | everything the system did |
+| **Token Analytics** | model token usage over time |
+| **Scheduler** | recurring background jobs |
+| **Personalize** | wallpapers and gallery |
+| **Snapshots** | restore points for the whole system |
+| **Settings** | providers, model, autonomy, appearance, voice, sandbox |
 | ▲ **About** | system information |
 
 Details for the interactive and integration apps are in [Building Apps](building-apps.md) and
@@ -125,7 +125,7 @@ Details for the interactive and integration apps are in [Building Apps](building
 ## Voice
 
 In **Settings → Voice** you can enable:
-- **Speak replies** (text-to-speech) — toggle with 🔊 in the chat toolbar.
-- **Dictation** — the 🎤 button in the composer transcribes your speech into the message.
+- **Speak replies** (text-to-speech) — toggle with in the chat toolbar.
+- **Dictation** — the button in the composer transcribes your speech into the message.
 
 Both use your browser's built-in speech features; grant microphone permission on first use.

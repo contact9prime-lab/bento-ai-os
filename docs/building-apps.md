@@ -8,7 +8,7 @@ data and call the operating system.
 
 ## App Studio
 
-Open **🧰 App Studio** and describe what you want — *"a habit tracker with daily checkboxes," "a
+Open **App Studio** and describe what you want — *"a habit tracker with daily checkboxes," "a
 dashboard of my scheduled tasks," "a button that runs a command and shows the output."* The builder:
 
 1. streams its work in the panel on the left (with a thinking animation),
@@ -27,11 +27,11 @@ or **Delete** it. You can hand-edit an app's HTML directly, too.
 
 ---
 
-## The App Store
+## The Store
 
-The **🛍 App Store** has four tabs:
+The **Store** has four tabs:
 
-- **Apps** — curated, ready-made apps (Pomodoro, Quick Notes, Calculator, World Clock, System
+- **Apps** — curated, ready-made apps (Focus Timer, Quick Notes, Calculator, World Clock, System
   Monitor) that install in **one click**, no model required.
 - **Channels** — the MCP tool-server catalog; add browser automation, GitHub, search, and more.
 - **Skills** — install skills from a git repo or URL.

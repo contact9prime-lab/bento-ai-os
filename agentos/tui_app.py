@@ -65,6 +65,9 @@ class AgentTUI(App):
     #cfg-save { margin-top: 1; }
     #modellist, #applist { height: 1fr; border: round $primary; }
     #appfilter { dock: top; }
+    #doclist { width: 38; border: round $primary; }
+    #docbody-wrap { border: round $primary; }
+    #docbody { padding: 0 2; }
     """
     BINDINGS = [
         Binding("ctrl+c,ctrl+q", "quit", "Quit"),
@@ -75,6 +78,7 @@ class AgentTUI(App):
         Binding("5", "tab('tasks')", "Tasks"),
         Binding("6", "tab('logs')", "Logs"),
         Binding("7", "tab('config')", "Config"),
+        Binding("8", "tab('docs')", "Docs"),
     ]
 
     def __init__(self, port: int, cfg: dict):
@@ -106,6 +110,11 @@ class AgentTUI(App):
                 yield DataTable(id="taskstable")
             with TabPane("📜 Logs", id="logs"):
                 yield RichLog(id="logslog", wrap=True, markup=True)
+            with TabPane("📖 Docs", id="docs"):
+                with Horizontal():
+                    yield ListView(id="doclist")
+                    with VerticalScroll(id="docbody-wrap"):
+                        yield Static("Pick a guide on the left.", id="docbody")
             with TabPane("⚙ Config", id="config"):
                 with VerticalScroll(id="cfg-box"):
                     yield Label("Agent name")
@@ -143,6 +152,7 @@ class AgentTUI(App):
         self.refresh_apps()
         self.refresh_tasks()
         self.refresh_logs()
+        self.refresh_docs()
         self.load_cfg_form()
         self.set_interval(2.0, self.refresh_system)
         self.set_interval(6.0, self.refresh_logs)
@@ -244,6 +254,10 @@ class AgentTUI(App):
             if app:
                 r = await self.api("POST", "/api/native/launch", {"id": app})
                 self.notify("launched" if r.get("ok") else f"failed: {r.get('message','')}")
+        elif e.list_view.id == "doclist":
+            f = getattr(e.item, "_docfile", None)
+            if f:
+                self.show_doc(f)
 
     # ---- apps ----
     @work(exclusive=True, group="apps")
@@ -262,6 +276,26 @@ class AgentTUI(App):
             it = ListItem(Label(a["name"]))
             it._appid = a["id"]
             lv.append(it)
+
+    # ---- docs ----
+    @work(exclusive=True, group="docs")
+    async def refresh_docs(self):
+        d = await self.api_get("/api/docs")
+        self._docs = d.get("docs", [])
+        lv = self.query_one("#doclist", ListView)
+        lv.clear()
+        for doc in self._docs:
+            it = ListItem(Label(f"📖 {doc['title'][:32]}"))
+            it._docfile = doc["file"]
+            lv.append(it)
+
+    @work(group="docs")
+    async def show_doc(self, file: str):
+        from rich.markdown import Markdown
+        d = await self.api_get("/api/docs/" + file)
+        body = self.query_one("#docbody", Static)
+        body.update(Markdown(d.get("content", "(not found)")))
+        self.query_one("#docbody-wrap", VerticalScroll).scroll_home(animate=False)
 
     # ---- tasks ----
     @work(exclusive=True, group="tasks")

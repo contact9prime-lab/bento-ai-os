@@ -11,7 +11,7 @@ model when one is available.
 
 ### An app build returns nothing
 
-Same cause. Pick a tool-capable model. You can also use the **App Store → Apps** tab, whose curated
+Same cause. Pick a tool-capable model. You can also use the **Store → Apps** tab, whose curated
 apps install instantly without a model.
 
 ### Risky actions don't run

@@ -9,6 +9,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import config as cfgmod
+from . import fabric as fabricmod
+from . import knowledge
 from . import providers
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
@@ -49,18 +51,27 @@ async def startup():
     telegram = TelegramBridge(cfg, store, toolbox, broadcast)
     toolbox.telegram = telegram
     toolbox.broadcast = broadcast
+    control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
+    toolbox.fabric = control
+    fabricmod.seed_builtins(cfg, store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
-                 mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast)
+                 mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
+                 fabric=control)
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
+    asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
     store.log("system", "AgentOS started")
 
-    # pick a default model if none is set
+    # pick a default model if none is set — but don't let this first write of
+    # config.json disarm the setup wizard on a brand-new install
     if not cfg.get("default_model"):
+        first = cfgmod.is_first_run()
         models = await providers.available_models(cfg)
         if models:
             cfg["default_model"] = models[0]["id"]
+            if first:
+                cfg["setup_complete"] = False
             cfgmod.save_config(cfg)
 
 
@@ -448,6 +459,12 @@ async def api_put_config(patch: dict):
     for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name", "policies", "sandbox"):
         if key in patch:
             cfg[key] = patch[key]
+    if isinstance(patch.get("memory"), dict):
+        mem = cfg.setdefault("memory", {})
+        for k in ("auto_extract", "model", "inject_user", "inject_session", "inject_facts",
+                  "embed_model", "rollup_after_hours", "kg_dedup"):
+            if k in patch["memory"]:
+                mem[k] = patch["memory"][k]
     for name, pconf in (patch.get("providers") or {}).items():
         if name not in cfg["providers"]:
             continue
@@ -588,11 +605,11 @@ async def api_kg_delete_node(nid: str):
     return {"ok": True}
 
 
-# ---- App Store: curated one-click templates (install without needing a model) ----
+# ---- Store: curated one-click templates (install without needing a model) ----
 
 STORE_TEMPLATES = [
-    {"id": "pomodoro", "name": "Pomodoro", "icon": "🍅", "desc": "25/5 focus timer",
-     "html": """<h2 style='margin:0 0 6px'>🍅 Pomodoro</h2>
+    {"id": "pomodoro", "name": "Focus Timer", "icon": "", "desc": "25/5 focus timer",
+     "html": """<h2 style='margin:0 0 6px'>Focus Timer</h2>
 <div id='t' style='font-size:56px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums'>25:00</div>
 <div style='display:flex;gap:8px;justify-content:center;margin-top:10px'>
 <button id='s'>Start</button><button id='r'>Reset</button><button id='b'>Break</button></div>
@@ -603,15 +620,15 @@ document.getElementById('s').onclick=function(){if(run){clearInterval(iv);run=0;
 document.getElementById('r').onclick=()=>{clearInterval(iv);run=0;left=1500;fmt();document.getElementById('s').textContent='Start'};
 document.getElementById('b').onclick=()=>{clearInterval(iv);run=0;left=300;fmt();document.getElementById('s').textContent='Start'};
 fmt();</script>"""},
-    {"id": "notes", "name": "Quick Notes", "icon": "📝", "desc": "a scratchpad that saves itself",
-     "html": """<h2 style='margin:0 0 8px'>📝 Quick Notes</h2>
+    {"id": "notes", "name": "Quick Notes", "icon": "", "desc": "a scratchpad that saves itself",
+     "html": """<h2 style='margin:0 0 8px'>Quick Notes</h2>
 <textarea id='n' style='width:100%;height:calc(100vh - 90px);background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:12px;font-size:14px;line-height:1.6' placeholder='Type… saved automatically'></textarea>
 <div id='st' style='color:#5c6577;font-size:11px;margin-top:6px'>saved</div>
 <script>const n=document.getElementById('n'),st=document.getElementById('st');
 n.value=localStorage.getItem('quicknotes')||'';let t;
 n.oninput=()=>{st.textContent='saving…';clearTimeout(t);t=setTimeout(()=>{localStorage.setItem('quicknotes',n.value);st.textContent='saved '+new Date().toLocaleTimeString()},400)};</script>"""},
-    {"id": "calc", "name": "Calculator", "icon": "🧮", "desc": "a simple calculator",
-     "html": """<h2 style='margin:0 0 8px'>🧮 Calculator</h2>
+    {"id": "calc", "name": "Calculator", "icon": "", "desc": "a simple calculator",
+     "html": """<h2 style='margin:0 0 8px'>Calculator</h2>
 <input id='d' readonly style='width:100%;text-align:right;font-size:26px;padding:10px;background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;font-variant-numeric:tabular-nums'>
 <div id='pad' style='display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px'></div>
 <script>const d=document.getElementById('d');let s='';
@@ -619,13 +636,13 @@ const keys=['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+','C']
 const pad=document.getElementById('pad');
 keys.forEach(k=>{const b=document.createElement('button');b.textContent=k;b.style.padding='14px';b.style.fontSize='17px';
 b.onclick=()=>{if(k==='C'){s='';}else if(k==='='){try{s=String(Function('return '+s)())}catch(e){s='error'}}else{s+=k}d.value=s};pad.appendChild(b)});</script>"""},
-    {"id": "worldclock", "name": "World Clock", "icon": "🌍", "desc": "times around the world",
-     "html": """<h2 style='margin:0 0 10px'>🌍 World Clock</h2><div id='z'></div>
-<script>const zones=[['🇮🇳 Mumbai','Asia/Kolkata'],['🇬🇧 London','Europe/London'],['🇺🇸 New York','America/New_York'],['🇺🇸 San Francisco','America/Los_Angeles'],['🇯🇵 Tokyo','Asia/Tokyo'],['🇦🇺 Sydney','Australia/Sydney']];
+    {"id": "worldclock", "name": "World Clock", "icon": "", "desc": "times around the world",
+     "html": """<h2 style='margin:0 0 10px'>World Clock</h2><div id='z'></div>
+<script>const zones=[['Mumbai','Asia/Kolkata'],['London','Europe/London'],['New York','America/New_York'],['San Francisco','America/Los_Angeles'],['Tokyo','Asia/Tokyo'],['Sydney','Australia/Sydney']];
 function tick(){document.getElementById('z').innerHTML=zones.map(([n,tz])=>{const t=new Date().toLocaleTimeString('en-GB',{timeZone:tz,hour:'2-digit',minute:'2-digit'});return "<div style='display:flex;justify-content:space-between;padding:10px 12px;margin-bottom:7px;background:#171b22;border:1px solid #232a35;border-radius:9px'><span>"+n+"</span><b style='font-variant-numeric:tabular-nums;font-size:16px'>"+t+"</b></div>"}).join('')}
 tick();setInterval(tick,1000);</script>"""},
-    {"id": "sysmon", "name": "System Monitor", "icon": "📟", "desc": "live CPU, memory & disk",
-     "html": """<h2 style='margin:0 0 10px'>📟 System Monitor</h2><div id='m'>loading…</div>
+    {"id": "sysmon", "name": "System Monitor", "icon": "", "desc": "live CPU, memory & disk",
+     "html": """<h2 style='margin:0 0 10px'>System Monitor</h2><div id='m'>loading…</div>
 <script>function bar(p,c){return "<div style='height:8px;border-radius:5px;background:#1e242e;overflow:hidden;margin:4px 0 12px'><div style='height:100%;width:"+Math.min(p,100)+"%;background:"+(p>85?'#f87171':c)+"'></div></div>"}
 async function tick(){try{const d=await (await fetch('/api/system')).json();const mp=100*d.mem.used_kb/d.mem.total_kb,dp=100*d.disk.used/d.disk.total;
 document.getElementById('m').innerHTML="<b>CPU "+d.cpu.toFixed(0)+"%</b>"+bar(d.cpu,'#5eead4')+"<b>Memory "+mp.toFixed(0)+"%</b>"+bar(mp,'#22d3ee')+"<b>Disk "+dp.toFixed(0)+"%</b>"+bar(dp,'#5eead4')+"<div style='color:#5c6577;font-size:12px'>"+d.cores+" cores · load "+d.load.map(x=>x.toFixed(2)).join(' ')+"</div>"}catch(e){}}
@@ -646,7 +663,7 @@ async def api_store_install(body: dict):
     if not t:
         return JSONResponse({"error": "unknown template"}, status_code=404)
     aid = state["store"].save_app(t["name"], t["icon"], t["desc"], t["html"])
-    state["store"].log("system", f"app store install: {t['name']}")
+    state["store"].log("system", f"store install: {t['name']}")
     await state["broadcast"]({"type": "apps"})
     return {"ok": True, "id": aid, "name": t["name"]}
 
@@ -711,7 +728,7 @@ async def api_put_widgets(body: dict):
 
 @app.post("/api/apps")
 async def api_save_app(body: dict):
-    aid = state["store"].save_app(body.get("name", ""), body.get("icon", "🧰"),
+    aid = state["store"].save_app(body.get("name", ""), body.get("icon", ""),
                                   body.get("description", ""), body.get("html", ""))
     state["store"].log("system", f"user app saved: {body.get('name', '')}")
     await state["broadcast"]({"type": "apps"})
@@ -825,10 +842,13 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
   LIVE data, e.g. appTool('fetch_url',{url:…}), appTool('system_info'), appTool('run_command',{command:…}),
   or a connected mcp_* tool. Plain REST also works: GET /api/system · POST /api/chat {text} (AI answers).
 - Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
+- THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
+  there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
+  The user's interface wishes are the spec; the registry is what makes them possible.
 
 PROCESS:
 - If the app needs live data or specific tools, you MAY call one read-only tool first to learn the shape,
-  then build; otherwise go straight to create_app. Pick a fitting emoji icon and concise name.
+  then build; otherwise go straight to create_app. Leave `icon` empty (the OS renders a clean monogram tile — the user dislikes emoji icons) and pick a concise name.
 - If the user wants it pinned / on the desktop / as a widget, call pin_widget(name) after create_app.
 - Do the work in THIS turn — never ask questions. Finish with one short sentence on what you built.
 """
@@ -861,6 +881,78 @@ async def api_list_tools():
     """The tool names an app (or user) can call via /api/tool, incl. connected MCP tools."""
     return {"tools": [{"name": t["name"], "description": t["description"]}
                       for t in state["toolbox"].schemas()]}
+
+
+# ---- API registry: the UI-builder's contract ---------------------------------
+
+WS_EVENTS = {
+    "outbound (server → client)": [
+        "text_delta {text}", "thinking_delta {text}", "tool_start {call_id,name,args}",
+        "tool_end {call_id,ok,output}", "approval_request {id,name,args,reason}",
+        "turn_start / turn_end {conversation_id}", "error {message}",
+        "apps / themes / widgets / wallpaper / models / files / config  (refresh hints)",
+        "theme_apply {theme}", "model_pull {name,status,done}", "fabric_event / fabric_defs",
+        "telegram_in / telegram_out {conversation_id,text}", "knowledge_update",
+    ],
+    "inbound (client → server)": [
+        "chat {text, conversation_id?, model?}", "build {prompt, app_id?, model?}",
+        "approval {id, approved}", "abort {}",
+    ],
+}
+
+APP_RUNTIME_GLOBALS = {
+    "APP_ID": "the app's own id (string), injected into every built app page",
+    "appData.get() / appData.set(obj)": "the app's private persistent JSON store, server-side",
+    "appTool(name, args)": "run any agent/MCP tool listed under `tools` and get its output",
+}
+
+
+def _registry() -> dict:
+    """Enumerate every REST/WS endpoint and agent tool — the contract a UI builder codes against."""
+    from fastapi.routing import APIRoute, APIWebSocketRoute
+    routes = []
+    for r in app.routes:
+        doc = (getattr(getattr(r, "endpoint", None), "__doc__", "") or "").strip()
+        doc = doc.split("\n\n")[0].replace("\n", " ").strip()
+        if isinstance(r, APIRoute):
+            for m in sorted(r.methods - {"HEAD", "OPTIONS"}):
+                routes.append({"method": m, "path": r.path, "summary": doc})
+        elif isinstance(r, APIWebSocketRoute):
+            routes.append({"method": "WS", "path": r.path, "summary": doc})
+    routes.sort(key=lambda x: (x["path"], x["method"]))
+    tools = [{"name": t["name"], "description": (t["description"] or "").split(". ")[0][:160]}
+             for t in state["toolbox"].schemas()]
+    return {"routes": routes, "tools": tools, "websocket_events": WS_EVENTS,
+            "app_runtime_globals": APP_RUNTIME_GLOBALS,
+            "notes": ["All endpoints are same-origin — plain fetch() works from any app/shell/theme.",
+                      "Realtime: open a WebSocket to /ws (JSON events) or /ws/terminal (PTY).",
+                      "POST /api/tool {name,args} runs a tool; risky calls need Full autonomy."]}
+
+
+def _registry_text(max_tools: int = 48) -> str:
+    """Compact, prompt-friendly rendering of the registry for builder/designer personas."""
+    reg = _registry()
+    lines = ["REST + WS endpoints (method path — what it does):"]
+    for r in reg["routes"]:
+        s = f"  {r['method']:<6} {r['path']}"
+        if r["summary"]:
+            s += f" — {r['summary'][:90]}"
+        lines.append(s)
+    lines.append("Realtime /ws events out: " + "; ".join(reg["websocket_events"]["outbound (server → client)"][:6]) + " …")
+    lines.append("Realtime /ws events in: " + "; ".join(reg["websocket_events"]["inbound (client → server)"]))
+    tools = reg["tools"]
+    lines.append(f"Tools callable via POST /api/tool or appTool() ({len(tools)} total): "
+                 + ", ".join(t["name"] for t in tools[:max_tools])
+                 + (" …" if len(tools) > max_tools else ""))
+    return "\n".join(lines)
+
+
+@app.get("/api/registry")
+async def api_registry():
+    """The full API registry: every REST/WS endpoint, agent tool, realtime event and injected page
+    global a UI builder can use — the contract for AI-designed apps, themes and shells. An interface
+    built against it can completely replace the stock UI."""
+    return _registry()
 
 
 # ---- Snapshots (restore points) --------------------------------------------------
@@ -944,19 +1036,46 @@ async def api_snapshot_delete(sid: str):
 # ---- Skills ----------------------------------------------------------------------
 
 def _parse_skill_md(text: str, fallback_name: str) -> tuple[str, str, str]:
-    """(name, description, content) from a markdown skill file:
-    first '# heading' is the name, first '>' quote or plain line is the description."""
+    """(name, description, content) from a markdown skill file.
+    Understands the standard SKILL.md YAML frontmatter (name:/description:, incl.
+    folded multi-line values); otherwise first '# heading' is the name and the
+    first plain line the description."""
     name, desc = fallback_name, ""
-    for line in text.splitlines():
+    body = text
+    stripped = text.lstrip()
+    if stripped.startswith("---"):
+        end = stripped.find("\n---", 3)
+        if end != -1:
+            lines = stripped[3:end].splitlines()
+            body = stripped[end + 4:]
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                if ":" in line and not line.startswith((" ", "\t")):
+                    k, v = line.split(":", 1)
+                    k, v = k.strip().lower(), v.strip().strip("\"'")
+                    if v in (">", ">-", "|", "|-"):  # folded/literal block: gather indented lines
+                        parts = []
+                        while i + 1 < len(lines) and lines[i + 1].startswith((" ", "\t")):
+                            i += 1
+                            parts.append(lines[i].strip())
+                        v = " ".join(parts)
+                    if k == "name" and v:
+                        name = v
+                    elif k == "description" and v:
+                        desc = v[:200]
+                i += 1
+    for line in body.splitlines():
         s = line.strip()
         if not s:
             continue
-        if s.startswith("#") and name == fallback_name:
-            name = s.lstrip("# ").strip() or fallback_name
+        if s.startswith("#"):
+            if name == fallback_name:
+                name = s.lstrip("# ").strip() or fallback_name
             continue
-        if not desc and not s.startswith("#"):
+        if not desc:
             desc = s.lstrip("> ").strip()[:200]
-            break
+        break
     return name, desc, text
 
 
@@ -1008,7 +1127,13 @@ async def api_install_skill(body: dict):
             if proc.returncode != 0:
                 return {"ok": False, "error": f"git clone failed: {err.decode(errors='replace')[-300:]}"}
             count = 0
-            for p in sorted(Path(tmp).rglob("*.md")):
+            files = sorted(Path(tmp).rglob("*.md"))
+            # standard skill repos keep one SKILL.md per folder — when present,
+            # install only those (skipping references, docs, templates, ...)
+            skill_files = [p for p in files if p.name == "SKILL.md"]
+            if skill_files:
+                files = skill_files
+            for p in files:
                 if p.name.upper() in ("README.MD", "LICENSE.MD", "CONTRIBUTING.MD", "CHANGELOG.MD"):
                     continue
                 try:
@@ -1017,7 +1142,8 @@ async def api_install_skill(body: dict):
                     continue
                 if len(text.strip()) < 20 or len(text) > 100_000:
                     continue
-                name, desc, content = _parse_skill_md(text, p.stem)
+                fallback = p.parent.name if p.name == "SKILL.md" else p.stem
+                name, desc, content = _parse_skill_md(text, fallback)
                 store.save_skill(name, desc, content, source=src)
                 count += 1
                 if count >= 50:
@@ -1123,20 +1249,298 @@ async def api_put_soul(body: dict):
 
 
 @app.get("/api/memories")
-async def api_memories():
-    return {"memories": state["store"].search_memories("", limit=200)}
+async def api_memories(scope: str = "", conversation_id: str = "", q: str = ""):
+    store = state["store"]
+    mems = store.search_memories(q, limit=500, scope=scope, conversation_id=conversation_id)
+    titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
+    for m in mems:
+        m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
+        m["embedded"] = bool(m.pop("embedding", None))  # vectors are internal; ship a flag only
+    return {"memories": mems}
 
 
 @app.post("/api/memories")
 async def api_add_memory(body: dict):
-    mid = state["store"].add_memory(body.get("content", ""))
+    mid = state["store"].add_memory(
+        body.get("content", ""),
+        scope=body.get("scope", "user"),
+        conversation_id=body.get("conversation_id") or None,
+        source="ui",
+        pinned=1 if body.get("pinned") else 0,
+    )
     return {"id": mid}
+
+
+@app.put("/api/memories/{mid}")
+async def api_update_memory(mid: str, body: dict):
+    """Edit content, toggle pin, or change scope (scope='user' promotes a session memory)."""
+    state["store"].update_memory(
+        mid,
+        content=body.get("content") if "content" in body else None,
+        pinned=body.get("pinned") if "pinned" in body else None,
+        scope=body.get("scope") if "scope" in body else None,
+    )
+    return {"ok": True}
 
 
 @app.delete("/api/memories/{mid}")
 async def api_delete_memory(mid: str):
     state["store"].delete_memory(mid)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Docs (served into the UI/TUI) + first-run setup wizard
+# ---------------------------------------------------------------------------
+
+def _docs_dir() -> Path | None:
+    for cand in (Path(__file__).parent / "docs",          # packaged wheel
+                 Path(__file__).parent.parent / "docs"):  # repo checkout
+        if cand.is_dir():
+            return cand
+    return None
+
+
+@app.get("/api/docs")
+async def api_docs():
+    base = _docs_dir()
+    if not base:
+        return {"docs": []}
+    out = []
+    for p in sorted(base.glob("**/*.md")):
+        rel = str(p.relative_to(base))
+        try:
+            first = next((ln for ln in p.read_text().splitlines() if ln.startswith("#")), rel)
+        except Exception:
+            first = rel
+        out.append({"file": rel, "title": first.lstrip("# ").strip()})
+    order = ["README.md", "getting-started.md", "installation.md", "desktop.md", "agent.md",
+             "building-apps.md", "integrations.md", "models.md", "configuration.md",
+             "api-reference.md", "architecture.md", "roadmap.md"]
+    out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
+    return {"docs": out}
+
+
+@app.get("/api/docs/{name:path}")
+async def api_doc(name: str):
+    base = _docs_dir()
+    if not base:
+        return JSONResponse({"error": "docs not found"}, status_code=404)
+    p = (base / name).resolve()
+    if not str(p).startswith(str(base.resolve())) or p.suffix != ".md" or not p.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"file": name, "content": p.read_text()}
+
+
+@app.get("/api/setup")
+async def api_setup_state():
+    cfg = state["cfg"]
+    local = await providers.ollama_models(cfg["providers"]["ollama"]["base_url"])
+    from .desktop import SERVICE_FILE
+    return {
+        "first_run": cfgmod.is_first_run(),
+        "agent_name": cfg.get("agent_name", "Aria"),
+        "autonomy": cfg.get("autonomy", "balanced"),
+        "default_model": cfg.get("default_model", ""),
+        "ollama_models": local,
+        "providers": {p: bool(cfg["providers"][p].get("api_key"))
+                      for p in ("anthropic", "openai", "openrouter")},
+        "autostart_installed": SERVICE_FILE.exists(),
+    }
+
+
+@app.post("/api/setup")
+async def api_setup_apply(body: dict):
+    from . import setup as setupmod
+    report = setupmod.apply_setup(state["cfg"], body or {})
+    state["store"].log("system", "first-run setup completed via wizard", report)
+    await state["broadcast"]({"type": "config"})
+    return {"ok": True, "report": report}
+
+
+@app.post("/api/setup/reset")
+async def api_setup_reset(body: dict):
+    """Factory reset: wipe profile/data, reset config, re-arm the wizard."""
+    if not (body or {}).get("confirm"):
+        return JSONResponse({"error": "pass {\"confirm\": true}"}, status_code=400)
+    from . import setup as setupmod
+    setupmod.factory_reset(state["cfg"], state["store"])
+    await state["broadcast"]({"type": "setup"})
+    return {"ok": True, "first_run": True}
+
+
+# ---------------------------------------------------------------------------
+# Fabric: subagents, workflows, runs, observability (the control plane API)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/subagents")
+async def api_subagents():
+    return {"subagents": state["store"].list_subagents()}
+
+
+@app.post("/api/subagents")
+async def api_save_subagent(body: dict):
+    if not (body.get("name") or "").strip():
+        return JSONResponse({"error": "name required"}, status_code=400)
+    sid = state["store"].save_subagent(body)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"id": sid}
+
+
+@app.delete("/api/subagents/{sid}")
+async def api_delete_subagent(sid: str):
+    state["store"].delete_subagent(sid)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"ok": True}
+
+
+@app.get("/api/workflows")
+async def api_workflows():
+    return {"workflows": state["store"].list_workflows()}
+
+
+@app.post("/api/workflows")
+async def api_save_workflow(body: dict):
+    if not (body.get("name") or "").strip():
+        return JSONResponse({"error": "name required"}, status_code=400)
+    wid = state["store"].save_workflow(body)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"id": wid}
+
+
+@app.delete("/api/workflows/{wid}")
+async def api_delete_workflow(wid: str):
+    state["store"].delete_workflow(wid)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"ok": True}
+
+
+@app.post("/api/workflows/{name}/run")
+async def api_run_workflow(name: str, body: dict):
+    wf = state["store"].get_workflow(name)
+    if not wf:
+        return JSONResponse({"error": f"no workflow '{name}'"}, status_code=404)
+    input_text = (body or {}).get("input", "")
+    asyncio.create_task(state["fabric"].run_workflow(wf, input_text))
+    return {"ok": True, "started": True}
+
+
+@app.post("/api/subagents/{name}/run")
+async def api_run_subagent(name: str, body: dict):
+    defn = state["store"].get_subagent(name)
+    if not defn:
+        return JSONResponse({"error": f"no subagent '{name}'"}, status_code=404)
+    asyncio.create_task(state["fabric"].run_subagent(defn, (body or {}).get("task", "")))
+    return {"ok": True, "started": True}
+
+
+@app.get("/api/fabric/runs")
+async def api_fabric_runs(limit: int = 60):
+    runs = state["store"].fabric_runs(limit=limit)
+    return {"runs": runs, "live": state["fabric"].live_instances()}
+
+
+@app.get("/api/fabric/runs/{rid}")
+async def api_fabric_run(rid: str):
+    run = state["store"].fabric_run(rid)
+    if not run:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"run": run,
+            "steps": state["store"].fabric_runs(parent_run=rid),
+            "events": state["store"].fabric_events_for(rid)}
+
+
+@app.post("/api/fabric/runs/{rid}/cancel")
+async def api_fabric_cancel(rid: str):
+    return {"ok": state["fabric"].cancel(rid)}
+
+
+@app.get("/api/fabric/observability")
+async def api_fabric_observability():
+    """Faults / performance / logs per data plane — including the main agent (L0 setup)."""
+    store = state["store"]
+    runs = store.fabric_runs(limit=500)
+    child_runs = [dict(r) for r in store.db.execute(
+        "SELECT * FROM fabric_runs WHERE kind='step' ORDER BY started_at DESC LIMIT 500").fetchall()]
+    per: dict = {}
+    for r in runs + child_runs:
+        key = r["ref"] if r["kind"] != "workflow" else f"workflow:{r['ref']}"
+        p = per.setdefault(key, {"runs": 0, "ok": 0, "faults": 0, "tokens_in": 0,
+                                 "tokens_out": 0, "secs": 0.0})
+        p["runs"] += 1
+        p["ok"] += 1 if r["status"] == "ok" else 0
+        p["faults"] += 1 if r["status"] in ("error", "timeout", "denied") else 0
+        p["tokens_in"] += r.get("tokens_in") or 0
+        p["tokens_out"] += r.get("tokens_out") or 0
+        if r.get("finished_at") and r.get("started_at"):
+            p["secs"] += r["finished_at"] - r["started_at"]
+    # the main agent — the L0 "current setup" — reports through the same pane (7-day window)
+    import time as _t
+    week_ago = _t.time() - 7 * 86400
+    turns = [L for L in store.list_logs("turn", limit=1000) if L["created_at"] > week_ago]
+    n_errors = store.db.execute(
+        "SELECT COUNT(*) c FROM logs WHERE kind='error' AND created_at>?", (week_ago,)).fetchone()["c"]
+    main = {"runs": len(turns), "faults": n_errors, "tokens_in": 0, "tokens_out": 0,
+            "window": "7d"}
+    for L in turns:
+        try:
+            m = json.loads(L.get("meta") or "{}")
+            main["tokens_in"] += int(m.get("in", 0) or 0)
+            main["tokens_out"] += int(m.get("out", 0) or 0)
+        except Exception:
+            pass
+    faults = [{"ref": r["ref"], "kind": r["kind"], "status": r["status"],
+               "fault": r["fault"], "at": r["started_at"]}
+              for r in runs + child_runs
+              if r["status"] in ("error", "timeout", "denied")][:30]
+    return {"main_agent": main, "per_plane": per, "recent_faults": faults,
+            "live": state["fabric"].live_instances()}
+
+
+@app.post("/api/plane/llm")
+async def api_plane_llm(body: dict):
+    """Model plane: data planes reach LLMs through the control plane's provider config,
+    never with their own keys. L0 calls in-process; L1+ will call this over mTLS."""
+    model = body.get("model") or state["cfg"].get("default_model", "")
+    messages = body.get("messages") or []
+    text, calls, usage = [], [], {"input": 0, "output": 0}
+    try:
+        async for ev in providers.chat(state["cfg"], model, messages, body.get("tools") or []):
+            if ev["type"] == "text":
+                text.append(ev["text"])
+            elif ev["type"] == "tool_call":
+                calls.append({"id": ev["id"], "name": ev["name"], "args": ev["args"]})
+            elif ev["type"] == "usage":
+                usage = {"input": ev.get("input", 0), "output": ev.get("output", 0)}
+    except providers.ProviderError as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    return {"model": model, "content": "".join(text), "tool_calls": calls, "usage": usage}
+
+
+@app.post("/api/knowledge/maintain")
+async def api_knowledge_maintain():
+    """Run knowledge maintenance now: embed memories, roll up idle sessions, dedup the KG."""
+    asyncio.create_task(knowledge.run_maintenance(
+        state["cfg"], state["store"], state.get("broadcast"), force=True))
+    return {"ok": True, "started": True}
+
+
+@app.get("/api/knowledge/status")
+async def api_knowledge_status():
+    store, cfg = state["store"], state["cfg"]
+    mems = store.search_memories("", limit=10**6)
+    g = store.kg_graph()
+    emb = await knowledge.embed_model(cfg)
+    return {
+        "user_memories": sum(1 for m in mems if (m.get("scope") or "user") == "user"),
+        "session_memories": sum(1 for m in mems if m.get("scope") == "session"),
+        "pinned": sum(1 for m in mems if m.get("pinned")),
+        "unembedded": sum(1 for m in mems if not m.get("embedding")),
+        "kg_nodes": len(g["nodes"]),
+        "kg_edges": len(g["edges"]),
+        "embed_model": emb or "",
+        "auto_extract": (cfg.get("memory") or {}).get("auto_extract", True),
+    }
 
 
 @app.get("/api/tasks")
@@ -1187,10 +1591,15 @@ async def api_chat(body: dict):
     async def approver(_n, _a, _r):
         return cfg.get("autonomy") == "full"
 
-    agent = Agent(cfg, toolbox, model, emit, approver)
-    result = await agent.run(history)
+    agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid)
+    knowledge.turn_started()
+    try:
+        result = await agent.run(history)
+    finally:
+        knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
+    knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
     return {"conversation_id": cid, "content": result["content"], "steps": result["steps"]}
 
 
@@ -1295,7 +1704,8 @@ async def ws_endpoint(ws: WebSocket):
     await ws.accept()
     state["clients"].add(ws)
     pending_approvals: dict[str, asyncio.Future] = {}
-    current: dict = {"agent": None, "task": None}
+    turns: dict = {}                            # conversation_id -> {"agent", "task"}
+    build: dict = {"agent": None, "task": None}  # App Studio builds keep their own slot
 
     async def send(event: dict):
         try:
@@ -1303,50 +1713,55 @@ async def ws_endpoint(ws: WebSocket):
         except Exception:
             pass
 
-    async def approver(name: str, args: dict, reason: str) -> bool:
-        aid = uuid.uuid4().hex[:8]
-        fut = asyncio.get_event_loop().create_future()
-        pending_approvals[aid] = fut
-        await send({"type": "approval_request", "id": aid, "name": name,
-                    "args": args, "reason": reason})
-        try:
-            return await asyncio.wait_for(fut, timeout=300)
-        except asyncio.TimeoutError:
-            return False
-        finally:
-            pending_approvals.pop(aid, None)
+    def _approver_for(evsend):
+        async def approver(name: str, args: dict, reason: str) -> bool:
+            aid = uuid.uuid4().hex[:8]
+            fut = asyncio.get_event_loop().create_future()
+            pending_approvals[aid] = fut
+            await evsend({"type": "approval_request", "id": aid, "name": name,
+                          "args": args, "reason": reason})
+            try:
+                return await asyncio.wait_for(fut, timeout=300)
+            except asyncio.TimeoutError:
+                return False
+            finally:
+                pending_approvals.pop(aid, None)
+        return approver
 
-    async def run_chat(data: dict):
+    async def run_chat(cid: str, data: dict):
+        """One turn in one conversation — several may run at once. Every event is
+        stamped with its conversation_id so the UI routes streams to the right chat."""
         cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
         text = data.get("text", "").strip()
-        if not text:
-            return
         model = data.get("model") or cfg.get("default_model", "")
-        cid = data.get("conversation_id")
-        if not cid:
-            cid = store.create_conversation(text[:60])
-            await send({"type": "conversation", "id": cid, "title": text[:60]})
+
+        async def evsend(ev: dict):
+            await send({**ev, "conversation_id": cid})
+
         history = _history_for(cid)
         store.add_message(cid, "user", text)
         history.append({"role": "user", "content": text})
         store.touch_conversation(cid)
 
-        agent = Agent(cfg, toolbox, model, send, approver)
-        current["agent"] = agent
+        agent = Agent(cfg, toolbox, model, evsend, _approver_for(evsend), conversation_id=cid)
+        turns[cid] = {"agent": agent, "task": asyncio.current_task()}
+        knowledge.turn_started()
         await send({"type": "turn_start", "conversation_id": cid, "model": model})
         try:
             result = await agent.run(history)
         except Exception as e:
-            await send({"type": "error", "message": f"{type(e).__name__}: {e}"})
+            await evsend({"type": "error", "message": f"{type(e).__name__}: {e}"})
             result = {"content": "", "steps": []}
         finally:
-            current["agent"] = None
+            knowledge.turn_ended()
+            turns.pop(cid, None)
         store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
         store.touch_conversation(cid)
         tk = result.get("tokens") or {"input": 0, "output": 0}
         store.log("turn", text[:200], {"conversation_id": cid, "model": model,
                                        "steps": len(result["steps"]),
                                        "in": tk["input"], "out": tk["output"]})
+        knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
         await send({"type": "turn_end", "conversation_id": cid})
 
     async def run_build(data: dict):
@@ -1361,7 +1776,7 @@ async def ws_endpoint(ws: WebSocket):
         existing = store.get_app(app_id) if app_id else None
 
         # one persistent build conversation per app (context for iterative refinement)
-        title = f"🧰 build: {existing['name'] if existing else prompt[:32]}"
+        title = f"build: {existing['name'] if existing else prompt[:32]}"
         cid = None
         if existing:
             for c in store.list_conversations(limit=500):
@@ -1392,12 +1807,18 @@ async def ws_endpoint(ws: WebSocket):
         async def bapprove(name, args, reason):
             return True if name == "create_app" else (cfg.get("autonomy") == "full")
 
+        try:
+            persona = BUILDER_PERSONA + "\n=== API REGISTRY (everything this app may call) ===\n" + _registry_text()
+        except Exception:
+            persona = BUILDER_PERSONA
+
         async def attempt(use_model):
             """Run one build turn; return (built_app_or_None, result)."""
             before = {a["id"] for a in store.list_apps()}
-            agent = Agent(bcfg, toolbox, use_model, bemit, bapprove, extra_system=BUILDER_PERSONA,
+            agent = Agent(bcfg, toolbox, use_model, bemit, bapprove, extra_system=persona,
                           tool_filter=["create_app", "read_file", "list_dir", "fetch_url", "system_info"])
-            current["agent"] = agent
+            build["agent"] = agent
+            knowledge.turn_started()
             try:
                 res = await asyncio.wait_for(agent.run(history), timeout=240)
             except asyncio.TimeoutError:
@@ -1407,7 +1828,8 @@ async def ws_endpoint(ws: WebSocket):
                 await send({"type": "build_error", "message": f"{type(e).__name__}: {e}"})
                 res = {"content": "", "steps": []}
             finally:
-                current["agent"] = None
+                knowledge.turn_ended()
+                build["agent"] = None
             apps = store.list_apps()
             new = [a for a in apps if a["id"] not in before]
             if not new:  # model wrote HTML as text instead of calling create_app → extract it
@@ -1417,7 +1839,7 @@ async def ws_endpoint(ws: WebSocket):
                         store.save_app(existing["name"], existing["icon"], existing["description"], html)
                     else:
                         nm = (prompt[:28].strip() or "App").title()
-                        store.save_app(nm, "🧰", prompt[:80], html)
+                        store.save_app(nm, "", prompt[:80], html)
                     apps = store.list_apps()
                     new = [a for a in apps if a["id"] not in before]
             return (existing or (new[0] if new else None)), res
@@ -1454,31 +1876,49 @@ async def ws_endpoint(ws: WebSocket):
             data = json.loads(raw)
             t = data.get("type")
             if t == "chat":
-                if current["task"] and not current["task"].done():
-                    await send({"type": "error", "message": "A turn is already running — stop it first."})
-                else:
-                    current["task"] = asyncio.create_task(run_chat(data))
+                text = (data.get("text") or "").strip()
+                if not text:
+                    continue
+                cid = data.get("conversation_id")
+                if cid and cid in turns:
+                    await send({"type": "error", "conversation_id": cid,
+                                "message": "This conversation already has a turn running — "
+                                           "stop it, or continue in another chat."})
+                    continue
+                if not cid:
+                    cid = state["store"].create_conversation(text[:60])
+                    await send({"type": "conversation", "id": cid, "title": text[:60]})
+                asyncio.create_task(run_chat(cid, data))
             elif t == "build":
-                if current["task"] and not current["task"].done():
-                    await send({"type": "build_error", "message": "Something is already running — wait for it."})
+                if build["task"] and not build["task"].done():
+                    await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
-                    current["task"] = asyncio.create_task(run_build(data))
+                    build["task"] = asyncio.create_task(run_build(data))
             elif t == "approval":
                 fut = pending_approvals.get(data.get("id", ""))
                 if fut and not fut.done():
                     fut.set_result(bool(data.get("approved")))
             elif t == "abort":
-                if current["agent"]:
-                    current["agent"].aborted = True
-                for fut in pending_approvals.values():
-                    if not fut.done():
-                        fut.set_result(False)
+                cid = data.get("conversation_id")
+                if cid:  # stop one conversation's turn; its pending approvals die with it
+                    if cid in turns:
+                        turns[cid]["agent"].aborted = True
+                else:    # legacy/global abort: stop everything on this socket
+                    for tinfo in turns.values():
+                        tinfo["agent"].aborted = True
+                    if build["agent"]:
+                        build["agent"].aborted = True
+                    for fut in pending_approvals.values():
+                        if not fut.done():
+                            fut.set_result(False)
     except WebSocketDisconnect:
         pass
     finally:
         state["clients"].discard(ws)
-        if current["agent"]:
-            current["agent"].aborted = True
+        for tinfo in turns.values():
+            tinfo["agent"].aborted = True
+        if build["agent"]:
+            build["agent"].aborted = True
         for fut in pending_approvals.values():
             if not fut.done():
                 fut.set_result(False)

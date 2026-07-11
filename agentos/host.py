@@ -1,4 +1,4 @@
-"""Host desktop integration: launch native (Ubuntu) apps, control volume/battery/network,
+"""Host desktop integration: launch native desktop apps, control volume/battery/network,
 open native settings panels. Best-effort — degrades gracefully when a tool is missing.
 
 This is what makes AgentOS a shell *over* the host rather than a sandboxed island:

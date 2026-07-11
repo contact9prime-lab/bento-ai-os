@@ -10,14 +10,25 @@ This walks you from a fresh launch to giving the agent real work.
 uv run agentos
 ```
 
-The desktop opens at **http://127.0.0.1:8321**. You'll see a wallpaper, app icons, a taskbar with a
-Start menu and dock, and the **Agent Chat** window.
+The desktop opens at **http://127.0.0.1:8321**. On a **fresh install a setup wizard** walks you
+through everything in four steps: name your agent, pick a brain (detected local Ollama models,
+or a cloud API key), choose an autonomy level, and optionally enable **start-at-boot** (it
+installs the app launcher and a systemd user service for you — with `loginctl` lingering the
+server is up before you even log in). In the terminal, the same wizard runs as `agentos setup`
+(and automatically on the first `agentos tui`).
+
+Already set up but want a clean slate? **Settings → Danger zone → Factory reset** wipes
+everything (memory, apps, conversations, settings, soul) and re-runs the wizard — day one again.
+
+After the wizard you'll see a wallpaper, app icons, a taskbar with a Start menu and dock, and
+the **Agent Chat** window. The full manual lives inside the OS: **Docs** on the desktop, or
+tab **8** in the TUI.
 
 ---
 
 ## 2. Choose a model
 
-Open **⚙ Settings** and configure a provider:
+Open **Settings** and configure a provider:
 
 - **Ollama (local)** — detected automatically if Ollama is running. Nothing leaves your machine.
 - **Anthropic**, **OpenAI**, **OpenRouter**, or any **OpenAI-compatible** endpoint — paste a key and
@@ -37,8 +48,8 @@ Also in the chat toolbar (and Settings):
 
 | Level | Behavior |
 |---|---|
-| 🛡 **Paranoid** / ⚖ **Balanced** | read-only actions run automatically; anything that changes the system asks for approval first |
-| ⚡ **Full** | everything runs without prompting (destructive commands stay blocked either way) |
+| **Paranoid** / **Balanced** | read-only actions run automatically; anything that changes the system asks for approval first |
+| **Full** | everything runs without prompting (destructive commands stay blocked either way) |
 
 Start on **Balanced**. You approve risky actions with one click when they come up. See
 [The Agent → Safety](agent.md#safety) for the full model.
@@ -68,12 +79,12 @@ real result.
 ## 5. Explore the desktop
 
 - **Start menu / dock** — launch any built-in app.
-- **Applications (🗔)** — launch any installed program on your computer.
-- **App Store (🛍)** — install ready-made apps in one click, add tool channels, or build a new app
+- **Applications ()** — launch any installed program on your computer.
+- **Store ()** — install ready-made apps in one click, add tool channels, or build a new app
   with AI.
-- **Control Center (🎛)** — sound, network, battery, and shortcuts to native settings.
-- **Files (🗂)** — browse your workspace; click a file to open it in your system browser.
-- **Terminal (🖥)** — a real shell on your machine.
+- **Quick Settings ()** — sound, network, battery, and shortcuts to native settings.
+- **Files ()** — browse your workspace; click a file to open it in your system browser.
+- **Terminal ()** — a real shell on your machine.
 
 See [The Desktop](desktop.md) for everything.
 

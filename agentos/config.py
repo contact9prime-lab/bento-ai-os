@@ -80,8 +80,14 @@ DEFAULTS = {
     "workspace": str(Path.home() / "AgentOS"),
     "port": 8321,
     # MCP servers the agent can use. Each entry:
-    #   {"transport": "stdio", "command": "npx", "args": "-y @modelcontextprotocol/server-filesystem /tmp", "enabled": true}
-    #   {"transport": "http", "url": "http://localhost:3000/mcp", "enabled": true}
+    #   {"transport": "stdio", "command": "npx", "args": "-y @modelcontextprotocol/server-filesystem /tmp",
+    #    "env": {"SOME_API_KEY": "..."}, "enabled": true}
+    #   {"transport": "http", "url": "https://api.githubcopilot.com/mcp/",
+    #    "headers": {"Authorization": "Bearer <token>"}, "enabled": true}
+    # Auth: stdio servers take API keys via "env"; http servers via "headers".
+    # OAuth-based remote servers (Linear, Sentry, Atlassian, Vercel, ...) work as stdio
+    # through the mcp-remote bridge: command "npx", args "-y mcp-remote <server-url>" —
+    # the first connection opens a browser tab to sign in.
     "mcp_servers": {},
     # desktop widgets: pinned user-apps that live on the desktop and restore on startup
     # [{"app_id": "...", "x": 40, "y": 40, "w": 300, "h": 200}]
@@ -93,6 +99,18 @@ DEFAULTS = {
     # user rules: [{"action": "allow"|"deny", "match": "run_command git *"}]
     # matched (fnmatch, * wildcards) against "<tool> <command-or-args>"; deny wins.
     "policies": [],
+    # memory system: auto_extract mines each chat turn for user memories, session
+    # memories, and knowledge-graph facts using `model` (default_model if empty).
+    "memory": {
+        "auto_extract": True,
+        "model": "",              # a small/fast model works well here, e.g. "ollama/qwen3:4b"
+        "inject_user": 15,        # how many user memories go into the system prompt
+        "inject_session": 10,     # how many session memories go into the system prompt
+        "inject_facts": 12,       # how many knowledge-graph facts go into the system prompt
+        "embed_model": "",        # Ollama embedding model for semantic recall; empty = auto-detect
+        "rollup_after_hours": 24, # distill idle conversations' session memory; 0 disables
+        "kg_dedup": True,         # periodically merge duplicate knowledge-graph entities
+    },
     "telegram": {
         "enabled": False,
         "bot_token": "",       # from @BotFather
@@ -134,6 +152,24 @@ def load_config() -> dict:
 def save_config(cfg: dict) -> None:
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+
+
+def is_first_run() -> bool:
+    """True when the setup wizard should run: no config yet, or a factory reset
+    explicitly set setup_complete=false. Pre-wizard installs (config exists without
+    the key) are grandfathered as already set up."""
+    if not CONFIG_PATH.exists():
+        return True
+    try:
+        raw = json.loads(CONFIG_PATH.read_text())
+    except Exception:
+        return True
+    return raw.get("setup_complete") is False
+
+
+def mark_setup_complete(cfg: dict) -> None:
+    cfg["setup_complete"] = True
+    save_config(cfg)
 
 
 def ensure_dirs(cfg: dict) -> None:

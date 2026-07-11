@@ -27,10 +27,24 @@ Guidelines:
 - Prefer acting over describing. If the user asks for something the machine can do, use tools and report the real result.
 - Chain tools as needed; check results and adapt. Don't claim something worked without seeing its output.
 - Some actions require the user's approval; if an action is denied, respect that and adjust.
-- Build your understanding over time: `remember` durable facts, `kg_add` structured relations
-  (people, projects, tools and how they connect), `kg_query`/`recall` when past context might help,
-  and `update_soul` when you learn something that should change how you behave.
-- Tools named mcp_* come from connected MCP servers (external capabilities); use them like any other tool.
+- Build your understanding over time: `remember` durable facts (scope="user") or facts that only
+  matter for this conversation (scope="session"), `kg_add` structured relations (people, projects,
+  tools and how they connect), `kg_query`/`recall` when past context might help, `forget` when the
+  user corrects or retracts something, and `update_soul` when you learn something that should
+  change how you behave. A background process also learns from every turn automatically — the
+  sections below reflect everything known so far; trust them as real context about this user.
+- Tools named mcp_* come from connected MCP servers (external capabilities). When a task touches a
+  connected server's domain — GitHub work → mcp_github_*, web research → the connected search server,
+  Notion/Slack/Linear/databases likewise — reach for those tools FIRST instead of approximating with
+  shell commands or generic fetches; they are authenticated and purpose-built. If a capability is
+  missing, you can connect a well-known server yourself with `add_mcp_server` (the user approves it
+  and supplies any API key).
+- Skills are proven procedures. Before starting a task that matches an installed skill's description,
+  load it with `use_skill(name)` and follow it — don't improvise a workflow a skill already encodes.
+- You lead a team: `delegate(subagent, task)` hands a focused subtask to a specialist (each has
+  its own model, tools, and budget), and `run_workflow(workflow, input)` runs a multi-step
+  pipeline (e.g. draft on a local model, validate on a stronger one). Delegate when a subtask is
+  self-contained, needs a different model's judgement, or can run while you do something else.
 - You can reconfigure AgentOS itself with `configure_agentos` (autonomy, model, policies, MCP servers,
   Telegram, your own name) when the user asks for settings changes — no need to send them to Settings.
 - You can build UI tools INTO this OS with `create_app` (self-contained HTML/CSS/JS rendered in a
@@ -51,12 +65,14 @@ class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
                  approver: Callable[[str, dict, str], Awaitable[bool]],
-                 extra_system: str = "", tool_filter: list | None = None):
+                 extra_system: str = "", tool_filter: list | None = None,
+                 conversation_id: str = ""):
         """
         emit(event)                        -- streams events to the UI
         approver(name, args, reason) -> ok -- asks the user to approve a risky tool call
         extra_system                       -- appended to the system prompt (personas, e.g. App Builder)
         tool_filter                        -- if set, restrict tools to these names (keeps weak models focused)
+        conversation_id                    -- enables session memory (injection + scope="session" saves)
         """
         self.cfg = cfg
         self.toolbox = toolbox
@@ -65,6 +81,7 @@ class Agent:
         self.approver = approver
         self.extra_system = extra_system
         self.tool_filter = tool_filter
+        self.conversation_id = conversation_id
         self.aborted = False
 
     def _tools(self) -> list:
@@ -74,16 +91,57 @@ class Agent:
             schemas = [t for t in schemas if t["name"] in keep]
         return schemas
 
-    def _system(self) -> str:
-        mems = self.toolbox.store.search_memories("", limit=10)
+    async def _system(self, query: str = "") -> str:
+        store = self.toolbox.store
+        mc = self.cfg.get("memory") or {}
         mem_text = ""
-        if mems:
-            mem_text = "\nThings you remember about this user/machine:\n" + "\n".join(
-                f"- {m['content']}" for m in mems)
+        n_user = int(mc.get("inject_user", 15))
+        user_mems = store.search_memories("", limit=500, scope="user")
+        if len(user_mems) > n_user:
+            # over budget: pinned always make the cut; the rest of the slots go to the
+            # memories most relevant to the user's message (semantic), else most recent
+            pinned = [m for m in user_mems if m.get("pinned")]
+            rest = [m for m in user_mems if not m.get("pinned")]
+            take = max(0, n_user - len(pinned))
+            picked = rest[:take]
+            if query and take > 0:
+                try:
+                    from . import knowledge
+                    ranked = await knowledge.semantic_rank(self.cfg, rest, query)
+                    if ranked is not None:
+                        picked = ranked[:take]
+                except Exception:
+                    pass
+            user_mems = pinned + picked
+        if user_mems:
+            mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
+                f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
+                "\n=== end user memory ===\n"
+        if self.conversation_id:
+            sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
+                                              scope="session", conversation_id=self.conversation_id)
+            if sess_mems:
+                mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
+                    f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
+        n_facts = int(mc.get("inject_facts", 12))
+        if n_facts > 0:
+            facts = store.kg_query("", limit=10**6)
+            if facts:
+                mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
+                             + "\n".join(f"- {f}" for f in facts[-n_facts:])
+                             + "\n=== end knowledge graph ===\n")
         skills = self.toolbox.store.list_skills()
         if skills:
-            mem_text += "\n\nSkills you can load with `use_skill(name)` when relevant:\n" + "\n".join(
-                f"- {s['name']}: {s['description'] or '(no description)'}" for s in skills[:30])
+            mem_text += ("\n\nSkills — proven procedures. Load one with `use_skill(name)` BEFORE starting "
+                         "a task that matches its description, and follow it:\n" + "\n".join(
+                f"- {s['name']}: {s['description'] or '(no description)'}" for s in skills[:30]))
+        if self.toolbox.mcp:
+            conn = [s for s in self.toolbox.mcp.status() if s["status"] == "connected"]
+            if conn:
+                mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
+                             "a task touches their domain:\n" + "\n".join(
+                    f"- {s['name']}: {', '.join(s['tools'][:8])}{', …' if len(s['tools']) > 8 else ''}"
+                    for s in conn))
         from .tools import sandbox_conf
         sb_on, sb_root = sandbox_conf(self.cfg)
         sb_text = (f"SANDBOX: you are confined to {sb_root} — commands run jailed there, the rest of the "
@@ -102,7 +160,9 @@ class Agent:
     async def run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence."""
-        messages = [{"role": "system", "content": self._system()}] + history
+        last_user = next((m.get("content", "") for m in reversed(history)
+                          if m.get("role") == "user"), "")
+        messages = [{"role": "system", "content": await self._system(last_user)}] + history
         steps: list[dict] = []
         final_text = ""
         tokens = {"input": 0, "output": 0}
@@ -149,6 +209,10 @@ class Agent:
                 if self.aborted:
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
+                if name in ("remember", "delegate", "run_workflow") and self.conversation_id:
+                    # session scope flows through: saves attach to this conversation and
+                    # delegated subagents inherit its session memory
+                    args = {**args, "conversation_id": self.conversation_id}
                 level, reason = self.toolbox.risk_of(name, args)
 
                 if level == "blocked":

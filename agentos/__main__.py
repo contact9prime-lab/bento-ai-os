@@ -36,6 +36,8 @@ def ask(prompt: str, model: str | None, full: bool):
 
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
+    if cfgmod.is_first_run():
+        print("Tip: run `agentos setup` for first-time setup (model, autonomy, boot autostart).\n")
     if full:
         cfg["autonomy"] = "full"
     store = Store(cfgmod.DB_PATH)
@@ -93,6 +95,7 @@ def main():
 
     sub.add_parser("app", help="open AgentOS as a desktop app window")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
+    sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
                            help="launcher only; skip the systemd boot service")
@@ -111,7 +114,14 @@ def main():
     elif args.cmd == "app":
         from . import desktop
         desktop.app_mode()
+    elif args.cmd == "setup":
+        from . import setup as setupmod
+        setupmod.run_cli_wizard()
     elif args.cmd == "tui":
+        from . import config as cfgmod
+        if cfgmod.is_first_run():
+            from . import setup as setupmod
+            setupmod.run_cli_wizard()
         try:
             from . import tui_app          # full-screen Textual UI
             tui_app.run()

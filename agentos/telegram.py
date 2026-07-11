@@ -67,7 +67,7 @@ class TelegramBridge:
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"✈ Telegram · {chat.get('title') or chat['chat_id']}")
+        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}")
         self.store.tg_set_conversation(chat["chat_id"], cid)
         return cid
 
@@ -152,13 +152,20 @@ class TelegramBridge:
                 return await self._ask_approval(chat_id, name, args, reason)
 
             model = self.cfg.get("default_model") or ""
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver)
-            result = await agent.run(history)
+            agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid)
+            from . import knowledge as _k
+            _k.turn_started()
+            try:
+                result = await agent.run(history)
+            finally:
+                _k.turn_ended()
             reply = result["content"] or "(done — no text output)"
             self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
             self.store.touch_conversation(cid)
             await self.send(reply, chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
+            from . import knowledge
+            knowledge.schedule_extraction(self.cfg, self.store, cid, text, reply, self.broadcast)
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", chat_id)
         finally:

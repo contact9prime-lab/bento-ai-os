@@ -7,7 +7,7 @@ your approval. It can even build apps for itself, extend its own code, and reach
 
 Runs at `http://127.0.0.1:8321` — private by default, and installable as a boot-time service.
 
-📖 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the
+**Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the
 desktop and every app, the agent and its tools, building apps, integrations, the API reference, and
 troubleshooting.
 
@@ -22,7 +22,7 @@ uv run agentos          # start the server and open the desktop in your browser
 ```
 
 If **Ollama** is running, your local models are picked up automatically. Add cloud API keys under
-**⚙ Settings** if you want them. That's the whole setup.
+**Settings** if you want them. That's the whole setup.
 
 > **Tip:** builds, tool-calling, and multi-step tasks are far more reliable with a **tool-capable
 > model** (any `qwen*` model, or a cloud model). Weaker local models like `gemma` won't reliably
@@ -122,25 +122,28 @@ AgentOS presents a real desktop environment, not a chat box:
 
 | App | What it is |
 |---|---|
-| 💬 **Agent Chat** | talk to the agent; streaming, tool cards, approvals, voice |
-| 🌐 **Web** | opens URLs in your **real system browser** (full sites, logins, extensions) |
-| 🗂 **Files** | browse the workspace; click a file to open it in your host browser/app |
-| 🖥 **Terminal** | a real host shell (xterm.js over a PTY), jailed to the sandbox folder |
-| 🧰 **App Studio** | describe an app in plain language and the agent **builds it live** |
-| 📊 **Task Manager** | live CPU/memory/disk, processes, open windows |
-| 🕸 **Knowledge Graph** | what the agent knows, as a live force-directed graph |
-| ☯ **Soul** | the agent's persistent identity/personality (injected every turn) |
-| ◈ **Memory** | long-term facts the agent remembers |
-| 🧩 **Skills** | reusable procedures; install from a git repo or a raw `.md` URL |
-| 🔌 **MCP Servers** | connect external tool servers from a catalog (Playwright, git, …) |
-| ✈️ **Telegram** | control the agent from your phone; per-chat allow-list |
-| 🛡 **Policies** | always-allow / always-deny rules for tools & commands |
-| 📜 **Logs** | everything the system did (turns, tools, MCP, telegram, jobs) |
-| 📈 **Token Analytics** | token usage over time, by model |
-| ⏱ **Scheduler** | recurring background **jobs** |
-| 🖼 **Personalize** | AI wallpapers + gallery |
-| 🕰 **Snapshots** | restore points for the whole OS (config, data, and source) |
-| ⚙ **Settings** | providers, model, autonomy, voice, sandbox, agent name |
+| **Agent Chat** | talk to the agent; streaming, tool cards, approvals, voice |
+| **Web** | opens URLs in your **real system browser** (full sites, logins, extensions) |
+| **Files** | browse the workspace; click a file to open it in your host browser/app |
+| **Terminal** | a real host shell (xterm.js over a PTY), jailed to the sandbox folder |
+| **App Studio** | describe an app in plain language and the agent **builds it live** |
+| **Task Manager** | live CPU/memory/disk, processes, open windows |
+| **Knowledge Graph** | what the agent knows, as a live force-directed graph |
+| **Soul** | the agent's persistent identity/personality (injected every turn) |
+| ◈ **Memory** | user & session memory with auto-learn + semantic recall; pin, edit, promote, delete |
+| **Profile** | everything the agent knows about you, in one place |
+| **Team** | subagents & visual workflows (mix models per step) + data-plane observability |
+| **Docs** | this manual, inside the OS (also tab 8 in the TUI) |
+| **Skills** | reusable procedures; install from a git repo or a raw `.md` URL |
+| **MCP Servers** | connect external tool servers from a catalog (Playwright, git, …) |
+| **Telegram** | control the agent from your phone; per-chat allow-list |
+| **Policies** | always-allow / always-deny rules for tools & commands |
+| **Logs** | everything the system did (turns, tools, MCP, telegram, jobs) |
+| **Token Analytics** | token usage over time, by model |
+| **Scheduler** | recurring background **jobs** |
+| **Personalize** | AI wallpapers + gallery |
+| **Snapshots** | restore points for the whole OS (config, data, and source) |
+| **Settings** | providers, model, autonomy, voice, sandbox, agent name |
 
 ---
 
@@ -156,7 +159,10 @@ Telegram. Highlights:
   **finish the job** — turn research into an actual deliverable, not stop after a search.
 - **Build the OS** — `create_app` makes new UI apps that get a desktop icon; `pin_widget` puts them
   on the desktop; `configure_agentos` changes settings; `add_mcp_server` connects new tool channels.
-- **Grow** — `remember`/`recall`, knowledge graph (`kg_add`/`kg_query`), and `update_soul`.
+- **Grow** — two-tier memory (`remember`/`recall`/`forget`, user- and session-scoped), a knowledge
+  graph (`kg_add`/`kg_query`), `update_soul` — plus **auto-learn**: a background pass after every
+  chat turn extracts memories and graph facts on its own, so nothing depends on the model
+  remembering to call `remember`.
 - **Automate** — `schedule_task` creates headless **jobs** that run on a schedule and deliver to a
   report and/or Telegram. The agent picks the right shape: one-off → do it now; recurring → a job;
   interactive → a UI app.
@@ -171,7 +177,7 @@ Telegram", "change my wallpaper to a snowy forest".*
 
 ## Models & providers
 
-Configure under **⚙ Settings**:
+Configure under **Settings**:
 
 - **Ollama** (local) — auto-discovered; nothing leaves your machine.
 - **Anthropic**, **OpenAI**, **OpenRouter** (one key → hundreds of models), or any **OpenAI-
@@ -184,8 +190,8 @@ Switch models mid-flight from the chat window's model dropdown.
 
 ## Safety
 
-- **Autonomy levels** — 🛡 Paranoid / ⚖ Balanced auto-run read-only actions and ask before anything
-  that modifies the system; ⚡ Full runs everything. Destructive commands (`rm -rf /`, `mkfs`,
+- **Autonomy levels** — Paranoid / Balanced auto-run read-only actions and ask before anything
+  that modifies the system; Full runs everything. Destructive commands (`rm -rf /`, `mkfs`,
   `shutdown`, …) are **hard-blocked** at every level.
 - **Policies** — add always-allow / always-deny rules (with `*` wildcards) matched against
   `<tool> <command>`. "Always allow" is one click on any approval prompt.
