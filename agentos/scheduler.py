@@ -48,7 +48,7 @@ class Scheduler:
         async def emit(_ev):  # headless: step events are dropped
             pass
 
-        async def approver(_name, _args, _reason) -> bool:
+        async def approver(_name, _args, _reason, _offer=None) -> bool:
             # No one is watching: only 'full' autonomy may take risky actions.
             return self.cfg.get("autonomy") == "full"
 

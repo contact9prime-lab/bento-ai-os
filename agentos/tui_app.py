@@ -68,6 +68,7 @@ class AgentTUI(App):
     #doclist { width: 38; border: round $primary; }
     #docbody-wrap { border: round $primary; }
     #docbody { padding: 0 2; }
+    #team-box { border: round $primary; padding: 1 2; }
     """
     BINDINGS = [
         Binding("ctrl+c,ctrl+q", "quit", "Quit"),
@@ -79,6 +80,7 @@ class AgentTUI(App):
         Binding("6", "tab('logs')", "Logs"),
         Binding("7", "tab('config')", "Config"),
         Binding("8", "tab('docs')", "Docs"),
+        Binding("9", "tab('team')", "Team"),
     ]
 
     def __init__(self, port: int, cfg: dict):
@@ -115,6 +117,9 @@ class AgentTUI(App):
                     yield ListView(id="doclist")
                     with VerticalScroll(id="docbody-wrap"):
                         yield Static("Pick a guide on the left.", id="docbody")
+            with TabPane("👥 Team", id="team"):
+                with VerticalScroll(id="team-box"):
+                    yield Static("", id="team-body")
             with TabPane("⚙ Config", id="config"):
                 with VerticalScroll(id="cfg-box"):
                     yield Label("Agent name")
@@ -153,9 +158,11 @@ class AgentTUI(App):
         self.refresh_tasks()
         self.refresh_logs()
         self.refresh_docs()
+        self.refresh_team()
         self.load_cfg_form()
         self.set_interval(2.0, self.refresh_system)
         self.set_interval(6.0, self.refresh_logs)
+        self.set_interval(8.0, self.refresh_team)
 
     @work(group="cfgload")
     async def load_cfg_form(self):
@@ -296,6 +303,39 @@ class AgentTUI(App):
         body = self.query_one("#docbody", Static)
         body.update(Markdown(d.get("content", "(not found)")))
         self.query_one("#docbody-wrap", VerticalScroll).scroll_home(animate=False)
+
+    # ---- team: subagents + data-plane observability ----
+    @work(exclusive=True, group="team")
+    async def refresh_team(self):
+        sa = await self.api_get("/api/subagents")
+        obs = await self.api_get("/api/fabric/observability")
+        lines = ["[b]Subagents[/b] — address one in Chat with [b cyan]@name your task[/b cyan]\n"]
+        for s in sa.get("subagents", []):
+            tools = f"{len(s['tools'])} tools" if s.get("tools") else "safe read-only set"
+            lines.append(f"  [b]{s['name']:<14}[/b] {s.get('model') or 'inherits OS model':<28} "
+                         f"{tools} · ≤ {s.get('autonomy_cap','balanced')}")
+            if s.get("soul"):
+                lines.append(f"      [grey58]{s['soul'][:88]}[/]")
+        lines.append("\n[b]Data planes — faults · performance · usage[/b]\n")
+        m = obs.get("main_agent", {})
+        lines.append(f"  {'main agent (L0)':<26} runs {m.get('runs',0):<5} "
+                     f"faults {m.get('faults',0):<5} tok {m.get('tokens_in',0)+m.get('tokens_out',0)}")
+        for name, p in (obs.get("per_plane") or {}).items():
+            avg = round(p["secs"] / p["runs"]) if p.get("runs") else 0
+            lines.append(f"  {name:<26} runs {p['runs']:<5} faults {p['faults']:<5} "
+                         f"avg {avg}s · tok {p['tokens_in']+p['tokens_out']}")
+        live = obs.get("live") or []
+        if live:
+            lines.append("\n[b]Live now[/b]")
+            for i in live:
+                lines.append(f"  {i['ref']} — heartbeat {round(__import__('time').time()-i['last_beat'])}s ago"
+                             + ("  [red]STALE[/red]" if i.get("stale") else ""))
+        for f in (obs.get("recent_faults") or [])[:5]:
+            lines.append(f"  [red]fault[/red] {f['ref']}: {str(f.get('fault',''))[:70]}")
+        try:
+            self.query_one("#team-body", Static).update("\n".join(lines))
+        except Exception:
+            pass
 
     # ---- tasks ----
     @work(exclusive=True, group="tasks")

@@ -13,6 +13,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -123,6 +124,7 @@ class Toolbox:
         self.telegram = None   # TelegramBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
         self.fabric = None     # ControlPlane, wired up in server startup
+        self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
 
     def schemas(self) -> list[dict]:
         """Built-in tool schemas plus tools from connected MCP servers."""
@@ -239,25 +241,25 @@ class Toolbox:
                 mem[k.strip()] = v.strip()
             info["memory"] = mem
         except OSError:
-            pass
+            if sys.platform == "darwin":  # no /proc on macOS
+                out = subprocess.run(["sysctl", "-n", "hw.memsize"],
+                                     capture_output=True, text=True).stdout.strip()
+                if out.isdigit():
+                    info["memory"] = {"MemTotal": f"{int(out) / 1e9:.1f}GB"}
         du = shutil.disk_usage(os.path.expanduser("~"))
         info["disk_home"] = f"{du.used / 1e9:.1f}GB used / {du.total / 1e9:.1f}GB total"
         return json.dumps(info, indent=2)
 
     async def open_app(self, target: str) -> str:
-        subprocess.Popen(
-            ["xdg-open", target],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return f"opened: {target}"
+        from . import desktop as desktopmod
+        err = desktopmod.open_path(target)
+        return f"[error] {err}" if err else f"opened: {target}"
 
     async def notify(self, title: str, message: str = "") -> str:
-        if shutil.which("notify-send"):
-            subprocess.Popen(["notify-send", title, message],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        from . import desktop as desktopmod
+        if desktopmod.send_notification(title, message):
             return "notification sent"
-        return "[error] notify-send not available"
+        return "[error] no desktop notification mechanism available"
 
     async def remember(self, content: str, scope: str = "user",
                        conversation_id: str = "") -> str:
@@ -484,11 +486,26 @@ class Toolbox:
         note = f" (ignored unknown keys: {', '.join(skipped)})" if skipped else ""
         return "updated: " + ", ".join(applied) + note
 
-    async def create_app(self, name: str, icon: str, description: str, html: str) -> str:
-        """Create/update a UI app that appears on the AgentOS desktop (rendered in a window)."""
+    async def create_app(self, name: str, icon: str, description: str, html: str,
+                         permissions: str = "") -> str:
+        """Create/update a UI app that appears on the AgentOS desktop (rendered in a window).
+        `permissions` (JSON list of {action, resource, reason, required}) declares what the
+        app needs at runtime — it becomes the manifest the user consents to."""
         if len(html.strip()) < 20:
             return "[error] html too short — pass the full app markup (HTML/CSS/JS)"
-        aid = self.store.save_app(name, icon or "", description, html)
+        aid = self.store.save_app(name, icon or "", description, html, note="agent build")
+        perms = []
+        if permissions:
+            try:
+                perms = json.loads(permissions)
+            except Exception:
+                perms = []
+        perms = [p for p in perms if isinstance(p, dict) and p.get("action")] \
+            if isinstance(perms, list) else []
+        if perms:
+            man = {"format": 1, "name": name, "description": description,
+                   "permissions": perms, "prerequisites": {}}
+            self.store.set_app_manifest(aid, json.dumps(man), "proposed")
         self.store.log("system", f"app created by agent: {name}")
         if self.broadcast:
             await self.broadcast({"type": "apps"})
@@ -566,8 +583,8 @@ class Toolbox:
                        + (" (restarting)" if restart else ""))
         msg = f"wrote {len(content)} chars to AgentOS source at {path} (snapshot {snap} saved first)"
         if restart:
-            subprocess.Popen(["systemctl", "--user", "restart", "agentos.service"],
-                             start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            from . import desktop as desktopmod
+            desktopmod.restart_service()
             msg += " — restarting AgentOS now (reconnect in a few seconds)"
         else:
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
@@ -575,8 +592,8 @@ class Toolbox:
 
     async def restart_agentos(self) -> str:
         """Restart the AgentOS service to load code changes."""
-        subprocess.Popen(["systemctl", "--user", "restart", "agentos.service"],
-                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        from . import desktop as desktopmod
+        desktopmod.restart_service()
         self.store.log("system", "AgentOS restart requested by agent")
         return "restarting AgentOS — the UI will reconnect in a few seconds"
 
@@ -943,7 +960,8 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "open_app",
-        "description": "Open an application, file, or URL on the user's desktop (via xdg-open).",
+        "description": "Open an application, file, or URL on the user's desktop "
+                       "(host OS default handler).",
         "parameters": {
             "type": "object",
             "properties": {"target": {"type": "string", "description": "App name, file path, or URL."}},
@@ -1137,6 +1155,11 @@ TOOL_SCHEMAS = [
                 "icon": {"type": "string", "description": "leave empty — the OS renders a clean monogram tile (the user dislikes emoji icons)"},
                 "description": {"type": "string"},
                 "html": {"type": "string"},
+                "permissions": {"type": "string", "description":
+                    "JSON list of {action, resource, reason, required} declaring every capability "
+                    "the app uses at runtime (appTool/appData/api calls) — e.g. "
+                    "[{\"action\":\"tool.use\",\"resource\":\"tool:system_info*\",\"reason\":\"show host stats\",\"required\":false}]. "
+                    "The user consents to exactly this list; undeclared calls prompt at runtime."},
             },
             "required": ["name", "icon", "description", "html"],
         },

@@ -24,6 +24,7 @@ import asyncio
 import time
 
 from .agent import Agent
+from .policy import Principal
 
 _AUTONOMY_ORDER = {"paranoid": 0, "balanced": 1, "full": 2}
 
@@ -51,7 +52,18 @@ class ControlPlane:
     # -- hierarchy: the control plane decides how smart each data plane is ----
 
     def resolve_model(self, defn: dict, step_override: str = "") -> str:
-        return step_override or (defn.get("model") or "") or self.cfg.get("default_model", "")
+        model = step_override or (defn.get("model") or "") or self.cfg.get("default_model", "")
+        pdp = getattr(self.toolbox, "pdp", None)
+        if pdp and defn.get("name"):
+            # per-subagent model restrictions (deny grants on model.use); a denied
+            # override falls back to the default model when that one is permitted
+            sub = Principal("subagent", defn["name"])
+            if pdp.decide(sub, "model.use", f"model:{model}").effect == "deny":
+                fallback = self.cfg.get("default_model", "")
+                if fallback and fallback != model and \
+                        pdp.decide(sub, "model.use", f"model:{fallback}").effect != "deny":
+                    return fallback
+        return model
 
     # -- telemetry --------------------------------------------------------------
 
@@ -112,7 +124,12 @@ class ControlPlane:
     async def run_subagent(self, defn: dict, task: str, context: str = "",
                            parent_run: str = "", model_override: str = "",
                            approver=None, kind: str = "delegate",
-                           conversation_id: str = "") -> dict:
+                           conversation_id: str = "", ui_emit=None,
+                           agent_slot: dict | None = None) -> dict:
+        """ui_emit: optional passthrough for the agent's live events (text/tool/error) —
+        set when a subagent runs inside a chat so the user watches it work inline.
+        agent_slot: optional dict that receives {"agent": <Agent>} so the caller's
+        stop button can abort the data plane directly."""
         model = self.resolve_model(defn, model_override)
         run_id = self.store.fabric_run_start(kind, defn["name"], task,
                                              parent_run=parent_run, model=model)
@@ -126,7 +143,12 @@ class ControlPlane:
         usage = {"in": 0, "out": 0}
         nsteps = {"n": 0}
 
-        async def emit(ev):  # data → control: step telemetry
+        async def emit(ev):  # data → control: step telemetry (+ live mirror into a chat)
+            if ui_emit:
+                try:
+                    await ui_emit(ev)
+                except Exception:
+                    pass
             if ev["type"] == "tool_start":
                 nsteps["n"] += 1
                 await self._emit(run_id, "step", {"tool": ev["name"], "status": "start"})
@@ -136,12 +158,13 @@ class ControlPlane:
             elif ev["type"] == "error":
                 await self._emit(run_id, "fault", {"message": ev.get("message", "")[:500]})
 
-        async def headless_approver(_n, _a, _r):
-            # no human inside a data plane: risky actions need effective 'full'
+        async def headless_approver(_n, _a, _r, _offer=None):
+            # no human inside a data plane: gated actions need effective 'full'
             return eff_autonomy == "full"
 
         tools = defn.get("tools") or SAFE_TOOLS
         # subagents never manage the fabric or rewrite the OS/its identity
+        # (also enforced as built-in denies in policy.py — this keeps the schemas clean)
         tools = [t for t in tools if t not in
                  ("delegate", "run_workflow", "configure_agentos", "update_soul",
                   "develop_agentos", "restart_agentos")]
@@ -151,11 +174,14 @@ class ControlPlane:
                 tools.append(t)
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
-                      conversation_id=conversation_id)
+                      conversation_id=conversation_id,
+                      principal=Principal("subagent", defn["name"]))
+        if agent_slot is not None:
+            agent_slot["agent"] = agent
         self.instances[run_id] = {"agent": agent, "ref": defn["name"], "parent": parent_run,
                                   "started": time.time(), "last_beat": time.time()}
         hb = asyncio.create_task(self._heartbeat_sidecar(run_id))
-        status, content, fault = "ok", "", ""
+        status, content, fault, trace = "ok", "", "", []
         from . import knowledge as _k
         _k.turn_started()  # data planes are foreground work — background jobs must yield
         try:
@@ -163,6 +189,7 @@ class ControlPlane:
                 agent.run([{"role": "user", "content": task}]),
                 timeout=int(defn.get("max_seconds", 300)))
             content = result.get("content") or ""
+            trace = result.get("steps") or []
             tk = result.get("tokens") or {}
             usage["in"], usage["out"] = tk.get("input", 0), tk.get("output", 0)
             if agent.aborted:
@@ -186,7 +213,7 @@ class ControlPlane:
                          {"status": status, "ref": defn["name"], "parent_run": parent_run,
                           "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
-                "model": model, "usage": usage}
+                "model": model, "usage": usage, "steps": trace}
 
     # -- workflows: a DAG of subagent steps ---------------------------------------
 
@@ -255,6 +282,18 @@ class ControlPlane:
                                             "workflow": True, "fault": fault[:300]})
         return {"run_id": run_id, "status": status, "content": final, "fault": fault,
                 "outputs": outputs, "usage": totals}
+
+
+def parse_mention(store, text: str):
+    """'@researcher find X' → (subagent_defn, 'find X') when the name matches a
+    subagent; None otherwise. Lets any chat surface (web, Telegram, TUI) address a
+    team member directly instead of going through the main agent."""
+    import re
+    m = re.match(r"@([A-Za-z0-9_-]+)\s+(.+)", (text or "").strip(), re.S)
+    if not m:
+        return None
+    defn = store.get_subagent(m.group(1))
+    return (defn, m.group(2).strip()) if defn else None
 
 
 # ---------------------------------------------------------------------------

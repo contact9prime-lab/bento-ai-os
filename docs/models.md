@@ -69,3 +69,13 @@ or "set my wallpaper to <a photo file or image URL>"* (the latter gives you full
 
 > The built-in generator uses a free image service that caps resolution. For a crisp, full-resolution
 > background, point the agent at a local photo or an image URL with `set_wallpaper`.
+
+
+## Local model concurrency
+
+Ollama runs **one request at a time per model** by default; concurrent chats are accepted by
+AgentOS but queue inside Ollama. Cloud providers (Anthropic/OpenAI/OpenRouter) handle requests
+in parallel — no queueing. To let Ollama serve several requests at once (VRAM permitting), set
+`OLLAMA_NUM_PARALLEL=2` (and optionally `OLLAMA_MAX_LOADED_MODELS=2`) in Ollama's environment
+and restart it. AgentOS's own background work (auto-learn, maintenance) always yields to live
+conversations on local models, and never waits when pointed at a cloud model.

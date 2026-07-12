@@ -309,6 +309,27 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #chat{flex:1;overflow-y:auto;padding:18px 0 10px;user-select:text}
 .inner{max-width:780px;margin:0 auto;padding:0 20px}
 
+/* team / subagent wizard */
+.sawrow{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;margin:5px 0;cursor:pointer;transition:.12s;background:var(--bg3)}
+.sawrow:hover{border-color:var(--acc)}
+.sawrow.on{border-color:var(--acc);background:var(--bg4)}
+.sawrow input{width:auto;margin-top:2px;flex:0 0 auto;accent-color:var(--acc)}
+.sawrow .n{font-size:13px;font-weight:600;color:var(--txt);letter-spacing:.1px}
+.sawrow .d{font-size:12px;color:var(--dim);margin-top:2px;line-height:1.45}
+.sawgrp{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:12px 2px 4px}
+.sawchip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bg3);color:var(--dim);font-size:12px;flex:0 0 auto}
+.sawchip:hover{border-color:var(--acc);color:var(--txt)}
+.sawh{font-size:17px;font-weight:700;margin:0 0 2px}
+.sawsub{font-size:12.5px;color:var(--dim);margin:0 0 12px;line-height:1.5}
+.teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:.12s;background:var(--bg3)}
+.teamcard:hover{border-color:var(--acc)}
+.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--bg);background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.teamcard .n{font-size:14px;font-weight:650;color:var(--txt)}
+.teamcard .meta{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.5}
+.teamcard .meta b{color:var(--txt);font-weight:600}
+.teamcard .persona{font-size:12px;color:var(--dim2);margin-top:3px;font-style:italic}
+.badge{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:999px;font-size:10.5px;color:var(--dim2);margin-left:6px;vertical-align:1px}
+
 #welcome{text-align:center;padding-top:7vh}
 #welcome h1{font-size:30px;font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
 #welcome p{color:var(--dim);margin-bottom:26px;font-size:14px}
@@ -1042,6 +1063,7 @@ const APPS={
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
+  permissions:{id:'permissions',title:'Permissions',icon:'',w:780,h:640,desc:'What each app & agent may do — grant, review, revoke',render:renderPermissions},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:720,h:600,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
@@ -1053,7 +1075,7 @@ const APPS={
 };
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','mcp','telegram','policies','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -1595,14 +1617,20 @@ function handle(ev){
     case 'approval_request':{
       const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
       const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
-      box.innerHTML=`<div class="atitle">Approval needed${_cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">Always allow</button></div>`;
+      const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
+      box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${_cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
       box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
       box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
       box.querySelector('.always').onclick=async()=>{
-        const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-        await addPolicy('allow',pat);
-        resolveApproval(ev.id,true);
-        toast('policy added: always allow "'+pat+'"');
+        if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
+          resolveApproval(ev.id,true,true);
+          toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+        }else{
+          const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
+          await addPolicy('allow',pat);
+          resolveApproval(ev.id,true);
+          toast('policy added: always allow "'+pat+'"');
+        }
       };
       if(_cur&&feed){
         if(!curBody)startAssistant();
@@ -1639,6 +1667,7 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); break;
     case 'setup': location.reload(); break;
     case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
+    case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
@@ -1656,10 +1685,14 @@ function handle(ev){
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
-function resolveApproval(id,approved){
-  ws.send(JSON.stringify({type:'approval',id,approved}));
+function resolveApproval(id,approved,remember){
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');
     box.querySelector('.atitle').textContent=approved?'✓ Allowed':'✕ Denied';}
+}
+function permPrincipalLabel(kind,id){
+  if(kind==='app'){const a=(USERAPPS||[]).find(x=>x.id===id);return 'app "'+(a?a.name:id)+'"';}
+  return kind+(id?' "'+id+'"':'');
 }
 function flushText(){
   if(curText.trim()&&curBody){const d=document.createElement('div');d.className='body';d.innerHTML=md(curText);
@@ -1697,7 +1730,7 @@ function renderChat(body){
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="combox">
-          <textarea id="input" rows="1" placeholder="Ask, or tell it what to do on this machine…"></textarea>
+          <textarea id="input" rows="1" placeholder="Ask, tell it what to do — or @subagent to address a team member directly"></textarea>
           <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
@@ -2043,17 +2076,22 @@ function fabTabs(){
 async function renderFabTeam(body){
   const sa=await fetch('/api/subagents').then(r=>r.json());
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
-  const cards=sa.subagents.map(s=>`<div class="item" style="cursor:pointer" onclick="openSAW('${esc(s.name)}')">
-      <div class="grow"><b>🤖 ${esc(s.name)}</b> ${s.builtin?'<span class="mut">· built-in</span>':''}
-        <div class="sub">🧠 ${esc(s.model||'inherits OS model')} · 🔧 ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · 🧩 '+s.skills.length+' skills':''} · 🛡 ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
-        <div class="sub">${esc((s.soul||'').slice(0,110))}</div></div>
-      <button title="test run" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">▶</button>
+  const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
+      <div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>
+      <div class="grow">
+        <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
+        <div class="meta"><b>${esc((s.model||'').split('/').pop()||'inherits OS model')}</b> · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
+        <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
+      </div>
+      <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
     ||'<p class="mut">No subagents yet — create your first specialist.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
-    <button class="save" style="margin:0 0 10px" onclick="openSAW()">＋ New subagent</button>
+    <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New subagent</button>
     ${cards}
-    <p class="mut" style="margin-top:10px">Click a subagent to edit it in the wizard. The control plane owns the model — <i>inherit</i> follows the OS default; pin one to mix (e.g. generation local, validation on Claude). Every subagent can always use skills and memory (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>).</p></div>`;
+    <p class="mut" style="margin-top:10px">Address any of them directly from Agent Chat (or Telegram / TUI) with
+    <code>@name your task</code> — the run streams into the chat and is tracked in Observability.
+    Click a card to edit. <i>inherit</i> follows the OS model; pin one to mix (e.g. generation local, validation on Claude).</p></div>`;
 }
 async function delSubagent(id){if(!confirm('Delete this subagent?'))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
 
@@ -2085,57 +2123,82 @@ function drawSAW(){
   const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=st?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
   let inner='';
   if(st===1){
-    const opts=['<option value="">🧠 inherit from control plane (OS default)</option>']
+    const opts=['<option value="">inherit from control plane (OS default)</option>']
       .concat(SAW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
-    inner=`<h3 style="margin:0 0 4px">${SAW.exists?'Edit':'New'} subagent — identity</h3>
-      <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''}>
-      <label>Persona — who is it, how does it work? (its soul)</label>
-      <textarea id="sw-soul" rows="4" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
-      <label>Brain</label><select id="sw-model">${opts}</select>
-      <p class="mut">Pin a model to mix smartness across the team — e.g. this one on Claude while others run local.</p>`;
+    inner=`<div class="sawh">${SAW.exists?'Edit':'New'} subagent</div>
+      <div class="sawsub">A specialist team member with its own persona, model, and tools. In chat you'll address it as <code>@name</code>.</div>
+      <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''} style="font-size:14px">
+      <label>Persona — who is it, how does it work?</label>
+      <textarea id="sw-soul" rows="4" style="font-size:13px;line-height:1.5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <label>Brain</label><select id="sw-model" style="font-size:13px">${opts}</select>
+      <p class="mut" style="font-size:12px">Pin a model to mix smartness across the team — e.g. this one on Claude while others run local.</p>`;
   }else if(st===2){
-    const q=SAW.q.toLowerCase();
-    const rows=SAW.tools
-      .filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
-      .slice(0,60)
-      .map(t=>`<label class="item" style="cursor:pointer;padding:6px 8px"><input type="checkbox" style="width:auto;margin-right:8px" ${d.tools.includes(t.name)?'checked':''} onchange="sawTool('${esc(t.name)}',this.checked)">
-        <div class="grow"><b>${t.name.startsWith('mcp_')?'🔌 ':''}${esc(t.name)}</b><div class="sub">${esc((t.description||'').slice(0,100))}</div></div></label>`).join('')
-      ||'<p class="mut">no tools match</p>';
-    const chips=Object.keys(SAW_PRESETS).map(p=>`<button style="flex:0 0 auto" onclick="sawPreset('${p}')">${p}</button>`).join('')+`<button style="flex:0 0 auto" onclick="SAW.d.tools=[];drawSAW()">Clear</button>`;
-    const skl=SAW.skills.map(s=>`<label class="item" style="cursor:pointer;padding:6px 8px"><input type="checkbox" style="width:auto;margin-right:8px" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked)">
-        <div class="grow">🧩 <b>${esc(s.name)}</b><div class="sub">${esc((s.description||'').slice(0,90))}</div></div></label>`).join('')
-      ||'<p class="mut">no skills installed — add some in the Skills app</p>';
-    inner=`<h3 style="margin:0 0 4px">Capabilities — pick from what exists</h3>
-      <div class="row" style="margin:6px 0">${chips}</div>
-      <input id="sw-q" placeholder="🔎 search ${SAW.tools.length} tools (incl. MCP)…" value="${esc(SAW.q)}" oninput="SAW.q=this.value;drawSAW();setTimeout(()=>{const i=$('#sw-q');i&&i.focus();i&&i.setSelectionRange(i.value.length,i.value.length)},0)">
-      <div style="max-height:200px;overflow:auto;margin:6px 0">${rows}</div>
-      <div class="sub" style="margin:2px 0 6px">selected: <b>${d.tools.length||0}</b>${d.tools.length?' — '+d.tools.slice(0,8).map(esc).join(', ')+(d.tools.length>8?'…':''):' (empty = safe read-only set)'}</div>
-      <div class="ptitle">Skills it should follow</div>
-      <div style="max-height:130px;overflow:auto">${skl}</div>
-      <p class="mut" style="margin-top:4px">use_skill · recall · kg_query · remember are always available — every subagent builds on the OS's skills, memory and knowledge.</p>`;
+    const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
+      +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
+    const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+        <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.description||'').slice(0,110))}</div></div></label>`).join('')
+      ||'<p class="mut">No skills installed yet — add some in the Skills app.</p>';
+    inner=`<div class="sawh">Capabilities</div>
+      <div class="sawsub">Pick from what's already on this OS — tools, connected MCP servers, installed skills. Nothing to type.</div>
+      <div class="row" style="margin:0 0 8px;flex-wrap:wrap;gap:6px">${chips}</div>
+      <input id="sw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}" style="font-size:13.5px;padding:10px 12px">
+      <div id="sw-list" style="max-height:230px;overflow:auto;margin:8px 0 2px"></div>
+      <div id="sw-count" class="sawsub" style="margin:6px 0 10px"></div>
+      <div class="sawgrp">Skills it should follow</div>
+      <div style="max-height:150px;overflow:auto">${skl}</div>
+      <p class="mut" style="margin-top:8px;font-size:12px">Memory and skills access (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) is always included.</p>`;
   }else{
-    inner=`<h3 style="margin:0 0 4px">Limits & trust</h3>
+    inner=`<div class="sawh">Limits &amp; trust</div>
+      <div class="sawsub">How independent is it, and how much may one run cost?</div>
       <label>Autonomy cap (never exceeds the OS level)</label>
-      <select id="sw-cap"><option value="paranoid" ${d.autonomy_cap==='paranoid'?'selected':''}>paranoid — everything needs approval</option>
+      <select id="sw-cap" style="font-size:13px"><option value="paranoid" ${d.autonomy_cap==='paranoid'?'selected':''}>paranoid — everything needs approval</option>
         <option value="balanced" ${d.autonomy_cap==='balanced'?'selected':''}>balanced — risky actions auto-denied when unattended</option>
         <option value="full" ${d.autonomy_cap==='full'?'selected':''}>full — may act freely (careful)</option></select>
       <div class="row" style="margin-top:8px">
         <div style="flex:1"><label>Max steps</label><input id="sw-steps" type="number" value="${d.max_steps}"></div>
         <div style="flex:1"><label>Max seconds</label><input id="sw-secs" type="number" value="${d.max_seconds}"></div>
       </div>
-      <div class="provbox" style="margin-top:12px"><div class="ptitle">Summary</div>
-        <div class="sub">🤖 <b>${esc(d.name||'?')}</b> · 🧠 ${esc(d.model||'inherit')} · 🔧 ${d.tools.length||'safe set'} tools${d.skills.length?' · 🧩 '+d.skills.length+' skills':''}</div>
-        <div class="sub">${esc((d.soul||'').slice(0,140))}</div></div>`;
+      <div class="provbox" style="margin-top:14px"><div class="sawgrp" style="margin-top:0">Summary</div>
+        <div class="meta" style="font-size:12.5px;color:var(--dim)"><b style="color:var(--txt)">${esc(d.name||'?')}</b> · ${esc(d.model||'inherits OS model')} · ${d.tools.length||'safe set'} tools${d.skills.length?' · '+d.skills.length+' skills':''} · ≤ ${esc(d.autonomy_cap)}</div>
+        <div class="persona" style="font-size:12px;color:var(--dim2);font-style:italic;margin-top:4px">${esc((d.soul||'').slice(0,160))}</div>
+        <div class="meta" style="font-size:12px;color:var(--dim2);margin-top:6px">In chat: <code>@${esc(d.name||'name')} your task</code></div></div>`;
   }
-  ov.innerHTML=`<div style="width:600px;max-width:94vw;max-height:88vh;overflow:auto;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:22px 24px" onclick="event.stopPropagation()">
+  ov.innerHTML=`<div style="width:620px;max-width:94vw;max-height:88vh;overflow:auto;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:24px 26px" onclick="event.stopPropagation()">
     ${inner}
-    <div class="row" style="margin-top:14px;align-items:center">
+    <div class="row" style="margin-top:16px;align-items:center">
       <div class="grow">${dot(1)}${dot(2)}${dot(3)}</div>
       <button onclick="SAW=null;drawSAW()">Cancel</button>
       ${st>1?`<button onclick="sawStep(-1)">← Back</button>`:''}
       ${st<3?`<button class="save" style="margin:0;flex:0 0 100px" onclick="sawStep(1)">Next →</button>`
-            :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save ✓</button>`}
+            :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save</button>`}
     </div></div>`;
+  if(st===2){ // search filters the list in place — the field never loses focus
+    const q=$('#sw-q');
+    q.oninput=()=>{SAW.q=q.value;sawRefreshList()};
+    sawRefreshList();
+  }
+}
+function sawRefreshList(){
+  const box=$('#sw-list'),d=SAW.d,q=SAW.q.toLowerCase().trim();
+  if(!box)return;
+  const hit=t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q);
+  // group: OS tools first, then one group per connected MCP server (mcp_<server>_<tool>)
+  const groups={};
+  SAW.tools.filter(hit).forEach(t=>{
+    const g=t.name.startsWith('mcp_')?('MCP · '+(t.name.split('_')[1]||'server')):'OS tools';
+    (groups[g]=groups[g]||[]).push(t);
+  });
+  const row=t=>{const on=d.tools.includes(t.name);
+    return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
+      onchange="sawTool('${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,130))}</div></div></label>`};
+  box.innerHTML=Object.entries(groups).map(([g,ts])=>
+    `<div class="sawgrp">${esc(g)} · ${ts.length}</div>`+ts.slice(0,80).map(row).join('')).join('')
+    ||'<p class="mut" style="padding:8px 2px">Nothing matches — try a different word (search also looks at descriptions).</p>';
+  const c=$('#sw-count');
+  if(c)c.innerHTML=d.tools.length
+    ?`Selected <b style="color:var(--txt)">${d.tools.length}</b>: ${d.tools.slice(0,10).map(esc).join(', ')}${d.tools.length>10?' …':''}`
+    :'Nothing selected — it gets the safe read-only set.';
 }
 function sawCollect(){
   const d=SAW.d;
@@ -2143,19 +2206,26 @@ function sawCollect(){
   if(SAW.step===3){d.autonomy_cap=$('#sw-cap').value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
 }
 function sawStep(delta){sawCollect();if(SAW.step===1&&delta>0&&!SAW.d.name)return toast('give it a name');SAW.step=Math.min(3,Math.max(1,SAW.step+delta));drawSAW()}
-function sawTool(name,on){const t=SAW.d.tools;if(on&&!t.includes(name))t.push(name);if(!on)SAW.d.tools=t.filter(x=>x!==name);drawSAW()}
-function sawSkill(name,on){const s=SAW.d.skills;if(on&&!s.includes(name))s.push(name);if(!on)SAW.d.skills=s.filter(x=>x!==name);drawSAW()}
-function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];drawSAW()}
+function sawTool(name,on){const t=SAW.d.tools;if(on&&!t.includes(name))t.push(name);if(!on)SAW.d.tools=t.filter(x=>x!==name);
+  const c=$('#sw-count');if(c)sawRefreshCount();}
+function sawRefreshCount(){const d=SAW.d,c=$('#sw-count');
+  if(c)c.innerHTML=d.tools.length
+    ?`Selected <b style="color:var(--txt)">${d.tools.length}</b>: ${d.tools.slice(0,10).map(esc).join(', ')}${d.tools.length>10?' …':''}`
+    :'Nothing selected — it gets the safe read-only set.';}
+function sawSkill(name,on){const s=SAW.d.skills;if(on&&!s.includes(name))s.push(name);if(!on)SAW.d.skills=s.filter(x=>x!==name)}
+function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];sawRefreshList()}
 async function sawSave(){
   sawCollect();
   const d=SAW.d;if(!d.name)return toast('name required');
   await fetch('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
-  SAW=null;drawSAW();toast('🤖 subagent saved');refreshApp('fabric');
+  SAW=null;drawSAW();toast('subagent saved — address it in chat with @'+d.name);refreshApp('fabric');
 }
-async function testSubagent(name){
-  const task=prompt('Task for '+name+':');if(!task)return;
-  await fetch('/api/subagents/'+encodeURIComponent(name)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task})});
-  toast('▶ '+name+' running — see Observability');fabTab='runs';refreshApp('fabric');}
+function testSubagent(name){
+  // test runs live in the chat: open it with the mention prefilled
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value='@'+name+' ';i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast('type the task after @'+name+' — the run streams right here and lands in Observability');
+}
 
 function wfLayers(steps){
   const done=new Set(),layers=[];let rem=[...steps];
@@ -2319,7 +2389,7 @@ function showWizard(){
       .map(([v,t,d])=>`<label class="item" style="cursor:pointer"><input type="radio" name="wz-auto" value="${v}" style="width:auto;margin-right:8px" ${WIZ.autonomy===v?'checked':''}> <div><b>${t}</b><div class="sub">${d}</div></div></label>`).join('')}`;
   else if(step===4)inner=`<h2 style="margin:0 0 6px">Always on</h2>
     <p class="mut">AgentOS is most useful when it's always running — background jobs, Telegram, automations.</p>
-    <label class="item" style="cursor:pointer"><input type="checkbox" id="wz-boot" style="width:auto;margin-right:8px" ${WIZ.autostart?'checked':''}> <div><b>Start automatically</b><div class="sub">installs the app launcher + a systemd user service (starts at login; at boot where lingering is allowed)</div></div></label>
+    <label class="item" style="cursor:pointer"><input type="checkbox" id="wz-boot" style="width:auto;margin-right:8px" ${WIZ.autostart?'checked':''}> <div><b>Start automatically</b><div class="sub">installs the app launcher + a background service so the server starts at login (systemd on Linux, LaunchAgent on macOS, Startup entry on Windows)</div></div></label>
     <label class="item" style="cursor:pointer"><input type="checkbox" id="wz-login" style="width:auto;margin-right:8px" ${WIZ.open_at_login?'checked':''}> <div><b>Open the AgentOS window at login</b></div></label>`;
   else inner=`<h2 style="margin:0 0 6px">You're all set</h2>
     ${(WIZ.report?.applied||[]).map(l=>`<div class="sub">· ${esc(l)}</div>`).join('')}
@@ -3023,6 +3093,106 @@ async function delPolicy(i){
   refreshApp('policies');
 }
 
+/* ================= permissions app (grants: the consent ledger) ================= */
+async function renderPermissions(body){
+  let grants=[],apps=[];
+  try{grants=(await (await fetch('/api/grants')).json()).grants||[]}catch(e){}
+  try{apps=(await (await fetch('/api/apps')).json()).apps||[]}catch(e){}
+  const proposed=apps.filter(a=>(a.manifest_status||'none')==='proposed');
+  const groups={};
+  grants.forEach(g=>{const k=g.principal_kind+' '+(g.principal_id||'');(groups[k]=groups[k]||[]).push(g)});
+  const srcBadge=s=>s==='legacy'?'<span class="badge err">legacy full access</span>'
+    :s==='manifest'?'<span class="badge ok">manifest</span>'
+    :s==='auto'?'<span class="badge">auto</span>':'<span class="badge">user</span>';
+  const groupHTML=Object.keys(groups).sort().map(k=>{
+    const [kind,id]=k.split(' ');
+    const label=permPrincipalLabel(kind,id);
+    const rows=groups[k].map(g=>`<div class="item">
+        <span class="badge ${g.effect==='allow'?'ok':'err'}">${g.effect}</span>
+        <div class="grow"><div style="font-family:var(--mono);font-size:12.5px">${esc(g.action)} · ${esc(g.resource)}</div>
+          ${g.note?`<div class="mut" style="font-size:11.5px">${esc(g.note)}</div>`:''}</div>
+        ${srcBadge(g.source)}
+        <button title="revoke" onclick="revokeGrant('${g.id}')">✕</button></div>`).join('');
+    return `<div style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(id||kind)};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc((label.replace(/^[a-z]+ "|"$/g,'')[0]||'?').toUpperCase())}</span>
+      <b>${esc(label)}</b></div>${rows}</div>`;
+  }).join('');
+  body.innerHTML=`<div class="pad">
+    ${proposed.length?`<label>Awaiting your review</label>`+proposed.map(a=>`<div class="item">
+      <div class="grow"><b>${esc(a.name)}</b> <span class="mut">requests permissions via its manifest</span></div>
+      <button class="save" style="margin:0" onclick="reviewManifest('${a.id}')">Review</button></div>`).join('')+'<div style="height:10px"></div>':''}
+    <label>Active grants — who may do what (revoke any time; effect is immediate)</label>
+    ${groupHTML||'<p class="mut">No grants yet. When an app or subagent asks for a capability, "Allow &amp; remember" writes a grant here. Approving an app\'s manifest does too.</p>'}
+    <label>Add a rule manually</label>
+    <div class="row">
+      <select id="gr-kind" style="flex:0 0 100px"><option value="app">app</option><option value="subagent">subagent</option><option value="workflow">workflow</option></select>
+      <select id="gr-pid" style="flex:1 1 90px">${apps.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}<option value="*">any (*)</option></select>
+      <select id="gr-eff" style="flex:0 0 90px"><option value="allow">✓ allow</option><option value="deny">✕ deny</option></select>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <input id="gr-action" placeholder="action, e.g. mcp.use or tool.use or *" style="flex:1">
+      <input id="gr-res" placeholder="resource, e.g. mcp:github/* or tool:run_command git *" style="flex:2">
+      <button class="save" style="margin:0;flex:0 0 70px" onclick="addGrantUI()">Add</button>
+    </div>
+    <p class="mut" style="margin-top:10px">Grants are per-principal (per app / subagent) and use * wildcards.
+    <b>deny</b> wins over allow; hard-blocked commands stay blocked regardless. Global rules for the main
+    agent live in the <a href="#" onclick="openApp('policies');return false">Policies</a> app.</p>
+  </div>`;
+}
+async function revokeGrant(gid){
+  await fetch('/api/grants/'+gid,{method:'DELETE'});
+  toast('grant revoked'); refreshApp('permissions');
+}
+async function addGrantUI(){
+  const action=$('#gr-action').value.trim();if(!action)return toast('enter an action');
+  await fetch('/api/grants',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({principal_kind:$('#gr-kind').value,principal_id:$('#gr-pid').value,
+      action,resource:$('#gr-res').value.trim()||'*',effect:$('#gr-eff').value})});
+  refreshApp('permissions');
+}
+async function reviewManifest(aid){
+  let r; try{r=await (await fetch('/api/apps/'+aid+'/manifest')).json()}catch(e){return toast('failed to load manifest')}
+  showConsent(r.manifest,[],async granted=>{
+    await fetch('/api/apps/'+aid+'/manifest/approve',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({granted})});
+    toast('permissions granted — legacy access retired'); refreshApp('permissions');
+  });
+}
+/* consent modal: manifest permissions with required/optional toggles + prerequisite installs.
+   missing = [{label, run:async fn}] */
+function showConsent(manifest,missing,onApprove){
+  const perms=(manifest&&manifest.permissions)||[];
+  const shield='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--acc,#5eead4)"><path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z"/></svg>';
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)';
+  ov.innerHTML=`<div style="width:min(560px,92vw);max-height:82vh;overflow:auto;background:var(--glass,#171b22);border:1px solid var(--border,#232a35);border-radius:14px;padding:20px">
+    <div style="display:flex;align-items:center;gap:10px">${shield}<b style="font-size:15px">${esc(manifest.name||'This app')} requests permission</b></div>
+    <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')} You can untick optional items — and revoke anything later in Permissions.</p>
+    ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" data-i="${i}" checked ${p.required?'disabled':''} style="margin-top:3px;accent-color:var(--acc,#5eead4)">
+      <div class="grow"><div style="font-family:var(--mono);font-size:12.5px">${esc(p.action||'*')} · ${esc(p.resource||'*')}</div>
+        <div class="mut" style="font-size:12px">${esc(p.reason||'')}${p.required?' · required':' · optional'}</div></div></label>`).join('')
+      :'<p class="mut">No capabilities requested — this app only uses its own private data.</p>'}
+    ${(missing&&missing.length)?'<label style="display:block;margin-top:12px">Missing prerequisites</label>'+missing.map((m,j)=>`<div class="item"><div class="grow">${esc(m.label)}</div><button class="prq" data-j="${j}">Install</button></div>`).join(''):''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="c-cancel">Cancel</button><button class="c-ok save" style="margin:0">Grant selected</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('.prq').forEach(b=>{b.onclick=async()=>{
+    b.textContent='installing…';b.disabled=true;
+    try{await missing[+b.dataset.j].run();b.textContent='installed'}
+    catch(e){b.textContent='failed';b.disabled=false}
+  }});
+  ov.querySelector('.c-cancel').onclick=()=>ov.remove();
+  ov.querySelector('.c-ok').onclick=()=>{
+    const granted=[...ov.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).map(c=>+c.dataset.i);
+    ov.remove(); onApprove(granted);
+  };
+}
+function reloadAppFrames(){ // a revoked capability shouldn't live on in an open iframe
+  document.querySelectorAll('iframe[src^="/api/apps/"]').forEach(f=>{const s=f.src;f.src=s});
+}
+
 /* ================= skills app ================= */
 /* Curated open-source skills — every entry is MIT or Apache-2.0 licensed.
    src is either a git repo (pack — installs every SKILL.md) or a raw SKILL.md URL (single skill). */
@@ -3323,7 +3493,7 @@ function openFile(rel,ext){
 let STORE_TAB='apps';
 async function renderStore(body,w){
   body.innerHTML=`<div class="apptop" style="gap:6px">
-      ${['apps','channels','skills','build'].map(t=>`<button class="endbtn store-tab${t===STORE_TAB?' on':''}" data-t="${t}">${({apps:'Apps',channels:'Channels',skills:'Skills',build:'Build with AI'})[t]}</button>`).join('')}
+      ${['apps','channels','skills','import','build'].map(t=>`<button class="endbtn store-tab${t===STORE_TAB?' on':''}" data-t="${t}">${({apps:'Apps',channels:'Channels',skills:'Skills',import:'Import',build:'Build with AI'})[t]}</button>`).join('')}
     </div>
     <div id="store-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
   body.querySelectorAll('.store-tab').forEach(b=>b.onclick=()=>{STORE_TAB=b.dataset.t;renderStore(body,w)});
@@ -3355,6 +3525,14 @@ async function renderStore(body,w){
         <button class="save" style="margin:0;flex:0 0 90px" onclick="storeInstallSkill()">Install</button></div>
       <div class="tmsec">Installed (${d.skills.length})</div>
       ${d.skills.map(s=>`<div class="item"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}`;
+  } else if(STORE_TAB==='import'){
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Install an app package (<code>.agentapp.json</code>) shared from another AgentOS.
+      You review its permissions before anything runs; missing MCP channels & skills are offered as one-click installs (you supply any API keys).</p>
+      <div class="row"><input id="store-pkg-url" placeholder="https://…/app.agentapp.json">
+        <button class="save" style="margin:0;flex:0 0 110px" onclick="storeImportURL()">Fetch</button></div>
+      <div class="row" style="margin-top:8px"><input type="file" id="store-pkg-file" accept=".json,.agentapp.json" style="flex:1">
+        <button class="save" style="margin:0;flex:0 0 110px" onclick="storeImportFile()">Import file</button></div>
+      <p class="mut" style="margin-top:12px;font-size:11px">Packages carry a checksum — modified packages are refused. Secrets are never inside a package.</p>`;
   } else {
     box.innerHTML=`<div style="text-align:center;padding:24px">
       <div style="font-size:34px"></div>
@@ -3384,6 +3562,37 @@ function storeBuild(){
   openApp('studio');
   setTimeout(()=>{if($('#st-prompt')){$('#st-prompt').value=p;studioBuild()}},200);
 }
+async function storeImportURL(){
+  const url=$('#store-pkg-url').value.trim();if(!url)return toast('enter a package URL');
+  await storeImportStage({url});
+}
+async function storeImportFile(){
+  const f=$('#store-pkg-file').files[0];if(!f)return toast('choose a package file');
+  let pkg; try{pkg=JSON.parse(await f.text())}catch(e){return toast('not a valid package file')}
+  await storeImportStage({package:pkg});
+}
+async function storeImportStage(body){
+  const r=await fetch('/api/apps/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok)return toast(d.error||'import failed');
+  const missing=[
+    ...(d.missing.mcp_servers||[]).map(m=>({label:'MCP channel "'+m.name+'" — added disabled; you fill its API key in the MCP app',
+      run:async()=>{IMPORT_PREREQS.mcp.push(m.name)}})),
+    ...(d.missing.skills||[]).map(s=>({label:'Skill "'+s.name+'" from '+(s.source||'?'),
+      run:async()=>{IMPORT_PREREQS.skills.push(s.name)}})),
+  ];
+  IMPORT_PREREQS={mcp:[],skills:[]};
+  if(d.name_conflict&&!confirm('An app named "'+d.manifest.name+'" already exists — importing will overwrite it. Continue?'))return;
+  showConsent(d.manifest,missing,async granted=>{
+    const rr=await fetch('/api/apps/import/'+d.install_id+'/confirm',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({granted,install_mcp:IMPORT_PREREQS.mcp,install_skills:IMPORT_PREREQS.skills})});
+    const dd=await rr.json();
+    toast(rr.ok?('installed '+d.manifest.name):(dd.error||'install failed'));
+    refreshApp('store');refreshApp('permissions');
+  });
+}
+let IMPORT_PREREQS={mcp:[],skills:[]};
 
 /* ================= app studio (agentic builder) ================= */
 let STUDIO={apps:[],sel:'',building:false,log:null,preview:null};
@@ -3400,20 +3609,22 @@ async function renderStudio(body,w){
       <div style="flex:0 0 40%;display:flex;flex-direction:column;border-right:1px solid var(--line)">
         <div class="tmsec" style="margin:8px 12px 4px">Builder</div>
         <div id="st-log" style="flex:1;overflow-y:auto;padding:2px 12px 10px;font-size:12.5px;user-select:text"></div>
+        <div id="st-versions" style="flex:0 0 auto;max-height:190px;overflow-y:auto;border-top:1px solid var(--line);padding:8px 12px 10px"></div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line)">
-          <span class="tmsec" style="margin:0">Live preview</span>
+          <span class="tmsec" style="margin:0">Preview</span>
+          <span id="st-live"></span>
           <span id="st-actions" style="margin-left:auto;display:flex;gap:6px"></span>
         </div>
         <div id="st-prev" style="flex:1;background:#0e1116"></div>
       </div>
     </div>`;
   STUDIO.log=$('#st-log');STUDIO.preview=$('#st-prev');
-  $('#st-app').onchange=()=>{STUDIO.sel=$('#st-app').value;studioShowPreview();studioActions()};
+  $('#st-app').onchange=()=>{STUDIO.sel=$('#st-app').value;studioShowPreview();studioActions();studioVersions()};
   $('#st-prompt').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();studioBuild()}});
   if(STUDIO.sel&&!d.apps.find(a=>a.id===STUDIO.sel))STUDIO.sel='';
-  studioShowPreview();studioActions();
+  studioShowPreview();studioActions();studioVersions();
   if(!STUDIO.sel&&STUDIO.log&&!STUDIO.log.children.length)
     STUDIO.log.innerHTML=`<p class="mut">Describe an app and ${esc(agentName())} builds it live — e.g.
       <i>"a pomodoro timer"</i>, <i>"a notes app that saves to memory"</i>,
@@ -3426,6 +3637,7 @@ function studioActions(){
   box.innerHTML=STUDIO.sel
     ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
       <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+      <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
       <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
 function studioShowPreview(){
@@ -3433,6 +3645,31 @@ function studioShowPreview(){
   STUDIO.preview.innerHTML=STUDIO.sel
     ?`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`
     :'<div class="mut" style="display:flex;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">the built app will preview here</div>';
+}
+async function studioVersions(){
+  const box=$('#st-versions'),live=$('#st-live');
+  if(!box)return;
+  if(!STUDIO.sel){box.innerHTML='';if(live)live.innerHTML='';return}
+  const d=await fetch('/api/apps/'+STUDIO.sel+'/versions').then(r=>r.json()).catch(()=>({versions:[]}));
+  const vs=d.versions||[];
+  const cur=vs[0];
+  if(live)live.innerHTML=cur
+    ?`<span style="font-size:11px;color:var(--ok);border:1px solid var(--ok);border-radius:999px;padding:1px 9px">deployed · v${cur.version}</span>`:'';
+  const ago=t=>{const s=Math.max(1,Math.round(Date.now()/1000-t));return s<60?s+'s':s<3600?Math.round(s/60)+'m':s<86400?Math.round(s/3600)+'h':Math.round(s/86400)+'d'};
+  box.innerHTML=`<div class="tmsec" style="margin:0 0 6px">Versions${vs.length?' · '+vs.length:''}</div>`+
+    (vs.map(v=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--line)">
+      <b style="flex:0 0 34px;color:${v===cur?'var(--ok)':'var(--dim)'}">v${v.version}</b>
+      <span class="mut" style="flex:0 0 40px">${ago(v.created_at)}</span>
+      <span style="flex:1;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.note||'')}</span>
+      ${v===cur?'<span style="font-size:10.5px;color:var(--ok)">live</span>'
+        :`<button style="flex:0 0 auto;font-size:11px;padding:2px 10px" onclick="studioRestore(${v.version})">Restore</button>`}
+    </div>`).join('')||'<p class="mut" style="font-size:12px">No versions yet — every build or edit creates one.</p>');
+}
+async function studioRestore(v){
+  if(!confirm('Restore v'+v+'? The current version stays in history.'))return;
+  await fetch('/api/apps/'+STUDIO.sel+'/versions/'+v+'/restore',{method:'POST'});
+  toast('restored v'+v+' — deployed live');
+  studioShowPreview();studioVersions();loadUserApps();
 }
 function studioLog(html,cls){
   if(!STUDIO.log)return;
@@ -3470,7 +3707,14 @@ function studioBuildEvent(ev){
       STUDIO.building=false;jarvisOff();
       const b=$('#st-build');if(b)b.disabled=false;
       if(ev.app_id){STUDIO.sel=ev.app_id;
-        studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready</span>`);
+        studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready — deployed live</span>`);
+        if(ev.manifest_status==='proposed'){
+          const l=studioLog(`<span class="mut">it requests permissions — </span>`);
+          const btn=document.createElement('button');btn.textContent='Review & grant';
+          btn.style.cssText='font-size:11px;padding:3px 10px';
+          btn.onclick=()=>reviewManifest(ev.app_id);l.appendChild(btn);
+        }
+        studioVersions();
         // re-render to refresh the picker, then preview + open action
         const w=WM.wins.get('studio');if(w){renderStudio(w.el.querySelector('.wbody'),w);}
         toast(''+(ev.name||'app')+' built');

@@ -44,6 +44,9 @@ Everything the agent can do is a tool. The built-in tools:
 - `read_app_data` — read the data stored inside a built app
 
 **Team & delegation**
+- **@mentions** — in any chat surface (Agent Chat, Telegram, TUI) type `@name your task` to
+  address a subagent directly; it runs inside the chat, streaming its steps, and the run is
+  tracked in the Team app's Observability tab
 - `delegate` — hand a focused subtask to a specialist subagent (own model, tools, budget)
 - `run_workflow` — run a multi-subagent DAG (e.g. draft on a local model, validate on a
   stronger one); manage both in the Team app ()

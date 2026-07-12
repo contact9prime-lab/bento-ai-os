@@ -137,6 +137,11 @@ Consequences, all implemented at L0:
 - **Guardrails** — child autonomy = `min(parent, cap)`; risky tools auto-denied unless
   effective `full` (no human inside a data plane); fabric-management and self-modification
   tools are stripped from every child allow-list (no recursive delegation at L0).
+- **Standing on the OS's shoulders** — every L0 data plane always gets `use_skill`, `recall`,
+  `kg_query`, and `remember` in addition to its allow-list, and its system prompt carries the
+  user memory + (when delegated from a chat) that conversation's session memory. Delegation
+  from a conversation flows the conversation id down automatically, so a subagent works with
+  the same context the main agent has — and what it `remember`s lands in the same store.
 
 Implemented surface: `subagents`/`workflows`/`fabric_runs`/`fabric_events` tables ·
 `ControlPlane.run_subagent/run_workflow/cancel/live_instances` · REST CRUD + run/cancel/

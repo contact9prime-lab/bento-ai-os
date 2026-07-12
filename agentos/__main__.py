@@ -98,14 +98,14 @@ def main():
     sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
-                           help="launcher only; skip the systemd boot service")
+                           help="launcher only; skip the background boot service")
     p_install.add_argument("--no-login", action="store_true",
                            help="don't open AgentOS automatically at login")
     sub.add_parser("uninstall", help="remove launcher + boot service")
     p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
     p_sess = sub.add_parser("install-session",
-                            help="add AgentOS as a login session (boots into kiosk as the desktop shell)")
+                            help="add AgentOS as a login session (Linux only; boots into kiosk as the desktop shell)")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
 
     args = parser.parse_args()

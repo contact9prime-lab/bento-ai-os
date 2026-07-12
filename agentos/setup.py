@@ -31,20 +31,11 @@ def apply_setup(cfg: dict, choices: dict) -> dict:
         report["applied"].append(f"model: {cfg['default_model']}")
 
     if choices.get("autostart"):
-        # desktop launcher + systemd --user unit (starts at login) + linger (starts at boot)
+        # launcher + platform background service (systemd / LaunchAgent / Startup entry)
         from . import desktop
         try:
             desktop.install(autostart=True, open_at_login=bool(choices.get("open_at_login", True)))
-            report["autostart"] = "installed: launcher + systemd user service"
-            ok, _ = desktop._run(["systemctl", "--user", "is-enabled", "agentos.service"])
-            report["autostart"] = ("service enabled — starts automatically"
-                                   if ok else "service written; enable failed (see server log)")
-            import os
-            lok, lout = desktop._run(["loginctl", "show-user", os.environ.get("USER", ""),
-                                      "--property=Linger"])
-            report["boot"] = ("starts at boot (linger on)" if lok and "yes" in lout
-                              else "starts at login (boot-time start needs "
-                                   "`loginctl enable-linger $USER`)")
+            report["autostart"], report["boot"] = desktop.autostart_report()
         except Exception as e:
             report["autostart"] = f"failed: {type(e).__name__}: {e}"
 

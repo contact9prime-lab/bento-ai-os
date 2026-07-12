@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS app_data (
     data TEXT,
     updated_at REAL
 );
+CREATE TABLE IF NOT EXISTS app_versions (
+    id TEXT PRIMARY KEY,
+    app_id TEXT,
+    version INTEGER,             -- 1, 2, 3… per app
+    html TEXT,
+    note TEXT DEFAULT '',        -- what changed (builder prompt, "restored v2", …)
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_app_versions ON app_versions(app_id, version);
 CREATE TABLE IF NOT EXISTS themes (
     name TEXT PRIMARY KEY,
     data TEXT,
@@ -142,6 +151,20 @@ CREATE TABLE IF NOT EXISTS fabric_events (
     payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_fabric_events_run ON fabric_events(run_id, ts);
+CREATE TABLE IF NOT EXISTS grants (
+    id TEXT PRIMARY KEY,
+    principal_kind TEXT,          -- app | subagent | workflow | user | system | '*'
+    principal_id TEXT,            -- app id / subagent name / '' / '*'
+    action TEXT,                  -- fnmatch: 'tool.use', 'mcp.use', 'app.data.*', '*'
+    resource TEXT,                -- fnmatch: 'mcp:github/*', 'tool:run_command git *', '*'
+    effect TEXT DEFAULT 'allow',  -- allow | deny (deny wins)
+    source TEXT,                  -- manifest | user | legacy | auto
+    note TEXT DEFAULT '',         -- human-readable reason shown in the Permissions app
+    expires_at REAL,              -- NULL = never
+    created_at REAL,
+    revoked_at REAL               -- soft revoke: the row stays as an audit trail
+);
+CREATE INDEX IF NOT EXISTS idx_grants_principal ON grants(principal_kind, principal_id);
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     prompt TEXT,
@@ -165,6 +188,7 @@ class Store:
         self.db.executescript(SCHEMA)
         self._migrate()
         self.db.commit()
+        self.grants_version = 0  # bumped on every grant write so the PDP cache invalidates
 
     def _migrate(self):
         """Add columns introduced after the first release to existing databases."""
@@ -180,6 +204,11 @@ class Store:
         ccols = {r["name"] for r in self.db.execute("PRAGMA table_info(conversations)").fetchall()}
         if "rolled_up" not in ccols:
             self.db.execute("ALTER TABLE conversations ADD COLUMN rolled_up INTEGER DEFAULT 0")
+        acols = {r["name"] for r in self.db.execute("PRAGMA table_info(user_apps)").fetchall()}
+        for col, ddl in (("manifest", "TEXT DEFAULT ''"),            # JSON permission manifest
+                         ("manifest_status", "TEXT DEFAULT 'none'")):  # none | proposed | approved
+            if col not in acols:
+                self.db.execute(f"ALTER TABLE user_apps ADD COLUMN {col} {ddl}")
 
     def factory_reset(self):
         """Wipe every table (profile, memory, apps, logs, fabric, …) but keep the schema.
@@ -474,21 +503,65 @@ class Store:
 
     # -- user apps (AI-built UI tools) ------------------------------------------
 
-    def save_app(self, name: str, icon: str, description: str, html: str) -> str:
+    def save_app(self, name: str, icon: str, description: str, html: str,
+                 note: str = "") -> str:
         name = name.strip()
         now = time.time()
-        row = self.db.execute("SELECT id FROM user_apps WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+        row = self.db.execute("SELECT id, html FROM user_apps WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         if row:
+            changed = (row["html"] or "") != html
             self.db.execute("UPDATE user_apps SET icon=?, description=?, html=?, updated_at=? WHERE id=?",
                             (icon, description, html, now, row["id"]))
+            if changed:
+                self._record_app_version(row["id"], html, note)
             self.db.commit()
             return row["id"]
         aid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO user_apps (id, name, icon, description, html, created_at, updated_at) "
             "VALUES (?,?,?,?,?,?,?)", (aid, name, icon or "🧰", description, html, now, now))
+        self._record_app_version(aid, html, note or "initial version")
         self.db.commit()
         return aid
+
+    def set_app_manifest(self, aid: str, manifest: str, status: str):
+        """status: none | proposed (awaiting user review) | approved (grants written)."""
+        self.db.execute("UPDATE user_apps SET manifest=?, manifest_status=? WHERE id=?",
+                        (manifest, status, aid))
+        self.db.commit()
+
+    # -- app versions (every save with changed html = a new restorable version) --
+
+    def _record_app_version(self, aid: str, html: str, note: str = ""):
+        last = self.db.execute(
+            "SELECT MAX(version) v FROM app_versions WHERE app_id=?", (aid,)).fetchone()
+        self.db.execute(
+            "INSERT INTO app_versions (id, app_id, version, html, note, created_at) VALUES (?,?,?,?,?,?)",
+            (uuid.uuid4().hex[:12], aid, (last["v"] or 0) + 1, html, note[:300], time.time()))
+        # keep history bounded: the newest 30 versions per app
+        self.db.execute(
+            "DELETE FROM app_versions WHERE app_id=? AND version <= "
+            "(SELECT MAX(version) FROM app_versions WHERE app_id=?) - 30", (aid, aid))
+
+    def app_versions(self, aid: str) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, app_id, version, note, created_at, length(html) AS size "
+            "FROM app_versions WHERE app_id=? ORDER BY version DESC", (aid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_app_version(self, aid: str, version: int) -> dict | None:
+        row = self.db.execute(
+            "SELECT * FROM app_versions WHERE app_id=? AND version=?", (aid, version)).fetchone()
+        return dict(row) if row else None
+
+    def restore_app_version(self, aid: str, version: int) -> bool:
+        v = self.get_app_version(aid, version)
+        app = self.get_app(aid)
+        if not v or not app:
+            return False
+        self.save_app(app["name"], app["icon"], app["description"], v["html"],
+                      note=f"restored v{version}")
+        return True
 
     def list_apps(self, with_html: bool = False) -> list[dict]:
         rows = self.db.execute("SELECT * FROM user_apps ORDER BY name COLLATE NOCASE").fetchall()
@@ -507,7 +580,13 @@ class Store:
     def delete_app(self, aid: str):
         self.db.execute("DELETE FROM user_apps WHERE id=?", (aid,))
         self.db.execute("DELETE FROM app_data WHERE app_id=?", (aid,))
+        self.db.execute("DELETE FROM app_versions WHERE app_id=?", (aid,))
+        cur = self.db.execute(
+            "UPDATE grants SET revoked_at=? WHERE principal_kind='app' AND principal_id=? "
+            "AND revoked_at IS NULL", (time.time(), aid))
         self.db.commit()
+        if cur.rowcount:
+            self.grants_version += 1
 
     # -- themes ---------------------------------------------------------------
 
@@ -607,6 +686,70 @@ class Store:
     def delete_skill(self, sid: str):
         self.db.execute("DELETE FROM skills WHERE id=?", (sid,))
         self.db.commit()
+
+    # -- grants (the permission framework's single source of truth) ----------
+
+    def add_grant(self, principal_kind: str, principal_id: str, action: str, resource: str,
+                  effect: str = "allow", source: str = "user", note: str = "",
+                  expires_at: float | None = None) -> str:
+        """Write one consent rule. Identical live rules dedupe to the existing row."""
+        row = self.db.execute(
+            "SELECT id FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
+            "AND resource=? AND effect=? AND revoked_at IS NULL",
+            (principal_kind, principal_id, action, resource, effect)).fetchone()
+        if row:
+            return row["id"]
+        gid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO grants (id, principal_kind, principal_id, action, resource, effect, "
+            "source, note, expires_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (gid, principal_kind, principal_id, action, resource, effect,
+             source, note[:300], expires_at, time.time()))
+        self.db.commit()
+        self.grants_version += 1
+        return gid
+
+    def grants_live(self) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM grants WHERE revoked_at IS NULL "
+                               "ORDER BY created_at").fetchall()
+        return [dict(r) for r in rows]
+
+    def list_grants(self, principal_kind: str = "", principal_id: str = "",
+                    include_revoked: bool = False) -> list[dict]:
+        q, params = "SELECT * FROM grants WHERE 1=1", []
+        if not include_revoked:
+            q += " AND revoked_at IS NULL"
+        if principal_kind:
+            q += " AND principal_kind=?"
+            params.append(principal_kind)
+        if principal_id:
+            q += " AND principal_id=?"
+            params.append(principal_id)
+        rows = self.db.execute(q + " ORDER BY principal_kind, principal_id, created_at",
+                               params).fetchall()
+        return [dict(r) for r in rows]
+
+    def revoke_grant(self, gid: str) -> bool:
+        cur = self.db.execute("UPDATE grants SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                              (time.time(), gid))
+        self.db.commit()
+        if cur.rowcount:
+            self.grants_version += 1
+        return bool(cur.rowcount)
+
+    def revoke_grants_for(self, principal_kind: str, principal_id: str, source: str = "") -> int:
+        """Revoke every live grant of one principal (optionally only one source),
+        e.g. swapping an app's legacy full-access grant for its approved manifest."""
+        q, params = ("UPDATE grants SET revoked_at=? WHERE principal_kind=? AND principal_id=? "
+                     "AND revoked_at IS NULL"), [time.time(), principal_kind, principal_id]
+        if source:
+            q += " AND source=?"
+            params.append(source)
+        cur = self.db.execute(q, params)
+        self.db.commit()
+        if cur.rowcount:
+            self.grants_version += 1
+        return cur.rowcount
 
     # -- fabric: subagents, workflows, runs (control-plane state) ------------
 

@@ -90,7 +90,15 @@ def turn_ended():
     _active_turns["n"] = max(0, _active_turns["n"] - 1)
 
 
-async def wait_model_idle(max_wait: float = 900):
+def _is_local(model_id: str) -> bool:
+    return providers.parse_model_id(model_id or "")[0] == "ollama"
+
+
+async def wait_model_idle(model_id: str = "", max_wait: float = 900):
+    """Only local models contend for the GPU — cloud APIs handle requests in
+    parallel, so background calls to them never need to wait."""
+    if model_id and not _is_local(model_id):
+        return
     waited = 0.0
     while _active_turns["n"] > 0 and waited < max_wait:
         await asyncio.sleep(3)
@@ -216,7 +224,7 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
     if not model or not (assistant_text or "").strip():
         return
     try:
-        await wait_model_idle()  # never make a live conversation queue behind us
+        await wait_model_idle(model)  # never make a live conversation queue behind us
         existing = store.search_memories("", limit=40, scope="user")
         existing_txt = "\n".join(f"- {m['content']}" for m in existing) or "(none yet)"
         prompt = EXTRACT_PROMPT.format(
@@ -292,7 +300,7 @@ async def rollup_idle_sessions(cfg: dict, store, broadcast=None) -> int:
     model = mc.get("model") or cfg.get("default_model") or ""
     if hours <= 0 or not model:
         return 0
-    await wait_model_idle()
+    await wait_model_idle(model)
     total = 0
     existing = store.search_memories("", limit=40, scope="user")
     existing_txt = "\n".join(f"- {m['content']}" for m in existing) or "(none yet)"
@@ -338,7 +346,7 @@ async def kg_dedup(cfg: dict, store, broadcast=None, force: bool = False) -> int
         return 0
     if not force and len(nodes) == _kg_state["last_node_count"]:
         return 0
-    await wait_model_idle()
+    await wait_model_idle(model)
     names = [n["name"] for n in nodes][:300]
     try:
         data = _parse_json(await providers.complete(

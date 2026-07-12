@@ -146,20 +146,31 @@ class TelegramBridge:
             async def emit(_ev):
                 pass
 
-            async def approver(name, args, reason) -> bool:
+            async def approver(name, args, reason, offer=None) -> bool:
+                # offer (grant-&-remember) is a web-UI affordance; Telegram answers yes/no
                 if self.cfg.get("autonomy") == "full":
                     return True
                 return await self._ask_approval(chat_id, name, args, reason)
 
             model = self.cfg.get("default_model") or ""
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid)
+            from . import fabric as fabricmod
             from . import knowledge as _k
-            _k.turn_started()
-            try:
-                result = await agent.run(history)
-            finally:
-                _k.turn_ended()
-            reply = result["content"] or "(done — no text output)"
+            mention = fabricmod.parse_mention(self.store, text) if self.toolbox.fabric else None
+            if mention:  # '@researcher …' from the phone goes straight to that subagent
+                defn, task = mention
+                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
+                                                             approver=approver)
+                reply = (f"@{defn['name']} · {res['status']}\n\n"
+                         + (res["content"] or res["fault"] or "(no output)"))
+                result = {"steps": res["steps"]}
+            else:
+                agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid)
+                _k.turn_started()
+                try:
+                    result = await agent.run(history)
+                finally:
+                    _k.turn_ended()
+                reply = result["content"] or "(done — no text output)"
             self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
             self.store.touch_conversation(cid)
             await self.send(reply, chat_id)

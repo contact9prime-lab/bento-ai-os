@@ -5,6 +5,7 @@ from typing import Awaitable, Callable
 
 from . import config as cfgmod
 from . import providers
+from .policy import MAIN, Principal
 from .tools import Toolbox
 
 SYSTEM_PROMPT = """You are {name}, the resident agent of AgentOS — an agentic operating system running locally on the user's Linux machine.
@@ -66,13 +67,17 @@ class Agent:
                  emit: Callable[[dict], Awaitable[None]],
                  approver: Callable[[str, dict, str], Awaitable[bool]],
                  extra_system: str = "", tool_filter: list | None = None,
-                 conversation_id: str = ""):
+                 conversation_id: str = "", principal: Principal = MAIN):
         """
         emit(event)                        -- streams events to the UI
-        approver(name, args, reason) -> ok -- asks the user to approve a risky tool call
+        approver(name, args, reason, offer=None) -> ok
+                                           -- asks the user to approve a gated tool call;
+                                              `offer` is a ready-to-write grant for "allow & remember"
         extra_system                       -- appended to the system prompt (personas, e.g. App Builder)
         tool_filter                        -- if set, restrict tools to these names (keeps weak models focused)
         conversation_id                    -- enables session memory (injection + scope="session" saves)
+        principal                          -- WHO this agent acts as (policy.MAIN = the user's own agent;
+                                              subagents/apps get their own identity for the permission gate)
         """
         self.cfg = cfg
         self.toolbox = toolbox
@@ -82,6 +87,7 @@ class Agent:
         self.extra_system = extra_system
         self.tool_filter = tool_filter
         self.conversation_id = conversation_id
+        self.principal = principal
         self.aborted = False
 
     def _tools(self) -> list:
@@ -89,6 +95,12 @@ class Agent:
         if self.tool_filter is not None:
             keep = set(self.tool_filter)
             schemas = [t for t in schemas if t["name"] in keep]
+        if self.toolbox.pdp and self.principal.kind in ("app", "subagent", "workflow"):
+            # hide tools this principal can never use (built-in denies / deny grants) —
+            # the model shouldn't even see them; ask-able tools stay visible
+            schemas = [t for t in schemas
+                       if self.toolbox.pdp.decide_tool(self.principal, t["name"], {},
+                                                       "safe").effect != "deny"]
         return schemas
 
     async def _system(self, query: str = "") -> str:
@@ -162,10 +174,20 @@ class Agent:
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence."""
         last_user = next((m.get("content", "") for m in reversed(history)
                           if m.get("role") == "user"), "")
-        messages = [{"role": "system", "content": await self._system(last_user)}] + history
         steps: list[dict] = []
         final_text = ""
         tokens = {"input": 0, "output": 0}
+        if self.toolbox.pdp:
+            mdec = self.toolbox.pdp.decide(self.principal, "model.use",
+                                           f"model:{self.model_id}",
+                                           {"autonomy": self.cfg.get("autonomy", "")})
+            if mdec.effect == "deny":
+                msg = (f"[denied] {self.principal.label} may not use model "
+                       f"{self.model_id} — {mdec.reason or 'denied by a grant rule'}")
+                await self.emit({"type": "error", "message": msg})
+                return {"content": msg, "steps": [{"type": "error", "message": msg}],
+                        "tokens": tokens}
+        messages = [{"role": "system", "content": await self._system(last_user)}] + history
 
         for _ in range(int(self.cfg.get("max_steps", 25))):
             if self.aborted:
@@ -214,26 +236,42 @@ class Agent:
                     # delegated subagents inherit its session memory
                     args = {**args, "conversation_id": self.conversation_id}
                 level, reason = self.toolbox.risk_of(name, args)
+                if self.toolbox.pdp:
+                    dec = self.toolbox.pdp.decide_tool(
+                        self.principal, name, args, level, reason=reason,
+                        autonomy=self.cfg.get("autonomy", ""))
+                else:  # no policy engine wired (tests / embedding): legacy autonomy gate
+                    from .policy import Decision
+                    if level == "blocked":
+                        dec = Decision("deny", reason)
+                    elif level == "risky" and self.cfg.get("autonomy") != "full":
+                        dec = Decision("ask", reason)
+                    else:
+                        dec = Decision("allow")
 
-                if level == "blocked":
-                    output = f"[denied] {reason}"
-                elif level == "risky" and self.cfg.get("autonomy") != "full":
+                if dec.effect == "deny":
+                    output = f"[denied] {dec.reason or reason}"
+                elif dec.effect == "ask":
                     await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                                      "args": args, "pending_approval": True})
-                    approved = await self.approver(name, args, reason)
+                    approved = await self.approver(name, args, dec.reason or reason,
+                                                   dec.grant_offer)
                     if approved:
                         output = await self.toolbox.execute(name, args)
                     else:
-                        output = ("[denied] This risky action was not approved at the current "
-                                  "autonomy level. Try a read-only alternative, or tell the user "
-                                  "what you wanted to do and why.")
+                        output = ("[denied] This action was not approved for "
+                                  f"{self.principal.label} at the current autonomy level. Try a "
+                                  "read-only alternative, or tell the user what you wanted to do "
+                                  "and why.")
                 else:
                     await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                                      "args": args, "pending_approval": False})
                     output = await self.toolbox.execute(name, args)
 
                 ok = not output.startswith(("[error]", "[denied]", "[exit code"))
-                self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level})
+                self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
+                                                      "principal": self.principal.label,
+                                                      "decision": dec.rule})
                 await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
                                  "output": output[:4000], "ok": ok})
                 steps.append({"type": "tool", "name": name, "args": args,

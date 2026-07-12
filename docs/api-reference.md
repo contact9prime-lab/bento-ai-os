@@ -54,6 +54,8 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 | Method | Path | Purpose |
 |---|---|---|
 | GET/POST | `/api/apps` | list / save a user app |
+| GET | `/api/apps/{id}/versions`, `/{version}` | version history (every changed save is a version) |
+| POST | `/api/apps/{id}/versions/{version}/restore` | roll back — restores as a new version, deployed live |
 | DELETE | `/api/apps/{id}` | delete an app |
 | GET | `/api/apps/{id}/page` | the app's HTML (runtime injected) |
 | GET/PUT | `/api/apps/{id}/data` | the app's data store |

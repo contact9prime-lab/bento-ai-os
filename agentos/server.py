@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+import secrets
+import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import config as cfgmod
@@ -15,6 +17,7 @@ from . import providers
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
+from .policy import MAIN, PDP, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from .tools import Toolbox
@@ -53,10 +56,16 @@ async def startup():
     toolbox.broadcast = broadcast
     control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
     toolbox.fabric = control
+    pdp = PDP(cfg, store)
+    pdp.mcp = mcp
+    toolbox.pdp = pdp
     fabricmod.seed_builtins(cfg, store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
-                 fabric=control)
+                 fabric=control, pdp=pdp,
+                 pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
+                 app_tokens={},         # runtime token -> {"app_id","issued"} — app identity
+                 pending_installs={})   # install_id -> staged app package awaiting consent
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
@@ -73,6 +82,20 @@ async def startup():
             if first:
                 cfg["setup_complete"] = False
             cfgmod.save_config(cfg)
+
+    # one-time permissions migration: apps that predate the framework get a VISIBLE
+    # legacy full-access grant (revocable in the Permissions app) so nothing breaks;
+    # approving their manifest later swaps it for scoped grants
+    if not cfg.get("permissions_migrated") and cfgmod.CONFIG_PATH.exists():
+        for a in store.list_apps():
+            if (a.get("manifest_status") or "none") == "none":
+                store.add_grant("app", a["id"], "*", "*", source="legacy",
+                                note="pre-permissions app — full access until you approve "
+                                     "its manifest")
+                _propose_manifest(a["id"])  # draft from its source, ready for review
+        cfg["permissions_migrated"] = True
+        cfgmod.save_config(cfg)
+        store.log("system", "permissions framework: legacy grants seeded for existing apps")
 
 
 @app.on_event("shutdown")
@@ -181,9 +204,8 @@ async def api_files(path: str = ""):
 
 @app.post("/api/open")
 async def api_open(body: dict):
-    """Open a URL or a workspace file in the HOST OS (default browser / app) via xdg-open."""
-    import shutil
-    import subprocess
+    """Open a URL or a workspace file in the HOST OS (default browser / app)."""
+    from . import desktop as desktopmod
     url = (body.get("url") or "").strip()
     rel = (body.get("path") or "").strip()
     if url:
@@ -197,14 +219,9 @@ async def api_open(body: dict):
         target = str(p)
     else:
         return JSONResponse({"error": "nothing to open"}, status_code=400)
-    opener = shutil.which("xdg-open") or shutil.which("gio")
-    if not opener:
-        return JSONResponse({"error": "no host opener (xdg-open) available"}, status_code=500)
-    try:
-        subprocess.Popen([opener, "open", target] if opener.endswith("gio") else [opener, target],
-                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    err = desktopmod.open_path(target)
+    if err:
+        return JSONResponse({"error": err}, status_code=500)
     state["store"].log("system", f"opened in host: {target[:120]}")
     return {"ok": True, "target": target}
 
@@ -662,7 +679,7 @@ async def api_store_install(body: dict):
     t = next((x for x in STORE_TEMPLATES if x["id"] == body.get("id")), None)
     if not t:
         return JSONResponse({"error": "unknown template"}, status_code=404)
-    aid = state["store"].save_app(t["name"], t["icon"], t["desc"], t["html"])
+    aid = state["store"].save_app(t["name"], t["icon"], t["desc"], t["html"], note="installed from store")
     state["store"].log("system", f"store install: {t['name']}")
     await state["broadcast"]({"type": "apps"})
     return {"ok": True, "id": aid, "name": t["name"]}
@@ -744,14 +761,15 @@ async def api_delete_app(aid: str):
 
 APP_RUNTIME = """<script>
 window.APP_ID = %r;
+window.APP_TOKEN = %r; // runtime identity: the OS knows WHICH app is calling (permission gate)
 // Every built app gets its own data store (its "MCP"): appData.get()/set() persist server-side
 // and are readable by the agent. Also appTool(name,args) runs any OS/MCP tool.
 window.appData = {
-  async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data')).json(); }catch(e){ return {}; } },
-  async set(obj){ try{ await fetch('/api/apps/'+window.APP_ID+'/data',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); }catch(e){} },
+  async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){ return {}; } },
+  async set(obj){ try{ await fetch('/api/apps/'+window.APP_ID+'/data',{method:'PUT',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify(obj)}); }catch(e){} },
 };
 window.appTool = async (name,args={}) => {
-  try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
+  try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
 };
 </script>"""
 
@@ -762,10 +780,18 @@ async def api_app_page(aid: str):
     a = state["store"].get_app(aid)
     if not a:
         return JSONResponse({"error": "not found"}, status_code=404)
+    # mint the app's runtime identity token (revocation lives in grants, not token expiry,
+    # since the PDP reads live grants — the token only says WHO is calling)
+    tok = secrets.token_urlsafe(24)
+    now = time.time()
+    state["app_tokens"][tok] = {"app_id": aid, "issued": now}
+    for k, v in list(state["app_tokens"].items()):
+        if now - v["issued"] > 86400:
+            state["app_tokens"].pop(k, None)
     html = a["html"] or ""
     if not html.lstrip().lower().startswith(("<!doctype", "<html")):
         html = APP_SHELL.format(body=html)
-    runtime = APP_RUNTIME % aid
+    runtime = APP_RUNTIME % (aid, tok)
     # inject the runtime right after <body>, or prepend it
     low = html.lower()
     if "<body" in low:
@@ -777,15 +803,333 @@ async def api_app_page(aid: str):
     return HTMLResponse(html)
 
 
+@app.get("/api/apps/{aid}/versions")
+async def api_app_versions(aid: str):
+    """Version history for an app — every save with changed source is restorable."""
+    return {"versions": state["store"].app_versions(aid)}
+
+
+@app.get("/api/apps/{aid}/versions/{version}")
+async def api_app_version(aid: str, version: int):
+    v = state["store"].get_app_version(aid, version)
+    if not v:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return v
+
+
+@app.post("/api/apps/{aid}/versions/{version}/restore")
+async def api_app_version_restore(aid: str, version: int):
+    ok = state["store"].restore_app_version(aid, version)
+    if ok:
+        state["store"].log("system", f"app {aid}: restored v{version}")
+        await state["broadcast"]({"type": "apps"})
+    return {"ok": ok}
+
+
 @app.get("/api/apps/{aid}/data")
-async def api_app_data_get(aid: str):
+async def api_app_data_get(aid: str, request: Request):
+    p = _principal_of(request)
+    if p.kind == "app" and p.id != aid:  # app↔app data needs an explicit grant
+        if state["pdp"].decide(p, "app.data.read", f"app:{aid}/data").effect != "allow":
+            return JSONResponse({"error": "denied: no grant to read another app's data "
+                                          "(add app.data.read in the Permissions app)"},
+                                status_code=403)
     return json.loads(state["store"].get_app_data(aid) or "{}")
 
 
 @app.put("/api/apps/{aid}/data")
-async def api_app_data_set(aid: str, body: dict):
+async def api_app_data_set(aid: str, body: dict, request: Request):
+    p = _principal_of(request)
+    if p.kind == "app" and p.id != aid:
+        if state["pdp"].decide(p, "app.data.write", f"app:{aid}/data").effect != "allow":
+            return JSONResponse({"error": "denied: no grant to write another app's data "
+                                          "(add app.data.write in the Permissions app)"},
+                                status_code=403)
     state["store"].set_app_data(aid, json.dumps(body)[:200_000])
     return {"ok": True}
+
+
+# ---- App manifests: declared permissions, consented by the user ------------------
+
+def _app_manifest(a: dict) -> dict:
+    try:
+        man = json.loads(a.get("manifest") or "{}")
+    except Exception:
+        man = {}
+    man.setdefault("format", 1)
+    man.setdefault("name", a.get("name", ""))
+    man.setdefault("permissions", [])
+    man.setdefault("prerequisites", {})
+    return man
+
+
+@app.get("/api/apps/{aid}/manifest")
+async def api_app_manifest(aid: str):
+    """An app's permission manifest + status (none | proposed | approved) + its live grants."""
+    a = state["store"].get_app(aid)
+    if not a:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"manifest": _app_manifest(a), "status": a.get("manifest_status") or "none",
+            "grants": state["store"].list_grants("app", aid)}
+
+
+def _scan_app_permissions(html: str) -> list[dict]:
+    """Infer an app's needed permissions from its source: appTool('x') calls, appData
+    usage and /api/chat fetches. Static scan first — historical logs predate per-app
+    identity, so the source is the most reliable signal."""
+    import re as _re
+    from . import policy as policymod
+    perms, seen = [], set()
+    for t in sorted(set(_re.findall(r"appTool\(\s*['\"]([\w.-]+)['\"]", html or ""))):
+        action, resource = policymod.action_of(t, {}, mcp=state.get("mcp"))
+        if action == "tool.use":
+            resource = f"tool:{t}*"
+        elif action in ("fs.read", "fs.write"):
+            resource = "fs:*"
+        elif action == "net.fetch":
+            resource = "net:*"
+        elif action == "mcp.use" and "/" not in resource:
+            # the server isn't connected, so mcp_<server>_<tool> couldn't resolve —
+            # recover the server name from the configured entries (same mangling)
+            from .mcp_client import _safe
+            suffix = resource[4:]
+            for s in (state["cfg"].get("mcp_servers") or {}):
+                if suffix == _safe(s) or suffix.startswith(_safe(s) + "_"):
+                    resource = f"mcp:{s}/{suffix[len(_safe(s)) + 1:] or '*'}"
+                    break
+        if (action, resource) in seen:
+            continue
+        seen.add((action, resource))
+        perms.append({"action": action, "resource": resource,
+                      "reason": f"calls appTool('{t}')", "required": False})
+    if _re.search(r"appData\.(get|set)", html or ""):
+        perms.append({"action": "app.data.*", "resource": "app:self/data",
+                      "reason": "saves its own settings/data", "required": True})
+    if _re.search(r"fetch\(\s*[`'\"]/api/chat", html or ""):
+        perms.append({"action": "agent.invoke", "resource": "agent:main",
+                      "reason": "asks the AI over POST /api/chat", "required": False})
+    return perms
+
+
+def _mine_app_log_permissions(aid: str) -> list[dict]:
+    """Tighten the proposal with what the app actually did (logs carry app_id now)."""
+    from . import policy as policymod
+    perms, seen = [], set()
+    for L in state["store"].list_logs("tool", limit=1000):
+        try:
+            meta = json.loads(L.get("meta") or "{}")
+        except Exception:
+            continue
+        if meta.get("app_id") != aid:
+            continue
+        name = (L.get("message") or "").replace("app→", "", 1)
+        args = meta.get("args") or {}
+        action, resource = policymod.action_of(name, args, mcp=state.get("mcp"))
+        if name == "run_command":
+            base = (args.get("command") or "").split()
+            resource = f"tool:run_command {base[0]}*" if base else "tool:run_command*"
+        elif action == "tool.use":
+            resource = f"tool:{name}*"
+        if (action, resource) in seen:
+            continue
+        seen.add((action, resource))
+        perms.append({"action": action, "resource": resource,
+                      "reason": "observed in this app's activity log", "required": False})
+    return perms
+
+
+def _propose_manifest(aid: str) -> dict | None:
+    """Draft a manifest (source scan + log mining) and queue it for the user's review."""
+    a = state["store"].get_app(aid)
+    if not a:
+        return None
+    perms = _scan_app_permissions(a.get("html") or "")
+    have = {(p["action"], p["resource"]) for p in perms}
+    perms += [p for p in _mine_app_log_permissions(aid)
+              if (p["action"], p["resource"]) not in have]
+    man = _app_manifest(a)
+    man["permissions"] = perms
+    man["description"] = man.get("description") or (a.get("description") or "")
+    state["store"].set_app_manifest(aid, json.dumps(man), "proposed")
+    return man
+
+
+@app.post("/api/apps/{aid}/manifest/propose")
+async def api_app_manifest_propose(aid: str):
+    """Draft a permission manifest from the app's source and activity, for user review."""
+    man = _propose_manifest(aid)
+    if man is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    await state["broadcast"]({"type": "apps"})
+    return {"manifest": man, "status": "proposed"}
+
+
+@app.post("/api/apps/{aid}/manifest/approve")
+async def api_app_manifest_approve(aid: str, body: dict):
+    """Consent: write one grant per accepted manifest permission and retire any legacy
+    full-access grant. body.granted = list of permission indices the user accepted
+    (required permissions are always included; omit `granted` to accept everything)."""
+    store = state["store"]
+    a = store.get_app(aid)
+    if not a:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    man = _app_manifest(a)
+    perms = man.get("permissions") or []
+    granted = body.get("granted")
+    idx = set(granted) if isinstance(granted, list) else set(range(len(perms)))
+    n = 0
+    for i, p in enumerate(perms):
+        if not (p.get("required") or i in idx):
+            continue
+        res = (p.get("resource") or "*").replace("app:self/", f"app:{aid}/")
+        store.add_grant("app", aid, p.get("action") or "*", res,
+                        source="manifest", note=p.get("reason", ""))
+        n += 1
+    store.revoke_grants_for("app", aid, source="legacy")
+    store.set_app_manifest(aid, json.dumps(man), "approved")
+    store.log("system", f"manifest approved for app '{a['name']}': {n} permission(s) granted")
+    await state["broadcast"]({"type": "grants"})
+    await state["broadcast"]({"type": "apps"})
+    return {"ok": True, "granted": n}
+
+
+# ---- App packages: distribution with consent (export / import) -------------------
+
+def _canonical(obj) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
+
+
+def _package_checksum(manifest: dict, html: str) -> str:
+    import hashlib
+    return "sha256:" + hashlib.sha256((_canonical(manifest) + "\n" + html).encode()).hexdigest()
+
+
+def _sanitize_mcp_conf(name: str, conf: dict) -> dict:
+    """A shareable MCP prerequisite: connection shape only — secrets become placeholders
+    the installing user fills in themselves. Real env/headers values NEVER leave this OS."""
+    out = {"name": name}
+    for k in ("transport", "command", "args", "url"):
+        if conf.get(k):
+            out[k] = conf[k]
+    if conf.get("env"):
+        out["env_template"] = {k: f"<YOUR_{k}>" for k in conf["env"]}
+    if conf.get("headers"):
+        out["headers_template"] = {k: "<your value>" for k in conf["headers"]}
+    return out
+
+
+@app.get("/api/apps/{aid}/export")
+async def api_app_export(aid: str):
+    """Export an app as a portable package (manifest + HTML + prerequisite declarations
+    + integrity checksum) installable on another AgentOS. Secrets are never included."""
+    a = state["store"].get_app(aid)
+    if not a:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    man = _app_manifest(a)
+    if not man.get("permissions") and (a.get("manifest_status") or "none") == "none":
+        man = _propose_manifest(aid) or man
+    prereq = dict(man.get("prerequisites") or {})
+    mcp_names = {r.split(":", 1)[1].split("/", 1)[0]
+                 for p in man.get("permissions", [])
+                 for r in [p.get("resource") or ""] if r.startswith("mcp:")}
+    declared = {m.get("name") for m in prereq.get("mcp_servers", [])}
+    for nm in sorted(mcp_names - declared):
+        conf = (state["cfg"].get("mcp_servers") or {}).get(nm)
+        if conf:
+            prereq.setdefault("mcp_servers", []).append(_sanitize_mcp_conf(nm, conf))
+    man["prerequisites"] = prereq
+    man["description"] = man.get("description") or (a.get("description") or "")
+    html = a.get("html") or ""
+    pkg = {"format": "agentos-app/1", "manifest": man, "html": html,
+           "checksum": _package_checksum(man, html), "signature": None}
+    from fastapi.responses import Response
+    fname = (a["name"] or "app").lower().replace(" ", "-") + ".agentapp.json"
+    return Response(json.dumps(pkg, indent=1), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.post("/api/apps/import")
+async def api_app_import(body: dict):
+    """Stage an app package (inline or from a URL) for install: verify integrity and diff
+    prerequisites. Nothing installs and nothing is granted until the user confirms."""
+    pkg = body.get("package")
+    url = (body.get("url") or "").strip()
+    if not pkg and url:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                r = await client.get(url)
+            if r.status_code != 200:
+                return JSONResponse({"error": f"HTTP {r.status_code} fetching package"},
+                                    status_code=400)
+            pkg = r.json()
+        except Exception as e:
+            return JSONResponse({"error": f"fetch failed: {e}"}, status_code=400)
+    if not isinstance(pkg, dict) or pkg.get("format") != "agentos-app/1":
+        return JSONResponse({"error": "not an agentos-app/1 package"}, status_code=400)
+    man, html = pkg.get("manifest") or {}, pkg.get("html") or ""
+    if not man.get("name") or len(html.strip()) < 20:
+        return JSONResponse({"error": "package is missing a name or app markup"}, status_code=400)
+    if pkg.get("checksum") != _package_checksum(man, html):
+        return JSONResponse({"error": "checksum mismatch — the package was modified in transit"},
+                            status_code=400)
+    prereq = man.get("prerequisites") or {}
+    have_mcp = set((state["cfg"].get("mcp_servers") or {}).keys())
+    have_skills = {s["name"].lower() for s in state["store"].list_skills()}
+    missing = {
+        "mcp_servers": [m for m in prereq.get("mcp_servers", []) if m.get("name") not in have_mcp],
+        "skills": [s for s in prereq.get("skills", [])
+                   if (s.get("name") or "").lower() not in have_skills],
+    }
+    iid = uuid.uuid4().hex[:8]
+    state["pending_installs"][iid] = pkg
+    conflict = any(a["name"].lower() == man["name"].lower() for a in state["store"].list_apps())
+    return {"install_id": iid, "manifest": man, "missing": missing, "name_conflict": conflict}
+
+
+@app.post("/api/apps/import/{iid}/confirm")
+async def api_app_import_confirm(iid: str, body: dict):
+    """Complete a staged install: save the app, write ONLY the accepted grants, and add
+    the prerequisite MCP servers (disabled, placeholder keys) / skills the user opted into."""
+    pkg = state["pending_installs"].pop(iid, None)
+    if not pkg:
+        return JSONResponse({"error": "unknown or expired install"}, status_code=404)
+    man, html = pkg["manifest"], pkg["html"]
+    name = (body.get("name") or man["name"]).strip()
+    aid = state["store"].save_app(name, man.get("icon", ""), man.get("description", ""),
+                                  html, note="installed from package")
+    perms = man.get("permissions") or []
+    granted = body.get("granted")
+    idx = set(granted) if isinstance(granted, list) else set(range(len(perms)))
+    for i, p in enumerate(perms):
+        if p.get("required") or i in idx:
+            res = (p.get("resource") or "*").replace("app:self/", f"app:{aid}/")
+            state["store"].add_grant("app", aid, p.get("action") or "*", res,
+                                     source="manifest", note=p.get("reason", ""))
+    state["store"].set_app_manifest(aid, json.dumps(man), "approved")
+    installed = {"mcp": [], "skills": []}
+    for m in (man.get("prerequisites") or {}).get("mcp_servers", []):
+        if m.get("name") in (body.get("install_mcp") or []):
+            conf = {k: m[k] for k in ("transport", "command", "args", "url") if m.get(k)}
+            conf["enabled"] = False  # placeholder keys: user fills them in the MCP app first
+            if m.get("env_template"):
+                conf["env"] = dict(m["env_template"])
+            if m.get("headers_template"):
+                conf["headers"] = dict(m["headers_template"])
+            state["cfg"].setdefault("mcp_servers", {})[m["name"]] = conf
+            installed["mcp"].append(m["name"])
+    if installed["mcp"]:
+        cfgmod.save_config(state["cfg"])
+        await state["mcp"].reload()
+    for s in (man.get("prerequisites") or {}).get("skills", []):
+        if s.get("name") in (body.get("install_skills") or []) and s.get("source"):
+            res = await api_install_skill({"source": s["source"]})
+            if isinstance(res, dict) and res.get("ok"):
+                installed["skills"].append(s["name"])
+    state["store"].log("system", f"app installed from package: {name}")
+    await state["broadcast"]({"type": "apps"})
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "id": aid, "installed": installed}
 
 
 def _extract_html(text: str) -> str:
@@ -846,6 +1190,12 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
   The user's interface wishes are the spec; the registry is what makes them possible.
 
+PERMISSIONS — declare what the app needs:
+- Pass `permissions` to create_app: a JSON list of {action, resource, reason, required} covering every
+  appTool/appData/API capability the app uses (actions: tool.use, mcp.use, skill.use, net.fetch, fs.read,
+  fs.write, memory.read, agent.invoke, app.data.*). The user consents to exactly this list at install;
+  anything undeclared prompts them at runtime. Keep it minimal and honest — reasons are shown verbatim.
+
 PROCESS:
 - If the app needs live data or specific tools, you MAY call one read-only tool first to learn the shape,
   then build; otherwise go straight to create_app. Leave `icon` empty (the OS renders a clean monogram tile — the user dislikes emoji icons) and pick a concise name.
@@ -854,26 +1204,153 @@ PROCESS:
 """
 
 
+# ---- Approval broker (global): any surface can ask the user and await Allow/Deny ----
+
+async def request_approval(name: str, args: dict, reason: str, offer: dict | None = None,
+                           evsend=None, ws=None) -> bool:
+    """Raise an approval card and wait for the user's answer. `offer` is a ready-to-write
+    grant: when the user picks "allow & remember", it is persisted before resolving True.
+    evsend routes the card to one chat's client; otherwise it broadcasts to every client."""
+    aid = uuid.uuid4().hex[:8]
+    fut = asyncio.get_event_loop().create_future()
+    state["pending_approvals"][aid] = {"fut": fut, "offer": offer, "ws": ws}
+    ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
+          "reason": reason, "offer": offer}
+    if evsend is not None:
+        await evsend(ev)
+    else:
+        await state["broadcast"](ev)
+    try:
+        return await asyncio.wait_for(fut, timeout=300)
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        state["pending_approvals"].pop(aid, None)
+
+
+async def resolve_approval(aid: str, approved: bool, remember: bool = False):
+    entry = state["pending_approvals"].get(aid)
+    if not entry or entry["fut"].done():
+        return
+    if approved and remember and entry.get("offer"):
+        o = entry["offer"]
+        state["store"].add_grant(o["principal_kind"], o["principal_id"], o["action"],
+                                 o["resource"], source="user",
+                                 note="allowed & remembered from an approval prompt")
+        state["store"].log("approval", f"grant remembered: {o['action']} {o['resource']}",
+                           {"principal": f"{o['principal_kind']}:{o['principal_id']}"})
+        await state["broadcast"]({"type": "grants"})
+    entry["fut"].set_result(bool(approved))
+
+
+# ---- App privilege guard: apps may never reconfigure the OS over plain REST ------
+
+# method + path-prefix pairs an app-originated request is never allowed to hit;
+# capability access goes through /api/tool + grants, never around them
+SENSITIVE_FOR_APPS = (
+    ("PUT", "/api/config"), ("PUT", "/api/mcp"), ("PUT", "/api/soul"),
+    ("POST", "/api/apps"), ("DELETE", "/api/apps"),
+    ("POST", "/api/grants"), ("DELETE", "/api/grants"),
+    ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
+    ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
+    ("DELETE", "/api/skills"), ("POST", "/api/factory-reset"),
+)
+
+
+@app.middleware("http")
+async def app_privilege_guard(request: Request, call_next):
+    tok = request.headers.get("x-app-token", "")
+    ref = request.headers.get("referer", "")
+    from_app = (tok and tok in state.get("app_tokens", {})) or \
+               ("/api/apps/" in ref and ref.rstrip("/").endswith("/page"))
+    if from_app:
+        path, method = request.url.path, request.method
+        # an app's own data/manifest endpoints stay reachable (gated above/below)
+        own_surface = path.startswith("/api/apps/") and path.endswith(("/data", "/page"))
+        if not own_surface:
+            for m, p in SENSITIVE_FOR_APPS:
+                if method == m and path.startswith(p):
+                    state["store"].log("system", f"app blocked from {method} {path}",
+                                       {"via": "privilege_guard"})
+                    return JSONResponse(
+                        {"error": "denied: apps cannot change OS configuration — "
+                                  "capabilities go through appTool() and the permission grants"},
+                        status_code=403)
+    return await call_next(request)
+
+
 # ---- Run a single tool (for AI-built apps to reach the OS / MCP) -----------------
 
+def _principal_of(request) -> Principal:
+    """Map a request to its principal: an app runtime token (X-App-Token, minted when the
+    app page is served) makes it that app; anything else acts as the user."""
+    tok = request.headers.get("x-app-token", "") if request is not None else ""
+    entry = state["app_tokens"].get(tok) if tok else None
+    return Principal("app", entry["app_id"]) if entry else MAIN
+
+
 @app.post("/api/tool")
-async def api_run_tool(body: dict):
-    """Let a user-built app invoke an agent or MCP tool and get its output.
-    Blocked/destructive calls are refused; risky calls run only in full autonomy."""
+async def api_run_tool(body: dict, request: Request):
+    """Let a user-built app invoke an agent or MCP tool and get its output. Every call
+    flows through the policy gate; an ungranted call raises an approval card with
+    "allow & remember" instead of failing flat."""
     name = body.get("name", "")
     args = body.get("args") or {}
     toolbox = state["toolbox"]
+    principal = _principal_of(request)
     if name not in {t["name"] for t in toolbox.schemas()}:
         return JSONResponse({"error": f"unknown tool: {name}"}, status_code=400)
     level, reason = toolbox.risk_of(name, args)
-    if level == "blocked":
-        return JSONResponse({"error": f"blocked: {reason}"}, status_code=403)
-    if level == "risky" and state["cfg"].get("autonomy") != "full":
-        return JSONResponse({"error": f"needs approval (set autonomy to Full to allow): {reason}"},
-                            status_code=403)
+    dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
+                                   autonomy=state["cfg"].get("autonomy", ""))
+    if dec.effect == "deny":
+        return JSONResponse({"error": f"denied: {dec.reason or reason}"}, status_code=403)
+    if dec.effect == "ask":
+        if not state["clients"]:  # headless: nobody to ask
+            return JSONResponse({"error": f"needs approval: {dec.reason or reason}"},
+                                status_code=403)
+        approved = await request_approval(name, args, dec.reason or reason,
+                                          offer=dec.grant_offer)
+        if not approved:
+            return JSONResponse({"error": f"not approved: {dec.reason or reason}"},
+                                status_code=403)
     out = await toolbox.execute(name, args)
-    state["store"].log("tool", f"app→{name}", {"args": args, "via": "user_app"})
+    state["store"].log("tool", f"app→{name}",
+                       {"args": args, "via": "user_app", "principal": principal.label,
+                        "app_id": principal.id if principal.kind == "app" else "",
+                        "decision": dec.rule})
     return {"output": out}
+
+
+# ---- Grants: the consent ledger of the permission framework ---------------------
+
+@app.get("/api/grants")
+async def api_grants(kind: str = "", pid: str = "", all: int = 0):
+    """Permission grants: who (app/subagent) may do what. Written by manifest approval,
+    "allow & remember" prompts, or the Permissions app — revocable there any time."""
+    return {"grants": state["store"].list_grants(kind, pid, include_revoked=bool(all))}
+
+
+@app.post("/api/grants")
+async def api_add_grant(body: dict):
+    kind, action = (body.get("principal_kind") or "").strip(), (body.get("action") or "").strip()
+    if not kind or not action:
+        return JSONResponse({"error": "principal_kind and action are required"}, status_code=400)
+    gid = state["store"].add_grant(
+        kind, (body.get("principal_id") or "").strip(), action,
+        (body.get("resource") or "*").strip(), effect=body.get("effect", "allow"),
+        source="user", note=body.get("note", ""))
+    await state["broadcast"]({"type": "grants"})
+    return {"id": gid}
+
+
+@app.delete("/api/grants/{gid}")
+async def api_revoke_grant(gid: str):
+    ok = state["store"].revoke_grant(gid)
+    if ok:
+        state["store"].log("system", f"grant revoked: {gid}")
+        await state["broadcast"]({"type": "grants", "revoked": True})
+    return {"ok": ok}
 
 
 @app.get("/api/tools")
@@ -888,22 +1365,25 @@ async def api_list_tools():
 WS_EVENTS = {
     "outbound (server → client)": [
         "text_delta {text}", "thinking_delta {text}", "tool_start {call_id,name,args}",
-        "tool_end {call_id,ok,output}", "approval_request {id,name,args,reason}",
+        "tool_end {call_id,ok,output}", "approval_request {id,name,args,reason,offer?}",
         "turn_start / turn_end {conversation_id}", "error {message}",
-        "apps / themes / widgets / wallpaper / models / files / config  (refresh hints)",
+        "apps / themes / widgets / wallpaper / models / files / config / grants  (refresh hints)",
         "theme_apply {theme}", "model_pull {name,status,done}", "fabric_event / fabric_defs",
         "telegram_in / telegram_out {conversation_id,text}", "knowledge_update",
     ],
     "inbound (client → server)": [
         "chat {text, conversation_id?, model?}", "build {prompt, app_id?, model?}",
-        "approval {id, approved}", "abort {}",
+        "approval {id, approved, remember?}", "abort {}",
     ],
 }
 
 APP_RUNTIME_GLOBALS = {
     "APP_ID": "the app's own id (string), injected into every built app page",
+    "APP_TOKEN": "the app's runtime identity — appTool/appData send it as X-App-Token so "
+                 "the permission gate knows WHO is calling",
     "appData.get() / appData.set(obj)": "the app's private persistent JSON store, server-side",
-    "appTool(name, args)": "run any agent/MCP tool listed under `tools` and get its output",
+    "appTool(name, args)": "run any agent/MCP tool listed under `tools` and get its output; "
+                           "ungranted calls raise a consent prompt for the user",
 }
 
 
@@ -926,7 +1406,11 @@ def _registry() -> dict:
             "app_runtime_globals": APP_RUNTIME_GLOBALS,
             "notes": ["All endpoints are same-origin — plain fetch() works from any app/shell/theme.",
                       "Realtime: open a WebSocket to /ws (JSON events) or /ws/terminal (PTY).",
-                      "POST /api/tool {name,args} runs a tool; risky calls need Full autonomy."]}
+                      "POST /api/tool {name,args} runs a tool. Calls from apps are permission-"
+                      "gated per app: granted → runs; ungranted → the user gets a consent "
+                      "prompt (grants are managed in the Permissions app).",
+                      "Apps cannot change OS configuration over REST (PUT /api/config, "
+                      "/api/mcp, …) — capabilities flow through appTool() and grants."]}
 
 
 def _registry_text(max_tools: int = 48) -> str:
@@ -1018,9 +1502,8 @@ async def api_snapshot_restore(sid: str):
         for py in (d / "agentos").glob("*.py"):
             shutil.copy2(py, src / py.name)
     state["store"].log("system", f"snapshot restored: {sid} — restarting")
-    import subprocess
-    subprocess.Popen(["systemctl", "--user", "restart", "agentos.service"],
-                     start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    from . import desktop as desktopmod
+    desktopmod.restart_service()
     return {"ok": True, "restarting": True}
 
 
@@ -1172,26 +1655,60 @@ async def api_wallpaper_generate(body: dict):
     return {"ok": not result.startswith("[error]"), "result": result}
 
 
+def _host_wallpaper_file() -> Path | None:
+    """Path of the host OS desktop wallpaper (macOS / Windows / Linux), or None."""
+    import os
+    import shutil as _sh
+    import subprocess
+    import sys as _sys
+    import urllib.parse
+    if _sys.platform == "darwin":
+        r = subprocess.run(["osascript", "-e",
+                            'tell application "System Events" to get picture of current desktop'],
+                           capture_output=True, text=True, timeout=10)
+        p = Path(r.stdout.strip()).expanduser()
+        return p if r.returncode == 0 and r.stdout.strip() and p.is_file() else None
+    if _sys.platform.startswith("win"):
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as k:
+                p = Path(winreg.QueryValueEx(k, "WallPaper")[0])
+            if p.is_file():
+                return p
+        except OSError:
+            pass
+        p = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Themes/TranscodedWallpaper"
+        return p if p.is_file() else None
+    # Linux: GNOME / Cinnamon / MATE expose it via gsettings
+    if _sh.which("gsettings"):
+        for schema, key in (("org.gnome.desktop.background", "picture-uri-dark"),
+                            ("org.gnome.desktop.background", "picture-uri"),
+                            ("org.cinnamon.desktop.background", "picture-uri"),
+                            ("org.mate.background", "picture-filename")):
+            r = subprocess.run(["gsettings", "get", schema, key],
+                               capture_output=True, text=True, timeout=5)
+            uri = r.stdout.strip().strip("'")
+            if r.returncode == 0 and uri:
+                p = Path(urllib.parse.unquote(uri.removeprefix("file://")))
+                if p.is_file():
+                    return p
+    return None
+
+
 @app.post("/api/wallpaper/system")
 async def api_wallpaper_system():
-    """Adopt the host GNOME desktop wallpaper as the AgentOS wallpaper."""
+    """Adopt the host OS desktop wallpaper as the AgentOS wallpaper."""
     import shutil
-    import subprocess
-    import urllib.parse
     try:
-        uri = subprocess.run(["gsettings", "get", "org.gnome.desktop.background", "picture-uri-dark"],
-                             capture_output=True, text=True, timeout=5).stdout.strip().strip("'")
-        if not uri:
-            uri = subprocess.run(["gsettings", "get", "org.gnome.desktop.background", "picture-uri"],
-                                 capture_output=True, text=True, timeout=5).stdout.strip().strip("'")
+        path = _host_wallpaper_file()
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-    path = urllib.parse.unquote(uri.replace("file://", ""))
-    if not path or not Path(path).is_file():
-        return JSONResponse({"error": "could not read the system wallpaper"}, status_code=404)
+    if path is None:
+        return JSONResponse({"error": "could not read the system wallpaper on this desktop"},
+                            status_code=404)
     shutil.copy2(path, cfgmod.AGENTOS_HOME / "wallpaper.png")
     await state["broadcast"]({"type": "wallpaper"})
-    return {"ok": True, "source": path}
+    return {"ok": True, "source": str(path)}
 
 
 @app.get("/api/wallpapers")
@@ -1336,7 +1853,7 @@ async def api_doc(name: str):
 async def api_setup_state():
     cfg = state["cfg"]
     local = await providers.ollama_models(cfg["providers"]["ollama"]["base_url"])
-    from .desktop import SERVICE_FILE
+    from . import desktop as desktopmod
     return {
         "first_run": cfgmod.is_first_run(),
         "agent_name": cfg.get("agent_name", "Aria"),
@@ -1345,7 +1862,7 @@ async def api_setup_state():
         "ollama_models": local,
         "providers": {p: bool(cfg["providers"][p].get("api_key"))
                       for p in ("anthropic", "openai", "openrouter")},
-        "autostart_installed": SERVICE_FILE.exists(),
+        "autostart_installed": desktopmod.autostart_installed(),
     }
 
 
@@ -1574,11 +2091,23 @@ async def api_delete_task(tid: str):
 
 
 @app.post("/api/chat")
-async def api_chat(body: dict):
-    """Headless one-shot chat (for scripts / curl). Autonomy rules still apply:
-    risky actions are only taken in 'full' mode."""
+async def api_chat(body: dict, request: Request):
+    """Headless one-shot chat (for scripts / curl / apps). Autonomy rules still apply;
+    calls from an app run AS that app, so its grants gate every tool the turn uses."""
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     text = body.get("text", "")
+    principal = _principal_of(request)
+    if principal.kind == "app":
+        dec = state["pdp"].decide(principal, "agent.invoke", "agent:main")
+        if dec.effect == "deny":
+            return JSONResponse({"error": f"denied: {dec.reason}"}, status_code=403)
+        if dec.effect == "ask":
+            offer = {"principal_kind": "app", "principal_id": principal.id,
+                     "action": "agent.invoke", "resource": "agent:main"}
+            if not state["clients"] or not await request_approval(
+                    "chat", {"text": text[:200]},
+                    "This app wants to ask the AI (POST /api/chat).", offer=offer):
+                return JSONResponse({"error": "needs approval: agent.invoke"}, status_code=403)
     model = body.get("model") or cfg.get("default_model", "")
     cid = body.get("conversation_id") or store.create_conversation(text[:60] or "API chat")
     history = _history_for(cid)
@@ -1588,10 +2117,11 @@ async def api_chat(body: dict):
     async def emit(_ev):
         pass
 
-    async def approver(_n, _a, _r):
+    async def approver(_n, _a, _r, _offer=None):
         return cfg.get("autonomy") == "full"
 
-    agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid)
+    agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid,
+                  principal=principal)
     knowledge.turn_started()
     try:
         result = await agent.run(history)
@@ -1703,7 +2233,6 @@ async def ws_terminal(ws: WebSocket):
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
     state["clients"].add(ws)
-    pending_approvals: dict[str, asyncio.Future] = {}
     turns: dict = {}                            # conversation_id -> {"agent", "task"}
     build: dict = {"agent": None, "task": None}  # App Studio builds keep their own slot
 
@@ -1714,18 +2243,10 @@ async def ws_endpoint(ws: WebSocket):
             pass
 
     def _approver_for(evsend):
-        async def approver(name: str, args: dict, reason: str) -> bool:
-            aid = uuid.uuid4().hex[:8]
-            fut = asyncio.get_event_loop().create_future()
-            pending_approvals[aid] = fut
-            await evsend({"type": "approval_request", "id": aid, "name": name,
-                          "args": args, "reason": reason})
-            try:
-                return await asyncio.wait_for(fut, timeout=300)
-            except asyncio.TimeoutError:
-                return False
-            finally:
-                pending_approvals.pop(aid, None)
+        async def approver(name: str, args: dict, reason: str, offer: dict | None = None) -> bool:
+            # global broker: the card renders in this chat, but any client may answer
+            return await request_approval(name, args, reason, offer=offer,
+                                          evsend=evsend, ws=ws)
         return approver
 
     async def run_chat(cid: str, data: dict):
@@ -1742,6 +2263,36 @@ async def ws_endpoint(ws: WebSocket):
         store.add_message(cid, "user", text)
         history.append({"role": "user", "content": text})
         store.touch_conversation(cid)
+
+        # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
+        # streaming its steps like a normal turn, and still shows up in Observability
+        mention = fabricmod.parse_mention(store, text)
+        if mention:
+            defn, task = mention
+            await send({"type": "turn_start", "conversation_id": cid,
+                        "model": state["fabric"].resolve_model(defn)})
+            turns[cid] = {"agent": None, "task": asyncio.current_task()}
+            knowledge.turn_started()
+            try:
+                res = await state["fabric"].run_subagent(
+                    defn, task, conversation_id=cid, ui_emit=evsend,
+                    approver=_approver_for(evsend), agent_slot=turns[cid])
+            except Exception as e:
+                res = {"status": "error", "content": "", "fault": str(e),
+                       "model": "", "steps": [], "usage": {"in": 0, "out": 0}}
+            finally:
+                knowledge.turn_ended()
+                turns.pop(cid, None)
+            content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
+                                         else f"({res['status']})")
+            header = f"@{defn['name']} · {res['model']}\n\n" if res.get("model") else ""
+            store.add_message(cid, "assistant", header + content, {"steps": res["steps"]})
+            store.touch_conversation(cid)
+            if not res["content"]:
+                await evsend({"type": "text_delta", "text": header + content})
+            knowledge.schedule_extraction(cfg, store, cid, text, content, state.get("broadcast"))
+            await send({"type": "turn_end", "conversation_id": cid})
+            return
 
         agent = Agent(cfg, toolbox, model, evsend, _approver_for(evsend), conversation_id=cid)
         turns[cid] = {"agent": agent, "task": asyncio.current_task()}
@@ -1804,7 +2355,7 @@ async def ws_endpoint(ws: WebSocket):
             if ev["type"] in m:
                 await send({**ev, "type": m[ev["type"]]})
 
-        async def bapprove(name, args, reason):
+        async def bapprove(name, args, reason, offer=None):
             return True if name == "create_app" else (cfg.get("autonomy") == "full")
 
         try:
@@ -1836,10 +2387,10 @@ async def ws_endpoint(ws: WebSocket):
                 html = _extract_html(res["content"]) or _extract_html_from_steps(res["steps"])
                 if html:
                     if existing:
-                        store.save_app(existing["name"], existing["icon"], existing["description"], html)
+                        store.save_app(existing["name"], existing["icon"], existing["description"], html, note=prompt[:120])
                     else:
                         nm = (prompt[:28].strip() or "App").title()
-                        store.save_app(nm, "", prompt[:80], html)
+                        store.save_app(nm, "", prompt[:80], html, note=prompt[:120])
                     apps = store.list_apps()
                     new = [a for a in apps if a["id"] not in before]
             return (existing or (new[0] if new else None)), res
@@ -1862,10 +2413,18 @@ async def ws_endpoint(ws: WebSocket):
                 built, result = await attempt(better)
 
         store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
+        manifest_status = "none"
+        if built:  # builder didn't declare permissions? scan the source and propose them
+            full = store.get_app(built["id"]) or {}
+            manifest_status = full.get("manifest_status") or "none"
+            if manifest_status == "none":
+                _propose_manifest(built["id"])
+                manifest_status = "proposed"
         await state["broadcast"]({"type": "apps"})
         if built:
             await send({"type": "build_done", "app_id": built["id"], "name": built["name"],
-                        "summary": result["content"][:600]})
+                        "summary": result["content"][:600],
+                        "manifest_status": manifest_status})
         else:
             await send({"type": "build_error",
                         "message": "couldn't produce an app — try rephrasing, or select a tool-capable model (e.g. a qwen model) in the chat window"})
@@ -1888,6 +2447,7 @@ async def ws_endpoint(ws: WebSocket):
                 if not cid:
                     cid = state["store"].create_conversation(text[:60])
                     await send({"type": "conversation", "id": cid, "title": text[:60]})
+                turns[cid] = {"agent": None, "task": None}  # claim before the task starts
                 asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build["task"] and not build["task"].done():
@@ -1895,30 +2455,31 @@ async def ws_endpoint(ws: WebSocket):
                 else:
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "approval":
-                fut = pending_approvals.get(data.get("id", ""))
-                if fut and not fut.done():
-                    fut.set_result(bool(data.get("approved")))
+                await resolve_approval(data.get("id", ""), bool(data.get("approved")),
+                                       remember=bool(data.get("remember")))
             elif t == "abort":
                 cid = data.get("conversation_id")
                 if cid:  # stop one conversation's turn; its pending approvals die with it
-                    if cid in turns:
+                    if cid in turns and turns[cid]["agent"]:
                         turns[cid]["agent"].aborted = True
                 else:    # legacy/global abort: stop everything on this socket
                     for tinfo in turns.values():
-                        tinfo["agent"].aborted = True
+                        if tinfo["agent"]:
+                            tinfo["agent"].aborted = True
                     if build["agent"]:
                         build["agent"].aborted = True
-                    for fut in pending_approvals.values():
-                        if not fut.done():
-                            fut.set_result(False)
+                    for entry in state["pending_approvals"].values():
+                        if entry.get("ws") is ws and not entry["fut"].done():
+                            entry["fut"].set_result(False)
     except WebSocketDisconnect:
         pass
     finally:
         state["clients"].discard(ws)
         for tinfo in turns.values():
-            tinfo["agent"].aborted = True
+            if tinfo["agent"]:
+                tinfo["agent"].aborted = True
         if build["agent"]:
             build["agent"].aborted = True
-        for fut in pending_approvals.values():
-            if not fut.done():
-                fut.set_result(False)
+        for entry in state["pending_approvals"].values():
+            if entry.get("ws") is ws and not entry["fut"].done():
+                entry["fut"].set_result(False)

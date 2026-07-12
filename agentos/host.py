@@ -2,15 +2,20 @@
 open native settings panels. Best-effort — degrades gracefully when a tool is missing.
 
 This is what makes AgentOS a shell *over* the host rather than a sandboxed island:
-every installed .desktop app is visible & launchable, and the system controls are wired
-to the real host (PipeWire/wpctl, upower, nmcli, gnome-control-center).
+every installed app is visible & launchable, and the system controls are wired to the
+real host — Linux (wpctl, upower, nmcli, gnome-control-center), macOS (osascript,
+pmset, System Settings), Windows (Start Menu, ms-settings:).
 """
 
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+IS_MAC = sys.platform == "darwin"
+IS_WIN = sys.platform.startswith("win")
 
 APP_DIRS = [
     "/usr/share/applications",
@@ -61,16 +66,46 @@ def _parse_desktop(path: Path) -> dict | None:
     }
 
 
+MAC_APP_DIRS = ["/Applications", "/System/Applications",
+                "/System/Applications/Utilities", str(Path.home() / "Applications")]
+
+WIN_APP_DIRS = [
+    str(Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs"),
+    str(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Microsoft/Windows/Start Menu/Programs"),
+]
+
+
 def list_apps() -> list[dict]:
     seen: dict[str, dict] = {}
-    for d in APP_DIRS:
-        p = Path(d)
-        if not p.is_dir():
-            continue
-        for f in p.glob("*.desktop"):
-            e = _parse_desktop(f)
-            if e:
-                seen[e["id"]] = e  # later dirs (user) override system
+    if IS_MAC:
+        for d in MAC_APP_DIRS:
+            p = Path(d)
+            if not p.is_dir():
+                continue
+            for f in p.glob("*.app"):
+                name = f.stem
+                seen[name] = {"id": name, "name": name, "comment": "", "icon": "",
+                              "categories": [], "terminal": False}
+    elif IS_WIN:
+        for d in WIN_APP_DIRS:
+            p = Path(d)
+            if not p.is_dir():
+                continue
+            for f in p.rglob("*.lnk"):
+                name = f.stem
+                if name.lower().startswith("uninstall"):
+                    continue
+                seen.setdefault(name, {"id": name, "name": name, "comment": "", "icon": "",
+                                       "categories": [], "terminal": False})
+    else:
+        for d in APP_DIRS:
+            p = Path(d)
+            if not p.is_dir():
+                continue
+            for f in p.glob("*.desktop"):
+                e = _parse_desktop(f)
+                if e:
+                    seen[e["id"]] = e  # later dirs (user) override system
     apps = sorted(seen.values(), key=lambda a: a["name"].lower())
     return apps
 
@@ -105,8 +140,30 @@ def resolve_icon(name: str) -> str | None:
 
 
 def launch_app(app_id: str) -> tuple[bool, str]:
-    if not re.fullmatch(r"[A-Za-z0-9_.+-]+", app_id or ""):
+    # names may contain spaces on macOS/Windows; still no path separators or shell metachars
+    if not re.fullmatch(r"[\w .+()&,'-]+", app_id or ""):
         return False, "invalid app id"
+    if IS_MAC:
+        try:
+            subprocess.Popen(["open", "-a", app_id], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True, "launched"
+        except Exception as e:
+            return False, str(e)
+    if IS_WIN:
+        lnk = None
+        for d in WIN_APP_DIRS:
+            if Path(d).is_dir():
+                lnk = next(iter(Path(d).rglob(f"{app_id}.lnk")), None)
+                if lnk:
+                    break
+        if not lnk:
+            return False, "app not found"
+        try:
+            os.startfile(str(lnk))
+            return True, "launched"
+        except Exception as e:
+            return False, str(e)
     launcher = shutil.which("gtk-launch")
     try:
         if launcher:
@@ -137,6 +194,15 @@ def _run(cmd: list[str], timeout: float = 5) -> str:
 
 
 def get_volume() -> dict:
+    if IS_MAC:
+        out = _run(["osascript", "-e",
+                    "output volume of (get volume settings) & \",\" & "
+                    "output muted of (get volume settings)"])
+        parts = out.split(",")
+        vol = int(parts[0]) if parts and parts[0].strip().isdigit() else None
+        return {"volume": vol, "muted": len(parts) > 1 and "true" in parts[1].lower()}
+    if IS_WIN:
+        return {"volume": None, "muted": False}
     if shutil.which("wpctl"):
         out = _run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])  # "Volume: 0.55 [MUTED]"
         m = re.search(r"([\d.]+)", out)
@@ -150,6 +216,14 @@ def get_volume() -> dict:
 
 
 def set_volume(percent: int | None = None, mute: bool | None = None) -> bool:
+    if IS_MAC:
+        if mute is not None:
+            _run(["osascript", "-e", f"set volume output muted {'true' if mute else 'false'}"])
+        if percent is not None:
+            _run(["osascript", "-e", f"set volume output volume {max(0, min(100, percent))}"])
+        return True
+    if IS_WIN:
+        return False
     if not shutil.which("wpctl"):
         if shutil.which("amixer"):
             if mute is not None:
@@ -166,6 +240,17 @@ def set_volume(percent: int | None = None, mute: bool | None = None) -> bool:
 
 
 def get_battery() -> dict:
+    if IS_MAC:
+        out = _run(["pmset", "-g", "batt"])   # "… 85%; charging; …"
+        pct = re.search(r"(\d+)%", out)
+        st = re.search(r"%;\s*([\w ]+?);", out)
+        if not pct:
+            return {}
+        return {"percent": int(pct.group(1)), "state": (st.group(1).strip() if st else "")}
+    if IS_WIN:
+        out = _run(["powershell", "-NoProfile", "-Command",
+                    "(Get-CimInstance Win32_Battery).EstimatedChargeRemaining"], timeout=10)
+        return {"percent": int(out), "state": ""} if out.strip().isdigit() else {}
     if not shutil.which("upower"):
         return {}
     dev = ""
@@ -183,6 +268,20 @@ def get_battery() -> dict:
 
 
 def get_network() -> dict:
+    if IS_MAC:
+        out = _run(["scutil", "--nwi"])       # lists reachable interfaces, e.g. "en0"
+        conns = []
+        for m in set(re.findall(r"Network interfaces:\s*([\w ,]+)", out)):
+            for iface in m.replace(",", " ").split():
+                conns.append({"type": "wifi" if iface.startswith("en0") else "ethernet",
+                              "name": iface})
+        return {"connections": conns, "online": bool(conns)}
+    if IS_WIN:
+        out = _run(["powershell", "-NoProfile", "-Command",
+                    "(Get-NetConnectionProfile | Select-Object -ExpandProperty Name) -join ','"],
+                   timeout=10)
+        conns = [{"type": "network", "name": n.strip()} for n in out.split(",") if n.strip()]
+        return {"connections": conns, "online": bool(conns)}
     if not shutil.which("nmcli"):
         return {}
     out = _run(["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device", "status"])
@@ -200,18 +299,44 @@ SETTINGS_PANELS = {
     "background": "background", "settings": "", "": "",
 }
 
+MAC_SETTINGS_PANES = {
+    "sound": "com.apple.preference.sound", "audio": "com.apple.preference.sound",
+    "network": "com.apple.preference.network", "wifi": "com.apple.preference.network",
+    "bluetooth": "com.apple.preferences.Bluetooth",
+    "display": "com.apple.preference.displays", "power": "com.apple.preference.battery",
+    "background": "com.apple.preference.desktopscreeneffect",
+}
+
+WIN_SETTINGS_PAGES = {
+    "sound": "ms-settings:sound", "audio": "ms-settings:sound",
+    "network": "ms-settings:network", "wifi": "ms-settings:network-wifi",
+    "bluetooth": "ms-settings:bluetooth", "display": "ms-settings:display",
+    "power": "ms-settings:powersleep", "background": "ms-settings:personalization-background",
+}
+
 
 def open_settings(panel: str = "") -> tuple[bool, str]:
-    exe = shutil.which("gnome-control-center")
-    if not exe:
-        return False, "gnome-control-center not available"
-    p = SETTINGS_PANELS.get(panel.lower().strip(), panel.strip())
+    key = panel.lower().strip()
     try:
+        if IS_MAC:
+            pane = MAC_SETTINGS_PANES.get(key)
+            cmd = (["open", f"x-apple.systempreferences:{pane}"] if pane
+                   else ["open", "-b", "com.apple.systempreferences"])
+            subprocess.Popen(cmd, start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True, f"opened settings{': ' + key if pane else ''}"
+        if IS_WIN:
+            os.startfile(WIN_SETTINGS_PAGES.get(key, "ms-settings:"))
+            return True, f"opened settings{': ' + key if key in WIN_SETTINGS_PAGES else ''}"
+        exe = shutil.which("gnome-control-center")
+        if not exe:
+            return False, "gnome-control-center not available"
+        p = SETTINGS_PANELS.get(key, panel.strip())
         subprocess.Popen([exe] + ([p] if p else []), start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True, f"opened settings{': ' + p if p else ''}"
     except Exception as e:
         return False, str(e)
-    return True, f"opened settings{': ' + p if p else ''}"
 
 
 def control_state() -> dict:
@@ -223,6 +348,9 @@ def control_state() -> dict:
 def list_windows() -> dict:
     """Open windows on the host desktop. Requires wmctrl. Wayland-native windows can't be
     enumerated (the session forbids it) — only X11/XWayland windows appear."""
+    if IS_MAC or IS_WIN:
+        return {"available": False, "windows": [],
+                "reason": "Native window control is currently available on Linux (X11) only."}
     exe = shutil.which("wmctrl")
     wayland = os.environ.get("XDG_SESSION_TYPE") == "wayland"
     if not exe:
