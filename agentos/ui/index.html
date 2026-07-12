@@ -349,6 +349,34 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .body code{font-family:var(--mono);font-size:.88em;background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
 .body pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;margin:0 0 12px}
 .body pre code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.5}
+.body table{border-collapse:collapse;margin:0 0 12px;font-size:12.5px}
+.body th,.body td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+.body th{background:var(--bg3);font-weight:600}
+.body blockquote{margin:0 0 12px;padding:7px 12px;border-left:3px solid var(--acc,#5eead4);background:var(--bg2);border-radius:0 8px 8px 0;color:var(--dim)}
+/* ---- Docs app typography ---- */
+.docbody{font-size:13.5px;line-height:1.65;color:var(--txt)}
+.docbody>*{max-width:780px}
+.docbody h1{font-size:22px;margin:4px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.docbody h2{font-size:17px;margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.docbody h3{font-size:14.5px;margin:20px 0 8px}
+.docbody h4{font-size:13.5px;margin:16px 0 6px;color:var(--dim)}
+.docbody p{margin:0 0 10px}
+.docbody ul,.docbody ol{margin:0 0 12px 22px;padding:0}
+.docbody li{margin:3px 0}
+.docbody code{font-family:var(--mono);font-size:.87em;background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.docbody pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;margin:0 0 14px}
+.docbody pre code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.55;display:block}
+.docbody table{border-collapse:collapse;margin:0 0 14px;width:100%;max-width:780px;font-size:12.8px}
+.docbody th,.docbody td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.docbody th{background:var(--bg3);font-weight:600}
+.docbody tr:nth-child(even) td{background:var(--bg2)}
+.docbody blockquote{margin:0 0 12px;padding:8px 14px;border-left:3px solid var(--acc,#5eead4);background:var(--bg2);border-radius:0 8px 8px 0;color:var(--dim)}
+.docbody hr{border:none;border-top:1px solid var(--line);margin:20px 0}
+.docbody a{color:var(--acc,#5eead4);text-decoration:none}
+.docbody a:hover{text-decoration:underline}
+.doc-nav{flex:0 0 230px;overflow:auto;border-right:1px solid var(--line);padding:10px}
+.doc-nav .item{border-radius:8px;margin-bottom:2px}
+.doc-nav .item:hover{background:var(--bg3)}
 .body a{color:var(--acc2)}
 .body strong{color:#fff}
 
@@ -684,10 +712,19 @@ function md(src){
   h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
   h=h.replace(/(?<![\w*])\*([^*\n]+)\*(?![\w*])/g,'<em>$1</em>');
   h=h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  h=h.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  h=h.replace(/\[([^\]]+)\]\(([\w][\w./-]*\.md(?:#[\w-]*)?)\)/g,'<a href="#" class="doclink" data-doc="$2">$1</a>');
+  h=h.replace(/^#### (.+)$/gm,'<h4>$1</h4>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  h=h.replace(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gm,'<hr>');
+  h=h.replace(/((?:^&gt;.*\n?)+)/gm,m=>'<blockquote>'+m.replace(/^&gt; ?/gm,'').trim().replace(/\n/g,'<br>')+'</blockquote>');
+  h=h.replace(/((?:^\|.*\|[ \t]*\n?)+)/gm,m=>{
+    const rows=m.trim().split(/\n/).map(r=>r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c=>c.trim()));
+    if(rows.length<2||!/^[:\s-]+$/.test(rows[1].join('')))return m;   // not a table
+    const cells=(r,tag)=>'<tr>'+r.map(c=>`<${tag}>${c}</${tag}>`).join('')+'</tr>';
+    return '<table><thead>'+cells(rows[0],'th')+'</thead><tbody>'+rows.slice(2).map(r=>cells(r,'td')).join('')+'</tbody></table>';
+  });
   h=h.replace(/((?:^[ \t]*[-*] .+\n?)+)/gm,m=>'<ul>'+m.trim().split(/\n/).map(l=>'<li>'+l.replace(/^[ \t]*[-*] /,'')+'</li>').join('')+'</ul>');
   h=h.replace(/((?:^[ \t]*\d+\. .+\n?)+)/gm,m=>'<ol>'+m.trim().split(/\n/).map(l=>'<li>'+l.replace(/^[ \t]*\d+\. /,'')+'</li>').join('')+'</ol>');
-  h=h.split(/\n{2,}/).map(p=>/^<(h\d|ul|ol|pre|\x00)/.test(p.trim())?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
+  h=h.split(/\n{2,}/).map(p=>/^<(h\d|hr|ul|ol|pre|table|blockquote|\x00)/.test(p.trim())?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
   return h.replace(/\x00B(\d+)\x00/g,(m,i)=>blocks[+i]);
 }
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
@@ -2402,8 +2439,12 @@ async function renderDocs(body){
     <div class="grow">${esc(x.title)}</div></div>`).join('');
   const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
   body.innerHTML=`<div style="display:flex;height:100%;min-height:0">
-    <div style="flex:0 0 230px;overflow:auto;border-right:1px solid var(--line,#232a35);padding:10px">${items}</div>
-    <div style="flex:1;overflow:auto;padding:14px 20px" class="docbody">${md(doc.content||'(not found)')}</div></div>`;
+    <div class="doc-nav">${items}</div>
+    <div style="flex:1;overflow:auto;padding:16px 24px" class="docbody">${md(doc.content||'(not found)')}</div></div>`;
+  // relative .md links navigate inside the Docs app
+  body.querySelectorAll('a.doclink').forEach(a=>a.onclick=e=>{
+    e.preventDefault();docsCur=a.dataset.doc.split('#')[0];refreshApp('docs');
+  });
 }
 
 /* ================= first-run setup wizard ================= */

@@ -1,15 +1,50 @@
-# ▲ AgentOS
+# ▲ AgentOS — a local-first agentic operating system
 
-**Your machine, with a brain.** A local-first *agentic operating system* — a full desktop
-environment in the browser, driven by an AI agent that takes **real actions** on your computer.
-Local (Ollama) or cloud (Anthropic, OpenAI, OpenRouter, or any OpenAI-compatible endpoint), with
-your approval. It can even build apps for itself, extend its own code, and reach you on Telegram.
+**Your machine, with a brain.** AgentOS is a self-hosted **AI desktop environment** that runs in
+your browser: a full desktop — windows, apps, files, terminal — driven by an **autonomous AI
+agent** that takes **real actions** on your computer. Use local models via
+[Ollama](https://ollama.com) for total privacy, or cloud models (Anthropic Claude, OpenAI,
+OpenRouter, or any OpenAI-compatible endpoint) — always with your approval. The agent can browse,
+build its own apps, schedule jobs, remember what it learns, extend its own source code, and reach
+you on Telegram.
 
-Runs at `http://127.0.0.1:8321` — private by default, and installable as a boot-time service.
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
+![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
+
+Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-time service.
+
+![AgentOS desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
 
 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the
 desktop and every app, the agent and its tools, building apps, integrations, the API reference, and
 troubleshooting.
+
+---
+
+## See it in action
+
+| | |
+|---|---|
+| ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
+| ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
+
+---
+
+## Why AgentOS
+
+- **A real desktop, not a chat box** — draggable windows, taskbar, virtual desktops, widgets,
+  themes, a command palette, and 25+ built-in apps.
+- **An agent with hands** — shell commands, file management, web research, desktop notifications,
+  scheduled jobs, HTML reports, and app-building, all from plain language.
+- **Local-first and private** — everything can run on your hardware with Ollama; nothing leaves
+  your machine unless you add a cloud key. Binds to localhost only.
+- **Self-extending** — the agent builds new UI apps for itself (App Studio), installs skills and
+  MCP tool servers, and can even modify AgentOS's own source code (with auto-snapshots).
+- **Memory that compounds** — two-tier memory, a live knowledge graph, and a persistent "soul",
+  learned automatically after every conversation.
+- **Safe by design** — autonomy levels, approval prompts, allow/deny policies, a bubblewrap folder
+  sandbox, hard-blocked destructive commands, and one-click restore points.
 
 ---
 
@@ -50,15 +85,18 @@ It **Recommends** `bubblewrap` (sandbox) and `xdg-utils` (host-open), and **Sugg
 ## Install as a real app (auto-start on boot) — from source
 
 ```bash
-uv run agentos install      # adds an app-launcher entry + a systemd user service (starts at boot)
+uv run agentos install      # app launcher + a background service that starts at login/boot
 ```
 
-This gives you:
-- an **AgentOS** entry in your application menu (search "AgentOS"),
-- a **systemd user service** (`agentos.service`) that's enabled and started, with **linger** on so
-  it comes up at boot — even before you log in.
+Works on every OS — the right native mechanism is used automatically:
 
-Manage it like any service:
+- **Linux** — a `.desktop` launcher + a **systemd user service** (with linger, so it starts at
+  boot even before you log in).
+- **macOS** — an `AgentOS.app` in `~/Applications` (Launchpad/Spotlight) + **LaunchAgents** that
+  start the server and open the window at login.
+- **Windows** — a Start Menu shortcut + **Startup entries**.
+
+Manage it like any service (Linux shown; macOS uses `launchctl`):
 
 ```bash
 systemctl --user status agentos      # is it running?
@@ -96,8 +134,7 @@ uv run agentos app          # opens in its own window (chromium --app, or pywebv
 
 Optional, unlock extra features when present:
 
-- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent & terminal to one directory.
-- **xdg-open** — opens files/URLs in your **host** browser and apps (standard on Linux desktops).
+- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent & terminal to one directory (Linux).
 - **Node/npx** and/or **uvx** — to run **MCP servers** (Playwright, filesystem, git, …).
 - **git** — to install **skills** from repositories.
 
@@ -116,13 +153,14 @@ AgentOS presents a real desktop environment, not a chat box:
 - **Command palette** — `Ctrl+Space` (or `Ctrl+K`) for Quicksilver-style fuzzy launch of any app or
   action, or "Ask Aria …" to send straight to the agent. `Ctrl+Alt+T` opens a terminal.
 - **Look & feel** — AI-generated wallpapers with a local gallery, a thinking animation while the
-  agent works, and optional voice (speak replies + mic dictation).
+  agent works, and optional voice (speak replies + mic dictation). Paste images straight from the
+  clipboard into chat for vision-capable models.
 
 ### Built-in apps
 
 | App | What it is |
 |---|---|
-| **Agent Chat** | talk to the agent; streaming, tool cards, approvals, voice |
+| **Agent Chat** | talk to the agent; streaming, tool cards, approvals, voice, image paste |
 | **Web** | opens URLs in your **real system browser** (full sites, logins, extensions) |
 | **Files** | browse the workspace; click a file to open it in your host browser/app |
 | **Terminal** | a real host shell (xterm.js over a PTY), jailed to the sandbox folder |
@@ -141,7 +179,7 @@ AgentOS presents a real desktop environment, not a chat box:
 | **Logs** | everything the system did (turns, tools, MCP, telegram, jobs) |
 | **Token Analytics** | token usage over time, by model |
 | **Scheduler** | recurring background **jobs** |
-| **Personalize** | AI wallpapers + gallery |
+| **Personalize** | AI wallpapers + gallery (Gemini / OpenAI / free fallback) |
 | **Snapshots** | restore points for the whole OS (config, data, and source) |
 | **Settings** | providers, model, autonomy, voice, sandbox, agent name |
 
@@ -182,9 +220,11 @@ Configure under **Settings**:
 - **Ollama** (local) — auto-discovered; nothing leaves your machine.
 - **Anthropic**, **OpenAI**, **OpenRouter** (one key → hundreds of models), or any **OpenAI-
   compatible** endpoint (LM Studio, vLLM, Groq, …).
+- **Image generation** — Google Gemini or OpenAI image models when a key is set, with a free
+  fallback service otherwise.
 
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `OPENROUTER_API_KEY` env vars are picked up automatically.
-Switch models mid-flight from the chat window's model dropdown.
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `GOOGLE_API_KEY` env vars are
+picked up automatically. Switch models mid-flight from the chat window's model dropdown.
 
 ---
 
@@ -222,8 +262,9 @@ the session, `/status` pings.
 
 Add external tool servers from the **MCP Servers** catalog (Playwright browser automation,
 filesystem, fetch, git, GitHub, Postgres, Slack, Brave/DuckDuckGo search, and more) or a custom
-`stdio`/`http` server. Their tools appear to the agent as `mcp_<server>_<tool>`, and to built apps
-via `POST /api/tool`. You can also just ask the agent: *"add the playwright channel."*
+`stdio`/`http` server — AgentOS speaks the **Model Context Protocol**. Their tools appear to the
+agent as `mcp_<server>_<tool>`, and to built apps via `POST /api/tool`. You can also just ask the
+agent: *"add the playwright channel."*
 
 ---
 
@@ -251,7 +292,8 @@ agentos/
 ├── telegram.py    # Telegram bridge: chat registry, approval keyboard, headless turns
 ├── memory.py      # SQLite: conversations, memories, tasks, logs, KG, skills, apps, chats
 ├── scheduler.py   # background job runner
-├── desktop.py     # native app window + installer (.desktop launcher, systemd service)
+├── host.py        # host integration: native apps, volume/battery/network, settings panels
+├── desktop.py     # native window + installers (Linux systemd / macOS LaunchAgents / Windows)
 ├── server.py      # FastAPI: desktop UI, REST API, WebSocket streams, host-open, file serving
 └── ui/
     ├── index.html # the entire desktop environment — zero build step, single file
@@ -261,3 +303,8 @@ agentos/
 **State lives in `~/.agentos/`:** `config.json`, `agentos.db` (SQLite), `soul.md`, `wallpapers/`,
 `snapshots/`. The agent's working directory / sandbox root is `~/AgentOS/` (reports land in
 `~/AgentOS/reports/`).
+
+---
+
+*AgentOS is an open, local-first alternative to cloud AI assistants: an agentic OS, AI desktop,
+and automation platform you run yourself — on Linux, macOS, or Windows.*
