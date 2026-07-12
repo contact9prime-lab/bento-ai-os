@@ -72,7 +72,17 @@ DEFAULTS = {
             "api_key": "",
             "models": [],
         },
+        "google": {  # Gemini — used for image generation (nano banana); key from aistudio.google.com
+            "enabled": False,
+            "base_url": "https://generativelanguage.googleapis.com",
+            "api_key": "",
+            "models": [],
+        },
     },
+    # image generation: provider auto|google|openai|pollinations; model optional
+    # (defaults: google → gemini-2.5-flash-image "nano banana", openai → gpt-image-1).
+    # auto picks google, then openai (whichever has a key), else free pollinations.ai.
+    "image": {"provider": "auto", "model": ""},
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
@@ -143,7 +153,10 @@ def load_config() -> dict:
         cfg["providers"]["openai"]["api_key"] = os.environ.get("OPENAI_API_KEY", "")
     if not cfg["providers"]["openrouter"]["api_key"]:
         cfg["providers"]["openrouter"]["api_key"] = os.environ.get("OPENROUTER_API_KEY", "")
-    for name in ("anthropic", "openai", "openrouter"):
+    if not cfg["providers"]["google"]["api_key"]:
+        cfg["providers"]["google"]["api_key"] = (os.environ.get("GOOGLE_API_KEY", "")
+                                                 or os.environ.get("GEMINI_API_KEY", ""))
+    for name in ("anthropic", "openai", "openrouter", "google"):
         if cfg["providers"][name]["api_key"]:
             cfg["providers"][name]["enabled"] = True
     return cfg

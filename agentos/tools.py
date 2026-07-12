@@ -330,31 +330,110 @@ class Toolbox:
             await self.broadcast({"type": "knowledge_update"})
         return f"forgotten (id {memory_id})"
 
+    async def _generate_image(self, prompt: str, width: int = 1280,
+                              height: int = 720) -> tuple[bytes | None, str]:
+        """Generate an image with the configured provider. Returns (bytes, provider label)
+        on success or (None, error). cfg['image']: provider auto|google|openai|pollinations
+        (auto = google → openai → pollinations, by which keys are set), model optional."""
+        import base64
+        import urllib.parse
+        icfg = self.cfg.get("image") or {}
+        choice = (icfg.get("provider") or "auto").lower()
+        google = self.cfg["providers"].get("google") or {}
+        openai = self.cfg["providers"].get("openai") or {}
+        if choice == "auto":
+            order = ((["google"] if google.get("api_key") else [])
+                     + (["openai"] if openai.get("api_key") else []) + ["pollinations"])
+        else:
+            order = [choice]
+        errors: list[str] = []
+        for prov in order:
+            try:
+                if prov == "google":
+                    if not google.get("api_key"):
+                        errors.append("google: API key not set (Settings → Google)")
+                        continue
+                    model = icfg.get("model") or "gemini-2.5-flash-image"
+                    base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
+                    async with httpx.AsyncClient(timeout=240.0) as c:
+                        r = await c.post(f"{base}/v1beta/models/{model}:generateContent",
+                                         headers={"x-goog-api-key": google["api_key"]},
+                                         json={"contents": [{"parts": [{"text": prompt}]}]})
+                    if r.status_code == 200:
+                        cands = r.json().get("candidates") or [{}]
+                        for part in (cands[0].get("content") or {}).get("parts", []):
+                            data = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
+                            if data:
+                                return base64.b64decode(data), f"google/{model}"
+                        errors.append("google: response had no image")
+                    else:
+                        errors.append(f"google: HTTP {r.status_code}")
+                elif prov == "openai":
+                    if not openai.get("api_key"):
+                        errors.append("openai: API key not set (Settings → OpenAI)")
+                        continue
+                    model = icfg.get("model") or "gpt-image-1"
+                    body = {"model": model, "prompt": prompt}
+                    if model.startswith("dall-e"):
+                        body["size"] = "1792x1024" if width >= height else "1024x1792"
+                        body["response_format"] = "b64_json"
+                    else:
+                        body["size"] = "1536x1024" if width >= height else "1024x1536"
+                    base = (openai.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+                    async with httpx.AsyncClient(timeout=240.0) as c:
+                        r = await c.post(f"{base}/images/generations",
+                                         headers={"Authorization": f"Bearer {openai['api_key']}"},
+                                         json=body)
+                    if r.status_code == 200:
+                        item = (r.json().get("data") or [{}])[0]
+                        if item.get("b64_json"):
+                            return base64.b64decode(item["b64_json"]), f"openai/{model}"
+                        if item.get("url"):
+                            async with httpx.AsyncClient(timeout=120.0) as c:
+                                img = await c.get(item["url"])
+                            if img.status_code == 200:
+                                return img.content, f"openai/{model}"
+                        errors.append("openai: response had no image")
+                    else:
+                        detail = ""
+                        try:
+                            detail = ": " + r.json()["error"]["message"][:120]
+                        except Exception:
+                            pass
+                        errors.append(f"openai: HTTP {r.status_code}{detail}")
+                else:  # pollinations.ai — free, no key (caps resolution at ~1024x576)
+                    url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:400])
+                           + f"?width={width}&height={height}&model=flux&nologo=true&enhance=true&nofeed=true")
+                    async with httpx.AsyncClient(timeout=240.0, follow_redirects=True,
+                                                 headers={"User-Agent": "AgentOS/0.1"}) as c:
+                        r = await c.get(url)
+                    if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+                        return r.content, "pollinations/flux"
+                    errors.append(f"pollinations: HTTP {r.status_code}")
+            except Exception as e:
+                errors.append(f"{prov}: {type(e).__name__}: {e}")
+        return None, "; ".join(errors) or "no image provider available"
+
     async def generate_wallpaper(self, prompt: str) -> str:
-        """AI-generate a high-res desktop wallpaper from a text prompt (pollinations.ai flux, free, no key).
+        """AI-generate a desktop wallpaper from a text prompt using the configured image
+        provider (Gemini / OpenAI / free pollinations.ai fallback).
         Saves to the local gallery and applies it as the current wallpaper."""
         import time as _t
-        import urllib.parse
         from . import config as cfgmod
-        # flux model for the best detail this free service offers (it caps output at ~1024x576;
-        # CSS scales it to fill the screen). For true-HD wallpaper use set_wallpaper with a file/URL.
-        url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:400])
-               + "?width=1280&height=720&model=flux&nologo=true&enhance=true&nofeed=true")
-        async with httpx.AsyncClient(timeout=240.0, follow_redirects=True,
-                                     headers={"User-Agent": "AgentOS/0.1"}) as client:
-            r = await client.get(url)
-        if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-            return f"[error] image generation failed (HTTP {r.status_code}) — is the machine online?"
+        data, src = await self._generate_image(prompt, 1280, 720)
+        if data is None:
+            return f"[error] image generation failed — {src}"
         gallery = cfgmod.AGENTOS_HOME / "wallpapers"
         gallery.mkdir(parents=True, exist_ok=True)
-        (gallery / f"{int(_t.time())}.png").write_bytes(r.content)       # keep in the gallery
-        (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(r.content)   # apply as current
-        self.store.log("system", f"wallpaper generated: {prompt[:120]}")
+        (gallery / f"{int(_t.time())}.png").write_bytes(data)       # keep in the gallery
+        (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(data)   # apply as current
+        self.store.log("system", f"wallpaper generated via {src}: {prompt[:120]}")
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
-        return (f"wallpaper generated ({len(r.content) // 1024} KB), saved to the gallery, and applied. "
-                f"(The free image service caps resolution; for a true-HD background, use set_wallpaper "
-                f"with a photo file or an image URL.)")
+        note = (" (The free service caps resolution; add a Google or OpenAI key in Settings "
+                "for sharper images, or use set_wallpaper with a photo file/URL.)"
+                if src.startswith("pollinations") else "")
+        return f"wallpaper generated with {src} ({len(data) // 1024} KB), saved to the gallery, and applied.{note}"
 
     async def set_wallpaper(self, source: str = "") -> str:
         """Set the desktop wallpaper from a local file or URL; empty source resets to the default."""

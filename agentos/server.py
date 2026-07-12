@@ -482,6 +482,11 @@ async def api_put_config(patch: dict):
                   "embed_model", "rollup_after_hours", "kg_dedup"):
             if k in patch["memory"]:
                 mem[k] = patch["memory"][k]
+    if isinstance(patch.get("image"), dict):
+        img = cfg.setdefault("image", {})
+        for k in ("provider", "model"):
+            if k in patch["image"]:
+                img[k] = patch["image"][k]
     for name, pconf in (patch.get("providers") or {}).items():
         if name not in cfg["providers"]:
             continue
@@ -584,8 +589,9 @@ async def api_telegram_test():
 # ---- Logs -------------------------------------------------------------------
 
 @app.get("/api/logs")
-async def api_logs(kind: str = "", limit: int = 300):
-    return {"logs": state["store"].list_logs(kind, min(limit, 1000))}
+async def api_logs(kind: str = "", limit: int = 300, q: str = ""):
+    """System logs, filterable by kind and free-text search (message + meta)."""
+    return {"logs": state["store"].list_logs(kind, min(limit, 1000), q=q)}
 
 
 @app.delete("/api/logs")
@@ -831,6 +837,9 @@ async def api_app_data_get(aid: str, request: Request):
     p = _principal_of(request)
     if p.kind == "app" and p.id != aid:  # app↔app data needs an explicit grant
         if state["pdp"].decide(p, "app.data.read", f"app:{aid}/data").effect != "allow":
+            state["store"].log("policy", f"deny: {p.label} → app.data.read app:{aid}/data",
+                               {"principal": p.label, "action": "app.data.read",
+                                "resource": f"app:{aid}/data", "effect": "deny", "via": "app_data"})
             return JSONResponse({"error": "denied: no grant to read another app's data "
                                           "(add app.data.read in the Permissions app)"},
                                 status_code=403)
@@ -842,6 +851,9 @@ async def api_app_data_set(aid: str, body: dict, request: Request):
     p = _principal_of(request)
     if p.kind == "app" and p.id != aid:
         if state["pdp"].decide(p, "app.data.write", f"app:{aid}/data").effect != "allow":
+            state["store"].log("policy", f"deny: {p.label} → app.data.write app:{aid}/data",
+                               {"principal": p.label, "action": "app.data.write",
+                                "resource": f"app:{aid}/data", "effect": "deny", "via": "app_data"})
             return JSONResponse({"error": "denied: no grant to write another app's data "
                                           "(add app.data.write in the Permissions app)"},
                                 status_code=403)
@@ -987,7 +999,8 @@ async def api_app_manifest_approve(aid: str, body: dict):
         n += 1
     store.revoke_grants_for("app", aid, source="legacy")
     store.set_app_manifest(aid, json.dumps(man), "approved")
-    store.log("system", f"manifest approved for app '{a['name']}': {n} permission(s) granted")
+    store.log("policy", f"manifest approved for app '{a['name']}': {n} permission(s) granted",
+              {"principal": f"app:{aid}", "granted": n, "via": "consent_screen"})
     await state["broadcast"]({"type": "grants"})
     await state["broadcast"]({"type": "apps"})
     return {"ok": True, "granted": n}
@@ -1237,8 +1250,10 @@ async def resolve_approval(aid: str, approved: bool, remember: bool = False):
         state["store"].add_grant(o["principal_kind"], o["principal_id"], o["action"],
                                  o["resource"], source="user",
                                  note="allowed & remembered from an approval prompt")
-        state["store"].log("approval", f"grant remembered: {o['action']} {o['resource']}",
-                           {"principal": f"{o['principal_kind']}:{o['principal_id']}"})
+        state["store"].log("policy", f"grant remembered: {o['action']} {o['resource']}",
+                           {"principal": f"{o['principal_kind']}:{o['principal_id']}",
+                            "action": o["action"], "resource": o["resource"],
+                            "effect": "allow", "via": "approval_prompt"})
         await state["broadcast"]({"type": "grants"})
     entry["fut"].set_result(bool(approved))
 
@@ -1303,14 +1318,25 @@ async def api_run_tool(body: dict, request: Request):
     level, reason = toolbox.risk_of(name, args)
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""))
+
+    def _plog(outcome: str, approved=None):
+        state["store"].log("policy",
+                           f"{outcome}: {principal.label} → {dec.action} {dec.resource}"[:400],
+                           {"principal": principal.label, "action": dec.action,
+                            "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
+                            "reason": dec.reason or reason, "tool": name,
+                            "approved": approved, "via": "api_tool"})
     if dec.effect == "deny":
+        _plog("deny")
         return JSONResponse({"error": f"denied: {dec.reason or reason}"}, status_code=403)
     if dec.effect == "ask":
         if not state["clients"]:  # headless: nobody to ask
+            _plog("ask", approved=False)
             return JSONResponse({"error": f"needs approval: {dec.reason or reason}"},
                                 status_code=403)
         approved = await request_approval(name, args, dec.reason or reason,
                                           offer=dec.grant_offer)
+        _plog("ask", approved=bool(approved))
         if not approved:
             return JSONResponse({"error": f"not approved: {dec.reason or reason}"},
                                 status_code=403)
@@ -1336,21 +1362,100 @@ async def api_add_grant(body: dict):
     kind, action = (body.get("principal_kind") or "").strip(), (body.get("action") or "").strip()
     if not kind or not action:
         return JSONResponse({"error": "principal_kind and action are required"}, status_code=400)
-    gid = state["store"].add_grant(
-        kind, (body.get("principal_id") or "").strip(), action,
-        (body.get("resource") or "*").strip(), effect=body.get("effect", "allow"),
-        source="user", note=body.get("note", ""))
+    pid = (body.get("principal_id") or "").strip()
+    resource = (body.get("resource") or "*").strip()
+    effect = body.get("effect", "allow")
+    gid = state["store"].add_grant(kind, pid, action, resource, effect=effect,
+                                   source="user", note=body.get("note", ""))
+    state["store"].log("policy", f"grant attached: {effect} {kind}:{pid} → {action} {resource}",
+                       {"principal": f"{kind}:{pid}", "action": action, "resource": resource,
+                        "effect": effect, "via": "permissions_ui"})
     await state["broadcast"]({"type": "grants"})
     return {"id": gid}
+
+
+@app.put("/api/grants/{gid}")
+async def api_update_grant(gid: str, body: dict):
+    """Toggle a grant's effect between allow and deny (the policy map click-toggle)."""
+    effect = (body.get("effect") or "").strip()
+    ok = state["store"].update_grant(gid, effect)
+    if ok:
+        state["store"].log("policy", f"grant toggled to {effect}: {gid}",
+                           {"grant_id": gid, "effect": effect, "via": "permissions_ui"})
+        await state["broadcast"]({"type": "grants", "revoked": effect == "deny"})
+    return {"ok": ok}
 
 
 @app.delete("/api/grants/{gid}")
 async def api_revoke_grant(gid: str):
     ok = state["store"].revoke_grant(gid)
     if ok:
-        state["store"].log("system", f"grant revoked: {gid}")
+        state["store"].log("policy", f"grant revoked: {gid}",
+                           {"grant_id": gid, "via": "permissions_ui"})
         await state["broadcast"]({"type": "grants", "revoked": True})
     return {"ok": ok}
+
+
+@app.get("/api/policy/options")
+async def api_policy_options():
+    """Everything the Permissions composer can pick from: principals (apps, subagents,
+    workflows), actions, and real resources (tools, MCP, skills, models, agents) — so
+    rules are attached by selection, never typed blind."""
+    store, cfg, toolbox = state["store"], state["cfg"], state["toolbox"]
+    principals = (
+        [{"kind": "app", "id": a["id"], "label": a["name"],
+          "status": a.get("manifest_status") or "none"} for a in store.list_apps()]
+        + [{"kind": "subagent", "id": s["name"], "label": s["name"]}
+           for s in store.list_subagents()]
+        + [{"kind": "workflow", "id": w["name"], "label": w["name"]}
+           for w in store.list_workflows()])
+    tools = sorted(t["name"] for t in toolbox.schemas() if not t["name"].startswith("mcp_"))
+    mcp_res = []
+    for s in (state["mcp"].status() if state.get("mcp") else []):
+        mcp_res.append({"value": f"mcp:{s['name']}/*", "label": f"{s['name']} — all tools"})
+        for t in (s.get("tools") or [])[:40]:
+            mcp_res.append({"value": f"mcp:{s['name']}/{t}", "label": f"{s['name']} / {t}"})
+    for name in (cfg.get("mcp_servers") or {}):
+        v = f"mcp:{name}/*"
+        if not any(m["value"] == v for m in mcp_res):
+            mcp_res.append({"value": v, "label": f"{name} — all tools (not connected)"})
+    try:
+        models = [m["id"] for m in await providers.available_models(cfg)]
+    except Exception:
+        models = [cfg.get("default_model", "")]
+    ws = cfg.get("workspace", "")
+    return {"principals": principals,
+            "actions": ["tool.use", "mcp.use", "skill.use", "model.use", "net.fetch",
+                        "fs.read", "fs.write", "memory.read", "memory.write",
+                        "kg.read", "kg.write", "agent.invoke",
+                        "app.data.read", "app.data.write", "*"],
+            "resources": {
+                "tool.use": [{"value": f"tool:{t}*", "label": t} for t in tools],
+                "mcp.use": mcp_res,
+                "skill.use": [{"value": f"skill:{s['name']}", "label": s["name"]}
+                              for s in store.list_skills()],
+                "model.use": [{"value": f"model:{m}", "label": m} for m in models if m],
+                "agent.invoke": ([{"value": "agent:main", "label": "main agent (/api/chat)"}]
+                                 + [{"value": f"agent:subagent/{s['name']}", "label": f"subagent {s['name']}"}
+                                    for s in store.list_subagents()]
+                                 + [{"value": f"agent:workflow/{w['name']}", "label": f"workflow {w['name']}"}
+                                    for w in store.list_workflows()]),
+                "net.fetch": [{"value": "net:*", "label": "any URL"},
+                              {"value": "net:https://*", "label": "any https URL"}],
+                "fs.read": [{"value": f"fs:{ws}/*", "label": "workspace files"},
+                            {"value": "fs:*", "label": "any path (sandbox still applies)"}],
+                "fs.write": [{"value": f"fs:{ws}/*", "label": "workspace files"},
+                             {"value": "fs:*", "label": "any path (sandbox still applies)"}],
+                "memory.read": [{"value": "memory:*", "label": "all memory scopes"}],
+                "memory.write": [{"value": "memory:*", "label": "all memory scopes"}],
+                "kg.read": [{"value": "kg:*", "label": "knowledge graph"}],
+                "kg.write": [{"value": "kg:*", "label": "knowledge graph"}],
+                "app.data.read": [{"value": f"app:{a['id']}/data", "label": f"data of {a['name']}"}
+                                  for a in store.list_apps()],
+                "app.data.write": [{"value": f"app:{a['id']}/data", "label": f"data of {a['name']}"}
+                                   for a in store.list_apps()],
+                "*": [{"value": "*", "label": "everything (full access)"}],
+            }}
 
 
 @app.get("/api/tools")
@@ -1655,6 +1760,72 @@ async def api_wallpaper_generate(body: dict):
     return {"ok": not result.startswith("[error]"), "result": result}
 
 
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".heic", ".tif", ".tiff", ".webp", ".gif", ".bmp")
+
+
+def _mac_wallpaper_file() -> Path | None:
+    """Current macOS wallpaper via AppleScript, the macOS 14+ wallpaper store, or the
+    pre-Sonoma Dock database — whichever this system exposes."""
+    import plistlib
+    import sqlite3
+    import subprocess
+    import urllib.parse
+    # 1) AppleScript (most accurate, but needs the Automation permission and fails for
+    #    some dynamic wallpapers on macOS 14+)
+    for script in ('tell application "System Events" to get picture of current desktop',
+                   'tell application "Finder" to get POSIX path of (get desktop picture as alias)'):
+        try:
+            r = subprocess.run(["osascript", "-e", script],
+                               capture_output=True, text=True, timeout=10)
+            p = Path(r.stdout.strip()).expanduser()
+            if r.returncode == 0 and r.stdout.strip() and p.is_file():
+                return p
+        except Exception:
+            pass
+    # 2) macOS 14+ (Sonoma/Sequoia) wallpaper store — plain file read, no permissions.
+    #    File URLs are nested inside base64-embedded binary plists; walk everything.
+    idx = Path.home() / "Library/Application Support/com.apple.wallpaper/Store/Index.plist"
+    if idx.is_file():
+        try:
+            urls: list[str] = []
+
+            def walk(node):
+                if isinstance(node, dict):
+                    for v in node.values():
+                        walk(v)
+                elif isinstance(node, list):
+                    for v in node:
+                        walk(v)
+                elif isinstance(node, str) and node.startswith("file://"):
+                    urls.append(node)
+                elif isinstance(node, bytes):
+                    try:
+                        walk(plistlib.loads(node))
+                    except Exception:
+                        pass
+
+            walk(plistlib.loads(idx.read_bytes()))
+            for u in urls:
+                p = Path(urllib.parse.unquote(u[len("file://"):]))
+                if p.is_file() and p.suffix.lower() in _IMAGE_EXTS:
+                    return p
+        except Exception:
+            pass
+    # 3) pre-Sonoma Dock database
+    db = Path.home() / "Library/Application Support/Dock/desktoppicture.db"
+    if db.is_file():
+        try:
+            rows = sqlite3.connect(str(db)).execute("select value from data").fetchall()
+            for (v,) in reversed(rows):
+                if isinstance(v, str):
+                    p = Path(v).expanduser()
+                    if p.is_file() and p.suffix.lower() in _IMAGE_EXTS:
+                        return p
+        except Exception:
+            pass
+    return None
+
+
 def _host_wallpaper_file() -> Path | None:
     """Path of the host OS desktop wallpaper (macOS / Windows / Linux), or None."""
     import os
@@ -1663,11 +1834,7 @@ def _host_wallpaper_file() -> Path | None:
     import sys as _sys
     import urllib.parse
     if _sys.platform == "darwin":
-        r = subprocess.run(["osascript", "-e",
-                            'tell application "System Events" to get picture of current desktop'],
-                           capture_output=True, text=True, timeout=10)
-        p = Path(r.stdout.strip()).expanduser()
-        return p if r.returncode == 0 and r.stdout.strip() and p.is_file() else None
+        return _mac_wallpaper_file()
     if _sys.platform.startswith("win"):
         try:
             import winreg
@@ -1699,14 +1866,28 @@ def _host_wallpaper_file() -> Path | None:
 async def api_wallpaper_system():
     """Adopt the host OS desktop wallpaper as the AgentOS wallpaper."""
     import shutil
+    import subprocess
+    import sys as _sys
     try:
         path = _host_wallpaper_file()
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     if path is None:
-        return JSONResponse({"error": "could not read the system wallpaper on this desktop"},
-                            status_code=404)
-    shutil.copy2(path, cfgmod.AGENTOS_HOME / "wallpaper.png")
+        msg = "could not read the system wallpaper on this desktop"
+        if _sys.platform == "darwin":
+            msg += (" — if you just denied an Automation prompt, allow it in System Settings → "
+                    "Privacy & Security → Automation, or set a static image as your wallpaper")
+        return JSONResponse({"error": msg}, status_code=404)
+    dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
+    # browsers can't render HEIC/TIFF (Apple's default wallpapers) — convert via sips
+    if _sys.platform == "darwin" and path.suffix.lower() in (".heic", ".tif", ".tiff", ".bmp"):
+        r = subprocess.run(["sips", "-s", "format", "png", str(path), "--out", str(dest)],
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            return JSONResponse({"error": f"could not convert {path.suffix} wallpaper: "
+                                          f"{(r.stderr or r.stdout).strip()}"}, status_code=500)
+    else:
+        shutil.copy2(path, dest)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True, "source": str(path)}
 
@@ -2100,6 +2281,10 @@ async def api_chat(body: dict, request: Request):
     if principal.kind == "app":
         dec = state["pdp"].decide(principal, "agent.invoke", "agent:main")
         if dec.effect == "deny":
+            state["store"].log("policy", f"deny: {principal.label} → agent.invoke agent:main",
+                               {"principal": principal.label, "action": "agent.invoke",
+                                "resource": "agent:main", "effect": "deny", "rule": dec.rule,
+                                "via": "api_chat"})
             return JSONResponse({"error": f"denied: {dec.reason}"}, status_code=403)
         if dec.effect == "ask":
             offer = {"principal_kind": "app", "principal_id": principal.id,
@@ -2134,11 +2319,26 @@ async def api_chat(body: dict, request: Request):
 
 
 def _history_for(cid: str) -> list[dict]:
-    """Rebuild model-facing history from stored messages (text only; tool traces stay in meta)."""
+    """Rebuild model-facing history from stored messages (text + attached images;
+    tool traces stay in meta)."""
     out = []
     for m in state["store"].get_messages(cid):
-        if m["role"] in ("user", "assistant") and (m["content"] or "").strip():
-            out.append({"role": m["role"], "content": m["content"]})
+        images = (m.get("meta") or {}).get("images") or []
+        if m["role"] in ("user", "assistant") and ((m["content"] or "").strip() or images):
+            entry = {"role": m["role"], "content": m["content"] or ""}
+            if images:
+                entry["images"] = images
+            out.append(entry)
+    return out
+
+
+def _chat_images(data: dict, limit: int = 4) -> list[str]:
+    """Sanitize client-supplied image attachments: data-URL images only, capped
+    in count and size (~8 MB each as base64)."""
+    out = []
+    for u in (data.get("images") or [])[:limit]:
+        if isinstance(u, str) and u.startswith("data:image/") and ";base64," in u and len(u) < 8_000_000:
+            out.append(u)
     return out
 
 
@@ -2254,14 +2454,18 @@ async def ws_endpoint(ws: WebSocket):
         stamped with its conversation_id so the UI routes streams to the right chat."""
         cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
         text = data.get("text", "").strip()
+        images = _chat_images(data)
         model = data.get("model") or cfg.get("default_model", "")
 
         async def evsend(ev: dict):
             await send({**ev, "conversation_id": cid})
 
         history = _history_for(cid)
-        store.add_message(cid, "user", text)
-        history.append({"role": "user", "content": text})
+        store.add_message(cid, "user", text, {"images": images} if images else None)
+        entry = {"role": "user", "content": text}
+        if images:
+            entry["images"] = images
+        history.append(entry)
         store.touch_conversation(cid)
 
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
@@ -2436,7 +2640,7 @@ async def ws_endpoint(ws: WebSocket):
             t = data.get("type")
             if t == "chat":
                 text = (data.get("text") or "").strip()
-                if not text:
+                if not text and not _chat_images(data):
                     continue
                 cid = data.get("conversation_id")
                 if cid and cid in turns:
@@ -2445,8 +2649,9 @@ async def ws_endpoint(ws: WebSocket):
                                            "stop it, or continue in another chat."})
                     continue
                 if not cid:
-                    cid = state["store"].create_conversation(text[:60])
-                    await send({"type": "conversation", "id": cid, "title": text[:60]})
+                    title = text[:60] or "(image)"
+                    cid = state["store"].create_conversation(title)
+                    await send({"type": "conversation", "id": cid, "title": title})
                 turns[cid] = {"agent": None, "task": None}  # claim before the task starts
                 asyncio.create_task(run_chat(cid, data))
             elif t == "build":

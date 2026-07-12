@@ -54,6 +54,8 @@ class Decision:
     reason: str = ""
     rule: str = ""  # grant id | "hard-block" | "builtin-deny" | "default"
     grant_offer: dict | None = field(default=None)  # ready-to-write grant for "allow & remember"
+    action: str = ""    # stamped by decide() so enforcement sites can log verbosely
+    resource: str = ""
 
 
 # Non-user principals may never do these, regardless of grants (same spirit as
@@ -140,6 +142,12 @@ class PDP:
 
     def decide(self, principal: Principal, action: str, resource: str,
                context: dict | None = None) -> Decision:
+        dec = self._decide(principal, action, resource, context)
+        dec.action, dec.resource = action, resource
+        return dec
+
+    def _decide(self, principal: Principal, action: str, resource: str,
+                context: dict | None = None) -> Decision:
         ctx = context or {}
         risk = ctx.get("risk", "safe")
         # 1. hard blocks (BLOCKED_PATTERNS + legacy deny policies, via risk_of)

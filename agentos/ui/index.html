@@ -389,6 +389,12 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .errmsg{color:var(--err);background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px}
 
 #composer{padding:10px 16px 14px}
+#attach{display:flex;gap:8px;padding:0 0 8px;flex-wrap:wrap}
+#attach .att{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+#attach .att img{width:100%;height:100%;object-fit:cover;display:block}
+#attach .att button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:12px;line-height:1;cursor:pointer}
+.bubble .bimgs{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.bubble .bimgs img{max-width:220px;max-height:160px;border-radius:8px;display:block}
 #combox{max-width:780px;margin:0 auto;position:relative;background:var(--bg3);border:1px solid var(--line);border-radius:14px;transition:.15s}
 #combox:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px rgba(94,234,212,.08)}
 #input{width:100%;background:none;border:none;resize:none;padding:12px 88px 12px 14px;max-height:160px;line-height:1.5}
@@ -1063,7 +1069,7 @@ const APPS={
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
-  permissions:{id:'permissions',title:'Permissions',icon:'',w:780,h:640,desc:'What each app & agent may do — grant, review, revoke',render:renderPermissions},
+  permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:720,h:600,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
@@ -1730,7 +1736,7 @@ function renderChat(body){
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="combox">
-          <textarea id="input" rows="1" placeholder="Ask, tell it what to do — or @subagent to address a team member directly"></textarea>
+          <textarea id="input" rows="1" placeholder="Ask, tell it what to do, paste an image — or @subagent to address a team member directly"></textarea>
           <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
@@ -1740,7 +1746,13 @@ function renderChat(body){
   feed=$('#feed');chatEl=$('#chat');input=$('#input');sendBtn=$('#send');
   sendBtn.onclick=send;
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
-  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';if(!running)sendBtn.disabled=!input.value.trim()});
+  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';if(!running)sendBtn.disabled=!input.value.trim()&&!PENDING_IMGS.length});
+  input.addEventListener('paste',e=>{
+    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
+    if(!items.length)return;
+    e.preventDefault();
+    items.forEach(it=>addPastedImage(it.getAsFile()));
+  });
   $('#newchat').onclick=newChat;
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
@@ -1760,19 +1772,51 @@ function setRunning(r){running=r;
   if(!sendBtn)return;
   sendBtn.classList.toggle('stop',r);
   sendBtn.textContent=r?'◼':'➤';
-  sendBtn.disabled=r?false:!input.value.trim();
+  sendBtn.disabled=r?false:(!input.value.trim()&&!PENDING_IMGS.length);
 }
+let PENDING_IMGS=[];
+function bubbleImgs(el,urls){
+  if(!urls||!urls.length)return;
+  const g=document.createElement('div');g.className='bimgs';
+  urls.forEach(u=>{const im=document.createElement('img');im.src=u;g.appendChild(im)});
+  el.appendChild(g);
+}
+function addPastedImage(file){
+  if(!file)return;
+  if(PENDING_IMGS.length>=4){toast('up to 4 images per message');return}
+  const img=new Image();
+  img.onload=()=>{
+    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    // downscale/recompress large pastes (screenshots) so history stays light
+    PENDING_IMGS.push((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
+    URL.revokeObjectURL(img.src);renderAttach();
+  };
+  img.src=URL.createObjectURL(file);
+}
+function renderAttach(){
+  let a=$('#attach');
+  if(!PENDING_IMGS.length){a?.remove();if(sendBtn&&!running)sendBtn.disabled=!input.value.trim();return}
+  if(!a){a=document.createElement('div');a.id='attach';const cb=$('#combox');cb.parentNode.insertBefore(a,cb)}
+  a.innerHTML=PENDING_IMGS.map((u,i)=>`<div class="att"><img src="${u}"><button onclick="rmAttach(${i})" title="remove">×</button></div>`).join('');
+  if(sendBtn&&!running)sendBtn.disabled=false;
+}
+function rmAttach(i){PENDING_IMGS.splice(i,1);renderAttach()}
 function send(){
   if(running){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
-  const text=input.value.trim(); if(!text||!ws||ws.readyState!==1)return;
+  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
+  if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
   m.innerHTML='<div class="who">you</div><div class="bubble"></div>';
   m.querySelector('.bubble').textContent=text;
+  bubbleImgs(m.querySelector('.bubble'),imgs);
   feed.appendChild(m);
   showWorking();scrollDown();
-  ws.send(JSON.stringify({type:'chat',text,conversation_id:currentConv,model:$('#modelsel').value}));
-  input.value='';input.style.height='auto';setRunning(true);
+  ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:$('#modelsel').value}));
+  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();setRunning(true);
 }
 function showWorking(){
   if(!feed||$('#working'))return;
@@ -1807,7 +1851,7 @@ async function openConv(cid){
   feed.innerHTML='';
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';m.querySelector('.bubble').textContent=msg.content;}
+    if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{m.innerHTML='<div class="who">▲ '+esc(agentName())+'</div>';
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
@@ -1901,6 +1945,14 @@ async function renderSettings(body){
       <label>Base URL (e.g. http://localhost:1234/v1)</label><input id="s-cus-url" value="${esc(p.custom.base_url||'')}">
       <label>API key (optional)</label><input id="s-cus-key" value="${esc(p.custom.api_key||'')}">
       <label>Models</label><input id="s-cus-models" value="${esc((p.custom.models||[]).join(', '))}"></div>
+    <div class="provbox"><div class="ptitle">Google (Gemini) <input type="checkbox" id="s-goo-on" ${p.google&&p.google.enabled?'checked':''}></div>
+      <label>API key ${p.google&&p.google._has_key?'(set)':''}</label><input id="s-goo-key" placeholder="AIza…" value="${esc((p.google&&p.google.api_key)||'')}">
+      <p class="mut" style="margin-top:8px">Used for image generation (Gemini image model). Free key at aistudio.google.com.</p></div>
+    <div class="provbox"><div class="ptitle">Image generation</div>
+      <label>Provider</label>
+      <select id="s-img-prov">${['auto','google','openai','pollinations'].map(v=>`<option value="${v}" ${((cfg.image&&cfg.image.provider)||'auto')===v?'selected':''}>${v}</option>`).join('')}</select>
+      <label>Model (optional)</label><input id="s-img-model" placeholder="gemini-2.5-flash-image / gpt-image-1" value="${esc((cfg.image&&cfg.image.model)||'')}">
+      <p class="mut" style="margin-top:8px">Powers wallpaper &amp; image generation. <b>auto</b> picks Google, then OpenAI (whichever has a key), else the free pollinations.ai service.</p></div>
     <div class="provbox"><div class="ptitle">Appearance</div>
       <label>Theme</label>
       <div class="row">
@@ -1960,7 +2012,8 @@ async function saveSettings(){
     openai:{enabled:$('#s-oai-on').checked,api_key:$('#s-oai-key').value,models:models($('#s-oai-models').value)},
     openrouter:{enabled:$('#s-or-on').checked,api_key:$('#s-or-key').value,models:models($('#s-or-models').value)},
     custom:{enabled:$('#s-cus-on').checked,base_url:$('#s-cus-url').value,api_key:$('#s-cus-key').value,models:models($('#s-cus-models').value)},
-  }};
+    google:{enabled:$('#s-goo-on').checked,api_key:$('#s-goo-key').value},
+  },image:{provider:$('#s-img-prov').value,model:$('#s-img-model').value.trim()}};
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   toast('settings saved');loadModels();loadConfig();
 }
@@ -2732,35 +2785,45 @@ async function tgUnpair(){
 
 /* ================= logs app ================= */
 function renderLogs(body,w){
-  w.kind=w.kind||'';
+  w.kind=w.kind||'';w.q=w.q||'';
   body.innerHTML=`<div class="apptop">
-      <select id="log-kind" style="flex:0 0 150px">
-        <option value="">all kinds</option><option>turn</option><option>tool</option><option>mcp</option>
+      <select id="log-kind" style="flex:0 0 130px">
+        <option value="">all kinds</option><option>turn</option><option>tool</option><option>policy</option><option>mcp</option>
         <option>telegram</option><option>task</option><option>system</option><option>error</option>
       </select>
-      <span class="mut" id="log-count" style="flex:1"></span>
-      <button class="endbtn" onclick="refreshApp('logs')">↻ Refresh</button>
+      <input id="log-q" placeholder="search message & details… (e.g. deny, app:, run_command)" style="flex:1">
+      <span class="mut" id="log-count" style="flex:0 0 auto"></span>
+      <button class="endbtn" onclick="refreshApp('logs')">↻</button>
       <button class="endbtn" onclick="logsClear()">Clear all</button>
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
-  $('#log-kind').value=w.kind;
+  $('#log-kind').value=w.kind;$('#log-q').value=w.q;
   $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
+  let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   clearInterval(w.timer);
   loadLogs(w);
   w.timer=setInterval(()=>{if(document.getElementById('log-rows'))loadLogs(w);else clearInterval(w.timer)},5000);
 }
 async function loadLogs(w){
-  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||''));const d=await r.json();
+  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||''));const d=await r.json();
   const tb=$('#log-rows');if(!tb)return;
   $('#log-count').textContent=d.logs.length+' entries';
   tb.innerHTML=d.logs.map(l=>{
     const t=new Date(l.created_at*1000);
-    let meta='';try{const m=JSON.parse(l.meta||'{}');if(Object.keys(m).length)meta=Object.entries(m).map(([k,v])=>k+'='+JSON.stringify(v)).join(' ').slice(0,160)}catch(e){}
-    return `<tr class="lk-${esc(l.kind)}"><td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
-      <td><span class="lbadge">${esc(l.kind)}</span></td>
-      <td>${esc(l.message)}${meta?`<div class="tools-mini">${esc(meta)}</div>`:''}</td></tr>`;
+    let m={};try{m=JSON.parse(l.meta||'{}')}catch(e){}
+    const keys=Object.keys(m);
+    const mtxt=keys.map(k=>k+'='+JSON.stringify(m[k])).join('  ');
+    const eff=m.effect==='deny'||l.kind==='error'?'var(--err,#f87171)':(m.effect==='allow'?'var(--ok,#5eead4)':'');
+    return `<tr class="lk-${esc(l.kind)}" style="cursor:${keys.length?'pointer':'default'}" onclick="logExpand(this)">
+      <td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
+      <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span></td>
+      <td>${esc(l.message)}
+        ${m.principal?`<span class="badge" style="margin-left:6px">${esc(m.principal)}</span>`:''}
+        ${mtxt?`<div class="tools-mini" style="white-space:normal;word-break:break-word">${esc(mtxt.slice(0,220))}${mtxt.length>220?' …':''}</div>
+        <pre class="log-full" style="display:none;font-size:11px;background:var(--card,#171b22);border:1px solid var(--line,#232a35);border-radius:8px;padding:8px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(JSON.stringify(m,null,2))}</pre>`:''}</td></tr>`;
   }).join('')||'<tr><td class="mut" style="padding:20px">no log entries</td></tr>';
 }
+function logExpand(tr){const p=tr.querySelector('.log-full');if(p)p.style.display=p.style.display==='none'?'block':'none'}
 async function logsClear(){await fetch('/api/logs',{method:'DELETE'});refreshApp('logs')}
 
 /* ================= soul app ================= */
@@ -2982,7 +3045,7 @@ async function renderPersonalize(body){
         <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${id}')">✕</button>
       </div>`).join(''):'<p class="mut">No wallpapers yet — generate one above.</p>'}
     </div>
-    <p class="mut" style="margin-top:12px">Free AI images (the service caps resolution — for true HD, set any photo/URL as wallpaper). You can also tell ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
+    <p class="mut" style="margin-top:12px">Uses your image provider from Settings (Gemini / OpenAI; free pollinations.ai without a key, which caps resolution). You can also tell ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
   </div>`;
 }
 async function pzGen(){
@@ -3093,62 +3156,225 @@ async function delPolicy(i){
   refreshApp('policies');
 }
 
-/* ================= permissions app (grants: the consent ledger) ================= */
+/* ================= permissions app: the policy console ================= */
+let PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[]};
+const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
+function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
+  return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
+function permFamOf(action){if(action==='*')return 'Full access';if(action==='legacy policy')return 'Legacy rules';
+  for(const f of PERM_FAMS)for(let i=1;i<f.length;i++)if(action.startsWith(f[i]))return f[0];return 'Other'}
 async function renderPermissions(body){
-  let grants=[],apps=[];
-  try{grants=(await (await fetch('/api/grants')).json()).grants||[]}catch(e){}
-  try{apps=(await (await fetch('/api/apps')).json()).apps||[]}catch(e){}
-  const proposed=apps.filter(a=>(a.manifest_status||'none')==='proposed');
-  const groups={};
-  grants.forEach(g=>{const k=g.principal_kind+' '+(g.principal_id||'');(groups[k]=groups[k]||[]).push(g)});
-  const srcBadge=s=>s==='legacy'?'<span class="badge err">legacy full access</span>'
-    :s==='manifest'?'<span class="badge ok">manifest</span>'
-    :s==='auto'?'<span class="badge">auto</span>':'<span class="badge">user</span>';
-  const groupHTML=Object.keys(groups).sort().map(k=>{
-    const [kind,id]=k.split(' ');
-    const label=permPrincipalLabel(kind,id);
-    const rows=groups[k].map(g=>`<div class="item">
-        <span class="badge ${g.effect==='allow'?'ok':'err'}">${g.effect}</span>
-        <div class="grow"><div style="font-family:var(--mono);font-size:12.5px">${esc(g.action)} · ${esc(g.resource)}</div>
-          ${g.note?`<div class="mut" style="font-size:11.5px">${esc(g.note)}</div>`:''}</div>
-        ${srcBadge(g.source)}
-        <button title="revoke" onclick="revokeGrant('${g.id}')">✕</button></div>`).join('');
-    return `<div style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(id||kind)};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc((label.replace(/^[a-z]+ "|"$/g,'')[0]||'?').toUpperCase())}</span>
-      <b>${esc(label)}</b></div>${rows}</div>`;
-  }).join('');
-  body.innerHTML=`<div class="pad">
-    ${proposed.length?`<label>Awaiting your review</label>`+proposed.map(a=>`<div class="item">
-      <div class="grow"><b>${esc(a.name)}</b> <span class="mut">requests permissions via its manifest</span></div>
-      <button class="save" style="margin:0" onclick="reviewManifest('${a.id}')">Review</button></div>`).join('')+'<div style="height:10px"></div>':''}
-    <label>Active grants — who may do what (revoke any time; effect is immediate)</label>
-    ${groupHTML||'<p class="mut">No grants yet. When an app or subagent asks for a capability, "Allow &amp; remember" writes a grant here. Approving an app\'s manifest does too.</p>'}
-    <label>Add a rule manually</label>
-    <div class="row">
-      <select id="gr-kind" style="flex:0 0 100px"><option value="app">app</option><option value="subagent">subagent</option><option value="workflow">workflow</option></select>
-      <select id="gr-pid" style="flex:1 1 90px">${apps.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}<option value="*">any (*)</option></select>
-      <select id="gr-eff" style="flex:0 0 90px"><option value="allow">✓ allow</option><option value="deny">✕ deny</option></select>
+  try{PERM.grants=(await (await fetch('/api/grants'+(PERM.showRevoked?'?all=1':''))).json()).grants||[]}catch(e){PERM.grants=[]}
+  try{PERM.opts=await (await fetch('/api/policy/options')).json()}catch(e){}
+  try{PERM.apps=(await (await fetch('/api/apps')).json()).apps||[]}catch(e){PERM.apps=[]}
+  await loadConfig();
+  const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
+  body.innerHTML=`<div class="apptop" style="gap:6px">
+    ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${t==='review'&&pending?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
+    <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
+  </div>
+  <div id="perm-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
+  body.querySelectorAll('.perm-tab').forEach(b=>b.onclick=()=>{PERM.tab=b.dataset.t;renderPermissions(body)});
+  $('#perm-q').oninput=e=>{PERM.q=e.target.value;permBody()};
+  permBody();
+}
+function permBody(){
+  const box=$('#perm-body');if(!box)return;
+  ({map:permMap,grants:permGrantsView,review:permReview,attach:permAttachView}[PERM.tab]||permMap)(box);
+}
+function permPrincipals(){
+  const map=new Map();
+  (PERM.opts.principals||[]).forEach(p=>map.set(p.kind+':'+p.id,{...p,label:p.label||p.id||p.kind}));
+  PERM.grants.forEach(g=>{if(g.principal_kind==='user')return;
+    const k=g.principal_kind+':'+(g.principal_id||'');
+    if(!map.has(k))map.set(k,{kind:g.principal_kind,id:g.principal_id||'',label:permPrincipalLabel(g.principal_kind,g.principal_id)})});
+  const out=[...map.values()].map(p=>({...p,
+    grants:PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind===p.kind&&globMatch(g.principal_id||'*',p.id))}));
+  // the system principal: the main agent acting as you — legacy policies live here
+  out.unshift({kind:'user',id:'',label:'System — main agent',system:true,
+    grants:[...PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='user'),
+            ...((cfg&&cfg.policies)||[]).map((p,i)=>({id:'legacy:'+i,action:'legacy policy',
+              resource:p.match,effect:p.action==='deny'?'deny':'allow',source:'Policies app',readonly:true}))]});
+  return out;
+}
+function permMap(box){
+  const q=PERM.q.toLowerCase();
+  const ps=permPrincipals().filter(p=>!q||p.label.toLowerCase().includes(q)||p.kind.includes(q));
+  PERM._mapPs=ps;
+  const famChip=(p,f)=>{
+    const gs=p.grants.filter(g=>permFamOf(g.action)===f);
+    if(!gs.length)return '';
+    const d=gs.filter(g=>g.effect==='deny').length,a=gs.length-d;
+    const col=d&&a?'#f2c94c':d?'var(--err,#f87171)':'var(--ok,#5eead4)';
+    return `<span style="font-size:10px;padding:2px 7px;border-radius:9px;border:1px solid ${col};color:${col}">${esc(f)} ${gs.length}</span>`;
+  };
+  const fams=['Full access','Legacy rules',...PERM_FAMS.map(f=>f[0]),'Other'];
+  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Who may do what, at a glance. Click a card for its policy map — toggle any permission between allow/deny, or revoke it.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+    ${ps.map((p,i)=>{
+      const full=p.grants.some(g=>g.action==='*'&&g.resource==='*'&&g.effect!=='deny');
+      const sel=PERM.sel===p.kind+':'+p.id;
+      const st=p.status==='proposed'?'<span class="badge err">review pending</span>':p.status==='approved'?'<span class="badge ok">manifest</span>':'';
+      return `<div class="perm-card" data-i="${i}" style="cursor:pointer;background:var(--card,#171b22);border:1px solid ${sel?'var(--acc,#5eead4)':'var(--line,#232a35)'};border-radius:12px;padding:12px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+        <span style="width:30px;height:30px;border-radius:8px;background:${tileBg(p.id||p.kind)};display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 30px">${esc((p.label[0]||'?').toUpperCase())}</span>
+        <div style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</b>
+        <div class="mut" style="font-size:10.5px">${esc(p.kind)} · ${p.grants.length} rule${p.grants.length===1?'':'s'}</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${full?'<span class="badge err">FULL ACCESS</span>':''}${st}
+        ${fams.map(f=>famChip(p,f)).join('')||'<span class="mut" style="font-size:11px">no rules — every capability asks first</span>'}</div>
+    </div>`}).join('')||'<p class="mut">no apps or agents yet</p>'}
+  </div>
+  <div id="perm-chart" style="margin-top:18px"></div>`;
+  box.querySelectorAll('.perm-card').forEach(c=>c.onclick=()=>{
+    const p=PERM._mapPs[+c.dataset.i];const k=p.kind+':'+p.id;
+    PERM.sel=PERM.sel===k?null:k;permMap(box);
+  });
+  const selP=ps.find(p=>PERM.sel===p.kind+':'+p.id);
+  if(selP)permChartInto($('#perm-chart'),selP);
+}
+function permChartInto(el,p){
+  if(!el)return;
+  const fams={};
+  p.grants.forEach(g=>{const f=permFamOf(g.action);(fams[f]=fams[f]||[]).push(g)});
+  const chip=g=>{
+    const col=g.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)';
+    return `<div class="pm-chip" data-eff="${g.effect}" style="display:flex;align-items:center;gap:8px;background:var(--card,#171b22);border:1px solid ${col};border-radius:9px;padding:6px 10px;margin-bottom:5px;max-width:560px">
+      ${g.readonly
+        ?`<span style="color:${col};font-weight:700;font-size:12px;padding:0 4px">${g.effect==='deny'?'✕ deny':'✓ allow'}</span>`
+        :`<button title="click to flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')" style="border:none;background:transparent;color:${col};font-weight:700;padding:0 4px;font-size:12px;cursor:pointer">${g.effect==='deny'?'✕ deny':'✓ allow'}</button>`}
+      <div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
+      <span class="badge" title="${esc(g.note||'')}">${esc(g.source||'user')}</span>
+      ${g.readonly?`<button class="endbtn" style="font-size:10px" onclick="openApp('policies')">edit</button>`
+                  :`<button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}</div>`;
+  };
+  el.innerHTML=`<div class="tmsec" style="margin:4px 0 10px">Policy map — ${esc(p.label)}</div>
+  <div id="pm-wrap" style="position:relative;display:flex;gap:80px;align-items:flex-start">
+    <svg id="pm-svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+    <div id="pm-left" style="flex:0 0 190px;background:var(--card,#171b22);border:1px solid var(--line,#232a35);border-radius:12px;padding:14px;text-align:center;position:relative;z-index:1">
+      <span style="width:44px;height:44px;border-radius:11px;background:${tileBg(p.id||p.kind)};display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">${esc((p.label[0]||'?').toUpperCase())}</span>
+      <div style="margin-top:8px"><b>${esc(p.label)}</b></div><div class="mut" style="font-size:11px">${esc(p.kind)}</div>
     </div>
-    <div class="row" style="margin-top:6px">
-      <input id="gr-action" placeholder="action, e.g. mcp.use or tool.use or *" style="flex:1">
-      <input id="gr-res" placeholder="resource, e.g. mcp:github/* or tool:run_command git *" style="flex:2">
-      <button class="save" style="margin:0;flex:0 0 70px" onclick="addGrantUI()">Add</button>
+    <div style="flex:1;position:relative;z-index:1">
+      ${Object.keys(fams).length?Object.entries(fams).map(([f,gs])=>`<div style="margin-bottom:12px">
+        <div class="mut" style="font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">${esc(f)}</div>
+        ${gs.map(chip).join('')}</div>`).join('')
+      :'<p class="mut">No rules yet — every capability this principal touches will raise a consent prompt. Use ＋ Attach to pre-approve or block things.</p>'}
+      ${p.system?'<p class="mut" style="font-size:11px;margin-top:8px">Hard-blocked commands (disk wipes, shutdown) stay blocked regardless of any rule. Legacy rules apply globally and are edited in the Policies app.</p>':''}
     </div>
-    <p class="mut" style="margin-top:10px">Grants are per-principal (per app / subagent) and use * wildcards.
-    <b>deny</b> wins over allow; hard-blocked commands stay blocked regardless. Global rules for the main
-    agent live in the <a href="#" onclick="openApp('policies');return false">Policies</a> app.</p>
+  </div>`;
+  requestAnimationFrame(()=>{
+    const svg=$('#pm-svg'),wrap=$('#pm-wrap'),src=$('#pm-left');
+    if(!svg||!wrap||!src)return;
+    const wr=wrap.getBoundingClientRect(),sr=src.getBoundingClientRect();
+    const x1=sr.right-wr.left,y1=sr.top+sr.height/2-wr.top;
+    svg.setAttribute('viewBox',`0 0 ${wr.width} ${wr.height}`);
+    svg.innerHTML=[...wrap.querySelectorAll('.pm-chip')].map(ch=>{
+      const r=ch.getBoundingClientRect();
+      const x2=r.left-wr.left,y2=r.top+r.height/2-wr.top;
+      const col=ch.dataset.eff==='deny'?'#f87171':'#5eead4';
+      return `<path d="M${x1},${y1} C${x1+50},${y1} ${x2-50},${y2} ${x2},${y2}" fill="none" stroke="${col}" stroke-width="1.5" opacity=".5"/>`;
+    }).join('');
+  });
+}
+function permGrantsView(box){
+  const q=PERM.q.toLowerCase();
+  const gs=PERM.grants.filter(g=>{
+    const s=(permPrincipalLabel(g.principal_kind,g.principal_id)+' '+g.action+' '+g.resource+' '+(g.note||'')+' '+(g.source||'')).toLowerCase();
+    return !q||s.includes(q)});
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <span class="mut">${gs.length} rule${gs.length===1?'':'s'} — click an effect pill to flip allow/deny</span>
+    <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show revoked</label></div>
+  ${gs.map(g=>{
+    const dead=!!g.revoked_at;
+    const lbl=permPrincipalLabel(g.principal_kind,g.principal_id);
+    return `<div class="item" style="${dead?'opacity:.45':''}">
+      <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(g.principal_id||g.principal_kind)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((lbl.replace(/^[a-z]+ "/,'')[0]||'?').toUpperCase())}</span>
+      <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
+        <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
+        ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
+      <span class="badge">${esc(g.source||'user')}</span>
+      ${dead?'<span class="badge err">revoked</span>'
+        :`<button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
+         <button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}
+    </div>`}).join('')||'<p class="mut">nothing matches</p>'}`;
+  const cb=$('#perm-rev');if(cb)cb.onchange=e=>{PERM.showRevoked=e.target.checked;refreshApp('permissions')};
+}
+function permReview(box){
+  const q=PERM.q.toLowerCase();
+  const apps=PERM.apps.filter(a=>!q||(a.name||'').toLowerCase().includes(q));
+  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Each app's declared permissions. Review pending proposals, or (re)scan an app's source to draft its manifest.</p>
+  ${apps.map(a=>{
+    const st=a.manifest_status||'none';
+    const legacy=PERM.grants.some(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id&&g.source==='legacy');
+    const n=PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id).length;
+    const stBadge=st==='approved'?'<span class="badge ok">approved</span>':st==='proposed'?'<span class="badge err">awaiting review</span>':'<span class="badge">no manifest</span>';
+    return `<div class="item">
+      <span style="width:26px;height:26px;border-radius:7px;background:${tileBg(a.id)};flex:0 0 26px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc((a.name[0]||'?').toUpperCase())}</span>
+      <div class="grow" style="min-width:0"><b>${esc(a.name)}</b> ${stBadge} ${legacy?'<span class="badge err">legacy full access</span>':''}
+        <div class="mut" style="font-size:11px">${n} active rule${n===1?'':'s'}${a.description?' · '+esc(a.description):''}</div></div>
+      ${st==='proposed'?`<button class="save" style="margin:0" onclick="reviewManifest('${a.id}')">Review</button>`:''}
+      <button class="endbtn" onclick="permRescan('${a.id}')">${st==='none'?'Scan':'Rescan'}</button>
+      <button class="endbtn" onclick="window.open('/api/apps/${a.id}/export')">Export</button>
+    </div>`}).join('')||'<p class="mut">no apps installed</p>'}`;
+}
+async function permRescan(aid){
+  const r=await fetch('/api/apps/'+aid+'/manifest/propose',{method:'POST'});
+  if(r.ok){toast('manifest drafted from the app source');reviewManifest(aid)}else toast('scan failed');
+}
+function permAttachView(box){
+  const o=PERM.opts;
+  PERM.att=PERM.att||{p:null,action:'tool.use',res:new Set(),effect:'allow'};
+  const att=PERM.att,q=PERM.q.toLowerCase();
+  const ps=(o.principals||[]).filter(p=>!q||(p.label||'').toLowerCase().includes(q));
+  PERM._attPs=ps;
+  const resOpts=(o.resources&&o.resources[att.action])||[];
+  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Attach a policy by picking — nothing to type blind. Choose who, what capability, and which resources.</p>
+  <div style="display:grid;grid-template-columns:250px 1fr 1.4fr;gap:14px;align-items:start">
+    <div><div class="tmsec" style="margin:0 0 6px">1 · Who</div>
+      <div style="max-height:360px;overflow-y:auto">${ps.map((p,i)=>`<div class="item" style="cursor:pointer;${att.p&&att.p.kind===p.kind&&att.p.id===p.id?'outline:1px solid var(--acc,#5eead4)':''}" onclick="permAttSel(${i})">
+        <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(p.id)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((p.label[0]||'?').toUpperCase())}</span>
+        <div class="grow" style="min-width:0"><span style="font-size:12.5px">${esc(p.label)}</span><div class="mut" style="font-size:10px">${esc(p.kind)}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div></div>
+    <div><div class="tmsec" style="margin:0 0 6px">2 · Capability</div>
+      ${(o.actions||[]).map(a=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.action===a?'border-color:var(--acc,#5eead4);color:var(--acc,#5eead4)':''}" onclick="PERM.att.action='${a}';PERM.att.res=new Set();permBody()">${a}</button>`).join('')}
+      <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+        <span class="mut" style="font-size:12px">Effect:</span>
+        <button class="endbtn" onclick="PERM.att.effect=PERM.att.effect==='allow'?'deny':'allow';permBody()" style="color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'};border-color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'}">${att.effect==='deny'?'✕ deny':'✓ allow'}</button>
+        <span class="mut" style="font-size:11px">${att.effect==='deny'?'blocks even things allowed elsewhere':'runs without asking'}</span>
+      </div></div>
+    <div><div class="tmsec" style="margin:0 0 6px">3 · Resources <span class="mut">(${att.res.size} picked)</span></div>
+      <div style="max-height:300px;overflow-y:auto">${resOpts.map(r=>`<label class="item" style="cursor:pointer;display:flex;gap:8px;align-items:flex-start">
+        <input type="checkbox" ${att.res.has(r.value)?'checked':''} onchange="permAttRes(this.dataset.v,this.checked)" data-v="${esc(r.value)}" style="margin-top:3px;accent-color:var(--acc,#5eead4)">
+        <div class="grow" style="min-width:0"><div style="font-size:12.5px">${esc(r.label)}</div><div class="mut" style="font-family:var(--mono);font-size:10.5px;word-break:break-all">${esc(r.value)}</div></div></label>`).join('')||'<p class="mut">nothing available for this capability yet — connect servers / install skills first, or use a custom pattern below</p>'}</div>
+      <input id="att-custom" placeholder="custom pattern (optional), e.g. tool:run_command git *" style="width:100%;margin-top:8px">
+      <button class="save" style="margin-top:10px" onclick="permAttachGo()">Attach ${att.res.size?att.res.size+' rule'+(att.res.size===1?'':'s'):'rule'}${att.p?' to '+esc(att.p.label):''}</button>
+    </div>
   </div>`;
 }
-async function revokeGrant(gid){
-  await fetch('/api/grants/'+gid,{method:'DELETE'});
-  toast('grant revoked'); refreshApp('permissions');
-}
-async function addGrantUI(){
-  const action=$('#gr-action').value.trim();if(!action)return toast('enter an action');
-  await fetch('/api/grants',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({principal_kind:$('#gr-kind').value,principal_id:$('#gr-pid').value,
-      action,resource:$('#gr-res').value.trim()||'*',effect:$('#gr-eff').value})});
+function permAttSel(i){PERM.att.p=PERM._attPs[i];permBody()}
+function permAttRes(v,on){if(on)PERM.att.res.add(v);else PERM.att.res.delete(v);permBody()}
+async function permAttachGo(){
+  const att=PERM.att;
+  if(!att.p)return toast('pick who first (step 1)');
+  const custom=($('#att-custom')?.value||'').trim();
+  const resources=[...att.res];if(custom)resources.push(custom);
+  if(!resources.length)return toast('pick at least one resource (step 3)');
+  for(const r of resources)
+    await fetch('/api/grants',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({principal_kind:att.p.kind,principal_id:att.p.id,action:att.action,
+        resource:r,effect:att.effect,note:'attached from the policy console'})});
+  toast(resources.length+' rule(s) attached to '+att.p.label);
+  PERM.att={p:att.p,action:att.action,res:new Set(),effect:att.effect};
+  PERM.tab='map';PERM.sel=att.p.kind+':'+att.p.id;
   refreshApp('permissions');
+}
+async function permToggle(gid,effect){
+  await fetch('/api/grants/'+gid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({effect})});
+  refreshApp('permissions');
+}
+async function permRevoke(gid){
+  await fetch('/api/grants/'+gid,{method:'DELETE'});
+  toast('revoked'); refreshApp('permissions');
 }
 async function reviewManifest(aid){
   let r; try{r=await (await fetch('/api/apps/'+aid+'/manifest')).json()}catch(e){return toast('failed to load manifest')}

@@ -401,15 +401,16 @@ class Store:
         )
         self.db.commit()
 
-    def list_logs(self, kind: str = "", limit: int = 300) -> list[dict]:
+    def list_logs(self, kind: str = "", limit: int = 300, q: str = "") -> list[dict]:
+        sql, params = "SELECT * FROM logs WHERE 1=1", []
         if kind:
-            rows = self.db.execute(
-                "SELECT * FROM logs WHERE kind=? ORDER BY created_at DESC LIMIT ?", (kind, limit)
-            ).fetchall()
-        else:
-            rows = self.db.execute(
-                "SELECT * FROM logs ORDER BY created_at DESC LIMIT ?", (limit,)
-            ).fetchall()
+            sql += " AND kind=?"
+            params.append(kind)
+        if q:
+            sql += " AND (message LIKE ? OR meta LIKE ?)"
+            params += [f"%{q}%", f"%{q}%"]
+        rows = self.db.execute(sql + " ORDER BY created_at DESC LIMIT ?",
+                               (*params, limit)).fetchall()
         return [dict(r) for r in rows]
 
     def clear_logs(self):
@@ -728,6 +729,17 @@ class Store:
         rows = self.db.execute(q + " ORDER BY principal_kind, principal_id, created_at",
                                params).fetchall()
         return [dict(r) for r in rows]
+
+    def update_grant(self, gid: str, effect: str) -> bool:
+        """Flip a live grant between allow and deny (the Permissions map toggle)."""
+        if effect not in ("allow", "deny"):
+            return False
+        cur = self.db.execute("UPDATE grants SET effect=? WHERE id=? AND revoked_at IS NULL",
+                              (effect, gid))
+        self.db.commit()
+        if cur.rowcount:
+            self.grants_version += 1
+        return bool(cur.rowcount)
 
     def revoke_grant(self, gid: str) -> bool:
         cur = self.db.execute("UPDATE grants SET revoked_at=? WHERE id=? AND revoked_at IS NULL",

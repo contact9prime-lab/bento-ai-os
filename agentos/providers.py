@@ -35,6 +35,14 @@ def _tool_id() -> str:
 # Ollama (local)
 # ---------------------------------------------------------------------------
 
+def _split_data_url(u: str) -> tuple[str, str]:
+    """'data:image/png;base64,AAA…' -> ('image/png', 'AAA…')."""
+    if u.startswith("data:") and ";base64," in u:
+        head, b64 = u.split(";base64,", 1)
+        return head[5:] or "image/png", b64
+    return "image/png", u
+
+
 async def _chat_ollama(base_url: str, model: str, messages: list, tools: list) -> AsyncIterator[dict]:
     msgs = []
     for m in messages:
@@ -50,7 +58,10 @@ async def _chat_ollama(base_url: str, model: str, messages: list, tools: list) -
                 ],
             })
         else:
-            msgs.append({"role": m["role"], "content": m.get("content") or ""})
+            entry = {"role": m["role"], "content": m.get("content") or ""}
+            if m.get("images"):   # vision models take raw base64 (no data: prefix)
+                entry["images"] = [_split_data_url(u)[1] for u in m["images"]]
+            msgs.append(entry)
 
     payload = {"model": model, "messages": msgs, "stream": True}
     if tools:
@@ -118,6 +129,11 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                     for tc in m["tool_calls"]
                 ],
             })
+        elif m.get("images"):
+            parts = [{"type": "image_url", "image_url": {"url": u}} for u in m["images"]]
+            if m.get("content"):
+                parts.append({"type": "text", "text": m["content"]})
+            msgs.append({"role": m["role"], "content": parts})
         else:
             msgs.append({"role": m["role"], "content": m.get("content") or ""})
 
@@ -205,6 +221,15 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
             for tc in m["tool_calls"]:
                 content.append({"type": "tool_use", "id": tc["id"], "name": tc["name"], "input": tc["args"]})
             msgs.append({"role": "assistant", "content": content})
+        elif m.get("images"):
+            content = []
+            for u in m["images"]:
+                mt, b64 = _split_data_url(u)
+                content.append({"type": "image",
+                                "source": {"type": "base64", "media_type": mt, "data": b64}})
+            if m.get("content"):
+                content.append({"type": "text", "text": m["content"]})
+            msgs.append({"role": m["role"], "content": content})
         else:
             msgs.append({"role": m["role"], "content": m.get("content") or ""})
 

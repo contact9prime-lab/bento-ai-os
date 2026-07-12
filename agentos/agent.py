@@ -249,6 +249,7 @@ class Agent:
                     else:
                         dec = Decision("allow")
 
+                approved = None
                 if dec.effect == "deny":
                     output = f"[denied] {dec.reason or reason}"
                 elif dec.effect == "ask":
@@ -267,6 +268,13 @@ class Agent:
                     await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                                      "args": args, "pending_approval": False})
                     output = await self.toolbox.execute(name, args)
+                if dec.effect != "allow":  # every gate decision is auditable in Logs
+                    self.toolbox.store.log(
+                        "policy",
+                        f"{dec.effect}: {self.principal.label} → {dec.action} {dec.resource}"[:400],
+                        {"principal": self.principal.label, "action": dec.action,
+                         "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
+                         "reason": dec.reason or reason, "tool": name, "approved": approved})
 
                 ok = not output.startswith(("[error]", "[denied]", "[exit code"))
                 self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
