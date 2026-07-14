@@ -108,8 +108,9 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
-def doctor():
-    """Environment sanity: the checks that catch every 'it hangs' class of incident."""
+def doctor(fix: bool = False):
+    """Environment sanity: the checks that catch every 'it hangs' class of incident.
+    With fix=True, auto-remediate what is safe to fix and print sudo steps for the rest."""
     import json as _json
     import shutil
     import socket
@@ -121,10 +122,18 @@ def doctor():
     ok = lambda m: print(f"  \033[32m✓\033[0m {m}")           # noqa: E731
     warn = lambda m: print(f"  \033[33m!\033[0m {m}")         # noqa: E731
     bad = lambda m: print(f"  \033[31m✗\033[0m {m}")          # noqa: E731
+    fixed = lambda m: print(f"  \033[36m⚑ fixed:\033[0m {m}")  # noqa: E731
+    todo = lambda m: print(f"  \033[35m→ do:\033[0m {m}")     # noqa: E731
+
+    def run(argv):
+        try:
+            return subprocess.run(argv, capture_output=True, text=True, timeout=15)
+        except Exception:
+            return None
 
     cfg = cfgmod.load_config()
     port = cfg.get("port", 8321)
-    print("AgentOS doctor\n")
+    print("AgentOS doctor" + ("  (--fix: auto-repair on)" if fix else "") + "\n")
 
     # 1. who owns the port?
     try:
@@ -148,18 +157,27 @@ def doctor():
             ok("exactly one server process")
     except Exception:
         pass
-    try:
-        st = subprocess.run(["systemctl", "--user", "is-active", "agentos"],
-                            capture_output=True, text=True).stdout.strip()
+    r = run(["systemctl", "--user", "is-active", "agentos"])
+    if r is not None:
+        st = r.stdout.strip()
         if st == "activating":
-            bad("systemd unit 'agentos' is crash-looping (activating) — "
-                "systemctl --user stop agentos, or free its port")
+            bad("systemd unit 'agentos' is crash-looping (activating)")
+            if fix:
+                # if something already answers the port, the unit is the loser of a
+                # port war and should stand down; otherwise stopping is still safe
+                run(["systemctl", "--user", "stop", "agentos"])
+                after = run(["systemctl", "--user", "is-active", "agentos"])
+                if after and after.stdout.strip() != "activating":
+                    fixed("stopped the crash-looping unit (re-enable later with: "
+                          "systemctl --user start agentos)")
+                else:
+                    todo("systemctl --user stop agentos   (couldn't stop it automatically)")
+            else:
+                todo("agentos doctor --fix   (or: systemctl --user stop agentos)")
         elif st == "active":
             ok("systemd user service active")
         else:
             warn(f"systemd user service: {st}")
-    except Exception:
-        pass
 
     # 3. Ollama + VRAM pressure
     base = cfg["providers"]["ollama"]["base_url"]
@@ -169,26 +187,44 @@ def doctor():
         ok(f"ollama up at {base} ({len(loaded)} model(s) loaded)")
         for m in loaded:
             gb = m.get("size_vram", 0) / 1e9
-            pin = " — pinned forever (keep_alive=-1)" if str(m.get("expires_at", "")).startswith("2") \
-                  and int(str(m.get("expires_at", "0"))[:4] or 0) > 2100 else ""
-            (warn if pin else ok)(f"  loaded: {m['name']} ({gb:.1f}GB VRAM){pin}")
+            pinned = (str(m.get("expires_at", "")).startswith("2")
+                      and int(str(m.get("expires_at", "0"))[:4] or 0) > 2100)
+            (warn if pinned else ok)(
+                f"  loaded: {m['name']} ({gb:.1f}GB VRAM)"
+                + (" — pinned forever (keep_alive=-1)" if pinned else ""))
+            if pinned and fix:
+                try:
+                    req = urllib.request.Request(
+                        f"{base}/api/generate", method="POST",
+                        data=_json.dumps({"model": m["name"], "keep_alive": 0}).encode(),
+                        headers={"Content-Type": "application/json"})
+                    urllib.request.urlopen(req, timeout=10).read()
+                    fixed(f"released {m['name']} from VRAM (keep_alive=0 for this run)")
+                except Exception:
+                    todo(f"ollama stop {m['name']}")
     except Exception:
         warn(f"ollama not reachable at {base} (local models unavailable)")
     # exposure check: an unauthenticated Ollama on 0.0.0.0 is reachable by the whole LAN
-    try:
-        out = subprocess.run(["ss", "-tln"], capture_output=True, text=True).stdout
-        for line in out.splitlines():
+    r = run(["ss", "-tln"])
+    if r is not None:
+        for line in r.stdout.splitlines():
             if ":11434" in line and ("0.0.0.0:11434" in line or "*:11434" in line or "[::]:11434" in line):
-                bad("ollama listens on ALL interfaces (OLLAMA_HOST=0.0.0.0) — anyone on your "
-                    "network can use it. Set OLLAMA_HOST=127.0.0.1 in its service config.")
+                bad("ollama listens on ALL interfaces (OLLAMA_HOST=0.0.0.0) — the LAN can use it")
+                # needs root to edit the service → always guidance, never auto-sudo
+                todo("set OLLAMA_HOST=127.0.0.1: edit /etc/systemd/system/ollama.service.d/*.conf "
+                     "(or `launchctl setenv` on macOS), then restart ollama")
                 break
-    except Exception:
-        pass
 
     # 4. DB
     try:
         db = sqlite3.connect(str(cfgmod.DB_PATH), timeout=3)
         mode = db.execute("PRAGMA journal_mode").fetchone()[0]
+        if mode != "wal" and fix:
+            new = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+            db.execute("PRAGMA busy_timeout=5000")
+            if new == "wal":
+                fixed("set db journal_mode=WAL")
+                mode = new
         integ = db.execute("PRAGMA integrity_check").fetchone()[0]
         (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
         (ok if integ == "ok" else bad)(f"db integrity: {integ}")
@@ -199,17 +235,30 @@ def doctor():
     ok("git available" if shutil.which("git") else "")
     if not shutil.which("git"):
         warn("git not installed — the Ship pillar (git_* tools) needs it")
-    if shutil.which("bwrap"):
-        ok("bubblewrap available (sandbox)")
+    from .tools import sandbox_mechanism
+    mech = sandbox_mechanism()
+    if mech:
+        ok(f"sandbox available ({mech})")
+    elif sys.platform == "linux":
+        warn("bubblewrap missing — sandbox falls back to unjailed commands (install: apt install bubblewrap)")
     else:
-        warn("bubblewrap missing — sandbox falls back to unjailed commands")
+        warn("no sandbox mechanism found — shell commands run unjailed")
     from . import trainforge as tfmod
     tf = tfmod.conf(cfg)
     if tf["path"]:
         ok(f"TrainForge found at {tf['path']} (Train pillar)")
+    elif tf.get("repo") and "YOUR_ORG" not in tf["repo"]:
+        warn("TrainForge not installed — the Train app will fetch it on first Start")
     else:
-        warn("TrainForge not found — set trainforge.path to enable the Train pillar")
+        warn("TrainForge not found — set trainforge.path or trainforge.repo to enable the Train pillar")
+
+    from . import hermes as hermesmod
+    hcli = hermesmod.cli_path()
+    if hcli:
+        ok(f"Hermes companion agent available ({'gateway running' if hermesmod.gateway_running() else 'installed'})")
     print()
+    if not fix:
+        print("  \033[90mrun `agentos doctor --fix` to auto-repair the fixable items above\033[0m\n")
 
 
 def main():
@@ -228,7 +277,8 @@ def main():
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
     sub.add_parser("app", help="open AgentOS as a desktop app window")
-    sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
+    p_doctor = sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
+    p_doctor.add_argument("--fix", action="store_true", help="auto-repair what's safe; print sudo steps for the rest")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
     sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
@@ -245,7 +295,7 @@ def main():
 
     args = parser.parse_args()
     if args.cmd == "doctor":
-        doctor()
+        doctor(fix=getattr(args, "fix", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
     elif args.cmd == "app":

@@ -10,7 +10,7 @@ AgentOS is built to be the opposite of that story.
 | Boundary | Default | Notes |
 |---|---|---|
 | Network | binds `127.0.0.1` only | nothing is reachable from the LAN; there is deliberately no "expose" flag |
-| Filesystem | bubblewrap sandbox ON | agent commands, file tools, and the Terminal are jailed to the workspace; the rest of the FS is read-only, other `/home` files hidden |
+| Filesystem | OS sandbox ON | agent commands and file tools are jailed to the workspace. Linux: **bubblewrap** (whole FS read-only, `/home` hidden). macOS: **sandbox-exec** (whole FS readable, writes confined to the workspace + tmp/caches). Same guarantee — the agent's shell cannot modify files outside the workspace |
 | Capabilities | one policy decision point | every tool/model/MCP/skill/app-data access, for every principal (you, apps, subagents, workflows), flows through the PDP: allow / ask / deny + persisted, revocable grants |
 | Shell | risk-classified | read-only commands run free; mutating commands ask; destructive patterns are hard-blocked and non-overridable. `git push`, config writes, and remote changes ask |
 | Secrets | masked & env-injected | API keys and the GitHub token are masked in the API; git auth goes through an askpass helper — tokens never enter command lines, remotes, or logs |

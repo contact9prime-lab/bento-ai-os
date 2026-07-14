@@ -53,7 +53,29 @@ can check its own environment.
 - **`agentos doctor`**: port conflicts, duplicate instances, crash-looping units, Ollama
   reachability/VRAM pinning/network exposure, DB integrity, companion checks.
 
+### Companion agents, self-healing, auto-fetch
+- **Hermes integration** — AgentOS interoperates with a local Hermes install: `hermes_status`,
+  `hermes_ask` (delegate a task to Hermes like a cross-product subagent), and `hermes_send`
+  (deliver through any platform Hermes is paired with — WhatsApp/Slack/Discord/Signal),
+  surfaced in Mission Control's Operate lane.
+- **TrainForge auto-fetch** — if the training service isn't on disk, the Train app (and the
+  agent) clones it from `trainforge.repo` and provisions it via `run.sh` (venv + deps + GPU
+  stack), with live download/install progress in the UI. Configured path that's gone empty
+  falls back to detection/fetch instead of erroring.
+- **`agentos doctor --fix`** — auto-remediates the safe items: stops a crash-looping unit,
+  releases VRAM-pinned Ollama models, sets the DB to WAL; prints exact sudo steps for the
+  rest (Ollama `0.0.0.0` exposure). Doctor now also reports Hermes and the fetchable Train
+  service, and suggests `--fix` when it finds something.
+
 ### macOS
+- **Folder sandbox on macOS** — `run_command` is now jailed on macOS too, via `sandbox-exec`
+  (writes confined to the workspace + tmp/caches; parity with bubblewrap's guarantee that the
+  agent's shell can't modify files outside the workspace). Previously macOS had no bwrap so
+  commands ran unjailed.
+- **Chat liveness** — a running turn always shows motion: an elapsed-time "working" indicator
+  between and after tool calls, and streamed text forces a compositor repaint — fixing the
+  macOS symptom where a reply only appeared after switching chats/tabs. Model heartbeats now
+  render even once the assistant bubble exists.
 - `/api/system` (Task Manager, TUI System tab) is now cross-platform: sysctl/vm_stat/`ps -r`
   on macOS instead of `/proc/stat`/`/proc/meminfo`/GNU ps — the TUI no longer crashes with
   "no such file or directory /proc/stat" on Mac.

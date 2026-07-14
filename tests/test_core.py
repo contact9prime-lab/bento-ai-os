@@ -188,3 +188,53 @@ async def test_truncated_tool_call_args_get_guidance(toolbox):
 async def test_unknown_tool(toolbox):
     out = await toolbox.execute("no_such_tool", {})
     assert out.startswith("[error]")
+
+
+# ---------------------------------------------------------------------------
+# sandbox (cross-platform jail wrapper)
+# ---------------------------------------------------------------------------
+
+def test_macos_sandbox_profile_confines_writes():
+    from agentos.tools import _sandbox_exec_profile, sandbox_exec_argv
+    prof = _sandbox_exec_profile("/Users/x/AgentOS")
+    assert "(deny file-write*)" in prof
+    assert '(subpath "/Users/x/AgentOS")' in prof
+    argv = sandbox_exec_argv("/Users/x/AgentOS", "echo hi", chdir="/Users/x/AgentOS")
+    assert argv[0] == "sandbox-exec" and argv[1] == "-p"
+    assert argv[-1].startswith("cd ") and "echo hi" in argv[-1]
+
+
+def test_jail_argv_picks_mechanism(monkeypatch):
+    import agentos.tools as T
+    monkeypatch.setattr(T, "sandbox_mechanism", lambda: "bwrap")
+    assert T.jail_argv("/root", "ls")[0] == "bwrap"
+    monkeypatch.setattr(T, "sandbox_mechanism", lambda: "sandbox-exec")
+    assert T.jail_argv("/root", "ls")[0] == "sandbox-exec"
+    monkeypatch.setattr(T, "sandbox_mechanism", lambda: "")
+    assert T.jail_argv("/root", "ls") is None
+
+
+# ---------------------------------------------------------------------------
+# hermes companion (no CLI needed — just the parsing/guards)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_hermes_ask_without_cli(monkeypatch):
+    from agentos import hermes
+    monkeypatch.setattr(hermes, "cli_path", lambda: "")
+    out = await hermes.ask("hi")
+    assert out.startswith("[error]") and "not installed" in out
+
+
+@pytest.mark.asyncio
+async def test_hermes_send_requires_target(monkeypatch):
+    from agentos import hermes
+    monkeypatch.setattr(hermes, "cli_path", lambda: "/usr/bin/hermes")
+    out = await hermes.send("", "hello")
+    assert out.startswith("[error]")
+
+
+def test_hermes_risk_levels(toolbox):
+    assert toolbox.risk_of("hermes_status", {})[0] == "safe"
+    assert toolbox.risk_of("hermes_ask", {"task": "x"})[0] == "risky"
+    assert toolbox.risk_of("hermes_send", {"target": "slack"})[0] == "risky"

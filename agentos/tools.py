@@ -11,6 +11,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -109,11 +110,21 @@ class _TextExtractor(html.parser.HTMLParser):
             self.parts.append(data.strip())
 
 
+def sandbox_mechanism() -> str:
+    """Which OS jail is available: 'bwrap' (Linux), 'sandbox-exec' (macOS), or ''."""
+    if sys.platform == "darwin" and shutil.which("sandbox-exec"):
+        return "sandbox-exec"
+    if shutil.which("bwrap"):
+        return "bwrap"
+    return ""
+
+
 def sandbox_conf(cfg: dict) -> tuple[bool, str]:
-    """(enabled, absolute root). Root defaults to the workspace."""
+    """(enabled, absolute root). Root defaults to the workspace. Enabled only when a
+    jail mechanism exists for this OS (bubblewrap on Linux, sandbox-exec on macOS)."""
     sb = cfg.get("sandbox") or {}
     root = os.path.realpath(os.path.expanduser(sb.get("root") or cfg["workspace"]))
-    return bool(sb.get("enabled")) and shutil.which("bwrap") is not None, root
+    return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
 
 
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None) -> list[str]:
@@ -128,6 +139,40 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None) -> list[str
             "--setenv", "AGENTOS_SANDBOX", "1",
             "--die-with-parent",
             *tail]
+
+
+def _sandbox_exec_profile(root: str) -> str:
+    """macOS SBPL: everything readable, but writes confined to `root` (+ tmp/dev/caches).
+    Matches bubblewrap's security-relevant guarantee — the agent's shell cannot modify
+    files outside the workspace — without hiding the rest of the FS (which would break
+    Homebrew/node tooling the command may legitimately read)."""
+    def esc(p):
+        return p.replace("\\", "\\\\").replace('"', '\\"')
+    writable = [root, "/tmp", "/private/tmp", "/private/var/tmp", "/dev/null",
+                "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
+    subpaths = "\n  ".join(f'(subpath "{esc(p)}")' for p in writable)
+    return ("(version 1)\n"
+            "(allow default)\n"
+            "(deny file-write*)\n"
+            f"(allow file-write*\n  {subpaths})\n"
+            "(allow file-write-data (literal \"/dev/stdout\") (literal \"/dev/stderr\"))\n")
+
+
+def sandbox_exec_argv(root: str, command: str, chdir: str | None = None) -> list[str]:
+    """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
+    prof = _sandbox_exec_profile(root)
+    inner = f'cd {shlex.quote(chdir or root)} && {command}'
+    return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
+
+
+def jail_argv(root: str, command: str, chdir: str | None = None) -> list[str] | None:
+    """The right jail wrapper for this OS, or None if no mechanism is available."""
+    mech = sandbox_mechanism()
+    if mech == "bwrap":
+        return bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=chdir)
+    if mech == "sandbox-exec":
+        return sandbox_exec_argv(root, command, chdir=chdir)
+    return None
 
 
 def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
@@ -170,13 +215,16 @@ class Toolbox:
 
     async def run_command(self, command: str, cwd: str = "") -> str:
         enabled, root = sandbox_conf(self.cfg)
+        argv = None
         if enabled:
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else root
             if not (workdir == root or workdir.startswith(root + os.sep)) or not os.path.isdir(workdir):
                 workdir = root
             os.makedirs(root, exist_ok=True)
+            argv = jail_argv(root, command, chdir=workdir)  # bwrap on Linux, sandbox-exec on macOS
+        if argv:
             proc = await asyncio.create_subprocess_exec(
-                *bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=workdir),
+                *argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -1036,6 +1084,12 @@ class Toolbox:
             return "safe", ""
         if name == "trainforge_service":
             return "safe", ""
+        if name == "hermes_status":
+            return "safe", ""
+        if name == "hermes_ask":
+            return "risky", "Delegates a task to the Hermes agent — it acts with its own tools and permissions."
+        if name == "hermes_send":
+            return "risky", f"Sends a message via Hermes to {args.get('target', '?')} (leaves this machine)."
         if name == "run_tests":
             # running a test suite executes that project's code
             p = args.get("path") or ""
@@ -1431,6 +1485,20 @@ class Toolbox:
         else:
             return "[error] action must be list|signature|predict|publish"
         return self._tf_out(code, data)
+
+    # ---- Hermes (companion agent) -------------------------------------------
+
+    async def hermes_status(self) -> str:
+        from . import hermes
+        return json.dumps(await hermes.status())
+
+    async def hermes_ask(self, task: str) -> str:
+        from . import hermes
+        return _truncate(await hermes.ask(task))
+
+    async def hermes_send(self, target: str, message: str) -> str:
+        from . import hermes
+        return await hermes.send(target, message)
 
     async def execute(self, name: str, args: dict) -> str:
         if name.startswith("mcp_") and self.mcp:
@@ -2044,6 +2112,37 @@ TEST_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(TEST_TOOL_SCHEMAS)
+
+HERMES_TOOL_SCHEMAS = [
+    {
+        "name": "hermes_status",
+        "description": "Companion agents: is Hermes (the Nous assistant) installed on this "
+                       "machine, is its gateway running, and what model does it use.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "hermes_ask",
+        "description": "Delegate a one-shot task to the local Hermes agent — a different "
+                       "assistant with its own tools, skills, and messaging platforms. Use when "
+                       "the user asks for Hermes specifically, or for capabilities Hermes has "
+                       "and you don't. Returns its final answer.",
+        "parameters": {"type": "object", "properties": {
+            "task": {"type": "string", "description": "The task/question for Hermes."}},
+            "required": ["task"]},
+    },
+    {
+        "name": "hermes_send",
+        "description": "Send a message through any platform Hermes is paired with — WhatsApp, "
+                       "Slack, Discord, Signal, Telegram. Target format: 'platform', "
+                       "'platform:chat_id', or 'platform:#channel' (e.g. 'slack:#ops', "
+                       "'signal:+15551234567'). Extends delivery beyond AgentOS's own Telegram.",
+        "parameters": {"type": "object", "properties": {
+            "target": {"type": "string", "description": "Delivery target."},
+            "message": {"type": "string", "description": "Message text."}},
+            "required": ["target", "message"]},
+    },
+]
+TOOL_SCHEMAS.extend(HERMES_TOOL_SCHEMAS)
 
 TRAIN_TOOL_SCHEMAS = [
     {

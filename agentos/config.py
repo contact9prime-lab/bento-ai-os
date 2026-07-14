@@ -110,6 +110,10 @@ DEFAULTS = {
     # to create repos and push over HTTPS. The token stays in config + env — it is
     # never placed in command lines, remotes, or tool output.
     "github": {"token": "", "username": ""},
+    # TrainForge (Train pillar): path is auto-detected; if it's not on disk, Start
+    # clones `repo` into `install_dir` and provisions it via run.sh. Set `repo` to
+    # the doneitrightai git URL to enable auto-fetch.
+    "trainforge": {"path": "", "port": 8377, "repo": "", "install_dir": ""},
     # generation budgets: Ollama context window and output-token caps (chat / builds).
     # ollama_think: null = model default; false = disable the thinking channel
     # (App Studio builds always disable it regardless).

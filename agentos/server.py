@@ -63,7 +63,7 @@ async def startup():
     pdp = PDP(cfg, store)
     pdp.mcp = mcp
     toolbox.pdp = pdp
-    trainforge = TrainForge(cfg, store)
+    trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
     fabricmod.seed_builtins(cfg, store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
@@ -2884,10 +2884,14 @@ async def api_lifecycle():
             (day_ago,)).fetchone()["c"]
     except Exception:
         errors_24h = turns_24h = 0
+    from . import hermes as hermesmod
+    hs = await hermesmod.status()
     out["operate"] = {"scheduled_tasks": len(tasks),
                       "tasks_enabled": sum(1 for t in tasks if t.get("enabled")),
                       "turns_24h": turns_24h, "errors_24h": errors_24h,
-                      "turns_running": len(state.get("turns") or {})}
+                      "turns_running": len(state.get("turns") or {}),
+                      "hermes": ("gateway running" if hs["gateway"]
+                                 else "installed" if hs["installed"] else "not installed")}
 
     apps = store.list_apps()
     b = state.get("build") or {}

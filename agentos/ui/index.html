@@ -580,72 +580,6 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 #j-mic:hover{border-color:var(--acc)}
 #jarvis-ov.listening #j-mic{background:var(--err);border-color:var(--err);animation:jpulse 1.2s infinite}
 
-let JARVIS={on:false,phase:'idle',rec:null,cid:null,busy:false};
-function jarvisSetPhase(p,status){
-  JARVIS.phase=p;const ov=$('#jarvis-ov');
-  ov.classList.remove('listening','thinking','speaking');
-  if(p!=='idle')ov.classList.add(p);
-  document.body.classList.remove('js-listening','js-thinking','js-speaking');
-  if(p!=='idle')document.body.classList.add('js-'+p);       // animate the Jarvis-experience orb too
-  if(status){$('#j-status').textContent=status;const jv=$('#js-voice');if(jv)jv.textContent=status}
-}
-function jarvisMode(on){
-  const ov=$('#jarvis-ov');
-  if(on){
-    if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window))return toast('speech recognition not available in this browser');
-    JARVIS.on=true;ov.classList.add('show');
-    $('#j-transcript').textContent='';$('#j-reply').textContent='';
-    JARVIS.cid=JARVIS.cid||currentConv;
-    jarvisListen();
-  }else{
-    JARVIS.on=false;ov.classList.remove('show');
-    try{JARVIS.rec&&JARVIS.rec.stop()}catch(e){}
-    try{speechSynthesis.cancel()}catch(e){}
-    jarvisSetPhase('idle');
-  }
-}
-function jarvisListen(){
-  if(!JARVIS.on)return;
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  try{JARVIS.rec&&JARVIS.rec.abort()}catch(e){}
-  const rec=new SR();JARVIS.rec=rec;
-  rec.lang=(VOICE&&VOICE.lang)||'en-IN';rec.interimResults=true;rec.continuous=false;
-  let finalText='';
-  jarvisSetPhase('listening','listening…');
-  rec.onresult=e=>{
-    let interim='';finalText='';
-    for(let i=0;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)finalText+=r[0].transcript;else interim+=r[0].transcript}
-    $('#j-transcript').textContent=(finalText||interim).trim();
-  };
-  rec.onerror=ev=>{if(ev.error==='no-speech'&&JARVIS.on){jarvisListen()}};
-  rec.onend=()=>{
-    const t=$('#j-transcript').textContent.trim();
-    if(!JARVIS.on)return;
-    if(t){jarvisAsk(t)}else{jarvisListen()}   // nothing heard → keep listening
-  };
-  try{rec.start()}catch(e){setTimeout(jarvisListen,400)}
-}
-function jarvisAsk(text){
-  if(!ws||ws.readyState!==1){jarvisSetPhase('idle','not connected');return}
-  jarvisSetPhase('thinking',agentName()+' is working…');
-  $('#j-reply').textContent='';
-  JARVIS.busy=true;jarvisReply='';
-  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:($('#modelsel')&&$('#modelsel').value)||undefined}));
-  setRunning(true);
-}
-let jarvisReply='';
-function jarvisSpeakAndListen(text){
-  jarvisSetPhase('speaking',agentName()+' is speaking…');
-  const clean=(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
-  if(!clean.trim()||!window.speechSynthesis){if(JARVIS.on)jarvisListen();return}
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=(VOICE&&VOICE.rate)||1;
-  const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
-  u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
-  u.onerror=()=>{if(JARVIS.on)jarvisListen()};
-  speechSynthesis.cancel();speechSynthesis.speak(u);
-}
-
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -753,6 +687,75 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
 'use strict';
 const $=s=>document.querySelector(s);
 let ws=null, running=false, currentConv=null, cfg=null;
+
+/* ================= voice / Jarvis mode =================
+   (previously mis-placed inside the <style> block, which left JARVIS and these
+    functions undefined and threw on every turn — now a live part of the app) */
+let JARVIS={on:false,phase:'idle',rec:null,cid:null,busy:false};
+let jarvisReply='';
+function jarvisSetPhase(p,status){
+  JARVIS.phase=p;const ov=$('#jarvis-ov');if(!ov)return;
+  ov.classList.remove('listening','thinking','speaking');
+  if(p!=='idle')ov.classList.add(p);
+  document.body.classList.remove('js-listening','js-thinking','js-speaking');
+  if(p!=='idle')document.body.classList.add('js-'+p);       // animate the Jarvis-experience orb too
+  if(status){const st=$('#j-status');if(st)st.textContent=status;const jv=$('#js-voice');if(jv)jv.textContent=status}
+}
+function jarvisMode(on){
+  const ov=$('#jarvis-ov');if(!ov)return;
+  if(on){
+    if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window))return toast('speech recognition not available in this browser');
+    JARVIS.on=true;ov.classList.add('show');
+    $('#j-transcript').textContent='';$('#j-reply').textContent='';
+    JARVIS.cid=JARVIS.cid||currentConv;
+    jarvisListen();
+  }else{
+    JARVIS.on=false;ov.classList.remove('show');
+    try{JARVIS.rec&&JARVIS.rec.stop()}catch(e){}
+    try{speechSynthesis.cancel()}catch(e){}
+    jarvisSetPhase('idle');
+  }
+}
+function jarvisListen(){
+  if(!JARVIS.on)return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  try{JARVIS.rec&&JARVIS.rec.abort()}catch(e){}
+  const rec=new SR();JARVIS.rec=rec;
+  rec.lang=(VOICE&&VOICE.lang)||'en-IN';rec.interimResults=true;rec.continuous=false;
+  let finalText='';
+  jarvisSetPhase('listening','listening…');
+  rec.onresult=e=>{
+    let interim='';finalText='';
+    for(let i=0;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)finalText+=r[0].transcript;else interim+=r[0].transcript}
+    $('#j-transcript').textContent=(finalText||interim).trim();
+  };
+  rec.onerror=ev=>{if(ev.error==='no-speech'&&JARVIS.on){jarvisListen()}};
+  rec.onend=()=>{
+    const t=$('#j-transcript').textContent.trim();
+    if(!JARVIS.on)return;
+    if(t){jarvisAsk(t)}else{jarvisListen()}   // nothing heard → keep listening
+  };
+  try{rec.start()}catch(e){setTimeout(jarvisListen,400)}
+}
+function jarvisAsk(text){
+  if(!ws||ws.readyState!==1){jarvisSetPhase('idle','not connected');return}
+  jarvisSetPhase('thinking',agentName()+' is working…');
+  $('#j-reply').textContent='';
+  JARVIS.busy=true;jarvisReply='';
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:($('#modelsel')&&$('#modelsel').value)||undefined}));
+  setRunning(true);
+}
+function jarvisSpeakAndListen(text){
+  jarvisSetPhase('speaking',agentName()+' is speaking…');
+  const clean=(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
+  if(!clean.trim()||!window.speechSynthesis){if(JARVIS.on)jarvisListen();return}
+  const u=new SpeechSynthesisUtterance(clean);
+  u.rate=(VOICE&&VOICE.rate)||1;
+  const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
+  u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
+  u.onerror=()=>{if(JARVIS.on)jarvisListen()};
+  speechSynthesis.cancel();speechSynthesis.speak(u);
+}
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen
 let APPS_READY=false;   // APPS (const) is in the temporal dead zone until its definition — gate on this
@@ -1209,7 +1212,7 @@ const APPS={
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
   train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
-    render:renderTrain,onClose(w){clearInterval(w.timer);return true}},
+    render:renderTrain,onClose(w){clearInterval(w.timer);if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
     render:renderMission,onClose(w){clearInterval(w.timer);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
@@ -1768,11 +1771,8 @@ function handle(ev){
       break;}
     case 'status':{ // model-side heartbeat ("loading model / evaluating prompt…")
       if(!_cur)break;
-      const w=$('#working');
-      if(w){let s=w.querySelector('.wstat');
-        if(!ev.message){if(s)s.remove();break}
-        if(!s){s=document.createElement('div');s.className='wstat';s.style.cssText='font-size:11px;opacity:.65;margin-left:8px';w.appendChild(s)}
-        s.textContent=ev.message;}
+      WORK_MSG=ev.message||'';
+      if(running)showWorking();       // keep a live indicator up between/after tool calls
       break;}
     case 'conversation': currentConv=ev.id; loadConvs(); break;
     case 'turn_start':{
@@ -1783,9 +1783,10 @@ function handle(ev){
       if(_s)_s.text+=ev.text;
       if(!_cur)break;
       curText+=ev.text;
+      WORK_MSG='';removeWorking(); // real text is flowing now — drop the "working" placeholder
       if(JARVIS.busy){const r=$('#j-reply');if(r){r.textContent=curText;r.scrollTop=r.scrollHeight}}
       if(!curBody)startAssistant();
-      if(curBody){curBody.innerHTML=md(curText);scrollDown()} break;}
+      if(curBody){curBody.innerHTML=md(curText);curBody.style.transform='translateZ(0)';scrollDown()} break;}
     case 'thinking_delta':{
       if(!_cur)break;
       if(!curBody)startAssistant();
@@ -1814,6 +1815,9 @@ function handle(ev){
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
         card.querySelector('.out').textContent=ev.output||'(no output)';
         if(!ev.ok)card.classList.add('open');}
+      // the model is about to think about this result — often the slowest gap in a
+      // turn; keep a live indicator so it never looks frozen (and repaints on macOS)
+      if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
     case 'approval_request':{
       const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
@@ -1873,6 +1877,7 @@ function handle(ev){
     case 'snapshots': refreshApp('snapshots'); break;
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
+    case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
     case 'models': refreshApp('models'); loadModels(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);
@@ -2013,13 +2018,32 @@ function send(){
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:$('#modelsel').value}));
   input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();setRunning(true);
 }
+let WORK_TICK=null, WORK_T0=0, WORK_MSG='';
 function showWorking(){
-  if(!feed||$('#working'))return;
-  const w=document.createElement('div');w.className='working';w.id='working';
-  w.innerHTML=`<div class="orb"></div><div class="wtxt">${esc(agentName())} is thinking</div><div class="dots"><i></i><i></i><i></i></div>`;
-  feed.appendChild(w);
+  if(!feed)return;
+  if(!$('#working')){
+    const w=document.createElement('div');w.className='working';w.id='working';
+    w.innerHTML=`<div class="orb"></div><div class="wtxt">${esc(agentName())} is working</div><div class="dots"><i></i><i></i><i></i></div><div class="wsub" style="font-size:11px;opacity:.6;margin-left:8px"></div>`;
+    feed.appendChild(w);
+  }
+  WORK_T0=WORK_T0||Date.now();
+  if(!WORK_TICK)WORK_TICK=setInterval(tickWorking,1000);
 }
-function removeWorking(){$('#working')?.remove()}
+function tickWorking(){
+  const w=$('#working'); if(!w){clearInterval(WORK_TICK);WORK_TICK=null;return}
+  const s=Math.round((Date.now()-WORK_T0)/1000);
+  const sub=w.querySelector('.wsub');
+  if(sub)sub.textContent=WORK_MSG||(s>3?(s>=60?Math.floor(s/60)+'m '+(s%60)+'s':s+'s')+' · working…':'');
+  // a visible per-second mutation forces the compositor to repaint — this is what
+  // switching tabs was doing manually on macOS to make streamed text appear
+  w.style.opacity=(0.999+(s%2)*0.001);
+  scrollDown();
+}
+function removeWorking(){
+  $('#working')?.remove();
+  if(WORK_TICK){clearInterval(WORK_TICK);WORK_TICK=null}
+  WORK_T0=0;WORK_MSG='';
+}
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
   const r=await fetch('/api/conversations');const d=await r.json();
@@ -4430,7 +4454,8 @@ async function renderMission(body,w){
         ['scheduled jobs',(o.tasks_enabled??0)+' on / '+(o.scheduled_tasks??0)],
         ['turns (24h)',o.turns_24h??0],
         ['errors (24h)',o.errors_24h??0,(o.errors_24h||0)>0],
-        ['turns running now',o.turns_running??0]])}
+        ['turns running now',o.turns_running??0],
+        ['hermes',o.hermes||'—']])}
       ${lane('🔨 Build','studio',[
         ['apps installed',b.apps??0],
         ['build running',b.build_running?'yes':'no'],
@@ -4452,6 +4477,7 @@ async function renderMission(body,w){
 }
 
 /* ================= train app (TrainForge) ================= */
+const TRAIN_SETUP_LISTENERS=new Set();
 async function renderTrain(body,w){
   body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
   body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
@@ -4466,6 +4492,10 @@ async function renderTrain(body,w){
       return;
     }
     if(body.querySelector('iframe'))return; // don't tear down a live UI on a blip
+    const busy=st.setup==='fetching'||st.setup==='installing';
+    const notHere=!st.path;
+    const canGet=st.path||st.fetchable;   // on disk, or a repo URL is configured
+    const btnLabel=busy?(st.setup==='fetching'?'downloading…':'installing…'):(notHere?'Get & start TrainForge':'Start TrainForge');
     body.innerHTML=`
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:30px;text-align:center">
         <div style="font-size:40px">🧬</div>
@@ -4473,22 +4503,24 @@ async function renderTrain(body,w){
         <div class="mut" style="max-width:460px">TrainForge is AgentOS's training service: import datasets, fine-tune models
         (including LoRA fine-tunes of language models on your GPU), watch live loss curves, test every trained model as a
         live endpoint, and publish to Hugging Face. Everything stays on this machine.</div>
-        ${st.path?'':'<div class="errmsg">TrainForge was not found on this machine — set <code>trainforge.path</code> in config.json to your doneitrightai checkout.</div>'}
-        <button class="pact" id="tf-start" ${st.path?'':'disabled'}>Start TrainForge</button>
-        <div class="mut" style="font-size:11px">or just ask the agent: “fine-tune a model on …” — it starts the service itself</div>
-        <div id="tf-msg" class="mut"></div>
+        ${notHere&&!st.fetchable?'<div class="errmsg">TrainForge isn\'t installed and no download URL is set — add <code>trainforge.repo</code> (or <code>trainforge.path</code>) in config.json.</div>':''}
+        ${notHere&&st.fetchable?'<div class="mut" style="font-size:12px">Not installed yet — the button below downloads and sets it up (one-time, a few minutes; the GPU stack is a few GB).</div>':''}
+        <button class="pact" id="tf-start" ${(canGet&&!busy)?'':'disabled'}>${btnLabel}</button>
+        <div class="mut" style="font-size:11px">or just ask the agent: “fine-tune a model on …” — it fetches &amp; starts the service itself</div>
+        <div id="tf-msg" class="mut" style="max-width:480px">${esc(busy?'setting up…':'')}</div>
       </div>`;
     const b=$('#tf-start');
-    if(b)b.onclick=async()=>{
-      b.disabled=true;b.textContent='starting…';
-      try{
-        const r=await (await fetch('/api/train/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start'})})).json();
-        const el=$('#tf-msg');if(el)el.textContent=r.result||'';
-      }catch(e){const el=$('#tf-msg');if(el)el.textContent=''+e}
-      b.disabled=false;b.textContent='Start TrainForge';
-      paint();
+    if(b&&!busy)b.onclick=async()=>{
+      b.disabled=true;b.textContent=notHere?'downloading…':'starting…';
+      fetch('/api/train/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start'})})
+        .then(r=>r.json()).then(r=>{const el=$('#tf-msg');if(el)el.textContent=r.result||''})
+        .catch(e=>{const el=$('#tf-msg');if(el)el.textContent=''+e});
+      // start returns only when up (or on error) — the poller flips us to the iframe
     };
   };
+  // live setup progress from the server (download / install messages)
+  w._onSetup=ev=>{if(ev.type==='train_setup'){const el=$('#tf-msg');if(el)el.textContent=ev.message||''}};
+  TRAIN_SETUP_LISTENERS.add(w._onSetup);
   await paint();
   w.timer=setInterval(paint,4000);
 }
