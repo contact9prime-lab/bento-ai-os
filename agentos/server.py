@@ -1,7 +1,10 @@
 """AgentOS server: web UI, WebSocket event stream, REST API."""
 
 import asyncio
+import contextlib
 import json
+import os
+import re
 import secrets
 import time
 import uuid
@@ -21,6 +24,7 @@ from .policy import MAIN, PDP, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from .tools import Toolbox
+from .trainforge import TrainForge
 
 UI_DIR = Path(__file__).parent / "ui"
 
@@ -59,13 +63,19 @@ async def startup():
     pdp = PDP(cfg, store)
     pdp.mcp = mcp
     toolbox.pdp = pdp
+    trainforge = TrainForge(cfg, store)
+    toolbox.trainforge = trainforge
     fabricmod.seed_builtins(cfg, store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
-                 fabric=control, pdp=pdp,
+                 fabric=control, pdp=pdp, trainforge=trainforge,
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  app_tokens={},         # runtime token -> {"app_id","issued"} — app identity
-                 pending_installs={})   # install_id -> staged app package awaiting consent
+                 pending_installs={},   # install_id -> staged app package awaiting consent
+                 turns={},              # conversation_id -> {"agent","task","model"} — GLOBAL:
+                                        # turns survive a page reload/reconnect; events broadcast
+                 build={"agent": None, "task": None, "cancel_requested": False,
+                        "timed_out": False})  # App Studio build slot (global, one at a time)
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
@@ -106,6 +116,9 @@ async def shutdown():
         state["telegram"].stop()
     if "mcp" in state:
         await state["mcp"].stop()
+    if "trainforge" in state:
+        with contextlib.suppress(Exception):
+            await state["trainforge"].stop()
 
 
 # ---------------------------------------------------------------------------
@@ -311,34 +324,83 @@ async def api_control_set(body: dict):
 
 @app.get("/api/system")
 async def api_system():
-    """Live system stats for the Task Manager app (Linux, stdlib only)."""
+    """Live system stats for the Task Manager app / TUI. Cross-platform, stdlib only:
+    /proc on Linux, sysctl/vm_stat on macOS (no /proc there)."""
     import os
     import shutil
+    import subprocess
+    import sys as _sys
 
-    idle, total = _read_cpu()
-    prev = state.get("cpu_prev")
-    state["cpu_prev"] = (idle, total)
+    darwin = _sys.platform == "darwin"
+    cores = os.cpu_count() or 1
+
     cpu = 0.0
-    if prev and total > prev[1]:
-        cpu = round(100 * (1 - (idle - prev[0]) / (total - prev[1])), 1)
+    if darwin:
+        # no /proc/stat: approximate with the 1-minute load average per core
+        cpu = round(min(100.0, os.getloadavg()[0] / cores * 100), 1)
+    else:
+        try:
+            idle, total = _read_cpu()
+            prev = state.get("cpu_prev")
+            state["cpu_prev"] = (idle, total)
+            if prev and total > prev[1]:
+                cpu = round(100 * (1 - (idle - prev[0]) / (total - prev[1])), 1)
+        except OSError:
+            pass
 
-    mem = {}
-    with open("/proc/meminfo") as f:
-        for line in f:
-            k, v = line.split(":", 1)
-            mem[k] = int(v.strip().split()[0])  # kB
-    mem_total = mem.get("MemTotal", 0)
-    mem_used = mem_total - mem.get("MemAvailable", 0)
+    mem_total = mem_used = 0
+    if darwin:
+        try:
+            mem_total = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True,
+                                           text=True, timeout=3).stdout.strip()) // 1024  # kB
+            vm = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=3).stdout
+            page = 4096
+            m = re.search(r"page size of (\d+)", vm)
+            if m:
+                page = int(m.group(1))
+            pages = {k.strip(): int(v.strip().rstrip(".")) for k, v in
+                     (ln.split(":", 1) for ln in vm.splitlines() if ":" in ln and "Pages" in ln)}
+            free = (pages.get("Pages free", 0) + pages.get("Pages inactive", 0)
+                    + pages.get("Pages speculative", 0)) * page // 1024
+            mem_used = max(0, mem_total - free)
+        except Exception:
+            pass
+    else:
+        try:
+            mem = {}
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    k, v = line.split(":", 1)
+                    mem[k] = int(v.strip().split()[0])  # kB
+            mem_total = mem.get("MemTotal", 0)
+            mem_used = mem_total - mem.get("MemAvailable", 0)
+        except OSError:
+            pass
 
     du = shutil.disk_usage(Path.home())
-    with open("/proc/uptime") as f:
-        uptime = float(f.read().split()[0])
+    uptime = 0.0
+    if darwin:
+        try:
+            boot = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True,
+                                  text=True, timeout=3).stdout
+            m = re.search(r"sec\s*=\s*(\d+)", boot)
+            if m:
+                uptime = max(0.0, time.time() - int(m.group(1)))
+        except Exception:
+            pass
+    else:
+        try:
+            with open("/proc/uptime") as f:
+                uptime = float(f.read().split()[0])
+        except OSError:
+            pass
 
     procs = []
     try:
+        argv = (["ps", "-Aceo", "pid,comm,%cpu,%mem", "-r"] if darwin
+                else ["ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-%cpu"])
         p = await asyncio.create_subprocess_exec(
-            "ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-%cpu",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         out, _ = await p.communicate()
         for line in out.decode(errors="replace").splitlines()[1:15]:
             tok = line.split()
@@ -351,7 +413,7 @@ async def api_system():
     return {"cpu": max(cpu, 0.0), "load": list(os.getloadavg()),
             "mem": {"total_kb": mem_total, "used_kb": mem_used},
             "disk": {"total": du.total, "used": du.used},
-            "uptime": uptime, "cores": os.cpu_count() or 1, "procs": procs}
+            "uptime": uptime, "cores": cores, "procs": procs}
 
 
 def _gpu_info() -> list[dict]:
@@ -467,6 +529,9 @@ async def api_get_config():
     if cfg.get("telegram", {}).get("bot_token"):
         cfg["telegram"]["bot_token"] = "•••" + cfg["telegram"]["bot_token"][-4:]
         cfg["telegram"]["_has_token"] = True
+    if cfg.get("github", {}).get("token"):
+        cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
+        cfg["github"]["_has_token"] = True
     return cfg
 
 
@@ -496,6 +561,12 @@ async def api_put_config(patch: dict):
         # masked keys ("•••xxxx") mean "unchanged"
         if "api_key" in pconf and not str(pconf["api_key"]).startswith("•••"):
             cfg["providers"][name]["api_key"] = pconf["api_key"]
+    if isinstance(patch.get("github"), dict):
+        gh = cfg.setdefault("github", {"token": "", "username": ""})
+        if "username" in patch["github"]:
+            gh["username"] = patch["github"]["username"]
+        if "token" in patch["github"] and not str(patch["github"]["token"]).startswith("•••"):
+            gh["token"] = patch["github"]["token"]
     cfgmod.save_config(cfg)
     cfgmod.ensure_dirs(cfg)
     return {"ok": True}
@@ -2137,8 +2208,9 @@ async def api_docs():
         except Exception:
             first = rel
         out.append({"file": rel, "title": first.lstrip("# ").strip()})
-    order = ["README.md", "getting-started.md", "installation.md", "desktop.md", "agent.md",
-             "building-apps.md", "integrations.md", "models.md", "configuration.md",
+    order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
+             "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
+             "tui.md", "security.md", "integrations.md", "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
     out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
     return {"docs": out}
@@ -2552,39 +2624,49 @@ async def ws_terminal(ws: WebSocket):
 
 # ---------------------------------------------------------------------------
 # WebSocket: chat + approvals
+#
+# Turns and builds are GLOBAL (state["turns"] / state["build"]) and their events go
+# through the global broadcast: a page reload, a second window, or a dropped socket
+# never strands a running turn — clients re-attach via the state_sync event and the
+# UI routes streams by conversation_id. Every turn is guaranteed to release its slot
+# and emit a terminal event (turn_end / build_done / build_error), whatever happens.
 # ---------------------------------------------------------------------------
 
-@app.websocket("/ws")
-async def ws_endpoint(ws: WebSocket):
-    await ws.accept()
-    state["clients"].add(ws)
-    turns: dict = {}                            # conversation_id -> {"agent", "task"}
-    build: dict = {"agent": None, "task": None}  # App Studio builds keep their own slot
 
-    async def send(event: dict):
-        try:
-            await ws.send_text(json.dumps(event))
-        except Exception:
-            pass
+async def _force_cancel(task: asyncio.Task, grace: float = 8.0):
+    """Give a stopped turn `grace` seconds to wind down cooperatively (the aborted
+    flag), then cancel for real — cancellation closes the provider's HTTP stream,
+    the only thing that interrupts a model that hasn't produced a token yet."""
+    for _ in range(max(1, int(grace * 2))):
+        if task.done():
+            return
+        await asyncio.sleep(0.5)
+    if not task.done():
+        task.cancel()
 
-    def _approver_for(evsend):
-        async def approver(name: str, args: dict, reason: str, offer: dict | None = None) -> bool:
-            # global broker: the card renders in this chat, but any client may answer
-            return await request_approval(name, args, reason, offer=offer,
-                                          evsend=evsend, ws=ws)
-        return approver
 
-    async def run_chat(cid: str, data: dict):
-        """One turn in one conversation — several may run at once. Every event is
-        stamped with its conversation_id so the UI routes streams to the right chat."""
-        cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
-        text = data.get("text", "").strip()
+async def run_chat(cid: str, data: dict):
+    """One chat turn, running as its own task — several conversations may run at
+    once. Two guarantees on every exit path: the turn slot is released, and a
+    terminal event reaches the UI."""
+    cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
+    turns = state["turns"]
+    text = (data.get("text") or "").strip()
+
+    async def evsend(ev: dict):
+        await state["broadcast"]({**ev, "conversation_id": cid})
+
+    async def approver(name: str, args: dict, reason: str, offer: dict | None = None) -> bool:
+        # global broker: the card renders in this chat, but any client may answer
+        return await request_approval(name, args, reason, offer=offer, evsend=evsend)
+
+    agent = None
+    started = False
+    header = ""
+    model = data.get("model") or cfg.get("default_model", "")
+    result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
+    try:
         images = _chat_images(data)
-        model = data.get("model") or cfg.get("default_model", "")
-
-        async def evsend(ev: dict):
-            await send({**ev, "conversation_id": cid})
-
         history = _history_for(cid)
         store.add_message(cid, "user", text, {"images": images} if images else None)
         entry = {"role": "user", "content": text}
@@ -2598,65 +2680,297 @@ async def ws_endpoint(ws: WebSocket):
         mention = fabricmod.parse_mention(store, text)
         if mention:
             defn, task = mention
-            await send({"type": "turn_start", "conversation_id": cid,
-                        "model": state["fabric"].resolve_model(defn)})
-            turns[cid] = {"agent": None, "task": asyncio.current_task()}
+            model = state["fabric"].resolve_model(defn)
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model}
             knowledge.turn_started()
-            try:
-                res = await state["fabric"].run_subagent(
-                    defn, task, conversation_id=cid, ui_emit=evsend,
-                    approver=_approver_for(evsend), agent_slot=turns[cid])
-            except Exception as e:
-                res = {"status": "error", "content": "", "fault": str(e),
-                       "model": "", "steps": [], "usage": {"in": 0, "out": 0}}
-            finally:
-                knowledge.turn_ended()
-                turns.pop(cid, None)
+            started = True
+            await evsend({"type": "turn_start", "model": model})
+            res = await state["fabric"].run_subagent(
+                defn, task, conversation_id=cid, ui_emit=evsend,
+                approver=approver, agent_slot=turns[cid])
             content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
                                          else f"({res['status']})")
             header = f"@{defn['name']} · {res['model']}\n\n" if res.get("model") else ""
-            store.add_message(cid, "assistant", header + content, {"steps": res["steps"]})
-            store.touch_conversation(cid)
             if not res["content"]:
                 await evsend({"type": "text_delta", "text": header + content})
-            knowledge.schedule_extraction(cfg, store, cid, text, content, state.get("broadcast"))
-            await send({"type": "turn_end", "conversation_id": cid})
-            return
-
-        agent = Agent(cfg, toolbox, model, evsend, _approver_for(evsend), conversation_id=cid)
-        turns[cid] = {"agent": agent, "task": asyncio.current_task()}
-        knowledge.turn_started()
-        await send({"type": "turn_start", "conversation_id": cid, "model": model})
-        try:
+            usage = res.get("usage") or {}
+            result = {"content": content, "steps": res["steps"],
+                      "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
+        else:
+            agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid)
+            turns[cid] = {"agent": agent, "task": asyncio.current_task(), "model": model}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": model})
             result = await agent.run(history)
-        except Exception as e:
+    except asyncio.CancelledError:
+        # force-stopped (user abort escalation / shutdown): keep whatever streamed,
+        # still close the turn cleanly below
+        if agent is not None:
+            result = {"content": agent.partial_text, "steps": agent.partial_steps,
+                      "tokens": result["tokens"]}
+        with contextlib.suppress(Exception):
+            await evsend({"type": "error", "message": "turn stopped"})
+    except Exception as e:
+        with contextlib.suppress(Exception):
             await evsend({"type": "error", "message": f"{type(e).__name__}: {e}"})
-            result = {"content": "", "steps": []}
-        finally:
+        with contextlib.suppress(Exception):
+            store.log("error", f"chat turn failed: {type(e).__name__}: {e}"[:400],
+                      {"conversation_id": cid})
+    finally:
+        if started:
             knowledge.turn_ended()
-            turns.pop(cid, None)
-        store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
-        store.touch_conversation(cid)
-        tk = result.get("tokens") or {"input": 0, "output": 0}
-        store.log("turn", text[:200], {"conversation_id": cid, "model": model,
-                                       "steps": len(result["steps"]),
-                                       "in": tk["input"], "out": tk["output"]})
-        knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
-        await send({"type": "turn_end", "conversation_id": cid})
+        try:
+            store.add_message(cid, "assistant", header + result["content"],
+                              {"steps": result["steps"]})
+            store.touch_conversation(cid)
+            tk = result.get("tokens") or {}
+            store.log("turn", text[:200], {"conversation_id": cid, "model": model,
+                                           "steps": len(result["steps"]),
+                                           "in": tk.get("input", 0), "out": tk.get("output", 0)})
+            knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
+                                          state.get("broadcast"))
+        except Exception as e:
+            with contextlib.suppress(Exception):
+                store.log("error", f"turn persistence failed: {e}"[:400])
+        turns.pop(cid, None)
+        with contextlib.suppress(Exception):
+            await evsend({"type": "turn_end"})
 
-    async def run_build(data: dict):
-        """Agentic App Builder: an agent whose job is to build/refine a UI app via create_app,
-        streamed live to App Studio with a preview."""
-        cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
-        prompt = data.get("prompt", "").strip()
-        if not prompt:
+def _validate_app_html(html: str) -> list[str]:
+    """Structural completeness checks — catches the truncated / half-generated apps a
+    token-limit cutoff produces. Returns human-readable issues (empty = looks whole)."""
+    import html.parser as _hp
+    issues: list[str] = []
+    h = (html or "").strip()
+    if not h:
+        return ["empty document"]
+    low = h.lower()
+    if h.startswith("```") or h.endswith("```"):
+        issues.append("output is still wrapped in a markdown code fence")
+    if "<html" in low and "</html>" not in low:
+        issues.append("document opens <html> but never closes it (output was likely cut off)")
+    for tag in ("script", "style"):
+        if low.count(f"<{tag}") > low.count(f"</{tag}"):
+            issues.append(f"unclosed <{tag}> block (output was likely cut off)")
+    if h.rstrip().endswith(("<", "=", "(", "{", ",", "&&", "||", "+")):
+        issues.append("document ends mid-token (output was cut off)")
+    end_idx = low.rfind("</html>")
+    if end_idx != -1 and h[end_idx + len("</html>"):].strip():
+        issues.append("content continues after </html> (malformed or duplicated output)")
+    # JS leaking into visible page text = a missing/broken <script> tag — the app
+    # will render its own source code to the user
+    try:
+        from .tools import _TextExtractor
+        ex = _TextExtractor()
+        ex.feed(h)
+        visible = " ".join(ex.parts)
+        import re as _re2
+        if _re2.search(r"\bfunction\s*\w*\s*\(|\)\s*=>\s*\{|document\.(querySelector|getElementById)", visible):
+            issues.append("javascript appears as visible page text (missing <script> tag or broken markup)")
+    except Exception:
+        pass
+
+    class _Chk(_hp.HTMLParser):
+        VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+                "meta", "param", "source", "track", "wbr"}
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack: list[str] = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in self.VOID:
+                self.stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in self.VOID:
+                return
+            if tag in self.stack:
+                while self.stack and self.stack[-1] != tag:
+                    self.stack.pop()
+                if self.stack:
+                    self.stack.pop()
+
+    try:
+        p = _Chk()
+        p.feed(h)
+        p.close()
+        leftovers = [t for t in p.stack if t not in ("html", "body", "head", "p", "li")]
+        if len(leftovers) >= 2:
+            issues.append("unbalanced HTML — unclosed <" + ">, <".join(leftovers[-4:])
+                          + "> (likely truncated)")
+    except Exception:
+        pass
+    return issues
+
+
+def _build_history(cid: str, keep: int = 6) -> list[dict]:
+    """Build-conversation history, bounded: only the last `keep` messages, with
+    embedded ```html sources stripped from all but the newest message — each
+    refinement re-embeds the CURRENT source, so older copies are dead weight that
+    multiplies truncation odds on local models."""
+    import re
+    hist = _history_for(cid)[-keep:]
+    for m in hist[:-1]:
+        c = m.get("content") or ""
+        if "```html" in c:
+            m["content"] = re.sub(r"```html.*?```",
+                                  "```html\n<!-- (older app source omitted) -->\n```",
+                                  c, flags=re.S)
+    return hist
+
+
+def _pick_build_model(models, current, cloud_only=False):
+    """Prefer a model known to tool-call reliably: cloud first, then strong local families.
+    With cloud_only=True (the failure-retry path) local models are excluded — "retrying"
+    onto a bigger local model usually means CPU offload: slower and worse, not better."""
+    ids = [m["id"] for m in models if m["id"] != current]
+    markers = ("claude", "gpt-5", "gpt-4") if cloud_only \
+        else ("claude", "gpt-5", "gpt-4", "qwen", "devstral", "mistral", "llama3")
+    for marker in markers:
+        pool = [i for i in ids if marker in i.lower()]
+        if cloud_only:
+            pool = [i for i in pool if not i.startswith("ollama/")]
+        if pool:
+            return pool[0]
+    return None
+
+
+@app.get("/api/lifecycle")
+async def api_lifecycle():
+    """Mission Control: one snapshot of all six lifecycle pillars —
+    Train · Test · Operate · Build · Ship · Manage."""
+    cfg, store = state["cfg"], state["store"]
+    out: dict = {}
+
+    tf = await state["trainforge"].health()
+    train = {"service": "running" if tf.get("running") else ("available" if tf.get("path") else "not installed"),
+             "url": tf.get("url", ""), "jobs_running": 0, "models": 0}
+    if tf.get("running"):
+        code, jobs = await state["trainforge"].api("GET", "/api/jobs", timeout=5)
+        if code == 200 and isinstance(jobs, list):
+            train["jobs_running"] = sum(1 for j in jobs if j.get("status") == "running")
+            train["jobs_total"] = len(jobs)
+        code, models = await state["trainforge"].api("GET", "/api/models", timeout=5)
+        if code == 200 and isinstance(models, list):
+            train["models"] = len(models)
+    out["train"] = train
+
+    last_test = next(iter(store.get_logs(kind="test", limit=1) or []), None) \
+        if hasattr(store, "get_logs") else None
+    if last_test is None:
+        try:
+            row = store.db.execute(
+                "select message, created_at from logs where kind='test' "
+                "order by created_at desc limit 1").fetchone()
+            last_test = dict(row) if row else None
+        except Exception:
+            last_test = None
+    out["test"] = {"suite": "tests/ (pytest)", "last": last_test,
+                   "gate": "self-modification restarts run the suite first"}
+
+    try:
+        tasks = store.list_tasks()
+    except Exception:
+        tasks = []
+    day_ago = time.time() - 86400
+    try:
+        errors_24h = store.db.execute(
+            "select count(*) c from logs where kind='error' and created_at > ?",
+            (day_ago,)).fetchone()["c"]
+        turns_24h = store.db.execute(
+            "select count(*) c from logs where kind='turn' and created_at > ?",
+            (day_ago,)).fetchone()["c"]
+    except Exception:
+        errors_24h = turns_24h = 0
+    out["operate"] = {"scheduled_tasks": len(tasks),
+                      "tasks_enabled": sum(1 for t in tasks if t.get("enabled")),
+                      "turns_24h": turns_24h, "errors_24h": errors_24h,
+                      "turns_running": len(state.get("turns") or {})}
+
+    apps = store.list_apps()
+    b = state.get("build") or {}
+    out["build"] = {"apps": len(apps),
+                    "build_running": bool(b.get("task") and not b["task"].done()),
+                    "last_app": apps[0]["name"] if apps else ""}
+
+    projects_dir = Path(os.path.expanduser(cfg["workspace"])) / "projects"
+    repos = []
+    if projects_dir.is_dir():
+        repos = [p.name for p in projects_dir.iterdir() if (p / ".git").is_dir()]
+    out["ship"] = {"git_projects": repos,
+                   "github_token": bool((cfg.get("github") or {}).get("token")),
+                   "package": "deb (packaging/build-deb.sh)"}
+
+    try:
+        grants = len(store.list_grants())
+    except Exception:
+        grants = 0
+    snaps_dir = cfgmod.AGENTOS_HOME / "snapshots"
+    snaps = len(list(snaps_dir.iterdir())) if snaps_dir.is_dir() else 0
+    out["manage"] = {"autonomy": cfg.get("autonomy", ""), "model": cfg.get("default_model", ""),
+                     "grants": grants, "snapshots": snaps,
+                     "sandbox": bool((cfg.get("sandbox") or {}).get("enabled"))}
+    return out
+
+
+@app.get("/api/train/status")
+async def train_status():
+    """Train pillar: TrainForge service health for the Train desktop app."""
+    return await state["trainforge"].health()
+
+
+@app.post("/api/train/service")
+async def train_service(body: dict):
+    """Start/stop the TrainForge service from the desktop (loopback-bound, no auth
+    beyond localhost — same trust model as the rest of the control surface)."""
+    action = (body or {}).get("action", "")
+    if action == "start":
+        return {"result": await state["trainforge"].start()}
+    if action == "stop":
+        return {"result": await state["trainforge"].stop()}
+    return JSONResponse({"error": "action must be start|stop"}, status_code=400)
+
+
+@app.get("/api/build/status")
+async def build_status():
+    """Reconnect support: a reloaded App Studio asks whether a build is still running."""
+    b = state.get("build") or {}
+    running = bool(b.get("task") and not b["task"].done())
+    return {"running": running, "app_id": b.get("app_id", ""),
+            "prompt": b.get("prompt", ""), "started_at": b.get("started_at", 0)}
+
+
+async def run_build(data: dict):
+    """Agentic App Builder: an agent whose job is to build/refine a UI app via create_app,
+    streamed live to App Studio with a preview. Exactly one terminal event
+    (build_done / build_error) is emitted on every exit path."""
+    cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
+    build = state["build"]
+    bcast = state["broadcast"]
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return
+    req_model = (data.get("model") or "").strip()
+    # empty or "auto" ⇒ let the builder pick the most build-capable model available
+    model = "" if req_model.lower() in ("", "auto") else req_model
+    app_id = data.get("app_id") or ""
+    existing = store.get_app(app_id) if app_id else None
+    build.update(agent=None, cancel_requested=False, timed_out=False,
+                 prompt=prompt[:200], app_id=app_id, started_at=time.time())
+
+    done_sent = False
+
+    async def terminal(ev: dict):
+        nonlocal done_sent
+        if done_sent:
             return
-        req_model = (data.get("model") or "").strip()
-        # empty or "auto" ⇒ let the builder pick the most build-capable model available
-        model = "" if req_model.lower() in ("", "auto") else req_model
-        app_id = data.get("app_id") or ""
-        existing = store.get_app(app_id) if app_id else None
+        done_sent = True
+        with contextlib.suppress(Exception):
+            await bcast(ev)
 
+    try:
         # one persistent build conversation per app (context for iterative refinement);
         # new-app prompts share a single "build: new app" session — renamed to the app's
         # own session once a build succeeds — so iterating never forks a fresh conversation
@@ -2667,7 +2981,10 @@ async def ws_endpoint(ws: WebSocket):
                 cid = c["id"]
                 break
         cid = cid or store.create_conversation(title)
-        history = _history_for(cid)
+        # refinements need the app's build context; a NEW app must NOT inherit the
+        # shared "new app" session's past failures (small models imitate whatever
+        # the previous assistant turns did — including failing)
+        history = _build_history(cid) if existing else []
 
         ctx = prompt
         if existing:
@@ -2682,42 +2999,77 @@ async def ws_endpoint(ws: WebSocket):
         store.add_message(cid, "user", prompt)
         history.append({"role": "user", "content": ctx})
 
-        # enough steps to spec → ground → build → fix, but still bounded
-        bcfg = {**cfg, "max_steps": 10}
+        # enough steps to spec → ground → build → fix, but still bounded; builds get a
+        # bigger output budget than chat (a whole app must fit in one tool call), and
+        # the thinking channel is OFF — a local thinking model can burn its entire
+        # budget reasoning and never emit the app
+        bcfg = {**cfg, "max_steps": 10,
+                "max_output_tokens": int(cfg.get("build_max_output_tokens", 32768)),
+                "ollama_think": False}
+        build_timeout = int(cfg.get("build_timeout", 600))
 
         async def bemit(ev):
             m = {"text_delta": "build_text", "thinking_delta": "build_thinking",
-                 "tool_start": "build_tool", "tool_end": "build_tool_end", "error": "build_error"}
+                 "tool_start": "build_tool", "tool_end": "build_tool_end",
+                 "error": "build_error_note", "status": "build_status"}
             if ev["type"] in m:
-                await send({**ev, "type": m[ev["type"]]})
+                await bcast({**ev, "type": m[ev["type"]]})
 
         async def bapprove(name, args, reason, offer=None):
             return True if name == "create_app" else (cfg.get("autonomy") == "full")
 
-        try:
-            persona = BUILDER_PERSONA + "\n=== API REGISTRY (everything this app may call) ===\n" + _registry_text()
-        except Exception:
-            persona = BUILDER_PERSONA
+        def persona_for(use_model: str) -> str:
+            """Full API registry for capable cloud models; trimmed for local ones —
+            a 10KB+ registry inside an already-large persona overflows small contexts."""
+            try:
+                reg = _registry_text()
+                if use_model.startswith("ollama/") and len(reg) > 4000:
+                    reg = reg[:4000] + "\n… (registry trimmed — appTool/appData/appLLM above are the essentials)"
+                return BUILDER_PERSONA + "\n=== API REGISTRY (everything this app may call) ===\n" + reg
+            except Exception:
+                return BUILDER_PERSONA
 
         async def attempt(use_model):
             """Run one build turn; return (built_app_or_None, result).
-            Success = an app was created OR an existing app's source actually changed."""
+            Success = an app was created OR an existing app's source actually changed.
+
+            Local (Ollama) models build WITHOUT tools: several local model templates
+            mangle large tool-call payloads (the parser silently swallows the entire
+            output), so they emit one ```html block as plain text instead — the
+            extraction + validation path below installs it."""
             before = {a["id"]: a.get("updated_at") for a in store.list_apps()}
-            agent = Agent(bcfg, toolbox, use_model, bemit, bapprove, extra_system=persona,
-                          tool_filter=["create_app", "read_file", "list_dir", "fetch_url", "system_info"])
+            local = use_model.startswith("ollama/")
+            extra = persona_for(use_model)
+            tf = ["create_app", "read_file", "list_dir", "fetch_url", "system_info"]
+            if local:
+                tf = []
+                # small models anchor on the FIRST instruction they read — the output
+                # contract must lead, not trail, the persona
+                extra = (("=== OUTPUT CONTRACT (overrides everything below) ===\n"
+                          "Tools are unavailable this turn. Your reply MUST be, in order:\n"
+                          "name: \"<app name>\"\n"
+                          "description: \"<one line>\"\n"
+                          "then the COMPLETE app as ONE ```html fenced code block, then STOP.\n"
+                          "A reply without a ```html block is a total failure. Do not describe or "
+                          "announce the app — OUTPUT it.\n\n") + extra)
+            agent = Agent(bcfg, toolbox, use_model, bemit, bapprove,
+                          extra_system=extra, tool_filter=tf)
             build["agent"] = agent
             knowledge.turn_started()
             try:
-                res = await asyncio.wait_for(agent.run(history), timeout=420)
+                res = await asyncio.wait_for(agent.run(history), timeout=build_timeout)
             except asyncio.TimeoutError:
+                # a timeout is NOT a user cancel: report it as such and let the
+                # caller decide whether to retry on a stronger model
                 agent.aborted = True
-                res = {"content": "", "steps": []}
+                build["timed_out"] = True
+                res = {"content": agent.partial_text, "steps": agent.partial_steps}
             except Exception as e:
-                await send({"type": "build_error", "message": f"{type(e).__name__}: {e}"})
+                await bcast({"type": "build_text",
+                             "text": f"\n(attempt failed: {type(e).__name__}: {e})\n"})
                 res = {"content": "", "steps": []}
             finally:
                 knowledge.turn_ended()
-                build["was_aborted"] = bool(agent.aborted)
                 build["agent"] = None
 
             def changed_apps():
@@ -2727,7 +3079,8 @@ async def ws_endpoint(ws: WebSocket):
             new = changed_apps()
             if not new:  # model wrote HTML as text instead of calling create_app → extract it
                 html = _extract_html(res["content"]) or _extract_html_from_steps(res["steps"])
-                if html:
+                # never install a truncated half-app as a "success"
+                if html and not _validate_app_html(html):
                     if existing:
                         store.save_app(existing["name"], existing["icon"], existing["description"], html, note=prompt[:120])
                     else:
@@ -2737,16 +3090,7 @@ async def ws_endpoint(ws: WebSocket):
                     new = changed_apps()
             return (new[0] if new else None), res
 
-        def _pick_retry_model(models, current):
-            """Prefer a model known to tool-call reliably: cloud first, then strong local families."""
-            ids = [m["id"] for m in models if m["id"] != current]
-            for marker in ("claude", "gpt-4", "gpt-5", "qwen", "devstral", "mistral", "llama3"):
-                hit = next((i for i in ids if marker in i.lower()), None)
-                if hit:
-                    return hit
-            return None
-
-        await send({"type": "build_start"})
+        await bcast({"type": "build_start"})
 
         # Auto model selection: prefer a tool-call-reliable model (cloud first, then strong
         # local families); fall back to the configured default, then anything available.
@@ -2755,44 +3099,63 @@ async def ws_endpoint(ws: WebSocket):
                 _avail = await providers.available_models(cfg)
             except Exception:
                 _avail = []
-            model = (_pick_retry_model(_avail, "") or cfg.get("default_model", "")
+            model = (_pick_build_model(_avail, "") or cfg.get("default_model", "")
                      or (_avail[0]["id"] if _avail else ""))
             if model:
-                await send({"type": "build_text",
-                            "text": f"\n(Auto-selected {model.split('/')[-1]} to build this app.)\n"})
+                await bcast({"type": "build_text",
+                             "text": f"\n(Auto-selected {model.split('/')[-1]} to build this app.)\n"})
                 store.log("system", f"build auto-selected {model}")
 
         used_model = model
         built, result = await attempt(model)
 
-        if not built and build.get("was_aborted"):
+        # announcement-only reply ("I will build it…") with no actual app: one direct
+        # nudge on the same model — the prompt is now cached, so this round is cheap
+        if (not built and not build.get("cancel_requested") and not build.get("timed_out")
+                and result.get("content") and "```" not in result["content"]):
+            await bcast({"type": "build_text",
+                         "text": "\n(no app in the reply — asking the model to output it…)\n"})
+            history.append({"role": "assistant", "content": result["content"]})
+            history.append({"role": "user", "content":
+                            "You did not output the app. No commentary — output the COMPLETE app "
+                            "now as ONE ```html fenced block (with the name:/description: lines "
+                            "above it)."})
+            built, result = await attempt(model)
+
+        if not built and build.get("cancel_requested"):
             store.add_message(cid, "assistant", result["content"] or "(build cancelled)",
                               {"steps": result["steps"]})
-            await send({"type": "build_error", "message": "build cancelled"})
+            await terminal({"type": "build_error", "message": "build cancelled"})
             return
 
         # Auto-retry with a tool-capable model if the selected one produced nothing
         # (some local models, e.g. gemma, don't reliably tool-call under a large prompt).
         if not built:
+            if build.get("timed_out"):
+                await bcast({"type": "build_text",
+                             "text": f"\n(build timed out after {build_timeout}s…)\n"})
             try:
                 models = await providers.available_models(cfg)
             except Exception:
                 models = []
-            better = _pick_retry_model(models, model)
+            better = _pick_build_model(models, model, cloud_only=True)
             if better:
-                await send({"type": "build_text", "text": f"\n({model.split('/')[-1]} produced nothing — retrying with {better.split('/')[-1]}…)\n"})
+                await bcast({"type": "build_text",
+                             "text": f"\n({model.split('/')[-1]} produced nothing — retrying with {better.split('/')[-1]}…)\n"})
                 store.log("system", f"build retry with {better} (from {model})")
+                build["timed_out"] = False
                 built, result = await attempt(better)
                 if built:
                     used_model = better
 
-        # Static verification: catch things that WILL break at runtime, give the model ONE fix pass.
+        # Verification: structural completeness (truncation) + static lint (things that
+        # WILL break at runtime). The model gets ONE fix pass.
         if built:
             full = store.get_app(built["id"]) or {}
-            issues = _lint_app_html(full.get("html", ""), toolbox)
+            issues = _validate_app_html(full.get("html", "")) + _lint_app_html(full.get("html", ""), toolbox)
             if issues:
-                await send({"type": "build_text",
-                            "text": "\n(automated check: " + "; ".join(issues)[:400] + " — fixing…)\n"})
+                await bcast({"type": "build_text",
+                             "text": "\n(automated check: " + "; ".join(issues)[:400] + " — fixing…)\n"})
                 history.append({"role": "assistant", "content": result["content"] or "(built the app)"})
                 history.append({"role": "user", "content":
                                 "AUTOMATED CHECK on the app you just built found problems:\n- "
@@ -2815,12 +3178,59 @@ async def ws_endpoint(ws: WebSocket):
                 manifest_status = "proposed"
         await state["broadcast"]({"type": "apps"})
         if built:
-            await send({"type": "build_done", "app_id": built["id"], "name": built["name"],
-                        "summary": result["content"][:600],
-                        "manifest_status": manifest_status})
+            # anything the repair pass could not fix ships as an explicit warning,
+            # never as a silent "success"
+            remaining = _validate_app_html((store.get_app(built["id"]) or {}).get("html", ""))
+            await terminal({"type": "build_done", "app_id": built["id"], "name": built["name"],
+                            "summary": result["content"][:600],
+                            "manifest_status": manifest_status,
+                            "warnings": remaining})
+        elif build.get("cancel_requested"):
+            await terminal({"type": "build_error", "message": "build cancelled"})
+        elif build.get("timed_out"):
+            await terminal({"type": "build_error",
+                            "message": f"build timed out after {build_timeout}s — try a simpler "
+                                       f"prompt, or pick a stronger model"})
         else:
-            await send({"type": "build_error",
-                        "message": "couldn't produce an app — try rephrasing, or select a tool-capable model (e.g. a qwen model) in the chat window"})
+            await terminal({"type": "build_error",
+                            "message": "couldn't produce an app — try rephrasing, or select a "
+                                       "tool-capable model (e.g. a qwen model) in the chat window"})
+    except asyncio.CancelledError:
+        await terminal({"type": "build_error", "message": "build cancelled"})
+    except Exception as e:
+        with contextlib.suppress(Exception):
+            store.log("error", f"build crashed: {type(e).__name__}: {e}"[:400])
+        await terminal({"type": "build_error", "message": f"build failed: {type(e).__name__}: {e}"})
+    finally:
+        build["agent"] = None
+        # belt and braces: if some path above returned without a terminal event,
+        # the UI must never be left spinning
+        await terminal({"type": "build_error", "message": "build ended unexpectedly"})
+
+@app.websocket("/ws")
+async def ws_endpoint(ws: WebSocket):
+    await ws.accept()
+    state["clients"].add(ws)
+    turns, build = state["turns"], state["build"]
+
+    async def send(event: dict):
+        with contextlib.suppress(Exception):
+            await ws.send_text(json.dumps(event))
+
+    # a (re)connecting client learns what is still running, so a page reload never
+    # strands a spinner — the UI re-attaches (or clears) by conversation_id
+    await send({"type": "state_sync",
+                "running": list(turns.keys()),
+                "build_running": bool(build.get("task") and not build["task"].done())})
+
+    def _stop(tinfo: dict):
+        """Cooperative abort first; hard-cancel after a grace period — a model that
+        hasn't produced a token yet only stops when its HTTP stream is closed."""
+        if tinfo.get("agent"):
+            tinfo["agent"].aborted = True
+        task = tinfo.get("task")
+        if task and not task.done():
+            asyncio.create_task(_force_cancel(task))
 
     try:
         while True:
@@ -2841,43 +3251,43 @@ async def ws_endpoint(ws: WebSocket):
                     title = text[:60] or "(image)"
                     cid = state["store"].create_conversation(title)
                     await send({"type": "conversation", "id": cid, "title": title})
-                turns[cid] = {"agent": None, "task": None}  # claim before the task starts
-                asyncio.create_task(run_chat(cid, data))
+                turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
+                turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
-                if build["task"] and not build["task"].done():
+                if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
-                if build["agent"]:
+                build["cancel_requested"] = True
+                if build.get("agent"):
                     build["agent"].aborted = True
-                    await send({"type": "build_text", "text": "\n(cancelling…)\n"})
+                if build.get("task") and not build["task"].done():
+                    await state["broadcast"]({"type": "build_text", "text": "\n(cancelling…)\n"})
+                    asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
                                        remember=bool(data.get("remember")))
             elif t == "abort":
                 cid = data.get("conversation_id")
-                if cid:  # stop one conversation's turn; its pending approvals die with it
-                    if cid in turns and turns[cid]["agent"]:
-                        turns[cid]["agent"].aborted = True
-                else:    # legacy/global abort: stop everything on this socket
-                    for tinfo in turns.values():
-                        if tinfo["agent"]:
-                            tinfo["agent"].aborted = True
-                    if build["agent"]:
+                if cid:  # stop one conversation's turn
+                    if cid in turns:
+                        _stop(turns[cid])
+                else:    # legacy/global abort: stop every running turn + build
+                    for tinfo in list(turns.values()):
+                        _stop(tinfo)
+                    build["cancel_requested"] = True
+                    if build.get("agent"):
                         build["agent"].aborted = True
+                    if build.get("task") and not build["task"].done():
+                        asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
-                        if entry.get("ws") is ws and not entry["fut"].done():
+                        if not entry["fut"].done():
                             entry["fut"].set_result(False)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, json.JSONDecodeError, OSError):
         pass
     finally:
+        # turns and builds are global: they KEEP RUNNING when a socket drops (the
+        # reply persists and broadcasts to whoever is connected); only this socket's
+        # registration is cleaned up
         state["clients"].discard(ws)
-        for tinfo in turns.values():
-            if tinfo["agent"]:
-                tinfo["agent"].aborted = True
-        if build["agent"]:
-            build["agent"].aborted = True
-        for entry in state["pending_approvals"].values():
-            if entry.get("ws") is ws and not entry["fut"].done():
-                entry["fut"].set_result(False)

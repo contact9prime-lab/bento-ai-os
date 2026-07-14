@@ -27,9 +27,16 @@ SAFE_COMMANDS = {
     "echo", "pwd", "whoami", "id", "date", "cal", "uptime", "uname", "hostname",
     "df", "du", "free", "ps", "top", "lscpu", "lsblk", "lsusb", "lspci", "ip",
     "which", "whereis", "type", "file", "stat", "env", "printenv", "history",
-    "git", "diff", "md5sum", "sha256sum", "basename", "dirname", "realpath",
+    "diff", "md5sum", "sha256sum", "basename", "dirname", "realpath",
     "xrandr", "sensors", "nvidia-smi", "acpi", "ping", "dig", "nslookup", "host",
     "curl", "wget", "tree", "less", "more", "awk", "sed", "jq", "column", "nl",
+}
+# git is NOT blanket-safe: `git push`/`reset --hard`/`clean -fdx` mutate and publish.
+# Only these read-only subcommands auto-run; everything else asks (or use the
+# structured git_* tools, which carry their own risk levels).
+GIT_SAFE_SUBCOMMANDS = {
+    "status", "log", "diff", "show", "branch", "remote", "tag", "describe",
+    "rev-parse", "ls-files", "ls-remote", "shortlog", "blame", "reflog", "config",
 }
 # Commands never run even with approval.
 BLOCKED_PATTERNS = [
@@ -58,6 +65,22 @@ def classify_command(command: str) -> str:
     for seg in segments:
         parts = seg.strip().split()
         base = os.path.basename(parts[0]) if parts else ""
+        if base == "git":
+            sub = next((p for p in parts[1:] if not p.startswith("-")), "")
+            if sub not in GIT_SAFE_SUBCOMMANDS:
+                return "risky"
+            if sub == "config":
+                # `git config <key>` reads; `git config <key> <value>` writes
+                args = [p for p in parts[2:] if not p.startswith("-")]
+                if len(args) > 1:
+                    return "risky"
+            if sub == "branch" and any(p in parts for p in ("-d", "-D", "-m", "-M", "--delete")):
+                return "risky"
+            if sub == "tag" and any(not p.startswith("-") for p in parts[2:]):
+                return "risky"  # creating/deleting a tag; bare `git tag` lists
+            if sub == "remote" and any(p in parts for p in ("add", "remove", "rm", "set-url", "rename")):
+                return "risky"
+            continue
         if base not in SAFE_COMMANDS:
             return "risky"
         if base in ("sed", "awk", "find") and re.search(r"(^|\s)-i\b|\s-delete\b|\s-exec\b", seg):
@@ -673,19 +696,59 @@ class Toolbox:
                        + (" (restarting)" if restart else ""))
         msg = f"wrote {len(content)} chars to AgentOS source at {path} (snapshot {snap} saved first)"
         if restart:
+            # test gate: a self-modification that breaks the suite must not go live —
+            # the AST check above only catches parse errors, not broken behavior
+            tests = await self.run_tests()
+            if tests.startswith("[exit code"):
+                return (msg + "\n[error] NOT restarting: the change breaks the test suite. "
+                        "Fix it (or restore the snapshot) before restarting.\n" + tests[:1500])
             from . import desktop as desktopmod
             desktopmod.restart_service()
-            msg += " — restarting AgentOS now (reconnect in a few seconds)"
+            msg += " — tests passed; restarting AgentOS now (reconnect in a few seconds)"
         else:
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
         return msg
 
+    async def run_tests(self, path: str = "") -> str:
+        """Run the AgentOS test suite (or a project's tests). The Test pillar's
+        workhorse: self-modification calls this before restarting."""
+        import agentos
+        src_root = Path(agentos.__file__).resolve().parent.parent
+        workdir = os.path.realpath(os.path.expanduser(path)) if path else str(src_root)
+        if not os.path.isdir(workdir):
+            return f"[error] not a directory: {workdir}"
+        py = sys.executable
+        proc = await asyncio.create_subprocess_exec(
+            py, "-m", "pytest", "-q", "--no-header", cwd=workdir,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return "[error] tests timed out after 600s"
+        text = out.decode(errors="replace")
+        tail = "\n".join(text.strip().splitlines()[-25:])
+        summary = next((ln for ln in reversed(text.strip().splitlines())
+                        if "passed" in ln or "failed" in ln or "error" in ln), "")
+        if proc.returncode == 0:
+            self.store.log("test", f"passed: {summary}"[:200], {"dir": workdir, "ok": True})
+            return f"tests PASSED\n{tail}"
+        if "no tests ran" in text or "collected 0 items" in text:
+            return f"[error] no tests found in {workdir}"
+        self.store.log("test", f"failed: {summary}"[:200], {"dir": workdir, "ok": False})
+        return f"[exit code {proc.returncode}] tests FAILED\n{_truncate(tail)}"
+
     async def restart_agentos(self) -> str:
-        """Restart the AgentOS service to load code changes."""
+        """Restart the AgentOS service to load code changes — gated on the test
+        suite: a self-modification that breaks the tests must not go live."""
+        tests = await self.run_tests()
+        if tests.startswith("[exit code"):
+            return ("[error] refusing to restart: the test suite fails against the current "
+                    "source. Fix the failures (or revert via snapshot) first.\n" + tests[:1500])
         from . import desktop as desktopmod
         desktopmod.restart_service()
-        self.store.log("system", "AgentOS restart requested by agent")
-        return "restarting AgentOS — the UI will reconnect in a few seconds"
+        self.store.log("system", "AgentOS restart requested by agent (tests passed)")
+        return "tests passed — restarting AgentOS; the UI will reconnect in a few seconds"
 
     async def manage_models(self, action: str = "list", name: str = "") -> str:
         """Manage local Ollama models. action: 'list' (installed + GPU), 'pull' (download `name`),
@@ -940,6 +1003,49 @@ class Toolbox:
             return "safe", ""
         if name == "write_file":
             return "risky", f"Writes to {args.get('path', '?')}."
+        if name in ("git_status", "git_log", "git_diff"):
+            return "safe", ""
+        if name in ("git_init", "git_commit", "git_branch"):
+            # local, reversible history inside the workspace runs free; outside it, ask
+            ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
+            p = os.path.realpath(os.path.expanduser(args.get("path") or ws))
+            if p == ws or p.startswith(ws + os.sep):
+                return "safe", ""
+            return "risky", f"Writes git history outside the workspace ({p})."
+        if name == "git_push":
+            return "risky", "Publishes commits to a remote repository (visible outside this machine)."
+        if name in ("git_remote_set", "git_pull", "git_clone"):
+            return "risky", "Changes git remotes or fetches external code."
+        if name == "export_app_to_git":
+            if args.get("push"):
+                return "risky", "Exports an app to a project folder and pushes it to GitHub."
+            return "safe", ""
+        if name == "train_autopilot":
+            return "risky", "Starts an autonomous dataset-import + training run (long GPU work)."
+        if name == "train_job":
+            if args.get("action") == "create":
+                return "risky", "Launches a model training job (long GPU work)."
+            return "safe", ""
+        if name == "train_model":
+            if args.get("action") == "publish":
+                return "risky", "Uploads a trained model to the Hugging Face Hub (leaves this machine)."
+            return "safe", ""
+        if name == "train_datasets":
+            if args.get("action") in ("import_hub", "import_url"):
+                return "risky", "Downloads an external dataset onto this machine."
+            return "safe", ""
+        if name == "trainforge_service":
+            return "safe", ""
+        if name == "run_tests":
+            # running a test suite executes that project's code
+            p = args.get("path") or ""
+            if not p:
+                return "safe", ""  # AgentOS's own suite
+            ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
+            rp = os.path.realpath(os.path.expanduser(p))
+            if rp == ws or rp.startswith(ws + os.sep):
+                return "safe", ""
+            return "risky", f"Runs the test suite (arbitrary code) in {rp}."
         if name == "open_app":
             return "risky", "Launches an application or URL on your desktop."
         if name == "schedule_task":
@@ -972,6 +1078,360 @@ class Toolbox:
             return "risky", "Calls a tool on an external MCP server."
         return "safe", ""
 
+    # ---- git (Ship pillar) -------------------------------------------------
+    # Structured tools instead of shell strings: each carries its own risk level
+    # (reads auto-run; local writes are safe inside the workspace; push/remote/clone
+    # ask for approval) and pushes authenticate via the GitHub token from Settings
+    # without the token ever appearing in a command line or tool output.
+
+    async def _git(self, repo: str, *argv: str, env: dict | None = None,
+                   timeout: int = 120) -> tuple[int, str]:
+        e = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})}
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", repo, *argv,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=e)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return 1, f"[error] git timed out after {timeout}s"
+        return proc.returncode or 0, out.decode(errors="replace")
+
+    def _git_repo(self, path: str) -> tuple[str | None, str]:
+        p = os.path.realpath(os.path.expanduser(path or self.cfg["workspace"]))
+        if (deny := self._sandbox_deny(Path(p))):
+            return None, deny
+        if not os.path.isdir(p):
+            return None, f"[error] not a directory: {p}"
+        return p, ""
+
+    def _git_auth_env(self) -> dict:
+        """GIT_ASKPASS-based credentials: the token comes from config (Settings →
+        github.token) via the environment — never argv, never remotes, never output."""
+        token = (self.cfg.get("github") or {}).get("token", "")
+        if not token:
+            return {}
+        from . import config as cfgmod
+        askpass = cfgmod.AGENTOS_HOME / "git-askpass.sh"
+        if not askpass.exists() or "AGENTOS_GIT" not in askpass.read_text():
+            askpass.write_text("#!/bin/sh\n# AGENTOS_GIT askpass helper\n"
+                               "case \"$1\" in\n"
+                               "  *sername*) echo \"${AGENTOS_GIT_USER:-x-access-token}\";;\n"
+                               "  *) echo \"$AGENTOS_GIT_TOKEN\";;\n"
+                               "esac\n")
+            askpass.chmod(0o700)
+        return {"GIT_ASKPASS": str(askpass), "AGENTOS_GIT_TOKEN": token,
+                "AGENTOS_GIT_USER": (self.cfg.get("github") or {}).get("username") or "x-access-token"}
+
+    async def git_status(self, path: str = "") -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        code, out = await self._git(repo, "status", "--short", "--branch")
+        if code != 0:
+            return f"[error] {out.strip()[:800]}"
+        _, remotes = await self._git(repo, "remote", "-v")
+        return f"{out.strip() or '(clean)'}\n\nremotes:\n{remotes.strip() or '(none)'}"
+
+    async def git_log(self, path: str = "", limit: int = 10) -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        code, out = await self._git(repo, "log", "--oneline", "--decorate",
+                                    f"-{max(1, min(int(limit), 100))}")
+        return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_diff(self, path: str = "", staged: bool = False, ref: str = "") -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        argv = ["diff", "--stat", "-p"]
+        if staged:
+            argv.append("--staged")
+        if ref:
+            argv.append(ref)
+        code, out = await self._git(repo, *argv)
+        return _truncate(out or "(no changes)") if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_init(self, path: str) -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        code, out = await self._git(repo, "init", "-b", "main")
+        return out.strip() if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_commit(self, path: str, message: str, add_all: bool = True) -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        if not message.strip():
+            return "[error] a commit message is required"
+        if add_all:
+            code, out = await self._git(repo, "add", "-A")
+            if code != 0:
+                return f"[error] git add: {out.strip()[:800]}"
+        # per-invocation identity fallback so a fresh machine can still commit
+        idargs = []
+        code, _ = await self._git(repo, "config", "user.email")
+        if code != 0:
+            idargs = ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+        code, out = await self._git(repo, *idargs, "commit", "-m", message)
+        if code != 0 and "nothing to commit" in out:
+            return "nothing to commit — working tree clean"
+        return out.strip()[:800] if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_branch(self, path: str, name: str = "", checkout: bool = True) -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        if not name:
+            code, out = await self._git(repo, "branch", "-a", "-v")
+            return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
+        argv = ["checkout", "-b", name] if checkout else ["branch", name]
+        code, out = await self._git(repo, *argv)
+        return out.strip()[:400] if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_remote_set(self, path: str, url: str, name: str = "origin") -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        code, out = await self._git(repo, "remote", "get-url", name)
+        if code == 0:
+            code, out = await self._git(repo, "remote", "set-url", name, url)
+        else:
+            code, out = await self._git(repo, "remote", "add", name, url)
+        return f"remote {name} -> {url}" if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_pull(self, path: str = "", remote: str = "origin", branch: str = "") -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        argv = ["pull", remote] + ([branch] if branch else [])
+        code, out = await self._git(repo, *argv, env=self._git_auth_env(), timeout=300)
+        return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
+
+    async def git_clone(self, url: str, path: str) -> str:
+        parent, err = self._git_repo(os.path.dirname(os.path.expanduser(path)) or self.cfg["workspace"])
+        if err:
+            return err
+        dest = os.path.realpath(os.path.expanduser(path))
+        proc_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **self._git_auth_env()}
+        proc = await asyncio.create_subprocess_exec(
+            "git", "clone", url, dest,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=proc_env)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return "[error] git clone timed out after 600s"
+        text = out.decode(errors="replace")
+        return _truncate(text) if proc.returncode == 0 else f"[error] {text.strip()[:800]}"
+
+    async def _github_api(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+        token = (self.cfg.get("github") or {}).get("token", "")
+        if not token:
+            return 0, {"message": "no GitHub token configured (Settings → Integrations → GitHub)"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.request(method, f"https://api.github.com{path}", json=body,
+                                     headers={"Authorization": f"token {token}",
+                                              "Accept": "application/vnd.github+json"})
+            try:
+                return r.status_code, r.json()
+            except Exception:
+                return r.status_code, {}
+
+    async def git_push(self, path: str = "", remote: str = "origin", branch: str = "",
+                       create_github_repo: bool = False, private: bool = True) -> str:
+        repo, err = self._git_repo(path)
+        if err:
+            return err
+        if not branch:
+            code, out = await self._git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+            branch = out.strip() if code == 0 else "main"
+        code, _ = await self._git(repo, "remote", "get-url", remote)
+        created_url = ""
+        if code != 0:  # no remote yet
+            if not create_github_repo:
+                return (f"[error] no remote '{remote}' configured — call git_remote_set, or "
+                        f"re-call git_push with create_github_repo=true to create one on GitHub")
+            name = os.path.basename(repo)
+            status, data = await self._github_api("POST", "/user/repos",
+                                                  {"name": name, "private": bool(private),
+                                                   "description": f"Shipped from AgentOS"})
+            if status == 0:
+                return f"[error] {data['message']}"
+            if status not in (200, 201):
+                return f"[error] GitHub repo creation failed (HTTP {status}): {str(data.get('message', data))[:300]}"
+            clone_url = data.get("clone_url", "")
+            created_url = data.get("html_url", "")
+            add_code, add_out = await self._git(repo, "remote", "add", remote, clone_url)
+            if add_code != 0:
+                return f"[error] {add_out.strip()[:400]}"
+        env = self._git_auth_env()
+        if not env:
+            hint = " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)"
+        else:
+            hint = ""
+        code, out = await self._git(repo, "push", "-u", remote, branch, env=env, timeout=300)
+        if code != 0:
+            return f"[error] git push failed{hint}: {out.strip()[:600]}"
+        done = f"pushed {branch} -> {remote}"
+        if created_url:
+            done += f"\ncreated GitHub repo: {created_url}"
+        return done + ("\n" + out.strip()[:400] if out.strip() else "")
+
+    async def export_app_to_git(self, app: str, push: bool = False, private: bool = True) -> str:
+        """Write an AgentOS app out of the SQLite store into a real project folder
+        (workspace/projects/<slug>) with README + manifest, commit it, optionally
+        create a GitHub repo and push."""
+        rec = self.store.get_app(app)
+        if not rec:
+            match = [a for a in self.store.list_apps()
+                     if a["name"].lower() == app.lower() or a["id"] == app]
+            rec = self.store.get_app(match[0]["id"]) if match else None
+        if not rec:
+            return f"[error] no app named or id'd '{app}' — see list in the Apps/Studio UI"
+        slug = re.sub(r"[^a-z0-9]+", "-", rec["name"].lower()).strip("-") or "agentos-app"
+        proj = Path(os.path.expanduser(self.cfg["workspace"])) / "projects" / slug
+        if (deny := self._sandbox_deny(proj)):
+            return deny
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "index.html").write_text(rec["html"])
+        manifest = {"name": rec["name"], "icon": rec.get("icon", ""),
+                    "description": rec.get("description", ""),
+                    "permissions": rec.get("manifest") or "",
+                    "exported_from": "AgentOS", "app_id": rec["id"]}
+        (proj / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        (proj / "README.md").write_text(
+            f"# {rec['name']}\n\n{rec.get('description', '')}\n\n"
+            f"Built with the AgentOS App Studio. `index.html` is a self-contained app;\n"
+            f"open it in a browser, or import it into an AgentOS desktop via the Store.\n")
+        code, out = await self._git(str(proj), "rev-parse", "--git-dir")
+        if code != 0:
+            init_out = await self.git_init(str(proj))
+            if init_out.startswith("[error]"):
+                return init_out
+        commit_out = await self.git_commit(str(proj), f"Export {rec['name']} from AgentOS")
+        result = f"exported to {proj}\n{commit_out}"
+        if push:
+            push_out = await self.git_push(str(proj), create_github_repo=True, private=private)
+            result += "\n" + push_out
+        return result
+
+    # ---- TrainForge (Train pillar) ------------------------------------------
+    # Fine-tune and evaluate your own models locally. TrainForge runs as a
+    # supervised loopback service (see agentos/trainforge.py); these tools call
+    # its REST API server-side. Watch runs live in the Train desktop app.
+
+    def _tf(self):
+        tf = getattr(self, "trainforge", None)
+        if tf is None:
+            return None, "[error] TrainForge integration not initialised (server startup)"
+        return tf, ""
+
+    @staticmethod
+    def _tf_out(code: int, data) -> str:
+        if code == 0:
+            return f"[error] {data}"
+        body = json.dumps(data, indent=1, default=str) if isinstance(data, (dict, list)) else str(data)
+        return _truncate(body if code < 400 else f"[error] HTTP {code}: {body[:800]}")
+
+    async def trainforge_service(self, action: str = "status") -> str:
+        tf, err = self._tf()
+        if err:
+            return err
+        if action == "start":
+            return await tf.start()
+        if action == "stop":
+            return await tf.stop()
+        return json.dumps(await tf.health())
+
+    async def train_autopilot(self, goal: str, max_rows: int = 5000) -> str:
+        tf, err = self._tf()
+        if err:
+            return err
+        code, data = await tf.api("POST", "/api/agent/runs",
+                                  {"goal": goal, "max_rows": int(max_rows)})
+        return self._tf_out(code, data)
+
+    async def train_datasets(self, action: str = "list", query: str = "", repo_id: str = "",
+                             url: str = "", name: str = "", dataset_id: int = 0,
+                             max_rows: int = 5000) -> str:
+        tf, err = self._tf()
+        if err:
+            return err
+        if action == "list":
+            code, data = await tf.api("GET", "/api/datasets")
+        elif action == "search":
+            code, data = await tf.api("GET", "/api/datasets/search-hub",
+                                      params={"q": query, "limit": 25})
+        elif action == "import_hub":
+            body = {"repo_id": repo_id, "max_rows": int(max_rows)}
+            if name:
+                body["name"] = name
+            code, data = await tf.api("POST", "/api/datasets/import-hub", body)
+        elif action == "import_url":
+            code, data = await tf.api("POST", "/api/datasets/import-url",
+                                      {"url": url, **({"name": name} if name else {})})
+        elif action == "get":
+            code, data = await tf.api("GET", f"/api/datasets/{int(dataset_id)}")
+        elif action == "preview":
+            code, data = await tf.api("GET", f"/api/datasets/{int(dataset_id)}/preview",
+                                      params={"rows": 30})
+        else:
+            return "[error] action must be list|search|import_hub|import_url|get|preview"
+        return self._tf_out(code, data)
+
+    async def train_job(self, action: str = "list", job_id: int = 0, name: str = "",
+                        dataset_id: int = 0, task: str = "", base_model: str = "",
+                        hyperparams: dict | None = None, offset: int = 0) -> str:
+        tf, err = self._tf()
+        if err:
+            return err
+        if action == "list":
+            code, data = await tf.api("GET", "/api/jobs")
+        elif action == "create":
+            body = {"name": name or f"{task} on dataset {dataset_id}",
+                    "dataset_id": int(dataset_id), "task": task}
+            if base_model:
+                body["base_model"] = base_model
+            if hyperparams:
+                body["hyperparams"] = hyperparams
+            code, data = await tf.api("POST", "/api/jobs", body)
+        elif action == "status":
+            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}")
+        elif action == "logs":
+            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}/logs",
+                                      params={"offset": int(offset)})
+        elif action == "metrics":
+            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}/metrics")
+        elif action == "stop":
+            code, data = await tf.api("POST", f"/api/jobs/{int(job_id)}/stop")
+        else:
+            return "[error] action must be list|create|status|logs|metrics|stop"
+        return self._tf_out(code, data)
+
+    async def train_model(self, action: str = "list", model_id: int = 0,
+                          inputs: list | None = None, prompt: str = "",
+                          repo_id: str = "", private: bool = True) -> str:
+        tf, err = self._tf()
+        if err:
+            return err
+        if action == "list":
+            code, data = await tf.api("GET", "/api/models")
+        elif action == "signature":
+            code, data = await tf.api("GET", f"/api/models/{int(model_id)}/signature")
+        elif action == "predict":
+            body = {"prompt": prompt, "max_new_tokens": 200} if prompt else {"inputs": inputs or []}
+            code, data = await tf.api("POST", f"/api/models/{int(model_id)}/predict",
+                                      body, timeout=180)
+        elif action == "publish":
+            code, data = await tf.api("POST", f"/api/models/{int(model_id)}/publish",
+                                      {"repo_id": repo_id, "private": bool(private)}, timeout=600)
+        else:
+            return "[error] action must be list|signature|predict|publish"
+        return self._tf_out(code, data)
+
     async def execute(self, name: str, args: dict) -> str:
         if name.startswith("mcp_") and self.mcp:
             target = self.mcp.resolve(name)
@@ -983,6 +1443,12 @@ class Toolbox:
         fn = getattr(self, name, None)
         if fn is None or name not in {t["name"] for t in TOOL_SCHEMAS}:
             return f"[error] unknown tool: {name}"
+        if set(args.keys()) == {"_raw"}:
+            # the streamed tool-call JSON was cut off mid-argument (output token limit)
+            return (f"[error] your {name} tool call was cut off at the output token limit — "
+                    f"the arguments arrived as truncated JSON. If you were passing a large "
+                    f"payload (e.g. a whole app's html), emit it as a ```html code block in "
+                    f"plain text instead of a tool call, or produce a smaller version.")
         try:
             return await fn(**{k: v for k, v in args.items() if not k.startswith("_")})
         except TypeError as e:
@@ -990,6 +1456,109 @@ class Toolbox:
         except Exception as e:
             return f"[error] {type(e).__name__}: {e}"
 
+
+GIT_TOOL_SCHEMAS = [
+    {
+        "name": "git_status",
+        "description": "Git: working-tree status + configured remotes for a repository.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory (default: the workspace)."}},
+            "required": []},
+    },
+    {
+        "name": "git_log",
+        "description": "Git: recent commit history (one line per commit).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory (default: the workspace)."},
+            "limit": {"type": "integer", "description": "Number of commits (default 10)."}},
+            "required": []},
+    },
+    {
+        "name": "git_diff",
+        "description": "Git: diff of working tree (or staged changes, or against a ref).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory (default: the workspace)."},
+            "staged": {"type": "boolean", "description": "Diff staged changes instead."},
+            "ref": {"type": "string", "description": "Diff against this ref (e.g. main, HEAD~2)."}},
+            "required": []},
+    },
+    {
+        "name": "git_init",
+        "description": "Git: initialise a new repository (branch 'main') in a directory.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Directory to initialise."}},
+            "required": ["path"]},
+    },
+    {
+        "name": "git_commit",
+        "description": "Git: stage (all changes by default) and commit with a message.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory."},
+            "message": {"type": "string", "description": "Commit message."},
+            "add_all": {"type": "boolean", "description": "git add -A first (default true)."}},
+            "required": ["path", "message"]},
+    },
+    {
+        "name": "git_branch",
+        "description": "Git: list branches (no name), or create one (and check it out by default).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory."},
+            "name": {"type": "string", "description": "New branch name (omit to list)."},
+            "checkout": {"type": "boolean", "description": "Switch to the new branch (default true)."}},
+            "required": ["path"]},
+    },
+    {
+        "name": "git_remote_set",
+        "description": "Git: add or update a remote URL (default remote name: origin).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory."},
+            "url": {"type": "string", "description": "Remote URL (https://github.com/user/repo.git)."},
+            "name": {"type": "string", "description": "Remote name (default origin)."}},
+            "required": ["path", "url"]},
+    },
+    {
+        "name": "git_push",
+        "description": "Git: push the current (or named) branch to a remote. With "
+                       "create_github_repo=true and no remote configured, creates the GitHub repo "
+                       "first (uses the GitHub token from Settings) and pushes to it.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory (default: the workspace)."},
+            "remote": {"type": "string", "description": "Remote name (default origin)."},
+            "branch": {"type": "string", "description": "Branch (default: current)."},
+            "create_github_repo": {"type": "boolean", "description": "Create the GitHub repo if no remote exists."},
+            "private": {"type": "boolean", "description": "Created repo visibility (default private)."}},
+            "required": []},
+    },
+    {
+        "name": "git_pull",
+        "description": "Git: pull from a remote.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Repo directory (default: the workspace)."},
+            "remote": {"type": "string", "description": "Remote name (default origin)."},
+            "branch": {"type": "string", "description": "Branch (optional)."}},
+            "required": []},
+    },
+    {
+        "name": "git_clone",
+        "description": "Git: clone a repository into a directory (authenticates with the GitHub "
+                       "token from Settings for private repos).",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "Repository URL."},
+            "path": {"type": "string", "description": "Destination directory."}},
+            "required": ["url", "path"]},
+    },
+    {
+        "name": "export_app_to_git",
+        "description": "Ship an AgentOS app: write its source to workspace/projects/<name> with "
+                       "README + manifest, commit it, and optionally create a GitHub repo and push. "
+                       "Use when the user wants to publish/export/version an app they built.",
+        "parameters": {"type": "object", "properties": {
+            "app": {"type": "string", "description": "App name or id."},
+            "push": {"type": "boolean", "description": "Also create a GitHub repo and push (default false)."},
+            "private": {"type": "boolean", "description": "GitHub repo visibility (default private)."}},
+            "required": ["app"]},
+    },
+]
 
 TOOL_SCHEMAS = [
     {
@@ -1460,3 +2029,86 @@ TOOL_SCHEMAS = [
         },
     },
 ]
+TOOL_SCHEMAS.extend(GIT_TOOL_SCHEMAS)
+
+TEST_TOOL_SCHEMAS = [
+    {
+        "name": "run_tests",
+        "description": "Test pillar: run the pytest suite — AgentOS's own tests by default, or a "
+                       "project directory's. Returns pass/fail with the failure tail. Run this "
+                       "after changing code and ALWAYS before restart_agentos.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string",
+                     "description": "Project directory with tests (default: the AgentOS source)."}},
+            "required": []},
+    },
+]
+TOOL_SCHEMAS.extend(TEST_TOOL_SCHEMAS)
+
+TRAIN_TOOL_SCHEMAS = [
+    {
+        "name": "trainforge_service",
+        "description": "Train pillar: manage the local TrainForge training service "
+                       "(fine-tuning platform). Actions: status | start | stop. Start it before "
+                       "using the other train_* tools; the user can watch everything in the "
+                       "Train desktop app.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["status", "start", "stop"]}},
+            "required": ["action"]},
+    },
+    {
+        "name": "train_autopilot",
+        "description": "Train pillar: hand TrainForge a goal in plain language ('train a "
+                       "sentiment classifier for movie reviews') — it finds a dataset, imports "
+                       "it, configures and launches training, and registers the model. Returns "
+                       "the run row; follow progress with train_job / the Train app.",
+        "parameters": {"type": "object", "properties": {
+            "goal": {"type": "string", "description": "What to train, in plain language."},
+            "max_rows": {"type": "integer", "description": "Dataset row cap (default 5000)."}},
+            "required": ["goal"]},
+    },
+    {
+        "name": "train_datasets",
+        "description": "Train pillar: datasets in TrainForge. Actions: list | search (HF Hub, "
+                       "query=) | import_hub (repo_id=) | import_url (url=) | get (dataset_id=) "
+                       "| preview (dataset_id=). Imports are async — poll with get until "
+                       "status is 'ready'.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["list", "search", "import_hub", "import_url", "get", "preview"]},
+            "query": {"type": "string"}, "repo_id": {"type": "string"},
+            "url": {"type": "string"}, "name": {"type": "string"},
+            "dataset_id": {"type": "integer"}, "max_rows": {"type": "integer"}},
+            "required": ["action"]},
+    },
+    {
+        "name": "train_job",
+        "description": "Train pillar: training jobs. Actions: list | create (name, dataset_id, "
+                       "task [tabular-classification|tabular-regression|text-classification|"
+                       "causal-lm], base_model?, hyperparams?) | status | logs (offset= for "
+                       "incremental tail) | metrics | stop. causal-lm = LoRA fine-tune of a "
+                       "language model on this machine's GPU.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["list", "create", "status", "logs", "metrics", "stop"]},
+            "job_id": {"type": "integer"}, "name": {"type": "string"},
+            "dataset_id": {"type": "integer"}, "task": {"type": "string"},
+            "base_model": {"type": "string"}, "hyperparams": {"type": "object"},
+            "offset": {"type": "integer"}},
+            "required": ["action"]},
+    },
+    {
+        "name": "train_model",
+        "description": "Train pillar: trained models. Actions: list | signature (what inputs it "
+                       "expects, with example) | predict (inputs=[...] for tabular/text, prompt= "
+                       "for causal-lm) | publish (repo_id= uploads to Hugging Face Hub). Every "
+                       "trained model is a live local endpoint — use predict to evaluate it.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["list", "signature", "predict", "publish"]},
+            "model_id": {"type": "integer"}, "inputs": {"type": "array"},
+            "prompt": {"type": "string"}, "repo_id": {"type": "string"},
+            "private": {"type": "boolean"}},
+            "required": ["action"]},
+    },
+]
+TOOL_SCHEMAS.extend(TRAIN_TOOL_SCHEMAS)

@@ -56,7 +56,9 @@ After=network-online.target
 [Service]
 ExecStart=/usr/bin/agentos serve --no-browser
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Install]
 WantedBy=default.target

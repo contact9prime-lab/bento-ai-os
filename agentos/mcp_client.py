@@ -31,6 +31,40 @@ def _safe(name: str) -> str:
     return _name_rx.sub("_", name)[:24].strip("_") or "srv"
 
 
+def _extended_path() -> str:
+    """PATH for spawning MCP servers. A GUI-launched AgentOS (macOS LaunchAgent,
+    Linux systemd) inherits a minimal PATH where npx/uvx don't exist — extend it
+    with the places node/uv actually live."""
+    import glob
+    home = os.path.expanduser("~")
+    extra = [
+        f"{home}/.local/bin",            # uv / uvx / pipx
+        "/opt/homebrew/bin",             # Homebrew (Apple Silicon)
+        "/usr/local/bin",                # Homebrew (Intel) / system node
+        f"{home}/.cargo/bin",
+        f"{home}/Library/pnpm",
+        f"{home}/.bun/bin",
+        "/snap/bin",
+    ]
+    # nvm installs node under versioned dirs — take the newest
+    nvm = sorted(glob.glob(f"{home}/.nvm/versions/node/*/bin"), reverse=True)
+    extra += nvm[:1]
+    cur = os.environ.get("PATH", "")
+    parts = [p for p in cur.split(os.pathsep) if p]
+    for p in extra:
+        if p not in parts and os.path.isdir(p):
+            parts.append(p)
+    return os.pathsep.join(parts)
+
+
+def _resolve_command(cmd: str) -> str:
+    """Absolute path for an MCP server command, searched over the extended PATH."""
+    import shutil
+    if os.path.sep in cmd:
+        return cmd
+    return shutil.which(cmd, path=_extended_path()) or cmd
+
+
 class MCPServer:
     def __init__(self, name: str, conf: dict):
         self.name = name
@@ -56,11 +90,16 @@ class MCPServer:
                 args = shlex.split(self.conf.get("args", "") or "")
                 if not cmd:
                     raise ValueError("no command configured")
-                env = None
-                custom_env = self.conf.get("env") or {}
-                if custom_env:
-                    env = {**os.environ, **{k: str(v) for k, v in custom_env.items()}}
-                params = StdioServerParameters(command=cmd[0], args=cmd[1:] + args, env=env)
+                exe = _resolve_command(cmd[0])
+                if os.path.sep not in exe:
+                    raise FileNotFoundError(
+                        f"'{cmd[0]}' not found — install it (node/npm for npx, uv for uvx) "
+                        f"or use an absolute path in the server's command")
+                # child processes (npx → node → the server) must inherit the SAME
+                # extended PATH, or they fail even when npx itself resolved
+                env = {**os.environ, "PATH": _extended_path(),
+                       **{k: str(v) for k, v in (self.conf.get("env") or {}).items()}}
+                params = StdioServerParameters(command=exe, args=cmd[1:] + args, env=env)
                 async with stdio_client(params) as (read, write):
                     await self._serve(read, write, on_change)
         except asyncio.CancelledError:

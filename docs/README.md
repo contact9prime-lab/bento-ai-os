@@ -13,9 +13,14 @@ locally with Ollama or connects to cloud models, and everything happens with you
 |---|---|
 | [Installation](installation.md) | Requirements, running from source, the `.deb` package, boot & login autostart |
 | [Getting Started](getting-started.md) | First launch, choosing a model, autonomy, your first tasks |
+| [The Lifecycle](lifecycle.md) | **Train · Test · Operate · Build · Ship · Manage** — the six pillars and Mission Control |
 | [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
+| [Training Models](training.md) | The Train app (TrainForge): datasets, LoRA fine-tuning, evaluation, publishing |
+| [Git & Shipping](git.md) | The git toolset, GitHub setup, exporting apps to repos |
+| [The TUI](tui.md) | AgentOS in a terminal — over SSH or without a browser |
+| [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [Models & Appearance](models.md) | Providers, the Ollama Model Manager, wallpapers & themes |
 | [Configuration](configuration.md) | `config.json`, the sandbox, Settings, environment variables |

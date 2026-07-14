@@ -106,6 +106,19 @@ DEFAULTS = {
     # `root` (defaults to the workspace) via bubblewrap — everything else is
     # read-only and other files in /home are hidden entirely.
     "sandbox": {"enabled": True, "root": ""},
+    # GitHub integration (Ship pillar): a fine-grained PAT used by the git_* tools
+    # to create repos and push over HTTPS. The token stays in config + env — it is
+    # never placed in command lines, remotes, or tool output.
+    "github": {"token": "", "username": ""},
+    # generation budgets: Ollama context window and output-token caps (chat / builds).
+    # ollama_think: null = model default; false = disable the thinking channel
+    # (App Studio builds always disable it regardless).
+    "ollama_num_ctx": 24576,
+    "ollama_think": None,
+    "max_output_tokens": 16384,
+    "build_max_output_tokens": 32768,
+    "build_timeout": 600,
+    "first_token_timeout": 180,
     # user rules: [{"action": "allow"|"deny", "match": "run_command git *"}]
     # matched (fnmatch, * wildcards) against "<tool> <command-or-args>"; deny wins.
     "policies": [],

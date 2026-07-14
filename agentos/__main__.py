@@ -18,12 +18,32 @@ def _use_system_certs():
         pass
 
 
+def _port_free(host: str, port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
 def serve(host: str, port: int, open_browser: bool):
     import uvicorn
     from . import config as cfgmod
     cfg = cfgmod.load_config()
     port = port or cfg.get("port", 8321)
     url = f"http://{host}:{port}"
+    if not _port_free(host, port):
+        # bail BEFORE the app's startup hook runs: a doomed instance must not spawn
+        # MCP servers / scheduler / telegram or write to the DB it shares with the
+        # instance that actually owns the port
+        print(f"AgentOS is already running (or something else holds {host}:{port}).\n"
+              f"  open it:            {url}\n"
+              f"  or stop the owner:  systemctl --user stop agentos   (if installed as a service)\n"
+              f"  or pick a port:     agentos serve --port <other>")
+        sys.exit(3)
     print(f"""
   ┌─────────────────────────────────────┐
   │   ▲ AgentOS                         │
@@ -88,6 +108,110 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
+def doctor():
+    """Environment sanity: the checks that catch every 'it hangs' class of incident."""
+    import json as _json
+    import shutil
+    import socket
+    import sqlite3
+    import subprocess
+    import urllib.request
+    from . import config as cfgmod
+
+    ok = lambda m: print(f"  \033[32m✓\033[0m {m}")           # noqa: E731
+    warn = lambda m: print(f"  \033[33m!\033[0m {m}")         # noqa: E731
+    bad = lambda m: print(f"  \033[31m✗\033[0m {m}")          # noqa: E731
+
+    cfg = cfgmod.load_config()
+    port = cfg.get("port", 8321)
+    print("AgentOS doctor\n")
+
+    # 1. who owns the port?
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/build/status", timeout=3) as r:
+            _json.loads(r.read())
+        ok(f"server responding on 127.0.0.1:{port}")
+    except Exception:
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                bad(f"port {port} is taken but does not answer like AgentOS — another app owns it")
+            else:
+                warn(f"no server on port {port} (start with: agentos serve)")
+
+    # 2. duplicate instances (the crash-loop incident class)
+    try:
+        out = subprocess.run(["pgrep", "-fc", "agentos serve"], capture_output=True, text=True)
+        n = int(out.stdout.strip() or 0)
+        if n > 1:
+            bad(f"{n} 'agentos serve' processes are running — they will fight over the port and the DB")
+        elif n == 1:
+            ok("exactly one server process")
+    except Exception:
+        pass
+    try:
+        st = subprocess.run(["systemctl", "--user", "is-active", "agentos"],
+                            capture_output=True, text=True).stdout.strip()
+        if st == "activating":
+            bad("systemd unit 'agentos' is crash-looping (activating) — "
+                "systemctl --user stop agentos, or free its port")
+        elif st == "active":
+            ok("systemd user service active")
+        else:
+            warn(f"systemd user service: {st}")
+    except Exception:
+        pass
+
+    # 3. Ollama + VRAM pressure
+    base = cfg["providers"]["ollama"]["base_url"]
+    try:
+        with urllib.request.urlopen(f"{base}/api/ps", timeout=3) as r:
+            loaded = _json.loads(r.read()).get("models", [])
+        ok(f"ollama up at {base} ({len(loaded)} model(s) loaded)")
+        for m in loaded:
+            gb = m.get("size_vram", 0) / 1e9
+            pin = " — pinned forever (keep_alive=-1)" if str(m.get("expires_at", "")).startswith("2") \
+                  and int(str(m.get("expires_at", "0"))[:4] or 0) > 2100 else ""
+            (warn if pin else ok)(f"  loaded: {m['name']} ({gb:.1f}GB VRAM){pin}")
+    except Exception:
+        warn(f"ollama not reachable at {base} (local models unavailable)")
+    # exposure check: an unauthenticated Ollama on 0.0.0.0 is reachable by the whole LAN
+    try:
+        out = subprocess.run(["ss", "-tln"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if ":11434" in line and ("0.0.0.0:11434" in line or "*:11434" in line or "[::]:11434" in line):
+                bad("ollama listens on ALL interfaces (OLLAMA_HOST=0.0.0.0) — anyone on your "
+                    "network can use it. Set OLLAMA_HOST=127.0.0.1 in its service config.")
+                break
+    except Exception:
+        pass
+
+    # 4. DB
+    try:
+        db = sqlite3.connect(str(cfgmod.DB_PATH), timeout=3)
+        mode = db.execute("PRAGMA journal_mode").fetchone()[0]
+        integ = db.execute("PRAGMA integrity_check").fetchone()[0]
+        (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
+        (ok if integ == "ok" else bad)(f"db integrity: {integ}")
+    except Exception as e:
+        bad(f"db check failed: {e}")
+
+    # 5. optional companions
+    ok("git available" if shutil.which("git") else "")
+    if not shutil.which("git"):
+        warn("git not installed — the Ship pillar (git_* tools) needs it")
+    if shutil.which("bwrap"):
+        ok("bubblewrap available (sandbox)")
+    else:
+        warn("bubblewrap missing — sandbox falls back to unjailed commands")
+    from . import trainforge as tfmod
+    tf = tfmod.conf(cfg)
+    if tf["path"]:
+        ok(f"TrainForge found at {tf['path']} (Train pillar)")
+    else:
+        warn("TrainForge not found — set trainforge.path to enable the Train pillar")
+    print()
+
+
 def main():
     _use_system_certs()
     parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
@@ -104,6 +228,7 @@ def main():
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
     sub.add_parser("app", help="open AgentOS as a desktop app window")
+    sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
     sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
@@ -119,7 +244,9 @@ def main():
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
 
     args = parser.parse_args()
-    if args.cmd == "ask":
+    if args.cmd == "doctor":
+        doctor()
+    elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
     elif args.cmd == "app":
         from . import desktop

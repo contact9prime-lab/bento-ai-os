@@ -185,6 +185,12 @@ class Store:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        # WAL + busy timeout: readers never block the writer, and a second process
+        # (installer, doctor, a stray instance) can't turn writes into hard
+        # "database is locked" errors that kill a turn mid-flight.
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA busy_timeout=5000")
+        self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
         self._migrate()
         self.db.commit()

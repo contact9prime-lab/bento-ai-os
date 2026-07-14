@@ -11,7 +11,11 @@ chat() yields event dicts:
     {"type": "text", "text": delta}
     {"type": "thinking", "text": delta}
     {"type": "tool_call", "id": str, "name": str, "args": dict}
+    {"type": "finish", "reason": "stop"|"length"|...}   # why generation ended ("length" = token limit)
     {"type": "done"}
+
+`options` (all optional): num_ctx (Ollama context window), max_tokens (output budget,
+Anthropic/OpenAI-compatible). Callers that don't pass options get provider defaults.
 """
 
 import json
@@ -43,7 +47,12 @@ def _split_data_url(u: str) -> tuple[str, str]:
     return "image/png", u
 
 
-async def _chat_ollama(base_url: str, model: str, messages: list, tools: list) -> AsyncIterator[dict]:
+def _norm_finish(reason: str) -> str:
+    return "length" if reason in ("length", "max_tokens") else (reason or "stop")
+
+
+async def _chat_ollama(base_url: str, model: str, messages: list, tools: list,
+                       options: dict | None = None) -> AsyncIterator[dict]:
     msgs = []
     for m in messages:
         if m["role"] == "tool":
@@ -66,37 +75,63 @@ async def _chat_ollama(base_url: str, model: str, messages: list, tools: list) -
     payload = {"model": model, "messages": msgs, "stream": True}
     if tools:
         payload["tools"] = [{"type": "function", "function": t} for t in tools]
+    opts = {}
+    if options and options.get("num_ctx"):
+        # never rely on Ollama's silent 2-4k default: an oversized prompt gets
+        # truncated without any error, and the model "forgets" its instructions
+        opts["num_ctx"] = int(options["num_ctx"])
+    if options and options.get("num_predict"):
+        opts["num_predict"] = int(options["num_predict"])
+    if opts:
+        payload["options"] = opts
+    # per-request keep_alive beats a server-wide OLLAMA_KEEP_ALIVE=-1 (which pins
+    # every model in VRAM forever and starves whatever loads next)
+    payload["keep_alive"] = (options or {}).get("keep_alive") or "30m"
+    if options and options.get("think") is not None:
+        # thinking models can burn the whole output budget reasoning (a 9B model can
+        # spend minutes in its thinking channel and never emit the answer) — callers
+        # doing structured work (builds) turn it off
+        payload["think"] = bool(options["think"])
 
+    # if the model rejects the thinking switch (HTTP 400), retry once without it
+    attempts = [payload]
+    if "think" in payload:
+        attempts.append({k: v for k, v in payload.items() if k != "think"})
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as resp:
-            if resp.status_code != 200:
-                body = (await resp.aread()).decode(errors="replace")[:500]
-                raise ProviderError(f"Ollama HTTP {resp.status_code}: {body}")
-            async for line in resp.aiter_lines():
-                if not line.strip():
-                    continue
-                chunk = json.loads(line)
-                if chunk.get("error"):
-                    raise ProviderError(f"Ollama: {chunk['error']}")
-                msg = chunk.get("message") or {}
-                if msg.get("thinking"):
-                    yield {"type": "thinking", "text": msg["thinking"]}
-                if msg.get("content"):
-                    yield {"type": "text", "text": msg["content"]}
-                for tc in msg.get("tool_calls") or []:
-                    fn = tc.get("function") or {}
-                    args = fn.get("arguments") or {}
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args)
-                        except Exception:
-                            args = {"_raw": args}
-                    yield {"type": "tool_call", "id": _tool_id(), "name": fn.get("name", ""), "args": args}
-                if chunk.get("done"):
-                    yield {"type": "usage", "input": chunk.get("prompt_eval_count", 0),
-                           "output": chunk.get("eval_count", 0)}
-                    yield {"type": "done"}
-                    return
+        for i, pl in enumerate(attempts):
+            async with client.stream("POST", f"{base_url}/api/chat", json=pl) as resp:
+                if resp.status_code != 200:
+                    body = (await resp.aread()).decode(errors="replace")[:500]
+                    if resp.status_code == 400 and "think" in body and i + 1 < len(attempts):
+                        continue
+                    raise ProviderError(f"Ollama HTTP {resp.status_code}: {body}")
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    if chunk.get("error"):
+                        raise ProviderError(f"Ollama: {chunk['error']}")
+                    msg = chunk.get("message") or {}
+                    if msg.get("thinking"):
+                        yield {"type": "thinking", "text": msg["thinking"]}
+                    if msg.get("content"):
+                        yield {"type": "text", "text": msg["content"]}
+                    for tc in msg.get("tool_calls") or []:
+                        fn = tc.get("function") or {}
+                        args = fn.get("arguments") or {}
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                args = {"_raw": args}
+                        yield {"type": "tool_call", "id": _tool_id(), "name": fn.get("name", ""), "args": args}
+                    if chunk.get("done"):
+                        yield {"type": "usage", "input": chunk.get("prompt_eval_count", 0),
+                               "output": chunk.get("eval_count", 0)}
+                        yield {"type": "finish", "reason": _norm_finish(chunk.get("done_reason", "stop"))}
+                        yield {"type": "done"}
+                        return
+                break
     yield {"type": "done"}
 
 
@@ -114,7 +149,8 @@ async def ollama_models(base_url: str) -> list[str]:
 # OpenAI-compatible (OpenAI, LM Studio, vLLM, Groq, ...)
 # ---------------------------------------------------------------------------
 
-async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, tools: list) -> AsyncIterator[dict]:
+async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, tools: list,
+                       options: dict | None = None) -> AsyncIterator[dict]:
     msgs = []
     for m in messages:
         if m["role"] == "tool":
@@ -140,11 +176,14 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
     payload = {"model": model, "messages": msgs, "stream": True}
     if tools:
         payload["tools"] = [{"type": "function", "function": t} for t in tools]
+    if options and options.get("max_tokens"):
+        payload["max_tokens"] = int(options["max_tokens"])
 
     payload["stream_options"] = {"include_usage": True}
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     pending: dict[int, dict] = {}  # index -> {id, name, args_str}
     usage = {"input": 0, "output": 0}
+    finish_reason = ""
 
     def flush_pending():
         out = []
@@ -177,6 +216,8 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                 choices = chunk.get("choices") or []
                 if not choices:
                     continue
+                if choices[0].get("finish_reason"):
+                    finish_reason = choices[0]["finish_reason"]
                 delta = choices[0].get("delta") or {}
                 if delta.get("content"):
                     yield {"type": "text", "text": delta["content"]}
@@ -193,6 +234,7 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
     for ev in flush_pending():
         yield ev
     yield {"type": "usage", **usage}
+    yield {"type": "finish", "reason": _norm_finish(finish_reason)}
     yield {"type": "done"}
 
 
@@ -200,7 +242,8 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
 # Anthropic
 # ---------------------------------------------------------------------------
 
-async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: list, tools: list) -> AsyncIterator[dict]:
+async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: list, tools: list,
+                          options: dict | None = None) -> AsyncIterator[dict]:
     system = ""
     msgs = []
     for m in messages:
@@ -233,7 +276,8 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
         else:
             msgs.append({"role": m["role"], "content": m.get("content") or ""})
 
-    payload = {"model": model, "messages": msgs, "max_tokens": 8192, "stream": True}
+    max_tokens = int((options or {}).get("max_tokens") or 16384)
+    payload = {"model": model, "messages": msgs, "max_tokens": max_tokens, "stream": True}
     if system:
         payload["system"] = system
     if tools:
@@ -245,6 +289,7 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
     blocks: dict[int, dict] = {}
     usage = {"input": 0, "output": 0}
+    stop_reason = ""
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         async with client.stream("POST", f"{base_url}/v1/messages", json=payload, headers=headers) as resp:
@@ -260,6 +305,8 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
                     usage["input"] = ((ev.get("message") or {}).get("usage") or {}).get("input_tokens", 0)
                 elif t == "message_delta":
                     usage["output"] = (ev.get("usage") or {}).get("output_tokens", usage["output"])
+                    if (ev.get("delta") or {}).get("stop_reason"):
+                        stop_reason = ev["delta"]["stop_reason"]
                 if t == "content_block_start":
                     cb = ev["content_block"]
                     blocks[ev["index"]] = {"type": cb["type"], "id": cb.get("id", ""),
@@ -282,10 +329,10 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
                         yield {"type": "tool_call", "id": b["id"] or _tool_id(), "name": b["name"], "args": args}
                 elif t == "message_stop":
                     yield {"type": "usage", **usage}
+                    break
                 elif t == "error":
                     raise ProviderError(f"Anthropic: {ev.get('error', {}).get('message', 'unknown error')}")
-                elif t == "message_stop":
-                    break
+    yield {"type": "finish", "reason": _norm_finish(stop_reason)}
     yield {"type": "done"}
 
 
@@ -301,17 +348,18 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
     return provider, model
 
 
-async def chat(cfg: dict, model_id: str, messages: list, tools: list) -> AsyncIterator[dict]:
+async def chat(cfg: dict, model_id: str, messages: list, tools: list,
+               options: dict | None = None) -> AsyncIterator[dict]:
     provider, model = parse_model_id(model_id)
     p = cfg["providers"].get(provider)
     if not p:
         raise ProviderError(f"Unknown provider: {provider}")
     if provider == "ollama":
-        gen = _chat_ollama(p["base_url"], model, messages, tools)
+        gen = _chat_ollama(p["base_url"], model, messages, tools, options)
     elif provider == "anthropic":
         if not p.get("api_key"):
             raise ProviderError("Anthropic API key not set — add it in Settings.")
-        gen = _chat_anthropic(p["base_url"], p["api_key"], model, messages, tools)
+        gen = _chat_anthropic(p["base_url"], p["api_key"], model, messages, tools, options)
     elif provider == "google":
         if not p.get("api_key"):
             raise ProviderError("Google (Gemini) API key not set — add it in Settings.")
@@ -319,13 +367,13 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list) -> AsyncIt
         base = p["base_url"].rstrip("/")
         if not base.endswith("/openai"):
             base = base + "/v1beta/openai"
-        gen = _chat_openai(base, p["api_key"], model, messages, tools)
+        gen = _chat_openai(base, p["api_key"], model, messages, tools, options)
     elif provider in ("openai", "custom", "openrouter"):
         if provider == "custom" and not p.get("base_url"):
             raise ProviderError("Custom provider base URL not set — add it in Settings.")
         if provider == "openrouter" and not p.get("api_key"):
             raise ProviderError("OpenRouter API key not set — add it in Settings.")
-        gen = _chat_openai(p["base_url"], p.get("api_key", ""), model, messages, tools)
+        gen = _chat_openai(p["base_url"], p.get("api_key", ""), model, messages, tools, options)
     else:
         raise ProviderError(f"Unknown provider: {provider}")
     async for ev in gen:

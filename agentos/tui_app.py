@@ -415,15 +415,26 @@ class AgentTUI(App):
                 while True:
                     ev = json.loads(await ws.recv())
                     t = ev.get("type")
+                    # events are broadcast to every client — only render this chat's
+                    ecid = ev.get("conversation_id")
+                    if ecid and self.cid and ecid != self.cid:
+                        continue
                     if t == "conversation":
                         self.cid = ev["id"]
                     elif t == "text_delta":
                         buf += ev["text"]
+                        while "\n" in buf:  # stream complete lines as they arrive
+                            line, buf = buf.split("\n", 1)
+                            log.write(line)
+                    elif t == "status":
+                        if ev.get("message"):
+                            log.write(f"[grey58]{ev['message']}[/]")
                     elif t == "tool_start":
                         arg = ev["args"].get("command", "") if ev["name"] == "run_command" else ""
                         log.write(f"[grey58]▸ {ev['name']} {arg[:80]}[/]")
                     elif t == "tool_end":
-                        pass
+                        if not ev.get("ok", True):
+                            log.write(f"[red]✗ {ev.get('name','')} — {(ev.get('output') or '')[:120]}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))
@@ -432,7 +443,7 @@ class AgentTUI(App):
                         log.write(f"[red]error: {ev.get('message','')}[/]")
                     elif t == "turn_end":
                         break
-                if buf:
+                if buf.strip():
                     log.write(buf.strip())
         except Exception as ex:
             log.write(f"[red]connection error: {ex}[/]")

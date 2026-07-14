@@ -1,5 +1,7 @@
 """The agent kernel: plan -> act (tools) -> observe -> respond, with approval gates."""
 
+import asyncio
+import contextlib
 import time
 from typing import Awaitable, Callable
 
@@ -12,7 +14,6 @@ SYSTEM_PROMPT = """You are {name}, the resident agent of AgentOS — an agentic 
 You don't just answer — you *do things*, using your tools: run shell commands, read/write files,
 browse the web, open apps, send notifications, save memories, and schedule background tasks.
 
-Current time: {now}
 Workspace directory: {workspace}
 {sandbox}
 
@@ -51,12 +52,21 @@ Guidelines:
 - You can build UI tools INTO this OS with `create_app` (self-contained HTML/CSS/JS rendered in a
   desktop window; it may call the AgentOS REST API). Use it when the user wants a new tool, widget,
   or dashboard — you are allowed and encouraged to improve your own OS.
+- Ship what you build: the `git_*` tools version and publish work. Projects in the workspace can be
+  git repos (git_init/git_commit as you go); `export_app_to_git` turns an app you built into a real
+  project folder, and `git_push` (with create_github_repo) publishes to the user's GitHub using the
+  token from Settings. Prefer these structured tools over raw `git` shell commands.
 - Be concise and concrete. Show real output, not guesses.
 
 === Your soul (persistent identity — written by you and your user) ===
 {soul}
 === end soul ===
-{memories}"""
+{memories}
+
+Current time: {now}"""
+# NOTE: the timestamp deliberately sits at the very END of the system prompt — as the
+# first line it changed every turn and busted the provider's prompt-prefix cache,
+# forcing local models to re-evaluate the entire (large) prompt from scratch each turn.
 
 # Emitted event types (mirrored to the UI):
 #   text_delta, thinking_delta, tool_start, tool_end, approval_request (via approver), turn_end, error
@@ -89,6 +99,69 @@ class Agent:
         self.conversation_id = conversation_id
         self.principal = principal
         self.aborted = False
+        # live partial results: if this turn is force-cancelled (user stop, shutdown),
+        # the caller can still persist whatever streamed so far
+        self._text_buf: list[str] = []
+        self._final_text = ""
+        self.partial_steps: list[dict] = []
+
+    @property
+    def partial_text(self) -> str:
+        return self._final_text or "".join(self._text_buf)
+
+    def _gen_options(self) -> dict:
+        # num_ctx must comfortably exceed the system prompt (memories + KG + skills +
+        # MCP catalog + tool schemas can reach ~15k tokens) PLUS the reply
+        opts = {
+            "num_ctx": int(self.cfg.get("ollama_num_ctx", 24576)),
+            "max_tokens": int(self.cfg.get("max_output_tokens", 16384)),
+        }
+        if self.cfg.get("ollama_think") is not None:
+            opts["think"] = bool(self.cfg["ollama_think"])
+        return opts
+
+    async def _stream(self, messages: list):
+        """providers.chat with a first-token watchdog. Local models can spend minutes
+        loading / evaluating a large prompt while producing zero events — during that
+        window this emits heartbeat `status` events (so the UI shows life, and abort
+        stays responsive), and after `first_token_timeout` it fails loudly instead of
+        leaving the user staring at dead air."""
+        gen = providers.chat(self.cfg, self.model_id, messages, self._tools(),
+                             options=self._gen_options())
+        it = gen.__aiter__()
+        timeout = float(self.cfg.get("first_token_timeout", 180))
+        nxt = asyncio.ensure_future(it.__anext__())
+        waited = 0.0
+        try:
+            while True:  # heartbeat until the first event lands
+                done, _ = await asyncio.wait({nxt}, timeout=10)
+                if done:
+                    break
+                waited += 10
+                if self.aborted:
+                    return
+                await self.emit({"type": "status",
+                                 "message": f"waiting for {self.model_id.split('/')[-1]} — "
+                                            f"{int(waited)}s (loading model / evaluating prompt)"})
+                if waited >= timeout:
+                    raise providers.ProviderError(
+                        f"no response from {self.model_id} after {int(waited)}s — the model may "
+                        f"still be loading, out of memory, or the provider may be down. "
+                        f"Check the Models app, or try a smaller/different model.")
+            try:
+                ev = nxt.result()
+            except StopAsyncIteration:
+                return
+            if waited:
+                await self.emit({"type": "status", "message": ""})  # clear the heartbeat line
+            yield ev
+            async for ev in it:
+                yield ev
+        finally:
+            if not nxt.done():
+                nxt.cancel()
+            with contextlib.suppress(Exception):
+                await gen.aclose()
 
     def _tools(self) -> list:
         schemas = self.toolbox.schemas()
@@ -183,8 +256,11 @@ class Agent:
         last_user = next((m.get("content", "") for m in reversed(history)
                           if m.get("role") == "user"), "")
         steps: list[dict] = []
+        self.partial_steps = steps  # same list object: mutations are visible to a canceller
         final_text = ""
         tokens = {"input": 0, "output": 0}
+        carry = ""       # accumulated text across token-limit continuations
+        cont_rounds = 0  # bounded: never chase a runaway continuation loop
         if self.toolbox.pdp:
             mdec = self.toolbox.pdp.decide(self.principal, "model.use",
                                            f"model:{self.model_id}",
@@ -201,9 +277,11 @@ class Agent:
             if self.aborted:
                 break
             text_parts: list[str] = []
+            self._text_buf = text_parts  # live buffer for partial_text
             tool_calls: list[dict] = []
+            finish_reason = ""
             try:
-                async for ev in providers.chat(self.cfg, self.model_id, messages, self._tools()):
+                async for ev in self._stream(messages):
                     if self.aborted:
                         break
                     if ev["type"] == "text":
@@ -213,6 +291,8 @@ class Agent:
                         await self.emit({"type": "thinking_delta", "text": ev["text"]})
                     elif ev["type"] == "tool_call":
                         tool_calls.append(ev)
+                    elif ev["type"] == "finish":
+                        finish_reason = ev.get("reason", "")
                     elif ev["type"] == "usage":
                         tokens["input"] += ev.get("input", 0) or 0
                         tokens["output"] += ev.get("output", 0) or 0
@@ -222,8 +302,39 @@ class Agent:
                 break
 
             text = "".join(text_parts)
+
+            # Zero progress at the token limit = the context window itself is full
+            # (prompt ≈ num_ctx): continuing would loop forever. Fail loudly instead.
+            if finish_reason == "length" and not tool_calls and not (text.strip() or carry):
+                msg = ("the model hit its token limit before producing any output — it either "
+                       "spent the whole budget in its thinking channel, or the prompt fills its "
+                       "context window. Try again, disable thinking (`ollama_think: false`), "
+                       "raise `ollama_num_ctx`, or pick a stronger model.")
+                await self.emit({"type": "error", "message": msg})
+                steps.append({"type": "error", "message": msg})
+                break
+
+            # Output was cut at the token limit mid-text: ask the model to continue
+            # where it stopped instead of shipping a truncated answer. Bounded to 3
+            # continuations; tool-call rounds are excluded (their recovery path is the
+            # `_raw`-args error message the toolbox returns).
+            if finish_reason == "length" and not tool_calls and not self.aborted and cont_rounds < 3:
+                cont_rounds += 1
+                carry += text
+                await self.emit({"type": "status",
+                                 "message": f"output hit the token limit — continuing (part {cont_rounds + 1})…"})
+                messages.append({"role": "assistant", "content": text})
+                messages.append({"role": "user", "content":
+                                 "Your previous output was cut off at the token limit. Continue "
+                                 "EXACTLY where you left off — no preamble, no repetition."})
+                continue
+
+            if carry:
+                text = carry + text
+                carry = ""
             if text:
                 final_text = text
+                self._final_text = text
                 steps.append({"type": "text", "text": text})
 
             if not tool_calls or self.aborted:

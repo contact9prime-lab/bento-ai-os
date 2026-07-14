@@ -371,7 +371,9 @@ After=network-online.target
 [Service]
 ExecStart={python} -m agentos serve --no-browser --port {port}
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Install]
 WantedBy=default.target

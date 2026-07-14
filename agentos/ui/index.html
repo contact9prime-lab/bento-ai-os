@@ -1208,12 +1208,16 @@ const APPS={
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
+  train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
+    render:renderTrain,onClose(w){clearInterval(w.timer);return true}},
+  mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
+    render:renderMission,onClose(w){clearInterval(w.timer);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -1736,7 +1740,10 @@ function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
-  ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];setTimeout(connect,1500)};
+  ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
+    removeWorking(); // never leave "thinking…" on screen with no live socket behind it
+    if(window.STUDIO&&STUDIO.building)studioLog('<span class="mut">connection lost — reconnecting…</span>');
+    setTimeout(connect,1500)};
   ws.onmessage=e=>handle(JSON.parse(e.data));
 }
 function setStatus(on){
@@ -1748,6 +1755,25 @@ function handle(ev){
   if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
   switch(ev.type){
+    case 'state_sync':{ // sent on every (re)connect: what is actually still running
+      RUNNING.clear();
+      (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''}});
+      if(currentConv&&RUNNING.has(currentConv)){setRunning(true);showWorking();}
+      else{setRunning(false);removeWorking();}
+      if(window.STUDIO){
+        if(ev.build_running){
+          if(!STUDIO.building){STUDIO.building=true;const b=$('#st-build');if(b){b.textContent='Cancel';b.classList.add('stop')}studioTickStart();studioLog('<span class="mut">re-attached to the running build…</span>');}
+        }else if(STUDIO.building){studioBuildEnded();studioLog('<span class="mut">the build ended while disconnected — check the app list</span>');if(typeof loadUserApps==='function')loadUserApps();}
+      }
+      break;}
+    case 'status':{ // model-side heartbeat ("loading model / evaluating prompt…")
+      if(!_cur)break;
+      const w=$('#working');
+      if(w){let s=w.querySelector('.wstat');
+        if(!ev.message){if(s)s.remove();break}
+        if(!s){s=document.createElement('div');s.className='wstat';s.style.cssText='font-size:11px;opacity:.65;margin-left:8px';w.appendChild(s)}
+        s.textContent=ev.message;}
+      break;}
     case 'conversation': currentConv=ev.id; loadConvs(); break;
     case 'turn_start':{
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
@@ -2140,6 +2166,11 @@ async function renderSettings(body){
       </div>
       <p class="mut" style="margin-top:8px">Fullscreen hides the host taskbar; the app also launches fullscreen via <code>agentos app</code>.</p>
     </div>
+    <div class="provbox" data-f="github git token push publish ship repositories"><div class="ptitle">GitHub (ship what you build)</div>
+      <label>Personal access token ${cfg.github&&cfg.github._has_token?'(set)':''}</label><input id="s-gh-token" type="password" placeholder="github_pat_… / ghp_…" value="${esc((cfg.github&&cfg.github.token)||'')}">
+      <label>Username (optional)</label><input id="s-gh-user" value="${esc((cfg.github&&cfg.github.username)||'')}">
+      <p class="mut" style="margin-top:8px">Lets the agent create repos and push projects/apps it builds (git_push, export_app_to_git).
+      Use a fine-grained token with only the repo permissions you want to grant. The token never appears in commands or logs.</p></div>
     <div class="provbox" data-f="sandbox folder jail bubblewrap security workspace"><div class="ptitle">Sandbox (folder jail) <input type="checkbox" id="s-sb-on" ${(cfg.sandbox&&cfg.sandbox.enabled)?'checked':''}></div>
       <label>Folder the agent &amp; Terminal can control</label>
       <input id="s-sb-root" value="${esc((cfg.sandbox&&cfg.sandbox.root)||cfg.workspace)}">
@@ -2188,7 +2219,8 @@ async function saveSettings(){
     openrouter:{enabled:$('#s-or-on').checked,api_key:$('#s-or-key').value,models:models($('#s-or-models').value)},
     custom:{enabled:$('#s-cus-on').checked,base_url:$('#s-cus-url').value,api_key:$('#s-cus-key').value,models:models($('#s-cus-models').value)},
     google:{enabled:$('#s-goo-on').checked,api_key:$('#s-goo-key').value,models:models($('#s-goo-models').value)},
-  },image:{provider:$('#s-img-prov').value,model:$('#s-img-model').value.trim()}};
+  },image:{provider:$('#s-img-prov').value,model:$('#s-img-model').value.trim()},
+  github:{token:$('#s-gh-token').value.trim(),username:$('#s-gh-user').value.trim()}};
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   toast('settings saved');loadModels();loadConfig();
 }
@@ -4287,7 +4319,7 @@ function studioTickStart(){
     if(!STUDIO._status||!STUDIO._status.isConnected){if(STUDIO._tick){clearInterval(STUDIO._tick);STUDIO._tick=null}return}
     const s=Math.round((Date.now()-STUDIO._t0)/1000);
     STUDIO._status.innerHTML='<span class="mut">working… '+(s>=60?Math.floor(s/60)+'m '+(s%60)+'s':s+'s')
-      +(s>45?' — the model is writing the app; large apps take a few minutes on local models. Cancel any time.':'')+'</span>';
+      +(STUDIO._smsg?' — '+esc(STUDIO._smsg):(s>45?' — the model is writing the app; large apps take a few minutes on local models. Cancel any time.':''))+'</span>';
   },1000);
 }
 function studioTickStop(){
@@ -4313,7 +4345,7 @@ function studioBuild(){
   p.value='';
 }
 function studioBuildEnded(){
-  STUDIO.building=false;studioTickStop();jarvisOff();
+  STUDIO.building=false;STUDIO._smsg='';studioTickStop();jarvisOff();
   const b=$('#st-build');if(b){b.disabled=false;b.classList.remove('stop');b.textContent=STUDIO.sel?'Update':'Build'}
 }
 function studioBuildEvent(ev){
@@ -4325,6 +4357,15 @@ function studioBuildEvent(ev){
       break;
     case 'build_tool':
       studioLog(`<span class="mut">▸ ${esc(ev.name)}${ev.name==='create_app'?' — deploying the app…':ev.name==='fetch_url'?' — checking the live data source…':''}</span>`);break;
+    case 'build_tool_end':{ // failed tool calls must be VISIBLE — a silent retry loop looks like a hang
+      const ok=ev.ok!==false;
+      if(!ok)studioLog(`<span style="color:var(--err)">✗ ${esc(ev.name)} — ${esc((ev.output||'').slice(0,220))}</span>`);
+      else if(ev.name==='create_app')studioLog(`<span class="mut">✓ create_app</span>`);
+      break;}
+    case 'build_status': // model-side heartbeat while it loads/evaluates
+      STUDIO._smsg=ev.message||'';break;
+    case 'build_error_note': // non-fatal error inside an attempt (the build continues/retries)
+      studioLog(`<span style="color:var(--err)">${esc(ev.message||'error')}</span>`);break;
     case 'build_error':
       studioBuildEnded();
       studioLog(`<span style="color:var(--err)">${esc(ev.message||'error')}</span>`);break;
@@ -4335,6 +4376,8 @@ function studioBuildEvent(ev){
         STUDIO.sel=ev.app_id;STUDIO._lastErr=null;
         STUDIO._justBuilt=Date.now();STUDIO._autofixed=false;   // arm the load-crash auto-repair
         studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready — deployed live</span>`);
+        if(ev.warnings&&ev.warnings.length)
+          studioLog(`<span style="color:var(--warn,#e8b04b)">⚠ shipped with known issues: ${esc(ev.warnings.join('; ').slice(0,300))} — ask for a fix or rebuild</span>`);
         if(ev.manifest_status==='proposed')
           studioLog(`<span class="mut">it requests permissions — </span><button style="font-size:11px;padding:3px 10px" onclick="reviewManifest('${ev.app_id}')">Review &amp; grant</button>`);
         if(wasNew)delete STUDIO.logs['new'];   // this session now belongs to the built app
@@ -4351,6 +4394,103 @@ async function studioDel(id){
   if(!confirm('Delete this app?'))return;
   await fetch('/api/apps/'+(id||STUDIO.sel),{method:'DELETE'});
   STUDIO.sel='';refreshApp('studio');
+}
+
+/* ================= mission control (lifecycle) ================= */
+async function renderMission(body,w){
+  body.style.cssText='padding:16px;overflow:auto;height:100%';
+  body.innerHTML='<div class="mut">loading lifecycle state…</div>';
+  const lane=(title,app,rows,accent)=>`
+    <div class="provbox" style="cursor:pointer;margin:0" onclick="openApp('${app}')">
+      <div class="ptitle" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${title}</span><span style="font-size:10px;color:var(--mut)">open ↗</span></div>
+      ${rows.map(([k,v,warn])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
+        <span class="mut">${esc(k)}</span><span style="${warn?'color:var(--warn,#e8b04b)':''}">${esc(String(v))}</span></div>`).join('')}
+    </div>`;
+  const paint=async()=>{
+    let d;
+    try{d=await (await fetch('/api/lifecycle')).json()}catch(e){return}
+    if(!body.isConnected)return;
+    const t=d.train||{},te=d.test||{},o=d.operate||{},b=d.build||{},s=d.ship||{},m=d.manage||{};
+    body.innerHTML=`
+      <div style="margin-bottom:12px">
+        <div style="font-size:16px;font-weight:650">Mission Control</div>
+        <div class="mut" style="font-size:12px">the whole lifecycle of what this OS builds — train it, test it, run it, ship it, govern it</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      ${lane('🧬 Train','train',[
+        ['service',t.service||'—',t.service!=='running'],
+        ['jobs running',t.jobs_running??0],
+        ['trained models',t.models??0]])}
+      ${lane('🧪 Test','logs',[
+        ['suite',te.suite||'—'],
+        ['last run',te.last?te.last.message:'never',!te.last],
+        ['restart gate','tests must pass']])}
+      ${lane('⚙ Operate','tasks',[
+        ['scheduled jobs',(o.tasks_enabled??0)+' on / '+(o.scheduled_tasks??0)],
+        ['turns (24h)',o.turns_24h??0],
+        ['errors (24h)',o.errors_24h??0,(o.errors_24h||0)>0],
+        ['turns running now',o.turns_running??0]])}
+      ${lane('🔨 Build','studio',[
+        ['apps installed',b.apps??0],
+        ['build running',b.build_running?'yes':'no'],
+        ['latest app',b.last_app||'—']])}
+      ${lane('🚀 Ship','files',[
+        ['git projects',(s.git_projects||[]).length],
+        ['github token',s.github_token?'configured':'not set',!s.github_token],
+        ['package',s.package||'—']])}
+      ${lane('🛡 Manage','permissions',[
+        ['autonomy',m.autonomy||'—'],
+        ['model',(m.model||'—').split('/').pop()],
+        ['grants',m.grants??0],
+        ['snapshots',m.snapshots??0],
+        ['sandbox',m.sandbox?'on':'OFF',!m.sandbox]])}
+      </div>`;
+  };
+  await paint();
+  w.timer=setInterval(paint,6000);
+}
+
+/* ================= train app (TrainForge) ================= */
+async function renderTrain(body,w){
+  body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
+  body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
+  const paint=async()=>{
+    let st={running:false};
+    try{st=await (await fetch('/api/train/status')).json()}catch(e){}
+    if(st.running){
+      if(!body.querySelector('iframe')){
+        body.innerHTML=`<iframe src="${esc(st.url||'http://127.0.0.1:8377')}" style="border:0;width:100%;height:100%;flex:1" title="TrainForge"></iframe>`;
+        clearInterval(w.timer);
+      }
+      return;
+    }
+    if(body.querySelector('iframe'))return; // don't tear down a live UI on a blip
+    body.innerHTML=`
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:30px;text-align:center">
+        <div style="font-size:40px">🧬</div>
+        <div style="font-size:17px;font-weight:600">Train your own models</div>
+        <div class="mut" style="max-width:460px">TrainForge is AgentOS's training service: import datasets, fine-tune models
+        (including LoRA fine-tunes of language models on your GPU), watch live loss curves, test every trained model as a
+        live endpoint, and publish to Hugging Face. Everything stays on this machine.</div>
+        ${st.path?'':'<div class="errmsg">TrainForge was not found on this machine — set <code>trainforge.path</code> in config.json to your doneitrightai checkout.</div>'}
+        <button class="pact" id="tf-start" ${st.path?'':'disabled'}>Start TrainForge</button>
+        <div class="mut" style="font-size:11px">or just ask the agent: “fine-tune a model on …” — it starts the service itself</div>
+        <div id="tf-msg" class="mut"></div>
+      </div>`;
+    const b=$('#tf-start');
+    if(b)b.onclick=async()=>{
+      b.disabled=true;b.textContent='starting…';
+      try{
+        const r=await (await fetch('/api/train/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start'})})).json();
+        const el=$('#tf-msg');if(el)el.textContent=r.result||'';
+      }catch(e){const el=$('#tf-msg');if(el)el.textContent=''+e}
+      b.disabled=false;b.textContent='Start TrainForge';
+      paint();
+    };
+  };
+  await paint();
+  w.timer=setInterval(paint,4000);
 }
 
 /* ================= terminal app ================= */

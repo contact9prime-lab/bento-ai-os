@@ -29,3 +29,13 @@ packages = ["agentos"]
 [tool.hatch.build.targets.wheel.force-include]
 # the manual ships with the product: served at /api/docs -> Docs app + TUI tab 8
 "docs" = "agentos/docs"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

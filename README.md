@@ -39,8 +39,13 @@ troubleshooting.
   scheduled jobs, HTML reports, and app-building, all from plain language.
 - **Local-first and private** — everything can run on your hardware with Ollama; nothing leaves
   your machine unless you add a cloud key. Binds to localhost only.
+- **The whole lifecycle under one roof** — **Train · Test · Operate · Build · Ship · Manage**,
+  live on one screen (Mission Control): fine-tune your own models on your GPU (the Train app,
+  LoRA included), test-gate every self-modification, run scheduled jobs, build apps, and ship
+  them to GitHub with first-class git tools.
 - **Self-extending** — the agent builds new UI apps for itself (App Studio), installs skills and
-  MCP tool servers, and can even modify AgentOS's own source code (with auto-snapshots).
+  MCP tool servers, and can even modify AgentOS's own source code (with auto-snapshots and a
+  test suite that must pass before a restart).
 - **Memory that compounds** — two-tier memory, a live knowledge graph, and a persistent "soul",
   learned automatically after every conversation.
 - **Safe by design** — autonomy levels, approval prompts, allow/deny policies, a bubblewrap folder
