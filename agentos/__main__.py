@@ -9,6 +9,15 @@ import time
 import webbrowser
 
 
+def _use_system_certs():
+    # verify TLS against the OS trust store instead of certifi's bundled CAs
+    try:
+        import truststore
+        truststore.inject_into_ssl()
+    except ImportError:
+        pass
+
+
 def serve(host: str, port: int, open_browser: bool):
     import uvicorn
     from . import config as cfgmod
@@ -80,6 +89,7 @@ def ask(prompt: str, model: str | None, full: bool):
 
 
 def main():
+    _use_system_certs()
     parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
     sub = parser.add_subparsers(dest="cmd")
 

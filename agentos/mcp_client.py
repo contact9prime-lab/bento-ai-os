@@ -37,6 +37,7 @@ class MCPServer:
         self.conf = conf
         self.session = None
         self.tools: list[dict] = []       # raw MCP tool defs
+        self.instructions = ""            # server-provided usage guidance (from initialize)
         self.status = "connecting"        # connecting | connected | error | disabled
         self.error = ""
         self._closed = asyncio.Event()
@@ -72,7 +73,8 @@ class MCPServer:
 
     async def _serve(self, read, write, on_change):
         async with ClientSession(read, write) as session:
-            await asyncio.wait_for(session.initialize(), timeout=CONNECT_TIMEOUT)
+            init = await asyncio.wait_for(session.initialize(), timeout=CONNECT_TIMEOUT)
+            self.instructions = (getattr(init, "instructions", "") or "").strip()
             resp = await asyncio.wait_for(session.list_tools(), timeout=CONNECT_TIMEOUT)
             self.tools = [
                 {"name": t.name, "description": t.description or "",
@@ -132,13 +134,20 @@ class MCPManager:
 
     def tool_schemas(self) -> list[dict]:
         out = []
+        seen: set[str] = set()
         for srv in self.servers.values():
             if srv.status != "connected":
                 continue
             for t in srv.tools:
+                name = f"mcp_{_safe(srv.name)}_{_safe(t['name'])}"[:64]
+                if name in seen:  # truncation collision — disambiguate deterministically
+                    import hashlib
+                    suffix = hashlib.sha1(f"{srv.name}/{t['name']}".encode()).hexdigest()[:6]
+                    name = f"{name[:57]}_{suffix}"
+                seen.add(name)
                 out.append({
-                    "name": f"mcp_{_safe(srv.name)}_{_safe(t['name'])}"[:64],
-                    "description": f"[MCP:{srv.name}] {t['description']}"[:1000],
+                    "name": name,
+                    "description": f"[MCP:{srv.name}] {t['description']}"[:2000],
                     "parameters": t["parameters"],
                     "_mcp": (srv.name, t["name"]),
                 })
@@ -186,6 +195,10 @@ class MCPManager:
                 "enabled": srv.conf.get("enabled", True),
                 "status": srv.status,
                 "error": srv.error,
-                "tools": [t["name"] for t in srv.tools],
+                "instructions": srv.instructions,
+                "tools": [{"name": t["name"],
+                           "description": t["description"],
+                           "params": list((t.get("parameters") or {}).get("properties", {}).keys())}
+                          for t in srv.tools],
             })
         return out

@@ -23,6 +23,9 @@ snapshots/
 packaging/build/
 packaging/dist/
 
+# Debug artifacts
+.playwright-mcp/
+
 # OS / editor
 .DS_Store
 *.swp

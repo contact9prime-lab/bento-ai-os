@@ -21,7 +21,7 @@ mkdir -p "$BUILD/DEBIAN" "$BUILD/opt/agentos" "$BUILD/usr/bin" \
          "$BUILD/usr/lib/systemd/user" "$BUILD/usr/share/doc/agentos" "$DIST"
 
 echo "  → bundling a venv with all dependencies"
-uv venv "$BUILD/opt/agentos/venv" --python "$PYVER" --seed >/dev/null
+uv venv "$BUILD/opt/agentos/venv" --python "$PYVER" >/dev/null
 uv pip install --python "$BUILD/opt/agentos/venv/bin/python" "$REPO" >/dev/null
 # drop caches to shrink the package
 find "$BUILD/opt/agentos/venv" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
@@ -75,6 +75,8 @@ cat > "$BUILD/usr/share/icons/hicolor/scalable/apps/agentos.svg" <<'EOF'
 EOF
 
 cp "$REPO/README.md" "$BUILD/usr/share/doc/agentos/README.md"
+cp "$REPO/LICENSE" "$BUILD/usr/share/doc/agentos/LICENSE"
+cp "$REPO/THIRD_PARTY_NOTICES.md" "$BUILD/usr/share/doc/agentos/THIRD_PARTY_NOTICES.md"
 
 INSTALLED="$(du -sk "$BUILD/usr" "$BUILD/opt" | awk '{s+=$1} END {print s}')"
 cat > "$BUILD/DEBIAN/control" <<EOF

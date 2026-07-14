@@ -520,7 +520,7 @@ class Store:
         aid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO user_apps (id, name, icon, description, html, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?)", (aid, name, icon or "🧰", description, html, now, now))
+            "VALUES (?,?,?,?,?,?,?)", (aid, name, icon or "", description, html, now, now))
         self._record_app_version(aid, html, note or "initial version")
         self.db.commit()
         return aid

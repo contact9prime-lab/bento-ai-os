@@ -312,6 +312,14 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list) -> AsyncIt
         if not p.get("api_key"):
             raise ProviderError("Anthropic API key not set — add it in Settings.")
         gen = _chat_anthropic(p["base_url"], p["api_key"], model, messages, tools)
+    elif provider == "google":
+        if not p.get("api_key"):
+            raise ProviderError("Google (Gemini) API key not set — add it in Settings.")
+        # Gemini speaks an OpenAI-compatible dialect under /v1beta/openai
+        base = p["base_url"].rstrip("/")
+        if not base.endswith("/openai"):
+            base = base + "/v1beta/openai"
+        gen = _chat_openai(base, p["api_key"], model, messages, tools)
     elif provider in ("openai", "custom", "openrouter"):
         if provider == "custom" and not p.get("base_url"):
             raise ProviderError("Custom provider base URL not set — add it in Settings.")
@@ -345,7 +353,7 @@ async def available_models(cfg: dict) -> list[dict]:
     if p["ollama"].get("enabled", True):
         for m in await ollama_models(p["ollama"]["base_url"]):
             out.append({"id": f"ollama/{m}", "provider": "ollama", "name": m})
-    for prov in ("anthropic", "openai", "openrouter", "custom"):
+    for prov in ("anthropic", "openai", "openrouter", "google", "custom"):
         conf = p.get(prov) or {}
         if conf.get("enabled") and (conf.get("api_key") or prov == "custom") :
             for m in conf.get("models", []):

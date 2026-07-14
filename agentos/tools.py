@@ -221,6 +221,17 @@ class Toolbox:
             return _truncate(f"[{r.status_code}] {url}\n" + "\n".join(ex.parts))
         return _truncate(f"[{r.status_code}] {url}\n{r.text}")
 
+    async def llm_generate(self, prompt: str, system: str = "", model: str = "") -> str:
+        from . import providers
+        model = (model or self.cfg.get("default_model", "")).strip()
+        if not model:
+            return "[error] no model configured"
+        try:
+            out = await providers.complete(self.cfg, model, prompt, system)
+        except Exception as e:
+            return f"[error] llm: {type(e).__name__}: {e}"
+        return _truncate(out or "(empty response)")
+
     async def system_info(self) -> str:
         info = {
             "os": f"{platform.system()} {platform.release()}",
@@ -1009,8 +1020,8 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string"},
-                "content": {"type": "string"},
+                "path": {"type": "string", "description": "Destination file path (~ allowed); parent folders are created."},
+                "content": {"type": "string", "description": "The full text to write — replaces the file's contents."},
             },
             "required": ["path", "content"],
         },
@@ -1028,8 +1039,24 @@ TOOL_SCHEMAS = [
         "description": "Fetch a web page or API URL and return its text content.",
         "parameters": {
             "type": "object",
-            "properties": {"url": {"type": "string"}},
+            "properties": {"url": {"type": "string", "description": "Full http(s) URL of the page or API endpoint to fetch."}},
             "required": ["url"],
+        },
+    },
+    {
+        "name": "llm_generate",
+        "description": "Run a raw one-shot LLM completion (no tools, no agent loop) and return the text. "
+                       "Use it to summarize, classify, rewrite, or EXTRACT structured data from messy "
+                       "text/HTML — e.g. pull a price out of a fetched page regardless of layout. "
+                       "Built apps call this through appLLM(prompt, system) to put AI inside their features.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "The full prompt, including any input text to work on."},
+                "system": {"type": "string", "description": "Optional system instruction, e.g. 'Reply with ONLY a JSON object {price, currency}'."},
+                "model": {"type": "string", "description": "Optional model override; defaults to the OS default model."},
+            },
+            "required": ["prompt"],
         },
     },
     {
@@ -1052,7 +1079,8 @@ TOOL_SCHEMAS = [
         "description": "Show a desktop notification to the user.",
         "parameters": {
             "type": "object",
-            "properties": {"title": {"type": "string"}, "message": {"type": "string"}},
+            "properties": {"title": {"type": "string", "description": "Short notification headline."},
+                           "message": {"type": "string", "description": "Body text with the detail (optional)."}},
             "required": ["title"],
         },
     },
@@ -1078,7 +1106,7 @@ TOOL_SCHEMAS = [
                        "Results are tagged [id|scope] — use the id with `forget`.",
         "parameters": {
             "type": "object",
-            "properties": {"query": {"type": "string"}},
+            "properties": {"query": {"type": "string", "description": "Keywords to search memories for; empty for the most recent."}},
         },
     },
     {
@@ -1087,7 +1115,7 @@ TOOL_SCHEMAS = [
                        "retracts something you had remembered.",
         "parameters": {
             "type": "object",
-            "properties": {"memory_id": {"type": "string"}},
+            "properties": {"memory_id": {"type": "string", "description": "The id from a `recall` result's [id|scope] tag."}},
             "required": ["memory_id"],
         },
     },
@@ -1147,11 +1175,11 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "subject": {"type": "string"},
+                "subject": {"type": "string", "description": "The entity the fact is about, e.g. 'Piyush'."},
                 "relation": {"type": "string", "description": "snake_case verb, e.g. works_at, uses, depends_on"},
-                "object": {"type": "string"},
-                "subject_type": {"type": "string"},
-                "object_type": {"type": "string"},
+                "object": {"type": "string", "description": "The entity the subject relates to, e.g. 'Accacia'."},
+                "subject_type": {"type": "string", "description": "Optional label for the subject: person/org/project/tool/…"},
+                "object_type": {"type": "string", "description": "Optional label for the object: person/org/project/tool/…"},
             },
             "required": ["subject", "relation", "object"],
         },
@@ -1162,7 +1190,7 @@ TOOL_SCHEMAS = [
                        "empty query returns everything (up to 40).",
         "parameters": {
             "type": "object",
-            "properties": {"query": {"type": "string"}},
+            "properties": {"query": {"type": "string", "description": "Entity or relation keywords to match; empty for all facts."}},
         },
     },
     {
@@ -1171,7 +1199,7 @@ TOOL_SCHEMAS = [
                        "into every future conversation. Pass the COMPLETE new markdown (it replaces the old one).",
         "parameters": {
             "type": "object",
-            "properties": {"content": {"type": "string"}},
+            "properties": {"content": {"type": "string", "description": "The complete new soul markdown — replaces the previous version."}},
             "required": ["content"],
         },
     },
@@ -1195,10 +1223,11 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "theme name; reuse the same name to refine instead of forking"},
-                "mode": {"type": "string", "enum": ["dark", "light"]},
+                "mode": {"type": "string", "enum": ["dark", "light"], "description": "overall brightness the palette is designed for"},
                 "vars": {"type": "string", "description": "JSON object of CSS variables — when refining, only the keys to change"},
                 "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets; omit when refining to keep the current css"},
-                "font_url": {"type": "string"}, "font_family": {"type": "string"},
+                "font_url": {"type": "string", "description": "optional stylesheet URL for a web font, e.g. a Google Fonts CSS link"},
+                "font_family": {"type": "string", "description": "the CSS font-family name that font provides, e.g. 'Inter'"},
                 "shell_html": {"type": "string", "description": "optional full replacement interface (HTML+CSS+JS) that takes over the screen; omit to keep an existing shell, pass \"\" to remove it; call GET /api/registry for the endpoints it can use"},
             },
             "required": ["name", "vars"],
@@ -1230,10 +1259,10 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {"type": "string"},
+                "name": {"type": "string", "description": "Concise app name shown under the desktop icon; reuse an existing name to update that app."},
                 "icon": {"type": "string", "description": "leave empty — the OS renders a clean monogram tile (the user dislikes emoji icons)"},
-                "description": {"type": "string"},
-                "html": {"type": "string"},
+                "description": {"type": "string", "description": "One line: what the app does (shown in the launcher and Store)."},
+                "html": {"type": "string", "description": "The complete self-contained HTML/CSS/JS for the app (fragment or full document)."},
                 "permissions": {"type": "string", "description":
                     "JSON list of {action, resource, reason, required} declaring every capability "
                     "the app uses at runtime (appTool/appData/api calls) — e.g. "
@@ -1247,7 +1276,7 @@ TOOL_SCHEMAS = [
         "name": "snapshot_os",
         "description": "Save a restore point of the entire OS (config, data, and source code) that can be "
                        "rolled back to later. Do this before risky changes.",
-        "parameters": {"type": "object", "properties": {"label": {"type": "string"}}},
+        "parameters": {"type": "object", "properties": {"label": {"type": "string", "description": "Short human-readable label for the restore point, e.g. 'before theme rewrite'."}}},
     },
     {
         "name": "read_source",
@@ -1268,7 +1297,7 @@ TOOL_SCHEMAS = [
             "properties": {
                 "path": {"type": "string", "description": "repo-relative path, e.g. agentos/whatsapp.py"},
                 "content": {"type": "string", "description": "the full new file contents"},
-                "restart": {"type": "boolean"},
+                "restart": {"type": "boolean", "description": "true to restart the service now so the change takes effect."},
             },
             "required": ["path", "content"],
         },
@@ -1286,14 +1315,14 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {"action": {"type": "string", "enum": ["list", "pull", "remove"]},
-                           "name": {"type": "string"}},
+                           "name": {"type": "string", "description": "Model name for pull/remove, e.g. 'qwen2.5:14b'; not needed for list."}},
         },
     },
     {
         "name": "launch_native_app",
         "description": "Launch an installed native app on the host desktop (e.g. Firefox, "
                        "Files, Settings, Calculator, Terminal, VS Code).",
-        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The app's name as the user would say it, e.g. 'firefox' or 'calculator'."}}, "required": ["name"]},
     },
     {
         "name": "list_windows",
@@ -1303,7 +1332,7 @@ TOOL_SCHEMAS = [
     {
         "name": "focus_window",
         "description": "Switch to (raise/focus) an open native window by part of its title — like alt-tab.",
-        "parameters": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+        "parameters": {"type": "object", "properties": {"title": {"type": "string", "description": "Any distinctive part of the window title (case-insensitive); find titles with list_windows."}}, "required": ["title"]},
     },
     {
         "name": "system_control",
@@ -1312,7 +1341,9 @@ TOOL_SCHEMAS = [
                        "native settings).",
         "parameters": {
             "type": "object",
-            "properties": {"action": {"type": "string"}, "value": {"type": "string"}},
+            "properties": {"action": {"type": "string", "enum": ["volume", "mute", "unmute", "settings"],
+                                      "description": "What to control on the host."},
+                           "value": {"type": "string", "description": "For volume: 0-100. For settings: which panel to open (sound/network/bluetooth/display/power). Unused for mute/unmute."}},
             "required": ["action"],
         },
     },
@@ -1327,11 +1358,14 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {"type": "string"},
-                "command": {"type": "string"}, "args": {"type": "string"},
-                "url": {"type": "string"}, "env": {"type": "string"},
-                "bearer_token": {"type": "string"},
-                "action": {"type": "string", "enum": ["add", "remove"]},
+                "name": {"type": "string", "description": "Short identifier for the server, e.g. 'playwright' or 'github'."},
+                "command": {"type": "string", "description": "stdio servers only: the executable, e.g. 'npx' or 'uvx'."},
+                "args": {"type": "string", "description": "stdio servers only: space-separated arguments, e.g. '-y @playwright/mcp@latest'."},
+                "url": {"type": "string", "description": "HTTP servers only: the server's endpoint URL."},
+                "env": {"type": "string", "description": "stdio servers only: env vars as 'KEY=value,KEY2=value2' (for API keys)."},
+                "bearer_token": {"type": "string", "description": "HTTP servers only: token sent as 'Authorization: Bearer …'."},
+                "action": {"type": "string", "enum": ["add", "remove"],
+                           "description": "add (default) connects the server; remove deletes it by name."},
             },
             "required": ["name"],
         },
@@ -1339,7 +1373,7 @@ TOOL_SCHEMAS = [
     {
         "name": "delete_skill",
         "description": "Delete a saved skill by name.",
-        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The skill's exact name (listed in your system prompt)."}}, "required": ["name"]},
     },
     {
         "name": "pin_widget",
@@ -1372,7 +1406,7 @@ TOOL_SCHEMAS = [
         "name": "read_app_data",
         "description": "Read the data stored by a built app (its own data store), by app name. Use this to "
                        "answer questions about what's inside an app (notes, tasks, tracked entries, etc.).",
-        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The app's name as shown on the desktop."}}, "required": ["name"]},
     },
     {
         "name": "use_skill",
@@ -1380,7 +1414,7 @@ TOOL_SCHEMAS = [
                        "The list of available skills with descriptions is in your system prompt.",
         "parameters": {
             "type": "object",
-            "properties": {"name": {"type": "string"}},
+            "properties": {"name": {"type": "string", "description": "The skill's exact name from the skills list."}},
             "required": ["name"],
         },
     },
@@ -1404,7 +1438,7 @@ TOOL_SCHEMAS = [
                        "from this machine (unlike desktop notify).",
         "parameters": {
             "type": "object",
-            "properties": {"message": {"type": "string"}},
+            "properties": {"message": {"type": "string", "description": "The message text to deliver (plain text; keep it concise)."}},
             "required": ["message"],
         },
     },
@@ -1418,9 +1452,9 @@ TOOL_SCHEMAS = [
             "properties": {
                 "prompt": {"type": "string", "description": "What the agent should do when the task fires."},
                 "schedule_type": {"type": "string", "enum": ["once", "interval", "daily"]},
-                "interval_minutes": {"type": "integer"},
-                "at_time": {"type": "string"},
-                "delay_minutes": {"type": "integer"},
+                "interval_minutes": {"type": "integer", "description": "For 'interval': run every N minutes."},
+                "at_time": {"type": "string", "description": "For 'daily': time of day as 'HH:MM' (24h)."},
+                "delay_minutes": {"type": "integer", "description": "For 'once': run after N minutes from now."},
             },
             "required": ["prompt", "schedule_type"],
         },

@@ -72,11 +72,11 @@ DEFAULTS = {
             "api_key": "",
             "models": [],
         },
-        "google": {  # Gemini — used for image generation (nano banana); key from aistudio.google.com
+        "google": {  # Gemini — chat + image generation (nano banana); key from aistudio.google.com
             "enabled": False,
             "base_url": "https://generativelanguage.googleapis.com",
             "api_key": "",
-            "models": [],
+            "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
         },
     },
     # image generation: provider auto|google|openai|pollinations; model optional
@@ -159,6 +159,9 @@ def load_config() -> dict:
     for name in ("anthropic", "openai", "openrouter", "google"):
         if cfg["providers"][name]["api_key"]:
             cfg["providers"][name]["enabled"] = True
+    # backfill Gemini chat models for installs whose saved config predates them
+    if not cfg["providers"]["google"].get("models"):
+        cfg["providers"]["google"]["models"] = list(DEFAULTS["providers"]["google"]["models"])
     return cfg
 
 

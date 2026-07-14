@@ -150,10 +150,18 @@ class Agent:
         if self.toolbox.mcp:
             conn = [s for s in self.toolbox.mcp.status() if s["status"] == "connected"]
             if conn:
+                lines = []
+                for s in conn:
+                    lines.append(f"- {s['name']} ({len(s['tools'])} tools):")
+                    for t in s["tools"][:12]:
+                        desc = (t["description"] or "").split("\n")[0][:110]
+                        lines.append(f"    · {t['name']}" + (f" — {desc}" if desc else ""))
+                    if len(s["tools"]) > 12:
+                        lines.append(f"    · … {len(s['tools']) - 12} more (all available as native tools)")
+                    if s.get("instructions"):
+                        lines.append(f"    usage notes: {s['instructions'][:400]}")
                 mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
-                             "a task touches their domain:\n" + "\n".join(
-                    f"- {s['name']}: {', '.join(s['tools'][:8])}{', …' if len(s['tools']) > 8 else ''}"
-                    for s in conn))
+                             "a task touches their domain:\n" + "\n".join(lines))
         from .tools import sandbox_conf
         sb_on, sb_root = sandbox_conf(self.cfg)
         sb_text = (f"SANDBOX: you are confined to {sb_root} — commands run jailed there, the rest of the "

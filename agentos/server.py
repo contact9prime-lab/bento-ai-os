@@ -777,6 +777,22 @@ window.appData = {
 window.appTool = async (name,args={}) => {
   try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
 };
+// AI inside the app: one-shot LLM completion (no tools). Returns plain text.
+window.appLLM = async (prompt, system='') => {
+  const r = await window.appTool('llm_generate', system ? {prompt, system} : {prompt});
+  if (r && r.output !== undefined) return r.output;
+  return '[error] ' + ((r && r.error) || 'llm unavailable');
+};
+// surface runtime errors to the host (App Studio shows them with a one-click fix)
+window.addEventListener('error', e => {
+  try{ parent.postMessage({agentos:'app_error', app_id:window.APP_ID,
+    message:String((e && (e.message||e.error))||'script error').slice(0,300),
+    source:((e&&e.filename)||'')+':'+((e&&e.lineno)||0)}, '*'); }catch(_){}
+});
+window.addEventListener('unhandledrejection', e => {
+  try{ parent.postMessage({agentos:'app_error', app_id:window.APP_ID,
+    message:('unhandled rejection: '+String(e&&e.reason)).slice(0,300), source:''}, '*'); }catch(_){}
+});
 </script>"""
 
 
@@ -914,6 +930,10 @@ def _scan_app_permissions(html: str) -> list[dict]:
         seen.add((action, resource))
         perms.append({"action": action, "resource": resource,
                       "reason": f"calls appTool('{t}')", "required": False})
+    if _re.search(r"appLLM\s*\(", html or "") and ("tool.use", "tool:llm_generate*") not in seen:
+        seen.add(("tool.use", "tool:llm_generate*"))
+        perms.append({"action": "tool.use", "resource": "tool:llm_generate*",
+                      "reason": "uses the AI model inside the app (appLLM)", "required": False})
     if _re.search(r"appData\.(get|set)", html or ""):
         perms.append({"action": "app.data.*", "resource": "app:self/data",
                       "reason": "saves its own settings/data", "required": True})
@@ -1147,17 +1167,55 @@ async def api_app_import_confirm(iid: str, body: dict):
 
 def _extract_html(text: str) -> str:
     """Pull an HTML app out of model text: a ```html fenced block, any fenced block that
-    looks like HTML, or a raw <...> body."""
+    looks like HTML, or a raw <...> body. Trailing prose/fences after the markup (models
+    love to append 'I have built…' or leftover tool-call JSON) is cut off."""
     import re
     if not text:
         return ""
+
+    def _trim(chunk: str) -> str:
+        chunk = chunk.split("\n```")[0]  # stop at a closing/next fence
+        # cut anything after the last closing tag — trailing prose is never part of the app
+        m2 = re.match(r"([\s\S]*</[a-zA-Z][a-zA-Z0-9-]*>)", chunk)
+        if m2:
+            chunk = m2.group(1)
+        return chunk.strip().rstrip("`").strip()
+
     m = re.search(r"```(?:html)?\s*\n(.*?)```", text, re.DOTALL)
     if m and ("<" in m.group(1)):
-        return m.group(1).strip()
+        return _trim(m.group(1))
     m = re.search(r"(<(?:!doctype|html|div|h[1-6]|style|section|main|body)[\s\S]*)", text, re.IGNORECASE)
     if m and len(m.group(1)) > 40:
-        return m.group(1).strip().rstrip("`").strip()
+        return _trim(m.group(1))
     return ""
+
+
+def _extract_app_meta(text: str) -> tuple[str, str]:
+    """Fish name/description out of a botched tool-call the model wrote as text."""
+    import re
+    name = desc = ""
+    m = re.search(r"[\"']?name[\"']?\s*[:=]\s*[\"']([^\"']{2,40})[\"']", text or "")
+    if m:
+        name = m.group(1).strip()
+    m = re.search(r"[\"']?description[\"']?\s*[:=]\s*[\"']([^\"']{2,120})[\"']", text or "")
+    if m:
+        desc = m.group(1).strip()
+    return name, desc
+
+
+def _default_app_name(prompt: str) -> str:
+    """'build an application that tracks prices…' → 'Tracks Prices…', not 'Build An Applicati'."""
+    import re
+    p = re.sub(r"^(?:please\s+)?(?:build|create|make|design)\s+(?:me\s+)?(?:an?\s+)?"
+               r"(?:(?:application|app|tool|widget|dashboard|page)\b)?\s*(?:(?:that|which|to|for)\b)?\s*",
+               "", (prompt or "").strip(), flags=re.IGNORECASE).strip()
+    p = (p or prompt or "App").strip()
+    words, out = p.split(), ""
+    for w in words:  # whole words up to ~30 chars — never cut mid-word
+        if len(out) + len(w) + 1 > 30:
+            break
+        out = (out + " " + w).strip()
+    return (out or p[:30]).title()
 
 
 def _extract_html_from_steps(steps: list) -> str:
@@ -1191,17 +1249,51 @@ BUILD QUALITY — this matters; make it look and feel professional, not a demo:
   responsively (flex/grid). Crisp and breathable — never cramped or flat. Ship something you're proud of.
 - System font stack; restrained micro-interactions. NO external CDNs, fonts, or images (blocked) — inline
   all CSS/JS, embed any assets as data URIs.
+- START from this baseline skeleton and build on it — never ship unstyled controls:
+    <style>
+      :root{--bg:#0e1116;--s:#171b22;--r:#1e242e;--ln:#232a35;--tx:#e6ebf2;--mut:#8a94a6;--acc:#5eead4;--acc2:#22d3ee}
+      *{box-sizing:border-box;margin:0}
+      body{background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,sans-serif;padding:18px}
+      h1{font-size:17px} .sub{color:var(--mut);font-size:12.5px;margin:2px 0 14px}
+      .card{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:10px}
+      input,select{background:var(--r);border:1px solid var(--ln);border-radius:9px;color:var(--tx);padding:9px 11px;font:inherit;width:100%}
+      input:focus{outline:none;border-color:var(--acc)}
+      button{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;border:0;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}
+      button.ghost{background:none;border:1px solid var(--ln);color:var(--mut)}
+      .row{display:flex;gap:8px;align-items:center} .muted{color:var(--mut);font-size:12px}
+      .err{color:#f87171} .ok{color:#34d399}
+    </style>
+  Every async action shows a loading state and a readable error state; every list has an empty state
+  telling the user what to do first; numbers/dates are formatted, not raw.
+- JS CORRECTNESS (the #1 way apps die): a plain <script> cannot use top-level `await` — wrap ALL
+  startup logic in `(async () => { … })();` and call appData/appTool/appLLM only inside async
+  functions. Attach handlers with addEventListener or onclick attributes that call DEFINED functions;
+  test mentally that every referenced element id exists. A syntax error kills the entire app.
 
 DATA — every app has its OWN data store (its "MCP"), pre-injected as page globals:
 - `await appData.get()` returns the app's saved object; `await appData.set(obj)` saves it. USE THIS for
   anything the user creates so it survives reloads AND the agent can read it later. Prefer it to localStorage.
-- `await appTool(name, args)` runs ANY OS/MCP tool from the app and returns its output — the way to pull
+- `await appTool(name, args)` runs ANY OS/MCP tool from the app and returns {output} — the way to pull
   LIVE data, e.g. appTool('fetch_url',{url:…}), appTool('system_info'), appTool('run_command',{command:…}),
-  or a connected mcp_* tool. Plain REST also works: GET /api/system · POST /api/chat {text} (AI answers).
+  or a connected mcp_* tool.
+- `await appLLM(prompt, system?)` runs the OS's language model INSIDE the app (one-shot, returns text).
+  This is how apps get AI features: summarize what they fetched, classify or rewrite entries, and —
+  critically — EXTRACT data from messy pages instead of brittle regex: after appTool('fetch_url',…),
+  call appLLM(pageText, 'Reply with ONLY JSON {"price": number|null, "currency": string}') and
+  JSON.parse the reply inside try/catch. Prefer appLLM over hand-written parsers for anything scraped.
 - Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
 - THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
   The user's interface wishes are the spec; the registry is what makes them possible.
+
+ALERTS & CHANNELS — bake delivery in; the user should not have to keep the window open:
+- appTool('notify',{title,message}) shows a desktop notification; appTool('telegram_send',{message})
+  reaches the user's phone when Telegram is paired (configured channels are listed in the registry).
+- For anything the user wants tracked/monitored, ALSO wire background checking:
+  appTool('schedule_task',{prompt:'check <thing>; if <condition>, send the user a telegram_send alert',
+  schedule_type:'interval', interval_minutes:N}) — this keeps working with the app closed.
+- Give such apps a small "Alerts" card in the UI: a threshold/condition input and an on/off toggle that
+  creates or removes the scheduled task, and show when the last check ran.
 
 PERMISSIONS — declare what the app needs:
 - Pass `permissions` to create_app: a JSON list of {action, resource, reason, required} covering every
@@ -1209,12 +1301,44 @@ PERMISSIONS — declare what the app needs:
   fs.write, memory.read, agent.invoke, app.data.*). The user consents to exactly this list at install;
   anything undeclared prompts them at runtime. Keep it minimal and honest — reasons are shown verbatim.
 
-PROCESS:
-- If the app needs live data or specific tools, you MAY call one read-only tool first to learn the shape,
-  then build; otherwise go straight to create_app. Leave `icon` empty (the OS renders a clean monogram tile — the user dislikes emoji icons) and pick a concise name.
+PROCESS — work like a product team in one turn:
+1. SPEC. Silently expand the request into concrete features, a data model, and data sources — fill the
+   obvious gaps yourself. e.g. "track prices of a product" implies: add/remove products (name + URL),
+   fetch the current price with appTool('fetch_url', …) using resilient parsing, keep a price HISTORY in
+   appData, show last-checked time and change vs. last check, a Refresh button, and refresh-on-open.
+   A one-line request still deserves the complete, obvious app around it.
+2. GROUND. If the app depends on live data, an API, or a specific tool, call the matching read-only tool
+   FIRST (fetch_url on the real page/API, system_info, list_dir) to learn the actual response shape —
+   never write parsing code against a guessed format. One or two grounding calls, then build.
+3. BUILD. Call create_app with the complete app. Leave `icon` empty (the OS renders a clean monogram
+   tile — the user dislikes emoji icons) and pick a concise name. Wrap every appTool call in try/catch
+   and show a readable error state in the UI when a tool fails or returns something unexpected.
+4. FIX. If an automated check or a tool error reports problems with what you built, call create_app
+   again with the SAME name and the corrected HTML — don't apologize, just fix it.
 - If the user wants it pinned / on the desktop / as a widget, call pin_widget(name) after create_app.
 - Do the work in THIS turn — never ask questions. Finish with one short sentence on what you built.
 """
+
+
+def _lint_app_html(html: str, toolbox=None) -> list[str]:
+    """Static checks on a built app: things that WILL break at runtime."""
+    import re
+    issues = []
+    for m in re.finditer(r"<(?:script|link|img|iframe)\b[^>]*?(?:src|href)\s*=\s*[\"'](https?://[^\"']+)",
+                         html, re.IGNORECASE):
+        issues.append(f"external asset will be blocked at runtime: {m.group(1)[:120]} — "
+                      "inline the code/style or embed the asset as a data: URI")
+    if toolbox is not None:
+        try:
+            known = {t["name"] for t in toolbox.schemas()}
+        except Exception:
+            known = set()
+        if known:
+            for m in re.finditer(r"appTool\(\s*['\"]([\w.-]+)['\"]", html):
+                if m.group(1) not in known:
+                    issues.append(f"appTool('{m.group(1)}') calls a tool that does not exist — "
+                                  "use a name from the API registry")
+    return issues[:6]
 
 
 # ---- Approval broker (global): any surface can ask the user and await Allow/Deny ----
@@ -1414,7 +1538,8 @@ async def api_policy_options():
     for s in (state["mcp"].status() if state.get("mcp") else []):
         mcp_res.append({"value": f"mcp:{s['name']}/*", "label": f"{s['name']} — all tools"})
         for t in (s.get("tools") or [])[:40]:
-            mcp_res.append({"value": f"mcp:{s['name']}/{t}", "label": f"{s['name']} / {t}"})
+            tn = t["name"] if isinstance(t, dict) else t
+            mcp_res.append({"value": f"mcp:{s['name']}/{tn}", "label": f"{s['name']} / {tn}"})
     for name in (cfg.get("mcp_servers") or {}):
         v = f"mcp:{name}/*"
         if not any(m["value"] == v for m in mcp_res):
@@ -2526,32 +2651,39 @@ async def ws_endpoint(ws: WebSocket):
         prompt = data.get("prompt", "").strip()
         if not prompt:
             return
-        model = data.get("model") or cfg.get("default_model", "")
+        req_model = (data.get("model") or "").strip()
+        # empty or "auto" ⇒ let the builder pick the most build-capable model available
+        model = "" if req_model.lower() in ("", "auto") else req_model
         app_id = data.get("app_id") or ""
         existing = store.get_app(app_id) if app_id else None
 
-        # one persistent build conversation per app (context for iterative refinement)
-        title = f"build: {existing['name'] if existing else prompt[:32]}"
+        # one persistent build conversation per app (context for iterative refinement);
+        # new-app prompts share a single "build: new app" session — renamed to the app's
+        # own session once a build succeeds — so iterating never forks a fresh conversation
+        title = f"build: {existing['name']}" if existing else "build: new app"
         cid = None
-        if existing:
-            for c in store.list_conversations(limit=500):
-                if c["title"] == title:
-                    cid = c["id"]
-                    break
+        for c in store.list_conversations(limit=500):
+            if c["title"] == title:
+                cid = c["id"]
+                break
         cid = cid or store.create_conversation(title)
         history = _history_for(cid)
 
         ctx = prompt
         if existing:
-            ctx = (f"You are refining the existing app named \"{existing['name']}\" (icon {existing['icon']}). "
-                   f"Its current HTML is below. Output the COMPLETE updated app (with the change applied) as a "
-                   f"single ```html code block, or call create_app with the SAME name.\n\n"
-                   f"```html\n{existing['html'][:7000]}\n```\n\nChange requested: {prompt}")
+            src = existing["html"]
+            if len(src) > 60000:  # keep pathological apps bounded; still far beyond any normal app
+                src = src[:60000] + "\n<!-- …source truncated for context; keep the app COMPLETE when rewriting -->"
+            ctx = (f"You are refining the existing app named \"{existing['name']}\". "
+                   f"Its current FULL HTML is below. Apply the requested change and output the COMPLETE "
+                   f"updated app — call create_app with the SAME name (preferred), or emit a single "
+                   f"```html code block. Never drop existing features while applying the change.\n\n"
+                   f"```html\n{src}\n```\n\nChange requested: {prompt}")
         store.add_message(cid, "user", prompt)
         history.append({"role": "user", "content": ctx})
 
-        # builds must not loop: cap steps low and time-box the whole turn
-        bcfg = {**cfg, "max_steps": 4}
+        # enough steps to spec → ground → build → fix, but still bounded
+        bcfg = {**cfg, "max_steps": 10}
 
         async def bemit(ev):
             m = {"text_delta": "build_text", "thinking_delta": "build_thinking",
@@ -2568,14 +2700,15 @@ async def ws_endpoint(ws: WebSocket):
             persona = BUILDER_PERSONA
 
         async def attempt(use_model):
-            """Run one build turn; return (built_app_or_None, result)."""
-            before = {a["id"] for a in store.list_apps()}
+            """Run one build turn; return (built_app_or_None, result).
+            Success = an app was created OR an existing app's source actually changed."""
+            before = {a["id"]: a.get("updated_at") for a in store.list_apps()}
             agent = Agent(bcfg, toolbox, use_model, bemit, bapprove, extra_system=persona,
                           tool_filter=["create_app", "read_file", "list_dir", "fetch_url", "system_info"])
             build["agent"] = agent
             knowledge.turn_started()
             try:
-                res = await asyncio.wait_for(agent.run(history), timeout=240)
+                res = await asyncio.wait_for(agent.run(history), timeout=420)
             except asyncio.TimeoutError:
                 agent.aborted = True
                 res = {"content": "", "steps": []}
@@ -2584,23 +2717,59 @@ async def ws_endpoint(ws: WebSocket):
                 res = {"content": "", "steps": []}
             finally:
                 knowledge.turn_ended()
+                build["was_aborted"] = bool(agent.aborted)
                 build["agent"] = None
-            apps = store.list_apps()
-            new = [a for a in apps if a["id"] not in before]
+
+            def changed_apps():
+                return [a for a in store.list_apps()
+                        if a["id"] not in before or a.get("updated_at") != before[a["id"]]]
+
+            new = changed_apps()
             if not new:  # model wrote HTML as text instead of calling create_app → extract it
                 html = _extract_html(res["content"]) or _extract_html_from_steps(res["steps"])
                 if html:
                     if existing:
                         store.save_app(existing["name"], existing["icon"], existing["description"], html, note=prompt[:120])
                     else:
-                        nm = (prompt[:28].strip() or "App").title()
-                        store.save_app(nm, "", prompt[:80], html, note=prompt[:120])
-                    apps = store.list_apps()
-                    new = [a for a in apps if a["id"] not in before]
-            return (existing or (new[0] if new else None)), res
+                        meta_name, meta_desc = _extract_app_meta(res["content"])
+                        nm = meta_name or _default_app_name(prompt)
+                        store.save_app(nm, "", meta_desc or prompt[:80], html, note=prompt[:120])
+                    new = changed_apps()
+            return (new[0] if new else None), res
+
+        def _pick_retry_model(models, current):
+            """Prefer a model known to tool-call reliably: cloud first, then strong local families."""
+            ids = [m["id"] for m in models if m["id"] != current]
+            for marker in ("claude", "gpt-4", "gpt-5", "qwen", "devstral", "mistral", "llama3"):
+                hit = next((i for i in ids if marker in i.lower()), None)
+                if hit:
+                    return hit
+            return None
 
         await send({"type": "build_start"})
+
+        # Auto model selection: prefer a tool-call-reliable model (cloud first, then strong
+        # local families); fall back to the configured default, then anything available.
+        if not model:
+            try:
+                _avail = await providers.available_models(cfg)
+            except Exception:
+                _avail = []
+            model = (_pick_retry_model(_avail, "") or cfg.get("default_model", "")
+                     or (_avail[0]["id"] if _avail else ""))
+            if model:
+                await send({"type": "build_text",
+                            "text": f"\n(Auto-selected {model.split('/')[-1]} to build this app.)\n"})
+                store.log("system", f"build auto-selected {model}")
+
+        used_model = model
         built, result = await attempt(model)
+
+        if not built and build.get("was_aborted"):
+            store.add_message(cid, "assistant", result["content"] or "(build cancelled)",
+                              {"steps": result["steps"]})
+            await send({"type": "build_error", "message": "build cancelled"})
+            return
 
         # Auto-retry with a tool-capable model if the selected one produced nothing
         # (some local models, e.g. gemma, don't reliably tool-call under a large prompt).
@@ -2609,14 +2778,34 @@ async def ws_endpoint(ws: WebSocket):
                 models = await providers.available_models(cfg)
             except Exception:
                 models = []
-            better = next((m["id"] for m in models
-                           if "qwen" in m["id"].lower() and m["id"] != model), None)
+            better = _pick_retry_model(models, model)
             if better:
                 await send({"type": "build_text", "text": f"\n({model.split('/')[-1]} produced nothing — retrying with {better.split('/')[-1]}…)\n"})
                 store.log("system", f"build retry with {better} (from {model})")
                 built, result = await attempt(better)
+                if built:
+                    used_model = better
+
+        # Static verification: catch things that WILL break at runtime, give the model ONE fix pass.
+        if built:
+            full = store.get_app(built["id"]) or {}
+            issues = _lint_app_html(full.get("html", ""), toolbox)
+            if issues:
+                await send({"type": "build_text",
+                            "text": "\n(automated check: " + "; ".join(issues)[:400] + " — fixing…)\n"})
+                history.append({"role": "assistant", "content": result["content"] or "(built the app)"})
+                history.append({"role": "user", "content":
+                                "AUTOMATED CHECK on the app you just built found problems:\n- "
+                                + "\n- ".join(issues)
+                                + f"\nCall create_app again with name \"{built['name']}\" and the corrected COMPLETE html."})
+                fixed, fix_res = await attempt(used_model)
+                if fixed:
+                    built, result = fixed, fix_res
 
         store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
+        if built and not existing:
+            # the "new app" session becomes this app's session — refinements continue it
+            store.touch_conversation(cid, f"build: {built['name']}")
         manifest_status = "none"
         if built:  # builder didn't declare permissions? scan the source and propose them
             full = store.get_app(built["id"]) or {}
@@ -2659,6 +2848,10 @@ async def ws_endpoint(ws: WebSocket):
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
                     build["task"] = asyncio.create_task(run_build(data))
+            elif t == "build_abort":
+                if build["agent"]:
+                    build["agent"].aborted = True
+                    await send({"type": "build_text", "text": "\n(cancelling…)\n"})
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
                                        remember=bool(data.get("remember")))
