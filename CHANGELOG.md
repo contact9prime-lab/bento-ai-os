@@ -58,6 +58,18 @@ can check its own environment.
   `hermes_ask` (delegate a task to Hermes like a cross-product subagent), and `hermes_send`
   (deliver through any platform Hermes is paired with — WhatsApp/Slack/Discord/Signal),
   surfaced in Mission Control's Operate lane.
+- **Hermes as a wrapped engine** — AgentOS is now a control surface over Hermes, not just an
+  interop layer:
+  - **Engine selector in chat** — the model dropdown offers "🜁 Hermes agent"; picking it routes
+    that conversation's turns to Hermes (with AgentOS's working indicator, cancellation, and
+    persistence) instead of the built-in Aria agent. It's a per-turn choice, never persisted as
+    the global default (background tasks keep their real model).
+  - **Download from inside AgentOS** — the new **Hermes app** downloads Hermes (MIT, from
+    `hermes.repo`), provisions its venv, and symlinks the CLI, streaming progress.
+  - **Config editor** — read/edit/save `~/.hermes/config.yaml` in the Hermes app (models,
+    providers, toolsets, personalities), YAML-validated before save with a `.bak` kept; API keys
+    in `.env` are never shown or touched. Gateway start/stop and update controls too.
+  - Added PyYAML as a dependency so config edits are validated, not silently accepted.
 - **TrainForge auto-fetch** — if the training service isn't on disk, the Train app (and the
   agent) clones it from `trainforge.repo` and provisions it via `run.sh` (venv + deps + GPU
   stack), with live download/install progress in the UI. Configured path that's gone empty

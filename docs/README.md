@@ -21,6 +21,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Git & Shipping](git.md) | The git toolset, GitHub setup, exporting apps to repos |
 | [The TUI](tui.md) | AgentOS in a terminal — over SSH or without a browser |
 | [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
+| [Hermes](hermes.md) | The Hermes companion agent — use it as a chat engine, download & configure it in AgentOS |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [Models & Appearance](models.md) | Providers, the Ollama Model Manager, wallpapers & themes |
 | [Configuration](configuration.md) | `config.json`, the sandbox, Settings, environment variables |

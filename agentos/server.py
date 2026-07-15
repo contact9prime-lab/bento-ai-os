@@ -2210,7 +2210,7 @@ async def api_docs():
         out.append({"file": rel, "title": first.lstrip("# ").strip()})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
-             "tui.md", "security.md", "integrations.md", "models.md", "configuration.md",
+             "tui.md", "security.md", "hermes.md", "integrations.md", "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
     out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
     return {"docs": out}
@@ -2678,7 +2678,23 @@ async def run_chat(cid: str, data: dict):
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
         # streaming its steps like a normal turn, and still shows up in Observability
         mention = fabricmod.parse_mention(store, text)
-        if mention:
+        if model == "hermes":
+            # Engine = Hermes: the user picked Hermes as the chat backend. Route the
+            # turn to the Hermes CLI, keeping AgentOS's turn lifecycle (working
+            # indicator, global turn slot, cancellation, persistence). Hermes replies
+            # in one shot rather than token-streaming.
+            from . import hermes as hermesmod
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "hermes"}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": "hermes"})
+            await evsend({"type": "status", "message": "Hermes is working…"})
+            reply = await hermesmod.ask(text)
+            header = "🜁 Hermes\n\n"
+            await evsend({"type": "text_delta", "text": header + reply})
+            result = {"content": header + reply, "steps": [], "tokens": {"input": 0, "output": 0}}
+            header = ""  # already embedded in content — don't double-prefix on persist
+        elif mention:
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model}
@@ -2885,7 +2901,7 @@ async def api_lifecycle():
     except Exception:
         errors_24h = turns_24h = 0
     from . import hermes as hermesmod
-    hs = await hermesmod.status()
+    hs = await hermesmod.status(cfg)
     out["operate"] = {"scheduled_tasks": len(tasks),
                       "tasks_enabled": sum(1 for t in tasks if t.get("enabled")),
                       "turns_24h": turns_24h, "errors_24h": errors_24h,
@@ -2935,6 +2951,56 @@ async def train_service(body: dict):
     if action == "stop":
         return {"result": await state["trainforge"].stop()}
     return JSONResponse({"error": "action must be start|stop"}, status_code=400)
+
+
+# ---- Hermes (companion agent + wrapper: install, config, gateway) ---------
+
+@app.get("/api/hermes/status")
+async def hermes_status():
+    from . import hermes as hermesmod
+    return await hermesmod.status(state["cfg"])
+
+
+@app.get("/api/hermes/config")
+async def hermes_get_config():
+    from . import hermes as hermesmod
+    return {"text": await hermesmod.read_config(), "path": hermesmod.CONFIG_PATH}
+
+
+@app.put("/api/hermes/config")
+async def hermes_put_config(body: dict):
+    from . import hermes as hermesmod
+    res = await hermesmod.write_config(body.get("text", ""))
+    if res.startswith("[error]"):
+        return JSONResponse({"error": res}, status_code=400)
+    return {"result": res}
+
+
+@app.post("/api/hermes/service")
+async def hermes_service(body: dict):
+    """Wrapper controls: install/update Hermes (streams progress via the
+    hermes_setup broadcast) and start/stop its gateway."""
+    from . import hermes as hermesmod
+    action = (body or {}).get("action", "")
+    bcast = state["broadcast"]
+
+    async def note(msg: str):
+        with contextlib.suppress(Exception):
+            await bcast({"type": "hermes_setup", "message": msg})
+        state["store"].log("system", f"hermes: {msg}"[:200])
+
+    if action in ("install", "update"):
+        # run detached so the HTTP request returns immediately; progress streams
+        async def _do():
+            res = await hermesmod.install(state["cfg"], note=note, update=(action == "update"))
+            await note(res)
+            await bcast({"type": "hermes_setup", "message": res, "done": True})
+        asyncio.create_task(_do())
+        return {"result": f"Hermes {action} started — watch progress in the Hermes app"}
+    if action in ("gateway_start", "gateway_stop"):
+        return {"result": await hermesmod.gateway("start" if action == "gateway_start" else "stop")}
+    return JSONResponse({"error": "action must be install|update|gateway_start|gateway_stop"},
+                        status_code=400)
 
 
 @app.get("/api/build/status")

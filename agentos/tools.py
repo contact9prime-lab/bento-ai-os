@@ -1490,7 +1490,7 @@ class Toolbox:
 
     async def hermes_status(self) -> str:
         from . import hermes
-        return json.dumps(await hermes.status())
+        return json.dumps(await hermes.status(self.cfg))
 
     async def hermes_ask(self, task: str) -> str:
         from . import hermes

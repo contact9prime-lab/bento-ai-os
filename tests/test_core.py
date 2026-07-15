@@ -238,3 +238,28 @@ def test_hermes_risk_levels(toolbox):
     assert toolbox.risk_of("hermes_status", {})[0] == "safe"
     assert toolbox.risk_of("hermes_ask", {"task": "x"})[0] == "risky"
     assert toolbox.risk_of("hermes_send", {"target": "slack"})[0] == "risky"
+
+
+@pytest.mark.asyncio
+async def test_hermes_write_config_rejects_broken_yaml(tmp_path, monkeypatch):
+    from agentos import hermes
+    cfgfile = tmp_path / "config.yaml"
+    cfgfile.write_text("model:\n  default: gemma\n")
+    monkeypatch.setattr(hermes, "HOME", str(tmp_path))
+    monkeypatch.setattr(hermes, "CONFIG_PATH", str(cfgfile))
+    before = cfgfile.read_text()
+    out = await hermes.write_config("model:\n  default: [unclosed")
+    assert out.startswith("[error]")
+    assert cfgfile.read_text() == before        # a bad edit never overwrites the good file
+    ok = await hermes.write_config("model:\n  default: qwen\n")
+    assert not ok.startswith("[error]")
+    assert "qwen" in cfgfile.read_text()
+
+
+def test_hermes_conf_defaults():
+    from agentos import hermes
+    c = hermes.conf({})
+    assert c["repo"].endswith("hermes-agent.git")
+    assert c["engine_enabled"] is True
+    c2 = hermes.conf({"hermes": {"engine_enabled": False, "repo": "x"}})
+    assert c2["engine_enabled"] is False and c2["repo"] == "x"
