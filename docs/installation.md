@@ -1,7 +1,31 @@
 # Installation
 
-AgentOS runs on Linux. It's a Python application that serves a desktop environment to your browser
-(or its own window). You can run it from source, or install it as a system package.
+AgentOS is a Python application that serves a desktop environment to your browser (or its own
+window). You can run it from source, install it as a system package, or use the
+**guided installers** below on Linux, macOS and Windows.
+
+---
+
+## Guided installers (recommended)
+
+One downloadable file per OS, each with a wizard. The installer wizards decide **where AgentOS
+goes and how it starts** — and they also *offer what your system doesn't have yet* (Python,
+a browser to draw the shell, the sway session stack, Ollama for local models), installing each
+missing piece only if you pick it. Product setup — your agent's name, model provider, autonomy —
+happens on **first launch**, in AgentOS's own setup wizard.
+
+| OS | File | Build with | The wizard asks |
+|---|---|---|---|
+| Linux | `AgentOS-Setup-<ver>-linux-x86_64.run` | `./packaging/build-linux-installer.sh` | licence → **system** (.deb, sudo) or **user** (`~/.local`, no root) → components: launcher & open-at-login, background server, **AgentOS at the login screen**, **boot straight into AgentOS** → what's missing (chromium, sway stack, Ollama, bubblewrap, git, node, …) → summary |
+| macOS | `AgentOS-Installer-<ver>.command` | `./packaging/build-macos-command.sh` | native dialogs: licence → open at login → `agentos` command in `/usr/local/bin` → Ollama. Missing Python routes through Apple's own Command Line Tools prompt. A full `.pkg` with the Installer-app choices wizard builds on a Mac with `packaging/macos/build-macos-pkg.sh` |
+| Windows | `AgentOS-Setup-<ver>-windows-x64.exe` | `./packaging/build-windows-installer.sh` (cross-built with NSIS: `sudo apt install nsis`) | classic setup wizard: licence → components (Start Menu, desktop shortcut, **start server at sign-in**, Ollama) → folder → install. Finds Python 3.10+ or installs it (winget / python.org) automatically |
+
+`./packaging/build-all.sh` builds everything the current machine can.
+
+Scripting/CI: the Linux and macOS installers take `--unattended`
+(`--user|--system --prefix DIR --with-session --autologin --with-deps --no-symlink …`).
+Uninstall keeps `~/.agentos` (your agent's memory and config) — removing the app never deletes
+what it learned.
 
 ---
 
@@ -84,6 +108,23 @@ agentos app                                # open the window (or find "AgentOS" 
 
 > The prebuilt package targets the Python version it was built against. For a different distribution
 > or Python version, rebuild it on that machine with `./packaging/build-deb.sh`.
+
+### The desktop-environment package (`agentos-desktop`)
+
+A second, tiny package makes AgentOS selectable as a **login session** — a full Wayland desktop
+where AgentOS is the shell. It is purely additive: your current desktop and default session are
+untouched.
+
+```bash
+./packaging/build-desktop-deb.sh    # → packaging/dist/agentos-desktop_<version>_all.deb
+sudo apt install ./packaging/dist/agentos-desktop_0.1.0_all.deb
+```
+
+Then log out and pick **AgentOS** at the login screen. Every hard dependency it pulls in
+(sway, swaylock, grim, pipewire, …) is permissively licensed — enforced by
+`packaging/audit-licenses.sh` at build time. See
+**[AgentOS as your desktop environment](desktop-environment.md)** for the full story, including
+boot-to-AgentOS.
 
 ---
 

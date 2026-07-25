@@ -19,9 +19,16 @@ reports. When it hits a risky action, it sends inline **Allow / Deny** buttons a
 
 **Commands:** `/clear` resets the session · `/status` reports the current model and autonomy.
 
-**Chat management:** the Telegram app shows every user/group that has messaged the bot, with the owner
-badged and an enable/disable toggle for each. Only enabled chats can talk to the agent. (In groups,
-a bot only sees messages that mention it unless you disable privacy mode via BotFather.)
+**Chat management:** the Telegram app shows every user, group and **channel** that has reached the
+bot, with the owner badged and an enable/disable toggle for each. Only enabled chats can talk to the
+agent. Connect more channels by adding the bot to a group (as a member) or to a broadcast channel (as
+an admin) — new arrivals start blocked until you permit them in the app. (In groups, a bot only sees
+messages that mention it unless you disable privacy mode via BotFather.)
+
+**Telegram is an IO gate:** it is one of the permission framework's surfaces. Any grant can be scoped
+to `telegram` (or kept off it) in the Permissions app — a rule permitted on all surfaces flows
+everywhere; scoped rules only apply on their gates, and blocked IO is denied and logged. See
+[Security → IO gates](security.md).
 
 ---
 
@@ -31,6 +38,34 @@ The **Model Context Protocol** lets AgentOS connect to external tool servers, gi
 abilities. Add them from the **MCP Servers** app or the Store's **Channels** tab — the
 catalog covers the most renowned servers, one click each, and prompts for whatever credential the
 service needs. You can also add a custom `stdio` (command) or `http` (URL) server.
+
+### Discover: the worldwide MCP registry
+
+The Store's **Discover** tab is the app store's discovery engine: it searches the public
+[MCP registry](https://registry.modelcontextprotocol.io) — thousands of community-published
+servers — and turns any result into a working AgentOS integration:
+
+1. **Search as you type** for a capability ("weather", "postgres", "calendar"…). The public
+   registry API is slow (15-25s per request), so AgentOS syncs the whole catalog into a local
+   index in the background (`~/.agentos/mcp_index.json`, refreshed daily) and searches it
+   locally in milliseconds — while the first sync is still running, results keep growing and
+   the status line shows how much of the registry has been indexed so far.
+2. **Install with consent** — nothing installs silently. You confirm *"build around this?"*,
+   supply any API keys (or leave them for later — the server stays disabled until they're set
+   in the MCP app), and the config is written for you (npm → `npx`, PyPI → `uvx`, remote →
+   `http` with header templates).
+3. **The MCP Registry** records every installed server as a first-class entry — where it came
+   from, how it runs, what it needs — visible via `GET /api/mcp/registry` and behind the 📖
+   buttons in the MCP Servers app.
+4. **Documentation is generated automatically**: each registry entry gets a manual page in the
+   **Docs** app (`mcp/<name>.md`) covering its tools (refreshed when the server connects),
+   configuration keys, and the permissions that govern it.
+5. **Build on top** — after installing, the Store offers to build an AI-native desktop app
+   around the new server in App Studio, with a permission manifest scoped to
+   `mcp.use · mcp:<name>/*` that you approve at install.
+
+The agent can drive the same flow conversationally: `discover_mcp_servers(query)` searches the
+registry, and `install_mcp_server(...)` — always approval-gated — installs after you say yes.
 
 ### Catalog & authentication
 

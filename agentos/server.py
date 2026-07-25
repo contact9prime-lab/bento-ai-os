@@ -80,6 +80,31 @@ async def startup():
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
     asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
+
+    async def wm_events():
+        # In the AgentOS session, the compositor tells us the moment a window
+        # opens/closes/focuses or an output changes — the UI listens for these
+        # "wm" events instead of polling /api/windows every 3 seconds.
+        from . import compositor as comp
+        while comp.available():
+            try:
+                async for ev in comp.Compositor().subscribe():
+                    await broadcast({"type": "wm", **ev})
+            except Exception:
+                await asyncio.sleep(3)   # compositor hiccup — retry while the socket exists
+    asyncio.create_task(wm_events())
+
+    # When AgentOS is the session, nobody else can receive desktop
+    # notifications — so we claim org.freedesktop.Notifications. Guarded by
+    # run mode, never config: claiming it as a guest would steal GNOME's.
+    from . import runmode
+    if runmode.resolve(cfg)[0] == runmode.DE:
+        from .notifications import NotificationDaemon
+        notifd = NotificationDaemon(broadcast)
+        state["notifd"] = notifd
+        asyncio.create_task(notifd.start())
+    from . import mcp_store as mcp_storemod
+    mcp_storemod.ensure_index(store)  # warm the MCP catalog index in the background
     store.log("system", "AgentOS started")
 
     # pick a default model if none is set — but don't let this first write of
@@ -110,6 +135,8 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
+    if state.get("notifd"):
+        state["notifd"].stop()
     if "scheduler" in state:
         state["scheduler"].stop()
     if "telegram" in state:
@@ -306,6 +333,78 @@ async def api_windows_close(body: dict):
     return {"ok": ok, "message": msg}
 
 
+@app.post("/api/windows/move")
+async def api_windows_move(body: dict):
+    from . import host
+    ok, msg = host.move_window_to_workspace(body.get("id", ""),
+                                            str(body.get("workspace", "")))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/floating")
+async def api_windows_floating(body: dict):
+    from . import host
+    ok, msg = host.set_window_floating(body.get("id", ""), bool(body.get("floating", True)))
+    return {"ok": ok, "message": msg}
+
+
+# ---- workspaces & displays: real, compositor-backed in the AgentOS session ----
+
+@app.get("/api/wm/workspaces")
+async def api_wm_workspaces():
+    from . import host
+    return host.workspaces()
+
+
+@app.post("/api/wm/workspaces")
+async def api_wm_workspace_switch(body: dict):
+    from . import host
+    ok, msg = host.switch_workspace(str(body.get("workspace", "")))
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/wm/outputs")
+async def api_wm_outputs():
+    from . import host
+    return host.outputs()
+
+
+@app.post("/api/wm/outputs")
+async def api_wm_output_configure(body: dict):
+    """Configure one display. Body: {name, mode?, scale?, transform?, position?, enabled?}.
+    Values are validated by the compositor itself and its error comes back verbatim."""
+    from . import host
+    name = body.get("name", "")
+    if not name:
+        return JSONResponse({"error": "output 'name' is required"}, status_code=400)
+    kw = {}
+    if body.get("mode"):
+        kw["mode"] = str(body["mode"])
+    if body.get("scale") is not None:
+        kw["scale"] = float(body["scale"])
+    if body.get("transform"):
+        kw["transform"] = str(body["transform"])
+    if body.get("position") is not None:
+        p = body["position"]
+        kw["position"] = (int(p.get("x", 0)), int(p.get("y", 0)))
+    if body.get("enabled") is not None:
+        kw["enabled"] = bool(body["enabled"])
+    ok, msg = host.configure_output(name, **kw)
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/platform")
+async def api_platform():
+    """What this machine can actually do, and which desktop mode we're in.
+
+    The UI renders from this instead of branching on the operating system: every
+    capability reports whether it's available and, when it isn't, a sentence
+    explaining why plus the optional component that would fix it.
+    """
+    from . import host
+    return host.platform_state()
+
+
 @app.get("/api/control")
 async def api_control():
     from . import host
@@ -320,6 +419,286 @@ async def api_control_set(body: dict):
         return {"ok": ok, "message": msg}
     host.set_volume(percent=body.get("volume"), mute=body.get("mute"))
     return host.get_volume()
+
+
+# ---- DE-mode system controls (hostctl: D-Bus daemons + PipeWire) ----------------
+#
+# These are what replace gnome-control-center when AgentOS is the session. They
+# work in hosted mode too where the daemon allows it; the UI decides what to
+# show from /api/platform capabilities, and every failure comes back as a
+# sentence, not a stack trace.
+
+def _hostctl_error(e: Exception, status: int = 503) -> JSONResponse:
+    return JSONResponse({"error": str(e)}, status_code=status)
+
+
+@app.get("/api/net/wifi")
+async def api_wifi(rescan: int = 1):
+    from .hostctl import HostCtlError, network
+    try:
+        st = await network.status()
+        st["networks"] = await network.wifi_scan(rescan=bool(rescan)) if st["wifi_enabled"] else []
+        for n in st["networks"]:
+            n.pop("_ap_path", None)          # D-Bus paths stay server-side
+        return st
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.post("/api/net/wifi")
+async def api_wifi_set(body: dict):
+    from .hostctl import HostCtlError, network
+    action = (body.get("action") or "").strip()
+    try:
+        if action == "join":
+            await network.wifi_join(body.get("ssid", ""), body.get("psk") or None)
+            state["store"].log("system", f"wifi: joined '{body.get('ssid','')}'")
+        elif action == "forget":
+            if not await network.wifi_forget(body.get("ssid", "")):
+                return JSONResponse({"error": "no saved network with that name"}, 404)
+            state["store"].log("system", f"wifi: forgot '{body.get('ssid','')}'")
+        elif action in ("enable", "disable"):
+            await network.set_wifi_enabled(action == "enable")
+        elif action == "airplane":
+            await network.set_networking_enabled(not bool(body.get("on", True)))
+            state["store"].log("system",
+                               f"airplane mode {'on' if body.get('on', True) else 'off'}")
+        else:
+            return JSONResponse({"error": f"unknown wifi action '{action}'"}, 400)
+        return {"ok": True}
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.get("/api/bt")
+async def api_bt():
+    from .hostctl import HostCtlError, bluetooth
+    try:
+        return await bluetooth.tree()
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.post("/api/bt")
+async def api_bt_set(body: dict):
+    from .hostctl import HostCtlError, bluetooth
+    action = (body.get("action") or "").strip()
+    try:
+        if action == "power":
+            await bluetooth.set_powered(body.get("adapter", ""), bool(body.get("on", True)))
+        elif action == "discover":
+            await bluetooth.set_discovering(body.get("adapter", ""), bool(body.get("on", True)))
+        elif action in ("pair", "connect", "disconnect", "trust", "untrust", "remove"):
+            await bluetooth.device_action(body.get("device", ""), action)
+            state["store"].log("system", f"bluetooth: {action} {body.get('device','')}")
+        else:
+            return JSONResponse({"error": f"unknown bluetooth action '{action}'"}, 400)
+        return {"ok": True}
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.get("/api/brightness")
+async def api_brightness():
+    from .hostctl import brightness
+    return await brightness.state()
+
+
+@app.post("/api/brightness")
+async def api_brightness_set(body: dict):
+    from .hostctl import HostCtlError, brightness
+    try:
+        await brightness.set_level(str(body.get("name", "")),
+                                   int(body.get("percent", 50)),
+                                   kind=str(body.get("kind", "")))
+        return {"ok": True}
+    except (HostCtlError, ValueError) as e:
+        return _hostctl_error(e)
+
+
+@app.get("/api/audio/devices")
+async def api_audio_devices():
+    from .hostctl import HostCtlError, audio
+    try:
+        return audio.devices()
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.post("/api/audio/devices")
+async def api_audio_set(body: dict):
+    from .hostctl import HostCtlError, audio
+    try:
+        if body.get("action") == "default":
+            audio.set_default(int(body.get("id", -1)))
+        elif body.get("action") == "volume":
+            audio.set_node_volume(int(body.get("id", -1)), int(body.get("percent", 50)))
+        else:
+            return JSONResponse({"error": "action must be 'default' or 'volume'"}, 400)
+        return {"ok": True}
+    except (HostCtlError, ValueError) as e:
+        return _hostctl_error(e)
+
+
+@app.get("/api/power/profile")
+async def api_power_profile():
+    from .hostctl import HostCtlError, upower
+    try:
+        return await upower.get_profile()
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+@app.post("/api/power/profile")
+async def api_power_profile_set(body: dict):
+    from .hostctl import HostCtlError, upower
+    try:
+        await upower.set_profile(str(body.get("profile", "")))
+        return {"ok": True}
+    except HostCtlError as e:
+        return _hostctl_error(e)
+
+
+# ---- Optional components: can't ship it, user can add it ------------------------
+
+@app.get("/api/components")
+async def api_components():
+    from . import components
+    return {"components": components.catalog()}
+
+
+@app.post("/api/components")
+async def api_components_install(body: dict):
+    """The UI shows the licence and asks before calling this — same contract as
+    the MCP store's install: this endpoint IS the consequence of a yes."""
+    from . import components
+    cid = (body.get("id") or "").strip()
+    if not cid:
+        return JSONResponse({"error": "component 'id' is required"}, status_code=400)
+    result = await components.install(cid)
+    if result["ok"] and result["command"]:
+        state["store"].log("system",
+                           f"component installed with consent: {cid} ({result['command']})")
+        await state["broadcast"]({"type": "config"})
+    return result
+
+
+# ---- Notification center (fed by the daemon in DE mode) -------------------------
+
+@app.get("/api/notifications")
+async def api_notifications():
+    d = state.get("notifd")
+    if not d:
+        return {"available": False, "items": [], "unread": 0, "dnd": False,
+                "reason": "Your desktop environment shows notifications in hosted mode."}
+    return d.state()
+
+
+@app.post("/api/notifications")
+async def api_notifications_act(body: dict):
+    d = state.get("notifd")
+    if not d:
+        return JSONResponse({"error": "no notification daemon in this mode"}, 409)
+    action = (body.get("action") or "").strip()
+    if action == "dismiss":
+        d.dismiss(int(body.get("id", 0)))
+    elif action == "clear":
+        d.clear()
+    elif action == "read":
+        d.mark_read()
+    elif action == "dnd":
+        d.dnd = bool(body.get("on", True))
+    else:
+        return JSONResponse({"error": f"unknown action '{action}'"}, 400)
+    return {"ok": True, "dnd": d.dnd}
+
+
+# ---- Screenshots (grim/slurp; the AgentOS session's own capture) ----------------
+
+@app.post("/api/screenshot")
+async def api_screenshot(body: dict):
+    """{area: "full" | "select"} → saves under <workspace>/Screenshots and
+    returns the path. `select` hands the pointer to slurp for a region drag."""
+    import shutil as _sh
+    if not _sh.which("grim"):
+        return JSONResponse({"error": "Screenshots need grim (part of the "
+                                      "agentos-desktop package)."}, 503)
+    dest_dir = Path(state["cfg"].get("workspace", str(Path.home() / "AgentOS"))) / "Screenshots"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / time.strftime("Screenshot-%Y%m%d-%H%M%S.png")
+    argv = ["grim", str(dest)]
+    if (body.get("area") or "full") == "select":
+        if not _sh.which("slurp"):
+            return JSONResponse({"error": "Region capture needs slurp."}, 503)
+        sl = await asyncio.create_subprocess_exec(
+            "slurp", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await sl.communicate()
+        geometry = out.decode().strip()
+        if sl.returncode != 0 or not geometry:
+            return JSONResponse({"error": "selection cancelled"}, 400)
+        argv = ["grim", "-g", geometry, str(dest)]
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    if proc.returncode != 0:
+        return JSONResponse({"error": out.decode(errors="replace")[:300]
+                                      or "screenshot failed"}, 500)
+    state["store"].log("system", f"screenshot saved: {dest.name}")
+    return {"ok": True, "path": str(dest)}
+
+
+# ---- Power & session: the desktop's own power menu (AgentOS as the DE) ----------
+#
+# AgentOS is growing into the machine's desktop environment, so the menu bar carries
+# real session controls. These are USER-initiated (confirmed in the UI); the agent's
+# run_command tool still hard-blocks shutdown/reboot, and apps are blocked by the
+# privilege guard.
+
+POWER_ACTIONS = {
+    "lock":     {"linux": ["loginctl", "lock-session"],
+                 "darwin": ["pmset", "displaysleepnow"]},
+    "logout":   {"linux": ["loginctl", "terminate-user", os.environ.get("USER", "")],
+                 "darwin": ["osascript", "-e", 'tell application "System Events" to log out']},
+    "suspend":  {"linux": ["systemctl", "suspend"],
+                 "darwin": ["pmset", "sleepnow"]},
+    "restart":  {"linux": ["systemctl", "reboot"],
+                 "darwin": ["osascript", "-e", 'tell application "System Events" to restart']},
+    "poweroff": {"linux": ["systemctl", "poweroff"],
+                 "darwin": ["osascript", "-e", 'tell application "System Events" to shut down']},
+}
+
+
+@app.post("/api/power")
+async def api_power(body: dict, request: Request):
+    """Session/power controls for the menu-bar power menu. 'agentos-restart' restarts
+    the AgentOS server itself; the rest drive the host session (loginctl/systemctl)."""
+    if _principal_of(request).kind == "app":
+        return JSONResponse({"error": "denied: apps cannot control the session"},
+                            status_code=403)
+    action = (body.get("action") or "").strip()
+    if action == "agentos-restart":
+        out = await state["toolbox"].restart_agentos()
+        return {"ok": not out.startswith(("[error]", "[denied]")), "result": out}
+    spec = POWER_ACTIONS.get(action)
+    if not spec:
+        return JSONResponse({"error": f"unknown action '{action}'"}, status_code=400)
+    import sys as _sys
+    argv = spec["darwin"] if _sys.platform == "darwin" else spec["linux"]
+    state["store"].log("system", f"power: {action} requested from the desktop")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
+        if proc.returncode != 0:
+            return JSONResponse({"error": out.decode(errors="replace")[:300]
+                                          or f"{argv[0]} exited {proc.returncode}"},
+                                status_code=500)
+    except FileNotFoundError:
+        return JSONResponse({"error": f"'{argv[0]}' not available on this system"},
+                            status_code=500)
+    except asyncio.TimeoutError:
+        pass  # a poweroff/logout may never return — that's success
+    return {"ok": True}
 
 
 @app.get("/api/system")
@@ -552,6 +931,14 @@ async def api_put_config(patch: dict):
         for k in ("provider", "model"):
             if k in patch["image"]:
                 img[k] = patch["image"][k]
+    if isinstance(patch.get("desktop"), dict):
+        desk = cfg.setdefault("desktop", {})
+        from . import runmode as _rm
+        if patch["desktop"].get("mode") in _rm.CHOICES:
+            desk["mode"] = patch["desktop"]["mode"]
+        for k in ("idle_lock_secs", "idle_screen_off_secs"):
+            if isinstance(patch["desktop"].get(k), (int, float)):
+                desk[k] = max(0, int(patch["desktop"][k]))
     for name, pconf in (patch.get("providers") or {}).items():
         if name not in cfg["providers"]:
             continue
@@ -714,13 +1101,30 @@ document.getElementById('s').onclick=function(){if(run){clearInterval(iv);run=0;
 document.getElementById('r').onclick=()=>{clearInterval(iv);run=0;left=1500;fmt();document.getElementById('s').textContent='Start'};
 document.getElementById('b').onclick=()=>{clearInterval(iv);run=0;left=300;fmt();document.getElementById('s').textContent='Start'};
 fmt();</script>"""},
-    {"id": "notes", "name": "Quick Notes", "icon": "", "desc": "a scratchpad that saves itself",
+    {"id": "notes", "name": "Quick Notes", "icon": "", "desc": "an AI scratchpad that saves itself",
      "html": """<h2 style='margin:0 0 8px'>Quick Notes</h2>
-<textarea id='n' style='width:100%;height:calc(100vh - 90px);background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:12px;font-size:14px;line-height:1.6' placeholder='Type… saved automatically'></textarea>
-<div id='st' style='color:#5c6577;font-size:11px;margin-top:6px'>saved</div>
-<script>const n=document.getElementById('n'),st=document.getElementById('st');
+<textarea id='n' style='width:100%;height:calc(100vh - 130px);background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:12px;font-size:14px;line-height:1.6' placeholder='Type… saved automatically'></textarea>
+<div style='display:flex;gap:8px;align-items:center;margin-top:6px'>
+<button id='sum'>✨ Summarize</button><button id='tidy'>✨ Tidy up</button>
+<div id='st' style='color:#5c6577;font-size:11px;margin-left:auto'>saved</div></div>
+<div id='ai' style='display:none;background:#171b22;border:1px solid #232a35;border-radius:8px;padding:10px;margin-top:8px;font-size:13px;white-space:pre-wrap;max-height:180px;overflow:auto'></div>
+<script>const n=document.getElementById('n'),st=document.getElementById('st'),ai=document.getElementById('ai');
 n.value=localStorage.getItem('quicknotes')||'';let t;
-n.oninput=()=>{st.textContent='saving…';clearTimeout(t);t=setTimeout(()=>{localStorage.setItem('quicknotes',n.value);st.textContent='saved '+new Date().toLocaleTimeString()},400)};</script>"""},
+n.oninput=()=>{st.textContent='saving…';clearTimeout(t);t=setTimeout(()=>{localStorage.setItem('quicknotes',n.value);st.textContent='saved '+new Date().toLocaleTimeString()},400)};
+// AI built in: the OS's selected model works on the note via appLLM (injected runtime)
+async function think(btn,sys,replace){
+  if(!n.value.trim())return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent='thinking…';
+  try{
+    const out=await appLLM(n.value,sys);
+    if(out.startsWith('[error]')){ai.style.display='block';ai.textContent='AI unavailable — pick a model in Settings. '+out;}
+    else if(replace){n.value=out;n.oninput();}
+    else{ai.style.display='block';ai.textContent=out;}
+  }catch(e){ai.style.display='block';ai.textContent='AI error: '+e;}
+  btn.disabled=false;btn.textContent=old;
+}
+document.getElementById('sum').onclick=e=>think(e.target,'Summarize these notes into their key points, as a short bullet list. Reply with only the summary.');
+document.getElementById('tidy').onclick=e=>think(e.target,'Clean up these notes: fix typos and grammar, keep the meaning and all facts, keep the same language. Reply with ONLY the cleaned-up text.',true);</script>"""},
     {"id": "calc", "name": "Calculator", "icon": "", "desc": "a simple calculator",
      "html": """<h2 style='margin:0 0 8px'>Calculator</h2>
 <input id='d' readonly style='width:100%;text-align:right;font-size:26px;padding:10px;background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;font-variant-numeric:tabular-nums'>
@@ -762,18 +1166,205 @@ async def api_store_install(body: dict):
     return {"ok": True, "id": aid, "name": t["name"]}
 
 
+# ---- Store: MCP discovery — find servers in the public MCP registry, install with
+# consent, record them in the local MCP Registry, and generate their docs ----------
+
+@app.get("/api/store/mcp/search")
+async def api_store_mcp_search(q: str = "", limit: int = 30):
+    """Search the public MCP registry. Served from the locally-synced index (instant);
+    the upstream API (15-25s/request) is only touched by the background sync — the
+    response's `index` block tells the UI when results are still growing."""
+    from . import mcp_store
+    mcp_store.ensure_index(state["store"])
+    status = mcp_store.index_status()
+    try:
+        if status["count"]:
+            cands = mcp_store.search_local(q, limit=limit)
+        elif status["syncing"]:
+            cands = []  # first pages are still arriving — the UI polls
+        else:  # no index and no sync possible: one slow upstream query beats nothing
+            cands = await mcp_store.search(q, limit=limit)
+    except Exception as e:
+        return JSONResponse({"error": f"registry search failed: {e}",
+                             "index": mcp_store.index_status()}, status_code=502)
+    have = set((state["cfg"].get("mcp_servers") or {}).keys())
+    for c in cands:
+        c["installed"] = c["key"] in have
+    return {"candidates": cands, "index": mcp_store.index_status()}
+
+
+@app.post("/api/store/mcp/install")
+async def api_store_mcp_install(body: dict):
+    """Install a discovered server: write its config (disabled until required keys are
+    filled), add it to the local MCP Registry, and generate its documentation. The UI
+    only calls this after the user has said yes to 'build around this?'."""
+    from . import mcp_store
+    reg_name = (body.get("registry_name") or "").strip()
+    if not reg_name:
+        return JSONResponse({"error": "registry_name is required"}, status_code=400)
+    try:
+        cand = await mcp_store.lookup(reg_name, store=state["store"])
+    except Exception as e:
+        return JSONResponse({"error": f"registry lookup failed: {e}"}, status_code=502)
+    if not cand:
+        return JSONResponse({"error": f"'{reg_name}' not found in the public registry"},
+                            status_code=404)
+    name = (body.get("name") or cand["key"]).strip()
+    conf, missing = mcp_store.to_conf(cand, env_values=body.get("env") or {})
+    state["cfg"].setdefault("mcp_servers", {})[name] = conf
+    cfgmod.save_config(state["cfg"])
+    mcp_store.record_install(
+        state["store"], name, title=cand["registry_name"].split("/")[-1],
+        description=cand["description"], source="discovery", origin=cand["registry_name"],
+        package=mcp_store.package_info(cand), homepage=cand["homepage"], conf=conf)
+    state["store"].log("system", f"store: MCP '{name}' installed from the public registry "
+                                 f"({cand['registry_name']})"
+                                 + (f" — needs keys: {', '.join(missing)}" if missing else ""))
+    await state["mcp"].reload()
+    await state["broadcast"]({"type": "config"})
+    return {"ok": True, "name": name, "enabled": conf.get("enabled", False),
+            "missing_env": missing,
+            "doc": f"mcp/{name}.md"}
+
+
+@app.get("/api/store/mcp/discover_more")
+async def api_store_mcp_discover_more(q: str = "", limit: int = 12):
+    """Deep discovery: when the MCP registry isn't enough, the system widens the net —
+    npm + GitHub swept in parallel, deduped against what the registry already found.
+    npm hits install normally (registry_name 'npm:<pkg>'); GitHub-only hits come back
+    agentic=True and are handed to the agent to read the repo and configure."""
+    from . import mcp_store
+    exclude = set()
+    for c in mcp_store.search_local(q, limit=60):
+        exclude.add(c["registry_name"])
+        if c.get("identifier"):
+            exclude.add(c["identifier"])
+        if c.get("homepage"):
+            exclude.add(c["homepage"].rstrip("/"))
+    try:
+        cands = await mcp_store.search_deep(q, limit=limit, exclude=exclude)
+    except Exception as e:
+        return JSONResponse({"error": f"deep discovery failed: {e}"}, status_code=502)
+    have = set((state["cfg"].get("mcp_servers") or {}).keys())
+    for c in cands:
+        c["installed"] = c["key"] in have
+    return {"candidates": cands}
+
+
+@app.get("/api/mcp/registry")
+async def api_mcp_registry():
+    """The local MCP Registry: every server the OS knows, merged with live status."""
+    live = {s["name"]: s for s in state["mcp"].status()}
+    out = []
+    for r in state["store"].mcp_reg_list():
+        s = live.get(r["name"], {})
+        out.append({**r, "live_status": s.get("status", "not-configured"),
+                    "tools": len(s.get("tools") or []), "enabled": s.get("enabled", False)})
+    return {"registry": out}
+
+
+@app.delete("/api/mcp/registry/{name}")
+async def api_mcp_registry_delete(name: str, purge: int = 0):
+    """Remove a registry entry; purge=1 also removes the server config and its doc."""
+    from . import mcp_store
+    reg = state["store"].mcp_reg_get(name)
+    if reg and purge:
+        mcp_store.delete_doc(reg.get("doc_file") or "")
+        if name in (state["cfg"].get("mcp_servers") or {}):
+            state["cfg"]["mcp_servers"].pop(name, None)
+            cfgmod.save_config(state["cfg"])
+            await state["mcp"].reload()
+    state["store"].mcp_reg_delete(name)
+    await state["broadcast"]({"type": "config"})
+    return {"ok": True}
+
+
+@app.post("/api/mcp/registry/{name}/docs")
+async def api_mcp_registry_docs(name: str):
+    """Regenerate one registry entry's documentation from its current live state."""
+    from . import mcp_store
+    live = next((s for s in state["mcp"].status() if s["name"] == name), None)
+    conf = (state["cfg"].get("mcp_servers") or {}).get(name)
+    ok = mcp_store.refresh_doc(state["store"], name, conf=conf, live=live)
+    if not ok:
+        return JSONResponse({"error": "not in the MCP Registry"}, status_code=404)
+    return {"ok": True, "doc": f"mcp/{name}.md"}
+
+
 # ---- User apps (AI-built UI tools) --------------------------------------------
 
-APP_SHELL = """<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>
-:root{{color-scheme:dark}}
-body{{background:#0e1116;color:#e6ebf2;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
-     font-size:14px;margin:0;padding:14px}}
-button{{background:#1e242e;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:7px 14px;cursor:pointer}}
-button:hover{{border-color:#5eead4}}
-input,select,textarea{{background:#171b22;color:#e6ebf2;border:1px solid #232a35;border-radius:8px;padding:7px 10px}}
-a{{color:#22d3ee}}
-</style></head><body>{body}</body></html>"""
+# The design system every app gets FOR FREE: OS-matched element styles + layout
+# utilities, injected into every app page. The builder is instructed to lean on
+# these classes and write almost no CSS — weak local models produce dramatically
+# better apps composing a given system than inventing layout CSS from scratch.
+# Injected at the TOP of <head>, so an app's own styles can still override.
+APP_UI_CSS = """
+:root{color-scheme:dark;--bg:#0e1116;--s:#171b22;--r:#1e242e;--ln:#232a35;--tx:#e6ebf2;
+  --mut:#8a94a6;--acc:#5eead4;--acc2:#22d3ee;--errc:#f87171;--okc:#34d399;--warnc:#fbbf24}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;margin:0;padding:18px}
+h1{font-size:18px;font-weight:750;margin:0 0 2px}
+h2{font-size:15px;font-weight:700;margin:0 0 8px}
+h3{font-size:11.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin:0 0 6px}
+p{margin:0 0 10px} a{color:var(--acc2);text-decoration:none} a:hover{text-decoration:underline}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+button{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;border:0;border-radius:9px;
+  padding:8px 14px;font:inherit;font-weight:700;cursor:pointer;transition:filter .12s}
+button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:default}
+button.ghost{background:var(--r);color:var(--tx);border:1px solid var(--ln);font-weight:600}
+button.ghost:hover{border-color:var(--acc);filter:none}
+input,select,textarea{background:var(--s);color:var(--tx);border:1px solid var(--ln);border-radius:9px;
+  padding:8px 11px;font:inherit;width:100%;max-width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+  padding:7px 10px;border-bottom:1px solid var(--ln)}
+td{padding:8px 10px;border-bottom:1px solid var(--ln)}
+tbody tr:hover td{background:rgba(94,234,212,.05)}
+.card{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>input,.row>select{flex:1;width:auto;min-width:120px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:12px 14px;text-align:center}
+.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;color:var(--mut)}
+.badge{display:inline-block;background:var(--r);border:1px solid var(--ln);border-radius:20px;
+  padding:2px 9px;font-size:10.5px;color:var(--mut)}
+.muted{color:var(--mut);font-size:12px} .err{color:var(--errc)} .ok{color:var(--okc)}
+.empty{border:1px dashed var(--ln);border-radius:12px;padding:26px 14px;text-align:center;color:var(--mut);font-size:12.5px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--acc);border-top-color:transparent;
+  border-radius:50%;animation:aospin .7s linear infinite;vertical-align:-2px}
+@keyframes aospin{to{transform:rotate(360deg)}}
+"""
+
+APP_SHELL = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
+             f'<style id="agentos-ui">{APP_UI_CSS}</style></head>'
+             '<body>__BODY__</body></html>')
+
+
+def _compose_app_page(html: str, runtime: str) -> str:
+    """Wrap app markup into a servable page: fragments get the full shell; complete
+    documents get the design system injected at the top of <head> (their own styles
+    still win) and the runtime scripts right after <body>."""
+    if not html.lstrip().lower().startswith(("<!doctype", "<html")):
+        return APP_SHELL.replace("__BODY__", runtime + html)
+    css = f'<style id="agentos-ui">{APP_UI_CSS}</style>'
+    low = html.lower()
+    h = low.find("<head")
+    if h != -1:
+        j = low.index(">", h) + 1
+        html = html[:j] + css + html[j:]
+    else:
+        html = css + html
+    low = html.lower()
+    if "<body" in low:
+        i = low.index("<body")
+        i = low.index(">", i) + 1
+        html = html[:i] + runtime + html[i:]
+    else:
+        html = runtime + html
+    return html
 
 
 @app.get("/api/apps")
@@ -829,6 +1420,21 @@ async def api_save_app(body: dict):
     return {"id": aid}
 
 
+@app.put("/api/apps/{aid}")
+async def api_rename_app(aid: str, body: dict):
+    """Rename/redecorate an app (name, icon, description) — the id stays, so its data,
+    versions, grants and widgets all follow along."""
+    err = state["store"].rename_app(aid, name=body.get("name", ""),
+                                    icon=body.get("icon") if "icon" in body else None,
+                                    description=body.get("description")
+                                    if "description" in body else None)
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    state["store"].log("system", f"app renamed: {aid} → {body.get('name', '')}")
+    await state["broadcast"]({"type": "apps"})
+    return {"ok": True}
+
+
 @app.delete("/api/apps/{aid}")
 async def api_delete_app(aid: str):
     state["store"].delete_app(aid)
@@ -881,19 +1487,8 @@ async def api_app_page(aid: str):
     for k, v in list(state["app_tokens"].items()):
         if now - v["issued"] > 86400:
             state["app_tokens"].pop(k, None)
-    html = a["html"] or ""
-    if not html.lstrip().lower().startswith(("<!doctype", "<html")):
-        html = APP_SHELL.format(body=html)
     runtime = APP_RUNTIME % (aid, tok)
-    # inject the runtime right after <body>, or prepend it
-    low = html.lower()
-    if "<body" in low:
-        i = low.index("<body")
-        i = low.index(">", i) + 1
-        html = html[:i] + runtime + html[i:]
-    else:
-        html = runtime + html
-    return HTMLResponse(html)
+    return HTMLResponse(_compose_app_page(a["html"] or "", runtime))
 
 
 @app.get("/api/apps/{aid}/versions")
@@ -1224,6 +1819,11 @@ async def api_app_import_confirm(iid: str, body: dict):
             installed["mcp"].append(m["name"])
     if installed["mcp"]:
         cfgmod.save_config(state["cfg"])
+        from . import mcp_store
+        for nm in installed["mcp"]:  # package-borne servers land in the MCP Registry too
+            mcp_store.record_install(state["store"], nm, source="package",
+                                     origin=f"app package: {name}",
+                                     conf=state["cfg"]["mcp_servers"].get(nm))
         await state["mcp"].reload()
     for s in (man.get("prerequisites") or {}).get("skills", []):
         if s.get("name") in (body.get("install_skills") or []) and s.get("source"):
@@ -1312,30 +1912,26 @@ When refining an existing app, call create_app with the SAME name to update it i
 BUILD QUALITY — this matters; make it look and feel professional, not a demo:
 - Real, finished features. If it's a tracker it adds/edits/deletes/persists; if it's a dashboard it shows
   real data; handle empty states and errors. No dead buttons, no lorem ipsum.
-- Design like a modern native app, matching the OS. Use this dark palette exactly:
-    page #0e1116 · surface #171b22 · raised #1e242e · border #232a35 · text #e6ebf2 · muted #8a94a6 ·
-    accent gradient #5eead4 → #22d3ee (one accent, used sparingly).
-  Generous padding (16-20px), 10-14px radii, a clear header/title, comfortable line-height (~1.5),
-  hover/focus states on every interactive element, subtle shadows, and a layout that fills the window
-  responsively (flex/grid). Crisp and breathable — never cramped or flat. Ship something you're proud of.
-- System font stack; restrained micro-interactions. NO external CDNs, fonts, or images (blocked) — inline
-  all CSS/JS, embed any assets as data URIs.
-- START from this baseline skeleton and build on it — never ship unstyled controls:
-    <style>
-      :root{--bg:#0e1116;--s:#171b22;--r:#1e242e;--ln:#232a35;--tx:#e6ebf2;--mut:#8a94a6;--acc:#5eead4;--acc2:#22d3ee}
-      *{box-sizing:border-box;margin:0}
-      body{background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,sans-serif;padding:18px}
-      h1{font-size:17px} .sub{color:var(--mut);font-size:12.5px;margin:2px 0 14px}
-      .card{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:10px}
-      input,select{background:var(--r);border:1px solid var(--ln);border-radius:9px;color:var(--tx);padding:9px 11px;font:inherit;width:100%}
-      input:focus{outline:none;border-color:var(--acc)}
-      button{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;border:0;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}
-      button.ghost{background:none;border:1px solid var(--ln);color:var(--mut)}
-      .row{display:flex;gap:8px;align-items:center} .muted{color:var(--mut);font-size:12px}
-      .err{color:#f87171} .ok{color:#34d399}
-    </style>
-  Every async action shows a loading state and a readable error state; every list has an empty state
-  telling the user what to do first; numbers/dates are formatted, not raw.
+- A DESIGN SYSTEM IS PRE-INJECTED into every app page — you do NOT write or include it. It styles
+  body, h1-h3, p, a, label, button (accent gradient; `button.ghost` = secondary), input/select/
+  textarea, and table (striped header, row hover) automatically, and provides these utilities:
+    .card (surface box) · .row (flex line: inputs stretch, buttons stay natural size) ·
+    .cols (responsive auto-fit card grid) · .grid2 (two equal columns) ·
+    .kpi (stat tile: <div class="kpi"><b>42</b><span>label</span></div>) ·
+    .badge · .muted · .err · .ok · .empty (dashed empty-state box) ·
+    .spin (ready-made loading spinner: <span class="spin"></span>)
+  COMPOSE WITH THESE — semantic HTML plus these classes IS the design. Write custom CSS only for
+  something genuinely app-specific (a chart, a special widget), never to restyle base elements.
+- HARD LAYOUT RULES — breaking these is what makes apps look amateur; treat them as law:
+  · Structure pages ONLY with .card / .row / .cols / .grid2 — NEVER position:absolute or fixed
+    for layout, no floats, no rotated/vertical text, no writing-mode tricks.
+  · No fixed pixel widths/heights on layout elements (flex/grid handles size); buttons are normal
+    height — never stretched tall or full-screen.
+  · Every input/select/textarea gets a <label> above it. Related controls share one .row.
+  · One h1 title + a .muted subtitle at the top, then .card sections. Nothing may overlap.
+- NO external CDNs, fonts, or images (blocked) — inline any extra CSS/JS, assets as data URIs.
+- Every async action shows a loading state (.spin) and a readable .err state; every list has an
+  .empty state telling the user what to do first; numbers/dates are formatted, not raw.
 - JS CORRECTNESS (the #1 way apps die): a plain <script> cannot use top-level `await` — wrap ALL
   startup logic in `(async () => { … })();` and call appData/appTool/appLLM only inside async
   functions. Attach handlers with addEventListener or onclick attributes that call DEFINED functions;
@@ -1352,6 +1948,10 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
   critically — EXTRACT data from messy pages instead of brittle regex: after appTool('fetch_url',…),
   call appLLM(pageText, 'Reply with ONLY JSON {"price": number|null, "currency": string}') and
   JSON.parse the reply inside try/catch. Prefer appLLM over hand-written parsers for anything scraped.
+- AI-NATIVE BY DEFAULT: every app you ship has the OS's model built in — include at least one
+  genuinely useful appLLM feature (summarize, suggest, classify, explain, natural-language input)
+  wired to the app's real data, with a loading state and a graceful fallback if no model is
+  configured. An app without its AI feature is incomplete.
 - Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
 - THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
@@ -1409,6 +2009,16 @@ def _lint_app_html(html: str, toolbox=None) -> list[str]:
                 if m.group(1) not in known:
                     issues.append(f"appTool('{m.group(1)}') calls a tool that does not exist — "
                                   "use a name from the API registry")
+    # layout smells that reliably produce broken-looking apps (the design-system
+    # contract bans them) — flagged so the repair pass rebuilds with .row/.cols/.card
+    if re.search(r"position\s*:\s*fixed", html, re.IGNORECASE):
+        issues.append("uses position:fixed — banned for app layout; restructure with the "
+                      "design-system .card/.row/.cols utilities")
+    if len(re.findall(r"position\s*:\s*absolute", html, re.IGNORECASE)) > 2:
+        issues.append("layout leans on position:absolute — banned; restructure with the "
+                      "design-system .card/.row/.cols utilities")
+    if re.search(r"writing-mode|text-orientation|rotate\(\s*-?9[05]", html, re.IGNORECASE):
+        issues.append("rotated/vertical text detected — banned; use a normal horizontal label")
     return issues[:6]
 
 
@@ -1459,11 +2069,17 @@ async def resolve_approval(aid: str, approved: bool, remember: bool = False):
 # capability access goes through /api/tool + grants, never around them
 SENSITIVE_FOR_APPS = (
     ("PUT", "/api/config"), ("PUT", "/api/mcp"), ("PUT", "/api/soul"),
-    ("POST", "/api/apps"), ("DELETE", "/api/apps"),
+    ("POST", "/api/apps"), ("DELETE", "/api/apps"), ("PUT", "/api/apps"),
     ("POST", "/api/grants"), ("DELETE", "/api/grants"),
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
     ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
     ("DELETE", "/api/skills"), ("POST", "/api/factory-reset"),
+    ("POST", "/api/power"), ("POST", "/api/store/mcp"), ("DELETE", "/api/mcp/registry"),
+    # DE-mode system controls: joining networks, pairing devices and rewiring
+    # audio are user acts, never app acts
+    ("POST", "/api/net/wifi"), ("POST", "/api/bt"), ("POST", "/api/brightness"),
+    ("POST", "/api/audio/devices"), ("POST", "/api/power/profile"),
+    ("POST", "/api/wm/outputs"), ("POST", "/api/components"),
 )
 
 
@@ -1511,8 +2127,11 @@ async def api_run_tool(body: dict, request: Request):
     if name not in {t["name"] for t in toolbox.schemas()}:
         return JSONResponse({"error": f"unknown tool: {name}"}, status_code=400)
     level, reason = toolbox.risk_of(name, args)
+    # apps render inside the desktop, so their calls arrive via the GUI gate
+    surface = "gui" if principal.kind == "app" else "api"
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
-                                   autonomy=state["cfg"].get("autonomy", ""))
+                                   autonomy=state["cfg"].get("autonomy", ""),
+                                   surface=surface)
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -1520,7 +2139,12 @@ async def api_run_tool(body: dict, request: Request):
                            {"principal": principal.label, "action": dec.action,
                             "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
                             "reason": dec.reason or reason, "tool": name,
-                            "approved": approved, "via": "api_tool"})
+                            "approved": approved, "surface": surface, "via": "api_tool"})
+        if dec.rule == "io-gate":
+            state["store"].log("error", f"IO gate blocked {dec.action} {dec.resource} "
+                                        f"on '{surface}'"[:400],
+                               {"principal": principal.label, "surface": surface,
+                                "rule": "io-gate"})
     if dec.effect == "deny":
         _plog("deny")
         return JSONResponse({"error": f"denied: {dec.reason or reason}"}, status_code=403)
@@ -1560,23 +2184,35 @@ async def api_add_grant(body: dict):
     pid = (body.get("principal_id") or "").strip()
     resource = (body.get("resource") or "*").strip()
     effect = body.get("effect", "allow")
+    surfaces = (body.get("surfaces") or "*").strip() or "*"
     gid = state["store"].add_grant(kind, pid, action, resource, effect=effect,
-                                   source="user", note=body.get("note", ""))
-    state["store"].log("policy", f"grant attached: {effect} {kind}:{pid} → {action} {resource}",
+                                   source="user", note=body.get("note", ""),
+                                   surfaces=surfaces)
+    state["store"].log("policy", f"grant attached: {effect} {kind}:{pid} → {action} {resource}"
+                                 + (f" [{surfaces}]" if surfaces != "*" else ""),
                        {"principal": f"{kind}:{pid}", "action": action, "resource": resource,
-                        "effect": effect, "via": "permissions_ui"})
+                        "effect": effect, "surfaces": surfaces, "via": "permissions_ui"})
     await state["broadcast"]({"type": "grants"})
     return {"id": gid}
 
 
 @app.put("/api/grants/{gid}")
 async def api_update_grant(gid: str, body: dict):
-    """Toggle a grant's effect between allow and deny (the policy map click-toggle)."""
+    """Toggle a grant's effect (allow/deny) and/or rescope its IO surfaces."""
+    ok = False
     effect = (body.get("effect") or "").strip()
-    ok = state["store"].update_grant(gid, effect)
+    if effect:
+        ok = state["store"].update_grant(gid, effect)
+        if ok:
+            state["store"].log("policy", f"grant toggled to {effect}: {gid}",
+                               {"grant_id": gid, "effect": effect, "via": "permissions_ui"})
+    if "surfaces" in body:
+        ok = state["store"].set_grant_surfaces(gid, body.get("surfaces") or "*") or ok
+        state["store"].log("policy", f"grant surfaces set to "
+                                     f"{body.get('surfaces') or '*'}: {gid}",
+                           {"grant_id": gid, "surfaces": body.get("surfaces") or "*",
+                            "via": "permissions_ui"})
     if ok:
-        state["store"].log("policy", f"grant toggled to {effect}: {gid}",
-                           {"grant_id": gid, "effect": effect, "via": "permissions_ui"})
         await state["broadcast"]({"type": "grants", "revoked": effect == "deny"})
     return {"ok": ok}
 
@@ -1620,7 +2256,9 @@ async def api_policy_options():
     except Exception:
         models = [cfg.get("default_model", "")]
     ws = cfg.get("workspace", "")
+    from .policy import SURFACES
     return {"principals": principals,
+            "surfaces": list(SURFACES),
             "actions": ["tool.use", "mcp.use", "skill.use", "model.use", "net.fetch",
                         "fs.read", "fs.write", "memory.read", "memory.write",
                         "kg.read", "kg.write", "agent.invoke",
@@ -2064,6 +2702,11 @@ async def api_wallpaper_system():
     import shutil
     import subprocess
     import sys as _sys
+    from . import runmode as _rm
+    if _rm.resolve(state.get("cfg"))[0] == _rm.DE:
+        return JSONResponse({"error": "AgentOS is the desktop here — its wallpaper IS "
+                                      "the system wallpaper. Pick one in Personalize."},
+                            status_code=409)
     try:
         path = _host_wallpaper_file()
     except Exception as e:
@@ -2195,19 +2838,28 @@ def _docs_dir() -> Path | None:
     return None
 
 
+def _user_docs_dir() -> Path | None:
+    """Generated documentation (e.g. MCP Registry manuals) lives with the user's data,
+    not in the source tree — merged into the same Docs app."""
+    from .mcp_store import USER_DOCS_DIR
+    return USER_DOCS_DIR if USER_DOCS_DIR.is_dir() else None
+
+
 @app.get("/api/docs")
 async def api_docs():
-    base = _docs_dir()
-    if not base:
-        return {"docs": []}
     out = []
-    for p in sorted(base.glob("**/*.md")):
-        rel = str(p.relative_to(base))
-        try:
-            first = next((ln for ln in p.read_text().splitlines() if ln.startswith("#")), rel)
-        except Exception:
-            first = rel
-        out.append({"file": rel, "title": first.lstrip("# ").strip()})
+    for base in (_docs_dir(), _user_docs_dir()):
+        if not base:
+            continue
+        for p in sorted(base.glob("**/*.md")):
+            rel = str(p.relative_to(base))
+            if any(d["file"] == rel for d in out):
+                continue  # built-in docs win a name collision
+            try:
+                first = next((ln for ln in p.read_text().splitlines() if ln.startswith("#")), rel)
+            except Exception:
+                first = rel
+            out.append({"file": rel, "title": first.lstrip("# ").strip()})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
              "tui.md", "security.md", "hermes.md", "integrations.md", "models.md", "configuration.md",
@@ -2218,13 +2870,13 @@ async def api_docs():
 
 @app.get("/api/docs/{name:path}")
 async def api_doc(name: str):
-    base = _docs_dir()
-    if not base:
-        return JSONResponse({"error": "docs not found"}, status_code=404)
-    p = (base / name).resolve()
-    if not str(p).startswith(str(base.resolve())) or p.suffix != ".md" or not p.is_file():
-        return JSONResponse({"error": "not found"}, status_code=404)
-    return {"file": name, "content": p.read_text()}
+    for base in (_docs_dir(), _user_docs_dir()):
+        if not base:
+            continue
+        p = (base / name).resolve()
+        if str(p).startswith(str(base.resolve())) and p.suffix == ".md" and p.is_file():
+            return {"file": name, "content": p.read_text()}
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 @app.get("/api/setup")
@@ -2502,8 +3154,10 @@ async def api_chat(body: dict, request: Request):
     async def approver(_n, _a, _r, _offer=None):
         return cfg.get("autonomy") == "full"
 
+    # apps call from inside the desktop (GUI); everything else is the headless API gate
     agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid,
-                  principal=principal)
+                  principal=principal,
+                  surface="gui" if principal.kind == "app" else "api")
     knowledge.turn_started()
     try:
         result = await agent.run(history)
@@ -2713,7 +3367,10 @@ async def run_chat(cid: str, data: dict):
             result = {"content": content, "steps": res["steps"],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         else:
-            agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid)
+            from .policy import SURFACES
+            surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid,
+                          surface=surface)
             turns[cid] = {"agent": agent, "task": asyncio.current_task(), "model": model}
             knowledge.turn_started()
             started = True

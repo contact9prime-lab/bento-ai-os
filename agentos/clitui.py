@@ -179,7 +179,7 @@ async def run_tui():
                         print(); continue
 
                     print(f"{C['teal']}{C['b']}{name}{C['r']} ", end="")
-                    await ws.send(json.dumps({"type": "chat", "text": text,
+                    await ws.send(json.dumps({"type": "chat", "text": text, "surface": "tui",
                                               "conversation_id": cid, "model": model}))
                     await drain_turn()
         except Exception as e:

@@ -502,97 +502,17 @@ def autostart_report() -> tuple[str | None, str | None]:
     return auto, boot
 
 
-SESSION_SCRIPT = Path.home() / ".local/bin" / f"{APP_ID}-session"
-SESSION_DESKTOP_STAGE = cfgmod.AGENTOS_HOME / f"{APP_ID}-session.desktop"
-XSESSIONS = Path("/usr/share/xsessions")
-
-
 def install_session():
-    """Make AgentOS a desktop session you can choose at the login screen — it boots straight
-    into AgentOS in kiosk mode, replacing the normal desktop shell.
-
-    The session file must go in /usr/share/xsessions (root-owned), so this stages everything and
-    either installs it with sudo (if available non-interactively) or prints the exact commands.
-    """
-    if IS_MAC or IS_WIN:
-        print("Login-screen sessions are a Linux feature (xsessions). On this OS use "
-              "`agentos install` for autostart, or set AGENTOS_KIOSK=1 and run `agentos app` "
-              "for a fullscreen kiosk window.")
-        return
-    python = sys.executable
-    SESSION_SCRIPT.parent.mkdir(parents=True, exist_ok=True)
-    SESSION_SCRIPT.write_text(f"""#!/bin/sh
-# AgentOS desktop session — runs AgentOS as the shell (kiosk).
-export AGENTOS_SESSION=1
-# 1) make sure the server is up (start one only if nothing is already listening)
-if ! curl -s -o /dev/null http://127.0.0.1:8321/ 2>/dev/null; then
-  "{python}" -m agentos serve --no-browser >/dev/null 2>&1 &
-fi
-for i in $(seq 1 60); do
-  curl -s -o /dev/null http://127.0.0.1:8321/ 2>/dev/null && break
-  sleep 0.25
-done
-# 2) a minimal window manager so any native apps AgentOS launches are movable/closable (optional)
-for wm in openbox matchbox-window-manager icewm; do
-  if command -v "$wm" >/dev/null 2>&1; then "$wm" & break; fi
-done
-# 3) launch AgentOS fullscreen kiosk (this blocks; when it exits, the session ends → logout)
-prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
-for b in chromium chromium-browser google-chrome google-chrome-stable brave-browser microsoft-edge vivaldi; do
-  if command -v "$b" >/dev/null 2>&1; then
-    exec "$b" --app=http://127.0.0.1:8321 --kiosk --user-data-dir="$prof" \\
-         --no-first-run --no-default-browser-check --class={APP_ID}
-  fi
-done
-command -v xmessage >/dev/null 2>&1 && xmessage "AgentOS session: no chromium-based browser found."
-sleep 5
-""")
-    SESSION_SCRIPT.chmod(0o755)
-    print(f"✓ session script  {SESSION_SCRIPT}")
-
-    desktop = f"""[Desktop Entry]
-Name=AgentOS
-Comment=AgentOS — your machine, with a brain
-Exec={SESSION_SCRIPT}
-Type=Application
-DesktopNames=AgentOS
-Keywords=agent;ai;
-"""
-    SESSION_DESKTOP_STAGE.parent.mkdir(parents=True, exist_ok=True)
-    SESSION_DESKTOP_STAGE.write_text(desktop)
-
-    target = XSESSIONS / f"{APP_ID}.desktop"
-    # try to install it system-wide without prompting; otherwise hand the user the commands
-    if _run(["sudo", "-n", "true"])[0]:
-        _run(["sudo", "mkdir", "-p", str(XSESSIONS)])
-        ok, out = _run(["sudo", "cp", str(SESSION_DESKTOP_STAGE), str(target)])
-        _run(["loginctl", "enable-linger", os.environ.get("USER", "")])
-        if ok:
-            print(f"✓ session entry   {target}")
-            print("\n▲ AgentOS session installed. Log out, then pick 'AgentOS' (gear icon) at the login screen.")
-            return
-        print(f"! could not copy the session file: {out}")
-
-    print(f"✓ session entry   staged at {SESSION_DESKTOP_STAGE}")
-    print("\nOne step needs root. Run these, then log out and pick 'AgentOS' at the login screen:\n")
-    print(f"  sudo cp '{SESSION_DESKTOP_STAGE}' '{target}'")
-    print(f"  loginctl enable-linger \"$USER\"")
-    print("\n  (Optional, for movable native app windows in the session:  sudo apt install openbox )")
+    """Superseded by agentos/session.py (which adds the Wayland/sway session and
+    keeps this X11 one as the kiosk fallback). Kept as a delegate so old callers
+    keep working."""
+    from . import session
+    session.install(wayland=False)
 
 
 def uninstall_session():
-    if IS_MAC or IS_WIN:
-        print("Login-screen sessions are a Linux feature — nothing to remove on this OS.")
-        return
-    if SESSION_SCRIPT.exists():
-        SESSION_SCRIPT.unlink()
-        print(f"✓ removed {SESSION_SCRIPT}")
-    target = XSESSIONS / f"{APP_ID}.desktop"
-    if _run(["sudo", "-n", "true"])[0]:
-        _run(["sudo", "rm", "-f", str(target)])
-        print(f"✓ removed {target}")
-    else:
-        print(f"To finish removing the session, run:  sudo rm -f '{target}'")
+    from . import session
+    session.remove()
 
 
 def uninstall():

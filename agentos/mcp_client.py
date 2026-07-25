@@ -9,6 +9,7 @@ Tools are exposed to the agent as `mcp_<server>_<tool>`.
 """
 
 import asyncio
+import logging
 import os
 import re
 import shlex
@@ -23,6 +24,24 @@ except ImportError:  # pragma: no cover
 
 CALL_TIMEOUT = 60
 CONNECT_TIMEOUT = 30
+
+
+class _NonJsonStdoutFilter(logging.Filter):
+    """Some community MCP servers print banners / console.table boxes to STDOUT,
+    corrupting their own JSON-RPC stream. The SDK skips those lines but logs a full
+    traceback PER LINE ("Failed to parse JSONRPC message") — a table dump becomes a
+    wall of scary errors. The stream self-recovers, so drop that specific noise and
+    keep everything else the SDK logs."""
+    dropped = 0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "Failed to parse JSONRPC message" in record.getMessage():
+            _NonJsonStdoutFilter.dropped += 1
+            return False
+        return True
+
+
+logging.getLogger("mcp.client.stdio").addFilter(_NonJsonStdoutFilter())
 
 _name_rx = re.compile(r"[^a-zA-Z0-9_-]+")
 
@@ -144,6 +163,15 @@ class MCPManager:
             msg = (f"MCP '{srv.name}' connected ({len(srv.tools)} tools)"
                    if srv.status == "connected" else f"MCP '{srv.name}' failed: {srv.error}")
             self.store.log("mcp", msg)
+            if srv.status == "connected":
+                # a registered server's manual page learns its real tool list on connect
+                try:
+                    from . import mcp_store
+                    mcp_store.refresh_doc(self.store, srv.name, conf=srv.conf,
+                                          live={"status": "connected", "tools": srv.tools,
+                                                "instructions": srv.instructions})
+                except Exception:
+                    pass
 
     async def start(self):
         await self.reload()

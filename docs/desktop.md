@@ -35,6 +35,19 @@ your text straight to the agent.
 Press **F11** (or use the Settings button) to toggle fullscreen. Launched via `agentos app`, the
 desktop opens fullscreen automatically, hiding the host taskbar.
 
+### Power & session
+The **⏻ button** at the right of the menu bar carries real session controls — lock screen,
+restart AgentOS, suspend, log out, restart and power off the machine (via
+`loginctl`/`systemctl` on Linux, `pmset`/System Events on macOS; each destructive action asks
+you to confirm). Apps can never reach these controls; the agent's shell keeps hard-blocking
+`shutdown`/`reboot` commands.
+
+Booting straight into AgentOS is no longer just a direction — AgentOS installs as a real
+**Wayland login session** (and optionally boots the machine directly into it). See
+**[AgentOS as your desktop environment](desktop-environment.md)** for the session, the
+System Settings app (wifi, bluetooth, displays, sound, power), notifications, and the
+lock screen.
+
 ---
 
 ## Widgets

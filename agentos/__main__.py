@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 import threading
 import time
@@ -256,6 +257,79 @@ def doctor(fix: bool = False):
     hcli = hermesmod.cli_path()
     if hcli:
         ok(f"Hermes companion agent available ({'gateway running' if hermesmod.gateway_running() else 'installed'})")
+
+    # 6. the desktop (AgentOS-as-the-DE)
+    if sys.platform == "linux":
+        from pathlib import Path as _P
+
+        from . import compositor as compmod
+        from . import runmode
+        effective, detected = runmode.resolve(cfg)
+        ok(f"desktop mode: {effective}"
+           + (f" (pinned; detected {detected})" if effective != detected else "")
+           + f" — session type {os.environ.get('XDG_SESSION_TYPE', 'unknown')}")
+
+        wl_entry = _P("/usr/share/wayland-sessions/agentos.desktop")
+        x_entry = _P("/usr/share/xsessions/agentos.desktop")
+        if wl_entry.exists():
+            ok("AgentOS Wayland session installed (pick it at the login screen)")
+        elif x_entry.exists():
+            warn("only the legacy X11 AgentOS session is installed — "
+                 "`agentos install-session` adds the Wayland one")
+        else:
+            warn("AgentOS is not installed as a login session — `agentos install-session`")
+
+        if shutil.which("sway"):
+            if compmod.available():
+                try:
+                    n = len(compmod.Compositor().windows())
+                    ok(f"compositor reachable on $SWAYSOCK ({n} managed windows)")
+                except Exception as e:
+                    bad(f"compositor socket present but not answering: {e}")
+            elif effective == runmode.DE:
+                bad("in DE mode but $SWAYSOCK is not set — window management is dead")
+            else:
+                ok("sway installed (compositor for the AgentOS session)")
+        elif wl_entry.exists() or effective == runmode.DE:
+            bad("sway is not installed but the AgentOS session expects it — apt install sway")
+        else:
+            warn("sway not installed — needed only for the AgentOS Wayland session")
+
+        from . import desktop as desktopmod
+        if desktopmod.find_browser():
+            ok("shell renderer found (chromium-family browser)")
+        else:
+            warn("no chromium-family browser — the AgentOS session cannot draw its shell "
+                 "(snap install chromium)")
+
+        if effective == runmode.DE and os.environ.get("AGENTOS_SESSION") != "1":
+            warn("server reports DE mode but wasn't started by the session launcher — "
+                 "a stale server from another session may be holding the port")
+
+        # NVIDIA + wlroots: modeset must be on for the session to light up.
+        # (Some driver builds make this file root-only — unreadable is not a finding.)
+        try:
+            modeset = _P("/sys/module/nvidia_drm/parameters/modeset").read_text().strip()
+        except OSError:
+            modeset = ""
+        if modeset and modeset not in ("Y", "1"):
+            warn("NVIDIA without nvidia-drm.modeset=1 — the Wayland session may not start "
+                 "on this GPU (add nvidia-drm.modeset=1 to the kernel cmdline, or let it "
+                 "use the iGPU)")
+
+        from .hostctl import audio as _au
+        from .hostctl import bluetooth as _bt
+        from .hostctl import brightness as _br
+        from .hostctl import network as _net
+        for label, avail in (("wifi control (NetworkManager)", _net.available()[:2]),
+                             ("bluetooth (BlueZ)", _bt.available()[:2]),
+                             ("audio devices (PipeWire)", _au.available()[:2]),
+                             ("brightness", _br.available()[:2])):
+            avail_ok, why = avail
+            if avail_ok:
+                ok(label)
+            else:
+                warn(f"{label}: {why}")
     print()
     if not fix:
         print("  \033[90mrun `agentos doctor --fix` to auto-repair the fixable items above\033[0m\n")
@@ -290,8 +364,21 @@ def main():
     p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
     p_sess = sub.add_parser("install-session",
-                            help="add AgentOS as a login session (Linux only; boots into kiosk as the desktop shell)")
+                            help="add AgentOS as a login session (Linux only) — pick it at the login screen, "
+                                 "or --autologin to boot straight into it")
+    p_sess.add_argument("--wayland", action="store_true",
+                        help="the sway-based Wayland session (default)")
+    p_sess.add_argument("--x11", action="store_true",
+                        help="the older X11 kiosk session instead")
+    p_sess.add_argument("--autologin", action="store_true",
+                        help="boot tty1 straight into AgentOS, no login screen (reversible; prints the escape hatch)")
+    p_sess.add_argument("--force", action="store_true",
+                        help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
+    p_mode = sub.add_parser("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
+    p_mode.add_argument("action", nargs="?", default="show", choices=["show", "mode", "run"])
+    p_mode.add_argument("value", nargs="?", default="",
+                        help="with `mode`: auto, de, hosted or kiosk")
 
     args = parser.parse_args()
     if args.cmd == "doctor":
@@ -329,8 +416,31 @@ def main():
         from . import desktop
         desktop.enable_login_app(not args.off)
     elif args.cmd == "install-session":
-        from . import desktop
-        desktop.uninstall_session() if args.remove else desktop.install_session()
+        from . import session
+        if args.remove:
+            session.remove(autologin=args.autologin)
+        else:
+            session.install(wayland=not args.x11, autologin=args.autologin,
+                            force=args.force)
+    elif args.cmd == "session":
+        from . import config as cfgmod
+        from . import runmode
+        if args.action == "run":     # Exec target of the packaged session entry
+            from . import session
+            session.run_session()
+            return
+        cfg = cfgmod.load_config()
+        if args.action == "mode" and args.value:
+            if args.value not in runmode.CHOICES:
+                print(f"mode must be one of: {', '.join(runmode.CHOICES)}")
+                sys.exit(2)
+            cfg.setdefault("desktop", {})["mode"] = args.value
+            cfgmod.save_config(cfg)
+            print(f"✓ desktop.mode = {args.value}  (takes effect on the next server start)")
+        effective, detected = runmode.resolve(cfg)
+        pin = cfg.get("desktop", {}).get("mode", "auto")
+        print(f"mode: {effective}  (detected: {detected}, pinned: {pin})")
+        print(f"  {runmode.describe(effective)}")
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 0)

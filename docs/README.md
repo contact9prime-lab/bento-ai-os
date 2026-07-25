@@ -15,6 +15,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Getting Started](getting-started.md) | First launch, choosing a model, autonomy, your first tasks |
 | [The Lifecycle](lifecycle.md) | **Train · Test · Operate · Build · Ship · Manage** — the six pillars and Mission Control |
 | [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
+| [AgentOS as your DE](desktop-environment.md) | The AgentOS **login session** — boot into AgentOS, run modes, System Settings, notifications, lock screen, licences |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
 | [Training Models](training.md) | The Train app (TrainForge): datasets, LoRA fine-tuning, evaluation, publishing |

@@ -160,11 +160,27 @@ CREATE TABLE IF NOT EXISTS grants (
     effect TEXT DEFAULT 'allow',  -- allow | deny (deny wins)
     source TEXT,                  -- manifest | user | legacy | auto
     note TEXT DEFAULT '',         -- human-readable reason shown in the Permissions app
+    surfaces TEXT DEFAULT '*',    -- IO gates: '*' or csv of gui,tui,telegram,api,task —
+                                  -- the grant only applies to calls arriving via these
     expires_at REAL,              -- NULL = never
     created_at REAL,
     revoked_at REAL               -- soft revoke: the row stays as an audit trail
 );
 CREATE INDEX IF NOT EXISTS idx_grants_principal ON grants(principal_kind, principal_id);
+CREATE TABLE IF NOT EXISTS mcp_registry (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,             -- the local config key (cfg["mcp_servers"] entry)
+    title TEXT,                   -- display name
+    description TEXT,
+    source TEXT,                  -- discovery | manual | package
+    origin TEXT,                  -- public-registry id / URL the server came from
+    package TEXT,                 -- JSON: how to run it (registry_type, identifier, transport…)
+    homepage TEXT,
+    status TEXT DEFAULT 'installed',  -- discovered | installed
+    doc_file TEXT DEFAULT '',     -- generated doc, relative to the user docs dir
+    created_at REAL,
+    updated_at REAL
+);
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     prompt TEXT,
@@ -215,6 +231,9 @@ class Store:
                          ("manifest_status", "TEXT DEFAULT 'none'")):  # none | proposed | approved
             if col not in acols:
                 self.db.execute(f"ALTER TABLE user_apps ADD COLUMN {col} {ddl}")
+        gcols = {r["name"] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
+        if "surfaces" not in gcols:  # IO gates: pre-surface grants apply everywhere
+            self.db.execute("ALTER TABLE grants ADD COLUMN surfaces TEXT DEFAULT '*'")
 
     def factory_reset(self):
         """Wipe every table (profile, memory, apps, logs, fabric, …) but keep the schema.
@@ -531,6 +550,37 @@ class Store:
         self.db.commit()
         return aid
 
+    def rename_app(self, aid: str, name: str = "", icon: str | None = None,
+                   description: str | None = None) -> str | None:
+        """Rename/redecorate an app in place (id, data, versions and grants all key on
+        the id, so nothing else moves). Returns an error string, or None on success."""
+        app = self.get_app(aid)
+        if not app:
+            return "app not found"
+        sets, params = [], []
+        if name and name.strip() and name.strip() != app["name"]:
+            name = name.strip()[:60]
+            clash = self.db.execute(
+                "SELECT id FROM user_apps WHERE name=? COLLATE NOCASE AND id!=?",
+                (name, aid)).fetchone()
+            if clash:
+                return f"an app named '{name}' already exists"
+            sets.append("name=?")
+            params.append(name)
+        if icon is not None:
+            sets.append("icon=?")
+            params.append(icon)
+        if description is not None:
+            sets.append("description=?")
+            params.append(description)
+        if not sets:
+            return None
+        sets.append("updated_at=?")
+        params.append(time.time())
+        self.db.execute(f"UPDATE user_apps SET {', '.join(sets)} WHERE id=?", (*params, aid))
+        self.db.commit()
+        return None
+
     def set_app_manifest(self, aid: str, manifest: str, status: str):
         """status: none | proposed (awaiting user review) | approved (grants written)."""
         self.db.execute("UPDATE user_apps SET manifest=?, manifest_status=? WHERE id=?",
@@ -698,23 +748,39 @@ class Store:
 
     def add_grant(self, principal_kind: str, principal_id: str, action: str, resource: str,
                   effect: str = "allow", source: str = "user", note: str = "",
-                  expires_at: float | None = None) -> str:
-        """Write one consent rule. Identical live rules dedupe to the existing row."""
+                  expires_at: float | None = None, surfaces: str = "*") -> str:
+        """Write one consent rule. Identical live rules dedupe to the existing row.
+        `surfaces` scopes the rule to IO gates ('*' or csv of gui,tui,telegram,api,task)."""
+        surfaces = (surfaces or "*").strip() or "*"
         row = self.db.execute(
-            "SELECT id FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
+            "SELECT id, surfaces FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
             "AND resource=? AND effect=? AND revoked_at IS NULL",
             (principal_kind, principal_id, action, resource, effect)).fetchone()
         if row:
+            if (row["surfaces"] or "*") != surfaces:
+                self.db.execute("UPDATE grants SET surfaces=? WHERE id=?", (surfaces, row["id"]))
+                self.db.commit()
+                self.grants_version += 1
             return row["id"]
         gid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO grants (id, principal_kind, principal_id, action, resource, effect, "
-            "source, note, expires_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "source, note, surfaces, expires_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (gid, principal_kind, principal_id, action, resource, effect,
-             source, note[:300], expires_at, time.time()))
+             source, note[:300], surfaces, expires_at, time.time()))
         self.db.commit()
         self.grants_version += 1
         return gid
+
+    def set_grant_surfaces(self, gid: str, surfaces: str) -> bool:
+        """Rescope a live grant's IO gates ('*' or csv of gui,tui,telegram,api,task)."""
+        surfaces = (surfaces or "*").strip() or "*"
+        cur = self.db.execute("UPDATE grants SET surfaces=? WHERE id=? AND revoked_at IS NULL",
+                              (surfaces, gid))
+        self.db.commit()
+        if cur.rowcount:
+            self.grants_version += 1
+        return bool(cur.rowcount)
 
     def grants_live(self) -> list[dict]:
         rows = self.db.execute("SELECT * FROM grants WHERE revoked_at IS NULL "
@@ -768,6 +834,71 @@ class Store:
         if cur.rowcount:
             self.grants_version += 1
         return cur.rowcount
+
+    # -- MCP registry: first-class records of discovered/installed MCP servers ----
+
+    def mcp_reg_upsert(self, name: str, title: str = "", description: str = "",
+                       source: str = "", origin: str = "", package: dict | None = None,
+                       homepage: str = "", status: str = "", doc_file: str = "") -> str:
+        """Upsert one registry row. On update, only the fields passed with real values
+        are overwritten; defaults (source=manual, status=installed) apply on insert only."""
+        name = (name or "").strip()
+        now = time.time()
+        row = self.db.execute("SELECT id FROM mcp_registry WHERE name=? COLLATE NOCASE",
+                              (name,)).fetchone()
+        if row:
+            sets, params = ["updated_at=?"], [now]
+            for col, val in (("title", title), ("description", description),
+                             ("source", source), ("origin", origin),
+                             ("package", json.dumps(package) if package else ""),
+                             ("homepage", homepage), ("status", status),
+                             ("doc_file", doc_file)):
+                if val:  # only overwrite with real values — partial updates keep the rest
+                    sets.append(f"{col}=?")
+                    params.append(val)
+            self.db.execute(f"UPDATE mcp_registry SET {', '.join(sets)} WHERE id=?",
+                            (*params, row["id"]))
+            self.db.commit()
+            return row["id"]
+        rid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO mcp_registry (id, name, title, description, source, origin, package, "
+            "homepage, status, doc_file, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (rid, name, title or name, description, source or "manual", origin,
+             json.dumps(package) if package else "", homepage, status or "installed",
+             doc_file, now, now))
+        self.db.commit()
+        return rid
+
+    def mcp_reg_list(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM mcp_registry ORDER BY name COLLATE NOCASE").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["package"] = json.loads(d.get("package") or "{}")
+            except Exception:
+                d["package"] = {}
+            out.append(d)
+        return out
+
+    def mcp_reg_get(self, name: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM mcp_registry WHERE name=? COLLATE NOCASE",
+                              ((name or "").strip(),)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["package"] = json.loads(d.get("package") or "{}")
+        except Exception:
+            d["package"] = {}
+        return d
+
+    def mcp_reg_delete(self, name: str):
+        self.db.execute("DELETE FROM mcp_registry WHERE name=? COLLATE NOCASE",
+                        ((name or "").strip(),))
+        self.db.commit()
 
     # -- fabric: subagents, workflows, runs (control-plane state) ------------
 

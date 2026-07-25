@@ -408,7 +408,7 @@ class AgentTUI(App):
         ws_url = f"ws://127.0.0.1:{self.port}/ws"
         try:
             async with websockets.connect(ws_url, max_size=None) as ws:
-                await ws.send(json.dumps({"type": "chat", "text": text,
+                await ws.send(json.dumps({"type": "chat", "text": text, "surface": "tui",
                                           "conversation_id": self.cid, "model": self.model}))
                 log.write(f"[b cyan]{self.agent_name}[/]  ")
                 buf = ""

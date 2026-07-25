@@ -21,6 +21,7 @@ snapshots/
 
 # Packaging artifacts
 packaging/build/
+packaging/build-desktop/
 packaging/dist/
 
 # Debug artifacts

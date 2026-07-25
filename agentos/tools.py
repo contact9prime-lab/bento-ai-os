@@ -912,11 +912,119 @@ class Toolbox:
             servers[key] = conf
             msg = f"added MCP server '{key}' — connecting now; its tools appear as mcp_{key}_*"
         cfgmod.save_config(self.cfg)
+        if action == "remove":
+            from . import mcp_store
+            reg = self.store.mcp_reg_get(key)
+            if reg:
+                mcp_store.delete_doc(reg.get("doc_file") or "")
+                self.store.mcp_reg_delete(key)
+        else:
+            # every install lands in the MCP Registry and gets a generated manual page
+            from . import mcp_store
+            mcp_store.record_install(self.store, key, source="manual", conf=conf)
         if self.mcp:
             await self.mcp.reload()
         if self.broadcast:
             await self.broadcast({"type": "config"})
         return msg
+
+    async def discover_mcp_servers(self, query: str) -> str:
+        """Search the public MCP registry for servers matching a capability the user needs.
+        Pure discovery: present the results and ASK the user which (if any) to install."""
+        from . import mcp_store
+        try:
+            cands = await mcp_store.search_any(query, limit=10, store=self.store)
+        except Exception as e:
+            return f"[error] MCP registry search failed: {e}"
+        deep = []
+        if len(cands) < 3:
+            # the registry isn't enough — widen the net (npm + GitHub) agentically
+            exclude = {x for c in cands
+                       for x in (c["registry_name"], c.get("identifier") or "",
+                                 (c.get("homepage") or "").rstrip("/")) if x}
+            try:
+                deep = await mcp_store.search_deep(query, limit=8, exclude=exclude)
+            except Exception:
+                deep = []
+        if not cands and not deep:
+            st = mcp_store.index_status()
+            if st["syncing"] and not st["count"]:
+                return ("the local registry index is still syncing (the public API is "
+                        "slow) — try again in a minute")
+            return (f"no MCP servers found for '{query}' in the public registry, npm, or "
+                    "GitHub — try a broader term")
+        have = set((self.cfg.get("mcp_servers") or {}).keys())
+        lines = [f"Found {len(cands) + len(deep)} MCP server(s) for '{query}' — ask the "
+                 "user which to install, and whether to build an app around it:"]
+        for c in cands:
+            req = [e["name"] for e in c["env"] if e.get("required")]
+            lines.append(
+                f"- {c['registry_name']}"
+                + (" [already installed]" if c["key"] in have else "")
+                + f"\n    {c['description'][:180]}"
+                + (f"\n    runs: {c['registry_type']}:{c['identifier']}" if c["identifier"]
+                   else (f"\n    remote: {c['remote_url']}" if c["remote_url"] else ""))
+                + (f"\n    needs keys: {', '.join(req)}" if req else ""))
+        for c in deep:
+            if c.get("agentic"):
+                lines.append(
+                    f"- {c['registry_name']} [GitHub repo — not directly installable]"
+                    + f"\n    {c['description'][:180]}"
+                    + f"\n    to install: fetch_url the repo README ({c['homepage']}), work "
+                      "out the run command (npx/uvx/docker) and required keys, then "
+                      "add_mcp_server — ask the user before doing so")
+            else:
+                lines.append(
+                    f"- {c['registry_name']} [found on npm, not in the registry]"
+                    + (" [already installed]" if c["key"] in have else "")
+                    + f"\n    {c['description'][:180]}"
+                    + f"\n    install with install_mcp_server registry_name='{c['registry_name']}'")
+        return "\n".join(lines)
+
+    async def install_mcp_server(self, registry_name: str, name: str = "",
+                                 env: str = "") -> str:
+        """Install a server discovered with discover_mcp_servers (exact registry_name).
+        Adds it to the MCP Registry, generates its documentation into Docs, and connects
+        it. `env` is optional 'KEY=val,KEY2=val2'; required keys left unset keep the
+        server disabled until the user fills them in the MCP app."""
+        from . import config as cfgmod
+        from . import mcp_store
+        try:
+            cand = await mcp_store.lookup(registry_name.strip(), store=self.store)
+        except Exception as e:
+            return f"[error] MCP registry lookup failed: {e}"
+        if not cand:
+            return (f"[error] '{registry_name}' not found in the public registry — use "
+                    "discover_mcp_servers first and pass the exact registry name")
+        env_values = {}
+        for pair in (env or "").split(","):
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                env_values[k.strip()] = v.strip()
+        key = (name or cand["key"]).strip().replace(" ", "-")
+        conf, missing = mcp_store.to_conf(cand, env_values=env_values)
+        self.cfg.setdefault("mcp_servers", {})[key] = conf
+        cfgmod.save_config(self.cfg)
+        mcp_store.record_install(
+            self.store, key, title=cand["registry_name"].split("/")[-1],
+            description=cand["description"], source="discovery",
+            origin=cand["registry_name"], package=mcp_store.package_info(cand),
+            homepage=cand["homepage"], conf=conf)
+        self.store.log("system", f"MCP '{key}' installed from the public registry "
+                                 f"({cand['registry_name']})")
+        if self.mcp:
+            await self.mcp.reload()
+        if self.broadcast:
+            await self.broadcast({"type": "config"})
+        msg = (f"installed MCP server '{key}' from {cand['registry_name']} — added to the "
+               f"MCP Registry with a generated manual (Docs → mcp/{key}.md)")
+        if missing:
+            msg += (f". It is DISABLED until these keys are set in the MCP app: "
+                    f"{', '.join(missing)}")
+        else:
+            msg += f". Connecting now; tools will appear as mcp_{key}_*"
+        return msg + (". Offer to build a desktop app around it with create_app "
+                      "(declare mcp.use on mcp:" + key + "/* in its permissions).")
 
     async def delete_skill(self, name: str) -> str:
         """Remove a saved skill by name."""
@@ -1118,6 +1226,11 @@ class Toolbox:
             return "safe", ""
         if name == "add_mcp_server":
             return "risky", "Connects/removes an external MCP tool server."
+        if name == "discover_mcp_servers":
+            return "safe", ""
+        if name == "install_mcp_server":
+            return "risky", ("Installs an MCP server discovered in the public registry "
+                             "(downloads and runs external code when it connects).")
         if name == "launch_native_app":
             return "risky", "Launches a native application on your desktop."
         if name == "manage_models":
@@ -2005,6 +2118,37 @@ TOOL_SCHEMAS = [
                            "description": "add (default) connects the server; remove deletes it by name."},
             },
             "required": ["name"],
+        },
+    },
+    {
+        "name": "discover_mcp_servers",
+        "description": "Search the public MCP registry (registry.modelcontextprotocol.io) for servers that "
+                       "provide a capability — the App Store's discovery engine. Use when the user needs an "
+                       "integration you don't have (a service, API, data source). Returns candidates with "
+                       "what each needs (API keys etc.). NEVER install from the results without asking: "
+                       "present them and ask the user 'discovered X — would you like to build around it and "
+                       "add it to your MCP Registry?'.",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "The capability or service to search for, e.g. 'github', 'weather', 'postgres'."}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "install_mcp_server",
+        "description": "Install an MCP server found via discover_mcp_servers, AFTER the user agrees. Writes "
+                       "its config, records it in the local MCP Registry, and generates a manual page in Docs. "
+                       "Servers needing API keys stay disabled until the user fills them in the MCP app. "
+                       "After installing, offer to build a desktop app on top of it (create_app with a "
+                       "manifest declaring mcp.use on mcp:<name>/*).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "registry_name": {"type": "string", "description": "The EXACT registry name from discover_mcp_servers, e.g. 'io.github.owner/repo' — or 'npm:<package>' for a server discovered on npm."},
+                "name": {"type": "string", "description": "Optional short local name (defaults to a slug of the registry name)."},
+                "env": {"type": "string", "description": "Optional env vars as 'KEY=value,KEY2=value2' if the user already supplied keys."},
+            },
+            "required": ["registry_name"],
         },
     },
     {

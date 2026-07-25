@@ -87,7 +87,7 @@ Version: $VER
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: python3 (>= $PYVER), python3 (<< 3.14)
+Depends: python3 (>= $PYVER), python3 (<< $(python3 -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor+1}")'))
 Recommends: bubblewrap, xdg-utils
 Suggests: ollama, nodejs, git
 Installed-Size: $INSTALLED

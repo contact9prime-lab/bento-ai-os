@@ -189,6 +189,38 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #tray-ctl:hover{background:rgba(255,255,255,.1)}
 #tray-voice{font-size:13px;padding:2px 7px;border-radius:6px;color:var(--txt)}
 #tray-voice:hover{background:rgba(255,255,255,.1)}
+#tray-power{font-size:13px;padding:2px 7px;border-radius:6px;color:var(--txt)}
+#tray-power:hover{background:rgba(255,255,255,.1);color:var(--err)}
+#powermenu{position:fixed;z-index:9600;display:none;min-width:210px;right:8px;top:calc(var(--mbh) + 4px);
+  background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:11px;padding:5px;
+  box-shadow:0 18px 50px rgba(0,0,0,.45)}
+#powermenu.show{display:block}
+#powermenu button{display:flex;gap:9px;width:100%;padding:7px 10px;border-radius:7px;font-size:12.5px;text-align:left;color:var(--txt)}
+#powermenu button:hover{background:var(--bg4)}
+#powermenu button.danger:hover{background:var(--bg4);color:var(--err)}
+#powermenu hr{border:none;border-top:1px solid var(--line);margin:4px 6px}
+
+/* notification center */
+#tray-bell{position:relative;display:flex;align-items:center;padding:2px 6px;border-radius:6px;color:var(--txt)}
+#tray-bell:hover{background:rgba(255,255,255,.1)}
+#tray-bell .badge{position:absolute;top:-2px;right:-1px;min-width:13px;height:13px;border-radius:7px;
+  background:var(--err);color:#fff;font-size:9px;line-height:13px;text-align:center;padding:0 3px}
+#tray-bell.dnd{opacity:.55}
+#notifpanel{position:fixed;z-index:9600;display:none;width:340px;max-height:70vh;right:8px;top:calc(var(--mbh) + 4px);
+  background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:11px;padding:8px;
+  box-shadow:0 18px 50px rgba(0,0,0,.45);overflow:auto}
+#notifpanel.show{display:block}
+#notifpanel .np-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;padding:2px 4px 8px}
+#notifpanel .np-head button{font-size:11px;color:var(--mut,#8a94a6);padding:2px 7px;border-radius:6px}
+#notifpanel .np-head button:hover{background:var(--bg4);color:var(--txt)}
+#notifpanel .np-head button.on{color:var(--acc,#5eead4)}
+.np-item{border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative}
+.np-item .np-app{font-size:10.5px;opacity:.6}
+.np-item .np-sum{font-size:12.5px;font-weight:600;margin:1px 0}
+.np-item .np-body{font-size:11.5px;opacity:.8;white-space:pre-wrap;word-break:break-word}
+.np-item .np-x{position:absolute;top:5px;right:7px;opacity:.5;font-size:12px}
+.np-item .np-x:hover{opacity:1;color:var(--err)}
+.np-item.crit{border-color:var(--err)}
 
 /* ================= dock (floating, centered) ================= */
 #taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;height:auto;max-width:min(94vw,1100px);
@@ -549,6 +581,9 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .stapp .nm{flex:1;min-width:0}
 .stapp .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
 .stapp .nm span{display:block;color:var(--dim2);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stapp .stren{opacity:0;flex:none;font-size:11px;padding:2px 5px;border-radius:6px;transition:opacity .12s}
+.stapp:hover .stren{opacity:.7}
+.stapp .stren:hover{opacity:1;background:var(--bg3)}
 .stcompose{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex:none}
 .stcompose input{flex:1}
 .stcompose .stmodel{flex:0 0 auto;max-width:190px;font-size:12px;padding:5px 8px}
@@ -628,10 +663,29 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg4);border:1px soli
   <div id="tray">
     <button id="tray-voice" title="Voice mode — Alt+J"></button>
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
+    <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
+    <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
+</div>
+<div id="powermenu">
+  <button onclick="powerDo('lock','Lock the screen?')">🔒 Lock screen</button>
+  <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">↻ Restart AgentOS</button>
+  <hr>
+  <button onclick="powerDo('suspend','Suspend the machine?')">🌙 Suspend</button>
+  <button class="danger" onclick="powerDo('logout','Log out of this session? Unsaved work in other apps will be lost.')">⇥ Log out</button>
+  <button class="danger" onclick="powerDo('restart','Restart the machine?')">⟳ Restart</button>
+  <button class="danger" onclick="powerDo('poweroff','Power off the machine?')">⏻ Power off</button>
+</div>
+<div id="notifpanel">
+  <div class="np-head"><span>Notifications</span>
+    <span style="flex:1"></span>
+    <button id="np-dnd" title="Do not disturb"></button>
+    <button id="np-clear" title="Clear all">clear</button>
+  </div>
+  <div id="np-list"></div>
 </div>
 
 <div id="desktop">
@@ -1188,7 +1242,8 @@ const APPS={
   browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
   files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',render:renderFiles},
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
-  control:{id:'control',title:'Quick Settings',icon:'',w:520,h:520,desc:'Sound, network, battery & system settings',render:renderControl},
+  control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
+  syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
   memory:{id:'memory',title:'Memory',icon:'◈',w:640,h:540,desc:'User & session memory — what the agent remembers',render:renderMemory},
   profile:{id:'profile',title:'Profile',icon:'',w:700,h:620,desc:'Everything the agent knows about you, in one place',render:renderProfile},
@@ -1222,7 +1277,7 @@ const APPS={
 };
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -1237,6 +1292,38 @@ async function loadUserApps(){
   renderWidgets();
 }
 function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)]}
+/* user-app management: rename anywhere (desktop right-click, App Studio ✏️) */
+function uaCtxMenu(e,aid){
+  const a=USERAPPS.find(x=>x.id===aid);
+  const m=$('#ctxmenu');
+  m.innerHTML=`<button data-a="open">Open</button>
+    <button data-a="ren">✏️ Rename…</button>
+    <button data-a="studio">Edit in App Studio</button><hr>
+    <button data-a="del" style="color:var(--err,#f87171)">Delete app</button>`;
+  m.querySelector('[data-a=open]').onclick=()=>{m.classList.remove('show');openApp('ua_'+aid)};
+  m.querySelector('[data-a=ren]').onclick=()=>{m.classList.remove('show');renameUserApp(aid)};
+  m.querySelector('[data-a=studio]').onclick=()=>{m.classList.remove('show');STUDIO.sel=aid;openApp('studio');refreshApp('studio')};
+  m.querySelector('[data-a=del]').onclick=async()=>{m.classList.remove('show');
+    if(!confirm('Delete "'+(a?a.name:aid)+'"? Its data, versions and grants go with it.'))return;
+    await fetch('/api/apps/'+aid,{method:'DELETE'});
+    toast('deleted');loadUserApps()};
+  m.style.left=Math.min(e.clientX,innerWidth-200)+'px';
+  m.style.top=Math.min(e.clientY,innerHeight-180)+'px';
+  m.classList.add('show');
+}
+async function renameUserApp(aid,from){
+  const a=USERAPPS.find(x=>x.id===aid)||((typeof STUDIO!=='undefined'&&STUDIO.apps)||[]).find(x=>x.id===aid);
+  const cur=a?a.name:'';
+  const v=prompt('New name for "'+cur+'":',cur);
+  if(v===null||!v.trim()||v.trim()===cur)return;
+  const r=await fetch('/api/apps/'+aid,{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:v.trim()})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'rename failed');
+  toast('renamed to "'+v.trim()+'"');
+  loadUserApps();
+  if(from==='studio')refreshApp('studio');
+}
 /* native (system) apps installed on the host — shown in the start menu & command palette */
 let NATIVEAPPS=[];
 async function loadNativeApps(){
@@ -1266,6 +1353,8 @@ function rebuildLaunchers(){
     if(!ICONPOS[id])ICONPOS[id]={x:GRID.ox+Math.floor(i/8)*GRID.cx,y:GRID.oy+(i%8)*GRID.cy};
     d.style.left=ICONPOS[id].x+'px';d.style.top=ICONPOS[id].y+'px';
     d.onkeydown=e=>{if(e.key==='Enter')openApp(id)};
+    if(id.startsWith('ua_'))  // user-built apps get their own menu: rename & delete
+      d.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();uaCtxMenu(e,id.slice(3))};
     iconDrag(d,id);
     box.appendChild(d);
   });
@@ -1891,6 +1980,15 @@ function handle(ev){
     case 'telegram_out':{
       jarvisOff();
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
+    case 'wm':{ // compositor event (AgentOS session) — replaces window polling
+      if(NATIVE_POLL){clearInterval(NATIVE_POLL);NATIVE_POLL=null}
+      clearTimeout(wmDebounce);
+      wmDebounce=setTimeout(()=>{updateNativeWindows();
+        if(ev.event==='output'||ev.event==='workspace')refreshApp('syssettings')},120);
+      break;}
+    case 'notification':{ // a native app's notification, via our own daemon
+      toast((ev.app?ev.app+': ':'')+ev.summary); updateBell(); break;}
+    case 'notification_center': updateBell(); break;
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
@@ -2843,6 +2941,7 @@ const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your brow
   :e.bearer?`<span class="ck">needs ${esc(e.auth||'a token')}${e.opt?' (optional)':''}</span>`:'';
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
+  let REG={};try{((await (await fetch('/api/mcp/registry')).json()).registry||[]).forEach(x=>REG[x.name]=x)}catch(e){}
   MCPCFG={};
   d.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
   const badge=s=>s.status==='connected'?`<span class="badge ok">● connected</span>`
@@ -2861,6 +2960,7 @@ async function renderMCP(body){
         ${tools.map(t=>`<div class="mtool"><code>${esc(t.name)}</code><span>${esc((t.description||'').split('\n')[0].slice(0,180))||'<i>no description provided by the server</i>'}</span></div>`).join('')}
       </details>`:''}
     </div>${badge(s)}
+    ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${esc(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
     <button title="enable/disable" onclick="mcpToggle('${esc(s.name)}')">${s.enabled?'⏸':'▶'}</button>
     <button title="remove" onclick="mcpDel('${esc(s.name)}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
@@ -2870,8 +2970,9 @@ async function renderMCP(body){
   });
   pb.innerHTML=`
     ${d.available?'':'<div class="errmsg">python package <code>mcp</code> is not installed — run <code>uv add mcp</code> and restart.</div>'}
-    <div class="sect">Connected channels</div>
-    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below — the agent instantly gains every tool the server exposes, and each tool shows up here with its description.')}
+    <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
+      <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
+    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.')}
     ${MCP_GROUPS.map((g,gi)=>`
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
@@ -3029,10 +3130,13 @@ async function renderTelegram(body){
       </div>
     </div>
     <div class="provbox">
-      <div class="ptitle">Chats &amp; groups</div>
-      <p class="mut" style="margin:6px 0 10px">Every user or group that messages the bot is registered here. Only <b>enabled</b> chats can talk to the agent; groups need the bot added as a member.</p>
+      <div class="ptitle">Chats, groups &amp; channels</div>
+      <p class="mut" style="margin:6px 0 10px">Every user, group or channel that reaches the bot registers here — connect more by adding the bot
+        to a group (as a member) or a channel (as an admin). New arrivals start <b>blocked</b>; only chats you enable can talk to the agent.
+        Telegram is an IO gate of the permission framework: scope any grant to the <code>telegram</code> surface in the Permissions app
+        and it applies (only) here — blocked IO is denied and logged.</p>
       ${(d.chats||[]).map(c=>`<div class="item">
-        <span class="lbadge">${c.type==='private'?'user':'group'}</span>
+        <span class="lbadge">${c.type==='private'?'user':c.type==='channel'?'channel':'group'}</span>
         <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
           <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
         <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
@@ -3551,6 +3655,7 @@ function permChartInto(el,p){
         :`<button title="click to flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')" style="border:none;background:transparent;color:${col};font-weight:700;padding:0 4px;font-size:12px;cursor:pointer">${g.effect==='deny'?'✕ deny':'✓ allow'}</button>`}
       <div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
       <span class="badge" title="${esc(g.note||'')}">${esc(g.source||'user')}</span>
+      ${g.readonly?'':permSurfBadge(g)}
       ${g.readonly?`<button class="endbtn" style="font-size:10px" onclick="openApp('policies')">edit</button>`
                   :`<button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}</div>`;
   };
@@ -3601,7 +3706,8 @@ function permGrantsView(box){
         ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
       <span class="badge">${esc(g.source||'user')}</span>
       ${dead?'<span class="badge err">revoked</span>'
-        :`<button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
+        :`${permSurfBadge(g)}
+         <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
          <button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}
     </div>`}).join('')||'<p class="mut">nothing matches</p>'}`;
   const cb=$('#perm-rev');if(cb)cb.onchange=e=>{PERM.showRevoked=e.target.checked;refreshApp('permissions')};
@@ -3630,7 +3736,8 @@ async function permRescan(aid){
 }
 function permAttachView(box){
   const o=PERM.opts;
-  PERM.att=PERM.att||{p:null,action:'tool.use',res:new Set(),effect:'allow'};
+  PERM.att=PERM.att||{p:null,action:'tool.use',res:new Set(),effect:'allow',surf:new Set()};
+  PERM.att.surf=PERM.att.surf||new Set();
   const att=PERM.att,q=PERM.q.toLowerCase();
   const ps=(o.principals||[]).filter(p=>!q||(p.label||'').toLowerCase().includes(q));
   PERM._attPs=ps;
@@ -3647,6 +3754,11 @@ function permAttachView(box){
         <span class="mut" style="font-size:12px">Effect:</span>
         <button class="endbtn" onclick="PERM.att.effect=PERM.att.effect==='allow'?'deny':'allow';permBody()" style="color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'};border-color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'}">${att.effect==='deny'?'✕ deny':'✓ allow'}</button>
         <span class="mut" style="font-size:11px">${att.effect==='deny'?'blocks even things allowed elsewhere':'runs without asking'}</span>
+      </div>
+      <div style="margin-top:14px">
+        <span class="mut" style="font-size:12px">IO gates <span style="font-size:10px">(none picked = every surface)</span>:</span><div style="margin-top:5px">
+        ${PERM_SURFACES.map(s=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.surf.has(s)?'border-color:var(--acc2,#22d3ee);color:var(--acc2,#22d3ee)':''}" onclick="PERM.att.surf.has('${s}')?PERM.att.surf.delete('${s}'):PERM.att.surf.add('${s}');permBody()">${s}</button>`).join('')}</div>
+        <span class="mut" style="font-size:11px">the rule only applies to calls arriving via these surfaces — elsewhere the IO is denied and logged</span>
       </div></div>
     <div><div class="tmsec" style="margin:0 0 6px">3 · Resources <span class="mut">(${att.res.size} picked)</span></div>
       <div style="max-height:300px;overflow-y:auto">${resOpts.map(r=>`<label class="item" style="cursor:pointer;display:flex;gap:8px;align-items:flex-start">
@@ -3665,17 +3777,37 @@ async function permAttachGo(){
   const custom=($('#att-custom')?.value||'').trim();
   const resources=[...att.res];if(custom)resources.push(custom);
   if(!resources.length)return toast('pick at least one resource (step 3)');
+  const surfaces=att.surf&&att.surf.size?[...att.surf].join(','):'*';
   for(const r of resources)
     await fetch('/api/grants',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({principal_kind:att.p.kind,principal_id:att.p.id,action:att.action,
-        resource:r,effect:att.effect,note:'attached from the policy console'})});
-  toast(resources.length+' rule(s) attached to '+att.p.label);
-  PERM.att={p:att.p,action:att.action,res:new Set(),effect:att.effect};
+        resource:r,effect:att.effect,surfaces,note:'attached from the policy console'})});
+  toast(resources.length+' rule(s) attached to '+att.p.label+(surfaces!=='*'?' (gates: '+surfaces+')':''));
+  PERM.att={p:att.p,action:att.action,res:new Set(),effect:att.effect,surf:new Set()};
   PERM.tab='map';PERM.sel=att.p.kind+':'+att.p.id;
   refreshApp('permissions');
 }
 async function permToggle(gid,effect){
   await fetch('/api/grants/'+gid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({effect})});
+  refreshApp('permissions');
+}
+/* IO gates: a grant can be scoped to the surfaces a call arrives on (import/export gates).
+   Permitted on all three (GUI, TUI, channels)? it flows everywhere; scoped, it only flows
+   there — anywhere else the call is denied and logged as an IO error. */
+const PERM_SURFACES=['gui','tui','telegram','api','task'];
+function permSurfBadge(g){
+  const scoped=g.surfaces&&g.surfaces!=='*';
+  return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
+    title="IO gates — which surfaces this rule applies on (GUI, TUI, Telegram, API, tasks). Click to change."
+    onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
+}
+async function permSurfaces(gid,cur){
+  const v=prompt('IO gates for this rule — comma-separated from: '+PERM_SURFACES.join(', ')+'\n(* = every surface)',cur||'*');
+  if(v===null)return;
+  const clean=v.trim()==='*'?'*':v.split(',').map(s=>s.trim()).filter(s=>PERM_SURFACES.includes(s)).join(',');
+  if(v.trim()!=='*'&&!clean)return toast('no valid surfaces — use: '+PERM_SURFACES.join(', '));
+  await fetch('/api/grants/'+gid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({surfaces:clean||'*'})});
+  toast('rule now applies on: '+(clean||'every surface'));
   refreshApp('permissions');
 }
 async function permRevoke(gid){
@@ -3952,9 +4084,38 @@ async function modelDelete(name){
 }
 
 /* ================= quick settings + tray ================= */
+/* ============ platform capabilities — the UI never asks "what OS?" ============ */
+let PLATFORM={mode:'hosted',detected_mode:'hosted',capabilities:{},summary:''};
+async function loadPlatform(){
+  try{PLATFORM=await (await fetch('/api/platform')).json()}catch(e){}
+  updateBell();
+}
+function cap(id){return PLATFORM.capabilities?.[id]||{available:false,supported:false,reason:'',component:''}}
+function capNote(id){
+  const c=cap(id);if(c.available)return '';
+  return `<p class="mut" style="margin-top:6px;opacity:.8">${esc(c.reason||'Not available here.')}
+    ${c.component?`<button class="endbtn" style="margin-left:6px" onclick="installComponent('${esc(c.component)}')">Install…</button>`:''}</p>`;
+}
+async function installComponent(id){
+  let comp=null;
+  try{const d=await (await fetch('/api/components')).json();comp=(d.components||[]).find(c=>c.id===id)}catch(e){}
+  if(!comp)return toast('unknown component: '+id);
+  if(!confirm(`Install ${comp.title}?\n\nPackage: ${comp.package} (${comp.method})\nLicence: ${comp.licence}\n\n${comp.unlocks}`))return;
+  toast('installing '+comp.title+'…');
+  const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const d=await r.json();
+  if(d.ok){toast('✓ '+(d.message||'installed'));loadPlatform().then(()=>{refreshApp('control');refreshApp('syssettings')})}
+  else if(d.needs_terminal){
+    try{await navigator.clipboard.writeText(d.command)}catch(e){}
+    alert(`${d.message}\n\n  ${d.command}\n\n(copied to the clipboard — paste it into the Terminal app)`);
+  }else toast(d.message||d.error||'install failed');
+}
+
+/* ================= Quick Settings (capability-driven) ================= */
 async function renderControl(body){
   const d=await (await fetch('/api/control')).json();
   const a=d.audio||{},b=d.battery||{},n=d.network||{};
+  const deMode=PLATFORM.mode==='de';
   body.innerHTML=`<div class="pad">
     <div class="provbox"><div class="ptitle">Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
@@ -3962,49 +4123,347 @@ async function renderControl(body){
         <input type="range" id="c-vol" min="0" max="100" value="${a.volume??50}" style="flex:1">
         <span id="c-voln" class="mut" style="flex:0 0 40px;text-align:right">${a.volume??'–'}%</span>
       </div>
-      <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('sound')">Open Sound Settings ↗</button>
+      <div id="c-sinks"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Battery</div>
-      <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery detected'}</p>
-      ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
-      <button class="endbtn" style="margin-top:10px" onclick="ctlSettings('power')">Open Power Settings ↗</button>
-    </div>
+    <div class="provbox"><div class="ptitle">Brightness</div><div id="c-bright"><p class="mut" style="margin-top:6px">…</p></div></div>
     <div class="provbox"><div class="ptitle">Network</div>
-      <p class="mut" style="margin-top:6px">${n.online?n.connections.map(c=>`${c.type==='wifi'?'Wi-Fi':'wired'} · ${esc(c.name)}`).join(', '):'offline'}</p>
-      <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button>
-        <button class="endbtn" onclick="ctlSettings('network')">Network ↗</button>
-        <button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>
-      </div>
+      <p class="mut" style="margin-top:6px" id="c-net">${n.online?n.connections.map(c=>`${c.type==='wifi'?'Wi-Fi':'wired'} · ${esc(c.name)}`).join(', '):'offline'}</p>
+      <div class="row" style="margin-top:8px" id="c-radios"></div>
     </div>
-    <div class="provbox"><div class="ptitle">System</div>
-      <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="ctlSettings('display')">Display ↗</button>
-        <button class="endbtn" onclick="ctlSettings('background')">Background ↗</button>
-        <button class="endbtn" onclick="ctlSettings('')">All Settings ↗</button>
-      </div>
+    <div class="provbox"><div class="ptitle">Power</div>
+      <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery — mains powered'}</p>
+      ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
+      <div class="row" style="margin-top:8px" id="c-profile"></div>
+    </div>
+    <div class="provbox"><div class="ptitle">Notifications</div><div class="row" style="margin-top:8px" id="c-dnd"></div></div>
+    <div class="row" style="margin-top:4px">
+      <button class="endbtn" onclick="openApp('syssettings')">⚙ System Settings</button>
+      ${cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('')">Open ${esc(PLATFORM.platform||'host')} Settings ↗</button>`:''}
+      ${cap('screen.capture').available?`<button class="endbtn" onclick="takeScreenshot('full')">📸 Screenshot</button>`:''}
     </div>
   </div>`;
   const vol=$('#c-vol');let vt;
   vol.oninput=()=>{$('#c-voln').textContent=vol.value+'%';clearTimeout(vt);vt=setTimeout(()=>ctlSet({volume:+vol.value}),200)};
   $('#c-mute').onclick=async()=>{await ctlSet({mute:!a.muted});refreshApp('control');updateTray()};
+
+  // output device picker
+  const sinks=$('#c-sinks');
+  if(cap('audio.devices').available){
+    try{
+      const ad=await (await fetch('/api/audio/devices')).json();
+      if(ad.sinks?.length>1){
+        sinks.innerHTML=`<select id="c-sink" style="margin-top:8px;width:100%">${ad.sinks.map(s=>
+          `<option value="${s.id}" ${s.default?'selected':''}>${esc(s.description)}</option>`).join('')}</select>`;
+        $('#c-sink').onchange=async e=>{await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id:+e.target.value})});toast('✓ audio output switched')};
+      }
+    }catch(e){}
+  }else sinks.innerHTML=capNote('audio.devices');
+
+  // brightness
+  const br=$('#c-bright');
+  if(cap('brightness.get').available){
+    try{
+      const bd=await (await fetch('/api/brightness')).json();
+      br.innerHTML=(bd.displays||[]).map(disp=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <span class="mut" style="flex:0 0 110px;overflow:hidden;text-overflow:ellipsis">${esc(disp.monitor||disp.name)}</span>
+          <input type="range" min="1" max="100" value="${disp.percent??50}" style="flex:1"
+            onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
+        </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
+    }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
+  }else br.innerHTML=capNote('brightness.set');
+
+  // radios: wifi + bluetooth quick toggles
+  const radios=$('#c-radios');let rhtml='';
+  if(cap('net.wifi.scan').available)rhtml+=`<button class="endbtn" id="c-wifi">Wi-Fi…</button>`;
+  if(cap('bt.status').available)rhtml+=`<button class="endbtn" id="c-bt">Bluetooth…</button>`;
+  if(!rhtml)rhtml=cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button><button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>`:capNote('net.wifi.join');
+  radios.innerHTML=rhtml;
+  const wob=$('#c-wifi');if(wob)wob.onclick=()=>{openApp('syssettings');SYS.tab=0;refreshApp('syssettings')};
+  const bob=$('#c-bt');if(bob)bob.onclick=()=>{openApp('syssettings');SYS.tab=1;refreshApp('syssettings')};
+
+  // power profile
+  const prof=$('#c-profile');
+  if(cap('power.profile').available){
+    try{
+      const p=await (await fetch('/api/power/profile')).json();
+      prof.innerHTML=(p.profiles||[]).map(x=>
+        `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${esc(x)}</button>`).join('');
+    }catch(e){}
+  }else prof.innerHTML=capNote('power.profile');
+
+  // DND
+  const dnd=$('#c-dnd');
+  try{
+    const nd=await (await fetch('/api/notifications')).json();
+    if(nd.available!==false||PLATFORM.mode==='de')
+      dnd.innerHTML=`<button class="endbtn" onclick="toggleDnd(${nd.dnd?'false':'true'})">${nd.dnd?'🔕 Do-not-disturb is ON — turn off':'🔔 Turn on do-not-disturb'}</button>`;
+    else dnd.innerHTML=`<p class="mut">${esc(nd.reason||'')}</p>`;
+  }catch(e){dnd.innerHTML=''}
 }
 async function ctlSet(opts){await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)});updateTray()}
 async function ctlSettings(panel){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:panel})});const d=await r.json();toast(d.ok?'↗ opened settings':d.message)}
+async function setBrightness(name,kind,percent){
+  const r=await fetch('/api/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,kind,percent:+percent})});
+  const d=await r.json();if(!d.ok)toast(d.error||'brightness failed');
+}
+async function setPowerProfile(profile){
+  const r=await fetch('/api/power/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile})});
+  const d=await r.json();toast(d.ok?'✓ '+profile:(d.error||'failed'));refreshApp('control');
+}
+async function toggleDnd(on){
+  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dnd',on})});
+  updateBell();refreshApp('control');toast(on?'do-not-disturb on':'do-not-disturb off');
+}
+async function takeScreenshot(area){
+  const r=await fetch('/api/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({area})});
+  const d=await r.json();toast(d.ok?'📸 saved: '+d.path.split('/').pop():(d.error||'screenshot failed'));
+}
+
+/* ================= System Settings (the DE's own control center) ================= */
+const SYS={tab:0};
+const SYS_TABS=['Network','Bluetooth','Displays','Sound','Power','Session','Components'];
+function sysTab(i){SYS.tab=i;refreshApp('syssettings')}
+async function renderSysSettings(body){
+  body.innerHTML=`<div class="pad">
+    <div style="margin-bottom:10px">${segTabs('sys-tabs',SYS_TABS,SYS.tab,'sysTab')}</div>
+    <div id="sys-body"><p class="mut">…</p></div></div>`;
+  const el=$('#sys-body');
+  try{
+    await [sysNet,sysBt,sysDisplays,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
+  }catch(e){el.innerHTML=`<p class="mut">${esc(String(e))}</p>`}
+}
+function sigBars(s){return s>75?'▂▄▆█':s>50?'▂▄▆':s>25?'▂▄':'▂'}
+async function sysNet(el){
+  if(!cap('net.wifi.scan').available){el.innerHTML=`<div class="provbox"><div class="ptitle">Wi-Fi</div>${capNote('net.wifi.scan')||'<p class="mut" style="margin-top:6px">unavailable</p>'}</div>`;return}
+  el.innerHTML='<p class="mut">scanning…</p>';
+  const d=await (await fetch('/api/net/wifi')).json();
+  if(d.error){el.innerHTML=`<p class="mut">${esc(d.error)}</p>`;return}
+  el.innerHTML=`<div class="provbox"><div class="ptitle">Wi-Fi</div>
+    <div class="row" style="margin-top:8px">
+      <button class="endbtn" onclick="wifiAct({action:'${d.wifi_enabled?'disable':'enable'}'})">${d.wifi_enabled?'Turn Wi-Fi off':'Turn Wi-Fi on'}</button>
+      <button class="endbtn" onclick="wifiAct({action:'airplane',on:true})">✈ Airplane mode</button>
+      <button class="endbtn" onclick="refreshApp('syssettings')">↻ Rescan</button>
+    </div></div>
+    ${(d.networks||[]).map(n=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
+      <span style="flex:0 0 44px;letter-spacing:1px" title="${n.signal}%">${sigBars(n.signal)}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:${n.connected?'700':'500'}">${esc(n.ssid)} ${n.connected?'<span class="mut">· connected</span>':''}</div>
+        <div class="mut" style="font-size:11px">${esc(n.security)}${n.saved?' · saved':''}</div>
+      </div>
+      ${n.connected?'':`<button class="endbtn" onclick="wifiJoin('${esc(n.ssid).replace(/'/g,"\\'")}','${n.security}',${n.saved})">Join</button>`}
+      ${n.saved?`<button class="endbtn" onclick="wifiAct({action:'forget',ssid:'${esc(n.ssid).replace(/'/g,"\\'")}'})">Forget</button>`:''}
+    </div>`).join('')||'<p class="mut">no networks in range</p>'}`;
+}
+async function wifiJoin(ssid,security,saved){
+  let psk=null;
+  if(!saved&&security!=='open'){psk=prompt(`Password for "${ssid}" (${security})`);if(psk===null)return}
+  toast('joining '+ssid+'…');
+  await wifiAct({action:'join',ssid,psk});
+}
+async function wifiAct(body){
+  const r=await fetch('/api/net/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  toast(d.ok?'✓ '+(body.action||'done'):(d.error||'failed'));
+  setTimeout(()=>refreshApp('syssettings'),800);updateTray();
+}
+async function sysBt(el){
+  if(!cap('bt.status').available){el.innerHTML=`<div class="provbox"><div class="ptitle">Bluetooth</div>${capNote('bt.status')||'<p class="mut" style="margin-top:6px">unavailable</p>'}</div>`;return}
+  const d=await (await fetch('/api/bt')).json();
+  if(d.error){el.innerHTML=`<p class="mut">${esc(d.error)}</p>`;return}
+  const ad=(d.adapters||[])[0];
+  el.innerHTML=`<div class="provbox"><div class="ptitle">Bluetooth</div>
+    ${ad?`<div class="row" style="margin-top:8px">
+      <button class="endbtn" onclick="btAct({action:'power',adapter:'${ad.path}',on:${!ad.powered}})">${ad.powered?'Turn off':'Turn on'}</button>
+      <button class="endbtn" onclick="btAct({action:'discover',adapter:'${ad.path}',on:${!ad.discovering}})">${ad.discovering?'Stop scanning':'Scan for devices'}</button>
+    </div>`:'<p class="mut" style="margin-top:6px">no adapter</p>'}</div>
+    ${(d.devices||[]).map(dev=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:${dev.connected?'700':'500'}">${esc(dev.name)}
+          ${dev.connected?'<span class="mut">· connected</span>':dev.paired?'<span class="mut">· paired</span>':''}
+          ${dev.battery!=null?`<span class="mut">· 🔋${dev.battery}%</span>`:''}</div>
+        <div class="mut" style="font-size:11px">${esc(dev.address)}</div>
+      </div>
+      ${dev.connected?`<button class="endbtn" onclick="btAct({action:'disconnect',device:'${dev.path}'})">Disconnect</button>`
+        :dev.paired?`<button class="endbtn" onclick="btAct({action:'connect',device:'${dev.path}'})">Connect</button>`
+        :`<button class="endbtn" onclick="btAct({action:'pair',device:'${dev.path}'})">Pair</button>`}
+      ${dev.paired?`<button class="endbtn" onclick="if(confirm('Remove ${esc(dev.name)}?'))btAct({action:'remove',device:'${dev.path}'})">✕</button>`:''}
+    </div>`).join('')||'<p class="mut">no devices — scan to discover nearby ones</p>'}`;
+}
+async function btAct(body){
+  const r=await fetch('/api/bt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  toast(d.ok?'✓ '+body.action:(d.error||'failed'));
+  setTimeout(()=>refreshApp('syssettings'),900);
+}
+async function sysDisplays(el){
+  if(!cap('display.configure').available){el.innerHTML=`<div class="provbox"><div class="ptitle">Displays</div>${capNote('display.configure')||'<p class="mut" style="margin-top:6px">unavailable</p>'}</div>`;return}
+  const d=await (await fetch('/api/wm/outputs')).json();
+  if(!d.available){el.innerHTML=`<p class="mut">${esc(d.reason||'unavailable')}</p>`;return}
+  el.innerHTML=(d.outputs||[]).map(o=>{
+    const modes=(o.modes||[]).map(m=>{
+      const v=`${m.width}x${m.height}@${Math.round((m.refresh||0)/1000)}Hz`;
+      const on=o.mode&&m.width===o.mode.width&&m.height===o.mode.height&&Math.round((m.refresh||0)/1000)===Math.round((o.mode.refresh||0)/1000);
+      return `<option value="${v}" ${on?'selected':''}>${v}</option>`}).join('');
+    return `<div class="provbox"><div class="ptitle">${esc(o.name)} ${o.active?'':'· off'} <span class="mut">${esc([o.make,o.model].filter(Boolean).join(' '))}</span></div>
+      <div class="row" style="margin-top:8px;align-items:center;gap:8px;flex-wrap:wrap">
+        <select onchange="outCfg('${esc(o.name)}',{mode:this.value})">${modes}</select>
+        <select onchange="outCfg('${esc(o.name)}',{scale:+this.value})">
+          ${[1,1.25,1.5,1.75,2].map(s=>`<option value="${s}" ${Math.abs((o.scale||1)-s)<.01?'selected':''}>${s*100}%</option>`).join('')}</select>
+        <select onchange="outCfg('${esc(o.name)}',{transform:this.value})">
+          ${['normal','90','180','270'].map(t=>`<option ${o.transform===t?'selected':''}>${t}</option>`).join('')}</select>
+        <button class="endbtn" onclick="outCfg('${esc(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
+      </div></div>`}).join('')||'<p class="mut">no outputs reported</p>';
+}
+async function outCfg(name,opts){
+  const r=await fetch('/api/wm/outputs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,...opts})});
+  const d=await r.json();toast(d.ok?'✓ display updated':(d.message||d.error||'failed'));
+  setTimeout(()=>refreshApp('syssettings'),600);
+}
+async function sysSound(el){
+  const d=await (await fetch('/api/audio/devices')).json().catch(()=>null);
+  if(!d||d.error){el.innerHTML=`<div class="provbox"><div class="ptitle">Sound</div>${capNote('audio.devices')||`<p class="mut" style="margin-top:6px">${esc(d?.error||'unavailable')}</p>`}</div>`;return}
+  el.innerHTML=`<div class="provbox"><div class="ptitle">Output devices</div>
+    ${(d.sinks||[]).map(s=>`<div class="row" style="margin-top:8px;align-items:center">
+      <button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button>
+    </div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
+  <div class="provbox"><div class="ptitle">Input devices</div>
+    ${(d.sources||[]).map(s=>`<div class="row" style="margin-top:8px"><button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button></div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
+  <div class="provbox"><div class="ptitle">App volumes</div>
+    ${(d.streams||[]).map(s=>`<div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+      <span class="mut" style="flex:0 0 130px;overflow:hidden;text-overflow:ellipsis">${esc(s.app)}</span>
+      <input type="range" min="0" max="100" value="70" style="flex:1" onchange="audioVol(${s.id},this.value)">
+    </div>`).join('')||'<p class="mut" style="margin-top:6px">nothing playing</p>'}</div>`;
+}
+async function audioDefault(id){await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id})});toast('✓ default changed');setTimeout(()=>refreshApp('syssettings'),400)}
+async function audioVol(id,percent){await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'volume',id,percent:+percent})})}
+async function sysPower(el){
+  const c=await (await fetch('/api/control')).json();
+  const b=c.battery||{};
+  let profHtml='';
+  if(cap('power.profile').available){
+    try{const p=await (await fetch('/api/power/profile')).json();
+      profHtml=(p.profiles||[]).map(x=>`<button class="endbtn" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${x===p.active?'✓ ':''}${esc(x)}</button>`).join('');
+    }catch(e){}
+  }else profHtml=capNote('power.profile');
+  el.innerHTML=`<div class="provbox"><div class="ptitle">Battery</div>
+      <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery — mains powered'}</p></div>
+    <div class="provbox"><div class="ptitle">Performance profile</div><div class="row" style="margin-top:8px">${profHtml}</div></div>
+    <div class="provbox"><div class="ptitle">Session power</div>
+      <div class="row" style="margin-top:8px">
+        <button class="endbtn" onclick="powerDo('lock','Lock the screen?')">🔒 Lock</button>
+        <button class="endbtn" onclick="powerDo('suspend','Suspend the machine?')">🌙 Suspend</button>
+      </div>
+      <p class="mut" style="margin-top:8px">Idle timers for the AgentOS session live in config
+      (<code>desktop.idle_lock_secs</code>, <code>desktop.idle_screen_off_secs</code>) —
+      re-run <code>agentos install-session</code> after changing them.</p></div>`;
+}
+async function sysSession(el){
+  const modes=PLATFORM.modes||['auto','de','hosted','kiosk'];
+  const cfg=await (await fetch('/api/config')).json();
+  const pin=cfg.desktop?.mode||'auto';
+  el.innerHTML=`<div class="provbox"><div class="ptitle">Desktop mode</div>
+      <p class="mut" style="margin-top:6px">${esc(PLATFORM.summary||'')} (running: <b>${esc(PLATFORM.mode)}</b>, detected: ${esc(PLATFORM.detected_mode)})</p>
+      <div class="row" style="margin-top:8px">${modes.map(m=>
+        `<button class="endbtn" style="${m===pin?'border-color:var(--acc,#5eead4)':''}" onclick="pinMode('${m}')">${m===pin?'✓ ':''}${m}</button>`).join('')}</div>
+      <p class="mut" style="margin-top:8px">"auto" follows how you logged in. Pinning takes effect on the next server start.</p></div>
+    <div class="provbox"><div class="ptitle">AgentOS as your desktop</div>
+      <p class="mut" style="margin-top:6px">Install AgentOS as a login session — it appears next to Ubuntu at the login
+      screen and changes nothing else. Run in the Terminal:</p>
+      <p style="margin-top:6px"><code>agentos install-session</code> — selectable Wayland session (needs sway)</p>
+      <p style="margin-top:4px"><code>agentos install-session --autologin</code> — boot straight into AgentOS</p>
+      <p class="mut" style="margin-top:6px">Escape hatch, always: <b>Ctrl+Alt+F3</b> for a raw terminal, then
+      <code>agentos install-session --remove --autologin</code>. Switching back is just logging out and picking Ubuntu.</p></div>`;
+}
+async function pinMode(mode){
+  const cfg=await (await fetch('/api/config')).json();
+  cfg.desktop={...(cfg.desktop||{}),mode};
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+  toast('desktop.mode = '+mode+' (takes effect on next server start)');refreshApp('syssettings');
+}
+async function sysComponents(el){
+  const d=await (await fetch('/api/components')).json();
+  el.innerHTML=(d.components||[]).map(c=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${esc(c.title)} <span class="mut" style="font-weight:400">· ${esc(c.licence)}</span></div>
+        <div class="mut" style="font-size:11.5px;margin-top:2px">${esc(c.unlocks)}</div>
+      </div>
+      ${c.installed?'<span class="mut">✓ installed</span>':`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`}
+    </div>`).join('');
+  el.innerHTML+=`<p class="mut" style="margin-top:4px">These aren't bundled with AgentOS — some carry other licences
+    (shown above), so each one installs only when you say yes to it.</p>`;
+}
+
+/* ================= notification center ================= */
+const NOTIF={unread:0,dnd:false};
+function svgBell(px){px=px||14;return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 9.5a6 6 0 0 1 12 0c0 5 1.7 6 1.7 6H4.3S6 14.5 6 9.5"/><path d="M10.3 19.5a2 2 0 0 0 3.4 0"/></svg>`}
+async function updateBell(){
+  const bell=$('#tray-bell');if(!bell)return;
+  try{
+    const d=await (await fetch('/api/notifications')).json();
+    NOTIF.unread=d.unread||0;NOTIF.dnd=!!d.dnd;
+    bell.classList.toggle('dnd',NOTIF.dnd);
+    bell.innerHTML=svgBell(14)+(NOTIF.unread?`<span class="badge">${NOTIF.unread>99?'99+':NOTIF.unread}</span>`:'');
+    bell.style.display=(d.available===false&&PLATFORM.mode!=='de')?'none':'flex';
+  }catch(e){}
+}
+async function openNotifPanel(){
+  const p=$('#notifpanel');
+  if(p.classList.contains('show')){p.classList.remove('show');return}
+  $('#powermenu').classList.remove('show');
+  const d=await (await fetch('/api/notifications')).json();
+  const list=$('#np-list');
+  list.innerHTML=(d.items||[]).map(n=>`<div class="np-item ${n.urgency>=2?'crit':''}">
+      <div class="np-app">${esc(n.app||'system')} · ${new Date(n.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+      <div class="np-sum">${esc(n.summary)}</div>
+      ${n.body?`<div class="np-body">${esc(n.body)}</div>`:''}
+      <button class="np-x" onclick="dismissNotif(${n.id})">✕</button>
+    </div>`).join('')||'<p class="mut" style="padding:10px">nothing here — you\'re all caught up</p>';
+  const dnd=$('#np-dnd');dnd.textContent=d.dnd?'🔕':'🔔';dnd.classList.toggle('on',!d.dnd);
+  dnd.onclick=()=>toggleDnd(!d.dnd).then(openNotifPanel).then(openNotifPanel);
+  $('#np-clear').onclick=async()=>{await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear'})});openNotifPanel();openNotifPanel()};
+  p.classList.add('show');
+  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
+  updateBell();
+}
+async function dismissNotif(id){
+  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dismiss',id})});
+  openNotifPanel();openNotifPanel();
+}
 
 function natIcon(app){const c=(app||'?').trim().charAt(0).toUpperCase();return /[A-Z0-9]/.test(c)?c:'▭'}
+let NATIVE_POLL=null,wmDebounce=null;
 async function updateNativeWindows(){
   const box=$('#tbnative');if(!box)return;
   let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
   if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';return}
   box.classList.toggle('has',d.windows.length>0);
-  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat" data-id="${esc(w.id)}" data-tip="${esc(w.title)}">
+  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat ${w.focused?'on':''}" data-id="${esc(w.id)}" data-tip="${esc(w.title)}">
     ${emojiIcon(natIcon(w.app),46)}</button>`).join('');
+  const wins=Object.fromEntries(d.windows.map(w=>[String(w.id),w]));
   box.querySelectorAll('.tbnat').forEach(b=>{
     b.onclick=()=>fetch('/api/windows/focus',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
-    b.oncontextmenu=e=>{e.preventDefault();if(confirm('Close this window?'))fetch('/api/windows/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}).then(()=>updateNativeWindows())};
+    b.oncontextmenu=e=>{e.preventDefault();natWinMenu(e,wins[b.dataset.id]||{id:b.dataset.id,title:''})};
   });
   if(typeof updateDockSeps==='function')updateDockSeps();
+}
+function natWinMenu(e,w){
+  const m=$('#ctxmenu');
+  const arrange=cap('windows.arrange').available;
+  m.innerHTML=`<button data-a="focus">Focus</button>
+    ${arrange?`<button data-a="float">${w.floating?'Tile':'Float'}</button>
+    ${[1,2,3,4].map(n=>`<button data-a="ws${n}">Move to desktop ${n}</button>`).join('')}<hr>`:'<hr>'}
+    <button data-a="close" style="color:var(--err,#f87171)">Close window</button>`;
+  const post=(url,body)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(()=>setTimeout(updateNativeWindows,200));
+  m.querySelector('[data-a=focus]').onclick=()=>{m.classList.remove('show');post('/api/windows/focus',{id:w.id})};
+  if(arrange){
+    m.querySelector('[data-a=float]').onclick=()=>{m.classList.remove('show');post('/api/windows/floating',{id:w.id,floating:!w.floating})};
+    [1,2,3,4].forEach(n=>{m.querySelector(`[data-a=ws${n}]`).onclick=()=>{m.classList.remove('show');post('/api/windows/move',{id:w.id,workspace:String(n)})}});
+  }
+  m.querySelector('[data-a=close]').onclick=()=>{m.classList.remove('show');post('/api/windows/close',{id:w.id})};
+  m.style.left=Math.min(e.clientX,innerWidth-200)+'px';
+  m.style.top=Math.max(40,Math.min(e.clientY,innerHeight-240))+'px';
+  m.classList.add('show');
 }
 function svgMic(px){
   px=px||15;
@@ -4076,12 +4535,13 @@ function openFile(rel,ext){
 /* ================= store ================= */
 let STORE_TAB='apps';
 async function renderStore(body,w){
-  const TABS=['apps','channels','skills','import','build'];
+  const TABS=['apps','discover','channels','skills','import','build'];
   const box=panelShell(body,{
     title:'Store',
-    search:STORE_TAB==='import'||STORE_TAB==='build'?null:{id:'store-q',placeholder:'Search the catalog…'},
-    actions:segTabs('store-tabs',['Apps','Channels','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
+    search:STORE_TAB==='import'||STORE_TAB==='build'||STORE_TAB==='discover'?null:{id:'store-q',placeholder:'Search the catalog…'},
+    actions:segTabs('store-tabs',['Apps','Discover','Channels','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
   });
+  if(STORE_TAB==='discover'){renderStoreDiscover(box);return}
   if(STORE_TAB==='apps'){
     const d=await (await fetch('/api/store/templates')).json();
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
@@ -4128,7 +4588,151 @@ async function renderStore(body,w){
     $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
   }
 }
-function storeSetTab(i){STORE_TAB=['apps','channels','skills','import','build'][i];refreshApp('store')}
+function storeSetTab(i){STORE_TAB=['apps','discover','channels','skills','import','build'][i];refreshApp('store')}
+
+/* ---- Discover: search the worldwide public MCP registry, install with consent,
+   record in the local MCP Registry (+ generated docs), then build an app on top ---- */
+let STORE_DISC={q:'',results:[],seq:0,ctl:null};
+function renderStoreDiscover(box){
+  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Search the public MCP registry — thousands of servers published by the community.
+    Installing one adds it to your <b>MCP Registry</b>, writes a manual page into Docs, and puts it under the permission framework. Then build an app around it.</p>
+    <div class="row"><input id="disc-q" placeholder="What capability do you need? e.g. weather, github, postgres, calendar…" value="${esc(STORE_DISC.q)}" autocomplete="off">
+      <span class="mut" id="disc-st" style="flex:0 0 auto;font-size:11px"></span></div>
+    <div id="disc-results" class="cat" style="margin-top:10px">${storeDiscoverCards()}</div>`;
+  STORE_DISC._sig=discSig();  // the grid just rendered — cache its signature
+  const inp=$('#disc-q');
+  let deb; // results come in as you type — no Search button to wait on
+  inp.addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(()=>storeDiscover(inp.value.trim()),350)});
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(deb);storeDiscover(inp.value.trim())}});
+  inp.focus();
+  if(STORE_DISC.q&&!STORE_DISC.results.length)storeDiscover(STORE_DISC.q);
+}
+function storeDiscoverCards(){
+  if(!STORE_DISC.results.length)
+    return `<p class="mut" style="grid-column:1/-1">${STORE_DISC.q?'nothing found — try a broader term':'start typing to search the worldwide registry…'}</p>`;
+  return STORE_DISC.results.map((c,i)=>{
+    const req=[...(c.env||[]).filter(e=>e.required).map(e=>e.name),
+               ...(c.remote_headers||[]).filter(h=>h.required).map(h=>h.name)];
+    const kind=c.origin_source==='github'?'GitHub repo':c.origin_source==='npm'?'npm (beyond the registry)'
+              :c.remote_url?'remote':(c.registry_type||'package');
+    return `<div class="catcard${c.installed?' inst':''}" title="${esc(c.registry_name)}${c.version?' · v'+esc(c.version):''}">
+      <span class="cn">${esc(c.registry_name.split(/[/:]/).pop())}</span>
+      <span class="cd" style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">${esc(c.description||'(no description)')}</span>
+      <span class="ck">${esc(kind)}${req.length?' · 🔑 key needed':''}${c.homepage?` · <a href="${esc(c.homepage)}" target="_blank" style="color:var(--acc2,#22d3ee)" onclick="event.stopPropagation()">homepage ↗</a>`:''}</span>
+      ${c.agentic
+        ?`<button class="save" style="margin-top:8px;padding:6px" title="No published package — the agent reads the repo, works out how to run it, and connects it (you approve each step)" onclick="storeAgentSetup(${i})">🤖 Set up with AI</button>`
+        :`<button class="save" style="margin-top:8px;padding:6px" onclick="storeDiscoverInstall(${i})">Install</button>`}
+    </div>`}).join('');
+}
+function discSig(){
+  return STORE_DISC.results.map(c=>c.registry_name+(c.installed?'+':'')).join('|')
+         +'|'+(STORE_DISC.q?'q':'');
+}
+function storeDiscoverPaint(status){
+  const st=$('#disc-st');if(st&&status!==undefined)st.textContent=status;
+  const el=$('#disc-results');if(!el)return;
+  const sig=discSig();
+  if(sig===STORE_DISC._sig)return;  // same cards — leave the DOM alone (no flicker)
+  STORE_DISC._sig=sig;
+  el.innerHTML=storeDiscoverCards();
+}
+async function storeDiscover(q){
+  STORE_DISC.q=q;
+  const seq=++STORE_DISC.seq;               // newer keystrokes win…
+  if(STORE_DISC.ctl)STORE_DISC.ctl.abort(); // …and stale requests are cancelled
+  clearTimeout(STORE_DISC.poll);
+  if(!q){STORE_DISC.results=[];storeDiscoverPaint('');return}
+  const ctl=new AbortController();STORE_DISC.ctl=ctl;
+  // only announce "searching" when the grid is empty — sync-poll re-queries shouldn't
+  // blink the status while results are already on screen
+  const st=$('#disc-st');if(st&&!STORE_DISC.results.length)st.textContent='searching…';
+  try{
+    // searches hit the locally-synced index — instant; while the background sync is
+    // still pulling the catalog down, results keep growing and we re-query on a timer
+    const r=await fetch('/api/store/mcp/search?q='+encodeURIComponent(q)+'&limit=30',{signal:ctl.signal});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'search failed');
+    if(seq!==STORE_DISC.seq)return;
+    STORE_DISC.results=d.candidates||[];
+    const ix=d.index||{};
+    let status=STORE_DISC.results.length+' result'+(STORE_DISC.results.length===1?'':'s');
+    if(ix.syncing)status+=' · indexing the registry — '+(ix.count||0)+' servers so far…';
+    if(seq===STORE_DISC.seq&&ix.syncing)
+      STORE_DISC.poll=setTimeout(()=>{if(seq===STORE_DISC.seq)storeDiscover(q)},4000);
+    storeDiscoverPaint(status);
+    // the registry isn't always enough — when results are sparse, the system widens
+    // the net itself: npm + GitHub, fetched once per query (sync-poll re-queries
+    // reuse the cached extras instead of re-sweeping and re-flickering)
+    if(STORE_DISC.results.length<6){
+      let extras=(STORE_DISC._deep&&STORE_DISC._deep.q===q)?STORE_DISC._deep.extras:null;
+      if(!extras){
+        storeDiscoverPaint(status+' · widening the search (npm & GitHub)…');
+        const rd=await fetch('/api/store/mcp/discover_more?q='+encodeURIComponent(q),{signal:ctl.signal});
+        const dd=await rd.json();
+        if(seq!==STORE_DISC.seq)return;
+        extras=rd.ok?(dd.candidates||[]):[];
+        STORE_DISC._deep={q,extras};
+      }
+      const seen=new Set(STORE_DISC.results.map(c=>c.registry_name));
+      STORE_DISC.results.push(...extras.filter(c=>!seen.has(c.registry_name)));
+      let s2=STORE_DISC.results.length+' result'+(STORE_DISC.results.length===1?'':'s');
+      if(ix.syncing)s2+=' · registry still indexing…';
+      storeDiscoverPaint(s2);
+    }
+  }catch(e){
+    if(e.name==='AbortError')return;
+    if(seq===STORE_DISC.seq)storeDiscoverPaint('search failed — '+(e.message||e));
+  }
+}
+function storeAgentSetup(i){
+  const c=STORE_DISC.results[i];if(!c)return;
+  // no published package to run — hand the repo to the agent: it reads the README,
+  // derives the config, asks for keys, and connects it (approval-gated end to end)
+  openApp('chat');
+  setTimeout(()=>{
+    if(!input)return;
+    input.value='Set up the MCP server from '+c.homepage+' — fetch the README, work out how to '
+      +'run it (npx / uvx / docker) and which API keys or config it needs, ask me for anything '
+      +'required, then connect it with add_mcp_server and confirm its tools appear. '
+      +'I was searching the store for: "'+STORE_DISC.q+'".';
+    input.dispatchEvent(new Event('input'));send();
+  },350);
+  toast('handed to '+agentName()+' — it will read the repo and set the server up with you');
+}
+async function storeDiscoverInstall(i){
+  const c=STORE_DISC.results[i];if(!c)return;
+  const short=c.registry_name.split('/').pop();
+  // discovery never installs silently — this is the user's yes/no gate
+  if(!confirm(`Discovered "${short}" — would you like to build around it and add it to your MCP Registry?\n\n${c.description||''}`))return;
+  const env={};
+  const wants=[...c.env.map(e=>({n:e.name,req:e.required,d:e.description})),
+               ...(c.remote_headers||[]).flatMap(h=>((h.value||'').match(/\{([\w.-]+)\}/g)||[]).map(v=>({n:v.slice(1,-1),req:h.required,d:h.description})))];
+  for(const w of wants){
+    const v=prompt(w.n+(w.d?' — '+w.d:'')+(w.req?' (required — leave empty to fill later in the MCP app)':' (optional)'));
+    if(v===null)return;
+    if(v.trim())env[w.n]=v.trim();
+  }
+  toast('⏳ installing '+short+'…');
+  const r=await fetch('/api/store/mcp/install',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({registry_name:c.registry_name,env})});
+  const d=await r.json();
+  if(!r.ok)return toast(d.error||'install failed');
+  c.installed=true;
+  storeDiscoverPaint();  // signature changed (installed flag) — one clean repaint
+  toast(`✓ ${d.name} added to the MCP Registry — manual in Docs`+(d.missing_env&&d.missing_env.length?` · disabled until you set: ${d.missing_env.join(', ')}`:''));
+  setTimeout(()=>{
+    if(confirm(`Build a desktop app around "${d.name}"? ${agentName()} will design an AI-native app that uses its tools (permissions are declared for your consent).`)){
+      openApp('studio');
+      const p=`Build a COMPACT single-screen app (aim for under ~150 lines total — a focused MVP, `+
+        `not a suite; big apps take minutes on local models) around the newly installed MCP server "${d.name}". `+
+        `Its tools are available as appTool('mcp_${d.name}_<tool>', args) — check GET /api/tools for the exact names `+
+        `and build around the 1-2 most useful tools only. Purpose: ${c.description||short}. `+
+        `Add ONE small AI touch via appLLM on the returned data. Compose the UI purely from the pre-injected design-system classes (.card/.row/.cols/.kpi/.empty) — no custom CSS. `+
+        `Declare permissions: [{"action":"mcp.use","resource":"mcp:${d.name}/*","reason":"uses the ${d.name} integration","required":true}].`;
+      setTimeout(()=>{if($('#st-prompt')){$('#st-prompt').value=p;studioBuild()}},300);
+    }
+  },400);
+}
 async function storeInstall(id){
   const r=await fetch('/api/store/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   const d=await r.json();
@@ -4190,6 +4794,7 @@ async function renderStudio(body,w){
     <button class="stapp${a.id===STUDIO.sel?' on':''}" data-f="${esc(a.name+' '+(a.description||''))}" onclick="studioSelect('${a.id}')">
       <span class="mono" style="background:${tileBg(a.id)}">${esc((a.name||'?')[0].toUpperCase())}</span>
       <span class="nm"><b>${esc(a.name)}</b><span>${esc(a.description||'')}</span></span>
+      <span class="stren" title="rename this app" onclick="event.stopPropagation();renameUserApp('${a.id}','studio')">✏️</span>
     </button>`).join('');
   const pb=panelShell(body,{
     title:'App Studio',
@@ -4830,11 +5435,35 @@ buildDock();
 $('#tray-ctl').onclick=()=>openApp('control');
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
+/* power & session menu — AgentOS as the desktop environment carries real session
+   controls in its menu bar (the boot-to-AgentOS direction) */
+$('#tray-power').onclick=e=>{e.stopPropagation();$('#powermenu').classList.toggle('show')};
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#powermenu')&&!e.target.closest('#tray-power'))$('#powermenu').classList.remove('show');
+});
+async function powerDo(action,confirmMsg){
+  $('#powermenu').classList.remove('show');
+  if(confirmMsg&&!confirm(confirmMsg))return;
+  try{
+    const r=await fetch('/api/power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    const d=await r.json();
+    if(!r.ok)return toast(d.error||action+' failed');
+    if(action==='agentos-restart')toast('AgentOS is restarting — the desktop reconnects automatically');
+    else toast('✓ '+action);
+  }catch(e){toast(action+': '+e)}
+}
 $('#j-mic').innerHTML=svgMic(22);
 $('#j-mic').onclick=()=>{if(JARVIS.phase==='listening'){try{JARVIS.rec.stop()}catch(e){}}else jarvisListen()};
 $('#j-close').onclick=()=>jarvisMode(false);
+$('#tray-bell').onclick=e=>{e.stopPropagation();openNotifPanel()};
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#notifpanel')&&!e.target.closest('#tray-bell'))$('#notifpanel').classList.remove('show');
+});
+loadPlatform();
 updateTray();setInterval(updateTray,15000);
-updateNativeWindows();setInterval(updateNativeWindows,3000);
+// Polling is the fallback; the first compositor 'wm' event switches the
+// taskbar to event-driven updates (see the WebSocket handler).
+updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,3000);
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadConfig();

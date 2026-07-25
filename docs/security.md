@@ -17,6 +17,25 @@ AgentOS is built to be the opposite of that story.
 | Self-modification | snapshot + AST + **test gate** | the OS snapshots itself before any source write, refuses syntax errors, and refuses to restart if the test suite fails |
 | Managed services | loopback-only | TrainForge (no auth of its own) is always started on `127.0.0.1` |
 
+## IO gates: surface-scoped permissions
+
+Every capability call arrives via one of the OS's **surfaces** — `gui` (the desktop and its
+apps), `tui` (the terminal UI), `telegram` (the channel bridge), `api` (headless REST), and
+`task` (scheduled jobs). These are the permission framework's **import/export gates**: a grant
+can be scoped to a subset of them in the Permissions app (the ⛩ badge on any rule, or the
+"IO gates" picker when attaching one).
+
+- A rule with gates `*` (the default) behaves exactly as before — it applies everywhere.
+- A scoped rule only applies to calls arriving via its gates. If consent exists but not for
+  the current surface, the call is **denied** and an `io-gate` entry lands in Logs (kind
+  `policy`, plus an explicit `error` entry) — permitted on all the surfaces means it flows;
+  anywhere else the IO errors out, visibly.
+- Example: grant an app `mcp.use · mcp:github/*` scoped to `gui` and the same capability is
+  refused when a turn arrives over Telegram.
+
+Deny rules scope the same way, so "allowed everywhere except over Telegram" is one allow rule
+plus one telegram-scoped deny.
+
 ## The known trade-offs (read this)
 
 - **Local trust:** the HTTP/WS surface has no authentication — protection is the localhost

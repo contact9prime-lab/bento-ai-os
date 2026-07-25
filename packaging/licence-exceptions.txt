@@ -1,0 +1,15 @@
+# Reviewed licence exceptions for packaging/audit-licenses.sh
+#
+# A package listed here has a copyleft or unrecognised primary licence but has
+# been reviewed and judged acceptable to depend on. Each line records WHY, so the
+# decision survives the person who made it.
+#
+# Format:   <package> | <reason it is acceptable>
+#
+# An exception is NOT the place to put something we simply want to ship. If a
+# component is copyleft and we would be redistributing or linking it, it belongs
+# in agentos/components.py as a user-consented optional download instead.
+# Legitimate reasons look like: "separate daemon, D-Bus interface only, unmodified
+# distro build" — never "needed for feature X".
+#
+# (no active exceptions)

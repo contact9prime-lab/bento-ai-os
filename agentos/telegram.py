@@ -164,7 +164,8 @@ class TelegramBridge:
                          + (res["content"] or res["fault"] or "(no output)"))
                 result = {"steps": res["steps"]}
             else:
-                agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid)
+                agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid,
+                              surface="telegram")
                 _k.turn_started()
                 try:
                     result = await agent.run(history)
@@ -248,11 +249,16 @@ class TelegramBridge:
                 self.status = "polling"
                 self.error = ""
                 updates = await self._api("getUpdates", offset=self._offset, timeout=50,
-                                          allowed_updates=["message", "callback_query"])
+                                          allowed_updates=["message", "channel_post",
+                                                           "callback_query"])
                 for u in updates:
                     self._offset = max(self._offset, u["update_id"] + 1)
                     if "message" in u:
                         asyncio.create_task(self._handle(u["message"]))
+                    elif "channel_post" in u:
+                        # channels the bot was added to register like chats/groups: they
+                        # appear in the Telegram app, blocked until the owner permits them
+                        asyncio.create_task(self._handle(u["channel_post"]))
                     elif "callback_query" in u:
                         asyncio.create_task(self._handle_callback(u["callback_query"]))
             except Exception as e:

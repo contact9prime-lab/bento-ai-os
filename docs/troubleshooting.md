@@ -43,11 +43,16 @@ These use host tools that may not be installed: `gtk-launch` (launch apps), `wpc
 (battery), `nmcli` (network), `gnome-control-center` (settings). Install the ones you need; features
 without their tool simply don't appear.
 
-### Can't manage or alt-tab native windows; computer-use isn't available
+### Can't manage or alt-tab native windows
 
-This requires an **X11 session** with window-control tools (`wmctrl`, `xdotool`). Under a **Wayland**
-session these are unavailable because Wayland restricts window and input control for security. Log
-into an X11 session and install the tools to enable it.
+Wayland deliberately stops one application from controlling another's windows, so when AgentOS
+runs **hosted** on a Wayland desktop (stock Ubuntu), native window management is off — the
+taskbar explains this. Two ways to get it:
+
+- **Log into the AgentOS session** ([AgentOS as your desktop environment](desktop-environment.md)) —
+  there AgentOS *is* the compositor and manages windows natively. This is the full answer.
+- On an **X11 session**, install `wmctrl` (and `xdotool` for computer-use) — the older path
+  still works.
 
 ### Generated wallpapers look low-resolution
 

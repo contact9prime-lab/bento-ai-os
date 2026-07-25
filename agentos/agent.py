@@ -77,7 +77,8 @@ class Agent:
                  emit: Callable[[dict], Awaitable[None]],
                  approver: Callable[[str, dict, str], Awaitable[bool]],
                  extra_system: str = "", tool_filter: list | None = None,
-                 conversation_id: str = "", principal: Principal = MAIN):
+                 conversation_id: str = "", principal: Principal = MAIN,
+                 surface: str = "gui"):
         """
         emit(event)                        -- streams events to the UI
         approver(name, args, reason, offer=None) -> ok
@@ -88,6 +89,8 @@ class Agent:
         conversation_id                    -- enables session memory (injection + scope="session" saves)
         principal                          -- WHO this agent acts as (policy.MAIN = the user's own agent;
                                               subagents/apps get their own identity for the permission gate)
+        surface                            -- WHICH IO gate the turn arrived on (gui | tui | telegram |
+                                              api | task) — surface-scoped grants only apply on their gates
         """
         self.cfg = cfg
         self.toolbox = toolbox
@@ -98,6 +101,7 @@ class Agent:
         self.tool_filter = tool_filter
         self.conversation_id = conversation_id
         self.principal = principal
+        self.surface = surface
         self.aborted = False
         # live partial results: if this turn is force-cancelled (user stop, shutdown),
         # the caller can still persist whatever streamed so far
@@ -264,7 +268,8 @@ class Agent:
         if self.toolbox.pdp:
             mdec = self.toolbox.pdp.decide(self.principal, "model.use",
                                            f"model:{self.model_id}",
-                                           {"autonomy": self.cfg.get("autonomy", "")})
+                                           {"autonomy": self.cfg.get("autonomy", ""),
+                                            "surface": self.surface})
             if mdec.effect == "deny":
                 msg = (f"[denied] {self.principal.label} may not use model "
                        f"{self.model_id} — {mdec.reason or 'denied by a grant rule'}")
@@ -358,7 +363,7 @@ class Agent:
                 if self.toolbox.pdp:
                     dec = self.toolbox.pdp.decide_tool(
                         self.principal, name, args, level, reason=reason,
-                        autonomy=self.cfg.get("autonomy", ""))
+                        autonomy=self.cfg.get("autonomy", ""), surface=self.surface)
                 else:  # no policy engine wired (tests / embedding): legacy autonomy gate
                     from .policy import Decision
                     if level == "blocked":
@@ -393,7 +398,14 @@ class Agent:
                         f"{dec.effect}: {self.principal.label} → {dec.action} {dec.resource}"[:400],
                         {"principal": self.principal.label, "action": dec.action,
                          "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
-                         "reason": dec.reason or reason, "tool": name, "approved": approved})
+                         "reason": dec.reason or reason, "tool": name, "approved": approved,
+                         "surface": self.surface})
+                if dec.rule == "io-gate":  # surface-blocked IO is an explicit error entry
+                    self.toolbox.store.log(
+                        "error", f"IO gate blocked {dec.action} {dec.resource} on "
+                                 f"'{self.surface}'"[:400],
+                        {"principal": self.principal.label, "surface": self.surface,
+                         "rule": "io-gate"})
 
                 ok = not output.startswith(("[error]", "[denied]", "[exit code"))
                 self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,

@@ -1,5 +1,191 @@
 # Changelog
 
+## Unreleased — the boot-to-AgentOS release (2026-07-25)
+
+The theme: goodbye GNOME. AgentOS installs as a real **Wayland login session** — its own
+compositor engine, window management, settings, notifications and lock screen — while
+staying 100% non-destructive: your existing desktop is one logout away, and hosted mode
+is unchanged.
+
+### The platform layer (one UI, four backends)
+- New `agentos/platform/` — a capability contract (`windows.manage`, `net.wifi.join`,
+  `brightness.set`, …) with four backends: `linux_de` (AgentOS **is** the session),
+  `linux_hosted` (today's guest mode, behaviour-identical), `macos`, `windows`.
+  `host.py` is now a thin facade; every existing endpoint keeps its exact shape.
+- The UI never asks "what OS?" — it loads **`GET /api/platform`** once and renders per
+  capability. Unavailable controls grey out with a sentence explaining why and, where an
+  optional component would fix it, an Install… button.
+- Run modes `de` / `hosted` / `kiosk`, auto-detected from how the session was started
+  (`AGENTOS_SESSION` + `SWAYSOCK`), pinnable via `desktop.mode` / `agentos session mode`.
+
+### The Wayland session
+- `agentos install-session` now installs a **Wayland session** (sway as the invisible
+  compositor engine — no bar, no keybinds, MIT-licensed) selectable at the login screen;
+  `--x11` keeps the legacy kiosk; `--remove` uninstalls. The generated session starts the
+  server *inside* sway so it inherits `$SWAYSOCK` and knows it owns the desktop.
+- `agentos install-session --autologin`: true boot-to-AgentOS — display manager disabled,
+  tty1 auto-login into the session. Prints the escape hatch (Ctrl+Alt+F3 →
+  `--remove --autologin`) before touching anything; refuses over SSH without `--force`.
+- Idle & lock: swaylock themed with your wallpaper; swayidle locks after
+  `desktop.idle_lock_secs`, blanks outputs, locks before sleep, answers the ⏻ menu.
+
+### Real window management on Wayland
+- New `agentos/compositor.py` — sway/i3 IPC client: list/focus/close/float windows, move
+  between workspaces, configure displays (mode/scale/rotation/enable), subscribe to
+  events. Replaces the wmctrl dead-end that Wayland killed.
+- The taskbar switches from 3-second polling to **compositor events**; right-click a
+  native window for focus/float/move-to-desktop/close.
+- New endpoints: `/api/windows/move`, `/api/windows/floating`, `/api/wm/workspaces`,
+  `/api/wm/outputs`.
+
+### System controls without gnome-control-center
+- New `agentos/hostctl/` speaking **D-Bus** (dbus-fast, MIT — new dependency) to the
+  distro's own daemons: NetworkManager (wifi **scan/join/forget**, airplane), BlueZ
+  (**pair/connect/trust/remove**, device battery), UPower + power-profiles-daemon,
+  logind (lock/suspend/brightness — no sudo, no prompts), PipeWire (`pw-dump`/`wpctl`:
+  output/input switching, per-app volume), sysfs+logind+ddcutil brightness.
+  Wifi passphrases travel over the bus, never a command line.
+- New **System Settings** app: Network, Bluetooth, Displays, Sound, Power, Session &
+  Mode, Components. Quick Settings rebuilt around capabilities (brightness sliders,
+  output picker, power profiles, DND). All new control endpoints are app-blocked via the
+  privilege guard.
+
+### Notifications
+- New `agentos/notifications.py` claims `org.freedesktop.Notifications` **in DE mode
+  only** (DO_NOT_QUEUE — it can never fight GNOME for the name in hosted mode): native
+  apps' notifications arrive as toasts + a new bell/notification center with
+  do-not-disturb (critical urgency cuts through).
+- Screenshots: `POST /api/screenshot` (grim/slurp, full or region) → `<workspace>/Screenshots`.
+
+### Packaging with a licence gate
+- New `packaging/audit-licenses.sh`: build-time assertion that everything shipped is
+  permissive (MIT/BSD/Apache/ISC). It caught real ones: wl-clipboard is GPL-3 (dropped
+  from Depends), xdg-desktop-portal is LGPL (demoted to interface-only). Generates the
+  apt-dependency table in `THIRD_PARTY_NOTICES.md`.
+- New `packaging/build-desktop-deb.sh` → **`agentos-desktop`**, a 4KB additive
+  metapackage: Depends strictly permissive (sway stack), Recommends the distro's GPL
+  daemons, Suggests the rest. postinst changes nothing about the default session.
+- New `agentos/components.py` + Store-style consent flow (`/api/components`): what we
+  can't ship (chromium is snap-only; ddcutil, wl-clipboard, power-profiles-daemon are
+  copyleft) is offered with its licence shown, installed only on an explicit yes
+  (sudo -n → pkexec → hand you the exact command).
+
+### Guided installers for Linux, macOS and Windows
+- One downloadable installer per OS, each a wizard that decides where AgentOS goes and
+  how it starts — and that **offers what the system doesn't have yet** (Python, a shell
+  renderer, the sway session stack, Ollama, bubblewrap, git, node…), installing each
+  missing piece only when picked:
+  - **Linux** `AgentOS-Setup-<ver>-linux-x86_64.run` — self-extracting (no makeself
+    needed), whiptail wizard with plain-prompt and `--unattended` fallbacks; system
+    (.deb) or user (`~/.local`) install; components include the login-screen session
+    and boot-to-AgentOS (with the double-confirm + escape hatch).
+  - **macOS** `AgentOS-Installer-<ver>.command` — double-clickable, native osascript
+    dialogs; missing Python routes through Apple's Command Line Tools prompt; plus
+    `packaging/macos/build-macos-pkg.sh` for the real `.pkg` choices wizard (runs on a
+    Mac; core + open-at-login choices, repair.sh for the no-Python case).
+  - **Windows** `packaging/windows/agentos.nsi` — NSIS MUI2 wizard (licence,
+    components: Start Menu / desktop shortcut / start-at-sign-in / Ollama, directory,
+    finish-and-launch), cross-built from Linux with `makensis`; `bootstrap.ps1` finds
+    Python 3.10+ or installs it via winget / python.org, builds the venv, writes
+    console-free launchers; per-user install, no UAC; uninstaller keeps `~/.agentos`.
+- `packaging/build-all.sh` builds everything the current machine can and says exactly
+  what was skipped and why. Install-time wizards own placement/startup choices; the
+  existing first-launch wizard keeps owning product setup (name, model, autonomy).
+
+### Doctor, docs, tests
+- `agentos doctor` gained a desktop section: run mode, session entries, sway +
+  `$SWAYSOCK`, renderer, NVIDIA `nvidia-drm.modeset`, and each D-Bus backend.
+- New `docs/desktop-environment.md` (modes, install, autologin + escape hatch,
+  architecture, licence policy, honest limits); updates across installation/desktop/
+  troubleshooting docs.
+- 60 new tests: platform contract (every backend answers every capability, with a reason
+  when unavailable), session generation + autologin safety rails, compositor IPC against
+  a fake sway serving the real wire protocol, hostctl parsers, the notification daemon
+  over a real private D-Bus (which caught the request_name queueing bug), and the
+  component consent mechanics.
+
+Deferred, honestly: an on-screen keyboard for native apps (needs an MIT
+`zwp_virtual_keyboard_v1` client), PIN-confirmation bluetooth pairing (needs a pairing
+agent), and the AgentOS-rendered lock screen (`ext-session-lock-v1` — the natural first
+piece of an in-house compositor).
+
+## Unreleased — the app-store & IO-gates release (2026-07-24)
+
+The theme: the store discovers the world's MCP ecosystem, and permissions learn *where*
+a call comes from — plus the desktop grows real session controls.
+
+### App Store = MCP discovery
+- **Store → Discover** searches the public MCP registry (registry.modelcontextprotocol.io):
+  thousands of community servers, normalized into one-click installs (npm→`npx`,
+  PyPI→`uvx`, remote→`http` incl. header templates like `Bearer {key}`; results deduped
+  across published versions). Nothing installs silently — every install goes through a
+  "discovered X, build around it?" consent step; servers whose required keys aren't
+  supplied are written **disabled** with placeholders.
+- **Search is as-you-type and instant**: the upstream registry API takes 15-25s per
+  request, so the whole catalog (`version=latest`) is synced into a local index in the
+  background — saved page-by-page to `~/.agentos/mcp_index.json`, refreshed daily — and
+  searches run against it in ~1ms. While the first sync runs, the Discover tab shows
+  results growing ("indexing the registry — N servers so far…") and re-queries on a
+  timer; stale keystroke requests are aborted.
+- Agent tools to match: `discover_mcp_servers(query)` (read-only) and the approval-gated
+  `install_mcp_server(registry_name, env)` — the agent proposes, the user disposes.
+- **MCP Registry** (`mcp_registry` table, `GET /api/mcp/registry`): every installed server —
+  discovered, manual (`add_mcp_server`), or app-package prerequisite — becomes a first-class
+  record: origin, package info, status, doc.
+- **Auto-generated documentation**: each registry entry gets a manual page under
+  `~/.agentos/docs/mcp/<name>.md`, served into the **Docs** app alongside the built-in
+  manual and refreshed with the live tool list when the server connects. 📖 buttons in the
+  MCP app jump straight to it.
+- After a Discover install, the Store offers to **build an AI-native app around the new
+  server** in App Studio, permission manifest pre-scoped to `mcp.use · mcp:<name>/*`.
+
+- **Deep discovery — when the registry isn't enough, the system widens the net**:
+  sparse results auto-trigger a parallel sweep of npm and GitHub (deduped against the
+  registry). npm finds install like any other server (`npm:<package>`, verified against
+  the npm registry at install time); GitHub-only repos get a **🤖 Set up with AI**
+  button — the agent reads the repo, derives the run command and keys, and connects it
+  via `add_mcp_server`, approval-gated end to end. The `discover_mcp_servers` tool does
+  the same widening on its own.
+- **Apps are renameable**: `PUT /api/apps/{id}` (name/icon/description; id — and with
+  it data, versions, grants, widgets — stays put), a ✏️ on every App Studio row, and a
+  right-click menu on user-app desktop icons (Open · Rename · Edit in Studio · Delete).
+- Store-triggered wrapper builds now ask for a **compact single-screen MVP** (local
+  models were streaming multi-hundred-line suites for minutes, which read as hung).
+
+- **Professional builds — a design system every app gets for free**: an OS-matched
+  stylesheet (cards, rows, responsive grids, KPIs, tables, buttons, empty states,
+  spinner) is injected into every app page (top of `<head>`, so an app's own CSS still
+  wins). The App Builder now composes with those classes instead of inventing layout
+  CSS — the thing weak local models are worst at — under hard rules (no absolute/fixed
+  layout, no rotated text, no stretched buttons, labels on every input), and the build
+  linter flags violations into the repair pass.
+- MCP stdio noise fix: servers that print banners/console.table to stdout no longer
+  spam a traceback per line ("Failed to parse JSONRPC message") — the stream
+  self-recovers and that specific noise is filtered.
+
+### Permissions: IO gates (surface scoping)
+- Every turn/tool call now carries its **surface** — `gui`, `tui`, `telegram`, `api`,
+  `task` — wired through the web desktop, TUI, Telegram bridge, scheduler and `/api/tool`.
+- Grants gain a `surfaces` scope (default `*`): a rule permitted on all surfaces flows
+  everywhere; a scoped rule only applies on its gates. Consent that exists only for other
+  surfaces ⇒ the call is **denied with rule `io-gate`** and logged (policy + error entries).
+- Permissions app: ⛩ gate badges on every rule (click to rescope) and an IO-gates picker in
+  the Attach composer; `POST/PUT /api/grants` accept `surfaces`.
+
+### Telegram channels
+- The bridge now receives **channel posts** (`channel_post` updates): add the bot to a
+  group or as a channel admin and the chat registers in the Telegram app — blocked until
+  you permit it there, like every other chat. Telegram is a first-class IO gate.
+
+### Desktop as the DE
+- **Power menu (⏻) in the menu bar**: lock, restart AgentOS, suspend, log out, restart,
+  power off — confirmed in the UI, executed via `loginctl`/`systemctl` (macOS: `pmset`/
+  System Events) through `POST /api/power`. Apps are hard-blocked from it; the agent's
+  shell still cannot shutdown/reboot. First step toward booting straight into AgentOS.
+- **AI-native by default**: the App Builder persona now requires a real `appLLM` feature in
+  every app it ships, and store templates lead by example (Quick Notes gained AI
+  summarize/tidy on the natively selected model).
+
 ## Unreleased — the lifecycle release (2026-07-14)
 
 The theme: from prototype to product. Chat and builds are now *reliable*, the full

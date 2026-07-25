@@ -89,6 +89,17 @@ DEFAULTS = {
     "max_steps": 25,
     "workspace": str(Path.home() / "AgentOS"),
     "port": 8321,
+    # How AgentOS presents itself on this machine. "auto" reads the environment
+    # the session was started in and is almost always right:
+    #   hosted — a window on your existing desktop (GNOME/KDE/macOS/Windows)
+    #   de     — AgentOS *is* the session (our Wayland compositor and settings)
+    #   kiosk  — the older fullscreen X11 session
+    # Pin one to force it for testing; on macOS/Windows it always resolves to
+    # hosted. Installing the AgentOS session never changes this on its own —
+    # you switch by picking a session at the login screen. See agentos/runmode.py.
+    # idle_*: DE-session timers (seconds; 0 disables) — lock the screen, then
+    # power the outputs off. Re-run `agentos install-session` after changing.
+    "desktop": {"mode": "auto", "idle_lock_secs": 600, "idle_screen_off_secs": 900},
     # MCP servers the agent can use. Each entry:
     #   {"transport": "stdio", "command": "npx", "args": "-y @modelcontextprotocol/server-filesystem /tmp",
     #    "env": {"SOME_API_KEY": "..."}, "enabled": true}

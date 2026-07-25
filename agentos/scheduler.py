@@ -55,7 +55,7 @@ class Scheduler:
         model = self.cfg.get("default_model") or ""
         result_text = ""
         try:
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver)
+            agent = Agent(self.cfg, self.toolbox, model, emit, approver, surface="task")
             prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
                       f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
                       f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "

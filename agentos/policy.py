@@ -112,6 +112,23 @@ def _match(pattern: str, value: str) -> bool:
     return fnmatch.fnmatchcase(value, pattern or "*")
 
 
+# The IO gates: every capability call arrives via one of these surfaces. Grants may be
+# scoped to a subset (grants.surfaces csv); '*' means all surfaces (the default).
+SURFACES = ("gui", "tui", "telegram", "api", "task")
+
+
+def surface_allows(grant_surfaces: str, surface: str) -> bool:
+    """Does a grant's surface scope cover the surface this call arrived on?
+    Unscoped grants ('*'/empty) cover everything; an unknown/blank surface only
+    matches unscoped grants (a scoped grant never applies to an unidentified gate)."""
+    gs = (grant_surfaces or "*").strip()
+    if gs in ("", "*"):
+        return True
+    if not surface:
+        return False
+    return surface in {s.strip() for s in gs.split(",") if s.strip()}
+
+
 class PDP:
     """Holds the live grants (cached in memory, invalidated on any write) and decides."""
 
@@ -158,26 +175,38 @@ class PDP:
             if _match(a, action) and _match(r, resource):
                 return Decision("deny", f"{principal.label} may never do this "
                                         "(built-in protection of the OS itself)", rule="builtin-deny")
-        # 3./4. grants — deny wins
+        # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
+        surface = ctx.get("surface", "")
         matched = self._matching(principal, action, resource)
-        for g in matched:
+        gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
+        for g in gated:
             if g.get("effect") == "deny":
                 return Decision("deny", g.get("note") or
                                 f"denied by a grant rule (see the Permissions app)", rule=g["id"])
-        for g in matched:
+        for g in gated:
             if g.get("effect", "allow") == "allow":
                 # persisted consent satisfies the approval requirement
                 return Decision("allow", rule=g["id"])
+        # IO gate: consent exists but is scoped to OTHER surfaces — the call arriving
+        # via this gate is not permitted; enforcement sites log this as an IO error
+        if any(g.get("effect", "allow") == "allow" for g in matched):
+            gate = surface or "unknown"
+            return Decision("deny",
+                            f"IO gate: {action} {resource} is granted, but not for the "
+                            f"'{gate}' surface (see the grant's surfaces in the "
+                            f"Permissions app)", rule="io-gate")
         # 5. defaults by principal kind
         return self._default(principal, action, resource, ctx)
 
     def decide_tool(self, principal: Principal, name: str, args: dict,
-                    risk_level: str, reason: str = "", autonomy: str = "") -> Decision:
-        """The main entry for tool calls: maps the call to (action, resource) and decides."""
+                    risk_level: str, reason: str = "", autonomy: str = "",
+                    surface: str = "") -> Decision:
+        """The main entry for tool calls: maps the call to (action, resource) and decides.
+        `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task)."""
         action, resource = action_of(name, args, mcp=self.mcp)
         return self.decide(principal, action, resource,
                            {"risk": risk_level, "reason": reason, "autonomy": autonomy,
-                            "tool": name, "args": args})
+                            "tool": name, "args": args, "surface": surface})
 
     def _default(self, principal: Principal, action: str, resource: str, ctx: dict) -> Decision:
         risk = ctx.get("risk", "safe")
