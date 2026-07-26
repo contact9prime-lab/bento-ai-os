@@ -1,14 +1,17 @@
 """The agent kernel: plan -> act (tools) -> observe -> respond, with approval gates."""
 
 import asyncio
+import base64
 import contextlib
+import json
 import time
+from pathlib import Path
 from typing import Awaitable, Callable
 
 from . import config as cfgmod
 from . import providers
 from .policy import MAIN, Principal
-from .tools import Toolbox
+from .tools import ALWAYS_ASK, Toolbox
 
 SYSTEM_PROMPT = """You are {name}, the resident agent of AgentOS — an agentic operating system running locally on the user's Linux machine.
 You don't just answer — you *do things*, using your tools: run shell commands, read/write files,
@@ -63,10 +66,132 @@ Guidelines:
 === end soul ===
 {memories}
 
-Current time: {now}"""
+{machine}Current time: {now}"""
 # NOTE: the timestamp deliberately sits at the very END of the system prompt — as the
 # first line it changed every turn and busted the provider's prompt-prefix cache,
 # forcing local models to re-evaluate the entire (large) prompt from scratch each turn.
+# The machine-state line lives down here with it for the same reason: it is volatile.
+
+
+# ---- Machine state for the system prompt ------------------------------------------
+# A one-line live snapshot (focused window, battery, network, …) so the agent knows
+# what it's standing on without a tool call. It must be CHEAP: a short-TTL cache, a
+# hard time budget (slow probes are skipped, keeping the last snapshot), and every
+# probe swallows its own errors. Full detail stays behind the desktop_state tool.
+
+_MSTATE = {"at": 0.0, "text": ""}
+_MSTATE_TTL = 5.0      # seconds a snapshot is reused
+_MSTATE_BUDGET = 0.5   # seconds the gather may take before we give up
+
+
+def _machine_state_gather(toolbox: Toolbox) -> str:
+    from . import host
+    parts: list[str] = []
+    try:
+        w = host.list_windows()
+        if w.get("available") and w["windows"]:
+            line = f"{len(w['windows'])} native windows open"
+            foc = next((x for x in w["windows"] if x.get("focused")), None)
+            if foc:
+                line += f", focused: {foc.get('title', '')} ({foc.get('app', '')})"
+            parts.append(line)
+    except Exception:
+        pass
+    try:
+        ws = host.workspaces()
+        cur = next((x["name"] for x in ws.get("workspaces", []) if x.get("focused")), "")
+        if cur:
+            parts.append(f"workspace {cur}")
+    except Exception:
+        pass
+    try:
+        b = host.get_battery()
+        if b.get("percent") is not None:
+            parts.append(f"battery {b['percent']}%"
+                         + (f" ({b['state']})" if b.get("state") else ""))
+    except Exception:
+        pass
+    try:
+        n = host.get_network()
+        conns = n.get("connections") or []
+        if conns:
+            parts.append("online via " + ", ".join(c["name"] for c in conns[:2]))
+        elif n and n.get("online") is False:
+            parts.append("offline")
+    except Exception:
+        pass
+    try:
+        v = host.get_volume()
+        if v.get("volume") is not None:
+            parts.append(f"volume {v['volume']}%" + (" (muted)" if v.get("muted") else ""))
+    except Exception:
+        pass
+    try:
+        from .hostctl import brightness
+        if (bl := brightness.backlights()):
+            parts.append(f"brightness {bl[0]['percent']}%")
+    except Exception:
+        pass
+    try:
+        if toolbox.notifd is not None:
+            st = toolbox.notifd.state()
+            if st["unread"]:
+                parts.append(f"{st['unread']} unread notifications"
+                             + (" (DND on)" if st["dnd"] else ""))
+            elif st["dnd"]:
+                parts.append("DND on")
+    except Exception:
+        pass
+    if not parts:
+        return ""
+    return ("=== Machine state (live — full detail via desktop_state) ===\n"
+            + " · ".join(parts) + "\n=== end machine state ===\n\n")
+
+
+async def _machine_state(toolbox: Toolbox) -> str:
+    now = time.monotonic()
+    if now - _MSTATE["at"] < _MSTATE_TTL:
+        return _MSTATE["text"]
+    _MSTATE["at"] = now      # claim the slot first: a slow probe must not rerun every turn
+    try:
+        _MSTATE["text"] = await asyncio.wait_for(
+            asyncio.to_thread(_machine_state_gather, toolbox), timeout=_MSTATE_BUDGET)
+    except Exception:
+        pass                 # over budget / broken probe: keep the last snapshot
+    return _MSTATE["text"]
+
+
+# ---- Image tool-results (vision) --------------------------------------------------
+
+def _image_result(output: str) -> tuple[str, str]:
+    """A tool result carrying {"__image__": <path>} splits into (text fallback, path).
+    The text goes into the tool message (what non-vision models see); the image is
+    attached as a user image part — the same shape user-uploaded chat images use, so
+    every provider path (Ollama/OpenAI/Anthropic) already renders it."""
+    if '"__image__"' not in output:
+        return output, ""
+    try:
+        d = json.loads(output)
+        path = d.get("__image__") or ""
+        if path:
+            return d.get("text") or f"image saved to {path}", path
+    except Exception:
+        pass
+    return output, ""
+
+
+def _image_data_url(path: str, limit: int = 8_000_000) -> str:
+    """File → data URL for the provider image parts; '' when unreadable or oversized."""
+    try:
+        p = Path(path)
+        if not p.is_file() or p.stat().st_size > limit:
+            return ""
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "webp": "image/webp", "gif": "image/gif"}.get(
+                    p.suffix.lstrip(".").lower(), "image/png")
+        return f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()
+    except Exception:
+        return ""
 
 # Emitted event types (mirrored to the UI):
 #   text_delta, thinking_delta, tool_start, tool_end, approval_request (via approver), turn_end, error
@@ -251,6 +376,7 @@ class Agent:
             sandbox=sb_text,
             soul=cfgmod.load_soul()[:4000],
             memories=mem_text,
+            machine=await _machine_state(self.toolbox),
         )
         return (base + "\n\n" + self.extra_system) if self.extra_system else base
 
@@ -372,6 +498,10 @@ class Agent:
                         dec = Decision("ask", reason)
                     else:
                         dec = Decision("allow")
+                if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
+                    # power/session actions confirm EVERY time — full autonomy included;
+                    # only an explicit user-written grant (rule != default) skips the ask
+                    dec.effect = "ask"
 
                 approved = None
                 if dec.effect == "deny":
@@ -407,16 +537,25 @@ class Agent:
                         {"principal": self.principal.label, "surface": self.surface,
                          "rule": "io-gate"})
 
+                output, image_path = _image_result(output)
                 ok = not output.startswith(("[error]", "[denied]", "[exit code"))
                 self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
                                                       "principal": self.principal.label,
                                                       "decision": dec.rule})
                 await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
-                                 "output": output[:4000], "ok": ok})
+                                 "output": output[:4000], "ok": ok,
+                                 **({"image": image_path} if image_path else {})})
                 steps.append({"type": "tool", "name": name, "args": args,
                               "output": output[:4000], "ok": ok})
                 messages.append({"role": "tool", "tool_call_id": call_id,
                                  "name": name, "content": output})
+                if image_path and (img := _image_data_url(image_path)):
+                    # vision plumbing: the image rides a user message (providers turn
+                    # `images` into real image parts); text-only models still have the
+                    # saved path in the tool result above
+                    messages.append({"role": "user",
+                                     "content": f"(the image from {name}: {image_path})",
+                                     "images": [img]})
         else:
             note = "\n\n*(stopped: reached the max step limit)*"
             final_text += note

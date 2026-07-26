@@ -1,0 +1,34 @@
+/* ================= start menu (launcher) ================= */
+#startmenu{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tbh) + 16px);width:min(680px,92vw);z-index:9500;display:none;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline);border-radius:var(--r-xl);
+  box-shadow:var(--el-5);overflow:hidden}
+#startmenu.show{display:block;animation:smpop .14s ease-out}
+@keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}}
+#smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
+#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#smhead b{font-size:var(--fs-base)}
+#smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
+#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;max-height:52vh;overflow-y:auto}
+.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:var(--r-lg);text-align:center}
+.smapp:hover{background:rgba(255,255,255,.07)}
+.smapp .aicon{width:48px;height:48px}
+.smapp .n{font-size:var(--fs-xs);font-weight:500;color:var(--txt);line-height:1.2;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#smsearch{padding:2px 14px 6px}
+#smsearch input{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--hairline);border-radius:var(--r-md);padding:8px 12px;font-size:var(--fs-sm);color:var(--txt)}
+:root[data-theme=light] #smsearch input{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.1)}
+.smsect{grid-column:1/-1;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--dim2);padding:10px 6px 3px}
+.smapp img.na{width:44px;height:44px;object-fit:contain;margin:2px 0}
+.smapp .nafallback{width:44px;height:44px;border-radius:var(--r-md);background:linear-gradient(145deg,var(--bg4),var(--bg2));border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:var(--fs-xl);font-weight:800;color:var(--acc);text-transform:uppercase;margin:2px 0}
+#smfoot{border-top:1px solid var(--hairline);padding:9px 18px;display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--dim)}
+:root[data-theme=light] .smapp:hover{background:rgba(0,0,0,.06)}
+:root[data-theme=light] #smfoot{border-top-color:rgba(0,0,0,.08)}
+
+/* ================= context menu ================= */
+#ctxmenu{position:fixed;z-index:9600;display:none;min-width:190px;background:var(--glass);backdrop-filter:blur(18px);
+  border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--el-4);padding:5px}
+#ctxmenu.show{display:block}
+#ctxmenu button{display:flex;gap:9px;width:100%;padding:7px 10px;border-radius:var(--r-sm);font-size:var(--fs-sm);text-align:left;color:var(--txt)}
+#ctxmenu button:hover{background:var(--bg4)}
+#ctxmenu hr{border:none;border-top:1px solid var(--line);margin:4px 6px}
+

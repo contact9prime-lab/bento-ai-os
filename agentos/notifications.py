@@ -75,6 +75,9 @@ class NotificationDaemon:
         self.dnd = False
         self.available = False
         self.reason = "not started"
+        # proactivity hook: every arriving notification is offered here (the
+        # server wires this to Scheduler.offer_notification). Sync, must not raise.
+        self.on_notification = None
 
     async def start(self) -> bool:
         try:
@@ -129,6 +132,13 @@ class NotificationDaemon:
                 self.items.appendleft(item)
         else:
             self.items.appendleft(item)
+        # offer it to the trigger engine — this is how a notification can start
+        # an OS-initiated turn (rate-limited by each trigger's cooldown)
+        if self.on_notification:
+            try:
+                self.on_notification(item)
+            except Exception:
+                pass
         # DND: keep it in the center, don't pop a toast — critical cuts through.
         if not self.dnd or item["urgency"] >= 2:
             self._emit({"type": "notification", **item})
@@ -152,6 +162,12 @@ class NotificationDaemon:
     def mark_read(self):
         for n in self.items:
             n["read"] = True
+
+    def recent(self, limit: int = 20, unread_only: bool = False) -> list[dict]:
+        """Newest-first slice of the center — the queryable surface behind the
+        agent's list_notifications tool (app, summary, body, time, read)."""
+        items = [n for n in self.items if not (unread_only and n["read"])]
+        return items[:max(1, int(limit))]
 
     def state(self) -> dict:
         return {"available": self.available, "reason": self.reason, "dnd": self.dnd,

@@ -1,0 +1,248 @@
+/* ================= window manager ================= */
+/* WM.wins is keyed by instance key. The FIRST window of an app uses the bare app id as its
+   key (so every existing WM.wins.get('<app>') caller keeps working); additional instances of
+   multi-instance apps (APPS[id].multi) get '<app>#n'. w.id stays the app id everywhere. */
+const WM={wins:new Map(), z:100, cascade:0, seq:0};
+function winsOf(appId){const r=[];WM.wins.forEach(w=>{if(w.id===appId)r.push(w)});return r}
+
+function openApp(id,opts){
+  opts=opts||{};
+  const app=APPS[id];if(!app)return null;
+  if(!(app.multi&&opts.fresh)){
+    const w=WM.wins.get(id)||winsOf(id)[0];
+    if(w){ if(w.desk!==curDesk){w.desk=curDesk;applyDeskVisibility()} if(w.min)restoreWin(w); focusWin(w); return w; }
+  }
+  dockBounce(id);
+  return createWin(app);
+}
+function openAppNew(id){return openApp(id,{fresh:true})}
+function createWin(app){
+  const desk=$('#desktop'), dw=desk.clientWidth, dh=desk.clientHeight;
+  const el=document.createElement('div'); el.className='win';
+  const width=Math.min(app.w,dw-30), height=Math.min(app.h,dh-30);
+  const off=(WM.cascade++%6)*26;
+  el.style.width=width+'px'; el.style.height=height+'px';
+  el.style.left=Math.max(8,Math.min((dw-width)/2+off,dw-width-8))+'px';
+  el.style.top=Math.max(8,Math.min((dh-height)/2-40+off,dh-height-8))+'px';
+  el.innerHTML=`<div class="ttl">
+    <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
+    <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
+    <span></span></div>
+    <div class="wbody"></div>
+    ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
+  desk.appendChild(el);
+
+  const tb=document.createElement('button'); tb.className='tbwin';
+  tb.dataset.app=app.id;
+  if(DOCK.includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
+  tb.dataset.tip=app.title;
+  tb.innerHTML=appIcon(app.id,46);
+  $('#tbwins').appendChild(tb);
+
+  const key=WM.wins.has(app.id)?app.id+'#'+(++WM.seq):app.id;
+  const w={id:app.id,key,app,el,tb,min:false,max:false,prev:null,snap:null,desk:curDesk};
+  WM.wins.set(key,w);
+
+  tb.onclick=()=>{ if(w.min){restoreWin(w);focusWin(w)} else if(el.classList.contains('active')) minimizeWin(w); else focusWin(w); };
+  el.addEventListener('pointerdown',()=>focusWin(w));
+  el.querySelector('.mn').onclick=e=>{e.stopPropagation();minimizeWin(w)};
+  el.querySelector('.mx').onclick=e=>{e.stopPropagation();toggleMax(w)};
+  el.querySelector('.cls').onclick=e=>{e.stopPropagation();closeWin(w)};
+  const ttl=el.querySelector('.ttl');
+  ttl.ondblclick=e=>{if(!e.target.closest('button'))toggleMax(w)};
+  dragify(w,ttl);
+  resizify(w);
+
+  app.render(el.querySelector('.wbody'),w);
+  setMenubarApp(app.title);
+  focusWin(w);
+  zoomWin(el,app.id,1);
+  return w;
+}
+function focusWin(w){
+  if(w.min)return;
+  w.el.style.zIndex=++WM.z;
+  if(WM.z>9e5){ // renormalize so z never grows unbounded across a long session
+    const order=[...WM.wins.values()].sort((a,b)=>(+a.el.style.zIndex||0)-(+b.el.style.zIndex||0));
+    WM.z=100+order.length; order.forEach((o,i)=>o.el.style.zIndex=100+i);
+    w.el.style.zIndex=WM.z=100+order.length+1;
+  }
+  WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
+  setMenubarApp(w.app.title);
+  updateDockHide();
+  if(typeof buildDock==='function')buildDock();
+}
+/* the dock auto-hides while a maximized window is focused; a bottom-edge peek brings it back */
+function updateDockHide(){
+  let maxed=false;WM.wins.forEach(o=>{if(o.el.classList.contains('active')&&o.max&&!o.min)maxed=true});
+  document.body.classList.toggle('dock-hide',maxed);
+  if(!maxed)document.body.classList.remove('dock-peek');
+}
+document.addEventListener('pointermove',e=>{
+  if(!document.body.classList.contains('dock-hide'))return;
+  if(e.clientY>innerHeight-6)document.body.classList.add('dock-peek');
+  else if(document.body.classList.contains('dock-peek')&&e.clientY<innerHeight-110)document.body.classList.remove('dock-peek');
+});
+function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||''}
+function minimizeWin(w){
+  w.min=true;w.tb.classList.add('mini');w.tb.classList.remove('on');
+  zoomWin(w.el,w.id,-1).then(()=>{if(w.min)w.el.style.display='none'});
+  // hand focus to the topmost remaining window
+  let top=null;WM.wins.forEach(o=>{if(!o.min&&o!==w&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof buildDock==='function')buildDock()}
+}
+function restoreWin(w){
+  w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
+  zoomWin(w.el,w.id,1);
+  if(typeof buildDock==='function')buildDock();
+}
+function toggleMax(w){
+  flipWin(w.el,()=>{
+    if(w.max){w.el.classList.remove('maxed');w.max=false;
+      if(w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;w.el.style.width=w.prev.w;w.el.style.height=w.prev.h}}
+    else{w.prev={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+      w.el.classList.add('maxed');w.max=true}
+  });
+  focusWin(w);
+  updateDockHide();
+}
+function closeWin(w){
+  if(w.app.onClose&&w.app.onClose(w)===false)return;
+  WM.wins.delete(w.key);w.tb.remove();
+  zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
+  let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide()}
+  if(typeof buildDock==='function')buildDock();
+}
+
+/* ---- drag with edge snapping: left/right halves, corners quarters, top maximizes ---- */
+function snapZone(x,y,dw,dh){
+  const c=140;
+  if(x<8&&y<c)return {l:0,t:0,w:dw/2,h:dh/2};
+  if(x<8&&y>dh-c)return {l:0,t:dh/2,w:dw/2,h:dh/2};
+  if(x>dw-8&&y<c)return {l:dw/2,t:0,w:dw/2,h:dh/2};
+  if(x>dw-8&&y>dh-c)return {l:dw/2,t:dh/2,w:dw/2,h:dh/2};
+  if(x<8)return {l:0,t:0,w:dw/2,h:dh};
+  if(x>dw-8)return {l:dw/2,t:0,w:dw/2,h:dh};
+  if(y<4)return {l:0,t:0,w:dw,h:dh,max:true};
+  return null;
+}
+function snapGhost(z){
+  let g=$('#snapghost');
+  if(!z){if(g)g.classList.remove('on');return}
+  if(!g){g=document.createElement('div');g.id='snapghost';$('#desktop').appendChild(g)}
+  g.style.left=z.l+'px';g.style.top=z.t+'px';g.style.width=z.w+'px';g.style.height=z.h+'px';
+  g.classList.add('on');
+}
+function applySnap(w,z){
+  if(z.max){toggleMax(w);return}
+  if(!w.snap)w.snap={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+  flipWin(w.el,()=>{w.el.style.left=z.l+'px';w.el.style.top=z.t+'px';w.el.style.width=z.w+'px';w.el.style.height=z.h+'px'});
+}
+function dragify(w,handle){
+  handle.addEventListener('pointerdown',e=>{
+    if(e.target.closest('button'))return;
+    if(w.max)return;
+    const el=w.el, sx=e.clientX, sy=e.clientY, ol=el.offsetLeft, ot=el.offsetTop;
+    const wasSnapped=!!w.snap;
+    const desk=$('#desktop');
+    let moved=false, zone=null;
+    handle.setPointerCapture(e.pointerId);
+    const move=ev=>{
+      let dx=ev.clientX-sx, dy=ev.clientY-sy;
+      if(!moved&&Math.abs(dx)+Math.abs(dy)<3)return;
+      if(!moved){moved=true;el.classList.add('dragging')}
+      let l=ol+dx, t=ot+dy;
+      // dragging a snapped window away releases it back to its remembered size
+      if(wasSnapped&&w.snap&&(Math.abs(dx)>40||Math.abs(dy)>40)){
+        const pw=parseInt(w.snap.w),ph=parseInt(w.snap.h);
+        el.style.width=w.snap.w;el.style.height=w.snap.h;w.snap=null;
+        l=ev.clientX-pw/2; t=ev.clientY-12;
+      }
+      l=Math.max(-el.offsetWidth+90,Math.min(l,desk.clientWidth-90));
+      t=Math.max(0,Math.min(t,desk.clientHeight-40));
+      el.style.left=l+'px';el.style.top=t+'px';
+      zone=snapZone(ev.clientX,ev.clientY-(desk.getBoundingClientRect().top||0),desk.clientWidth,desk.clientHeight);
+      snapGhost(zone);
+    };
+    const up=()=>{
+      handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
+      el.classList.remove('dragging');snapGhost(null);
+      if(zone&&moved)applySnap(w,zone);
+    };
+    handle.addEventListener('pointermove',move);
+    handle.addEventListener('pointerup',up);
+  });
+}
+/* ---- 8-way resize (replaces the browser's CSS resize grip) ---- */
+function resizify(w){
+  const MIN_W=320, MIN_H=180;
+  w.el.querySelectorAll('.rz').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{
+      if(w.max)return;
+      e.stopPropagation();e.preventDefault();
+      focusWin(w);
+      const d=h.dataset.d, el=w.el, desk=$('#desktop');
+      const sx=e.clientX, sy=e.clientY;
+      const r={l:el.offsetLeft,t:el.offsetTop,w:el.offsetWidth,h:el.offsetHeight};
+      h.setPointerCapture(e.pointerId);
+      el.classList.add('dragging');
+      const move=ev=>{
+        const dx=ev.clientX-sx, dy=ev.clientY-sy;
+        let {l,t,w:nw,h:nh}=r;
+        if(d.includes('e'))nw=r.w+dx;
+        if(d.includes('s'))nh=r.h+dy;
+        if(d.includes('w')){nw=r.w-dx;l=r.l+dx}
+        if(d.includes('n')){nh=r.h-dy;t=r.t+dy}
+        if(nw<MIN_W){if(d.includes('w'))l-=(MIN_W-nw);nw=MIN_W}
+        if(nh<MIN_H){if(d.includes('n'))t-=(MIN_H-nh);nh=MIN_H}
+        nw=Math.min(nw,desk.clientWidth); nh=Math.min(nh,desk.clientHeight);
+        el.style.left=l+'px';el.style.top=t+'px';el.style.width=nw+'px';el.style.height=nh+'px';
+      };
+      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);el.classList.remove('dragging');w.snap=null};
+      h.addEventListener('pointermove',move);
+      h.addEventListener('pointerup',up);
+    });
+  });
+}
+function refreshApp(id){winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
+
+/* ===== shared panel shell: header + search + actions + body ===== */
+const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
+const SVG_EMPTY='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>';
+function panelShell(body,o){
+  o=o||{};
+  body.innerHTML=`<div class="pshell">
+    <div class="phead">
+      <span class="pt">${o.title||''}</span>
+      ${o.sub?`<span class="ps">${o.sub}</span>`:''}
+      <span class="sp"></span>
+      ${o.search?`<span class="psearch">${SVG_SEARCH}<input id="${o.search.id}" placeholder="${esc(o.search.placeholder||'Search…')}" autocomplete="off"></span>`:''}
+      ${o.actions||''}
+    </div>
+    <div class="pbody${o.flush?' flush':''}"></div>
+  </div>`;
+  const pb=body.querySelector('.pbody');
+  if(o.search){
+    const inp=body.querySelector('#'+o.search.id);
+    let t;inp.oninput=()=>{clearTimeout(t);t=setTimeout(()=>o.search.onquery?o.search.onquery(inp.value):listFilter(pb,inp.value),120)};
+  }
+  return pb;
+}
+/* generic client-side filter: hides any [data-f] row not matching q; hides [data-fgroup] sections left empty */
+function listFilter(scope,q){
+  q=(q||'').toLowerCase().trim();
+  scope.querySelectorAll('[data-f]').forEach(el=>{
+    el.style.display=!q||(el.getAttribute('data-f')||'').toLowerCase().includes(q)?'':'none'});
+  scope.querySelectorAll('[data-fgroup]').forEach(g=>{
+    const any=[...g.querySelectorAll('[data-f]')].some(el=>el.style.display!=='none');
+    g.style.display=any?'':'none'});
+}
+function emptyBox(title,hint,action){
+  return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}</div>`;
+}
+function segTabs(id,labels,active,fn){
+  return `<span class="seg" id="${id}">${labels.map((l,i)=>
+    `<button class="${i===active?'on':''}" onclick="${fn}(${i})">${esc(l)}</button>`).join('')}</span>`;
+}
+

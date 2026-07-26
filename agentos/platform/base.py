@@ -168,6 +168,9 @@ class Platform:
     def set_window_floating(self, win_id: str, floating: bool) -> tuple[bool, str]:
         return False, "Window arrangement isn't available here."
 
+    def cycle_focus(self, direction: str = "next") -> tuple[bool, str]:
+        return False, "Window cycling isn't available here."
+
     # --- workspaces & displays (compositor-backed; DE mode only) ------------
 
     def workspaces(self) -> dict:

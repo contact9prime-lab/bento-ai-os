@@ -1,6 +1,99 @@
 # Changelog
 
-## Unreleased — the boot-to-AgentOS release (2026-07-25)
+## Unreleased — the living-desktop release (2026-07-26)
+
+The theme: **truly agentic, and it moves like a Mac.** Two gaps closed at once —
+the desktop finally behaves like a physical place (motion, materials, real window
+management), and the agent finally has hands on the whole machine (every UI
+capability is now also a PDP-gated tool, the launcher routes language to actions,
+and the OS can start turns of its own).
+
+### The experience (Mac-class motion & materials)
+- **UI modularized**: `ui/index.html` is now assembled from `ui/src/` (14 CSS + 32 JS
+  modules) by a zero-dependency build step (`python -m agentos.ui.build`); the shipped
+  artifact is unchanged in kind — one file, served as before. A test keeps it fresh.
+- **Design tokens**: type ramp, spacing, radii, a 5-step elevation ladder, motion
+  durations/curves, mode-flipping hairlines/scrims — and the old 27 ad-hoc font sizes /
+  17 radii / 43 shadows normalized onto them. Inter (OFL) ships as the UI typeface.
+  `prefers-reduced-motion` honored globally; `:focus-visible` ring; light mode
+  systematized.
+- **Windows are things now**: they zoom out of their dock icon on open, back into it on
+  minimize/close, FLIP-animate between maximize states, lift while dragged, and snap to
+  edges (halves/quarters, top = maximize) with a live preview ghost. 8-way resize handles
+  replace the browser's corner grip. Files & Terminal are multi-instance ("New window"
+  in the dock menu). z-order renormalizes; the switcher stays macOS-style (icons).
+- **The dock magnifies** — continuous neighbor falloff under the pointer — and bounces
+  on launch. It auto-hides under a focused maximized window (bottom-edge peek restores).
+- **Exposé** (F3 / Ctrl+↑): every window on the desktop, live, FLIP-scaled into a grid.
+  Virtual desktops slide instead of teleporting; themes crossfade via View Transitions.
+- **Every popover animates from its anchor** (context menus, power menu, notification
+  center, Control Center) and **`window.confirm`/`alert`/`prompt` are gone** — replaced
+  by AgentOS sheets (`osConfirm`/`osAlert`/`osPrompt`) everywhere, including power
+  actions and factory reset. Toasts stack properly. Quick Settings became a real
+  **Control Center popover** on the tray (the app window remains available).
+- The menu bar shows the **focused app's name**; power menu drops emoji for clean labels.
+
+### Boot & identity continuity
+- **The 30-second void is dead**: the session launches the renderer immediately on a
+  local branded splash (`~/.agentos/boot.html`) that probes the server with an image
+  beacon and hands off the moment it answers — with live status text and a named
+  failure state after 90s. The in-page splash now dismisses on actual readiness
+  (config + platform + setup loaded), not a 900ms timer.
+- **Wallpaper continuity**: changing the wallpaper now updates the compositor
+  background *and* the swaylock image live (`session.apply_wallpaper_live`) — no more
+  drift until the next `install-session`.
+- **swaylock is branded** (teal ring, wallpaper fill, correct error colors);
+  the cursor theme is pinned (compositor + XWayland); an optional **AgentOS plymouth
+  boot theme** ships as a consent-gated component (`plymouth-theme`, script install).
+
+### Agent hands (the parity law)
+- Every capability the UI has is now a tool: `desktop_state`, `control_desktop`
+  (open/close/focus AgentOS apps, switch desktops, apply themes — via a new
+  server↔shell command channel), `manage_window`, `list_themes`, `wifi`, `bluetooth`,
+  `set_brightness`, `audio`, `power_profile`, `lock_screen`, `power_action`
+  (**always asks**, even at full autonomy), `take_screenshot` (the image goes to the
+  model — the agent can *see* the screen), `list_notifications`, `search_files`,
+  `create_trigger`. 75 tools total, all PDP-gated.
+- The system prompt now carries a live **machine-state line** (focused window, battery,
+  network, volume, unread notifications) — cached, time-boxed, prompt-cache-friendly.
+
+### Language as the primary input
+- **Palette v2**: a local intent grammar turns "open terminal", "volume 30",
+  "brightness 60", "make it dark", "theme nord", "lock", "screenshot", "wallpaper of a
+  quiet harbor", "desktop 2", "dnd off", arithmetic — into direct actions with inline
+  rows (still one keystroke from "Ask {agent}"). Misses fall through to `POST
+  /api/intent` (model-classified, 6s cap) which appends a suggested action.
+- **Semantic search everywhere it counts**: a lazy mtime-aware embedding index over the
+  workspace + docs (`agentos/search.py`, Ollama embeddings, substring fallback) behind
+  `GET /api/search`, the `search_files` tool, and a meaning-search box in Files.
+
+### The OS initiates (proactivity)
+- **Event triggers** join the scheduler: `notification` (substring/regex),
+  `file_change` (mtime polling), `login`, `idle` — each with a cooldown, created by
+  the user or the agent (`create_trigger`), running headless turns tagged by origin.
+- **Notification intelligence**: AgentOS *is* the notification daemon in de mode, and
+  now the agent reads what it hears — a gated idle-time triage pass scores importance,
+  groups, and writes a **"For you" digest** pinned atop the notification center.
+- **"While you were away"**: a briefing composed on login/unlock when there's material,
+  delivered as a desktop card. The knowledge loop may float **at most one suggestion**
+  (24h quiet after dismissal), also as a card.
+- **The metric exists now**: `/api/lifecycle` reports `initiative` — % of turns
+  initiated by the OS over 7 days.
+
+### First-run & apps are agentic
+- **The wizard is a conversation**: two minimal screens (name, brain), then the *named
+  agent takes over* — streaming in-character lines (`POST /api/setup/say`, canned
+  offline fallback) with inline choice chips for autonomy, autostart (replaced in de
+  mode by "this is your desktop now"), wallpaper presets and voice. Fully offline-safe.
+- **appLLM v2**: user apps get `appLLM.stream`, `appChat(.stream)`, `appAgent` (a
+  5-step tool loop under the app's own principal), and `appContext()` — all app-token
+  authed and PDP-enforced. The builder persona teaches the new floor: stream anything
+  user-visible; Quick Notes reference app updated to match.
+
+Tests: 221 passing (build freshness, tool parity, proactivity gates, semantic search,
+setup/appLLM v2, plus the whole existing suite).
+
+## Boot-to-AgentOS release (2026-07-25)
 
 The theme: goodbye GNOME. AgentOS installs as a real **Wayland login session** — its own
 compositor engine, window management, settings, notifications and lock screen — while

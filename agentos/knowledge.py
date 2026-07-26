@@ -80,14 +80,30 @@ def _mem_cfg(cfg: dict) -> dict:
 # until the machine is idle (or a generous timeout passes).
 
 _active_turns = {"n": 0}
+# When did the user last talk to us? Idle triggers and the "while you were away"
+# briefing read this. `ts` is 0.0 until a turn happens in this process; `boot`
+# keeps idle math sane on a fresh start (idle counts from server start, not 1970).
+_last_turn = {"ts": 0.0, "boot": time.time()}
 
 
 def turn_started():
     _active_turns["n"] += 1
+    _last_turn["ts"] = time.time()
 
 
 def turn_ended():
     _active_turns["n"] = max(0, _active_turns["n"] - 1)
+    _last_turn["ts"] = time.time()
+
+
+def last_turn_ts() -> float:
+    """Timestamp idle periods are measured from (last turn, else process start)."""
+    return _last_turn["ts"] or _last_turn["boot"]
+
+
+def last_turn_seen() -> float:
+    """Last turn in THIS process; 0.0 if none yet (the briefing falls back to the DB)."""
+    return _last_turn["ts"]
 
 
 def _is_local(model_id: str) -> bool:
@@ -379,9 +395,22 @@ async def run_maintenance(cfg: dict, store, broadcast=None, force: bool = False)
     except Exception as e:
         store.log("error", f"session rollup failed: {type(e).__name__}: {e}")
     try:
+        # after the rollup, the attention engine may float at most ONE actionable
+        # suggestion ("you asked about X three times — want a scheduled digest?")
+        from . import attention
+        await attention.maybe_suggest(cfg, store, broadcast)
+    except Exception as e:
+        store.log("error", f"suggestion pass failed: {type(e).__name__}: {e}")
+    try:
         await kg_dedup(cfg, store, broadcast, force=force)
     except Exception as e:
         store.log("error", f"kg dedup failed: {type(e).__name__}: {e}")
+    try:
+        # keep the file search index warm while the machine is idle
+        from . import search as searchmod
+        await searchmod.maintenance_tick(cfg, store)
+    except Exception as e:
+        store.log("error", f"search index refresh failed: {type(e).__name__}: {e}")
 
 
 async def maintenance_loop(cfg: dict, store, broadcast=None, interval: int = 1800):

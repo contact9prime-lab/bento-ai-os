@@ -1,0 +1,40 @@
+// AgentOS plymouth theme (script module).
+// Mirrors the session splash: #0b0d10 field, the AgentOS mark, a shimmer bar.
+
+Window.SetBackgroundTopColor(0.043, 0.051, 0.063);      // #0b0d10
+Window.SetBackgroundBottomColor(0.043, 0.051, 0.063);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.x = Window.GetWidth() / 2 - logo.image.GetWidth() / 2;
+logo.y = Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 40;
+logo.sprite.SetPosition(logo.x, logo.y, 100);
+
+bar.image = Image("bar.png");
+bar.sprite = Sprite(bar.image);
+bar.x = Window.GetWidth() / 2 - bar.image.GetWidth() / 2;
+bar.y = logo.y + logo.image.GetHeight() + 46;
+bar.sprite.SetPosition(bar.x, bar.y, 101);
+
+glow.image = Image("glow.png");
+glow.sprite = Sprite(glow.image);
+glow.sprite.SetPosition(bar.x, bar.y, 102);
+
+progress = 0;
+fun refresh_callback() {
+  progress++;
+  span = bar.image.GetWidth() - glow.image.GetWidth();
+  t = Math.Sin(progress / 25) * 0.5 + 0.5;              // ease back and forth
+  glow.sprite.SetX(bar.x + span * t);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+// Show boot messages (fsck prompts etc.) quietly under the bar if they come.
+message_sprite = Sprite();
+message_sprite.SetPosition(Window.GetWidth() / 2, bar.y + 30, 103);
+fun message_callback(text) {
+  message.image = Image.Text(text, 0.55, 0.59, 0.65, 1, "Sans 10");
+  message_sprite.SetImage(message.image);
+  message_sprite.SetX(Window.GetWidth() / 2 - message.image.GetWidth() / 2);
+}
+Plymouth.SetMessageFunction(message_callback);

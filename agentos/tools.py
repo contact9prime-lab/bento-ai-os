@@ -48,6 +48,17 @@ BLOCKED_PATTERNS = [
 DANGEROUS_META = re.compile(r"[><`$\n]")  # redirects, substitution, multiline
 CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
 
+# Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
+# custom themes from the Themes store merge in at call time (list_themes).
+BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
+                  "aero", "field", "shell", "jarvis"]
+
+# Tools that confirm with the user EVERY time — even for the main agent at full
+# autonomy. The PDP's default-allow is downgraded to ask at the enforcement sites
+# (agent loop, /api/tool); only an explicit user-written grant (rule != "default")
+# skips the prompt, because that grant IS persisted consent.
+ALWAYS_ASK = {"power_action"}
+
 
 def classify_command(command: str) -> str:
     """Return 'safe', 'risky', or 'blocked' for a shell command.
@@ -193,6 +204,8 @@ class Toolbox:
         self.broadcast = None  # UI event broadcaster, wired up in server startup
         self.fabric = None     # ControlPlane, wired up in server startup
         self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
+        self.shell = None      # server.shell_command — reaches the browser shell, wired up in server startup
+        self.notifd = None     # NotificationDaemon (DE mode only), wired up in server startup
 
     def schemas(self) -> list[dict]:
         """Built-in tool schemas plus tools from connected MCP servers."""
@@ -352,6 +365,19 @@ class Toolbox:
         if self.broadcast:
             await self.broadcast({"type": "knowledge_update"})
         return f"remembered ({scope} memory, id {mid})"
+
+    async def search_files(self, query: str, limit: int = 8) -> str:
+        """Semantic search over the user's workspace files and generated docs."""
+        from . import search as searchmod
+        try:
+            res = await searchmod.query(self.cfg, self.store, query, limit=int(limit))
+        except Exception as e:
+            return f"[error] search failed: {e}"
+        if not res:
+            return ("no matches — the index refreshes lazily, so brand-new files may "
+                    "take a query or two to appear")
+        return "\n".join(f"{r['path']}  (score {r['score']}, {r['kind']})\n  …{r['snippet'][:160]}"
+                         for r in res)
 
     async def recall(self, query: str = "") -> str:
         mems = self.store.search_memories(query, limit=15)
@@ -1121,6 +1147,15 @@ class Toolbox:
             return "[error] scheduler not running"
         return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time, delay_minutes)
 
+    async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
+                             cooldown_secs: int = 300, minutes: float = 30) -> str:
+        if self.scheduler is None:
+            return "[error] scheduler not running"
+        kw = {"match": match_or_path} if kind == "notification" else \
+             {"path": match_or_path} if kind == "file_change" else {}
+        return self.scheduler.create_trigger(kind, prompt, minutes=minutes,
+                                             cooldown_secs=cooldown_secs, **kw)
+
     # -- registry ------------------------------------------------------------
 
     def _policy(self, name: str, args: dict) -> str | None:
@@ -1210,7 +1245,7 @@ class Toolbox:
             return "risky", f"Runs the test suite (arbitrary code) in {rp}."
         if name == "open_app":
             return "risky", "Launches an application or URL on your desktop."
-        if name == "schedule_task":
+        if name in ("schedule_task", "create_trigger"):
             return "risky", "Creates a recurring background task."
         if name == "update_soul":
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
@@ -1241,6 +1276,32 @@ class Toolbox:
             return "safe", ""
         if name == "list_windows":
             return "safe", ""
+        if name in ("desktop_state", "list_themes", "list_notifications",
+                    "set_brightness", "audio", "power_profile"):
+            return "safe", ""
+        if name == "control_desktop":
+            if args.get("action") == "close_app":
+                return "risky", "Closes an app on the desktop (unsaved state may be lost)."
+            return "safe", ""
+        if name == "manage_window":
+            if args.get("action") == "focus":
+                return "safe", ""
+            return "risky", f"Rearranges or closes a native window ({args.get('action', '?')})."
+        if name == "wifi":
+            if args.get("action") in ("connect", "forget", "enable", "disable"):
+                return "risky", "Changes the machine's wifi connections."
+            return "safe", ""
+        if name == "bluetooth":
+            if args.get("action") in ("pair", "connect", "disconnect", "forget"):
+                return "risky", "Changes the machine's bluetooth pairings."
+            return "safe", ""
+        if name == "lock_screen":
+            return "risky", "Locks the screen (interrupts whatever the user is doing)."
+        if name == "power_action":
+            return "risky", (f"Session power control ({args.get('action', '?')}) — "
+                             "confirmed with the user every time.")
+        if name == "take_screenshot":
+            return "risky", "Captures the screen (it may show sensitive content)."
         if name.startswith("mcp_"):
             return "risky", "Calls a tool on an external MCP server."
         return "safe", ""
@@ -1613,6 +1674,356 @@ class Toolbox:
         from . import hermes
         return await hermes.send(target, message)
 
+    # ---- Desktop parity (the parity law) ------------------------------------
+    # Every capability the desktop UI has is also an agent tool through the same
+    # PDP gate. Each degrades gracefully: on machines without the capability
+    # (hosted mode, macOS, no D-Bus) the tool returns a sentence, never raises.
+    # Shell actions go through server.shell_command (the browser UI answers);
+    # native windows through the host facade; radios/power through hostctl.
+
+    _NO_SHELL = ("[error] not supported on this platform: no desktop shell channel — "
+                 "the browser UI is the shell and it isn't connected")
+
+    async def desktop_state(self) -> str:
+        """One live snapshot of the desktop: shell apps, native windows + focus,
+        workspace, battery, power profile, network, volume, brightness, and unread
+        notifications. Every section is best-effort; unavailable ones are omitted."""
+        from . import host
+        out: dict = {}
+        if self.shell is not None:
+            try:
+                ok, data = await self.shell("list_open_apps", {}, timeout=3)
+                if ok:
+                    out["shell_apps"] = data
+            except Exception:
+                pass
+        try:
+            w = host.list_windows()
+            if w.get("available"):
+                out["windows"] = [{k: x.get(k) for k in
+                                   ("id", "app", "title", "workspace", "focused") if k in x}
+                                  for x in w["windows"]]
+                foc = next((x for x in w["windows"] if x.get("focused")), None)
+                if foc:
+                    out["focused"] = f"{foc.get('title', '')} ({foc.get('app', '')})"
+        except Exception:
+            pass
+        try:
+            ws = host.workspaces()
+            if ws.get("available"):
+                out["workspace"] = next(
+                    (x["name"] for x in ws["workspaces"] if x.get("focused")), "")
+        except Exception:
+            pass
+        try:
+            if (bat := host.get_battery()):
+                out["battery"] = bat
+        except Exception:
+            pass
+        try:
+            from .hostctl import upower
+            out["power_profile"] = (await upower.get_profile())["active"]
+        except Exception:
+            pass
+        try:
+            if (net := host.get_network()):
+                out["network"] = net
+        except Exception:
+            pass
+        try:
+            out["audio"] = host.get_volume()
+        except Exception:
+            pass
+        try:
+            from .hostctl import brightness
+            if (bl := brightness.backlights()):
+                out["brightness"] = {d["name"]: d["percent"] for d in bl}
+        except Exception:
+            pass
+        if self.notifd is not None:
+            try:
+                st = self.notifd.state()
+                out["notifications"] = {"unread": st["unread"], "dnd": st["dnd"]}
+            except Exception:
+                pass
+        if not out:
+            return "(no desktop state available on this platform)"
+        return json.dumps(out, indent=1)
+
+    async def control_desktop(self, action: str, target: str = "") -> str:
+        """Drive the AgentOS desktop shell (the browser UI): open/close/focus its app
+        windows, switch virtual desktops, apply a theme, list what's open."""
+        actions = ("open_app", "close_app", "focus_app", "switch_desktop",
+                   "apply_theme", "list_open_apps")
+        if action not in actions:
+            return f"[error] action must be one of: {' | '.join(actions)}"
+        if self.shell is None:
+            return self._NO_SHELL
+        if action == "apply_theme":
+            known = BUILTIN_THEMES + [t["name"] for t in self.store.list_themes()]
+            if target not in known:
+                return f"[error] no theme named '{target}'. Available: {', '.join(known)}"
+        ok, data = await self.shell(action, {"target": target})
+        if not ok:
+            return f"[error] {data}"
+        body = data if isinstance(data, str) else json.dumps(data)
+        return body or f"{action} done" + (f": {target}" if target else "")
+
+    async def manage_window(self, window_id: str, action: str, workspace: str = "") -> str:
+        """Manage a NATIVE window by id or title fragment: focus | close | float |
+        tile | move_to_workspace. Find ids with list_windows / desktop_state."""
+        from . import host
+        w = host.list_windows()
+        if not w.get("available"):
+            return ("[error] not supported on this platform: "
+                    f"{w.get('reason', 'window control unavailable')}")
+        q = str(window_id).strip().lower()
+        win = (next((x for x in w["windows"] if str(x.get("id", "")).lower() == q), None)
+               or next((x for x in w["windows"]
+                        if q in str(x.get("title", "")).lower()
+                        or q in str(x.get("app", "")).lower()), None))
+        if not win:
+            return f"[error] no open window matching '{window_id}' — see list_windows"
+        wid = str(win["id"])
+        if action == "focus":
+            ok, msg = host.focus_window(wid)
+        elif action == "close":
+            ok, msg = host.close_window(wid)
+        elif action in ("float", "tile"):
+            ok, msg = host.set_window_floating(wid, action == "float")
+        elif action == "move_to_workspace":
+            if not workspace:
+                return "[error] move_to_workspace needs `workspace`"
+            ok, msg = host.move_window_to_workspace(wid, workspace)
+        else:
+            return "[error] action must be focus | close | float | tile | move_to_workspace"
+        return f"{action}: {win.get('title') or wid}" if ok else f"[error] {msg}"
+
+    async def list_themes(self) -> str:
+        """The theme ids control_desktop(action='apply_theme') accepts."""
+        custom = [t["name"] for t in self.store.list_themes()]
+        lines = ["built-in: " + ", ".join(BUILTIN_THEMES)]
+        if custom:
+            lines.append("custom: " + ", ".join(custom))
+        return "\n".join(lines)
+
+    async def wifi(self, action: str = "status", ssid: str = "", password: str = "") -> str:
+        """Wifi via NetworkManager: status | list | connect | forget | enable | disable."""
+        try:
+            from .hostctl import HostCtlError, network
+        except Exception as e:
+            return f"[error] not supported on this platform: {e}"
+        try:
+            if action in ("status", ""):
+                st = await network.status()
+                from . import host
+                st["connections"] = (host.get_network() or {}).get("connections", [])
+                return json.dumps(st)
+            if action == "list":
+                nets = await network.wifi_scan()
+                if not nets:
+                    return "no wifi networks in range"
+                return "\n".join(
+                    f"- {n['ssid']}  {n['signal']}%  {n['security']}"
+                    + ("  [connected]" if n["connected"] else "")
+                    + ("  [saved]" if n.get("saved") else "") for n in nets[:25])
+            if action == "connect":
+                if not ssid:
+                    return "[error] connect needs `ssid`"
+                await network.wifi_join(ssid, password or None)
+                self.store.log("system", f"wifi: joined '{ssid}' (agent)")
+                return f"joined wifi network '{ssid}'"
+            if action == "forget":
+                if not await network.wifi_forget(ssid):
+                    return f"[error] no saved network named '{ssid}'"
+                self.store.log("system", f"wifi: forgot '{ssid}' (agent)")
+                return f"forgot wifi network '{ssid}'"
+            if action in ("enable", "disable"):
+                await network.set_wifi_enabled(action == "enable")
+                return f"wifi {action}d"
+            return "[error] action must be status | list | connect | forget | enable | disable"
+        except HostCtlError as e:
+            return f"[error] {e}"
+
+    async def bluetooth(self, action: str = "status", device: str = "") -> str:
+        """Bluetooth via BlueZ: status | scan | pair | connect | disconnect | forget."""
+        try:
+            from .hostctl import HostCtlError
+            from .hostctl import bluetooth as bt
+        except Exception as e:
+            return f"[error] not supported on this platform: {e}"
+
+        def fmt(t: dict) -> str:
+            lines = [f"adapter {a['name']}: {'on' if a['powered'] else 'off'}"
+                     + (" (discovering)" if a.get("discovering") else "")
+                     for a in t["adapters"]]
+            for d in t["devices"][:25]:
+                tags = [k for k in ("connected", "paired", "trusted") if d.get(k)]
+                lines.append(f"- {d['name']} [{d['address']}]"
+                             + (f"  ({', '.join(tags)})" if tags else ""))
+            return "\n".join(lines) or "no bluetooth adapters"
+
+        try:
+            if action in ("status", ""):
+                return fmt(await bt.tree())
+            if action == "scan":
+                t = await bt.tree()
+                if not t["adapters"]:
+                    return "[error] no bluetooth adapter found on this machine"
+                ad = t["adapters"][0]["path"]
+                await bt.set_discovering(ad, True)
+                await asyncio.sleep(4)     # give nearby devices a beat to answer
+                t = await bt.tree()
+                await bt.set_discovering(ad, False)
+                return fmt(t)
+            if action in ("pair", "connect", "disconnect", "forget"):
+                if not device:
+                    return f"[error] {action} needs `device` (a name or address from status/scan)"
+                t = await bt.tree()
+                q = device.strip().lower()
+                dev = (next((d for d in t["devices"] if d["address"].lower() == q), None)
+                       or next((d for d in t["devices"] if q in d["name"].lower()), None))
+                if not dev:
+                    return f"[error] no bluetooth device matching '{device}'"
+                await bt.device_action(dev["path"], "remove" if action == "forget" else action)
+                self.store.log("system", f"bluetooth: {action} {dev['name']} (agent)")
+                return f"{action}: {dev['name']} [{dev['address']}]"
+            return "[error] action must be status | scan | pair | connect | disconnect | forget"
+        except HostCtlError as e:
+            return f"[error] {e}"
+
+    async def set_brightness(self, percent: int, name: str = "") -> str:
+        """Set screen brightness 0-100 (internal backlight by default; a DDC display
+        number for external monitors)."""
+        try:
+            from .hostctl import HostCtlError, brightness
+        except Exception as e:
+            return f"[error] not supported on this platform: {e}"
+        try:
+            pct = max(0, min(100, int(percent)))
+            if not name:
+                st = await brightness.state()
+                if not st["displays"]:
+                    return ("[error] not supported on this platform: "
+                            f"{st.get('reason') or 'no adjustable display'}")
+                name = str(st["displays"][0]["name"])
+            await brightness.set_level(name, pct)
+            return f"brightness set to {pct}%"
+        except (HostCtlError, ValueError) as e:
+            return f"[error] {e}"
+
+    async def audio(self, action: str = "status", value: int = 50, device: str = "") -> str:
+        """Audio: status (volume + devices) | volume (value 0-100) | mute | unmute |
+        route (make `device` the default output — e.g. switch to headphones)."""
+        from . import host
+        a = action.strip().lower()
+        if a in ("status", ""):
+            out = {"volume": host.get_volume()}
+            try:
+                from .hostctl import audio as hw
+                out["devices"] = hw.devices()
+            except Exception:
+                pass          # pipewire routing is optional; volume still answers
+            return json.dumps(out)
+        if a == "volume":
+            pct = max(0, min(100, int(value)))
+            if not host.set_volume(percent=pct):
+                return "[error] not supported on this platform: no volume control (wpctl/amixer)"
+            return f"volume set to {pct}%"
+        if a in ("mute", "unmute"):
+            if not host.set_volume(mute=(a == "mute")):
+                return "[error] not supported on this platform: no volume control (wpctl/amixer)"
+            return a + "d"
+        if a == "route":
+            try:
+                from .hostctl import HostCtlError
+                from .hostctl import audio as hw
+            except Exception as e:
+                return f"[error] not supported on this platform: {e}"
+            try:
+                devs = hw.devices()
+                q = device.strip().lower()
+                sink = (next((s for s in devs["sinks"] if str(s["id"]) == q), None)
+                        or next((s for s in devs["sinks"]
+                                 if q and q in s["description"].lower()), None))
+                if not sink:
+                    names = ", ".join(f"{s['id']}: {s['description']}"
+                                      for s in devs["sinks"]) or "(none)"
+                    return f"[error] no output device matching '{device}'. Sinks: {names}"
+                hw.set_default(int(sink["id"]))
+                return f"audio output routed to {sink['description']}"
+            except HostCtlError as e:
+                return f"[error] {e}"
+        return "[error] action must be status | volume | mute | unmute | route"
+
+    async def power_profile(self, profile: str = "") -> str:
+        """Read (no arguments) or set the machine's power profile
+        (power-saver | balanced | performance)."""
+        try:
+            from .hostctl import HostCtlError, upower
+        except Exception as e:
+            return f"[error] not supported on this platform: {e}"
+        try:
+            if not profile:
+                p = await upower.get_profile()
+                return f"active: {p['active']} (available: {', '.join(p['profiles'])})"
+            await upower.set_profile(profile)
+            return f"power profile set to {profile}"
+        except HostCtlError as e:
+            return f"[error] {e}"
+
+    async def lock_screen(self) -> str:
+        """Lock the session immediately (the user unlocks with their password)."""
+        from . import server as srv
+        ok, msg = await srv.power_exec("lock")
+        return "screen locked" if ok else f"[error] {msg}"
+
+    async def power_action(self, action: str) -> str:
+        """Session power control: suspend | reboot | poweroff | logout. The user
+        confirms every call (ALWAYS_ASK); run_command keeps shutdown/reboot blocked —
+        this tool is the sanctioned path."""
+        aliases = {"suspend": "suspend", "sleep": "suspend",
+                   "reboot": "restart", "restart": "restart",
+                   "poweroff": "poweroff", "shutdown": "poweroff", "logout": "logout"}
+        act = aliases.get(action.strip().lower())
+        if not act:
+            return "[error] action must be suspend | reboot | poweroff | logout"
+        from . import server as srv
+        self.store.log("system", f"power: {act} requested by the agent (user approved)")
+        ok, msg = await srv.power_exec(act)
+        return f"{act} initiated" if ok else f"[error] {msg}"
+
+    async def list_notifications(self, limit: int = 20, unread_only: bool = False) -> str:
+        """Read the desktop notification center (DE mode): what apps notified the user."""
+        if self.notifd is None:
+            return ("[error] not supported on this platform: AgentOS is not the "
+                    "notification daemon here (hosted mode — the host desktop shows them)")
+        items = self.notifd.recent(limit=int(limit), unread_only=bool(unread_only))
+        if not items:
+            return "no notifications" + (" (unread)" if unread_only else "")
+        lines = []
+        for n in items:
+            stamp = time.strftime("%H:%M", time.localtime(n["time"]))
+            lines.append(f"- [{stamp}] {n['app'] or 'system'}: {n['summary']}"
+                         + (f" — {n['body']}" if n["body"] else "")
+                         + ("" if n["read"] else "  (unread)"))
+        st = self.notifd.state()
+        return "\n".join(lines) + (f"\n({st['unread']} unread · "
+                                   f"DND {'on' if st['dnd'] else 'off'})")
+
+    async def take_screenshot(self, target: str = "screen") -> str:
+        """Capture the screen to <workspace>/Screenshots and SEE it — the agent loop
+        attaches the image for vision-capable models (via the {"__image__": path}
+        result shape); others get the saved path."""
+        from . import server as srv
+        ok, res = await srv.capture_screen(
+            area="select" if target == "select" else "full",
+            workspace=self.cfg.get("workspace", ""))
+        if not ok:
+            return f"[error] {res}"
+        self.store.log("system", f"screenshot by agent: {Path(res).name}")
+        return json.dumps({"__image__": res, "text": f"screenshot saved to {res}"})
+
     async def execute(self, name: str, args: dict) -> str:
         if name.startswith("mcp_") and self.mcp:
             target = self.mcp.resolve(name)
@@ -1848,6 +2259,20 @@ TOOL_SCHEMAS = [
                           "description": "user = durable across conversations (default); session = this conversation only."},
             },
             "required": ["content"],
+        },
+    },
+    {
+        "name": "search_files",
+        "description": "Search the user's workspace files and docs BY MEANING (semantic, with "
+                       "substring fallback). Use for 'find the file about X' — recall is for "
+                       "memories, this is for files.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to find, in natural language."},
+                "limit": {"type": "integer", "description": "Max results (default 8)."},
+            },
+            "required": ["query"],
         },
     },
     {
@@ -2355,3 +2780,161 @@ TRAIN_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(TRAIN_TOOL_SCHEMAS)
+
+DESKTOP_TOOL_SCHEMAS = [
+    {
+        "name": "desktop_state",
+        "description": "One live snapshot of the desktop: open shell apps, native windows + focus, "
+                       "current workspace, battery, power profile, network, volume, brightness, and "
+                       "unread notifications. Sections a platform can't answer are omitted. Call it "
+                       "FIRST when the user says 'what am I looking at' or a request depends on the "
+                       "machine's current state.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "control_desktop",
+        "description": "Drive the AgentOS desktop shell (the browser UI): open_app / close_app / "
+                       "focus_app act on an AgentOS app window by name; switch_desktop changes the "
+                       "virtual desktop; apply_theme applies a theme by id (see list_themes); "
+                       "list_open_apps lists what the shell has open. For NATIVE app windows use "
+                       "manage_window instead.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["open_app", "close_app", "focus_app", "switch_desktop",
+                                "apply_theme", "list_open_apps"]},
+            "target": {"type": "string", "description": "App name, desktop name/number, or theme id — whatever the action addresses."}},
+            "required": ["action"]},
+    },
+    {
+        "name": "manage_window",
+        "description": "Manage a NATIVE window: focus | close | float | tile | move_to_workspace "
+                       "(with workspace=). window_id is the id from list_windows/desktop_state, or "
+                       "a distinctive part of the window's title or app name.",
+        "parameters": {"type": "object", "properties": {
+            "window_id": {"type": "string", "description": "Window id, or part of its title/app name."},
+            "action": {"type": "string",
+                       "enum": ["focus", "close", "float", "tile", "move_to_workspace"]},
+            "workspace": {"type": "string", "description": "For move_to_workspace: the target workspace name/number."}},
+            "required": ["window_id", "action"]},
+    },
+    {
+        "name": "list_themes",
+        "description": "List the OS theme ids control_desktop(action='apply_theme') accepts: the "
+                       "built-in set plus every custom theme saved in the Themes app.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "wifi",
+        "description": "Wifi via NetworkManager: 'status' (adapter + connection), 'list' (scan "
+                       "nearby networks), 'connect' (ssid= and password= for protected networks), "
+                       "'forget' (drop a saved network), 'enable'/'disable' (the wifi radio).",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["status", "list", "connect", "forget", "enable", "disable"]},
+            "ssid": {"type": "string", "description": "Network name for connect/forget."},
+            "password": {"type": "string", "description": "For connect on a protected network."}},
+            "required": ["action"]},
+    },
+    {
+        "name": "bluetooth",
+        "description": "Bluetooth via BlueZ: 'status' (adapters + known devices), 'scan' (discover "
+                       "nearby devices for a few seconds), 'pair' / 'connect' / 'disconnect' / "
+                       "'forget' a device by name or address.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["status", "scan", "pair", "connect", "disconnect", "forget"]},
+            "device": {"type": "string", "description": "Device name or MAC address from status/scan."}},
+            "required": ["action"]},
+    },
+    {
+        "name": "set_brightness",
+        "description": "Set screen brightness 0-100. Targets the internal backlight by default; "
+                       "pass name= for a specific display (a DDC display number for external "
+                       "monitors).",
+        "parameters": {"type": "object", "properties": {
+            "percent": {"type": "integer", "description": "Brightness 0-100."},
+            "name": {"type": "string", "description": "Optional display name (default: the first adjustable one)."}},
+            "required": ["percent"]},
+    },
+    {
+        "name": "audio",
+        "description": "Audio control: 'status' (volume + output/input devices), 'volume' (value= "
+                       "0-100), 'mute'/'unmute', 'route' (device= sink id or name to make the "
+                       "default output — e.g. switch sound to headphones).",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["status", "volume", "mute", "unmute", "route"]},
+            "value": {"type": "integer", "description": "For volume: 0-100."},
+            "device": {"type": "string", "description": "For route: the sink id or (part of) its description."}},
+            "required": ["action"]},
+    },
+    {
+        "name": "power_profile",
+        "description": "Read (no arguments) or set the machine's power profile: power-saver | "
+                       "balanced | performance (power-profiles-daemon).",
+        "parameters": {"type": "object", "properties": {
+            "profile": {"type": "string", "description": "Omit to read; or power-saver | balanced | performance."}},
+        },
+    },
+    {
+        "name": "lock_screen",
+        "description": "Lock the session immediately (the user unlocks with their password).",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "power_action",
+        "description": "Session power control: suspend | reboot | poweroff | logout. The user "
+                       "confirms EVERY call — never chain it after other work without asking.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["suspend", "reboot", "poweroff", "logout"]}},
+            "required": ["action"]},
+    },
+    {
+        "name": "list_notifications",
+        "description": "Read the desktop notification center (AgentOS-as-DE): what apps notified "
+                       "the user, newest first, with unread state and DND. Use it to answer 'did "
+                       "anything happen?', summarize pings, or decide whether to interrupt.",
+        "parameters": {"type": "object", "properties": {
+            "limit": {"type": "integer", "description": "Max notifications to return (default 20)."},
+            "unread_only": {"type": "boolean", "description": "Only ones the user hasn't seen."}},
+        },
+    },
+    {
+        "name": "take_screenshot",
+        "description": "Capture the screen into the workspace Screenshots folder and LOOK at it — "
+                       "vision-capable models receive the image itself, others the saved path. "
+                       "target 'screen' grabs everything; 'select' lets the user drag a region.",
+        "parameters": {"type": "object", "properties": {
+            "target": {"type": "string", "enum": ["screen", "select"]}},
+        },
+    },
+]
+TOOL_SCHEMAS.extend(DESKTOP_TOOL_SCHEMAS)
+
+PROACTIVITY_TOOL_SCHEMAS = [
+    {
+        "name": "create_trigger",
+        "description": "Create an event trigger: run a prompt when something happens instead of at a "
+                       "time. kind 'notification' fires when a desktop notification matches "
+                       "match_or_path (case-insensitive substring or regex on app/summary/body); "
+                       "'file_change' when the file/directory at match_or_path changes; 'login' at "
+                       "session start; 'idle' after `minutes` without user chat activity. A trigger "
+                       "fires at most once per cooldown_secs.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["notification", "file_change", "login", "idle"]},
+                "match_or_path": {"type": "string",
+                                  "description": "For 'notification': substring or regex to match. "
+                                                 "For 'file_change': the path to watch. "
+                                                 "Ignored for 'login'/'idle'."},
+                "prompt": {"type": "string", "description": "What the agent should do when it fires."},
+                "cooldown_secs": {"type": "integer",
+                                  "description": "Minimum seconds between firings (default 300)."},
+                "minutes": {"type": "number", "description": "For 'idle': fire after this many "
+                                                             "minutes of no chat activity (default 30)."},
+            },
+            "required": ["kind", "prompt"],
+        },
+    },
+]
+TOOL_SCHEMAS.extend(PROACTIVITY_TOOL_SCHEMAS)

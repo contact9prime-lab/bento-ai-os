@@ -1,0 +1,37 @@
+/* ================= window switcher (Ctrl+Tab) ================= */
+#switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
+#switcher.show{display:flex}
+#swbox{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:80vw;padding:22px;border-radius:var(--r-xl);
+  background:var(--glass);backdrop-filter:blur(22px);border:1px solid #2f3947;box-shadow:var(--el-5)}
+.swcard{width:120px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 8px;border-radius:var(--r-lg);border:2px solid transparent}
+.swcard.sel{background:rgba(94,234,212,.12);border-color:var(--acc)}
+.swcard .si{width:44px;height:44px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl)}
+.swcard .sn{font-size:var(--fs-xs);color:var(--txt);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+
+/* ================= keyboard shortcuts help ================= */
+#keyshelp{position:fixed;inset:0;z-index:9710;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)}
+#keyshelp.show{display:flex}
+#keysbox{width:min(720px,92vw);max-height:82vh;overflow-y:auto;background:var(--glass);backdrop-filter:blur(20px);border:1px solid #2f3947;border-radius:var(--r-lg);box-shadow:var(--el-5)}
+#keysbox .kh{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);font-weight:700}
+#keysbox .kbody{padding:14px 20px 20px;columns:2;column-gap:34px}
+.kgrp{break-inside:avoid;margin-bottom:16px}
+.kgrp h4{font-size:var(--fs-xs);letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px}
+.krow{display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:var(--fs-sm)}
+.krow .kk{display:flex;gap:4px}
+kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg4);border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--r-sm);padding:2px 6px;color:var(--txt)}
+
+/* ================= command palette ================= */
+#palette{position:fixed;inset:0;z-index:9700;display:none;background:rgba(5,7,10,.45);backdrop-filter:blur(3px);align-items:flex-start;justify-content:center;padding-top:16vh}
+#palette.show{display:flex}
+#palbox{width:min(640px,92vw);background:var(--glass);backdrop-filter:blur(20px);border:1px solid #2f3947;border-radius:var(--r-lg);box-shadow:var(--el-5),0 0 0 1px rgba(94,234,212,.08);overflow:hidden;animation:pop .12s ease-out}
+#palin{width:100%;border:none;background:none;border-radius:0;font-size:var(--fs-lg);padding:16px 18px;border-bottom:1px solid var(--line)}
+#pallist{max-height:46vh;overflow-y:auto;padding:6px}
+.palitem{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:var(--r-md);cursor:pointer}
+.palitem .pi{width:32px;height:32px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:var(--fs-lg);flex:none}
+.palitem .pl{font-size:var(--fs-md);font-weight:600}
+.palitem .ph{font-size:var(--fs-xs);color:var(--dim2)}
+.palitem.sel{background:rgba(94,234,212,.12);outline:1px solid rgba(94,234,212,.3)}
+#palfoot{padding:8px 16px;border-top:1px solid var(--line);font-size:var(--fs-2xs);color:var(--dim2);display:flex;gap:14px}
+
+.toast{position:fixed;bottom:calc(var(--tbh) + 12px);right:14px;background:var(--bg4);border:1px solid var(--acc);border-radius:var(--r-md);padding:10px 15px;font-size:var(--fs-md);z-index:9800;animation:fadein .2s}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}}

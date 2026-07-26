@@ -110,12 +110,15 @@ class Compositor:
 
     # ---- windows ----------------------------------------------------------
 
-    def windows(self) -> list[dict]:
+    def windows(self, include_shell: bool = False) -> list[dict]:
         """Every real application window, flattened from the layout tree.
 
         The shape matches what /api/windows always returned (id/pid/app/title)
         so the taskbar renders identically in hosted and DE modes, plus the
-        placement facts only a compositor can know.
+        placement facts only a compositor can know. The AgentOS shell itself is
+        excluded (a taskbar must not list its own desktop); pass
+        include_shell=True to get it too, flagged {"shell": True} — the focus
+        cycler needs to know where the user is.
         """
         tree = self._request(GET_TREE)
         wins: list[dict] = []
@@ -131,9 +134,10 @@ class Compositor:
                     props = child.get("window_properties") or {}
                     app = child.get("app_id") or props.get("class") or ""
                     title = child.get("name") or props.get("title") or ""
-                    if "agentos" in app.lower() or title.strip() == "AgentOS":
+                    is_shell = "agentos" in app.lower() or title.strip() == "AgentOS"
+                    if is_shell and not include_shell:
                         continue                       # never list our own shell
-                    wins.append({
+                    row = {
                         "id": str(child["id"]),
                         "pid": child.get("pid") or 0,
                         "app": app,
@@ -142,7 +146,10 @@ class Compositor:
                         "focused": bool(child.get("focused")),
                         "floating": "on" in str(child.get("floating", "")),
                         "fullscreen": bool(child.get("fullscreen_mode")),
-                    })
+                    }
+                    if is_shell:
+                        row["shell"] = True
+                    wins.append(row)
                 else:
                     walk(child, workspace)
 

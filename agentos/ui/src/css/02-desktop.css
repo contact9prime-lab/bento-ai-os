@@ -1,0 +1,105 @@
+/* ================= desktop ================= */
+#desktop{position:fixed;inset:var(--mbh) 0 0 0;overflow:hidden;
+  background:
+    radial-gradient(1100px 700px at 78% 18%,rgba(34,211,238,.13),transparent 60%),
+    radial-gradient(900px 650px at 15% 85%,rgba(94,234,212,.10),transparent 60%),
+    radial-gradient(700px 500px at 45% 45%,rgba(56,80,120,.14),transparent 65%),
+    linear-gradient(160deg,#0a0f16,#0b0d10 55%,#0d1118);
+}
+#desktop::after{content:'▲';position:absolute;right:4%;bottom:6%;font-size:220px;color:rgba(94,234,212,.035);pointer-events:none;line-height:1}
+#wall{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0;pointer-events:none}
+#wall.has::after{content:'';position:absolute;inset:0;background:linear-gradient(rgba(11,13,16,.30),rgba(11,13,16,.55))}
+#jarvis{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;opacity:0;transition:opacity .7s}
+#jarvis.on{opacity:1}
+#icons{z-index:2}
+#widgets{position:absolute;inset:0;z-index:2;pointer-events:none}
+
+/* ===== experience shells (a theme can replace the whole desktop layout) ===== */
+#jarvis-shell{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;font-family:var(--sans)}
+body.exp-jarvis #jarvis-shell{display:flex}
+body.exp-jarvis #icons{display:none}
+body.exp-jarvis #taskbar,body.exp-jarvis #menubar{display:none}   /* fully immersive — no chrome */
+body.exp-jarvis #desktop{inset:0}                      /* reclaim the menu bar's space */
+/* custom AI-designed shells: a theme can carry `shell` HTML that fully replaces the desktop */
+#custom-shell{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;overflow:auto}
+body.exp-custom #custom-shell{display:flex}
+body.exp-custom #icons{display:none}
+body.exp-custom #taskbar,body.exp-custom #menubar{display:none}
+body.exp-custom #desktop{inset:0}
+#shell-exit{position:fixed;top:10px;right:12px;z-index:9400;font-size:var(--fs-xs);color:var(--dim);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:5px 12px;background:var(--glass);display:none}
+body.exp-custom #shell-exit{display:block}
+#shell-exit:hover{color:var(--txt);border-color:var(--acc)}
+#js-top{display:flex;align-items:center;justify-content:space-between;padding:14px 26px;font-size:var(--fs-xs);letter-spacing:.14em;color:var(--dim2)}
+#js-top .brand{font-family:'Orbitron',var(--sans);font-weight:700;font-size:var(--fs-base);letter-spacing:.2em;color:var(--acc)}
+#js-top .tag{font-size:var(--fs-2xs);border:1px solid var(--line);border-radius:4px;padding:3px 8px;color:var(--dim2);margin-left:10px}
+#js-top .stats{display:flex;gap:20px}
+#js-top .stats b{color:var(--acc);font-weight:500}
+#js-mid{flex:1;display:flex;min-height:0}
+#js-side{width:300px;padding:0 0 20px 26px;display:flex;flex-direction:column;gap:14px}
+.js-panel{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);backdrop-filter:blur(10px);padding:14px 16px}
+.js-panel .h{font-size:var(--fs-2xs);letter-spacing:.22em;color:var(--dim2);margin-bottom:10px}
+#js-stream{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;font-size:var(--fs-xs)}
+#js-stream .ln{display:flex;gap:9px;line-height:1.5}
+#js-stream .ln .t{color:var(--dim2);flex:none}
+#js-stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center}
+#js-ring{position:absolute;inset:0}
+.js-node{position:absolute;width:78px;height:78px;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(8px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:border-color var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);transform:translate(-50%,-50%)}
+.js-node:hover{border-color:var(--acc);box-shadow:0 0 24px rgba(94,234,212,.25);transform:translate(-50%,-50%) scale(1.06)}
+.js-node .g{font-size:var(--fs-2xl)}
+.js-node .n{font-size:8.5px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+#js-orb{width:220px;height:220px;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#js-orb .core{width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--acc),var(--acc2));box-shadow:0 0 60px 10px rgba(94,234,212,.45);transition:box-shadow var(--d-slow) var(--ease-out)}
+#js-orb .rg{position:absolute;border-radius:50%;border:1.5px solid rgba(94,234,212,.24)}
+#js-orb .rg.a{width:140px;height:140px}#js-orb .rg.b{width:180px;height:180px}#js-orb .rg.c{width:220px;height:220px}
+#js-orb .lbl{position:absolute;font-family:'Orbitron',var(--sans);font-size:var(--fs-2xs);letter-spacing:.3em;color:var(--acc);pointer-events:none}
+body.exp-jarvis.js-listening #js-orb .rg{animation:jpulse 1.6s ease-in-out infinite}
+body.exp-jarvis.js-listening #js-orb .core{box-shadow:0 0 70px 14px rgba(94,234,212,.65)}
+body.exp-jarvis.js-thinking #js-orb{animation:jspin 2.4s linear infinite}
+body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infinite}
+#js-bottom{padding:0 26px 26px;display:flex;justify-content:center}
+#js-ask{width:min(680px,86%);display:flex;align-items:center;gap:12px;padding:0 18px;height:54px;border-radius:var(--r-lg);
+  border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);box-shadow:0 0 30px rgba(94,234,212,.06)}
+#js-ask input{flex:1;background:none;border:none;outline:none;color:var(--txt);font-family:var(--sans);font-size:var(--fs-base)}
+#js-ask .mic{cursor:pointer;font-size:var(--fs-lg);color:var(--acc)}
+#js-exit{position:absolute;top:12px;right:26px;z-index:3;font-size:var(--fs-xs);color:var(--dim);border:1px solid var(--line);border-radius:var(--r-md);padding:5px 12px;background:var(--glass)}
+#js-exit:hover{color:var(--txt);border-color:var(--acc)}
+/* frameless by default — the app's own look shows through; controls appear on hover */
+.widget{position:absolute;display:flex;flex-direction:column;pointer-events:auto;
+  background:transparent;border:1px solid transparent;border-radius:var(--r-lg);overflow:hidden;
+  resize:both;min-width:150px;min-height:100px;transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+.widget:hover{border-color:rgba(94,234,212,.22);box-shadow:var(--el-3)}
+.widget .wgh{position:absolute;top:0;left:0;right:0;height:26px;display:flex;align-items:center;gap:6px;
+  padding:0 6px 0 10px;cursor:grab;z-index:2;touch-action:none;pointer-events:none;opacity:0;transition:opacity var(--d-base) var(--ease-out);
+  background:linear-gradient(rgba(11,13,16,.75),rgba(11,13,16,0))}
+.widget:hover .wgh{opacity:1;pointer-events:auto}
+.widget .wgh:active{cursor:grabbing}
+.widget .wgh::before{content:'⠿';color:var(--dim2);font-size:var(--fs-sm)}
+.widget .wgt{flex:1;font-size:var(--fs-2xs);font-weight:600;color:#cfd6e2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-shadow:0 1px 3px #000}
+.widget .wgh button{width:22px;height:20px;border-radius:var(--r-sm);color:#cfd6e2;font-size:var(--fs-xs);display:flex;align-items:center;justify-content:center;background:rgba(30,36,46,.6)}
+.widget .wgh button:hover{background:var(--bg4);color:var(--txt)}
+.widget .wgh .x:hover{background:var(--err);color:#fff}
+.widget iframe{flex:1;border:none;background:transparent;width:100%;border-radius:var(--r-lg)}
+
+/* desktop icons */
+#icons{position:absolute;inset:0}
+.dicon{position:absolute;width:88px;padding:10px 4px 8px;border-radius:var(--r-lg);display:flex;flex-direction:column;align-items:center;gap:7px;cursor:grab;border:1px solid transparent;touch-action:none}
+.dicon.dragging{cursor:grabbing;opacity:.9;z-index:6}
+.dicon.dragging .aicon{transform:scale(1.1);box-shadow:0 18px 40px rgba(0,0,0,.6),inset 0 .5px 0 rgba(255,255,255,.35)}
+.dicon.settle{transition:left var(--d-slow) cubic-bezier(.2,.8,.25,1),top var(--d-slow) cubic-bezier(.2,.8,.25,1)}
+.dicon .aicon{transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+.dicon:hover .aicon{transform:translateY(-2px) scale(1.03);box-shadow:0 12px 26px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.35)}
+.dicon:active .aicon{transform:translateY(0) scale(.95)}
+.dicon .dlbl{font-size:var(--fs-xs);font-weight:500;color:#eef1f6;text-align:center;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.9);max-width:84px}
+.dicon:hover{background:rgba(255,255,255,.05);border-color:var(--hairline)}
+.dicon.sel{background:rgba(94,234,212,.12);border-color:rgba(94,234,212,.35)}
+#marquee{position:absolute;display:none;z-index:5;pointer-events:none;border-radius:4px;
+  border:1px solid rgba(94,234,212,.55);background:rgba(94,234,212,.10)}
+.bento{position:absolute;border-radius:var(--r-xl);pointer-events:none;
+  background:rgba(255,255,255,.045);border:1px solid var(--hairline)}
+.bento .blbl{position:absolute;top:8px;left:15px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:rgba(255,255,255,.5);text-shadow:0 1px 3px rgba(0,0,0,.6)}
+:root[data-theme=light] .bento{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08)}
+:root[data-theme=light] .bento .blbl{color:rgba(0,0,0,.45);text-shadow:none}
+

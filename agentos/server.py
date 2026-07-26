@@ -23,7 +23,7 @@ from .memory import Store
 from .policy import MAIN, PDP, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
-from .tools import Toolbox
+from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -50,6 +50,20 @@ async def startup():
                 dead.append(ws)
         for ws in dead:
             clients.discard(ws)
+        # Wallpaper continuity in de mode: every wallpaper change (there are six
+        # producers) funnels through this broadcast, so this is the one place to
+        # keep the compositor background + swaylock in step with the shell.
+        if event.get("type") == "wallpaper":
+            try:
+                from . import runmode as _rmw
+                if _rmw.mode() != "de":
+                    return
+                from . import session as sessionmod
+                wall = cfgmod.AGENTOS_HOME / "wallpaper.png"
+                await asyncio.to_thread(
+                    sessionmod.apply_wallpaper_live, str(wall) if wall.exists() else None)
+            except Exception:
+                pass
 
     scheduler = Scheduler(cfg, store, toolbox, broadcast)
     toolbox.scheduler = scheduler
@@ -65,11 +79,13 @@ async def startup():
     toolbox.pdp = pdp
     trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
+    toolbox.shell = shell_command  # the parity law: shell actions are tools too
     fabricmod.seed_builtins(cfg, store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
                  fabric=control, pdp=pdp, trainforge=trainforge,
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
+                 shell_pending={},      # cmd id -> Future — shell-control channel (see below)
                  app_tokens={},         # runtime token -> {"app_id","issued"} — app identity
                  pending_installs={},   # install_id -> staged app package awaiting consent
                  turns={},              # conversation_id -> {"agent","task","model"} — GLOBAL:
@@ -80,6 +96,11 @@ async def startup():
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
     asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
+    # attention engine: notification triage (importance + "For you" digest),
+    # batch-gated and model-idle-deferred — a no-op without a daemon or model
+    from . import attention
+    asyncio.create_task(attention.attention_loop(cfg, store,
+                                                 lambda: state.get("notifd"), broadcast))
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -102,7 +123,15 @@ async def startup():
         from .notifications import NotificationDaemon
         notifd = NotificationDaemon(broadcast)
         state["notifd"] = notifd
+        toolbox.notifd = notifd   # the agent can read the center (list_notifications)
+        notifd.on_notification = scheduler.offer_notification  # feeds notification triggers
         asyncio.create_task(notifd.start())
+    if runmode.resolve(cfg)[0] in (runmode.DE, runmode.KIOSK):
+        # session start ≈ login: fire login triggers + the "while you were away"
+        # briefing (and, best-effort, re-brief on logind session unlock)
+        asyncio.create_task(attention.session_start(cfg, store,
+                                                    lambda: state.get("notifd"),
+                                                    scheduler, broadcast))
     from . import mcp_store as mcp_storemod
     mcp_storemod.ensure_index(store)  # warm the MCP catalog index in the background
     store.log("system", "AgentOS started")
@@ -216,6 +245,54 @@ def _safe_file(rel: str) -> Path | None:
     if p == root or root in p.parents:
         return p
     return None
+
+
+@app.get("/api/search")
+async def api_search(q: str = "", limit: int = 8):
+    """Semantic search over the workspace + docs (Files app, palette). Falls back
+    to substring ranking when no embedding model is available — always answers."""
+    from . import search as searchmod
+    try:
+        results = await searchmod.query(state["cfg"], state["store"], q, limit=int(limit))
+    except Exception as e:
+        return {"results": [], "error": str(e)}
+    return {"results": results}
+
+
+@app.post("/api/intent")
+async def api_intent(body: dict):
+    """Palette fallback: classify a free-text command into a direct shell action.
+    Returns {action, target, label, hint} — action 'chat' means "no direct action,
+    let the agent have it". Deliberately tiny and fast: one small completion,
+    tight timeout, never an agent loop."""
+    q = (body.get("q") or "").strip()[:200]
+    if not q:
+        return {"action": "chat"}
+    from .tools import BUILTIN_THEMES
+    apps = "chat, files, terminal, store, settings, syssettings, themes, personalize, " \
+           "memory, kg, studio, mission, taskmgr, models, docs"
+    prompt = (
+        "Classify this desktop command into ONE action. Answer ONLY compact JSON, no prose.\n"
+        'Schema: {"action":"open_app|close_app|focus_app|switch_desktop|apply_theme|chat",'
+        '"target":"<string>","label":"<verb phrase for a menu row>"}\n'
+        f"Known apps: {apps}. Known themes: {', '.join(BUILTIN_THEMES)}.\n"
+        'Use "chat" when the request needs reasoning, content, or anything beyond those actions.\n'
+        f"Command: {q}")
+    try:
+        raw = await asyncio.wait_for(
+            providers.complete(state["cfg"], state["cfg"].get("default_model", ""),
+                               prompt, system="You classify desktop intents."),
+            timeout=6)
+        m = re.search(r"\{.*\}", raw, re.S)
+        d = json.loads(m.group(0)) if m else {}
+        action = d.get("action") or "chat"
+        if action not in ("open_app", "close_app", "focus_app", "switch_desktop",
+                          "apply_theme", "chat"):
+            action = "chat"
+        return {"action": action, "target": str(d.get("target") or "")[:80],
+                "label": str(d.get("label") or "")[:80], "hint": "suggested action"}
+    except Exception:
+        return {"action": "chat"}
 
 
 @app.get("/api/files")
@@ -345,6 +422,15 @@ async def api_windows_move(body: dict):
 async def api_windows_floating(body: dict):
     from . import host
     ok, msg = host.set_window_floating(body.get("id", ""), bool(body.get("floating", True)))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/cycle")
+async def api_windows_cycle(body: dict):
+    """Alt-Tab. The generated sway config binds Mod1+Tab to this endpoint, so
+    cycling works regardless of which window holds the keyboard."""
+    from . import host
+    ok, msg = host.cycle_focus("prev" if body.get("direction") == "prev" else "next")
     return {"ok": ok, "message": msg}
 
 
@@ -591,7 +677,12 @@ async def api_notifications():
     if not d:
         return {"available": False, "items": [], "unread": 0, "dnd": False,
                 "reason": "Your desktop environment shows notifications in hosted mode."}
-    return d.state()
+    from . import attention
+    st = d.state()  # items carry additive per-item `importance` once triage scored them
+    dg = attention.digest_state(state["store"])
+    if dg:
+        st["digest"] = dg  # additive: {text, at, top_ids}
+    return st
 
 
 @app.post("/api/notifications")
@@ -608,6 +699,9 @@ async def api_notifications_act(body: dict):
         d.mark_read()
     elif action == "dnd":
         d.dnd = bool(body.get("on", True))
+    elif action == "dismiss_digest":
+        from . import attention
+        attention.dismiss_digest(state["store"])
     else:
         return JSONResponse({"error": f"unknown action '{action}'"}, 400)
     return {"ok": True, "dnd": d.dnd}
@@ -615,36 +709,49 @@ async def api_notifications_act(body: dict):
 
 # ---- Screenshots (grim/slurp; the AgentOS session's own capture) ----------------
 
-@app.post("/api/screenshot")
-async def api_screenshot(body: dict):
-    """{area: "full" | "select"} → saves under <workspace>/Screenshots and
-    returns the path. `select` hands the pointer to slurp for a region drag."""
+async def capture_screen(area: str = "full", workspace: str = "") -> tuple[bool, str]:
+    """Grab the screen with grim (the AgentOS session's own capture) into
+    <workspace>/Screenshots. Returns (ok, path-or-reason) — shared by
+    POST /api/screenshot and the agent's take_screenshot tool."""
     import shutil as _sh
     if not _sh.which("grim"):
-        return JSONResponse({"error": "Screenshots need grim (part of the "
-                                      "agentos-desktop package)."}, 503)
-    dest_dir = Path(state["cfg"].get("workspace", str(Path.home() / "AgentOS"))) / "Screenshots"
+        return False, ("not supported on this platform: screenshots need grim "
+                       "(part of the agentos-desktop package, Wayland sessions)")
+    dest_dir = Path(workspace or str(Path.home() / "AgentOS")) / "Screenshots"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / time.strftime("Screenshot-%Y%m%d-%H%M%S.png")
     argv = ["grim", str(dest)]
-    if (body.get("area") or "full") == "select":
+    if area == "select":
         if not _sh.which("slurp"):
-            return JSONResponse({"error": "Region capture needs slurp."}, 503)
+            return False, "not supported on this platform: region capture needs slurp"
         sl = await asyncio.create_subprocess_exec(
             "slurp", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         out, _ = await sl.communicate()
         geometry = out.decode().strip()
         if sl.returncode != 0 or not geometry:
-            return JSONResponse({"error": "selection cancelled"}, 400)
+            return False, "selection cancelled"
         argv = ["grim", "-g", geometry, str(dest)]
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
     out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
     if proc.returncode != 0:
-        return JSONResponse({"error": out.decode(errors="replace")[:300]
-                                      or "screenshot failed"}, 500)
-    state["store"].log("system", f"screenshot saved: {dest.name}")
-    return {"ok": True, "path": str(dest)}
+        return False, out.decode(errors="replace")[:300] or "screenshot failed"
+    return True, str(dest)
+
+
+@app.post("/api/screenshot")
+async def api_screenshot(body: dict):
+    """{area: "full" | "select"} → saves under <workspace>/Screenshots and
+    returns the path. `select` hands the pointer to slurp for a region drag."""
+    ok, res = await capture_screen(
+        area=(body.get("area") or "full"),
+        workspace=state["cfg"].get("workspace", ""))
+    if not ok:
+        code = (503 if "not supported" in res
+                else 400 if res == "selection cancelled" else 500)
+        return JSONResponse({"error": res}, code)
+    state["store"].log("system", f"screenshot saved: {Path(res).name}")
+    return {"ok": True, "path": res}
 
 
 # ---- Power & session: the desktop's own power menu (AgentOS as the DE) ----------
@@ -668,6 +775,28 @@ POWER_ACTIONS = {
 }
 
 
+async def power_exec(action: str) -> tuple[bool, str]:
+    """Run one POWER_ACTIONS entry. Returns (ok, reason) — shared by POST /api/power
+    (the menu-bar power menu) and the agent's lock_screen / power_action tools."""
+    spec = POWER_ACTIONS.get(action)
+    if not spec:
+        return False, f"unknown action '{action}'"
+    import sys as _sys
+    argv = spec["darwin"] if _sys.platform == "darwin" else spec["linux"]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
+        if proc.returncode != 0:
+            return False, (out.decode(errors="replace")[:300]
+                           or f"{argv[0]} exited {proc.returncode}")
+    except FileNotFoundError:
+        return False, f"'{argv[0]}' not available on this system"
+    except asyncio.TimeoutError:
+        pass  # a poweroff/logout may never return — that's success
+    return True, "ok"
+
+
 @app.post("/api/power")
 async def api_power(body: dict, request: Request):
     """Session/power controls for the menu-bar power menu. 'agentos-restart' restarts
@@ -679,25 +808,12 @@ async def api_power(body: dict, request: Request):
     if action == "agentos-restart":
         out = await state["toolbox"].restart_agentos()
         return {"ok": not out.startswith(("[error]", "[denied]")), "result": out}
-    spec = POWER_ACTIONS.get(action)
-    if not spec:
+    if action not in POWER_ACTIONS:
         return JSONResponse({"error": f"unknown action '{action}'"}, status_code=400)
-    import sys as _sys
-    argv = spec["darwin"] if _sys.platform == "darwin" else spec["linux"]
     state["store"].log("system", f"power: {action} requested from the desktop")
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
-        if proc.returncode != 0:
-            return JSONResponse({"error": out.decode(errors="replace")[:300]
-                                          or f"{argv[0]} exited {proc.returncode}"},
-                                status_code=500)
-    except FileNotFoundError:
-        return JSONResponse({"error": f"'{argv[0]}' not available on this system"},
-                            status_code=500)
-    except asyncio.TimeoutError:
-        pass  # a poweroff/logout may never return — that's success
+    ok, msg = await power_exec(action)
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=500)
     return {"ok": True}
 
 
@@ -1111,16 +1227,19 @@ fmt();</script>"""},
 <script>const n=document.getElementById('n'),st=document.getElementById('st'),ai=document.getElementById('ai');
 n.value=localStorage.getItem('quicknotes')||'';let t;
 n.oninput=()=>{st.textContent='saving…';clearTimeout(t);t=setTimeout(()=>{localStorage.setItem('quicknotes',n.value);st.textContent='saved '+new Date().toLocaleTimeString()},400)};
-// AI built in: the OS's selected model works on the note via appLLM (injected runtime)
+// AI built in: the OS's selected model works on the note via appLLM.stream (injected
+// runtime) — output streams into the panel live instead of appearing all at once.
 async function think(btn,sys,replace){
   if(!n.value.trim())return;
   btn.disabled=true;const old=btn.textContent;btn.textContent='thinking…';
+  ai.style.display='block';ai.textContent='…';
   try{
-    const out=await appLLM(n.value,sys);
-    if(out.startsWith('[error]')){ai.style.display='block';ai.textContent='AI unavailable — pick a model in Settings. '+out;}
-    else if(replace){n.value=out;n.oninput();}
-    else{ai.style.display='block';ai.textContent=out;}
-  }catch(e){ai.style.display='block';ai.textContent='AI error: '+e;}
+    const out=await appLLM.stream(n.value,{system:sys,
+      onDelta:(d,all)=>{ai.textContent=all;ai.scrollTop=ai.scrollHeight;}});
+    if(out.startsWith('[error]')){ai.textContent='AI unavailable — pick a model in Settings. '+out;}
+    else if(replace){n.value=out;ai.style.display='none';n.oninput();}
+    else{ai.textContent=out;}
+  }catch(e){ai.textContent='AI error: '+e;}
   btn.disabled=false;btn.textContent=old;
 }
 document.getElementById('sum').onclick=e=>think(e.target,'Summarize these notes into their key points, as a short bullet list. Reply with only the summary.');
@@ -1445,8 +1564,17 @@ async def api_delete_app(aid: str):
 APP_RUNTIME = """<script>
 window.APP_ID = %r;
 window.APP_TOKEN = %r; // runtime identity: the OS knows WHICH app is calling (permission gate)
-// Every built app gets its own data store (its "MCP"): appData.get()/set() persist server-side
-// and are readable by the agent. Also appTool(name,args) runs any OS/MCP tool.
+// ===== AgentOS app runtime v2 — injected into every built app =====
+//   appData.get() / appData.set(obj)          the app's private server-side JSON store
+//   appTool(name, args)                       run any OS/MCP tool (permission-gated)
+//   appLLM(prompt, system?)                   one-shot AI completion -> text
+//   appLLM.stream(prompt, {system, onDelta})  streaming completion; onDelta(delta, textSoFar)
+//   appChat(messages)                         multi-turn: [{role:'system'|'user'|'assistant', content}]
+//   appChat.stream(messages, {onDelta})       streaming multi-turn
+//   appAgent(prompt, {tools})                 mini agent loop (up to 5 tool steps) acting AS this
+//                                             app — risky tools raise the OS's normal approval card
+//   appContext()                              {app_id, app_name, agent_name, model, theme}
+// Every call is authenticated with the app token and gated by the app's permission grants.
 window.appData = {
   async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){ return {}; } },
   async set(obj){ try{ await fetch('/api/apps/'+window.APP_ID+'/data',{method:'PUT',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify(obj)}); }catch(e){} },
@@ -1454,11 +1582,57 @@ window.appData = {
 window.appTool = async (name,args={}) => {
   try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
 };
+const _appHdrs = {'Content-Type':'application/json','X-App-Token':window.APP_TOKEN};
+async function _appStream(body, onDelta){
+  let r;
+  try{ r = await fetch('/api/apps/llm/stream',{method:'POST',headers:_appHdrs,body:JSON.stringify(body)}); }
+  catch(e){ return '[error] ' + e; }
+  if(!r.ok || !r.body) return '[error] llm stream unavailable (HTTP ' + r.status + ')';
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let acc = '';
+  for(;;){
+    const c = await rd.read(); if(c.done) break;
+    const t = dec.decode(c.value,{stream:true}); if(!t) continue;
+    acc += t;
+    if(onDelta){ try{ onDelta(t, acc); }catch(_){} }
+  }
+  return acc;
+}
 // AI inside the app: one-shot LLM completion (no tools). Returns plain text.
 window.appLLM = async (prompt, system='') => {
   const r = await window.appTool('llm_generate', system ? {prompt, system} : {prompt});
   if (r && r.output !== undefined) return r.output;
   return '[error] ' + ((r && r.error) || 'llm unavailable');
+};
+// Streaming completion: resolves the full text, calling onDelta(delta, textSoFar) as it arrives.
+window.appLLM.stream = (prompt, opts) =>
+  _appStream((opts && opts.system) ? {prompt, system: opts.system} : {prompt}, opts && opts.onDelta);
+// Multi-turn chat: pass the whole history (a system message is allowed as messages[0]).
+window.appChat = async (messages) => {
+  try{
+    const r = await (await fetch('/api/apps/llm/chat',{method:'POST',headers:_appHdrs,body:JSON.stringify({messages})})).json();
+    if (r && r.output !== undefined) return r.output;
+    return '[error] ' + ((r && r.error) || 'llm unavailable');
+  }catch(e){ return '[error] ' + e; }
+};
+window.appChat.stream = (messages, opts) => _appStream({messages}, opts && opts.onDelta);
+// Mini agent: the OS agent runs up to 5 tool-using steps AS this app (its grants apply;
+// ungranted risky tools raise the normal approval card for the user). Resolves final text.
+window.appAgent = async (prompt, opts) => {
+  try{
+    const r = await (await fetch('/api/apps/agent',{method:'POST',headers:_appHdrs,
+      body:JSON.stringify({prompt, tools:(opts && opts.tools) || undefined})})).json();
+    if (r && r.output !== undefined) return r.output;
+    return '[error] ' + ((r && r.error) || 'agent unavailable');
+  }catch(e){ return '[error] ' + e; }
+};
+// What the app runs inside: ids, the agent's name, the selected model, and the UI theme.
+// (the shell does not pass a theme param to app iframes today, so theme reports 'dark')
+let _appCtx = null;
+window.appContext = async () => {
+  if(_appCtx) return _appCtx;
+  try{ _appCtx = await (await fetch('/api/apps/context',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){}
+  return _appCtx || {app_id:window.APP_ID, app_name:'', agent_name:'', model:'', theme:'dark'};
 };
 // surface runtime errors to the host (App Studio shows them with a one-click fix)
 window.addEventListener('error', e => {
@@ -1596,10 +1770,15 @@ def _scan_app_permissions(html: str) -> list[dict]:
         seen.add((action, resource))
         perms.append({"action": action, "resource": resource,
                       "reason": f"calls appTool('{t}')", "required": False})
-    if _re.search(r"appLLM\s*\(", html or "") and ("tool.use", "tool:llm_generate*") not in seen:
+    # appLLM / appLLM.stream / appChat(.stream) all resolve to the llm_generate capability;
+    # appAgent stays manifest-driven (its tool needs are whatever the manifest declares —
+    # every tool it touches is still PDP-gated per step under the app's principal).
+    if _re.search(r"\bapp(?:LLM|Chat)\s*[.(]", html or "") and \
+            ("tool.use", "tool:llm_generate*") not in seen:
         seen.add(("tool.use", "tool:llm_generate*"))
         perms.append({"action": "tool.use", "resource": "tool:llm_generate*",
-                      "reason": "uses the AI model inside the app (appLLM)", "required": False})
+                      "reason": "uses the AI model inside the app (appLLM/appChat)",
+                      "required": False})
     if _re.search(r"appData\.(get|set)", html or ""):
         perms.append({"action": "app.data.*", "resource": "app:self/data",
                       "reason": "saves its own settings/data", "required": True})
@@ -1943,15 +2122,28 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
 - `await appTool(name, args)` runs ANY OS/MCP tool from the app and returns {output} — the way to pull
   LIVE data, e.g. appTool('fetch_url',{url:…}), appTool('system_info'), appTool('run_command',{command:…}),
   or a connected mcp_* tool.
-- `await appLLM(prompt, system?)` runs the OS's language model INSIDE the app (one-shot, returns text).
-  This is how apps get AI features: summarize what they fetched, classify or rewrite entries, and —
-  critically — EXTRACT data from messy pages instead of brittle regex: after appTool('fetch_url',…),
-  call appLLM(pageText, 'Reply with ONLY JSON {"price": number|null, "currency": string}') and
-  JSON.parse the reply inside try/catch. Prefer appLLM over hand-written parsers for anything scraped.
-- AI-NATIVE BY DEFAULT: every app you ship has the OS's model built in — include at least one
-  genuinely useful appLLM feature (summarize, suggest, classify, explain, natural-language input)
-  wired to the app's real data, with a loading state and a graceful fallback if no model is
-  configured. An app without its AI feature is incomplete.
+- AI RUNTIME — the OS's language model is INSIDE every app, pre-injected as four helpers:
+  · `await appLLM(prompt, system?)` — one-shot, returns text. For short, invisible work only:
+    classify a row, extract a field, name a thing. Also the resilient-parsing trick: after
+    appTool('fetch_url',…), call appLLM(pageText, 'Reply with ONLY JSON {"price": number|null,
+    "currency": string}') and JSON.parse inside try/catch — prefer this over brittle regex.
+  · `await appLLM.stream(prompt, {system, onDelta})` — STREAMING completion. onDelta(delta,
+    textSoFar) fires per chunk; resolve value is the full text. ALWAYS stream when the output is
+    user-visible and could exceed a sentence — a live-updating <div> beats a spinner every time.
+  · `await appChat(messages)` / `await appChat.stream(messages, {onDelta})` — MULTI-TURN: pass the
+    whole [{role, content}] history (system message allowed first). This is how you build real
+    in-app assistants: keep the messages array in appData, append the user turn, stream the reply
+    into the transcript, then append the assistant turn.
+  · `await appAgent(prompt, {tools:['fetch_url','notify',…]})` — a real mini-agent: the OS runs up
+    to 5 tool-using steps AS this app and resolves the final text. Use it when the app needs the
+    AI to DO things, not just say things (fetch + compare + notify, file a note, schedule a check).
+    Risky/ungranted tools raise the OS's normal approval card — declare what it needs in `permissions`.
+- AI-NATIVE BY DEFAULT: every app you ship has the model built in — the "textarea + ✨ button" is
+  the FLOOR, not the ceiling. Aim higher: a chat panel with memory (appChat.stream), proactive
+  suggestions rendered from the app's own appData, natural-language input that appAgent turns into
+  actions. Rules of thumb: user-visible output → appLLM.stream, never bare appLLM; conversation
+  with history → appChat; real actions → appAgent. Every AI feature gets a loading state and a
+  graceful '[error]…' fallback when no model is configured. An app without its AI feature is incomplete.
 - Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
 - THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
@@ -2063,6 +2255,57 @@ async def resolve_approval(aid: str, approved: bool, remember: bool = False):
     entry["fut"].set_result(bool(approved))
 
 
+# ---- Shell-control channel: server → browser-shell commands, with results --------
+#
+# The desktop shell (the stock browser UI, or a theme's replacement shell) is a WS
+# client like any other — but it is the only party that can act INSIDE the rendered
+# desktop: open an AgentOS app window, switch virtual desktops, apply a theme. The
+# contract (the UI side implements the handler):
+#
+#   server → shell (broadcast on /ws):
+#       {"type": "shell_cmd", "id": "<uuid>", "action": "<name>", "args": {...}}
+#   shell → server (answer within the timeout):
+#       POST /api/shell/result   {"id": "<uuid>", "ok": true|false, "data": <any JSON>}
+#
+# Actions the stock shell implements: open_app {target}, close_app {target},
+# focus_app {target}, switch_desktop {target}, apply_theme {target},
+# list_open_apps {}. `data` carries the result (e.g. the open-app list) or, on
+# ok=false, a sentence saying why. /api/shell/result is in SENSITIVE_FOR_APPS so
+# user-built apps cannot spoof results.
+
+async def shell_command(action: str, args: dict | None = None, timeout: float = 8.0):
+    """Send one command to the connected shell and await its answer. Returns
+    (ok, data); never raises — no shell / no answer comes back as (False, sentence)."""
+    if not state.get("clients"):
+        return False, ("no desktop shell is connected (open the AgentOS UI in a "
+                       "browser) — shell actions need a live shell")
+    cid = uuid.uuid4().hex[:8]
+    fut = asyncio.get_event_loop().create_future()
+    state.setdefault("shell_pending", {})[cid] = fut
+    await state["broadcast"]({"type": "shell_cmd", "id": cid, "action": action,
+                              "args": args or {}})
+    try:
+        res = await asyncio.wait_for(fut, timeout=timeout)
+        return bool(res.get("ok")), res.get("data")
+    except asyncio.TimeoutError:
+        return False, (f"the desktop shell did not answer '{action}' within "
+                       f"{timeout:.0f}s — it may be an older or custom shell without "
+                       "shell_cmd support")
+    finally:
+        state["shell_pending"].pop(cid, None)
+
+
+@app.post("/api/shell/result")
+async def api_shell_result(body: dict):
+    """The shell's answer to a shell_cmd event (contract above). Sensitive: user-built
+    apps are blocked from posting here — they could spoof shell results."""
+    fut = state.get("shell_pending", {}).get(str(body.get("id", "")))
+    if fut is None or fut.done():
+        return JSONResponse({"error": "unknown or expired shell_cmd id"}, status_code=404)
+    fut.set_result({"ok": bool(body.get("ok")), "data": body.get("data")})
+    return {"ok": True}
+
+
 # ---- App privilege guard: apps may never reconfigure the OS over plain REST ------
 
 # method + path-prefix pairs an app-originated request is never allowed to hit;
@@ -2080,6 +2323,8 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/net/wifi"), ("POST", "/api/bt"), ("POST", "/api/brightness"),
     ("POST", "/api/audio/devices"), ("POST", "/api/power/profile"),
     ("POST", "/api/wm/outputs"), ("POST", "/api/components"),
+    # shell_cmd results come from the shell itself, never from an app iframe
+    ("POST", "/api/shell/result"),
 )
 
 
@@ -2092,7 +2337,10 @@ async def app_privilege_guard(request: Request, call_next):
     if from_app:
         path, method = request.url.path, request.method
         # an app's own data/manifest endpoints stay reachable (gated above/below)
-        own_surface = path.startswith("/api/apps/") and path.endswith(("/data", "/page"))
+        own_surface = (path.startswith("/api/apps/") and path.endswith(("/data", "/page"))) \
+            or path in ("/api/apps/llm/stream", "/api/apps/llm/chat",
+                        "/api/apps/agent", "/api/apps/context")  # appLLM v2 runtime
+
         if not own_surface:
             for m, p in SENSITIVE_FOR_APPS:
                 if method == m and path.startswith(p):
@@ -2132,6 +2380,8 @@ async def api_run_tool(body: dict, request: Request):
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""),
                                    surface=surface)
+    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule == "default":
+        dec.effect = "ask"   # power/session actions confirm every time, autonomy aside
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -2309,6 +2559,12 @@ WS_EVENTS = {
         "apps / themes / widgets / wallpaper / models / files / config / grants  (refresh hints)",
         "theme_apply {theme}", "model_pull {name,status,done}", "fabric_event / fabric_defs",
         "telegram_in / telegram_out {conversation_id,text}", "knowledge_update",
+        "briefing {text,reason,conversation_id} ('while you were away', de/kiosk)",
+        "suggestion {id,text,action_prompt} (proactive; dismiss via "
+        "POST /api/suggestions/{id}/dismiss)",
+        "shell_cmd {id,action,args} (the shell answers via POST /api/shell/result "
+        "{id,ok,data}; actions: open_app/close_app/focus_app/switch_desktop/"
+        "apply_theme/list_open_apps)",
     ],
     "inbound (client → server)": [
         "chat {text, conversation_id?, model?}", "build {prompt, app_id?, model?}",
@@ -2917,6 +3173,280 @@ async def api_setup_reset(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# Agent-led onboarding: /api/setup/say — the chosen model speaks the wizard's
+# conversational steps (chunked text, canned fallback when no model answers)
+# ---------------------------------------------------------------------------
+
+# canned lines: what the wizard shows when no model is configured, the provider
+# errors, or the first token takes >6s — indistinguishable from the streamed
+# path except that the text arrives in one chunk (the JS bakes these in too,
+# for when the endpoint itself is unreachable)
+SAY_FALLBACK = {
+    "autonomy": "I'm {name} — good to meet you. How much should I do on my own? "
+                "Balanced is a good start: I act freely and check with you before anything risky.",
+    "autostart": "Should I keep running in the background — for scheduled jobs, alerts and "
+                 "Telegram — even when this window is closed?",
+    "de_here": "This is your desktop now, so I'm always here — nothing to install, "
+               "nothing to start.",
+    "wallpaper": "Let's make this place yours. Pick a wallpaper to start with — "
+                 "I can generate a custom one for you later.",
+    "voice": "One more thing — should I speak my replies out loud, or keep things quiet?",
+    "done": "That's everything — welcome to AgentOS. Let's get to work.",
+}
+
+_SAY_ASKS = {
+    "autonomy": "Introduce yourself by name in a few words, then ask how much autonomy you "
+                "should have when working for them, recommending the Balanced setting (act "
+                "freely, ask before risky actions). The choices are shown as buttons under "
+                "your message — do not list them.",
+    "autostart": "Ask whether you should keep running in the background at login — for "
+                 "scheduled jobs and alerts — even when the window is closed. The yes/no "
+                 "choices are buttons — do not list them.",
+    "de_here": "Tell the user, briefly and warmly, that AgentOS is their desktop session now, "
+               "so you are always present — nothing to install or start.",
+    "wallpaper": "Invite the user to pick a starting wallpaper for their new desktop, and "
+                 "mention you can generate a custom one later. The presets are shown as "
+                 "buttons — do not describe them.",
+    "voice": "Ask whether the user would like you to speak your replies out loud "
+             "(text-to-speech). The yes/no choices are buttons — do not list them.",
+    "done": "The setup just finished. Welcome the user to AgentOS in one warm sentence.",
+}
+
+
+@app.post("/api/setup/say")
+async def api_setup_say(body: dict):
+    """Stream one short in-character line from the chosen model for a wizard step.
+    body: {step, name, model, provider?, key?} → chunked text/plain. Strict brief:
+    ≤2 sentences, warm, no markdown. Any failure (no model, provider error, >6s to
+    first token) degrades to the canned line for that step — never an error."""
+    from fastapi.responses import StreamingResponse
+    body = body or {}
+    step = str(body.get("step") or "autonomy")
+    name = (str(body.get("name") or "").strip()
+            or state["cfg"].get("agent_name") or "Aria")[:40]
+    model = str(body.get("model") or "").strip()
+    canned = SAY_FALLBACK.get(step, SAY_FALLBACK["done"]).format(name=name)
+    cfg = state["cfg"]
+    prov, key = str(body.get("provider") or "").strip(), str(body.get("key") or "").strip()
+    if prov and key and prov in (cfg.get("providers") or {}):
+        # the wizard may hold a cloud key that isn't saved yet — use it for this line only
+        import copy
+        cfg = {**cfg, "providers": copy.deepcopy(cfg["providers"])}
+        cfg["providers"][prov]["api_key"] = key
+        cfg["providers"][prov]["enabled"] = True
+
+    async def gen():
+        if not model or step not in _SAY_ASKS:
+            yield canned
+            return
+        sys_p = (f"You are {name}, the user's brand-new personal AI agent, speaking during "
+                 "AgentOS first-run setup. Reply with EXACTLY the line to show the user: at "
+                 "most 2 short sentences, warm and confident, plain text only — no markdown, "
+                 "no quotes, no emoji, no stage directions.")
+        agen = providers.chat(cfg, model,
+                              [{"role": "system", "content": sys_p},
+                               {"role": "user", "content": _SAY_ASKS[step]}], [],
+                              options={"max_tokens": 120, "think": False})
+        it = agen.__aiter__()
+
+        async def first_text():
+            async for ev in it:
+                if ev.get("type") == "text" and ev.get("text"):
+                    return ev["text"]
+                if ev.get("type") == "done":
+                    return None
+            return None
+
+        try:
+            first = await asyncio.wait_for(first_text(), timeout=6.0)
+        except Exception:
+            first = None
+        if not first:
+            with contextlib.suppress(Exception):
+                await agen.aclose()
+            yield canned
+            return
+        sent = first
+        yield first
+        try:
+            while len(sent) < 400:   # the brief says ≤2 sentences — cap runaways
+                ev = await asyncio.wait_for(it.__anext__(), timeout=10.0)
+                if ev.get("type") == "text" and ev.get("text"):
+                    sent += ev["text"]
+                    yield ev["text"]
+                elif ev.get("type") == "done":
+                    break
+        except Exception:
+            pass
+        finally:
+            with contextlib.suppress(Exception):
+                await agen.aclose()
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# appLLM v2: the AI runtime behind the helpers injected into every built app
+# (appLLM.stream / appChat / appAgent / appContext). App-token only; the same
+# PDP gate as /api/tool — these endpoints never bypass the grant system.
+# ---------------------------------------------------------------------------
+
+def _app_principal(request) -> Principal | None:
+    """The calling app's principal, or None when the request has no valid app token
+    (these endpoints are app-only — users and the shell have /api/chat and /ws)."""
+    p = _principal_of(request)
+    return p if p.kind == "app" else None
+
+
+async def _gate_app_llm(principal: Principal):
+    """The exact gate /api/tool applies to llm_generate: PDP decision, approval card
+    on 'ask', audit log on refusal. Returns an error response, or None when allowed."""
+    toolbox = state["toolbox"]
+    level, reason = toolbox.risk_of("llm_generate", {})
+    dec = state["pdp"].decide_tool(principal, "llm_generate", {}, level, reason=reason,
+                                   autonomy=state["cfg"].get("autonomy", ""), surface="gui")
+    if dec.effect == "deny":
+        state["store"].log("policy", f"deny: {principal.label} → {dec.action} {dec.resource}",
+                           {"principal": principal.label, "action": dec.action,
+                            "resource": dec.resource, "effect": "deny", "via": "app_llm"})
+        return JSONResponse({"error": f"denied: {dec.reason or reason}"}, status_code=403)
+    if dec.effect == "ask":
+        if not state["clients"]:
+            return JSONResponse({"error": f"needs approval: {dec.reason or reason}"},
+                                status_code=403)
+        if not await request_approval("llm_generate", {}, dec.reason or reason,
+                                      offer=dec.grant_offer):
+            return JSONResponse({"error": f"not approved: {dec.reason or reason}"},
+                                status_code=403)
+    return None
+
+
+def _app_llm_messages(body: dict) -> list[dict]:
+    """{prompt, system?} or {messages: [{role, content}…]} → provider messages, sanitized
+    (roles whitelisted, content stringified and capped)."""
+    msgs = []
+    if isinstance(body.get("messages"), list):
+        for m in body["messages"][:80]:
+            if isinstance(m, dict) and m.get("role") in ("system", "user", "assistant"):
+                msgs.append({"role": m["role"], "content": str(m.get("content") or "")[:60_000]})
+    if not msgs:
+        if body.get("system"):
+            msgs.append({"role": "system", "content": str(body["system"])[:60_000]})
+        msgs.append({"role": "user", "content": str(body.get("prompt") or "")[:60_000]})
+    return msgs
+
+
+@app.post("/api/apps/llm/stream")
+async def api_app_llm_stream(body: dict, request: Request):
+    """appLLM.stream / appChat.stream: streaming completion for a user-built app as
+    chunked text. Takes {prompt, system?} or {messages}; optional {model}."""
+    from fastapi.responses import StreamingResponse
+    principal = _app_principal(request)
+    if principal is None:
+        return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
+    gate = await _gate_app_llm(principal)
+    if gate is not None:
+        return gate
+    body = body or {}
+    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
+    msgs = _app_llm_messages(body)
+    state["store"].log("tool", "app→appLLM.stream",
+                       {"via": "user_app", "principal": principal.label,
+                        "app_id": principal.id})
+
+    async def gen():
+        if not model:
+            yield "[error] no model configured"
+            return
+        try:
+            async for ev in providers.chat(state["cfg"], model, msgs, []):
+                if ev.get("type") == "text" and ev.get("text"):
+                    yield ev["text"]
+        except Exception as e:
+            yield f"[error] llm: {type(e).__name__}: {e}"
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
+
+
+@app.post("/api/apps/llm/chat")
+async def api_app_llm_chat(body: dict, request: Request):
+    """appChat: multi-turn one-shot — {messages} in, {output} out. Same auth + gate
+    as /api/apps/llm/stream; the messages pass to the provider as-is (system allowed)."""
+    principal = _app_principal(request)
+    if principal is None:
+        return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
+    gate = await _gate_app_llm(principal)
+    if gate is not None:
+        return gate
+    body = body or {}
+    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
+    if not model:
+        return {"output": "[error] no model configured"}
+    parts: list[str] = []
+    try:
+        async for ev in providers.chat(state["cfg"], model, _app_llm_messages(body), []):
+            if ev.get("type") == "text" and ev.get("text"):
+                parts.append(ev["text"])
+    except Exception as e:
+        return {"output": f"[error] llm: {type(e).__name__}: {e}"}
+    state["store"].log("tool", "app→appChat",
+                       {"via": "user_app", "principal": principal.label,
+                        "app_id": principal.id})
+    return {"output": "".join(parts) or "(empty response)"}
+
+
+@app.post("/api/apps/agent")
+async def api_app_agent(body: dict, request: Request):
+    """appAgent: a scoped mini agent — up to 5 steps of the standard Agent loop under
+    the APP's principal. The PDP filters and gates every tool per principal exactly as
+    in chat turns; risky/ungranted tools raise the normal approval card. body:
+    {prompt, tools?: [names], model?} → {output: final text, steps}."""
+    principal = _app_principal(request)
+    if principal is None:
+        return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
+    body = body or {}
+    prompt = str(body.get("prompt") or "").strip()
+    if not prompt:
+        return JSONResponse({"error": "prompt required"}, status_code=400)
+    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
+    if not model:
+        return {"output": "[error] no model configured", "steps": 0}
+    tools = body.get("tools")
+    tool_filter = [str(t) for t in tools][:24] if isinstance(tools, list) else None
+
+    async def emit(_ev):
+        pass
+
+    async def approver(name, args, reason, offer=None):
+        if not state["clients"]:   # headless: nobody to ask
+            return False
+        return await request_approval(name, args, reason, offer=offer)
+
+    agent = Agent({**state["cfg"], "max_steps": 5}, state["toolbox"], model, emit, approver,
+                  tool_filter=tool_filter, principal=principal, surface="gui")
+    result = await agent.run([{"role": "user", "content": prompt}])
+    state["store"].log("tool", "app→appAgent",
+                       {"via": "user_app", "principal": principal.label,
+                        "app_id": principal.id, "steps": len(result["steps"])})
+    return {"output": result["content"], "steps": len(result["steps"])}
+
+
+@app.get("/api/apps/context")
+async def api_app_context(request: Request):
+    """appContext(): what the app runs inside, so it can adapt. theme: the shell does
+    not pass a ?theme= param to app iframes today, so this reports 'dark' (the OS
+    shell's scheme) until it does."""
+    principal = _app_principal(request)
+    if principal is None:
+        return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
+    a = state["store"].get_app(principal.id) or {}
+    cfg = state["cfg"]
+    return {"app_id": principal.id, "app_name": a.get("name", ""),
+            "agent_name": cfg.get("agent_name", "Aria"),
+            "model": cfg.get("default_model", ""), "theme": "dark"}
+
+
+# ---------------------------------------------------------------------------
 # Fabric: subagents, workflows, runs, observability (the control plane API)
 # ---------------------------------------------------------------------------
 
@@ -3097,11 +3627,36 @@ async def api_tasks():
 
 @app.post("/api/tasks")
 async def api_add_task(body: dict):
+    if body.get("schedule_type") == "trigger" or body.get("trigger"):
+        msg = state["scheduler"].create_trigger(
+            body.get("trigger", ""), body.get("prompt", ""),
+            match=body.get("match", ""), path=body.get("path", ""),
+            glob=body.get("glob", ""), minutes=float(body.get("minutes") or 30),
+            cooldown_secs=int(body.get("cooldown_secs") or 300))
+        return {"ok": not msg.startswith("[error]"), "message": msg}
     msg = state["scheduler"].create_task(
         body.get("prompt", ""), body.get("schedule_type", "once"),
         int(body.get("interval_minutes") or 0), body.get("at_time", ""),
         int(body.get("delay_minutes") or 0))
     return {"ok": True, "message": msg}
+
+
+@app.get("/api/suggestions")
+async def api_suggestions():
+    """Live proactive suggestions (at most one at a time, by design)."""
+    s = state["store"].latest_proactive("suggestion")
+    if not s:
+        return {"suggestions": []}
+    return {"suggestions": [{"id": s["id"], "text": s["text"],
+                             "action_prompt": (s["data"] or {}).get("action_prompt", ""),
+                             "created_at": s["created_at"]}]}
+
+
+@app.post("/api/suggestions/{sid}/dismiss")
+async def api_dismiss_suggestion(sid: str):
+    """Dismissing a suggestion also silences new ones for 24 hours."""
+    state["store"].dismiss_proactive(pid=sid)
+    return {"ok": True}
 
 
 @app.put("/api/tasks/{tid}")
@@ -3565,6 +4120,21 @@ async def api_lifecycle():
                       "turns_running": len(state.get("turns") or {}),
                       "hermes": ("gateway running" if hs["gateway"]
                                  else "installed" if hs["installed"] else "not installed")}
+    # the proactivity north star: what share of conversations did the OS start?
+    try:
+        rows = store.db.execute(
+            "select coalesce(origin,'user') o, count(*) c from conversations "
+            "where created_at > ? group by o", (time.time() - 7 * 86400,)).fetchall()
+        os_origins = {"schedule", "trigger", "briefing", "suggestion"}
+        os_turns = sum(r["c"] for r in rows if r["o"] in os_origins)
+        user_turns = sum(r["c"] for r in rows if r["o"] not in os_origins)
+        total = os_turns + user_turns
+        out["operate"]["initiative"] = {
+            "os_turns": os_turns, "user_turns": user_turns,
+            "pct_os": round(100.0 * os_turns / total, 1) if total else 0.0,
+            "window": "7d"}
+    except Exception:
+        pass
 
     apps = store.list_apps()
     b = state.get("build") or {}

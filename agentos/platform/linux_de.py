@@ -158,6 +158,41 @@ class LinuxDE(LinuxHosted):
         except comp.CompositorError as e:
             return False, str(e)
 
+    def cycle_focus(self, direction: str = "next") -> tuple[bool, str]:
+        """Alt-Tab: shell → native windows in order → back to the shell.
+
+        Bound in the generated sway config, so it works no matter which window
+        holds the keyboard — the compositor sees the chord before any client.
+        """
+        try:
+            wins = self._comp.windows(include_shell=True)
+        except comp.CompositorError as e:
+            return False, str(e)
+        natives = [w for w in wins if not w.get("shell")]
+        if not natives:
+            return True, "no native windows"
+        step = -1 if direction == "prev" else 1
+        cur = next((i for i, w in enumerate(natives) if w["focused"]), None)
+        if cur is None:                       # on the shell (or nowhere): enter the ring
+            target = natives[0] if step > 0 else natives[-1]
+        else:
+            nxt = cur + step
+            if 0 <= nxt < len(natives):
+                target = natives[nxt]
+            else:                             # walked off the end: back to the shell
+                for crit in ('[app_id="^agentos$"] focus', '[class="^agentos$"] focus'):
+                    try:
+                        self._comp.command(crit)
+                        return True, "shell"
+                    except comp.CompositorError:
+                        continue
+                return False, "could not focus the shell"
+        try:
+            self._comp.focus(target["id"])
+            return True, target["app"] or target["title"]
+        except comp.CompositorError as e:
+            return False, str(e)
+
     # --- workspaces & outputs ----------------------------------------------
 
     def workspaces(self) -> dict:

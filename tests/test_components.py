@@ -17,7 +17,7 @@ def test_catalog_entries_are_complete():
         assert row["id"] and row["title"] and row["package"]
         assert row["licence"], f"{row['id']} has no licence to show in the consent dialog"
         assert row["unlocks"], f"{row['id']} doesn't say what it unlocks"
-        assert row["method"] in ("apt", "snap")
+        assert row["method"] in ("apt", "snap", "script")
         assert row["command"].startswith("sudo "), "the shown command must be runnable as-is"
         assert isinstance(row["installed"], bool)
 
@@ -27,6 +27,8 @@ def test_install_command_shapes():
         {"method": "apt", "package": "ddcutil"}) == "apt-get install -y ddcutil"
     assert components.install_command(
         {"method": "snap", "package": "chromium"}) == "snap install chromium"
+    cmd = components.install_command({"method": "script", "package": "agentos boot theme"})
+    assert cmd.startswith("sh ") and cmd.endswith("install.sh")
 
 
 def test_unknown_component_is_refused():

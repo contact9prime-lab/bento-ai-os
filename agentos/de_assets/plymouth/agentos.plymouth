@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=AgentOS
+Description=AgentOS boot splash — the desktop's own mark from the first frame
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/agentos
+ScriptFile=/usr/share/plymouth/themes/agentos/agentos.script

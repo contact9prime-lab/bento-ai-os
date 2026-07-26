@@ -1,0 +1,27 @@
+/* ================= jarvis voice mode ================= */
+#jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
+#jarvis-ov.show{display:flex;animation:fadein .25s}
+.jbox{display:flex;flex-direction:column;align-items:center;gap:22px;max-width:640px;padding:0 24px;text-align:center}
+.jorb{position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center}
+.jorb .jcore{width:74px;height:74px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--acc),var(--acc2));
+  box-shadow:0 0 50px 6px rgba(94,234,212,.5);transition:background var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
+.jorb .jring{position:absolute;border-radius:50%;border:1.5px solid rgba(94,234,212,.28)}
+.jring.r1{width:120px;height:120px}.jring.r2{width:160px;height:160px;border-color:rgba(34,211,238,.2)}
+.jring.r3{width:200px;height:200px;border-color:rgba(94,234,212,.12)}
+#jarvis-ov.listening .jorb .jring{animation:jpulse 1.6s ease-in-out infinite}
+#jarvis-ov.listening .jorb .jcore{background:radial-gradient(circle at 50% 40%,#7dffdf,#22d3ee);box-shadow:0 0 60px 10px rgba(94,234,212,.6)}
+#jarvis-ov.thinking .jorb{animation:jspin 2.2s linear infinite}
+#jarvis-ov.thinking .jorb .jring{border-top-color:var(--acc);border-right-color:var(--acc2)}
+#jarvis-ov.speaking .jorb .jcore{animation:jspeak .5s ease-in-out infinite}
+@keyframes jpulse{0%,100%{transform:scale(.92);opacity:.6}50%{transform:scale(1.06);opacity:1}}
+@keyframes jspin{to{transform:rotate(360deg)}}
+@keyframes jspeak{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+#j-status{font-size:var(--fs-base);color:var(--acc);font-weight:600;letter-spacing:.4px}
+#j-transcript{font-size:var(--fs-xl);color:var(--txt);min-height:28px;font-weight:500}
+#j-reply{font-size:var(--fs-base);color:var(--dim);line-height:1.6;max-height:34vh;overflow-y:auto;user-select:text}
+.jbtns{display:flex;gap:12px;align-items:center;margin-top:6px}
+#j-mic{width:58px;height:58px;border-radius:50%;background:var(--bg4);border:1px solid var(--line);font-size:var(--fs-2xl);display:flex;align-items:center;justify-content:center}
+#j-mic:hover{border-color:var(--acc)}
+#jarvis-ov.listening #j-mic{background:var(--err);border-color:var(--err);animation:jpulse 1.2s infinite}
+

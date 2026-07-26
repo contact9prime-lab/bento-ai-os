@@ -1,0 +1,9 @@
+/* ================= boot splash ================= */
+#boot{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity var(--d-slower) var(--ease-out)}
+#boot.off{opacity:0;pointer-events:none}
+#boot .mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;box-shadow:0 0 60px rgba(94,234,212,.3)}
+#boot h1{font-size:var(--fs-2xl);letter-spacing:.5px}
+#boot .bbar{width:180px;height:3px;border-radius:3px;background:var(--bg4);overflow:hidden}
+#boot .bbar i{display:block;height:100%;width:35%;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2));animation:boot 1s ease-in-out infinite}
+@keyframes boot{0%{transform:translateX(-120%)}100%{transform:translateX(520%)}}
+

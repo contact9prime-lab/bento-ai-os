@@ -171,7 +171,8 @@ straight to it.
   existing GPL ones). AgentOS's own surfaces can use the browser's input.
 - Pairing bluetooth devices that demand a PIN confirmation needs a pairing
   agent — "just works" devices (headphones, mice, speakers) pair fine.
-- The lock screen is swaylock's, themed with your wallpaper — a fully
-  AgentOS-rendered lock UI is the first milestone of the in-house compositor.
+- The lock screen is swaylock's, branded (AgentOS ring colors, wallpaper fill,
+  live-synced when the wallpaper changes) — a fully AgentOS-rendered lock UI is
+  the first milestone of the in-house compositor.
 - Screen sharing works through xdg-desktop-portal-wlr; per-window sharing
   depends on the app supporting the portal.

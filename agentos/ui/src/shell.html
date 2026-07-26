@@ -1,0 +1,83 @@
+
+<div id="menubar">
+  <div id="mb-brand"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+  <span id="mbapp" title="focused app"></span>
+  <div id="mb-spacer"></div>
+  <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
+  <div id="tray">
+    <button id="tray-voice" title="Voice mode — Alt+J"></button>
+    <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
+    <button id="tray-bell" title="Notifications"></button>
+    <div id="spin" title="agent is working"></div>
+    <div id="statdot" title="server connection"></div>
+    <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
+    <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
+  </div>
+</div>
+<div id="powermenu">
+  <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
+  <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
+  <hr>
+  <button onclick="powerDo('suspend','Suspend the machine?')">Suspend</button>
+  <button class="danger" onclick="powerDo('logout','Log out of this session? Unsaved work in other apps will be lost.')">Log out…</button>
+  <button class="danger" onclick="powerDo('restart','Restart the machine?')">Restart…</button>
+  <button class="danger" onclick="powerDo('poweroff','Power off the machine?')">Power off…</button>
+</div>
+<div id="notifpanel">
+  <div class="np-head"><span>Notifications</span>
+    <span style="flex:1"></span>
+    <button id="np-dnd" title="Do not disturb"></button>
+    <button id="np-clear" title="Clear all">clear</button>
+  </div>
+  <div id="np-list"></div>
+</div>
+
+<div id="desktop">
+  <div id="wall"></div>
+  <canvas id="jarvis"></canvas>
+  <div id="widgets"></div>
+  <div id="jarvis-shell"></div>
+  <div id="custom-shell"></div>
+  <div id="icons"></div>
+</div>
+<button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
+
+<div id="startmenu">
+  <div id="smhead"><div class="mark">▲</div><div><b>AgentOS</b><small>your machine, with a brain</small></div></div>
+  <div id="smsearch"><input id="smq" placeholder="Search apps & system apps…" autocomplete="off"></div>
+  <div id="smapps"></div>
+  <div id="smfoot"><div id="smdot" style="width:8px;height:8px;border-radius:50%;background:var(--err)"></div><span id="smstat">connecting…</span></div>
+</div>
+
+<div id="ctxmenu"></div>
+<div id="switcher"><div id="swbox"></div></div>
+<div id="keyshelp"><div id="keysbox"></div></div>
+
+<div id="jarvis-ov"><div class="jbox">
+  <div class="jorb" id="j-orb"><span class="jring r1"></span><span class="jring r2"></span><span class="jring r3"></span><span class="jcore"></span></div>
+  <div id="j-status">tap the mic to talk</div>
+  <div id="j-transcript"></div>
+  <div id="j-reply"></div>
+  <div class="jbtns">
+    <button id="j-mic" title="talk"></button>
+    <button id="j-close" class="endbtn">✕ Exit voice</button>
+  </div>
+</div></div>
+
+<div id="palette"><div id="palbox">
+  <input id="palin" placeholder="Type to launch an app, act, or ask…" autocomplete="off">
+  <div id="pallist"></div>
+  <div id="palfoot"><span>↑↓ navigate</span><span>⏎ run</span><span>Esc close</span><span style="margin-left:auto">Ctrl+Space</span></div>
+</div></div>
+
+<div id="taskbar">
+  <button id="startbtn" data-tip="Launcher"><span class="mark"></span></button>
+  <span class="dsep"></span>
+  <div id="dock"></div>
+  <span class="dsep"></span>
+  <div id="tbwins"></div>
+  <div id="tbnative" title="Windows open on your host desktop — click to switch"></div>
+</div>
+
+<div id="boot"><div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div></div>
+

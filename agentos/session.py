@@ -96,13 +96,27 @@ def _port() -> int:
 # generated files
 # =============================================================================
 
+def lock_cmd_text(wallpaper: str = "") -> str:
+    """Branded swaylock invocation: AgentOS teal ring over the wallpaper (or the
+    shell's base color), instead of swaylock's stock look. Plain-swaylock flags
+    only — no swaylock-effects dependency."""
+    style = ("--indicator-radius 84 --indicator-thickness 8 "
+             "--ring-color 5eead4cc --ring-ver-color 22d3eecc --ring-wrong-color f87171cc "
+             "--key-hl-color 22d3ee --bs-hl-color f87171 "
+             "--inside-color 0b0d10b8 --inside-ver-color 0b0d10b8 --inside-wrong-color 0b0d10b8 "
+             "--line-uses-inside --text-color e6ebf2 --text-ver-color e6ebf2 --text-wrong-color f87171 "
+             "--separator-color 00000000")
+    if wallpaper:
+        return f"swaylock -f -i '{wallpaper}' -s fill {style}"
+    return f"swaylock -f -c 0b0d10 {style}"
+
+
 def sway_config_text(port: int, idle_lock: int = 600, idle_off: int = 900,
                      wallpaper: str = "") -> str:
     """The generated compositor config. Deliberately small: sway is an invisible
     engine here — no bar, no tiling keymap — and live window/output management
     arrives over IPC, not from this file."""
-    lock_cmd = (f"swaylock -f -i '{wallpaper}' -s fill" if wallpaper
-                else "swaylock -f -c 0b0d10")
+    lock_cmd = lock_cmd_text(wallpaper)
     idle_lines = []
     if idle_lock > 0:
         idle_lines.append(f"timeout {int(idle_lock)} \"{lock_cmd}\"")
@@ -119,6 +133,9 @@ default_border none
 default_floating_border none
 focus_follows_mouse no
 
+# One pointer everywhere (compositor + XWayland), sized for modern displays.
+seat * xcursor_theme Adwaita 24
+
 # Drag native windows with Super held down.
 floating_modifier Mod4
 
@@ -131,14 +148,20 @@ floating_modifier Mod4
 exec swayidle -w {idle} \\
   before-sleep "{lock_cmd}" lock "{lock_cmd}"
 
-# The AgentOS shell runs kiosk-fullscreen as the base layer. The renderer asks
-# for fullscreen itself; these rules are belt and braces for every way a
-# chromium app window can identify itself (wayland app_id, XWayland class).
-for_window [app_id="^{APP_ID}$"] fullscreen enable
-for_window [class="^{APP_ID}$"] fullscreen enable
-for_window [title="^AgentOS$"] fullscreen enable
+# Layering: the AgentOS shell is the ONLY tiled window, so it fills the screen
+# as the base layer; every native app floats ABOVE it. (The old fullscreen
+# approach was wrong — sway keeps fullscreen on top, so launched apps appeared
+# to do nothing while sitting invisible underneath the shell.)
+for_window [title=".*"] floating enable
+for_window [app_id="^{APP_ID}$"] floating disable, fullscreen disable
+for_window [class="^{APP_ID}$"] floating disable, fullscreen disable
 
-# The one keybinding: end the session if the shell is ever unreachable.
+# Alt+Tab cycles shell → each native window → shell, via the server (which
+# tracks focus over compositor IPC). Works no matter which window has the keys.
+bindsym Mod1+Tab exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"direction":"next"}}' http://127.0.0.1:{port}/api/windows/cycle
+bindsym Mod1+Shift+Tab exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"direction":"prev"}}' http://127.0.0.1:{port}/api/windows/cycle
+
+# The one escape keybinding: end the session if the shell is ever unreachable.
 # (Ctrl+Alt+F3 for a raw TTY is handled by the kernel, not by us.)
 bindsym Ctrl+Alt+BackSpace exec swaymsg exit
 
@@ -148,6 +171,51 @@ bindsym Ctrl+Alt+BackSpace exec swaymsg exit
 exec sh -c '"{SHELL_SCRIPT}" ; swaymsg exit'
 
 include {SWAY_DROPIN_DIR}/*.conf
+"""
+
+
+def boot_html_text(port: int) -> str:
+    """The pre-shell splash. The renderer opens this local file IMMEDIATELY —
+    no blank wallpaper while the server cold-starts. It mirrors the in-app
+    #boot splash exactly (same colors, mark, shimmer), probes the server with
+    an image beacon (file:// pages can't fetch() localhost, but image loads
+    are exempt from CORS), and replaces itself with the shell the moment the
+    server answers. After 90s it names the problem instead of spinning."""
+    return f"""\
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>AgentOS</title><style>
+html,body{{height:100%;margin:0}}
+body{{background:#0b0d10;color:#e6ebf2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;cursor:none}}
+.mark{{width:74px;height:74px;border-radius:20px;background:linear-gradient(135deg,#5eead4,#22d3ee);
+  display:flex;align-items:center;justify-content:center;color:#04211c;font-size:32px;font-weight:900;
+  box-shadow:0 0 60px rgba(94,234,212,.3)}}
+h1{{font-size:24px;letter-spacing:.5px;margin:0;font-weight:700}}
+.bbar{{width:180px;height:3px;border-radius:3px;background:#1e242e;overflow:hidden}}
+.bbar i{{display:block;height:100%;width:35%;border-radius:3px;background:linear-gradient(90deg,#5eead4,#22d3ee);
+  animation:boot 1s ease-in-out infinite}}
+@keyframes boot{{0%{{transform:translateX(-120%)}}100%{{transform:translateX(520%)}}}}
+#st{{font-size:12px;color:#5c6577;min-height:16px;transition:color .3s}}
+#st.err{{color:#f87171;cursor:auto}}
+</style></head><body>
+<div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div><div id="st">starting…</div>
+<script>
+const URL_='http://127.0.0.1:{port}';
+const t0=Date.now();let tries=0;
+function probe(){{
+  const i=new Image();
+  i.onload=()=>location.replace(URL_);
+  i.onerror=()=>{{
+    tries++;
+    const s=Math.round((Date.now()-t0)/1000);
+    const st=document.getElementById('st');
+    if(s>90){{st.textContent='the AgentOS server did not start — check ~/.agentos/session.log (Ctrl+Alt+BackSpace ends the session)';st.className='err';document.body.style.cursor='auto';return}}
+    if(s>6)st.textContent='starting the AgentOS server… '+s+'s';
+    setTimeout(probe,tries<20?250:1000);
+  }};
+  i.src=URL_+'/assets/ping.png?'+Date.now();
+}}
+probe();
+</script></body></html>
 """
 
 
@@ -162,15 +230,28 @@ def shell_script_text(port: int) -> str:
 PORT="${{AGENTOS_PORT:-{port}}}"
 LOG="$HOME/.agentos/session.log"
 
-# 1) the server: reuse a running one, else start ours.
+# XWayland apps (VS Code and friends) need $DISPLAY; sway normally exports it
+# but a race at startup leaves it unset — and every app the server launches
+# inherits THIS environment.
+[ -z "$DISPLAY" ] && export DISPLAY=:0
+
+# 1) the server. It must run INSIDE this session: a server started at login by
+#    systemd holds the port but has no $SWAYSOCK, no $DISPLAY — it can neither
+#    manage windows nor launch apps. Reusing it silently is how "nothing works"
+#    happens, so a non-DE server on our port gets stopped and replaced.
+if curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
+  if ! curl -sf "http://127.0.0.1:$PORT/api/platform" 2>/dev/null | grep -q '"mode":"de"'; then
+    echo "found a non-session server on port $PORT — replacing it" >> "$LOG"
+    systemctl --user stop agentos 2>/dev/null
+    i=0
+    while [ $i -lt 40 ] && curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; do
+      i=$((i+1)); sleep 0.25
+    done
+  fi
+fi
 if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
   "{sys.executable}" -m agentos serve --no-browser --port "$PORT" >> "$LOG" 2>&1 &
 fi
-i=0
-while [ $i -lt 120 ]; do
-  curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null && break
-  i=$((i+1)); sleep 0.25
-done
 
 # 2) the renderer: first chromium-family browser found.
 RENDERER=""
@@ -187,10 +268,18 @@ fi
 
 prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
 echo "renderer: $RENDERER" >> "$LOG"
+# Boot continuity: open the local splash instantly; it hands off to the shell
+# by itself the moment the server answers.
+START_URL="http://127.0.0.1:$PORT"
+[ -f "$HOME/.agentos/boot.html" ] && START_URL="file://$HOME/.agentos/boot.html"
 # --ozone-platform-hint=auto: native Wayland when it works, XWayland when it
 # doesn't (NVIDIA setups) — both render inside our compositor either way.
-exec "$RENDERER" --app="http://127.0.0.1:$PORT" --kiosk \\
-  --user-data-dir="$prof" --class={APP_ID} \\
+# NOT --kiosk: chrome's kiosk mode forces a fullscreen surface, which sway
+# keeps above everything — hiding every native app. The shell is a plain app
+# window; sway tiles it alone, which IS edge-to-edge, with floats above it.
+# --class names the XWayland window, --wayland-app-id the Wayland one.
+exec "$RENDERER" --app="$START_URL" \\
+  --user-data-dir="$prof" --class={APP_ID} --wayland-app-id={APP_ID} \\
   --ozone-platform-hint=auto --no-first-run --no-default-browser-check >> "$LOG" 2>&1
 """
 
@@ -205,6 +294,8 @@ def session_script_text() -> str:
 export AGENTOS_SESSION=1
 export XDG_CURRENT_DESKTOP=AgentOS
 export XDG_SESSION_DESKTOP={APP_ID}
+export XCURSOR_THEME=Adwaita
+export XCURSOR_SIZE=24
 LOG="$HOME/.agentos/session.log"
 mkdir -p "$HOME/.agentos"
 echo "=== AgentOS session $(date) ===" >> "$LOG"
@@ -266,6 +357,46 @@ Keywords=agent;ai;
 """
 
 
+def apply_wallpaper_live(wallpaper: str | None) -> bool:
+    """Propagate a wallpaper change to the live compositor + lock screen.
+
+    The shell repaints itself over the websocket, but the compositor background
+    (visible if the shell drops fullscreen) and swaylock's -i were baked in at
+    install-session time — without this, the desktop and its lock screen drift
+    apart until the next `agentos session install`. Called by the server on
+    every wallpaper change while in de mode; silently a no-op elsewhere."""
+    import subprocess
+    if not os.environ.get("SWAYSOCK"):
+        return False
+    bg = ["swaymsg", "output", "*", "bg"]
+    bg += ([wallpaper, "fill"] if wallpaper else ["#0b0d10", "solid_color"])
+    ok, _ = _run(bg)
+    # swayidle holds the old lock command; respawn it with the new one so the
+    # NEXT lock shows the new wallpaper. Config on disk is refreshed too.
+    try:
+        desk = cfgmod.load_config().get("desktop", {})
+        idle_lock = int(desk.get("idle_lock_secs", 600))
+        idle_off = int(desk.get("idle_screen_off_secs", 900))
+        SWAY_CONF.write_text(sway_config_text(
+            _port(), idle_lock=idle_lock, idle_off=idle_off, wallpaper=wallpaper or ""))
+        lock = lock_cmd_text(wallpaper or "")
+        idle_args = []
+        if idle_lock > 0:
+            idle_args += ["timeout", str(idle_lock), lock]
+        if idle_off > 0:
+            idle_args += ["timeout", str(idle_off), 'swaymsg "output * power off"',
+                          "resume", 'swaymsg "output * power on"']
+        subprocess.run(["pkill", "-u", os.environ.get("USER", ""), "-x", "swayidle"],
+                       capture_output=True, timeout=5)
+        subprocess.Popen(["swayidle", "-w", *idle_args,
+                          "before-sleep", lock, "lock", lock],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except Exception:
+        pass
+    return bool(ok)
+
+
 # =============================================================================
 # install / remove
 # =============================================================================
@@ -294,6 +425,9 @@ def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
         SHELL_SCRIPT.write_text(shell_script_text(port))
         SHELL_SCRIPT.chmod(0o755)
         written.append(SHELL_SCRIPT)
+        boot_html = cfgmod.AGENTOS_HOME / "boot.html"
+        boot_html.write_text(boot_html_text(port))
+        written.append(boot_html)
         SESSION_SCRIPT.write_text(session_script_text())
         SESSION_SCRIPT.chmod(0o755)
         written.append(SESSION_SCRIPT)

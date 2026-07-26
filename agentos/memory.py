@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     title TEXT,
     created_at REAL,
     updated_at REAL,
-    rolled_up INTEGER DEFAULT 0  -- session memories already distilled into user memory
+    rolled_up INTEGER DEFAULT 0, -- session memories already distilled into user memory
+    origin TEXT DEFAULT 'user'   -- who started it: user | schedule | trigger | briefing | suggestion
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -184,13 +185,25 @@ CREATE TABLE IF NOT EXISTS mcp_registry (
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     prompt TEXT,
-    schedule_type TEXT,          -- 'once' | 'interval' | 'daily'
+    schedule_type TEXT,          -- 'once' | 'interval' | 'daily' | 'trigger'
     interval_seconds INTEGER,    -- for 'interval'
     at_time TEXT,                -- 'HH:MM' for 'daily'
-    next_run REAL,
+    next_run REAL,               -- NULL for 'trigger' (event-driven, never time-due)
     last_run REAL,
     last_result TEXT,
     enabled INTEGER DEFAULT 1,
+    created_at REAL,
+    "trigger" TEXT DEFAULT '',   -- for 'trigger': notification | file_change | login | idle
+    trigger_config TEXT DEFAULT '{}',  -- JSON: {match} | {path,glob} | {minutes}
+    cooldown_secs INTEGER DEFAULT 300, -- a trigger fires at most once per cooldown
+    last_fired REAL
+);
+CREATE TABLE IF NOT EXISTS proactive_items (
+    id TEXT PRIMARY KEY,
+    kind TEXT,                   -- 'digest' (notification triage) | 'suggestion' (knowledge loop)
+    text TEXT,
+    data TEXT,                   -- JSON: digest {top_ids} / suggestion {action_prompt}
+    dismissed_at REAL,           -- NULL = still live
     created_at REAL
 );
 """
@@ -226,6 +239,15 @@ class Store:
         ccols = {r["name"] for r in self.db.execute("PRAGMA table_info(conversations)").fetchall()}
         if "rolled_up" not in ccols:
             self.db.execute("ALTER TABLE conversations ADD COLUMN rolled_up INTEGER DEFAULT 0")
+        if "origin" not in ccols:  # who initiated it — the OS-initiative metric reads this
+            self.db.execute("ALTER TABLE conversations ADD COLUMN origin TEXT DEFAULT 'user'")
+        tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
+        for col, ddl in (('"trigger"', "TEXT DEFAULT ''"),
+                         ("trigger_config", "TEXT DEFAULT '{}'"),
+                         ("cooldown_secs", "INTEGER DEFAULT 300"),
+                         ("last_fired", "REAL")):
+            if col.strip('"') not in tcols:
+                self.db.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
         acols = {r["name"] for r in self.db.execute("PRAGMA table_info(user_apps)").fetchall()}
         for col, ddl in (("manifest", "TEXT DEFAULT ''"),            # JSON permission manifest
                          ("manifest_status", "TEXT DEFAULT 'none'")):  # none | proposed | approved
@@ -246,12 +268,12 @@ class Store:
 
     # -- conversations ------------------------------------------------------
 
-    def create_conversation(self, title: str = "New chat") -> str:
+    def create_conversation(self, title: str = "New chat", origin: str = "user") -> str:
         cid = uuid.uuid4().hex[:12]
         now = time.time()
         self.db.execute(
-            "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?,?,?,?)",
-            (cid, title, now, now),
+            "INSERT INTO conversations (id, title, created_at, updated_at, origin) VALUES (?,?,?,?,?)",
+            (cid, title, now, now, origin or "user"),
         )
         self.db.commit()
         return cid
@@ -1037,12 +1059,14 @@ class Store:
     # -- scheduled tasks ----------------------------------------------------
 
     def add_task(self, prompt: str, schedule_type: str, interval_seconds: int | None,
-                 at_time: str | None, next_run: float) -> str:
+                 at_time: str | None, next_run: float | None, trigger: str = "",
+                 trigger_config: str = "{}", cooldown_secs: int = 300) -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
-            "INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time()),
+            'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
+            'created_at, "trigger", trigger_config, cooldown_secs) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
+             trigger, trigger_config or "{}", int(cooldown_secs)),
         )
         self.db.commit()
         return tid
@@ -1067,3 +1091,65 @@ class Store:
     def delete_task(self, tid: str):
         self.db.execute("DELETE FROM tasks WHERE id=?", (tid,))
         self.db.commit()
+
+    # -- proactive items (digests & suggestions) -----------------------------
+
+    def add_proactive(self, kind: str, text: str, data: dict | None = None) -> str:
+        pid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO proactive_items (id, kind, text, data, created_at) VALUES (?,?,?,?,?)",
+            (pid, kind, (text or "").strip()[:4000], json.dumps(data or {}), time.time()),
+        )
+        self.db.commit()
+        return pid
+
+    def latest_proactive(self, kind: str) -> dict | None:
+        """The newest live (undismissed) item of a kind, with its JSON data parsed."""
+        row = self.db.execute(
+            "SELECT * FROM proactive_items WHERE kind=? AND dismissed_at IS NULL "
+            "ORDER BY created_at DESC LIMIT 1", (kind,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["data"] = json.loads(d.get("data") or "{}")
+        except Exception:
+            d["data"] = {}
+        return d
+
+    def dismiss_proactive(self, pid: str = "", kind: str = ""):
+        """Dismiss one item by id, or every live item of a kind."""
+        now = time.time()
+        if pid:
+            self.db.execute("UPDATE proactive_items SET dismissed_at=? WHERE id=? "
+                            "AND dismissed_at IS NULL", (now, pid))
+        elif kind:
+            self.db.execute("UPDATE proactive_items SET dismissed_at=? WHERE kind=? "
+                            "AND dismissed_at IS NULL", (now, kind))
+        self.db.commit()
+
+    def proactive_dismissed_since(self, kind: str, since: float) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM proactive_items WHERE kind=? AND dismissed_at>? LIMIT 1",
+            (kind, since)).fetchone()
+        return row is not None
+
+    # -- the OS-initiative metric --------------------------------------------
+
+    def initiative_stats(self, since: float = 0.0) -> dict:
+        """Turns split by who initiated them. Turn logs carry meta.origin
+        (user | schedule | trigger | briefing | suggestion); missing = user."""
+        os_t = user_t = 0
+        for r in self.db.execute(
+                "SELECT meta FROM logs WHERE kind='turn' AND created_at>?", (since,)).fetchall():
+            try:
+                origin = json.loads(r["meta"] or "{}").get("origin") or "user"
+            except Exception:
+                origin = "user"
+            if origin == "user":
+                user_t += 1
+            else:
+                os_t += 1
+        total = os_t + user_t
+        return {"os_turns": os_t, "user_turns": user_t,
+                "pct_os": round(100.0 * os_t / total, 1) if total else 0.0}

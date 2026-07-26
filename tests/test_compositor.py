@@ -262,6 +262,39 @@ def test_de_backend_reports_compositor_errors_as_reasons(tmp_path, monkeypatch):
     assert ws["available"] is False and ws["reason"]
 
 
+def test_windows_include_shell_flags_it(client):
+    wins = client.windows(include_shell=True)
+    shell = [w for w in wins if w.get("shell")]
+    assert len(shell) == 1 and shell[0]["app"] == "agentos"
+    # default call still hides it — the taskbar contract
+    assert not any(w.get("shell") for w in client.windows())
+
+
+def test_alt_tab_cycles_natives_then_returns_to_shell(sway, monkeypatch):
+    """firefox is focused in the recorded tree; next → pavucontrol → Gimp →
+    shell. That's the whole Alt-Tab ring."""
+    from agentos.platform.linux_de import LinuxDE
+    monkeypatch.setenv("SWAYSOCK", sway.path)
+    de = LinuxDE()
+    ok, what = de.cycle_focus("next")            # firefox → pavucontrol (id 14)
+    assert ok and sway.commands[-1] == "[con_id=14] focus"
+    # The fake's tree is static (firefox stays 'focused'), so exercise the
+    # ends of the ring directly: prev from firefox (index 0) wraps to the shell.
+    sway.commands.clear()
+    ok, what = de.cycle_focus("prev")
+    assert ok and what == "shell"
+    assert sway.commands == ['[app_id="^agentos$"] focus']
+
+
+def test_cycle_focus_reports_compositor_failure(tmp_path, monkeypatch):
+    from agentos.platform.linux_de import LinuxDE
+    from agentos import compositor as comp_mod
+    de = LinuxDE()
+    de._comp = comp_mod.Compositor(sock=str(tmp_path / "gone.sock"))
+    ok, msg = de.cycle_focus()
+    assert ok is False and msg
+
+
 def test_de_backend_windows_through_fake_sway(sway, monkeypatch):
     from agentos.platform.linux_de import LinuxDE
     monkeypatch.setenv("SWAYSOCK", sway.path)

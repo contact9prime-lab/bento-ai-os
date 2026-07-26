@@ -1,0 +1,60 @@
+:root{
+  /* ---- color (theme-controlled — names are the theme API, do not rename) ---- */
+  --bg:#0b0d10; --bg2:#111419; --bg3:#171b22; --bg4:#1e242e;
+  --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
+  --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
+  --glass:rgba(17,20,25,.82);
+  --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mbh:30px;      /* top menu bar */
+  --tbh:78px;      /* clearance reserved above the floating dock (toasts, start menu) */
+  /* ---- derived hairlines/scrims (flip with mode, not with theme hue) ---- */
+  --hairline:rgba(255,255,255,.10);
+  --hairline-strong:rgba(255,255,255,.16);
+  --scrim:rgba(0,0,0,.45);
+  /* ---- type ramp (the only sizes chrome and apps should use) ---- */
+  --fs-2xs:10px; --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-base:14px;
+  --fs-lg:16px; --fs-xl:19px; --fs-2xl:24px; --fs-3xl:32px;
+  /* ---- spacing scale ---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  /* ---- radius scale ---- */
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:20px; --r-full:999px;
+  /* ---- elevation ladder ---- */
+  --el-1:0 1px 2px rgba(0,0,0,.25);
+  --el-2:0 2px 8px rgba(0,0,0,.30),0 1px 2px rgba(0,0,0,.22);
+  --el-3:0 8px 24px rgba(0,0,0,.34),0 2px 6px rgba(0,0,0,.24);
+  --el-4:0 18px 48px rgba(0,0,0,.42),0 4px 12px rgba(0,0,0,.26);
+  --el-5:0 32px 80px rgba(0,0,0,.5),0 8px 20px rgba(0,0,0,.3);
+  /* ---- motion tokens ---- */
+  --d-fast:120ms; --d-base:180ms; --d-slow:280ms; --d-slower:420ms;
+  --ease-out:cubic-bezier(.22,1,.36,1);          /* decelerate — entrances, settles */
+  --ease-in:cubic-bezier(.4,0,.7,.2);            /* accelerate — exits */
+  --ease-spring:cubic-bezier(.34,1.4,.64,1);     /* gentle overshoot — playful UI */
+  --ease-in-out:cubic-bezier(.65,0,.35,1);       /* moves between two on-screen states */
+}
+:root[data-theme=light]{
+  --hairline:rgba(0,0,0,.08);
+  --hairline-strong:rgba(0,0,0,.14);
+  --scrim:rgba(0,0,0,.28);
+  --el-1:0 1px 2px rgba(0,0,0,.10);
+  --el-2:0 2px 8px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.08);
+  --el-3:0 8px 24px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.10);
+  --el-4:0 18px 48px rgba(0,0,0,.18),0 4px 12px rgba(0,0,0,.10);
+  --el-5:0 32px 80px rgba(0,0,0,.22),0 8px 20px rgba(0,0,0,.12);
+}
+@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/assets/InterVariable.woff2') format('woff2')}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:var(--fs-base);overflow:hidden;user-select:none;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-optical-sizing:auto}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:inherit;color:var(--txt);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+

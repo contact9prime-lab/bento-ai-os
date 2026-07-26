@@ -83,7 +83,25 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Battery level and charging state.",
         "detect": lambda: bool(shutil.which("upower")),
     },
+    "plymouth-theme": {
+        "package": "agentos boot theme", "method": "script", "licence": "MIT (AgentOS)",
+        "title": "Branded boot splash",
+        "unlocks": "The AgentOS mark from the first frame of boot — no distro "
+                   "splash between power-on and the desktop. Rebuilds the "
+                   "initramfs (takes a minute).",
+        "detect": lambda: _plymouth_theme_installed(),
+    },
 }
+
+
+def _plymouth_theme_installed() -> bool:
+    from pathlib import Path
+    return Path("/usr/share/plymouth/themes/agentos/agentos.plymouth").exists()
+
+
+def _plymouth_script() -> str:
+    from pathlib import Path
+    return str(Path(__file__).resolve().parent / "de_assets" / "plymouth" / "install.sh")
 
 
 def _has_renderer() -> bool:
@@ -94,6 +112,8 @@ def _has_renderer() -> bool:
 def install_command(comp: dict) -> str:
     if comp["method"] == "snap":
         return f"snap install {comp['package']}"
+    if comp["method"] == "script":
+        return f"sh {_plymouth_script()}"
     return f"apt-get install -y {comp['package']}"
 
 

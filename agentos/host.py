@@ -119,6 +119,10 @@ def set_window_floating(win_id: str, floating: bool) -> tuple[bool, str]:
     return _p().set_window_floating(win_id, floating)
 
 
+def cycle_focus(direction: str = "next") -> tuple[bool, str]:
+    return _p().cycle_focus(direction)
+
+
 # --- workspaces & displays (compositor-backed; DE mode only) ----------------
 
 def workspaces() -> dict:

@@ -1,0 +1,113 @@
+/* ================= motion & window-system layer =================
+   Loaded last: behavioral chrome added by the motion/WM rewrite.
+   (resize handles, snap ghost, dialogs, control center, toasts, exposé) */
+
+/* windows: real handles replace the browser's resize grip */
+.win{resize:none;transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+.win.dragging{box-shadow:var(--el-5);cursor:grabbing;will-change:left,top,width,height}
+.win.dragging iframe{pointer-events:none}   /* iframes swallow pointermove mid-drag */
+.rz{position:absolute;z-index:5}
+.rz-n{top:-4px;left:10px;right:10px;height:8px;cursor:ns-resize}
+.rz-s{bottom:-4px;left:10px;right:10px;height:8px;cursor:ns-resize}
+.rz-e{right:-4px;top:10px;bottom:10px;width:8px;cursor:ew-resize}
+.rz-w{left:-4px;top:10px;bottom:10px;width:8px;cursor:ew-resize}
+.rz-ne{top:-5px;right:-5px;width:14px;height:14px;cursor:nesw-resize}
+.rz-nw{top:-5px;left:-5px;width:14px;height:14px;cursor:nwse-resize}
+.rz-se{bottom:-5px;right:-5px;width:14px;height:14px;cursor:nwse-resize}
+.rz-sw{bottom:-5px;left:-5px;width:14px;height:14px;cursor:nesw-resize}
+.win.maxed .rz{display:none}
+
+/* focused app name in the menu bar */
+#mbapp{font-weight:700;font-size:var(--fs-md);margin-left:10px;opacity:.92}
+#mbapp:empty{display:none}
+
+/* drag-to-edge snap preview */
+#snapghost{position:absolute;z-index:99;border-radius:var(--r-lg);pointer-events:none;opacity:0;
+  background:color-mix(in srgb,var(--acc) 12%,transparent);
+  border:1.5px solid color-mix(in srgb,var(--acc) 45%,transparent);
+  backdrop-filter:blur(2px);transition:all var(--d-fast) var(--ease-out)}
+#snapghost.on{opacity:1}
+
+/* dock: magnification owns transforms now — retire the old discrete hover pop */
+#taskbar .dockb:hover,#taskbar .tbwin:hover,#taskbar .tbnat:hover,#taskbar #startbtn:hover{transform:none}
+#taskbar .dockb:active,#taskbar .tbwin:active{filter:brightness(1.25)}
+/* auto-hide while a maximized window is focused; peek strip brings it back */
+#taskbar{transition:transform var(--d-slow) var(--ease-out),opacity var(--d-slow) var(--ease-out)}
+body.dock-hide #taskbar{transform:translateX(-50%) translateY(96px);opacity:0;pointer-events:none}
+body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opacity:1;pointer-events:auto}
+
+/* dialogs (replace window.confirm / alert) */
+.dlg-scrim{position:fixed;inset:0;z-index:12000;background:var(--scrim);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center}
+.dlg{width:340px;max-width:88vw;padding:22px 20px 16px;border-radius:var(--r-lg);text-align:center;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
+.dlg-icn{width:44px;height:44px;margin:0 auto 10px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
+  font-size:var(--fs-2xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+.dlg .dlg-t{font-size:var(--fs-base);font-weight:700;margin-bottom:6px}
+.dlg .dlg-m{font-size:var(--fs-sm);color:var(--dim);line-height:1.45;margin-bottom:14px}
+.dlg-b{display:flex;gap:8px;justify-content:center}
+.dlg-b button{flex:1;max-width:140px;padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-md);font-weight:600;
+  background:var(--bg3);border:1px solid var(--line);transition:background var(--d-fast) var(--ease-out),filter var(--d-fast) var(--ease-out)}
+.dlg-b button:hover{filter:brightness(1.15)}
+.dlg-b .dlg-ok{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.dlg-b .dlg-ok.danger{background:var(--err);color:#2b0606}
+
+.dlg .dlg-in{width:100%;margin-bottom:14px;text-align:left}
+/* notification grouping */
+.np-group{border-bottom:1px solid var(--hairline)}
+.np-group:last-child{border-bottom:none}
+.np-gapp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:8px 12px 0}
+#np-dnd{position:relative}
+#np-dnd .np-slash{position:absolute;inset:2px;pointer-events:none;
+  background:linear-gradient(to top right,transparent 46%,var(--err) 46%,var(--err) 54%,transparent 54%)}
+
+/* proactive surfaces: "For you" digest + desktop cards */
+.np-foryou{margin:10px 12px;padding:10px 12px;border-radius:var(--r-md);
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 10%,var(--bg3)),color-mix(in srgb,var(--acc2) 7%,var(--bg3)));
+  border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.np-fy-head{display:flex;align-items:center;gap:7px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.04em}
+.np-fy-text{font-size:var(--fs-sm);color:var(--txt);margin-top:6px;line-height:1.5}
+.np-item.imp{border-left:2px solid var(--acc)}
+.procard{position:absolute;right:18px;bottom:calc(var(--tbh) + 14px);width:330px;z-index:8000;
+  padding:14px 16px;border-radius:var(--r-lg);background:var(--glass);
+  backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline-strong);box-shadow:var(--el-4)}
+.procard .pc-head{display:flex;align-items:center;gap:7px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.04em;color:var(--acc)}
+.procard .pc-text{font-size:var(--fs-md);line-height:1.5;margin-top:8px;user-select:text}
+.procard .pc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.procard .pc-actions button{padding:5px 14px;border-radius:var(--r-md);font-size:var(--fs-sm);font-weight:600;
+  background:var(--bg3);border:1px solid var(--line)}
+.procard .pc-actions .pc-go{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+
+/* files: semantic hit snippets */
+.fitem .fsnip{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52ch;font-weight:400}
+.fitem.fhit{align-items:flex-start;padding-top:6px;padding-bottom:6px}
+
+/* palette: direct-action rows read as commands, not app entries */
+.palitem.act .pi{color:var(--acc);font-weight:700}
+.palitem.act .pl{color:var(--acc)}
+.palitem.act.sel .pl{color:var(--txt)}
+
+/* toasts: a real stack, newest on top */
+#toasts{position:fixed;right:14px;bottom:calc(var(--tbh) + 12px);z-index:11000;display:flex;flex-direction:column;gap:8px;
+  align-items:flex-end;pointer-events:none}
+#toasts .toast{position:static;animation:none}
+
+/* control center popover (tray) */
+#ccpop{position:fixed;top:calc(var(--mbh) + 8px);right:10px;width:380px;max-height:min(72vh,640px);overflow:auto;z-index:10500;
+  display:none;border-radius:var(--r-lg);background:var(--glass);backdrop-filter:blur(28px) saturate(1.6);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-4);padding:6px 0}
+#ccpop.show{display:block}
+#ccpop .pad{padding:10px 14px}
+
+/* exposé (window overview): the REAL windows are FLIP-scaled into a grid, live */
+#expose{position:fixed;inset:var(--mbh) 0 0 0;z-index:9500;display:none;background:var(--scrim);backdrop-filter:blur(10px)}
+#expose.show{display:block}
+body.exposing .win{transition:transform var(--d-slow) var(--ease-out);will-change:transform}
+body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
+.exp-catch{position:absolute;z-index:9700;cursor:pointer;border-radius:var(--r-md);
+  outline:2px solid transparent;transition:outline-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.exp-catch:hover{outline-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.exp-catch .exp-lbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-30px;padding:4px 12px;white-space:nowrap;
+  font-size:var(--fs-xs);font-weight:600;color:#fff;background:rgba(0,0,0,.55);border-radius:var(--r-full);
+  display:flex;gap:6px;align-items:center}
+

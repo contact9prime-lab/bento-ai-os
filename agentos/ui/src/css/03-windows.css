@@ -1,0 +1,27 @@
+/* ================= windows (desktop chrome) ================= */
+.win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
+  background:var(--glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  border:1px solid var(--hairline);border-radius:var(--r-lg);
+  box-shadow:var(--el-4);
+  resize:both;overflow:hidden}
+.win.active{border-color:var(--hairline-strong);box-shadow:var(--el-5)}
+.win.maxed{inset:0!important;width:auto!important;height:auto!important;border-radius:0;resize:none}
+.win .ttl{display:grid;grid-template-columns:66px 1fr 66px;align-items:center;height:40px;flex:none;padding:0 10px;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-bottom:1px solid rgba(0,0,0,.28);cursor:default}
+.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03))}
+.win .tmid{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
+.win .ticon{display:flex}
+.win .ticon .aicon{width:17px;height:17px;box-shadow:var(--el-1)}
+.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.win.active .tname{color:var(--txt)}
+.win .tbtns{display:flex;gap:8px;justify-self:start}
+.win .tbtns button{width:13px;height:13px;border-radius:50%;padding:0;position:relative;
+  border:.5px solid rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
+  color:transparent;font-size:var(--fs-2xs);font-weight:800;line-height:1;transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.win .tbtns .cls{background:#ff5f57}.win .tbtns .mn{background:#febc2e}.win .tbtns .mx{background:#28c840}
+.win:not(.active) .tbtns button{background:#5a606c}
+.win .tbtns:hover button{color:rgba(0,0,0,.55)}
+.win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
+.win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.pad{padding:16px 18px;overflow-y:auto;user-select:text}
+
