@@ -160,10 +160,11 @@ def shell_script_text(port: int) -> str:
 # AgentOS shell launcher — runs INSIDE sway (started from sway.conf), so the
 # server and renderer both inherit $SWAYSOCK and $WAYLAND_DISPLAY.
 PORT="${{AGENTOS_PORT:-{port}}}"
+LOG="$HOME/.agentos/session.log"
 
 # 1) the server: reuse a running one, else start ours.
 if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
-  "{sys.executable}" -m agentos serve --no-browser --port "$PORT" >/dev/null 2>&1 &
+  "{sys.executable}" -m agentos serve --no-browser --port "$PORT" >> "$LOG" 2>&1 &
 fi
 i=0
 while [ $i -lt 120 ]; do
@@ -185,11 +186,12 @@ if [ -z "$RENDERER" ]; then
 fi
 
 prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
+echo "renderer: $RENDERER" >> "$LOG"
 # --ozone-platform-hint=auto: native Wayland when it works, XWayland when it
 # doesn't (NVIDIA setups) — both render inside our compositor either way.
 exec "$RENDERER" --app="http://127.0.0.1:$PORT" --kiosk \\
   --user-data-dir="$prof" --class={APP_ID} \\
-  --ozone-platform-hint=auto --no-first-run --no-default-browser-check
+  --ozone-platform-hint=auto --no-first-run --no-default-browser-check >> "$LOG" 2>&1
 """
 
 
@@ -203,7 +205,18 @@ def session_script_text() -> str:
 export AGENTOS_SESSION=1
 export XDG_CURRENT_DESKTOP=AgentOS
 export XDG_SESSION_DESKTOP={APP_ID}
-exec sway -c "{SWAY_CONF}"
+LOG="$HOME/.agentos/session.log"
+mkdir -p "$HOME/.agentos"
+echo "=== AgentOS session $(date) ===" >> "$LOG"
+# The proprietary NVIDIA driver needs two accommodations, or sway refuses to
+# start and the session bounces straight back to the login screen:
+SWAY_FLAGS=""
+if [ -d /sys/module/nvidia ]; then
+  SWAY_FLAGS="--unsupported-gpu"
+  export WLR_NO_HARDWARE_CURSORS=1
+  echo "nvidia driver detected: sway $SWAY_FLAGS, software cursors" >> "$LOG"
+fi
+exec sway $SWAY_FLAGS -c "{SWAY_CONF}" >> "$LOG" 2>&1
 """
 
 

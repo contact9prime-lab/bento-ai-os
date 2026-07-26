@@ -367,13 +367,13 @@ Keywords=agent;ai;assistant;
         SERVICE_FILE.write_text(f"""[Unit]
 Description=AgentOS server (your machine, with a brain)
 After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 ExecStart={python} -m agentos serve --no-browser --port {port}
 Restart=on-failure
 RestartSec=10
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 [Install]
 WantedBy=default.target

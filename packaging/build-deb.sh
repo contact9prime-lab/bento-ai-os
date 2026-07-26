@@ -52,13 +52,13 @@ cat > "$BUILD/usr/lib/systemd/user/agentos.service" <<'EOF'
 [Unit]
 Description=AgentOS server (your machine, with a brain)
 After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 ExecStart=/usr/bin/agentos serve --no-browser
 Restart=on-failure
 RestartSec=10
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 [Install]
 WantedBy=default.target
