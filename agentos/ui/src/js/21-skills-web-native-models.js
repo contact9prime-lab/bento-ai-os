@@ -44,7 +44,7 @@ async function renderSkills(body){
   });
   pb.innerHTML=`
     <div data-fgroup><div class="sect">Installed</div>
-    ${items||emptyBox('No skills yet','A skill is a reusable procedure the agent can pull in when relevant — house rules, runbooks, how-tos. The agent sees the list and loads one with <code>use_skill</code>.')}
+    ${items||emptyBox('No skills yet','A skill is a reusable procedure the agent can pull in when relevant — house rules, runbooks, how-tos. The agent sees the list and loads one with <code>use_skill</code>.','','skills','Write a starter skill from how I like to work.')}
     </div>
     ${skillsCatalogHTML(d.skills)}
     <div data-fgroup>
@@ -187,7 +187,7 @@ async function renderModels(body){
   pb.innerHTML=`
     ${gpu?`<div class="sect">GPU</div><div class="tmgrid" style="grid-template-columns:1fr">${gpu}</div>`:'<p class="mut">No NVIDIA GPU detected (models run on CPU).</p>'}
     <div data-fgroup><div class="sect">Configured models — chat, builds and scheduled tasks use the default</div>
-    ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.')}
+    ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.','','models','Help me set up a model that fits this machine.')}
     <p class="mut" style="margin:6px 0 0">Cloud providers (Anthropic, OpenAI, OpenRouter…) appear here once their API key is set in <a href="#" onclick="openApp('settings');return false" style="color:var(--acc2)">Settings</a>. Tool-capable models (qwen, claude, gpt) make builds far more reliable.</p></div>
     <div data-fgroup><div class="sect">Local models on disk (Ollama)</div>
     <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item" data-f="${esc(m.name+' '+(m.family||'')+' '+(m.params||''))}">

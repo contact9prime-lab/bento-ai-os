@@ -14,7 +14,7 @@
   --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mbh:30px;      /* top menu bar */
-  --tbh:78px;      /* clearance reserved above the floating dock (toasts, start menu) */
+  --tbh:140px;     /* clearance above the dock + omnibar (toasts, start menu, cards) */
   /* ---- derived hairlines/scrims (flip with mode, not with theme hue) ---- */
   --hairline:rgba(255,255,255,.10);
   --hairline-strong:rgba(255,255,255,.16);
@@ -870,6 +870,117 @@ body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
   font-size:var(--fs-xs);font-weight:600;color:#fff;background:rgba(0,0,0,.55);border-radius:var(--r-full);
   display:flex;gap:6px;align-items:center}
 
+/* ================= the ever-present agent: omnibar + copilot panels ================= */
+
+/* ---- omnibar ---- */
+#omnibar{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;z-index:9100;
+  width:min(560px,86vw);height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-radius:var(--r-full);background:var(--glass);
+  backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),inset 0 .5px 0 rgba(255,255,255,.12);
+  transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+#omnibar:focus-within{border-color:color-mix(in srgb,var(--acc) 55%,transparent);
+  box-shadow:var(--el-4),0 0 24px color-mix(in srgb,var(--acc) 18%,transparent)}
+#omni-orb{width:18px;height:18px;flex:none;border-radius:var(--r-full);
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);
+  box-shadow:0 0 10px color-mix(in srgb,var(--acc) 55%,transparent);
+  animation:obreathe 4.5s ease-in-out infinite}
+#omni-orb.busy{animation:obusy 1s ease-in-out infinite}
+@keyframes obreathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}
+@keyframes obusy{0%,100%{transform:scale(1);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 55%,transparent)}
+  50%{transform:scale(1.25);box-shadow:0 0 22px var(--acc)}}
+#omni-in{flex:1;background:none;border:none;padding:0;font-size:var(--fs-base);color:var(--txt)}
+#omni-in::placeholder{color:var(--dim)}
+/* popped: the launcher state (Ctrl+Space) — the bar itself grows, no overlay */
+#omnibar.pop{width:min(680px,92vw);height:52px;
+  border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:var(--el-5),0 0 34px color-mix(in srgb,var(--acc) 22%,transparent)}
+#omnibar.pop #omni-in{font-size:var(--fs-lg)}
+body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
+/* results list: direct actions, apps, and always the "ask" row */
+#omnilist{position:absolute;bottom:calc(100% + 10px);left:0;right:0;display:none;
+  max-height:min(52vh,420px);overflow-y:auto;padding:6px;border-radius:var(--r-lg);
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
+#omnilist.on{display:block;animation:pop .13s var(--ease-out)}
+#omnilist .palitem.ask .pi{color:var(--acc)}
+#omnilist .palitem.ask .pl{color:var(--acc)}
+#omnilist .palitem.sel.ask .pl{color:var(--txt)}
+#omnibar button{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-full);color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+#omnibar button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+:root[data-theme=light] #omnibar button:hover{background:rgba(0,0,0,.07)}
+/* intent ghost: the grammar's instant read of what you're typing */
+#omni-ghost{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;align-items:center;gap:8px;
+  padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;cursor:pointer;
+  background:var(--glass);backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
+  color:var(--acc);box-shadow:var(--el-2)}
+#omni-ghost.on{display:flex}
+#omni-ghost .og-i{font-weight:700}
+#omni-ghost .og-k{font-size:var(--fs-2xs);color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* ---- answer cards ---- */
+#omnicards{position:fixed;left:50%;transform:translateX(-50%);bottom:142px;z-index:9099;
+  width:min(560px,86vw);display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.ocard{pointer-events:auto;border-radius:var(--r-lg);padding:12px 14px 8px;max-height:44vh;display:flex;flex-direction:column;
+  background:var(--glass);backdrop-filter:blur(28px) saturate(1.5);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-4)}
+.ocard .oc-q{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-bottom:8px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.ocard .oc-feed{overflow-y:auto;min-height:22px;user-select:text}
+.ocard .oc-tools{display:flex;justify-content:flex-end;gap:6px;margin-top:6px;flex:none}
+.ocard .oc-tools button{font-size:var(--fs-2xs);font-weight:600;color:var(--dim);padding:3px 10px;border-radius:var(--r-full);
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.ocard .oc-tools button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+
+/* ---- shared mini-feed pieces (omnibar cards + copilot panels) ---- */
+.mf-user{align-self:flex-end;background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 20%,var(--bg3)),color-mix(in srgb,var(--acc2) 14%,var(--bg3)));
+  border:1px solid color-mix(in srgb,var(--acc) 25%,transparent);
+  padding:6px 11px;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);font-size:var(--fs-md);max-width:88%;margin:4px 0}
+.mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
+.mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
+.mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
+.mf-working .mfo{width:10px;height:10px;border-radius:var(--r-full);flex:none;
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2));animation:obusy 1s ease-in-out infinite}
+
+/* ---- copilot panel inside windows ---- */
+.win .wmain{flex:1;min-height:0;display:flex}
+.win .wmain .wbody{flex:1;min-width:0}
+.win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
+.win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
+  display:flex;align-items:center;justify-content:center;
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
+.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc)}
+.win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
+.win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
+  border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
+  transition:width var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out)}
+.win .copanel.open{width:min(300px,46%);border-left-color:var(--hairline)}
+.cp-head{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--hairline);flex:none;min-width:0}
+.cp-ava{color:var(--acc);font-size:var(--fs-md);text-shadow:0 0 10px color-mix(in srgb,var(--acc) 60%,transparent)}
+.cp-name{font-size:var(--fs-md);font-weight:700;white-space:nowrap}
+.cp-app{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-open{color:var(--dim);border-radius:var(--r-sm);padding:2px 6px}
+.cp-open:hover{color:var(--txt);background:rgba(255,255,255,.08)}
+.cp-feed{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;min-width:260px}
+.cp-feed .tool{font-size:var(--fs-xs)}
+.cp-starters{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;flex:none;min-width:260px}
+.cp-chip{font-size:var(--fs-xs);padding:5px 11px;border-radius:var(--r-full);text-align:left;
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);
+  transition:border-color var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.cp-chip:hover{border-color:var(--acc);color:var(--txt)}
+.cp-inbar{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--hairline);flex:none;min-width:260px}
+.cp-in{flex:1;resize:none;max-height:88px;font-size:var(--fs-md);border-radius:var(--r-md)}
+.cp-send{width:30px;height:30px;flex:none;border-radius:var(--r-full);font-weight:800;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+
+/* chat sidebar: embedded-thread sections */
+.convgrp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+  padding:10px 10px 3px}
+
+/* ---- visible hands: a window/dock tile glows while the agent acts on it ---- */
+.win.agent-touch{box-shadow:var(--el-4),0 0 0 1.5px color-mix(in srgb,var(--acc) 70%,transparent),0 0 28px color-mix(in srgb,var(--acc) 30%,transparent)}
+.dockb.agent-touch .aicon{box-shadow:0 0 0 2px var(--acc),0 5px 14px rgba(0,0,0,.42)}
 </style>
 </head>
 <body>
@@ -889,6 +1000,16 @@ body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the ever-present agent: answers rise as cards above the bar -->
+<div id="omnicards"></div>
+<div id="omnibar">
+  <div id="omni-orb" title="your agent"></div>
+  <div id="omnilist"></div>
+  <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
+  <button id="omni-mic" title="Voice"></button>
+  <button id="omni-chat" title="Open Chat">⤢</button>
+</div>
+
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
@@ -939,11 +1060,6 @@ body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
   </div>
 </div></div>
 
-<div id="palette"><div id="palbox">
-  <input id="palin" placeholder="Type to launch an app, act, or ask…" autocomplete="off">
-  <div id="pallist"></div>
-  <div id="palfoot"><span>↑↓ navigate</span><span>⏎ run</span><span>Esc close</span><span style="margin-left:auto">Ctrl+Space</span></div>
-</div></div>
 
 <div id="taskbar">
   <button id="startbtn" data-tip="Launcher"><span class="mark"></span></button>
@@ -1510,8 +1626,8 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span></span></div>
-    <div class="wbody"></div>
+    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);
 
@@ -1535,6 +1651,9 @@ function createWin(app){
   ttl.ondblclick=e=>{if(!e.target.closest('button'))toggleMax(w)};
   dragify(w,ttl);
   resizify(w);
+  // the agent inside this app: ✦ toggles the copilot panel (remembered per app)
+  el.querySelector('.cp-btn').onclick=e=>{e.stopPropagation();toggleCopilot(w)};
+  if(localStorage.getItem('copilot:'+app.id))setTimeout(()=>toggleCopilot(w),80);
 
   app.render(el.querySelector('.wbody'),w);
   setMenubarApp(app.title);
@@ -1721,14 +1840,245 @@ function listFilter(scope,q){
     const any=[...g.querySelectorAll('[data-f]')].some(el=>el.style.display!=='none');
     g.style.display=any?'':'none'});
 }
-function emptyBox(title,hint,action){
-  return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}</div>`;
+function emptyBox(title,hint,action,askApp,askPrompt){
+  // every empty state is an invitation: the ✦ chip opens this app's copilot
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
+}
+/* open (if needed) an app + its copilot panel, prefill and send */
+function copilotAsk(appId,prompt){
+  const w=winsOf(appId)[0]||openApp(appId);
+  if(!w)return;
+  const panel=w.el.querySelector('.copanel');
+  if(panel&&!panel.classList.contains('open'))toggleCopilot(w);
+  let tries=0;
+  const t=()=>{
+    const i=w.el.querySelector('.cp-in');
+    if(!i){if(++tries<20)setTimeout(t,120);return}
+    i.value=prompt||'';
+    if(prompt)i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
+    else i.focus();
+  };
+  setTimeout(t,160);
 }
 function segTabs(id,labels,active,fn){
   return `<span class="seg" id="${id}">${labels.map((l,i)=>
     `<button class="${i===active?'on':''}" onclick="${fn}(${i})">${esc(l)}</button>`).join('')}</span>`;
 }
 
+/* ================= the ever-present agent: turn client + copilot panels =================
+   One shared machinery for every embedded agent surface:
+   - agentTurn(): send a turn on any conversation, with per-surface context and a sink
+   - miniFeed(): a compact live renderer (text, thinking, tool cards, approvals)
+   - copilot panels: a ✦ conversation inside every app window, scoped to that app
+   The Chat window remains the full-history surface; these are the in-place hands. */
+
+let PENDING_SINKS=[];   // sinks waiting for their server-created conversation id, by origin
+function claimConversation(ev){
+  // Returns true when this new conversation belongs to an embedded surface
+  // (omnibar/copilot) — the Chat window must not adopt it as currentConv.
+  const i=PENDING_SINKS.findIndex(p=>p.origin===ev.origin);
+  if(i>=0){
+    const p=PENDING_SINKS.splice(i,1)[0];
+    sinkOn(ev.id,p.sink);
+    if(p.onCid)p.onCid(ev.id);
+    return true;
+  }
+  return !!(ev.origin&&ev.origin!=='user');
+}
+function agentTurn(o){
+  // o: {text, cid?, origin, title?, context?, sink, onCid?}
+  if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
+  if(o.cid&&RUNNING.has(o.cid)){toast('that agent is already working — one turn at a time');return false}
+  if(o.cid)sinkOn(o.cid,o.sink);
+  else PENDING_SINKS.push({origin:o.origin,sink:o.sink,onCid:o.onCid});
+  ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
+    model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
+    context:o.context||''}));
+  return true;
+}
+
+/* ---- miniFeed: renders one conversation's live events into a container ---- */
+function miniFeed(box,opts){
+  opts=opts||{};
+  let body=null,text='',think=null,working=null;
+  const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
+  const clearWorking=()=>{if(working){working.remove();working=null}};
+  const ensureBody=()=>{
+    if(!body){body=document.createElement('div');body.className='mf-body body';box.appendChild(body)}};
+  return {
+    start(){
+      text='';body=null;think=null;clearWorking();
+      working=document.createElement('div');working.className='mf-working';
+      working.innerHTML='<span class="mfo"></span><span class="mft">thinking…</span>';
+      box.appendChild(working);scroll();
+    },
+    status(ev){if(working)working.querySelector('.mft').textContent=ev.message||'working…'},
+    thinking(t){
+      if(!think){think=document.createElement('div');think.className='think mf-think';box.insertBefore(think,working)}
+      think.textContent+=t;think.scrollTop=think.scrollHeight;
+    },
+    delta(t){
+      clearWorking();ensureBody();
+      text+=t;body.innerHTML=md(text);scroll();
+    },
+    toolStart(ev,argStr){
+      body=null;text='';think=null;
+      const card=document.createElement('div');card.className='tool';card.dataset.mf=ev.call_id;
+      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run">${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      card.querySelector('.head').onclick=()=>card.classList.toggle('open');
+      box.insertBefore(card,working);scroll();
+    },
+    toolEnd(ev){
+      const card=box.querySelector(`.tool[data-mf="${CSS.escape(ev.call_id)}"]`);
+      if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');
+        st.textContent=ev.ok?'done':'failed';card.querySelector('.out').textContent=ev.output||'(no output)';
+        if(!ev.ok)card.classList.add('open')}
+      if(opts.onTool)opts.onTool(ev);
+    },
+    approval(apBox){box.insertBefore(apBox,working);scroll();return true},
+    error(ev){
+      clearWorking();
+      const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
+      box.appendChild(d);scroll();
+    },
+    end(ev){clearWorking();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
+  };
+}
+
+/* ---- visible hands: when a tool touches an app, that surface glows ---- */
+function agentHands(ev){
+  let appId=null;
+  if(ev.name==='control_desktop'&&ev.args){
+    const t=ev.args.target;
+    appId=typeof shellResolveApp==='function'?shellResolveApp(t):null;
+    if(ev.args.action==='apply_theme')appId=null;
+  }
+  else if(ev.name==='set_wallpaper'||ev.name==='generate_wallpaper')appId='personalize';
+  else if(ev.name==='create_app'||ev.name==='develop_agentos')appId='studio';
+  if(!appId)return;
+  const w=(typeof winsOf==='function'?winsOf(appId):[])[0];
+  const els=[w&&w.el,document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`)].filter(Boolean);
+  els.forEach(el=>{
+    el.classList.add('agent-touch');
+    clearTimeout(el._ht);el._ht=setTimeout(()=>el.classList.remove('agent-touch'),2600);
+  });
+}
+
+/* ---- copilot panels: the agent inside every app window ---- */
+const COPILOT={cids:{}};                 // appId -> conversation id (session cache)
+function copilotStarters(appId){
+  const S={
+    files:['What is in this folder?','Find duplicates here','Organize these files by type'],
+    memory:['What do you remember about me?','Clean up outdated memories','Pin the important ones'],
+    tasks:['Set up a morning briefing','Why did my last task fail?','What runs today?'],
+    taskmgr:['What is eating my RAM?','Anything unusual running?','Free up some memory'],
+    syssettings:['Fix my wifi','Pair my headphones','Dim the screen at night'],
+    models:['Which model fits my GPU?','Free the VRAM','Pull a good coding model'],
+    store:['Find me a weather MCP','Build a notes app with AI','What is worth installing?'],
+    studio:['Improve this app','Why does the build fail?','Add an AI feature to it'],
+    kg:['What do you know about my projects?','Merge duplicate entities','Show contradictions'],
+    logs:['Any errors today?','Summarize what happened','Why did that fail?'],
+    themes:['Design me a calm dark theme','Make it feel like a terminal','Match my wallpaper'],
+    personalize:['Paint a quiet harbor at dusk','Something minimal and dark','Surprise me'],
+    telegram:['Summarize unread chats','Who wrote me today?','Set up channel alerts'],
+    mcp:['What tools do I have?','Find and add a calendar server','Which server is failing?'],
+    permissions:['What can apps do right now?','Anything risky granted?','Tighten the defaults'],
+    tokens:['Where do my tokens go?','Cheaper model for background work?','Usage this week'],
+    fabric:['Build me a research team','Why did the last run stall?','Add a validator step'],
+    snapshots:['Snapshot before I experiment','What changed since yesterday?'],
+    mission:['How healthy is the system?','What needs my attention?'],
+    terminal:['Explain the last error','Write the command for me'],
+  };
+  return S[appId]||['What can you do in here?','Fix what looks wrong','Explain this app'];
+}
+async function copilotThread(appId,title){
+  if(COPILOT.cids[appId])return COPILOT.cids[appId];
+  try{
+    const d=await (await fetch('/api/conversations')).json();
+    const hit=(d.conversations||[]).find(c=>c.origin==='copilot:'+appId);
+    if(hit){COPILOT.cids[appId]=hit.id;return hit.id}
+  }catch(e){}
+  return null;   // created lazily on the first turn (origin routes it back to us)
+}
+function copilotContext(w){
+  const app=w.app;
+  let state='';
+  try{state=app.context?String(app.context(w)||''):''}catch(e){}
+  const others=[];WM.wins.forEach(o=>{if(o.id!==w.id&&!o.min)others.push(o.app.title)});
+  return [
+    `You are ${agentName()}, embedded as the copilot panel INSIDE the "${app.title}" app of AgentOS.`,
+    `The user sees the app right beside your panel. Prefer ACTING through your tools over explaining;`,
+    `keep replies short (a sentence or two unless asked). The app refreshes automatically after your tools run.`,
+    `App: ${app.title} — ${app.desc||''}.`,
+    state?`Live app state: ${state}`:'',
+    others.length?`Also open: ${others.join(', ')}.`:'',
+    `Desktop control is available via control_desktop/desktop_state; files via search_files/read_file/write_file.`,
+  ].filter(Boolean).join('\n');
+}
+function toggleCopilot(w){
+  const panel=w.el.querySelector('.copanel');
+  const btn=w.el.querySelector('.cp-btn');
+  const open=!panel.classList.contains('open');
+  panel.classList.toggle('open',open);
+  btn.classList.toggle('on',open);
+  localStorage.setItem('copilot:'+w.id,open?'1':'');
+  if(open&&!panel.dataset.ready)initCopilot(w,panel);
+  if(open)setTimeout(()=>{const i=panel.querySelector('.cp-in');if(i)i.focus()},250);
+}
+async function initCopilot(w,panel){
+  panel.dataset.ready='1';
+  panel.innerHTML=`<div class="cp-head"><span class="cp-ava">✦</span><span class="cp-name">${esc(agentName())}</span>
+      <span class="cp-app">${esc(w.app.title)}</span><span style="flex:1"></span>
+      <button class="cp-open" title="Open in Chat">⤢</button></div>
+    <div class="cp-feed"></div>
+    <div class="cp-starters"></div>
+    <div class="cp-inbar"><textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea><button class="cp-send">↑</button></div>`;
+  const feedEl=panel.querySelector('.cp-feed');
+  const input=panel.querySelector('.cp-in');
+  const sendBtn2=panel.querySelector('.cp-send');
+  const startersEl=panel.querySelector('.cp-starters');
+  // starters: the panel invites action the moment it opens
+  startersEl.innerHTML=copilotStarters(w.id).map(s=>`<button class="cp-chip">${esc(s)}</button>`).join('');
+  startersEl.querySelectorAll('.cp-chip').forEach(b=>b.onclick=()=>{input.value=b.textContent;go()});
+  panel.querySelector('.cp-open').onclick=()=>{
+    if(COPILOT.cids[w.id]){openApp('chat');openConv(COPILOT.cids[w.id])}
+    else{openApp('chat')}
+  };
+  // prior thread: compact replay of the persistent per-app conversation
+  const cid=await copilotThread(w.id,w.app.title);
+  if(cid){
+    try{
+      const d=await (await fetch('/api/conversations/'+cid)).json();
+      const msgs=(d.messages||[]).slice(-12);
+      feedEl.innerHTML=msgs.map(m=>m.role==='user'
+        ?`<div class="mf-user">${esc(m.content)}</div>`
+        :m.role==='assistant'?`<div class="mf-body body">${md(m.content||'')}</div>`:'').join('');
+      feedEl.scrollTop=feedEl.scrollHeight;
+    }catch(e){}
+    if(RUNNING.has(cid))sinkOn(cid,mkSink());   // re-attach to a live turn
+  }
+  let live=null;
+  function mkSink(){
+    if(live)return live;
+    live=miniFeed(feedEl,{scrollEl:feedEl,
+      onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
+      onEnd:()=>{live=null;startersEl.style.display='none'}});
+    return live;
+  }
+  function go(){
+    const text=input.value.trim();if(!text)return;
+    input.value='';
+    feedEl.insertAdjacentHTML('beforeend',`<div class="mf-user">${esc(text)}</div>`);
+    feedEl.scrollTop=feedEl.scrollHeight;
+    const sink=mkSink();
+    agentTurn({text,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
+      title:'✦ '+w.app.title,context:copilotContext(w),sink,
+      onCid:id=>{COPILOT.cids[w.id]=id}});
+  }
+  sendBtn2.onclick=go;
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
+}
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -1778,6 +2128,46 @@ const APPS={
   settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
+
+/* ---- copilot context: one line about what each app is showing RIGHT NOW.
+   Sync + cheap by design (globals/DOM only) — it's a hint for the embedded
+   agent, which can always call tools for authoritative data. ---- */
+const APP_CTX={
+  chat:()=>`the full chat window; current conversation ${currentConv||'(none)'}${RUNNING.size?', a turn is running':''}`,
+  files:w=>`browsing "${w.path||'workspace root'}"${document.querySelectorAll('.fitem').length?` (${document.querySelectorAll('.fitem').length} entries visible)`:''}`,
+  terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
+  browser:()=>'the web launcher (opens URLs in the host browser)',
+  apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
+  control:()=>'Quick Settings: volume, brightness, network, battery, DND',
+  syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
+  models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
+  memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
+  profile:()=>'the profile view — everything the agent knows about the user',
+  fabric:()=>`the Team app, "${typeof fabTab!=='undefined'?fabTab:'team'}" tab (subagents & workflows)`,
+  docs:()=>'the AgentOS manual',
+  kg:()=>'the knowledge graph visualization',
+  soul:()=>'the agent soul (persistent identity) editor',
+  mcp:()=>'MCP server management (connections, tools, env)',
+  telegram:()=>'the Telegram bridge (chats, channels, permissions)',
+  logs:()=>'the system log viewer',
+  tasks:()=>`the Scheduler (${document.querySelectorAll('#tasklist [data-f]').length||'some'} scheduled tasks & triggers listed)`,
+  taskmgr:()=>{const c=$('#tm-cpu'),m=$('#tm-mem');return `Task Manager${c?` — CPU ${c.textContent}, RAM ${m?m.textContent:'?'}`:''}`},
+  skills:()=>'the skills library (reusable procedures)',
+  policies:()=>'always-allow / always-deny policy rules',
+  permissions:()=>'the policy console: permission maps, grants, IO gates',
+  store:()=>'the Store: app templates, MCP discovery, build-with-AI',
+  studio:()=>`App Studio${typeof STUDIO!=='undefined'&&STUDIO.sel?`, editing app "${STUDIO.sel}"`:''}${typeof STUDIO!=='undefined'&&STUDIO.building?' (a build is RUNNING)':''}`,
+  themes:()=>`the theme gallery (current theme: ${typeof CURRENT_THEME!=='undefined'?CURRENT_THEME:'agentos'})`,
+  personalize:()=>'AI wallpaper generation + gallery',
+  snapshots:()=>'OS restore points',
+  tokens:()=>'token usage analytics',
+  train:()=>'TrainForge — fine-tuning datasets, jobs, models',
+  mission:()=>'Mission Control: the Train/Test/Operate/Build/Ship/Manage lifecycle dashboard',
+  hermes:()=>'the Hermes companion-agent app (install, config, gateway)',
+  settings:()=>'core settings: providers, API keys, autonomy, voice',
+  about:()=>'system information',
+};
+Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
 const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
@@ -2441,15 +2831,53 @@ async function shellCmd(ev){
   if(ev.id)try{await fetch('/api/shell/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ev.id,ok,data})})}catch(e){}
 }
 
+/* ---- chat-event sinks: any surface (omnibar, copilot panels) can render a
+   conversation's live stream by registering a handler here. The Chat window
+   keeps its inline path below; sinks are additive — buffering into STREAMS
+   still happens so opening the conversation in Chat mid-turn stays lossless. */
+const CHAT_SINKS=new Map();   // conversation_id -> {start,delta,thinking,toolStart,toolEnd,status,approval,error,end}
+function sinkOn(cid,sink){if(cid)CHAT_SINKS.set(cid,sink)}
+function sinkOff(cid){CHAT_SINKS.delete(cid)}
+/* one approval card builder for every surface (Chat inline, floating, sinks) */
+function buildApprovalBox(ev,cur){
+  const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
+  const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
+  const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
+  box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+  box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
+  box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
+  box.querySelector('.always').onclick=async()=>{
+    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
+      resolveApproval(ev.id,true,true);
+      toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+    }else{
+      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
+      await addPolicy('allow',pat);
+      resolveApproval(ev.id,true);
+      toast('policy added: always allow "'+pat+'"');
+    }
+  };
+  return box;
+}
+/* the menu-bar spinner reflects EVERY live turn, not just the visible chat */
+function updateSpin(){
+  const s=$('#spin');if(!s)return;
+  s.classList.toggle('on',RUNNING.size>0||running);
+  s.title=RUNNING.size>1?RUNNING.size+' agent turns running':'agent is working';
+  if(typeof omniPresence==='function')omniPresence();
+}
+
 function handle(ev){
   if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
+  const _sk=_cid?CHAT_SINKS.get(_cid):null;
   switch(ev.type){
     case 'state_sync':{ // sent on every (re)connect: what is actually still running
       RUNNING.clear();
       (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''}});
       if(currentConv&&RUNNING.has(currentConv)){setRunning(true);showWorking();}
       else{setRunning(false);removeWorking();}
+      updateSpin();
       if(window.STUDIO){
         if(ev.build_running){
           if(!STUDIO.building){STUDIO.building=true;const b=$('#st-build');if(b){b.textContent='Cancel';b.classList.add('stop')}studioTickStart();studioLog('<span class="mut">re-attached to the running build…</span>');}
@@ -2457,17 +2885,25 @@ function handle(ev){
       }
       break;}
     case 'status':{ // model-side heartbeat ("loading model / evaluating prompt…")
+      if(_sk&&_sk.status)_sk.status(ev);
       if(!_cur)break;
       WORK_MSG=ev.message||'';
       if(running)showWorking();       // keep a live indicator up between/after tool calls
       break;}
-    case 'conversation': currentConv=ev.id; loadConvs(); break;
+    case 'conversation':{
+      // omnibar/copilot threads announce themselves with an origin — they must
+      // never steal the Chat window's current conversation
+      if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
+      currentConv=ev.id; loadConvs(); break;}
     case 'turn_start':{
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
+      updateSpin();
+      if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
     case 'text_delta':{
       if(_s)_s.text+=ev.text;
+      if(_sk&&_sk.delta)_sk.delta(ev.text,_s?_s.text:'');
       if(!_cur)break;
       curText+=ev.text;
       WORK_MSG='';removeWorking(); // real text is flowing now — drop the "working" placeholder
@@ -2475,6 +2911,7 @@ function handle(ev){
       if(!curBody)startAssistant();
       if(curBody){curBody.innerHTML=md(curText);curBody.style.transform='translateZ(0)';scrollDown()} break;}
     case 'thinking_delta':{
+      if(_sk&&_sk.thinking)_sk.thinking(ev.text);
       if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
@@ -2486,6 +2923,8 @@ function handle(ev){
         if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
         _s.text='';
         _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}">running</span></div><div class="out"></div></div>`;}
+      if(typeof agentHands==='function')agentHands(ev);   // visible hands: glow the affected app
+      if(_sk&&_sk.toolStart)_sk.toolStart(ev,argStr);
       if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
@@ -2497,6 +2936,7 @@ function handle(ev){
     case 'tool_end':{
       if(_s)_s.html=_s.html.replace(`class="tstat run" data-b="${ev.call_id}">running`,
         `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}">${ev.ok?'done':'failed'}`);
+      if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
       if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
@@ -2507,24 +2947,9 @@ function handle(ev){
       if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
     case 'approval_request':{
-      const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
-      const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
-      const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
-      box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${_cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
-      box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
-      box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-      box.querySelector('.always').onclick=async()=>{
-        if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-          resolveApproval(ev.id,true,true);
-          toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
-        }else{
-          const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-          await addPolicy('allow',pat);
-          resolveApproval(ev.id,true);
-          toast('policy added: always allow "'+pat+'"');
-        }
-      };
-      if(_cur&&feed){
+      const box=buildApprovalBox(ev,_cur);
+      if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
+      else if(_cur&&feed){
         if(!curBody)startAssistant();
         if(curBody)curBody.parentNode.insertBefore(box,curBody);
       }else{ // approval from a chat you're not looking at — float it, never deadlock
@@ -2536,6 +2961,7 @@ function handle(ev){
     case 'error':{
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
         _s.html+='<div class="errmsg">'+esc(ev.message)+'</div>';}
+      if(_sk&&_sk.error){_sk.error(ev);if(!_cur)break}
       if(!_cur){toast('chat error: '+ev.message);break}
       if(!curBody)startAssistant();
       if(!curBody){toast('error: '+ev.message);break}
@@ -2544,6 +2970,8 @@ function handle(ev){
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];}
+      updateSpin();
+      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){loadConvs();break}}
       if(!_cur){toast('✓ background chat finished');loadConvs();break}
       removeWorking();const reply=curText;
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
@@ -2753,7 +3181,12 @@ async function loadConvs(){
   const r=await fetch('/api/conversations');const d=await r.json();
   if(!$('#convs'))return;
   box.innerHTML='';
-  d.conversations.forEach(c=>{
+  // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
+  // their own sections so app-scoped exchanges never drown the real chats
+  const groups=[['Desktop',c=>c.origin==='omni'],
+                ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
+                ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
+  const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
     el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
@@ -2763,7 +3196,13 @@ async function loadConvs(){
       if(RUNNING.has(c.id))return toast('that chat has a turn running — stop it first');
       await fetch('/api/conversations/'+c.id,{method:'DELETE'});
       if(currentConv===c.id)newChat(); else loadConvs();};
-    box.appendChild(el);
+    return el;
+  };
+  groups.forEach(([label,test])=>{
+    const items=d.conversations.filter(test);
+    if(!items.length)return;
+    if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
+    items.forEach(c=>box.appendChild(row(c)));
   });
 }
 async function openConv(cid){
@@ -2985,7 +3424,7 @@ async function renderMemory(body){
       <button title="${m.pinned?'unpin':'pin (always injected first)'}" style="${m.pinned?'':'opacity:.45'};font-size:11px" onclick="pinMemory('${m.id}',${m.pinned?0:1})">${m.pinned?'pinned':'pin'}</button>
       <button title="edit" onclick="editMemory('${m.id}')">✎</button>
       <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')
-      ||emptyBox('No user memories yet','They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.');
+      ||emptyBox('No user memories yet','They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.','','memory','What should you remember about me? Interview me briefly.');
   }else{
     const groups={};
     sess.forEach(m=>{(groups[m.conversation_id||'?']=groups[m.conversation_id||'?']||{title:m.conversation_title||'(deleted conversation)',items:[]}).items.push(m)});
@@ -3577,7 +4016,7 @@ async function renderTasks(body){
     search:{id:'task-q',placeholder:'Search tasks…'},
   });
   pb.innerHTML=`
-    ${items||emptyBox('Nothing scheduled yet','Schedule any prompt to run on its own — "check disk space every hour and notify me", "every morning summarize my unread mail". Add one below or just ask in chat.')}
+    ${items||emptyBox('Nothing scheduled yet','Schedule any prompt to run on its own — "check disk space every hour and notify me", "every morning summarize my unread mail". Add one below or just ask in chat.','','tasks','Set up a useful daily schedule for me.')}
     <div class="sect">New scheduled task</div>
     <input id="task-prompt" placeholder="What should the agent do when this fires?">
     <div class="row" style="margin-top:8px">
@@ -3697,7 +4136,7 @@ async function renderMCP(body){
     ${d.available?'':'<div class="errmsg">python package <code>mcp</code> is not installed — run <code>uv add mcp</code> and restart.</div>'}
     <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
       <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
-    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.')}
+    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.','','mcp','Find me a useful MCP server and set it up.')}
     ${MCP_GROUPS.map((g,gi)=>`
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
@@ -4235,7 +4674,7 @@ async function renderSnapshots(body){
     <div class="row"><input id="snap-label" placeholder="label (e.g. before WhatsApp experiment)">
       <button class="pact" style="flex:0 0 130px" onclick="snapCreate()">Snapshot now</button></div>
     <p class="mut" style="margin:8px 0 14px">A snapshot saves your settings, data (apps, widgets, memory), and the OS source code. Restoring rolls everything back and restarts.</p>
-    ${items||emptyBox('No snapshots yet','Take one before risky changes — especially before letting the agent modify its own code.')}`;
+    ${items||emptyBox('No snapshots yet','Take one before risky changes — especially before letting the agent modify its own code.','','snapshots','Take a snapshot now and explain what it protects.')}`;
 }
 async function snapCreate(){
   const label=$('#snap-label').value.trim();
@@ -4628,7 +5067,7 @@ async function renderSkills(body){
   });
   pb.innerHTML=`
     <div data-fgroup><div class="sect">Installed</div>
-    ${items||emptyBox('No skills yet','A skill is a reusable procedure the agent can pull in when relevant — house rules, runbooks, how-tos. The agent sees the list and loads one with <code>use_skill</code>.')}
+    ${items||emptyBox('No skills yet','A skill is a reusable procedure the agent can pull in when relevant — house rules, runbooks, how-tos. The agent sees the list and loads one with <code>use_skill</code>.','','skills','Write a starter skill from how I like to work.')}
     </div>
     ${skillsCatalogHTML(d.skills)}
     <div data-fgroup>
@@ -4771,7 +5210,7 @@ async function renderModels(body){
   pb.innerHTML=`
     ${gpu?`<div class="sect">GPU</div><div class="tmgrid" style="grid-template-columns:1fr">${gpu}</div>`:'<p class="mut">No NVIDIA GPU detected (models run on CPU).</p>'}
     <div data-fgroup><div class="sect">Configured models — chat, builds and scheduled tasks use the default</div>
-    ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.')}
+    ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.','','models','Help me set up a model that fits this machine.')}
     <p class="mut" style="margin:6px 0 0">Cloud providers (Anthropic, OpenAI, OpenRouter…) appear here once their API key is set in <a href="#" onclick="openApp('settings');return false" style="color:var(--acc2)">Settings</a>. Tool-capable models (qwen, claude, gpt) make builds far more reliable.</p></div>
     <div data-fgroup><div class="sect">Local models on disk (Ollama)</div>
     <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item" data-f="${esc(m.name+' '+(m.family||'')+' '+(m.params||''))}">
@@ -6083,6 +6522,167 @@ function renderAbout(body){
   }).catch(()=>{});
 }
 
+/* ================= omnibar: the always-present prompt bar =================
+   The OS's one prompt surface. It sits above the dock permanently and is the
+   launcher too: Ctrl+Space (or Ctrl+K / Alt+Space) pops it — bar grows, results
+   list rises above it, input focused and selected. Typing filters direct
+   actions (intent grammar) + apps; Enter runs the highlighted row, or asks the
+   agent when the row is "Ask …". Answers stream into cards above the bar. */
+const OMNI={cid:null,matches:[],idx:0,pop:false};
+
+function omniPresence(){
+  const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
+  const n=RUNNING.size;
+  orb.classList.toggle('busy',n>0);
+  if(inp&&!inp.value&&document.activeElement!==inp)
+    inp.placeholder=n>0?`${agentName()} is working${n>1?' ('+n+' turns)':''}…`
+                       :`Ask ${agentName()} anything — or press Ctrl+Space`;
+}
+/* ---- pop: the launcher state. Pure state — it never re-selects text, so
+   popping open as you type can't swallow the next keystroke. ---- */
+function omniPop(on){
+  const bar=$('#omnibar'),inp=$('#omni-in');if(!bar)return;
+  on=!!on;
+  const changed=on!==OMNI.pop;
+  OMNI.pop=on;
+  bar.classList.toggle('pop',on);
+  document.body.classList.toggle('omni-pop',on);
+  if(on){
+    if(document.activeElement!==inp)inp.focus();
+    omniRender(inp.value);
+    if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
+      {duration:180,easing:EASE.spring});
+  }else{
+    $('#omnilist').classList.remove('on');
+    OMNI.matches=[];OMNI.idx=0;
+  }
+}
+/* the hotkey entry point (Ctrl+Space / Ctrl+K / Alt+Space): focus, select what's
+   there so you can just retype, and show the list */
+function omniFocus(){
+  const inp=$('#omni-in');if(!inp)return;
+  inp.focus();inp.select();
+  omniPop(true);
+}
+function omniOpen(){return OMNI.pop}
+
+/* ---- the results list (direct actions first, then apps, then "ask") ---- */
+function omniRender(q){
+  const list=$('#omnilist');if(!list)return;
+  q=(q||'').trim();
+  const items=typeof palActions==='function'?palActions():[];
+  const direct=q&&typeof palIntent==='function'?palIntent(q):[];
+  const fuzzy=q?items.map(it=>({it,s:palScore(q,it.label+' '+(it.hint||''))})).filter(x=>x.s>0)
+      .sort((a,b)=>b.s-a.s).map(x=>x.it).slice(0,Math.max(3,7-direct.length)):items.slice(0,7);
+  OMNI.matches=[...direct,...fuzzy];
+  if(q)OMNI.matches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent',ask:true,
+    run:()=>omniAsk(q)});
+  // a command gets run by Enter; a question gets asked — highlight accordingly
+  OMNI.idx=direct.length?0:(q?OMNI.matches.length-1:0);
+  omniPaint();
+  if(q&&!direct.length&&typeof palIntentAsync==='function')palIntentAsync(q);
+}
+function omniPaint(){
+  const list=$('#omnilist');if(!list)return;
+  if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
+  list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
+    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
+  list.classList.add('on');
+  list.querySelectorAll('.palitem').forEach(el=>{
+    el.onmousedown=e=>{e.preventDefault();omniRun(+el.dataset.i)};      // keep focus in the input
+    el.onmousemove=()=>{OMNI.idx=+el.dataset.i;
+      list.querySelectorAll('.palitem').forEach((x,i)=>x.classList.toggle('sel',i===OMNI.idx))};
+  });
+}
+function omniRun(i){
+  const it=OMNI.matches[i!==undefined?i:OMNI.idx];
+  if(!it)return omniAsk($('#omni-in').value);
+  $('#omni-in').value='';
+  omniPop(false);
+  it.run();
+}
+/* palIntentAsync (model-classified fallback) appends into whichever list is live */
+function palRenderList(){omniPaint()}
+
+async function omniThread(){
+  if(OMNI.cid)return OMNI.cid;
+  try{
+    const d=await (await fetch('/api/conversations')).json();
+    const hit=(d.conversations||[]).find(c=>c.origin==='omni');
+    if(hit)OMNI.cid=hit.id;
+  }catch(e){}
+  return OMNI.cid;
+}
+function omniCard(question){
+  const wrap=$('#omnicards');
+  const card=document.createElement('div');card.className='ocard';
+  card.innerHTML=`<div class="oc-q">${esc(question)}</div><div class="oc-feed"></div>
+    <div class="oc-tools"><button class="oc-chat">Open in Chat</button><button class="oc-x">✕</button></div>`;
+  wrap.appendChild(card);
+  while(wrap.children.length>3)wrap.firstChild.remove();
+  popIn(card,{origin:'bottom'});
+  const close=()=>{popOut(card,()=>card.remove())};
+  card.querySelector('.oc-x').onclick=close;
+  card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
+  return {card,feed:card.querySelector('.oc-feed'),close};
+}
+function omniContext(){
+  const open=[];WM.wins.forEach(w=>{if(!w.min)open.push(w.app.title)});
+  return [
+    `You are ${agentName()}, answering from the AgentOS omnibar — the always-present prompt bar on the desktop.`,
+    `The user asked in passing; be FAST and BRIEF (1-3 sentences unless asked for more), and prefer acting`,
+    `through tools over explaining. This is the persistent Desktop thread.`,
+    open.length?`Open right now: ${open.join(', ')}. Current desktop ${curDesk}/${DESKS}, theme ${CURRENT_THEME}.`:'',
+  ].filter(Boolean).join('\n');
+}
+async function omniAsk(q){
+  q=(q||'').trim();if(!q)return;
+  const inp=$('#omni-in');inp.value='';
+  omniPop(false);
+  await omniThread();
+  const {card,feed,close}=omniCard(q);
+  const sink=miniFeed(feed,{scrollEl:feed,onEnd:()=>{
+    // linger, then fade — unless the pointer is on it or an approval is pending
+    setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
+  }});
+  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:'◉ Desktop',
+    context:omniContext(),sink,onCid:id=>{OMNI.cid=id}});
+  if(!ok)close();
+}
+(function(){
+  const inp=$('#omni-in'),bar=$('#omnibar');if(!inp)return;
+  $('#omni-mic').innerHTML=svgMic(13);
+  $('#omni-mic').onmousedown=e=>{e.preventDefault();jarvisMode(true)};
+  $('#omni-chat').onmousedown=e=>{e.preventDefault();openApp('chat');if(OMNI.cid)openConv(OMNI.cid)};
+  // clicking anywhere on the bar puts the caret in it
+  bar.addEventListener('mousedown',e=>{if(!e.target.closest('button')&&e.target!==inp){e.preventDefault();omniFocus()}});
+  // typing opens the launcher; clearing it collapses back to the bare bar
+  inp.addEventListener('input',()=>{if(inp.value.trim())omniPop(true);else if(OMNI.pop)omniRender('')});
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();OMNI.idx=Math.min(OMNI.idx+1,OMNI.matches.length-1);omniPaint();return}
+    if(e.key==='ArrowUp'){e.preventDefault();OMNI.idx=Math.max(OMNI.idx-1,0);omniPaint();return}
+    if(e.key==='Tab'&&OMNI.matches.length){e.preventDefault();omniRun();return}
+    if(e.key==='Enter'){e.preventDefault();
+      if(OMNI.matches.length)omniRun();else omniAsk(inp.value);
+      return}
+    if(e.key==='Escape'){e.preventDefault();inp.value='';omniPop(false);inp.blur()}
+  });
+  // clicking away collapses the launcher (the bar itself stays, always)
+  document.addEventListener('mousedown',e=>{
+    if(OMNI.pop&&!e.target.closest('#omnibar')&&!e.target.closest('#omnilist'))omniPop(false);
+  });
+  // type-anywhere: printable keys with no text field focused land in the bar
+  document.addEventListener('keydown',e=>{
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(e.key.length!==1)return;                                   // printable only
+    const t=document.activeElement;
+    if(t&&(/^(input|textarea|select)$/i.test(t.tagName)||t.isContentEditable))return;
+    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('#setup-wiz')))return;
+    inp.focus();                                                  // the keypress lands in the bar
+  });
+  omniPresence();
+  setInterval(omniPresence,4000);
+})();
 /* ================= keyboard / shortcuts system ================= */
 // "Command key": Cmd on Mac (metaKey), Ctrl on Linux/Windows — both accepted so it feels native.
 const IS_MAC=/Mac/i.test(navigator.platform);
@@ -6090,8 +6690,9 @@ const CMD='⌘/Ctrl';
 function cmd(e){return e.metaKey||e.ctrlKey}
 const KEYMAP=[
   {group:'General',keys:[
-    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Command palette / ask AI'},
-    {k:[CMD,'K'],label:'Command palette'},
+    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Focus the prompt bar (launch, act, or ask)'},
+    {k:[CMD,'K'],label:'Focus the prompt bar'},
+    {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
     {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
     {k:[CMD,','],label:'Settings'},
     {k:['F11'],label:'Toggle fullscreen'},
@@ -6191,14 +6792,12 @@ function keysHelp(on){
 }
 $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keysHelp(false)});
 
-/* ================= command palette (quicksilver) ================= */
-let palIdx=0,palMatches=[];
-function paletteOpen(){return $('#palette').classList.contains('show')}
-function togglePalette(force){
-  const on=force!==undefined?force:!paletteOpen();
-  $('#palette').classList.toggle('show',on);
-  if(on){$('#palin').value='';palRender('');setTimeout(()=>$('#palin').focus(),10)}
-}
+/* ================= launcher sources (rendered BY the omnibar) =================
+   The omnibar is the command palette — there is no second overlay. These stay
+   here as the sources it draws from: app/action rows, fuzzy scoring, and the
+   intent grammar that turns language into direct actions. */
+function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
+function paletteOpen(){return omniOpen()}
 function palActions(){
   const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
@@ -6305,54 +6904,22 @@ function palIntentAsync(q){
       const r=await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q})});
       if(!r.ok)return;
       const d=await r.json();
-      if(seq!==palIntentSeq||!paletteOpen()||$('#palin').value.trim()!==q)return;   // stale
-      if(!d||!d.action||d.action==='chat')return;
+      if(seq!==palIntentSeq||!omniOpen()||$('#omni-in').value.trim()!==q)return;   // stale
+      if(!d||!d.action||d.action==='chat'||d.action==='ask')return;
       const row={icon:'✦',label:d.label||`Do it: ${q}`,hint:d.hint||'suggested action',intent:true,
         run:()=>{shellCmd({id:'',action:d.action,args:{target:d.target}});}};
-      if(d.action==='ask')return;
-      palMatches.splice(Math.max(0,palMatches.length-1),0,row);
-      palRenderList();
+      OMNI.matches.splice(Math.max(0,OMNI.matches.length-1),0,row);
+      omniPaint();
     }catch(e){}
   },350);
 }
-function palRender(q){
-  q=q.trim();
-  const items=palActions();
-  const direct=q?palIntent(q):[];              // grammar first: language → action
-  const fuzzy=q?items.map(it=>({it,s:palScore(q,it.label+' '+(it.hint||''))})).filter(x=>x.s>0)
-      .sort((a,b)=>b.s-a.s).map(x=>x.it).slice(0,Math.max(3,8-direct.length)):items.slice(0,9);
-  palMatches=[...direct,...fuzzy];
-  if(q)palMatches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent',run:()=>palAsk(q)});
-  palIdx=Math.min(palIdx,palMatches.length-1)||0;
-  palRenderList();
-  if(q&&!direct.length)palIntentAsync(q);      // grammar missed → model classifies in the background
-}
-function palRenderList(){
-  $('#pallist').innerHTML=palMatches.map((it,i)=>`<div class="palitem${i===palIdx?' sel':''}${it.intent?' act':''}" data-i="${i}">
-    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon}</span>`}<span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
-  $('#pallist').querySelectorAll('.palitem').forEach(el=>{
-    el.onclick=()=>{palRun(+el.dataset.i)};
-    el.onmousemove=()=>{palIdx=+el.dataset.i;palHighlight()};
-  });
-}
-function palHighlight(){$('#pallist').querySelectorAll('.palitem').forEach((el,i)=>el.classList.toggle('sel',i===palIdx))}
-function palRun(i){
-  const it=palMatches[i];if(!it)return;
-  togglePalette(false);
-  it.run();
-}
 function palAsk(q){
+  // quick asks flow through the omnibar's Desktop thread (an answer card),
+  // not a full Chat window — escalation is one click on the card
+  if(typeof omniAsk==='function'){omniAsk(q);return}
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }
-$('#palin').addEventListener('input',e=>{palIdx=0;palRender(e.target.value)});
-$('#palin').addEventListener('keydown',e=>{
-  if(e.key==='ArrowDown'){e.preventDefault();palIdx=Math.min(palIdx+1,palMatches.length-1);palHighlight()}
-  else if(e.key==='ArrowUp'){e.preventDefault();palIdx=Math.max(palIdx-1,0);palHighlight()}
-  else if(e.key==='Enter'){e.preventDefault();palRun(palIdx)}
-  else if(e.key==='Escape'){togglePalette(false)}
-});
-$('#palette').addEventListener('mousedown',e=>{if(e.target.id==='palette')togglePalette(false)});
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
   const inTerm=e.target.closest&&e.target.closest('.xterm');
@@ -6374,10 +6941,11 @@ document.addEventListener('keydown',e=>{
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
   if(e.key==='F3'||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&e.key==='ArrowUp'&&!typing&&!inTerm)){e.preventDefault();exposeToggle();return}
-  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();togglePalette()}          // works everywhere, incl. terminal
+  // the launcher IS the omnibar: every hotkey pops it open + focused (Esc closes)
+  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();omniFocus()}             // works everywhere, incl. terminal
   else if(e.key==='F11'){e.preventDefault();toggleFullscreen()}
-  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();togglePalette()}   // Alt+Space quick launch / ask AI
-  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();togglePalette()}
+  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();omniFocus()}   // Alt+Space quick launch / ask AI
+  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();omniFocus()}
   else if(e.ctrlKey&&e.altKey&&k==='t'){e.preventDefault();togglePalette(false);openApp('terminal')}
   else if(e.altKey&&!e.ctrlKey&&!e.shiftKey&&k==='j'){e.preventDefault();jarvisMode(!JARVIS.on)}
   else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
@@ -6459,7 +7027,10 @@ connect();
   const wait=Math.max(0,650-(performance.now()-t0));   // let the mark breathe — no sub-frame flash
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
-    if(!$('#setup-wiz'))openApp('chat');
+    if($('#setup-wiz'))return;
+    openApp('chat');
+    // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
+    const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);
 })();
 </script>

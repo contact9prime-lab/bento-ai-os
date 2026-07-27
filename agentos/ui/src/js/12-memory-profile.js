@@ -14,7 +14,7 @@ async function renderMemory(body){
       <button title="${m.pinned?'unpin':'pin (always injected first)'}" style="${m.pinned?'':'opacity:.45'};font-size:11px" onclick="pinMemory('${m.id}',${m.pinned?0:1})">${m.pinned?'pinned':'pin'}</button>
       <button title="edit" onclick="editMemory('${m.id}')">✎</button>
       <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')
-      ||emptyBox('No user memories yet','They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.');
+      ||emptyBox('No user memories yet','They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.','','memory','What should you remember about me? Interview me briefly.');
   }else{
     const groups={};
     sess.forEach(m=>{(groups[m.conversation_id||'?']=groups[m.conversation_id||'?']||{title:m.conversation_title||'(deleted conversation)',items:[]}).items.push(m)});

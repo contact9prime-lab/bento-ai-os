@@ -1574,6 +1574,7 @@ window.APP_TOKEN = %r; // runtime identity: the OS knows WHICH app is calling (p
 //   appAgent(prompt, {tools})                 mini agent loop (up to 5 tool steps) acting AS this
 //                                             app — risky tools raise the OS's normal approval card
 //   appContext()                              {app_id, app_name, agent_name, model, theme}
+//   appCopilot.mount({starters,system,act})   the standard in-app agent widget (✦ corner button)
 // Every call is authenticated with the app token and gated by the app's permission grants.
 window.appData = {
   async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){ return {}; } },
@@ -1633,6 +1634,60 @@ window.appContext = async () => {
   if(_appCtx) return _appCtx;
   try{ _appCtx = await (await fetch('/api/apps/context',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){}
   return _appCtx || {app_id:window.APP_ID, app_name:'', agent_name:'', model:'', theme:'dark'};
+};
+// ---- appCopilot.mount({starters, system, act}) — the standard in-app agent ----
+// One call gives ANY app a floating agent: a corner button opening a small
+// conversation panel. act:true (default) routes turns through appAgent so the
+// agent can DO things under this app's grants; act:false keeps it chat-only.
+window.appCopilot = { mounted:false };
+window.appCopilot.mount = (opts) => {
+  if(window.appCopilot.mounted) return; window.appCopilot.mounted = true;
+  opts = opts || {};
+  const hist = [];
+  const st = document.createElement('style');
+  st.textContent = '.acp-fab{position:fixed;right:14px;bottom:14px;z-index:999;width:40px;height:40px;border-radius:999px;border:none;cursor:pointer;font-size:17px;color:#06211d;background:linear-gradient(135deg,#5eead4,#22d3ee);box-shadow:0 6px 18px rgba(0,0,0,.35)}'
+    +'.acp-pan{position:fixed;right:14px;bottom:62px;z-index:999;width:min(320px,86vw);max-height:60vh;display:none;flex-direction:column;border-radius:14px;background:rgba(17,20,25,.96);color:#e6ebf2;border:1px solid rgba(255,255,255,.14);box-shadow:0 18px 48px rgba(0,0,0,.42);font:13px/1.45 system-ui,sans-serif}'
+    +'.acp-pan.on{display:flex}'
+    +'.acp-h{padding:9px 12px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.1);color:#5eead4}'
+    +'.acp-f{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}'
+    +'.acp-u{align-self:flex-end;background:rgba(94,234,212,.16);border-radius:12px 3px 12px 12px;padding:5px 10px;max-width:88vw}'
+    +'.acp-a{white-space:pre-wrap}'
+    +'.acp-w{opacity:.6;font-style:italic}'
+    +'.acp-chip{display:inline-block;margin:2px 4px 2px 0;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:none;color:#8a94a6;cursor:pointer;font-size:12px}'
+    +'.acp-in{display:flex;gap:6px;padding:9px 12px;border-top:1px solid rgba(255,255,255,.1)}'
+    +'.acp-in input{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:inherit;padding:6px 9px;outline:none}'
+    +'.acp-in button{border:none;border-radius:999px;width:30px;cursor:pointer;background:linear-gradient(135deg,#5eead4,#22d3ee);color:#06211d;font-weight:800}';
+  document.head.appendChild(st);
+  const fab = document.createElement('button'); fab.className='acp-fab'; fab.textContent='✦'; fab.title='Ask the agent';
+  const pan = document.createElement('div'); pan.className='acp-pan';
+  pan.innerHTML = '<div class="acp-h">✦ <span class="acp-nm">agent</span></div><div class="acp-f"></div>'
+    +'<div class="acp-in"><input placeholder="Ask about this app…"><button>↑</button></div>';
+  document.body.appendChild(fab); document.body.appendChild(pan);
+  const feed = pan.querySelector('.acp-f'), inp = pan.querySelector('input');
+  window.appContext().then(c => { pan.querySelector('.acp-nm').textContent = (c.agent_name||'agent') + ' · ' + (c.app_name||window.APP_ID); });
+  (opts.starters||[]).forEach(s => { const b=document.createElement('button'); b.className='acp-chip'; b.textContent=s;
+    b.onclick=() => { inp.value=s; go(); }; feed.appendChild(b); });
+  async function go(){
+    const q = inp.value.trim(); if(!q) return; inp.value='';
+    const u=document.createElement('div'); u.className='acp-u'; u.textContent=q; feed.appendChild(u);
+    const a=document.createElement('div'); a.className='acp-a acp-w'; a.textContent='thinking…'; feed.appendChild(a);
+    feed.scrollTop=feed.scrollHeight;
+    hist.push({role:'user', content:q});
+    const sys = (opts.system||'You are the embedded agent of the "'+window.APP_ID+'" app on AgentOS. Be brief; prefer doing over explaining.');
+    let out;
+    if(opts.act === false){
+      out = await window.appChat([{role:'system',content:sys}].concat(hist.slice(-12)));
+    }else{
+      out = await window.appAgent(sys + '\\nConversation so far:\\n'
+        + hist.slice(-12).map(m => m.role + ': ' + m.content).join('\\n'));
+    }
+    hist.push({role:'assistant', content:out});
+    a.classList.remove('acp-w'); a.textContent = out;
+    feed.scrollTop=feed.scrollHeight;
+  }
+  pan.querySelector('.acp-in button').onclick = go;
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') go(); });
+  fab.onclick = () => { pan.classList.toggle('on'); if(pan.classList.contains('on')) inp.focus(); };
 };
 // surface runtime errors to the host (App Studio shows them with a one-click fix)
 window.addEventListener('error', e => {
@@ -2144,6 +2199,9 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
   actions. Rules of thumb: user-visible output → appLLM.stream, never bare appLLM; conversation
   with history → appChat; real actions → appAgent. Every AI feature gets a loading state and a
   graceful '[error]…' fallback when no model is configured. An app without its AI feature is incomplete.
+- ALWAYS call appCopilot.mount({starters:[2-3 app-specific prompts]}) once at startup — every app
+  ships with its resident agent (the ✦ corner button) IN ADDITION to its bespoke AI feature. Pass
+  {act:false} only for pure-content apps where acting makes no sense.
 - Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
 - THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
@@ -3924,8 +3982,13 @@ async def run_chat(cid: str, data: dict):
         else:
             from .policy import SURFACES
             surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            # Copilot/omnibar turns ride the normal chat path with per-surface
+            # context appended to the system prompt (the app's live state, the
+            # embedded-panel preamble). Sanitized and capped — it is UI-supplied.
+            extra = str(data.get("context") or "")[:4096]
+            extra = "".join(ch for ch in extra if ch == "\n" or ch == "\t" or ord(ch) >= 32)
             agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid,
-                          surface=surface)
+                          surface=surface, extra_system=extra)
             turns[cid] = {"agent": agent, "task": asyncio.current_task(), "model": model}
             knowledge.turn_started()
             started = True
@@ -4545,9 +4608,16 @@ async def ws_endpoint(ws: WebSocket):
                                            "stop it, or continue in another chat."})
                     continue
                 if not cid:
-                    title = text[:60] or "(image)"
-                    cid = state["store"].create_conversation(title)
-                    await send({"type": "conversation", "id": cid, "title": title})
+                    title = (data.get("title") or "").strip()[:60] or text[:60] or "(image)"
+                    # omnibar/copilot threads tag their origin so the sidebar can
+                    # group them and the initiative metric stays honest
+                    origin = str(data.get("origin") or "user")[:40]
+                    if not (origin == "user" or origin == "omni"
+                            or origin.startswith("copilot:")):
+                        origin = "user"
+                    cid = state["store"].create_conversation(title, origin=origin)
+                    await send({"type": "conversation", "id": cid, "title": title,
+                                "origin": origin})
                 turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":

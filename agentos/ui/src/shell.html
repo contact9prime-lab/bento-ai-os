@@ -14,6 +14,16 @@
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the ever-present agent: answers rise as cards above the bar -->
+<div id="omnicards"></div>
+<div id="omnibar">
+  <div id="omni-orb" title="your agent"></div>
+  <div id="omnilist"></div>
+  <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
+  <button id="omni-mic" title="Voice"></button>
+  <button id="omni-chat" title="Open Chat">⤢</button>
+</div>
+
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
@@ -64,11 +74,6 @@
   </div>
 </div></div>
 
-<div id="palette"><div id="palbox">
-  <input id="palin" placeholder="Type to launch an app, act, or ask…" autocomplete="off">
-  <div id="pallist"></div>
-  <div id="palfoot"><span>↑↓ navigate</span><span>⏎ run</span><span>Esc close</span><span style="margin-left:auto">Ctrl+Space</span></div>
-</div></div>
 
 <div id="taskbar">
   <button id="startbtn" data-tip="Launcher"><span class="mark"></span></button>

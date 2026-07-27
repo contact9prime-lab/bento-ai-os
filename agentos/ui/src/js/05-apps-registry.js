@@ -48,6 +48,46 @@ const APPS={
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
 
+/* ---- copilot context: one line about what each app is showing RIGHT NOW.
+   Sync + cheap by design (globals/DOM only) — it's a hint for the embedded
+   agent, which can always call tools for authoritative data. ---- */
+const APP_CTX={
+  chat:()=>`the full chat window; current conversation ${currentConv||'(none)'}${RUNNING.size?', a turn is running':''}`,
+  files:w=>`browsing "${w.path||'workspace root'}"${document.querySelectorAll('.fitem').length?` (${document.querySelectorAll('.fitem').length} entries visible)`:''}`,
+  terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
+  browser:()=>'the web launcher (opens URLs in the host browser)',
+  apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
+  control:()=>'Quick Settings: volume, brightness, network, battery, DND',
+  syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
+  models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
+  memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
+  profile:()=>'the profile view — everything the agent knows about the user',
+  fabric:()=>`the Team app, "${typeof fabTab!=='undefined'?fabTab:'team'}" tab (subagents & workflows)`,
+  docs:()=>'the AgentOS manual',
+  kg:()=>'the knowledge graph visualization',
+  soul:()=>'the agent soul (persistent identity) editor',
+  mcp:()=>'MCP server management (connections, tools, env)',
+  telegram:()=>'the Telegram bridge (chats, channels, permissions)',
+  logs:()=>'the system log viewer',
+  tasks:()=>`the Scheduler (${document.querySelectorAll('#tasklist [data-f]').length||'some'} scheduled tasks & triggers listed)`,
+  taskmgr:()=>{const c=$('#tm-cpu'),m=$('#tm-mem');return `Task Manager${c?` — CPU ${c.textContent}, RAM ${m?m.textContent:'?'}`:''}`},
+  skills:()=>'the skills library (reusable procedures)',
+  policies:()=>'always-allow / always-deny policy rules',
+  permissions:()=>'the policy console: permission maps, grants, IO gates',
+  store:()=>'the Store: app templates, MCP discovery, build-with-AI',
+  studio:()=>`App Studio${typeof STUDIO!=='undefined'&&STUDIO.sel?`, editing app "${STUDIO.sel}"`:''}${typeof STUDIO!=='undefined'&&STUDIO.building?' (a build is RUNNING)':''}`,
+  themes:()=>`the theme gallery (current theme: ${typeof CURRENT_THEME!=='undefined'?CURRENT_THEME:'agentos'})`,
+  personalize:()=>'AI wallpaper generation + gallery',
+  snapshots:()=>'OS restore points',
+  tokens:()=>'token usage analytics',
+  train:()=>'TrainForge — fine-tuning datasets, jobs, models',
+  mission:()=>'Mission Control: the Train/Test/Operate/Build/Ship/Manage lifecycle dashboard',
+  hermes:()=>'the Hermes companion-agent app (install, config, gateway)',
+  settings:()=>'core settings: providers, API keys, autonomy, voice',
+  about:()=>'system information',
+};
+Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
+
 /* ================= desktop icons / start menu / ctx menu ================= */
 const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];

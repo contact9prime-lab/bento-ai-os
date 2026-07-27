@@ -27,8 +27,8 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span></span></div>
-    <div class="wbody"></div>
+    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);
 
@@ -52,6 +52,9 @@ function createWin(app){
   ttl.ondblclick=e=>{if(!e.target.closest('button'))toggleMax(w)};
   dragify(w,ttl);
   resizify(w);
+  // the agent inside this app: ✦ toggles the copilot panel (remembered per app)
+  el.querySelector('.cp-btn').onclick=e=>{e.stopPropagation();toggleCopilot(w)};
+  if(localStorage.getItem('copilot:'+app.id))setTimeout(()=>toggleCopilot(w),80);
 
   app.render(el.querySelector('.wbody'),w);
   setMenubarApp(app.title);
@@ -238,8 +241,26 @@ function listFilter(scope,q){
     const any=[...g.querySelectorAll('[data-f]')].some(el=>el.style.display!=='none');
     g.style.display=any?'':'none'});
 }
-function emptyBox(title,hint,action){
-  return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}</div>`;
+function emptyBox(title,hint,action,askApp,askPrompt){
+  // every empty state is an invitation: the ✦ chip opens this app's copilot
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
+}
+/* open (if needed) an app + its copilot panel, prefill and send */
+function copilotAsk(appId,prompt){
+  const w=winsOf(appId)[0]||openApp(appId);
+  if(!w)return;
+  const panel=w.el.querySelector('.copanel');
+  if(panel&&!panel.classList.contains('open'))toggleCopilot(w);
+  let tries=0;
+  const t=()=>{
+    const i=w.el.querySelector('.cp-in');
+    if(!i){if(++tries<20)setTimeout(t,120);return}
+    i.value=prompt||'';
+    if(prompt)i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
+    else i.focus();
+  };
+  setTimeout(t,160);
 }
 function segTabs(id,labels,active,fn){
   return `<span class="seg" id="${id}">${labels.map((l,i)=>

@@ -1,0 +1,111 @@
+/* ================= the ever-present agent: omnibar + copilot panels ================= */
+
+/* ---- omnibar ---- */
+#omnibar{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;z-index:9100;
+  width:min(560px,86vw);height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-radius:var(--r-full);background:var(--glass);
+  backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),inset 0 .5px 0 rgba(255,255,255,.12);
+  transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+#omnibar:focus-within{border-color:color-mix(in srgb,var(--acc) 55%,transparent);
+  box-shadow:var(--el-4),0 0 24px color-mix(in srgb,var(--acc) 18%,transparent)}
+#omni-orb{width:18px;height:18px;flex:none;border-radius:var(--r-full);
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);
+  box-shadow:0 0 10px color-mix(in srgb,var(--acc) 55%,transparent);
+  animation:obreathe 4.5s ease-in-out infinite}
+#omni-orb.busy{animation:obusy 1s ease-in-out infinite}
+@keyframes obreathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}
+@keyframes obusy{0%,100%{transform:scale(1);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 55%,transparent)}
+  50%{transform:scale(1.25);box-shadow:0 0 22px var(--acc)}}
+#omni-in{flex:1;background:none;border:none;padding:0;font-size:var(--fs-base);color:var(--txt)}
+#omni-in::placeholder{color:var(--dim)}
+/* popped: the launcher state (Ctrl+Space) — the bar itself grows, no overlay */
+#omnibar.pop{width:min(680px,92vw);height:52px;
+  border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:var(--el-5),0 0 34px color-mix(in srgb,var(--acc) 22%,transparent)}
+#omnibar.pop #omni-in{font-size:var(--fs-lg)}
+body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
+/* results list: direct actions, apps, and always the "ask" row */
+#omnilist{position:absolute;bottom:calc(100% + 10px);left:0;right:0;display:none;
+  max-height:min(52vh,420px);overflow-y:auto;padding:6px;border-radius:var(--r-lg);
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
+#omnilist.on{display:block;animation:pop .13s var(--ease-out)}
+#omnilist .palitem.ask .pi{color:var(--acc)}
+#omnilist .palitem.ask .pl{color:var(--acc)}
+#omnilist .palitem.sel.ask .pl{color:var(--txt)}
+#omnibar button{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-full);color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+#omnibar button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+:root[data-theme=light] #omnibar button:hover{background:rgba(0,0,0,.07)}
+/* intent ghost: the grammar's instant read of what you're typing */
+#omni-ghost{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;align-items:center;gap:8px;
+  padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;cursor:pointer;
+  background:var(--glass);backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
+  color:var(--acc);box-shadow:var(--el-2)}
+#omni-ghost.on{display:flex}
+#omni-ghost .og-i{font-weight:700}
+#omni-ghost .og-k{font-size:var(--fs-2xs);color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* ---- answer cards ---- */
+#omnicards{position:fixed;left:50%;transform:translateX(-50%);bottom:142px;z-index:9099;
+  width:min(560px,86vw);display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.ocard{pointer-events:auto;border-radius:var(--r-lg);padding:12px 14px 8px;max-height:44vh;display:flex;flex-direction:column;
+  background:var(--glass);backdrop-filter:blur(28px) saturate(1.5);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-4)}
+.ocard .oc-q{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-bottom:8px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.ocard .oc-feed{overflow-y:auto;min-height:22px;user-select:text}
+.ocard .oc-tools{display:flex;justify-content:flex-end;gap:6px;margin-top:6px;flex:none}
+.ocard .oc-tools button{font-size:var(--fs-2xs);font-weight:600;color:var(--dim);padding:3px 10px;border-radius:var(--r-full);
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.ocard .oc-tools button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+
+/* ---- shared mini-feed pieces (omnibar cards + copilot panels) ---- */
+.mf-user{align-self:flex-end;background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 20%,var(--bg3)),color-mix(in srgb,var(--acc2) 14%,var(--bg3)));
+  border:1px solid color-mix(in srgb,var(--acc) 25%,transparent);
+  padding:6px 11px;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);font-size:var(--fs-md);max-width:88%;margin:4px 0}
+.mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
+.mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
+.mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
+.mf-working .mfo{width:10px;height:10px;border-radius:var(--r-full);flex:none;
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2));animation:obusy 1s ease-in-out infinite}
+
+/* ---- copilot panel inside windows ---- */
+.win .wmain{flex:1;min-height:0;display:flex}
+.win .wmain .wbody{flex:1;min-width:0}
+.win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
+.win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
+  display:flex;align-items:center;justify-content:center;
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
+.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc)}
+.win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
+.win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
+  border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
+  transition:width var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out)}
+.win .copanel.open{width:min(300px,46%);border-left-color:var(--hairline)}
+.cp-head{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--hairline);flex:none;min-width:0}
+.cp-ava{color:var(--acc);font-size:var(--fs-md);text-shadow:0 0 10px color-mix(in srgb,var(--acc) 60%,transparent)}
+.cp-name{font-size:var(--fs-md);font-weight:700;white-space:nowrap}
+.cp-app{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-open{color:var(--dim);border-radius:var(--r-sm);padding:2px 6px}
+.cp-open:hover{color:var(--txt);background:rgba(255,255,255,.08)}
+.cp-feed{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;min-width:260px}
+.cp-feed .tool{font-size:var(--fs-xs)}
+.cp-starters{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;flex:none;min-width:260px}
+.cp-chip{font-size:var(--fs-xs);padding:5px 11px;border-radius:var(--r-full);text-align:left;
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);
+  transition:border-color var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.cp-chip:hover{border-color:var(--acc);color:var(--txt)}
+.cp-inbar{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--hairline);flex:none;min-width:260px}
+.cp-in{flex:1;resize:none;max-height:88px;font-size:var(--fs-md);border-radius:var(--r-md)}
+.cp-send{width:30px;height:30px;flex:none;border-radius:var(--r-full);font-weight:800;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+
+/* chat sidebar: embedded-thread sections */
+.convgrp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+  padding:10px 10px 3px}
+
+/* ---- visible hands: a window/dock tile glows while the agent acts on it ---- */
+.win.agent-touch{box-shadow:var(--el-4),0 0 0 1.5px color-mix(in srgb,var(--acc) 70%,transparent),0 0 28px color-mix(in srgb,var(--acc) 30%,transparent)}
+.dockb.agent-touch .aicon{box-shadow:0 0 0 2px var(--acc),0 5px 14px rgba(0,0,0,.42)}

@@ -11,7 +11,7 @@ async function renderTasks(body){
     search:{id:'task-q',placeholder:'Search tasks…'},
   });
   pb.innerHTML=`
-    ${items||emptyBox('Nothing scheduled yet','Schedule any prompt to run on its own — "check disk space every hour and notify me", "every morning summarize my unread mail". Add one below or just ask in chat.')}
+    ${items||emptyBox('Nothing scheduled yet','Schedule any prompt to run on its own — "check disk space every hour and notify me", "every morning summarize my unread mail". Add one below or just ask in chat.','','tasks','Set up a useful daily schedule for me.')}
     <div class="sect">New scheduled task</div>
     <input id="task-prompt" placeholder="What should the agent do when this fires?">
     <div class="row" style="margin-top:8px">

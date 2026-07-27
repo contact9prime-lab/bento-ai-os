@@ -64,15 +64,53 @@ async function shellCmd(ev){
   if(ev.id)try{await fetch('/api/shell/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ev.id,ok,data})})}catch(e){}
 }
 
+/* ---- chat-event sinks: any surface (omnibar, copilot panels) can render a
+   conversation's live stream by registering a handler here. The Chat window
+   keeps its inline path below; sinks are additive — buffering into STREAMS
+   still happens so opening the conversation in Chat mid-turn stays lossless. */
+const CHAT_SINKS=new Map();   // conversation_id -> {start,delta,thinking,toolStart,toolEnd,status,approval,error,end}
+function sinkOn(cid,sink){if(cid)CHAT_SINKS.set(cid,sink)}
+function sinkOff(cid){CHAT_SINKS.delete(cid)}
+/* one approval card builder for every surface (Chat inline, floating, sinks) */
+function buildApprovalBox(ev,cur){
+  const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
+  const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
+  const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
+  box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+  box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
+  box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
+  box.querySelector('.always').onclick=async()=>{
+    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
+      resolveApproval(ev.id,true,true);
+      toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+    }else{
+      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
+      await addPolicy('allow',pat);
+      resolveApproval(ev.id,true);
+      toast('policy added: always allow "'+pat+'"');
+    }
+  };
+  return box;
+}
+/* the menu-bar spinner reflects EVERY live turn, not just the visible chat */
+function updateSpin(){
+  const s=$('#spin');if(!s)return;
+  s.classList.toggle('on',RUNNING.size>0||running);
+  s.title=RUNNING.size>1?RUNNING.size+' agent turns running':'agent is working';
+  if(typeof omniPresence==='function')omniPresence();
+}
+
 function handle(ev){
   if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
+  const _sk=_cid?CHAT_SINKS.get(_cid):null;
   switch(ev.type){
     case 'state_sync':{ // sent on every (re)connect: what is actually still running
       RUNNING.clear();
       (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''}});
       if(currentConv&&RUNNING.has(currentConv)){setRunning(true);showWorking();}
       else{setRunning(false);removeWorking();}
+      updateSpin();
       if(window.STUDIO){
         if(ev.build_running){
           if(!STUDIO.building){STUDIO.building=true;const b=$('#st-build');if(b){b.textContent='Cancel';b.classList.add('stop')}studioTickStart();studioLog('<span class="mut">re-attached to the running build…</span>');}
@@ -80,17 +118,25 @@ function handle(ev){
       }
       break;}
     case 'status':{ // model-side heartbeat ("loading model / evaluating prompt…")
+      if(_sk&&_sk.status)_sk.status(ev);
       if(!_cur)break;
       WORK_MSG=ev.message||'';
       if(running)showWorking();       // keep a live indicator up between/after tool calls
       break;}
-    case 'conversation': currentConv=ev.id; loadConvs(); break;
+    case 'conversation':{
+      // omnibar/copilot threads announce themselves with an origin — they must
+      // never steal the Chat window's current conversation
+      if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
+      currentConv=ev.id; loadConvs(); break;}
     case 'turn_start':{
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
+      updateSpin();
+      if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
     case 'text_delta':{
       if(_s)_s.text+=ev.text;
+      if(_sk&&_sk.delta)_sk.delta(ev.text,_s?_s.text:'');
       if(!_cur)break;
       curText+=ev.text;
       WORK_MSG='';removeWorking(); // real text is flowing now — drop the "working" placeholder
@@ -98,6 +144,7 @@ function handle(ev){
       if(!curBody)startAssistant();
       if(curBody){curBody.innerHTML=md(curText);curBody.style.transform='translateZ(0)';scrollDown()} break;}
     case 'thinking_delta':{
+      if(_sk&&_sk.thinking)_sk.thinking(ev.text);
       if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
@@ -109,6 +156,8 @@ function handle(ev){
         if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
         _s.text='';
         _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}">running</span></div><div class="out"></div></div>`;}
+      if(typeof agentHands==='function')agentHands(ev);   // visible hands: glow the affected app
+      if(_sk&&_sk.toolStart)_sk.toolStart(ev,argStr);
       if(!_cur)break;
       if(!curBody)startAssistant();
       if(!curBody)break;
@@ -120,6 +169,7 @@ function handle(ev){
     case 'tool_end':{
       if(_s)_s.html=_s.html.replace(`class="tstat run" data-b="${ev.call_id}">running`,
         `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}">${ev.ok?'done':'failed'}`);
+      if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
       if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
@@ -130,24 +180,9 @@ function handle(ev){
       if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
     case 'approval_request':{
-      const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
-      const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
-      const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
-      box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${_cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
-      box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
-      box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-      box.querySelector('.always').onclick=async()=>{
-        if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-          resolveApproval(ev.id,true,true);
-          toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
-        }else{
-          const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-          await addPolicy('allow',pat);
-          resolveApproval(ev.id,true);
-          toast('policy added: always allow "'+pat+'"');
-        }
-      };
-      if(_cur&&feed){
+      const box=buildApprovalBox(ev,_cur);
+      if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
+      else if(_cur&&feed){
         if(!curBody)startAssistant();
         if(curBody)curBody.parentNode.insertBefore(box,curBody);
       }else{ // approval from a chat you're not looking at — float it, never deadlock
@@ -159,6 +194,7 @@ function handle(ev){
     case 'error':{
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
         _s.html+='<div class="errmsg">'+esc(ev.message)+'</div>';}
+      if(_sk&&_sk.error){_sk.error(ev);if(!_cur)break}
       if(!_cur){toast('chat error: '+ev.message);break}
       if(!curBody)startAssistant();
       if(!curBody){toast('error: '+ev.message);break}
@@ -167,6 +203,8 @@ function handle(ev){
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];}
+      updateSpin();
+      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){loadConvs();break}}
       if(!_cur){toast('✓ background chat finished');loadConvs();break}
       removeWorking();const reply=curText;
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}

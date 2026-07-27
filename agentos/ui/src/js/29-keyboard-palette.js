@@ -5,8 +5,9 @@ const CMD='⌘/Ctrl';
 function cmd(e){return e.metaKey||e.ctrlKey}
 const KEYMAP=[
   {group:'General',keys:[
-    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Command palette / ask AI'},
-    {k:[CMD,'K'],label:'Command palette'},
+    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Focus the prompt bar (launch, act, or ask)'},
+    {k:[CMD,'K'],label:'Focus the prompt bar'},
+    {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
     {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
     {k:[CMD,','],label:'Settings'},
     {k:['F11'],label:'Toggle fullscreen'},
@@ -106,14 +107,12 @@ function keysHelp(on){
 }
 $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keysHelp(false)});
 
-/* ================= command palette (quicksilver) ================= */
-let palIdx=0,palMatches=[];
-function paletteOpen(){return $('#palette').classList.contains('show')}
-function togglePalette(force){
-  const on=force!==undefined?force:!paletteOpen();
-  $('#palette').classList.toggle('show',on);
-  if(on){$('#palin').value='';palRender('');setTimeout(()=>$('#palin').focus(),10)}
-}
+/* ================= launcher sources (rendered BY the omnibar) =================
+   The omnibar is the command palette — there is no second overlay. These stay
+   here as the sources it draws from: app/action rows, fuzzy scoring, and the
+   intent grammar that turns language into direct actions. */
+function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
+function paletteOpen(){return omniOpen()}
 function palActions(){
   const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
@@ -220,54 +219,22 @@ function palIntentAsync(q){
       const r=await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q})});
       if(!r.ok)return;
       const d=await r.json();
-      if(seq!==palIntentSeq||!paletteOpen()||$('#palin').value.trim()!==q)return;   // stale
-      if(!d||!d.action||d.action==='chat')return;
+      if(seq!==palIntentSeq||!omniOpen()||$('#omni-in').value.trim()!==q)return;   // stale
+      if(!d||!d.action||d.action==='chat'||d.action==='ask')return;
       const row={icon:'✦',label:d.label||`Do it: ${q}`,hint:d.hint||'suggested action',intent:true,
         run:()=>{shellCmd({id:'',action:d.action,args:{target:d.target}});}};
-      if(d.action==='ask')return;
-      palMatches.splice(Math.max(0,palMatches.length-1),0,row);
-      palRenderList();
+      OMNI.matches.splice(Math.max(0,OMNI.matches.length-1),0,row);
+      omniPaint();
     }catch(e){}
   },350);
 }
-function palRender(q){
-  q=q.trim();
-  const items=palActions();
-  const direct=q?palIntent(q):[];              // grammar first: language → action
-  const fuzzy=q?items.map(it=>({it,s:palScore(q,it.label+' '+(it.hint||''))})).filter(x=>x.s>0)
-      .sort((a,b)=>b.s-a.s).map(x=>x.it).slice(0,Math.max(3,8-direct.length)):items.slice(0,9);
-  palMatches=[...direct,...fuzzy];
-  if(q)palMatches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent',run:()=>palAsk(q)});
-  palIdx=Math.min(palIdx,palMatches.length-1)||0;
-  palRenderList();
-  if(q&&!direct.length)palIntentAsync(q);      // grammar missed → model classifies in the background
-}
-function palRenderList(){
-  $('#pallist').innerHTML=palMatches.map((it,i)=>`<div class="palitem${i===palIdx?' sel':''}${it.intent?' act':''}" data-i="${i}">
-    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon}</span>`}<span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
-  $('#pallist').querySelectorAll('.palitem').forEach(el=>{
-    el.onclick=()=>{palRun(+el.dataset.i)};
-    el.onmousemove=()=>{palIdx=+el.dataset.i;palHighlight()};
-  });
-}
-function palHighlight(){$('#pallist').querySelectorAll('.palitem').forEach((el,i)=>el.classList.toggle('sel',i===palIdx))}
-function palRun(i){
-  const it=palMatches[i];if(!it)return;
-  togglePalette(false);
-  it.run();
-}
 function palAsk(q){
+  // quick asks flow through the omnibar's Desktop thread (an answer card),
+  // not a full Chat window — escalation is one click on the card
+  if(typeof omniAsk==='function'){omniAsk(q);return}
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }
-$('#palin').addEventListener('input',e=>{palIdx=0;palRender(e.target.value)});
-$('#palin').addEventListener('keydown',e=>{
-  if(e.key==='ArrowDown'){e.preventDefault();palIdx=Math.min(palIdx+1,palMatches.length-1);palHighlight()}
-  else if(e.key==='ArrowUp'){e.preventDefault();palIdx=Math.max(palIdx-1,0);palHighlight()}
-  else if(e.key==='Enter'){e.preventDefault();palRun(palIdx)}
-  else if(e.key==='Escape'){togglePalette(false)}
-});
-$('#palette').addEventListener('mousedown',e=>{if(e.target.id==='palette')togglePalette(false)});
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
   const inTerm=e.target.closest&&e.target.closest('.xterm');
@@ -289,10 +256,11 @@ document.addEventListener('keydown',e=>{
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
   if(e.key==='F3'||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&e.key==='ArrowUp'&&!typing&&!inTerm)){e.preventDefault();exposeToggle();return}
-  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();togglePalette()}          // works everywhere, incl. terminal
+  // the launcher IS the omnibar: every hotkey pops it open + focused (Esc closes)
+  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();omniFocus()}             // works everywhere, incl. terminal
   else if(e.key==='F11'){e.preventDefault();toggleFullscreen()}
-  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();togglePalette()}   // Alt+Space quick launch / ask AI
-  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();togglePalette()}
+  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();omniFocus()}   // Alt+Space quick launch / ask AI
+  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();omniFocus()}
   else if(e.ctrlKey&&e.altKey&&k==='t'){e.preventDefault();togglePalette(false);openApp('terminal')}
   else if(e.altKey&&!e.ctrlKey&&!e.shiftKey&&k==='j'){e.preventDefault();jarvisMode(!JARVIS.on)}
   else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){

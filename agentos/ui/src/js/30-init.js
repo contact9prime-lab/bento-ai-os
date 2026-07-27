@@ -73,6 +73,9 @@ connect();
   const wait=Math.max(0,650-(performance.now()-t0));   // let the mark breathe — no sub-frame flash
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
-    if(!$('#setup-wiz'))openApp('chat');
+    if($('#setup-wiz'))return;
+    openApp('chat');
+    // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
+    const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);
 })();

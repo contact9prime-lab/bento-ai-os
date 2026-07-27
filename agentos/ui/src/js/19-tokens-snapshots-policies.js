@@ -46,7 +46,7 @@ async function renderSnapshots(body){
     <div class="row"><input id="snap-label" placeholder="label (e.g. before WhatsApp experiment)">
       <button class="pact" style="flex:0 0 130px" onclick="snapCreate()">Snapshot now</button></div>
     <p class="mut" style="margin:8px 0 14px">A snapshot saves your settings, data (apps, widgets, memory), and the OS source code. Restoring rolls everything back and restarts.</p>
-    ${items||emptyBox('No snapshots yet','Take one before risky changes — especially before letting the agent modify its own code.')}`;
+    ${items||emptyBox('No snapshots yet','Take one before risky changes — especially before letting the agent modify its own code.','','snapshots','Take a snapshot now and explain what it protects.')}`;
 }
 async function snapCreate(){
   const label=$('#snap-label').value.trim();

@@ -136,7 +136,12 @@ async function loadConvs(){
   const r=await fetch('/api/conversations');const d=await r.json();
   if(!$('#convs'))return;
   box.innerHTML='';
-  d.conversations.forEach(c=>{
+  // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
+  // their own sections so app-scoped exchanges never drown the real chats
+  const groups=[['Desktop',c=>c.origin==='omni'],
+                ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
+                ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
+  const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
     el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
@@ -146,7 +151,13 @@ async function loadConvs(){
       if(RUNNING.has(c.id))return toast('that chat has a turn running — stop it first');
       await fetch('/api/conversations/'+c.id,{method:'DELETE'});
       if(currentConv===c.id)newChat(); else loadConvs();};
-    box.appendChild(el);
+    return el;
+  };
+  groups.forEach(([label,test])=>{
+    const items=d.conversations.filter(test);
+    if(!items.length)return;
+    if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
+    items.forEach(c=>box.appendChild(row(c)));
   });
 }
 async function openConv(cid){

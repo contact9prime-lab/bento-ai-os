@@ -1,5 +1,19 @@
 # The living desktop — motion, language, initiative
 
+> **Second drop — the ever-present agent.** The agent is no longer an app:
+> the **omnibar** floats above the dock always (start typing anywhere on the
+> desktop; Tab accepts the intent ghost; Enter streams an answer card; one
+> click escalates to Chat — all on the persistent Desktop thread), and every
+> window's **✦ button** opens that app's copilot — a scoped conversation that
+> sees the app's live state (`APPS[id].context(w)`), acts through tools, and
+> keeps one persistent thread per app (the "Copilots" group in Chat's sidebar).
+> Apps refresh as the agent's tools run, and touched windows/dock icons glow.
+> User-built apps get the same via `appCopilot.mount({starters})` in the app
+> runtime — mounted by default in every generated app. Under the hood:
+> chat-event sinks (`sinkOn/sinkOff` in the websocket module) let any surface
+> render any conversation, and `run_chat` accepts capped per-surface context
+> appended to the system prompt.
+
 The 2026-07-26 release closes the two gaps between "a chat app with an OS around
 it" and a truly agentic OS: the desktop now *behaves* like a physical place, and
 the agent has hands on every part of the machine. This page is the map.

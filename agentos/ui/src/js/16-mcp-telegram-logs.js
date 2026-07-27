@@ -42,7 +42,7 @@ async function renderMCP(body){
     ${d.available?'':'<div class="errmsg">python package <code>mcp</code> is not installed — run <code>uv add mcp</code> and restart.</div>'}
     <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
       <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
-    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.')}
+    ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.','','mcp','Find me a useful MCP server and set it up.')}
     ${MCP_GROUPS.map((g,gi)=>`
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>

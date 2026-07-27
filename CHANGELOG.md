@@ -1,6 +1,46 @@
 # Changelog
 
-## Unreleased — the living-desktop release (2026-07-26)
+## Unreleased — the ever-present agent (2026-07-26, second drop)
+
+The theme: **the agent stops being an app.** Until now the AI lived in a Chat
+window; every other surface was point-and-click. Now there is always somewhere
+to talk — on the desktop and inside every single application.
+
+- **The omnibar.** A slim glass bar floats above the dock, always. Its orb
+  breathes while idle and pulses while any turn runs. Start typing anywhere on
+  the desktop and the keys land in it. The intent grammar reads as you type
+  (a ghost row offers "Open Terminal" / "Volume 30" — Tab accepts); Enter sends
+  to the agent and the answer streams into a card that rises above the bar —
+  markdown, live tool cards, inline approvals — with one-click escalation to
+  the full Chat window. All omnibar turns share one persistent **Desktop
+  thread**. Quick asks from the palette now route here instead of opening Chat.
+- **Every app has its agent.** A ✦ button in every window's title bar slides
+  open a copilot panel: a compact conversation scoped to THAT app. It knows
+  what the app is showing (a per-app `context()` line — current folder, active
+  settings tab, selected Studio app, live CPU numbers…), speaks with the app's
+  starter prompts ("Fix my wifi", "What's eating my RAM?", "Clean up outdated
+  memories"), acts through the full tool set, and the app **refreshes itself as
+  the agent's tools run**. Each app keeps ONE persistent thread
+  (`origin=copilot:<app>`), grouped under **Copilots** in Chat's sidebar — the
+  Files agent remembers last week's conversation about your files.
+- **Visible hands.** When the agent touches an app — opens it, closes it,
+  generates a wallpaper, edits an app in Studio — that window and its dock icon
+  glow. You watch the OS being operated.
+- **Agentic empty states.** Empty panels now invite action: "No memories yet →
+  ✦ Ask Aria", "Nothing scheduled → ✦ set up a useful daily schedule".
+- **User-built apps get the same.** The injected runtime ships
+  `appCopilot.mount({starters})` — a one-call resident agent widget (corner ✦,
+  conversation panel, acts via appAgent under the app's own grants) — and the
+  builder persona mounts it in every generated app by default.
+- Plumbing: chat-event **sinks** let any surface render any conversation's live
+  stream (Chat, omnibar cards, copilot panels — simultaneously); `run_chat`
+  accepts per-surface context (sanitized, capped) appended to the system
+  prompt; conversations carry an origin end-to-end; the menu-bar spinner now
+  reflects every running turn, not just the visible chat.
+
+Tests: 230 passing.
+
+## The living-desktop release (2026-07-26)
 
 The theme: **truly agentic, and it moves like a Mac.** Two gaps closed at once —
 the desktop finally behaves like a physical place (motion, materials, real window
