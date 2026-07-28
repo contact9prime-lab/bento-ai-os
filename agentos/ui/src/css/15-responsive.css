@@ -92,6 +92,11 @@ body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;
 body.dev-mobile .msg.user .bubble{max-width:92%}
 body.dev-mobile .pad{padding:12px 14px}
 body.dev-mobile table.plist,body.dev-mobile table.loglist{font-size:var(--fs-xs)}
+/* a panel header costs three lines on a phone — the title carries it alone */
+body.dev-mobile .phead .ps{display:none}
+/* hot corners need a pointer that can rest in a corner; a phone has neither the
+   pointer nor the corners to spare, so the picker isn't offered here */
+body.dev-mobile .hc-box{display:none}
 /* app toolbars are built for a wide window — let them wrap instead of clipping */
 body.dev-mobile #topbar,body.dev-mobile .stcompose{flex-wrap:wrap}
 body.dev-mobile #topbar>select,body.dev-mobile #modelsel{flex:1 1 46%;min-width:0;max-width:none}

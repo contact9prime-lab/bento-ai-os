@@ -17,6 +17,9 @@ config.json
 *.db
 soul.md
 wallpapers/
+# ...except the ones we ship: those are source, not local state. (Trailing
+# comments are not comments in .gitignore — this has to be its own line.)
+!agentos/ui/assets/wallpapers/
 snapshots/
 
 # Packaging artifacts

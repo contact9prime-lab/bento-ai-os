@@ -76,7 +76,7 @@ A self-contained `.deb` (bundles the app **and** a Python venv with all dependen
 needed at install) can be built and installed:
 
 ```bash
-./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_amd64.deb
+./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
 sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + app launcher + service
 systemctl --user enable --now agentos                      # start at login (per user)
 agentos app                                                # or launch "AgentOS" from your menu

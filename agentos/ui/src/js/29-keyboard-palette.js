@@ -180,6 +180,13 @@ function palActions(){
     {icon:svgSpeaker(false),label:'Toggle voice',hint:'speak replies on/off',run:()=>{VOICE.tts=!VOICE.tts;saveVoice();toast(VOICE.tts?'voice on':'voice off')}},
     {icon:g('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4.4 16.4l4.3-3.8 3.4 2.9 3-2.5 4.5 3.6"/>'),label:'Reset wallpaper',hint:'back to the default background',run:()=>fetch('/api/wallpaper',{method:'DELETE'})},
   );
+  // saved automations are first-class palette entries — typing their name is the
+  // ad-hoc way to fire one, alongside a hot corner or the Automations app
+  (typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[]).forEach(a=>items.push({
+    icon:a.icon||'▶',label:a.name,
+    hint:a.steps.map(automationStepLabel).join(' → ').slice(0,90)||'automation',
+    run:()=>runAutomation(a),
+  }));
   NATIVEAPPS.forEach(a=>items.push({nat:a,label:a.name,hint:(a.comment||'')+(a.comment?' · ':'')+'system app',run:()=>launchNative(a.id,a.name)}));
   return items;
 }
@@ -205,6 +212,15 @@ function palIntent(q){
   const P=(re)=>{const m=q.match(re);return m};
   let m;
   const act=(icon,label,hint,run)=>out.push({icon,label,hint,run,intent:true});
+  // an automation's whole promise is that typing its name runs it, so it beats
+  // the fuzzy app match ("start work" must not become "open Web")
+  {
+    const qq=q.toLowerCase().trim().replace(/^run\s+/,'');
+    const a=(typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[])
+      .find(x=>x.name.toLowerCase()===qq)||
+      (qq.length>=3?(typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[]).find(x=>x.name.toLowerCase().startsWith(qq)):null);
+    if(a)act(a.icon||'▶',`Run "${a.name}"`,a.steps.map(automationStepLabel).join(' → ').slice(0,90),()=>runAutomation(a));
+  }
   if(m=P(/^(?:open|launch|start|show)\s+(.+)$/i)){
     const hit=palFindApp(m[1]);
     if(hit&&hit.id)act('▸',`Open ${APPS[hit.id].title}`,'AgentOS app',()=>openApp(hit.id));
@@ -387,6 +403,12 @@ const SC_ACTIONS={
   'fullscreen':()=>toggleFullscreen(),
   'help':()=>keysHelp(),
   'deck':()=>deckToggle(),
+  // named so hot corners and automation steps reach exactly the same behaviours
+  // the keyboard does — one vocabulary, three ways to trigger it
+  'showdesktop':()=>toggleShowDesktop(),
+  'launcher':()=>toggleStart(),
+  'control':()=>toggleControlCenter(),
+  'notifications':()=>openNotifPanel(),
 };
 function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return false}
 

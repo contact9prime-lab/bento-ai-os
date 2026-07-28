@@ -58,6 +58,8 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:var
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:inherit;color:var(--txt);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+input[type=range]{accent-color:var(--acc);padding:0;border:none;background:none}
+input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}

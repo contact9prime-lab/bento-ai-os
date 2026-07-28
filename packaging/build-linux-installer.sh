@@ -25,9 +25,10 @@ echo "  → wheel"
 cp "$REPO"/dist/agentos-"$VER"-py3-none-any.whl "$STAGE/"
 
 echo "  → debs (system-install path)"
-[ -f "$DIST/agentos_${VER}_amd64.deb" ] || "$HERE/build-deb.sh" >/dev/null
+ARCH="$(dpkg --print-architecture)"   # arm64 on a Raspberry Pi, amd64 on a PC
+[ -f "$DIST/agentos_${VER}_${ARCH}.deb" ] || "$HERE/build-deb.sh" >/dev/null
 [ -f "$DIST/agentos-desktop_${VER}_all.deb" ] || "$HERE/build-desktop-deb.sh" >/dev/null
-cp "$DIST/agentos_${VER}_amd64.deb" "$DIST/agentos-desktop_${VER}_all.deb" "$STAGE/"
+cp "$DIST/agentos_${VER}_${ARCH}.deb" "$DIST/agentos-desktop_${VER}_all.deb" "$STAGE/"
 
 sed "s/@VER@/$VER/g" "$HERE/linux-installer-wizard.sh" > "$STAGE/installer.sh"
 chmod 755 "$STAGE/installer.sh"

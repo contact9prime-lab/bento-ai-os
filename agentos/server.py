@@ -236,14 +236,20 @@ async def index():
     return FileResponse(UI_DIR / "index.html")
 
 
-@app.get("/assets/{name}")
+ASSET_TYPES = {".css": "text/css", ".js": "application/javascript",
+               ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
+               ".woff2": "font/woff2", ".json": "application/json"}
+
+
+@app.get("/assets/{name:path}")
 async def ui_assets(name: str):
+    # :path so subdirectories (assets/wallpapers/…) resolve; the realpath prefix
+    # check below is what actually stops traversal, not the route pattern
     base = (UI_DIR / "assets").resolve()
     p = (base / name).resolve()
-    if not str(p).startswith(str(base)) or not p.is_file():
+    if not str(p).startswith(str(base) + os.sep) or not p.is_file():
         return JSONResponse({"error": "not found"}, status_code=404)
-    media = "text/css" if name.endswith(".css") else "application/javascript"
-    return FileResponse(p, media_type=media)
+    return FileResponse(p, media_type=ASSET_TYPES.get(p.suffix.lower(), "application/octet-stream"))
 
 
 @app.get("/api/analytics/tokens")
@@ -3337,6 +3343,86 @@ async def api_wallpaper_system():
         shutil.copy2(path, dest)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True, "source": str(path)}
+
+
+# ---------------------------------------------------------------------------
+# Automations: named, repeatable desktop sequences.
+#
+# The RUNNER lives in the browser, because the steps are desktop actions — open
+# this app, switch to that theme, put the agent on this prompt. So /run does not
+# execute anything here; it broadcasts, and every connected desktop performs the
+# sequence. That is what makes one automation behave identically whether it was
+# fired from the palette, a hot corner, a schedule, or the agent's own tool.
+# ---------------------------------------------------------------------------
+
+AUTOMATION_STEP_KINDS = {"app", "action", "theme", "wallpaper", "desktop", "agent", "wait"}
+
+
+def _clean_steps(steps) -> list[dict]:
+    """Keep only well-formed steps — a stored automation is replayed unattended,
+    so a malformed step must be dropped at the door, not at 7am on a Monday."""
+    out = []
+    for s in steps or []:
+        if not isinstance(s, dict):
+            continue
+        kind = str(s.get("kind") or "").strip()
+        if kind not in AUTOMATION_STEP_KINDS:
+            continue
+        step = {"kind": kind}
+        for k in ("app", "action", "theme", "wallpaper", "prompt"):
+            if s.get(k):
+                step[k] = str(s[k])[:4000]
+        if kind == "desktop":
+            step["desk"] = max(1, min(9, int(s.get("desk") or 1)))
+        if kind == "wait":
+            step["ms"] = max(0, min(60000, int(s.get("ms") or 500)))
+        out.append(step)
+    return out[:40]
+
+
+@app.get("/api/automations")
+async def api_automations():
+    return {"automations": state["store"].list_automations()}
+
+
+@app.post("/api/automations")
+async def api_automation_save(body: dict):
+    name = (body or {}).get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    steps = _clean_steps((body or {}).get("steps"))
+    if not steps:
+        return JSONResponse({"error": "an automation needs at least one valid step"}, status_code=400)
+    aid = state["store"].save_automation(name, json.dumps(steps), (body or {}).get("icon", ""))
+    await state["broadcast"]({"type": "automations"})
+    return {"ok": True, "id": aid, "steps": steps}
+
+
+@app.delete("/api/automations/{key}")
+async def api_automation_delete(key: str):
+    state["store"].delete_automation(key)
+    await state["broadcast"]({"type": "automations"})
+    return {"ok": True}
+
+
+@app.post("/api/automations/{key}/run")
+async def api_automation_run(key: str):
+    a = state["store"].get_automation(key)
+    if not a:
+        return JSONResponse({"error": f"no automation named {key!r}"}, status_code=404)
+    state["store"].mark_automation_run(a["id"])
+    state["store"].log("automation", f"ran {a['name']}", {"steps": len(a["steps"])})
+    await state["broadcast"]({"type": "automation.run", "automation": a})
+    return {"ok": True, "name": a["name"], "steps": len(a["steps"])}
+
+
+@app.get("/api/wallpapers/builtin")
+async def api_wallpapers_builtin():
+    """The wallpapers that ship with AgentOS — SVG, so they cost a few KB and
+    stay sharp from a phone to a 4K panel."""
+    d = UI_DIR / "assets" / "wallpapers"
+    ids = sorted(p.stem for p in d.glob("*.svg")) if d.exists() else []
+    return {"wallpapers": ids}
 
 
 @app.get("/api/wallpapers")

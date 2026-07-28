@@ -38,6 +38,7 @@ const APPS={
   logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
     render:renderLogs,onClose(w){clearInterval(w.timer);return true}},
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
+  automations:{id:'automations',title:'Automations',icon:'',w:760,h:640,desc:'Named routines & hot corners',render:renderAutomations},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Spatial: a room, not a picture. A soft overhead glow, a floor plane and a
+       heavy vignette give the floating panes something to be in front of. -->
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242b32"/><stop offset="0.58" stop-color="#101316"/><stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <radialGradient id="key" cx="0.5" cy="-0.08" r="0.75">
+      <stop offset="0" stop-color="#4c5866" stop-opacity="0.85"/><stop offset="1" stop-color="#4c5866" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fill" cx="0.88" cy="0.88" r="0.55">
+      <stop offset="0" stop-color="#22303b" stop-opacity="0.9"/><stop offset="1" stop-color="#22303b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#39424c" stop-opacity="0.5"/><stop offset="1" stop-color="#39424c" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#room)"/>
+  <rect width="1600" height="1000" fill="url(#key)"/>
+  <rect width="1600" height="1000" fill="url(#fill)"/>
+  <path d="M0 1000 L520 700 L1080 700 L1600 1000 Z" fill="url(#floor)"/>
+  <g stroke="#8fa2b4" stroke-width="1" opacity="0.07">
+    <path d="M520 700 L0 1000M690 700 L400 1000M870 700 L800 1000M1050 700 L1200 1000M1080 700 L1600 1000"/>
+    <path d="M0 1000 H1600M180 880 H1420M330 790 H1270M450 720 H1150"/>
+  </g>
+  <rect width="1600" height="1000" fill="url(#vig)"/>
+</svg>

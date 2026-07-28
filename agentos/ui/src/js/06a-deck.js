@@ -8,7 +8,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','policies','permissions','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];

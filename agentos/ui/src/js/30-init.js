@@ -55,6 +55,7 @@ updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,3000);
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();
+loadAutomations();   // the palette and the hot-corner picker both read this list
 loadUserApps().then(loadWidgets);
 loadNativeApps();
 APPS_READY=true;

@@ -68,6 +68,8 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:var
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:inherit;color:var(--txt);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+input[type=range]{accent-color:var(--acc);padding:0;border:none;background:none}
+input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
@@ -95,7 +97,9 @@ input:focus,textarea:focus,select:focus{border-color:var(--acc)}
     linear-gradient(160deg,#0a0f16,#0b0d10 55%,#0d1118);
 }
 #desktop::after{content:'▲';position:absolute;right:4%;bottom:6%;font-size:220px;color:rgba(94,234,212,.035);pointer-events:none;line-height:1}
-#wall{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0;pointer-events:none}
+/* fixed, not absolute: the wallpaper fills the whole viewport so the translucent
+   menu bar has something to blur, instead of floating over bare --bg */
+#wall{position:fixed;inset:0;background-size:cover;background-position:center;z-index:0;pointer-events:none}
 #wall.has::after{content:'';position:absolute;inset:0;background:linear-gradient(rgba(11,13,16,.30),rgba(11,13,16,.55))}
 #jarvis{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;opacity:0;transition:opacity .7s}
 #jarvis.on{opacity:1}
@@ -734,6 +738,50 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   border:1px solid var(--hairline-strong)}
 .wiz-finish{padding-left:44px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .wiz-finish .sub{font-size:var(--fs-sm);color:var(--dim)}
+
+/* ================= automations & hot corners ================= */
+.auto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:4px}
+.auto-card{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:var(--r-lg);
+  border:1px solid var(--line);background:var(--bg2)}
+.auto-top{display:flex;align-items:center;gap:9px}
+.auto-ic{width:30px;height:30px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
+  font-size:var(--fs-lg);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.auto-nm{font-size:var(--fs-base);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auto-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
+.auto-steps li::marker{color:var(--dim2);font-size:var(--fs-xs)}
+.auto-steps.edit{padding-left:20px}
+.auto-steps.edit li{display:flex;align-items:center;gap:6px}
+.auto-steps.edit li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+.auto-steps.edit li button{padding:1px 7px;font-size:var(--fs-xs)}
+.auto-foot{display:flex;align-items:center;gap:6px;margin-top:2px}
+.auto-foot .mut{font-size:var(--fs-xs)}
+/* a form is not more usable at 1400px — the builder keeps a readable measure
+   even when the window is maximised */
+.auto-builder{margin-bottom:16px;max-width:820px}
+.auto-builder .row>button{flex:0 0 auto}
+.auto-builder .save{width:auto}
+.auto-add select,.auto-add input{max-width:none}
+.auto-add>select{flex:0 0 auto}
+/* an automation drives the desktop on its own — say so while it does */
+body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
+
+.hc-box{margin-top:18px}
+.hc-box .row>button{flex:0 0 auto}
+.hc-box .ptitle{display:flex;align-items:center;gap:10px}
+.hc-on{margin-left:auto;font-size:var(--fs-xs);font-weight:400;color:var(--dim);display:flex;align-items:center;gap:5px}
+.hc-on input{width:auto}
+/* the four corners laid out as the screen they map to — the picker IS the map */
+.hc-grid{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:44px 10px;
+  padding:10px;border:1px dashed var(--line);border-radius:var(--r-lg)}
+.hc-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hc-cell select{width:100%}
+.hc-cell-tr,.hc-cell-br{align-items:flex-end}
+.hc-lbl{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2)}
+.hc-screen{position:absolute;left:32%;right:32%;top:50%;transform:translateY(-50%);height:26px;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.5}
+.hc-screen span{font-size:var(--fs-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -798,6 +846,32 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg4);border:
 
 .toast{position:fixed;bottom:calc(var(--tbh) + 12px);right:14px;background:var(--bg4);border:1px solid var(--acc);border-radius:var(--r-md);padding:10px 15px;font-size:var(--fs-md);z-index:9800;animation:fadein .2s}
 @keyframes fadein{from{opacity:0;transform:translateY(6px)}}
+
+/* ---- hot corner hint: a quarter-disc that fills over the dwell time, so the
+   gesture is visible before it fires and you can pull away in time. The arc gets
+   its own bright edge — on a wallpaper that happens to share the accent's hue, a
+   soft glow alone disappears. ---- */
+.hc-hint{position:fixed;width:78px;height:78px;z-index:10800;pointer-events:none;
+  opacity:0;transform:scale(.3);
+  background:radial-gradient(circle at var(--hx,0%) var(--hy,0%),
+    color-mix(in srgb,var(--acc) 78%,transparent) 0%,
+    color-mix(in srgb,var(--acc) 30%,transparent) 54%,
+    transparent 76%);
+  box-shadow:0 0 34px color-mix(in srgb,var(--acc) 40%,transparent);
+  transition:opacity var(--hc-ms,240ms) linear,transform var(--hc-ms,240ms) var(--ease-out)}
+.hc-hint::after{content:'';position:absolute;inset:0;border-radius:inherit;
+  border:0 solid color-mix(in srgb,var(--acc) 92%,transparent)}
+.hc-hint.on{opacity:.95;transform:scale(1)}
+.hc-hint.hc-tl{top:0;left:0;border-radius:0 0 100% 0;--hx:0%;--hy:0%}
+.hc-hint.hc-tr{top:0;right:0;border-radius:0 0 0 100%;--hx:100%;--hy:0%}
+.hc-hint.hc-bl{bottom:0;left:0;border-radius:0 100% 0 0;--hx:0%;--hy:100%}
+.hc-hint.hc-br{bottom:0;right:0;border-radius:100% 0 0 0;--hx:100%;--hy:100%}
+/* only the two edges that form the curve carry the stroke, so the straight
+   screen-edge sides stay invisible */
+.hc-hint.hc-tl::after{border-right-width:2px;border-bottom-width:2px}
+.hc-hint.hc-tr::after{border-left-width:2px;border-bottom-width:2px}
+.hc-hint.hc-bl::after{border-right-width:2px;border-top-width:2px}
+.hc-hint.hc-br::after{border-left-width:2px;border-top-width:2px}
 /* ================= motion & window-system layer =================
    Loaded last: behavioral chrome added by the motion/WM rewrite.
    (resize handles, snap ghost, dialogs, control center, toasts, exposé) */
@@ -1345,6 +1419,11 @@ body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;
 body.dev-mobile .msg.user .bubble{max-width:92%}
 body.dev-mobile .pad{padding:12px 14px}
 body.dev-mobile table.plist,body.dev-mobile table.loglist{font-size:var(--fs-xs)}
+/* a panel header costs three lines on a phone — the title carries it alone */
+body.dev-mobile .phead .ps{display:none}
+/* hot corners need a pointer that can rest in a corner; a phone has neither the
+   pointer nor the corners to spare, so the picker isn't offered here */
+body.dev-mobile .hc-box{display:none}
 /* app toolbars are built for a wide window — let them wrap instead of clipping */
 body.dev-mobile #topbar,body.dev-mobile .stcompose{flex-wrap:wrap}
 body.dev-mobile #topbar>select,body.dev-mobile #modelsel{flex:1 1 46%;min-width:0;max-width:none}
@@ -1756,6 +1835,7 @@ const ICONS={
   telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
   logs:['#A8A29E','#57534E','<path d="M7 4.6h6.8l3.8 3.8v11H7Z"/><path d="M13.6 4.8v3.8h3.8"/><path d="M9.6 12.6h4.8M9.6 15.6h4.8"/>'],
   tasks:['#F87171','#DC2626','<circle cx="12" cy="12" r="7.8"/><path d="M12 7.6V12l3 1.8"/>'],
+  automations:['#F0A93B','#C2410C','<path d="M13.2 3.6 5.4 13.4h5.1l-.7 7 7.8-9.8h-5.1Z"/>'],
   skills:['#34D399','#059669','<path d="M5.4 5.6c0-.9.7-1.6 1.6-1.6h11.6v14.4H7a1.6 1.6 0 0 0-1.6 1.6Z"/><path d="M5.4 5.6V20M9.3 8h5.4"/>'],
   policies:['#7C8CA3','#3A4759','<path d="M12 4.2 18.8 6.6v5c0 4-2.7 6.9-6.8 8.2-4.1-1.3-6.8-4.2-6.8-8.2v-5Z"/><path d="M9.3 12l1.9 1.9 3.5-3.7"/>'],
   store:['#3B82F6','#1E40AF','<path d="M6.2 8.6h11.6l-1 10.8H7.2Z"/><path d="M9.1 8.6V7.2a2.9 2.9 0 0 1 5.8 0v1.4"/>'],
@@ -1832,7 +1912,7 @@ const THEMES={
         and the bar reads as part of the wallpaper.
       · light themes must out-specify 06-light.css, which targets
         :root[data-theme=light] #desktop and friends — a bare #desktop loses. */
-  bento:{label:'Bento (grid)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap',family:'Plus Jakarta Sans'},
+  bento:{label:'Bento (grid)',mode:'dark',wall_img:'bento',font:{url:'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap',family:'Plus Jakarta Sans'},
     v:{bg:'#221f2b',bg2:'#332e42',bg3:'#3f3852',bg4:'#4c4363',line:'#4f4767',txt:'#f6f3fd',dim:'#c9bfe6',dim2:'#a79ccb',
        acc:'#6d4aeb',acc2:'#a78bfa',warn:'#fbbf24',err:'#fb7185',ok:'#4ade80',glass:'rgba(51,46,66,.96)',
        wall:'#1c1926',
@@ -1864,7 +1944,7 @@ const THEMES={
 .widget{background:#332e42;backdrop-filter:none;border:none;box-shadow:0 7px 0 rgba(0,0,0,.32)}
 .smapp{border-radius:18px}
 .dicon .aicon,.dockb .aicon,.tbwin .aicon,#startbtn .mark{border-radius:26%;box-shadow:0 3px 0 rgba(0,0,0,.36)}`},
-  liquid:{label:'Liquid Glass',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap',family:'Outfit'},
+  liquid:{label:'Liquid Glass',mode:'dark',wall_img:'liquid',font:{url:'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap',family:'Outfit'},
     v:{bg:'#1a1016',bg2:'#2a1a22',bg3:'#3a2430',bg4:'#4b303e',line:'rgba(255,255,255,.2)',txt:'#fff6f3',dim:'#f0d6ce',dim2:'#d8b6ac',
        acc:'#ffb08c',acc2:'#ffd9b8',warn:'#ffd166',err:'#ff8080',ok:'#8ee6a8',glass:'rgba(28,14,20,.42)',
        wall:'radial-gradient(1000px 800px at 20% 12%,#ff9a76,transparent 60%),radial-gradient(1100px 900px at 82% 26%,#c4443c,transparent 56%),radial-gradient(900px 800px at 55% 105%,#2f4a5c,transparent 62%),linear-gradient(158deg,#e0674f,#7d2f33 46%,#1e1622)',
@@ -1892,7 +1972,7 @@ const THEMES={
 .deck-tile:hover,.smapp:hover{background:rgba(255,255,255,.24)}
 .dicon .aicon,.dockb .aicon,.tbwin .aicon,#startbtn .mark{box-shadow:0 10px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.55)}
 input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.36)}`},
-  spatial:{label:'Spatial (depth)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap',family:'Inter Tight'},
+  spatial:{label:'Spatial (depth)',mode:'dark',wall_img:'spatial',font:{url:'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap',family:'Inter Tight'},
     v:{bg:'#0d0f11',bg2:'#16191d',bg3:'#1e2226',bg4:'#282d33',line:'rgba(255,255,255,.14)',txt:'#eef1f4',dim:'#b3bbc4',dim2:'#8b949d',
        acc:'#4aa3ff',acc2:'#7ec8ff',warn:'#f5c26b',err:'#ff7a7a',ok:'#6ee7a0',glass:'rgba(28,32,37,.55)',
        wall:'radial-gradient(1300px 900px at 50% -8%,#39424c,transparent 66%),radial-gradient(900px 700px at 88% 88%,#22303b,transparent 60%),linear-gradient(180deg,#1c2126,#101316 58%,#08090b)',
@@ -1918,7 +1998,7 @@ input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255
 .deck-tile,.smapp{border-radius:20px}
 .deck-tile:hover,.smapp:hover{background:rgba(255,255,255,.11)}
 .dockb .aicon,.tbwin .aicon,.dicon .aicon,#startbtn .mark{box-shadow:0 16px 34px rgba(0,0,0,.62),inset 0 .5px 0 rgba(255,255,255,.3)}`},
-  clay:{label:'Claymorphism',mode:'light',font:{url:'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap',family:'Nunito'},
+  clay:{label:'Claymorphism',mode:'light',wall_img:'clay',font:{url:'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap',family:'Nunito'},
     v:{bg:'#e6dfff',bg2:'#ffffff',bg3:'#f4f1ff',bg4:'#e6e0ff',line:'#ddd5ff',txt:'#2a2352',dim:'#5e5595',dim2:'#8a80bd',
        acc:'#6c4ef0',acc2:'#f7889f',warn:'#e0952b',err:'#ef5f72',ok:'#3fbd87',glass:'rgba(255,255,255,.92)',
        wall:'radial-gradient(900px 760px at 16% 6%,#b9a4ff,transparent 62%),radial-gradient(880px 720px at 88% 90%,#ffc2d8,transparent 60%),linear-gradient(158deg,#d9ccff,#c9b9ff 52%,#e7dcff)',
@@ -1952,7 +2032,7 @@ input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255
   box-shadow:0 10px 20px rgba(78,52,180,.3),inset 0 3px 5px rgba(255,255,255,.7),inset 0 -4px 7px rgba(0,0,0,.16)}
 input,textarea,select{background:#f4f1ff;border:none;box-shadow:inset 0 3px 7px rgba(108,78,240,.16)}
 .save,#send{box-shadow:0 8px 18px rgba(108,78,240,.42),inset 0 2px 4px rgba(255,255,255,.5)}`},
-  minimal:{label:'Minimalism',mode:'light',font:{url:'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',family:'Inter'},
+  minimal:{label:'Minimalism',mode:'light',wall_img:'minimal',font:{url:'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',family:'Inter'},
     v:{bg:'#ffffff',bg2:'#ffffff',bg3:'#f6f6f6',bg4:'#ededed',line:'#e6e6e6',txt:'#0b0b0b',dim:'#5f5f5f',dim2:'#8c8c8c',
        acc:'#4d9d2f',acc2:'#111111',warn:'#a97800',err:'#c8342a',ok:'#4d9d2f',glass:'rgba(255,255,255,.97)',
        wall:'#f4f4f2',
@@ -2114,7 +2194,12 @@ async function jarvisShellRefresh(){
 }
 function applyTheme(name){
   const t=allThemes()[name];if(!t)return;
+  const changed=name!==CURRENT_THEME;
   applyThemeObj(t);CURRENT_THEME=name;localStorage.setItem('theme',name);
+  // a theme can ship a wallpaper; picking the theme should dress the desktop for
+  // it too, unless the user's own wallpaper (a file, or a built-in they chose)
+  // already outranks it — loadWallpaper owns that precedence
+  if(changed&&typeof loadWallpaper==='function'&&document.body.dataset.themed)loadWallpaper();
 }
 async function loadThemes(){
   try{const d=await (await fetch('/api/themes')).json();
@@ -3130,6 +3215,7 @@ const APPS={
   logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
     render:renderLogs,onClose(w){clearInterval(w.timer);return true}},
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
+  automations:{id:'automations',title:'Automations',icon:'',w:760,h:640,desc:'Named routines & hot corners',render:renderAutomations},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
@@ -3611,7 +3697,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','policies','permissions','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];
@@ -3923,21 +4009,51 @@ function arrangeWidgets(){
   renderWidgets();saveWidgets();toast('▦ widgets arranged on Desktop '+curDesk);
 }
 
-/* ================= wallpaper ================= */
+/* ================= wallpaper =================
+   Four sources, most-specific first:
+     1. a wallpaper file the user generated or adopted from the host,
+     2. a built-in they picked by hand (remembered per-machine),
+     3. the wallpaper the current theme ships with — this is what makes picking
+        Claymorphism also dress the desktop for it,
+     4. the wizard's preset gradient, or the stylesheet's mesh.
+   The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
+   cheap to rasterise on slow GPUs (no blur filters — gradients only). */
+const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial'];
+const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
+function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
+function themeWall(){
+  const t=allThemes()[CURRENT_THEME];
+  return (t&&t.wall_img&&BUILTIN_WALLS.includes(t.wall_img))?t.wall_img:'';
+}
+function applyWallImage(url){
+  const w=$('#wall');
+  if(!w)return;
+  if(url){w.style.backgroundImage='url("'+url+'")';w.classList.add('has')}
+  else{w.style.backgroundImage='';w.classList.remove('has')}
+}
 function loadWallpaper(){
-  const w=$('#wall'),url='/api/wallpaper?t='+Date.now();
+  const url='/api/wallpaper?t='+Date.now();
   const img=new Image();
-  img.onload=()=>{w.style.backgroundImage='url("'+url+'")';w.classList.add('has')};
+  img.onload=()=>applyWallImage(url);
   img.onerror=()=>{
-    // no wallpaper file: the wizard's preset gradient (config-only) if one was
-    // chosen, else the built-in mesh fallback from the stylesheet
+    const id=pickedWall()||themeWall();
+    if(id)return applyWallImage(builtinWallURL(id));
     const preset=cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset;
     if(preset&&typeof WIZ_WALLS!=='undefined'&&WIZ_WALLS[preset]){
-      w.style.backgroundImage=WIZ_WALLS[preset];w.classList.add('has');
-    }else{w.style.backgroundImage='';w.classList.remove('has')}
+      const w=$('#wall');w.style.backgroundImage=WIZ_WALLS[preset];w.classList.add('has');
+    }else applyWallImage('');
   };
   img.src=url;
 }
+/* Picking a built-in clears any generated wallpaper file, because a file always
+   wins — leaving one behind would make the choice look like it did nothing. */
+async function setBuiltinWallpaper(id){
+  if(!BUILTIN_WALLS.includes(id))return toast('no built-in wallpaper "'+id+'"');
+  localStorage.setItem('wallpaper.builtin',id);
+  try{await fetch('/api/wallpaper',{method:'DELETE'})}catch(e){}
+  loadWallpaper();
+}
+function clearBuiltinWallpaper(){localStorage.removeItem('wallpaper.builtin');loadWallpaper()}
 
 /* ================= jarvis thinking animation ================= */
 let jrRaf=0,jrPulse=0,jrActive=false,jrTimeout=0;
@@ -4296,6 +4412,11 @@ function handle(ev){
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
+    case 'automations': loadAutomations().then(()=>refreshApp('automations')); break;
+    // the server never runs an automation itself — it says "run this" and the
+    // desktop does, so a schedule, the agent's tool and the palette all land in
+    // the same runner
+    case 'automation.run': onAutomationBroadcast(ev.automation); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
@@ -5655,6 +5776,384 @@ function renderTaskMgr(body,w){
   poll();w.timer=setInterval(poll,2000);
 }
 
+/* ================= automations =================
+   A named, repeatable sequence of desktop steps. You set one up once, give it a
+   name, and from then on it does exactly that — whether you fire it from the
+   prompt bar, a hot corner, the Automations app, a schedule, or by asking the
+   agent for it by name.
+
+   The runner lives here, in the browser, because the steps ARE the desktop:
+   open this app, switch to that theme, put the agent on this prompt. The server
+   only stores them and broadcasts `automation.run`, so every entry point ends up
+   in this one function and they can never drift apart. */
+
+let AUTOMATIONS=[];
+async function loadAutomations(){
+  try{AUTOMATIONS=(await (await fetch('/api/automations')).json()).automations||[]}catch(e){AUTOMATIONS=[]}
+  return AUTOMATIONS;
+}
+function automationByName(n){
+  n=String(n||'').toLowerCase().trim();
+  return AUTOMATIONS.find(a=>a.name.toLowerCase()===n)||null;
+}
+
+/* ---- the vocabulary a step can speak ----
+   Deliberately small: every kind maps to something the desktop already does, so
+   an automation composes existing behaviour instead of introducing a second way
+   to do it. `action` reaches the same SC_ACTIONS table the keyboard uses. */
+const AUTO_ACTIONS=['deck','expose','showdesktop','launcher','control','notifications',
+                    'windows.arrange','chat.new','chat.open','terminal','settings',
+                    'voice','fullscreen','copilot','agent.stop','help'];
+function automationStepLabel(s){
+  switch(s.kind){
+    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app);
+    // reuse the hot-corner vocabulary's wording so the same action reads the
+    // same everywhere ("Show desktop", not "showdesktop")
+    case 'action':{const hit=HC_ACTIONS.find(a=>a[0]===s.action);return hit?hit[1]:'Do '+s.action}
+    case 'theme':return 'Theme → '+((allThemes()[s.theme]||{}).label||s.theme);
+    case 'wallpaper':return 'Wallpaper → '+s.wallpaper;
+    case 'desktop':return 'Go to desktop '+s.desk;
+    case 'wait':return 'Wait '+s.ms+'ms';
+    case 'agent':return 'Ask: '+String(s.prompt||'').slice(0,70);
+  }
+  return s.kind;
+}
+
+async function runAutomationStep(s){
+  switch(s.kind){
+    case 'app':      if(APPS[s.app])openApp(s.app); else toast('automation: no app "'+s.app+'"'); break;
+    case 'action':   if(!scRun(s.action))toast('automation: unknown action "'+s.action+'"'); break;
+    case 'theme':    if(allThemes()[s.theme])applyTheme(s.theme); else toast('automation: no theme "'+s.theme+'"'); break;
+    case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
+    case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
+    case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
+    case 'agent':    palAsk(s.prompt); break;
+  }
+}
+let AUTO_RUNNING=false;
+async function runAutomation(a){
+  if(typeof a==='string')a=automationByName(a)||AUTOMATIONS.find(x=>x.id===a);
+  if(!a)return toast('no such automation');
+  if(AUTO_RUNNING)return toast('an automation is already running');
+  AUTO_RUNNING=true;
+  document.body.classList.add('auto-running');
+  toast('▶ '+a.name);
+  try{
+    for(const s of (a.steps||[])){
+      await runAutomationStep(s);
+      // a beat between steps: windows animate in, and a theme swap runs a view
+      // transition — firing the next step mid-flight looks (and feels) broken
+      if(s.kind!=='wait')await new Promise(r=>setTimeout(r,160));
+    }
+  }catch(e){toast('automation "'+a.name+'" failed: '+e.message)}
+  AUTO_RUNNING=false;
+  document.body.classList.remove('auto-running');
+}
+/* Fired by the server (a schedule, the agent's run_automation tool, another
+   window) — the payload carries the whole automation so this client runs the
+   same steps even if its list is stale. */
+function onAutomationBroadcast(a){if(a&&a.steps)runAutomation(a)}
+
+async function saveAutomation(name,steps,icon){
+  const r=await fetch('/api/automations',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,steps,icon:icon||''})});
+  const d=await r.json();
+  if(!r.ok)return toast(d.error||'could not save');
+  await loadAutomations();
+  toast('✓ saved "'+name+'"');
+  return d;
+}
+async function deleteAutomation(id){
+  if(!await osConfirm('Delete this automation?','Anything bound to it — a hot corner, a schedule — stops firing.',{confirmText:'Delete',danger:true}))return;
+  await fetch('/api/automations/'+encodeURIComponent(id),{method:'DELETE'});
+  await loadAutomations();refreshApp('automations');
+  if(typeof hcRender==='function')hcRender();
+}
+
+/* ================= the Automations app ================= */
+let AUTO_DRAFT=null;   // {name, icon, steps:[]} while the builder is open
+function autoNewDraft(){return{name:'',icon:'',steps:[]}}
+async function renderAutomations(body){
+  await loadAutomations();
+  const d=AUTO_DRAFT;
+  body.innerHTML=`<div class="phead">
+      <span class="pt">Automations</span>
+      <span class="ps">name a sequence once — run it the same way forever</span>
+      <span class="sp"></span>
+      <button class="pact" onclick="autoEdit(null)">＋ New automation</button>
+    </div>
+    <div class="pbody pad">
+      ${d?autoBuilderHTML(d):''}
+      ${AUTOMATIONS.length?`<div class="auto-grid">${AUTOMATIONS.map(autoCardHTML).join('')}</div>`:
+        (d?'':`<div class="empty"><div class="eh">Nothing saved yet. Build a sequence above, or just tell ${esc(agentName())}:
+          <i>"whenever I start work, open chat and the terminal, switch to the minimal theme, and summarise my day —
+          call it Start work"</i>.</div></div>`)}
+      ${hcCardHTML()}
+    </div>`;
+  body.querySelectorAll('[data-run]').forEach(b=>b.onclick=()=>runAutomation(b.dataset.run));
+  body.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>autoEdit(b.dataset.edit));
+  body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteAutomation(b.dataset.del));
+  hcBind(body);
+}
+function autoCardHTML(a){
+  const when=a.last_run?('ran '+new Date(a.last_run*1000).toLocaleString()):'never run';
+  return `<div class="auto-card">
+    <div class="auto-top"><span class="auto-ic">${esc(a.icon||'▶')}</span>
+      <span class="auto-nm">${esc(a.name)}</span></div>
+    <ol class="auto-steps">${a.steps.map(s=>`<li>${esc(automationStepLabel(s))}</li>`).join('')}</ol>
+    <div class="auto-foot"><span class="mut">${esc(when)}${a.runs?' · '+a.runs+'×':''}</span>
+      <span class="sp" style="flex:1"></span>
+      <button class="pact" data-run="${esc(a.id)}">Run</button>
+      <button class="endbtn" data-edit="${esc(a.id)}">Edit</button>
+      <button class="endbtn" data-del="${esc(a.id)}">✕</button></div>
+  </div>`;
+}
+function autoEdit(id){
+  const a=id?AUTOMATIONS.find(x=>x.id===id):null;
+  AUTO_DRAFT=a?{id:a.id,name:a.name,icon:a.icon||'',steps:JSON.parse(JSON.stringify(a.steps))}:autoNewDraft();
+  refreshApp('automations');
+}
+function autoBuilderHTML(d){
+  const wallOpts=(BUILTIN_WALLS||[]).map(w=>`<option value="${esc(w)}">${esc(w)}</option>`).join('');
+  return `<div class="provbox auto-builder">
+    <div class="ptitle">${d.id?'Edit automation':'New automation'}</div>
+    <div class="row" style="margin-top:10px;gap:8px">
+      <input id="auto-name" placeholder="Name it — e.g. Start work" value="${esc(d.name)}" style="flex:1">
+      <input id="auto-icon" placeholder="🌅" value="${esc(d.icon)}" style="flex:0 0 68px;text-align:center">
+    </div>
+    <ol class="auto-steps edit">${d.steps.length?d.steps.map((s,i)=>`<li>
+        <span>${esc(automationStepLabel(s))}</span>
+        <button class="endbtn" onclick="autoMove(${i},-1)" title="Move up">↑</button>
+        <button class="endbtn" onclick="autoMove(${i},1)" title="Move down">↓</button>
+        <button class="endbtn" onclick="autoDrop(${i})" title="Remove">✕</button>
+      </li>`).join(''):'<li class="mut">No steps yet — add one below.</li>'}</ol>
+    <label style="margin-top:12px">Add a step</label>
+    <div class="row auto-add" style="gap:8px;flex-wrap:wrap">
+      <select id="auto-kind" onchange="autoKindChange()">
+        <option value="app">Open an app</option>
+        <option value="action">Do a desktop action</option>
+        <option value="theme">Apply a theme</option>
+        <option value="wallpaper">Set a wallpaper</option>
+        <option value="desktop">Switch virtual desktop</option>
+        <option value="agent">Put the agent on a task</option>
+        <option value="wait">Wait</option>
+      </select>
+      <span id="auto-arg" style="flex:1;min-width:180px;display:flex">
+        <select id="auto-val">${Object.keys(APPS).map(k=>`<option value="${esc(k)}">${esc(APPS[k].title)}</option>`).join('')}</select>
+      </span>
+      <button class="endbtn" onclick="autoAdd()">Add step</button>
+    </div>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="save" style="margin:0;width:auto;padding:10px 18px" onclick="autoSaveDraft()">Save automation</button>
+      <button class="endbtn" onclick="autoRunDraft()">Test run</button>
+      <button class="endbtn" onclick="AUTO_DRAFT=null;refreshApp('automations')">Cancel</button>
+    </div>
+    <template id="auto-opts-action"><select id="auto-val">${AUTO_ACTIONS.map(a=>`<option value="${a}">${esc(automationStepLabel({kind:'action',action:a}))}</option>`).join('')}</select></template>
+    <template id="auto-opts-theme"><select id="auto-val">${Object.entries(allThemes()).map(([k,t])=>`<option value="${esc(k)}">${esc(t.label||k)}</option>`).join('')}</select></template>
+    <template id="auto-opts-wallpaper"><select id="auto-val">${wallOpts}</select></template>
+    <template id="auto-opts-desktop"><select id="auto-val">${[1,2,3,4,5,6].map(n=>`<option value="${n}">Desktop ${n}</option>`).join('')}</select></template>
+    <template id="auto-opts-agent"><input id="auto-val" placeholder="What should the agent do? e.g. summarise my unread notifications"></template>
+    <template id="auto-opts-wait"><input id="auto-val" type="number" min="0" max="60000" step="100" value="500" placeholder="milliseconds"></template>
+  </div>`;
+}
+function autoKindChange(){
+  const kind=$('#auto-kind').value, slot=$('#auto-arg'), tpl=$('#auto-opts-'+kind);
+  if(kind==='app'){
+    slot.innerHTML=`<select id="auto-val">${Object.keys(APPS).map(k=>`<option value="${esc(k)}">${esc(APPS[k].title)}</option>`).join('')}</select>`;
+  }else if(tpl){slot.innerHTML=tpl.innerHTML}
+}
+function autoAdd(){
+  const kind=$('#auto-kind').value, v=$('#auto-val')?$('#auto-val').value:'';
+  const step={kind};
+  if(kind==='app')step.app=v;
+  else if(kind==='action')step.action=v;
+  else if(kind==='theme')step.theme=v;
+  else if(kind==='wallpaper')step.wallpaper=v;
+  else if(kind==='desktop')step.desk=+v||1;
+  else if(kind==='wait')step.ms=+v||500;
+  else if(kind==='agent'){if(!String(v).trim())return toast('what should the agent do?');step.prompt=v}
+  AUTO_DRAFT.steps.push(step);autoKeepFields();refreshApp('automations');
+}
+function autoMove(i,d){
+  const s=AUTO_DRAFT.steps,j=i+d;if(j<0||j>=s.length)return;
+  [s[i],s[j]]=[s[j],s[i]];autoKeepFields();refreshApp('automations');
+}
+function autoDrop(i){AUTO_DRAFT.steps.splice(i,1);autoKeepFields();refreshApp('automations')}
+function autoKeepFields(){   // a re-render must not eat what's already typed
+  const n=$('#auto-name'),ic=$('#auto-icon');
+  if(n)AUTO_DRAFT.name=n.value;if(ic)AUTO_DRAFT.icon=ic.value;
+}
+async function autoSaveDraft(){
+  autoKeepFields();
+  if(!AUTO_DRAFT.name.trim())return toast('give it a name — that is how you will run it');
+  if(!AUTO_DRAFT.steps.length)return toast('add at least one step');
+  await saveAutomation(AUTO_DRAFT.name.trim(),AUTO_DRAFT.steps,AUTO_DRAFT.icon);
+  AUTO_DRAFT=null;refreshApp('automations');
+  if(typeof hcRender==='function')hcRender();
+}
+function autoRunDraft(){autoKeepFields();runAutomation({name:AUTO_DRAFT.name||'draft',steps:AUTO_DRAFT.steps})}
+/* ================= hot corners =================
+   Four corners, four gestures, no clicking. Every corner ships bound to
+   something useful — an unbound corner teaches you nothing, so the defaults are
+   the four things you reach for most:
+
+     top-left      Overview      every window on this desktop, laid out
+     top-right     Control Centre  sound, brightness, network, battery
+     bottom-left   App deck      the launcher
+     bottom-right  Show desktop  everything out of the way, and back again
+
+   Any corner can be rebound to a desktop action, an app, or one of your
+   automations — which is the point: a corner is the fastest trigger a saved
+   routine can have. Config is per-machine (localStorage), like the deck. */
+
+const HC_DEFAULTS={tl:'expose',tr:'control',bl:'deck',br:'showdesktop'};
+const HC_CORNERS=[['tl','Top left'],['tr','Top right'],['bl','Bottom left'],['br','Bottom right']];
+const HC_SIZE=10;        // px of the square trigger zone in the very corner
+let HOTCORNERS={...HC_DEFAULTS,enabled:true,delay:240};
+function hcLoad(){
+  try{HOTCORNERS={...HOTCORNERS,...(JSON.parse(localStorage.getItem('hotcorners')||'{}'))}}catch(e){}
+}
+function hcSave(){localStorage.setItem('hotcorners',JSON.stringify(HOTCORNERS))}
+hcLoad();
+
+/* What a corner can be bound to. Desktop actions come from the SAME table the
+   keyboard uses, so a corner can never do something a shortcut cannot. */
+const HC_ACTIONS=[
+  ['','— nothing —'],
+  ['expose','Overview — all windows'],
+  ['showdesktop','Show desktop'],
+  ['deck','App deck'],
+  ['launcher','Launcher (start menu)'],
+  ['control','Control Centre'],
+  ['notifications','Notifications'],
+  ['omnibar.focus','Prompt bar — ask the agent'],
+  ['chat.open','Open Chat'],
+  ['chat.new','New chat'],
+  ['terminal','Terminal'],
+  ['windows.arrange','Tile the windows'],
+  ['voice','Voice mode'],
+  ['fullscreen','Full screen'],
+  ['settings','Settings'],
+  ['lock','Lock the screen'],
+];
+function hcLabel(v){
+  if(!v)return '— nothing —';
+  if(v.startsWith('automation:')){
+    const a=(AUTOMATIONS||[]).find(x=>x.id===v.slice(11));
+    return a?('Automation — '+a.name):'Automation (deleted)';
+  }
+  if(v.startsWith('app:'))return 'Open '+((APPS[v.slice(4)]&&APPS[v.slice(4)].title)||v.slice(4));
+  const hit=HC_ACTIONS.find(a=>a[0]===v);
+  return hit?hit[1]:v;
+}
+function hcFire(corner){
+  const v=HOTCORNERS[corner];
+  if(!v)return;
+  if(v.startsWith('automation:'))return runAutomation(v.slice(11));
+  if(v.startsWith('app:'))return openApp(v.slice(4));
+  if(v==='showdesktop')return toggleShowDesktop();
+  if(v==='launcher')return toggleStart();
+  if(v==='control')return toggleControlCenter();
+  if(v==='notifications')return openNotifPanel();
+  if(v==='lock')return powerDo('lock','Lock the screen?');
+  scRun(v);
+}
+
+/* ---- show desktop: get everything out of the way, then put it back ---- */
+let SHOWDESK=null;   // the windows we minimized, so the same corner restores them
+function toggleShowDesktop(){
+  if(SHOWDESK&&SHOWDESK.length){
+    SHOWDESK.forEach(w=>{if(WM.wins.has(w.key))restoreWin(w)});
+    SHOWDESK=null;toast('windows restored');return;
+  }
+  const hide=[];WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===curDesk)hide.push(w)});
+  if(!hide.length)return toast('the desktop is already clear');
+  hide.forEach(minimizeWin);
+  SHOWDESK=hide;
+}
+
+/* ---- the trigger: dwell in the corner, not just touch it ----
+   A pointer flying to a close button clips the corner constantly, so a corner
+   only fires after the pointer has RESTED there, and it must leave the zone
+   before it can fire again. The hint arc grows during the dwell, which is both
+   the affordance and the escape hatch: see it filling, move away. */
+let hcTimer=null, hcArmed=null, hcHint=null;
+function hcZone(x,y){
+  const w=innerWidth,h=innerHeight;
+  if(x<=HC_SIZE&&y<=HC_SIZE)return 'tl';
+  if(x>=w-HC_SIZE&&y<=HC_SIZE)return 'tr';
+  if(x<=HC_SIZE&&y>=h-HC_SIZE)return 'bl';
+  if(x>=w-HC_SIZE&&y>=h-HC_SIZE)return 'br';
+  return null;
+}
+function hcCancel(){
+  clearTimeout(hcTimer);hcTimer=null;hcArmed=null;
+  if(hcHint){hcHint.classList.remove('on');hcHint.className='hc-hint'}
+}
+function hcActive(){
+  if(!HOTCORNERS.enabled)return false;
+  if(typeof isMobile==='function'&&isMobile())return false;    // no pointer to rest
+  if(document.querySelector('.win.dragging'))return false;      // mid-drag, not a gesture
+  if(typeof AUTO_RUNNING!=='undefined'&&AUTO_RUNNING)return false;
+  return true;
+}
+addEventListener('pointermove',e=>{
+  if(e.pointerType==='touch')return;
+  if(!hcActive())return hcCancel();
+  const z=hcZone(e.clientX,e.clientY);
+  if(z===hcArmed)return;              // still dwelling in the same corner
+  hcCancel();
+  if(!z||!HOTCORNERS[z])return;
+  hcArmed=z;
+  if(!hcHint){hcHint=document.createElement('div');document.body.appendChild(hcHint)}
+  hcHint.className='hc-hint hc-'+z;
+  hcHint.style.setProperty('--hc-ms',HOTCORNERS.delay+'ms');
+  requestAnimationFrame(()=>hcHint.classList.add('on'));
+  hcTimer=setTimeout(()=>{const c=hcArmed;hcCancel();if(c)hcFire(c)},HOTCORNERS.delay);
+},{passive:true});
+addEventListener('pointerdown',hcCancel,{passive:true});
+addEventListener('blur',hcCancel);
+
+/* ---- the settings card, rendered inside the Automations app ---- */
+function hcCardHTML(){
+  const opts=v=>{
+    const auto=(AUTOMATIONS||[]).map(a=>[`automation:${a.id}`,'Automation — '+a.name]);
+    const apps=Object.keys(APPS).map(k=>[`app:${k}`,'Open '+APPS[k].title]);
+    return [...HC_ACTIONS,...auto,...apps]
+      .map(([val,lbl])=>`<option value="${esc(val)}"${val===v?' selected':''}>${esc(lbl)}</option>`).join('');
+  };
+  return `<div class="provbox hc-box">
+    <div class="ptitle">Hot corners
+      <label class="hc-on"><input type="checkbox" id="hc-en"${HOTCORNERS.enabled?' checked':''}> enabled</label>
+    </div>
+    <p class="mut" style="margin:6px 0 12px">Rest the pointer in a corner. Every corner starts bound to something —
+      rebind any of them to a desktop action, an app, or one of your automations.</p>
+    <div class="hc-grid">
+      ${HC_CORNERS.map(([c,lbl])=>`<label class="hc-cell hc-cell-${c}">
+        <span class="hc-lbl">${lbl}</span>
+        <select data-hc="${c}">${opts(HOTCORNERS[c]||'')}</select>
+      </label>`).join('')}
+      <div class="hc-screen"><span>screen</span></div>
+    </div>
+    <div class="row" style="margin-top:12px;align-items:center;gap:10px">
+      <span class="mut" style="flex:0 0 auto">Dwell before it fires</span>
+      <input type="range" id="hc-delay" min="80" max="800" step="20" value="${HOTCORNERS.delay}" style="flex:1">
+      <span class="mut" id="hc-delayn" style="flex:0 0 54px;text-align:right">${HOTCORNERS.delay}ms</span>
+      <button class="endbtn" onclick="hcReset()">Reset</button>
+    </div>
+  </div>`;
+}
+function hcBind(root){
+  root.querySelectorAll('[data-hc]').forEach(s=>s.onchange=()=>{
+    HOTCORNERS[s.dataset.hc]=s.value;hcSave();toast(HC_CORNERS.find(c=>c[0]===s.dataset.hc)[1]+' → '+hcLabel(s.value));
+  });
+  const en=root.querySelector('#hc-en');
+  if(en)en.onchange=()=>{HOTCORNERS.enabled=en.checked;hcSave();hcCancel()};
+  const d=root.querySelector('#hc-delay');
+  if(d)d.oninput=()=>{HOTCORNERS.delay=+d.value;root.querySelector('#hc-delayn').textContent=d.value+'ms';hcSave()};
+}
+function hcReset(){HOTCORNERS={...HOTCORNERS,...HC_DEFAULTS};hcSave();hcRender()}
+function hcRender(){refreshApp('automations')}
 /* ================= mcp app ================= */
 let MCPCFG={};
 function mcpSnap(s){
@@ -6158,8 +6657,24 @@ async function tbSave(){
 /* ================= personalize app + wallpaper gallery ================= */
 async function renderPersonalize(body){
   let gal=[];try{gal=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+  const picked=pickedWall();
   body.innerHTML=`<div class="pad">
-    <label>Describe your wallpaper</label>
+    <label>Built-in wallpapers</label>
+    <p class="mut" style="margin:2px 0 8px">Ship with AgentOS, one per design-language theme. They're SVG — a few KB
+      each, sharp at any resolution. Pick a theme and its wallpaper follows automatically; choose one here to pin it instead.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
+        style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
+          border:2px solid ${id===picked?'var(--acc)':'var(--line)'}">
+        <img src="${builtinWallURL(id)}" alt="${esc(id)} wallpaper" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
+        <span style="position:absolute;left:0;right:0;bottom:0;padding:3px 7px;text-align:left;font-size:var(--fs-2xs);
+          background:linear-gradient(transparent,rgba(0,0,0,.6));color:#fff">${esc(id)}</span>
+      </button>`).join('')}
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="endbtn" onclick="clearBuiltinWallpaper();refreshApp('personalize')">Follow the theme</button>
+    </div>
+    <label style="margin-top:18px">Describe your wallpaper</label>
     <textarea id="pz-prompt" rows="2" placeholder="e.g. dark cyberpunk skyline at dusk, teal neon reflections, rain, cinematic"></textarea>
     <div class="row" style="margin-top:10px">
       <button class="save" style="margin:0" id="pz-gen" onclick="pzGen()">Generate wallpaper</button>
@@ -6188,7 +6703,11 @@ async function pzGen(){
   }catch(e){toast('generation failed — offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
-async function pzSet(id){await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('applied')}
+async function pzBuiltin(id){await setBuiltinWallpaper(id);refreshApp('personalize')}
+async function pzSet(id){
+  localStorage.removeItem('wallpaper.builtin');   // a generated wallpaper replaces the pinned built-in
+  await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('applied');
+}
 async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'POST'});const d=await r.json();toast(d.ok?'using your system wallpaper':(d.error||'failed'))}
 async function pzDel(id){await fetch('/api/wallpapers/'+id,{method:'DELETE'});refreshApp('personalize')}
 
@@ -8681,6 +9200,13 @@ function palActions(){
     {icon:svgSpeaker(false),label:'Toggle voice',hint:'speak replies on/off',run:()=>{VOICE.tts=!VOICE.tts;saveVoice();toast(VOICE.tts?'voice on':'voice off')}},
     {icon:g('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4.4 16.4l4.3-3.8 3.4 2.9 3-2.5 4.5 3.6"/>'),label:'Reset wallpaper',hint:'back to the default background',run:()=>fetch('/api/wallpaper',{method:'DELETE'})},
   );
+  // saved automations are first-class palette entries — typing their name is the
+  // ad-hoc way to fire one, alongside a hot corner or the Automations app
+  (typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[]).forEach(a=>items.push({
+    icon:a.icon||'▶',label:a.name,
+    hint:a.steps.map(automationStepLabel).join(' → ').slice(0,90)||'automation',
+    run:()=>runAutomation(a),
+  }));
   NATIVEAPPS.forEach(a=>items.push({nat:a,label:a.name,hint:(a.comment||'')+(a.comment?' · ':'')+'system app',run:()=>launchNative(a.id,a.name)}));
   return items;
 }
@@ -8706,6 +9232,15 @@ function palIntent(q){
   const P=(re)=>{const m=q.match(re);return m};
   let m;
   const act=(icon,label,hint,run)=>out.push({icon,label,hint,run,intent:true});
+  // an automation's whole promise is that typing its name runs it, so it beats
+  // the fuzzy app match ("start work" must not become "open Web")
+  {
+    const qq=q.toLowerCase().trim().replace(/^run\s+/,'');
+    const a=(typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[])
+      .find(x=>x.name.toLowerCase()===qq)||
+      (qq.length>=3?(typeof AUTOMATIONS!=='undefined'?AUTOMATIONS:[]).find(x=>x.name.toLowerCase().startsWith(qq)):null);
+    if(a)act(a.icon||'▶',`Run "${a.name}"`,a.steps.map(automationStepLabel).join(' → ').slice(0,90),()=>runAutomation(a));
+  }
   if(m=P(/^(?:open|launch|start|show)\s+(.+)$/i)){
     const hit=palFindApp(m[1]);
     if(hit&&hit.id)act('▸',`Open ${APPS[hit.id].title}`,'AgentOS app',()=>openApp(hit.id));
@@ -8888,6 +9423,12 @@ const SC_ACTIONS={
   'fullscreen':()=>toggleFullscreen(),
   'help':()=>keysHelp(),
   'deck':()=>deckToggle(),
+  // named so hot corners and automation steps reach exactly the same behaviours
+  // the keyboard does — one vocabulary, three ways to trigger it
+  'showdesktop':()=>toggleShowDesktop(),
+  'launcher':()=>toggleStart(),
+  'control':()=>toggleControlCenter(),
+  'notifications':()=>openNotifPanel(),
 };
 function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return false}
 
@@ -8984,6 +9525,7 @@ updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,3000);
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();
+loadAutomations();   // the palette and the hot-corner picker both read this list
 loadUserApps().then(loadWidgets);
 loadNativeApps();
 APPS_READY=true;

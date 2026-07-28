@@ -270,6 +270,11 @@ function handle(ev){
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
+    case 'automations': loadAutomations().then(()=>refreshApp('automations')); break;
+    // the server never runs an automation itself — it says "run this" and the
+    // desktop does, so a schedule, the agent's tool and the palette all land in
+    // the same runner
+    case 'automation.run': onAutomationBroadcast(ev.automation); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;

@@ -35,3 +35,29 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg4);border:
 
 .toast{position:fixed;bottom:calc(var(--tbh) + 12px);right:14px;background:var(--bg4);border:1px solid var(--acc);border-radius:var(--r-md);padding:10px 15px;font-size:var(--fs-md);z-index:9800;animation:fadein .2s}
 @keyframes fadein{from{opacity:0;transform:translateY(6px)}}
+
+/* ---- hot corner hint: a quarter-disc that fills over the dwell time, so the
+   gesture is visible before it fires and you can pull away in time. The arc gets
+   its own bright edge — on a wallpaper that happens to share the accent's hue, a
+   soft glow alone disappears. ---- */
+.hc-hint{position:fixed;width:78px;height:78px;z-index:10800;pointer-events:none;
+  opacity:0;transform:scale(.3);
+  background:radial-gradient(circle at var(--hx,0%) var(--hy,0%),
+    color-mix(in srgb,var(--acc) 78%,transparent) 0%,
+    color-mix(in srgb,var(--acc) 30%,transparent) 54%,
+    transparent 76%);
+  box-shadow:0 0 34px color-mix(in srgb,var(--acc) 40%,transparent);
+  transition:opacity var(--hc-ms,240ms) linear,transform var(--hc-ms,240ms) var(--ease-out)}
+.hc-hint::after{content:'';position:absolute;inset:0;border-radius:inherit;
+  border:0 solid color-mix(in srgb,var(--acc) 92%,transparent)}
+.hc-hint.on{opacity:.95;transform:scale(1)}
+.hc-hint.hc-tl{top:0;left:0;border-radius:0 0 100% 0;--hx:0%;--hy:0%}
+.hc-hint.hc-tr{top:0;right:0;border-radius:0 0 0 100%;--hx:100%;--hy:0%}
+.hc-hint.hc-bl{bottom:0;left:0;border-radius:0 100% 0 0;--hx:0%;--hy:100%}
+.hc-hint.hc-br{bottom:0;right:0;border-radius:100% 0 0 0;--hx:100%;--hy:100%}
+/* only the two edges that form the curve carry the stroke, so the straight
+   screen-edge sides stay invisible */
+.hc-hint.hc-tl::after{border-right-width:2px;border-bottom-width:2px}
+.hc-hint.hc-tr::after{border-left-width:2px;border-bottom-width:2px}
+.hc-hint.hc-bl::after{border-right-width:2px;border-top-width:2px}
+.hc-hint.hc-br::after{border-left-width:2px;border-top-width:2px}

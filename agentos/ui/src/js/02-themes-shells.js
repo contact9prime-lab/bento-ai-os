@@ -43,7 +43,7 @@ const THEMES={
         and the bar reads as part of the wallpaper.
       · light themes must out-specify 06-light.css, which targets
         :root[data-theme=light] #desktop and friends — a bare #desktop loses. */
-  bento:{label:'Bento (grid)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap',family:'Plus Jakarta Sans'},
+  bento:{label:'Bento (grid)',mode:'dark',wall_img:'bento',font:{url:'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap',family:'Plus Jakarta Sans'},
     v:{bg:'#221f2b',bg2:'#332e42',bg3:'#3f3852',bg4:'#4c4363',line:'#4f4767',txt:'#f6f3fd',dim:'#c9bfe6',dim2:'#a79ccb',
        acc:'#6d4aeb',acc2:'#a78bfa',warn:'#fbbf24',err:'#fb7185',ok:'#4ade80',glass:'rgba(51,46,66,.96)',
        wall:'#1c1926',
@@ -75,7 +75,7 @@ const THEMES={
 .widget{background:#332e42;backdrop-filter:none;border:none;box-shadow:0 7px 0 rgba(0,0,0,.32)}
 .smapp{border-radius:18px}
 .dicon .aicon,.dockb .aicon,.tbwin .aicon,#startbtn .mark{border-radius:26%;box-shadow:0 3px 0 rgba(0,0,0,.36)}`},
-  liquid:{label:'Liquid Glass',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap',family:'Outfit'},
+  liquid:{label:'Liquid Glass',mode:'dark',wall_img:'liquid',font:{url:'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap',family:'Outfit'},
     v:{bg:'#1a1016',bg2:'#2a1a22',bg3:'#3a2430',bg4:'#4b303e',line:'rgba(255,255,255,.2)',txt:'#fff6f3',dim:'#f0d6ce',dim2:'#d8b6ac',
        acc:'#ffb08c',acc2:'#ffd9b8',warn:'#ffd166',err:'#ff8080',ok:'#8ee6a8',glass:'rgba(28,14,20,.42)',
        wall:'radial-gradient(1000px 800px at 20% 12%,#ff9a76,transparent 60%),radial-gradient(1100px 900px at 82% 26%,#c4443c,transparent 56%),radial-gradient(900px 800px at 55% 105%,#2f4a5c,transparent 62%),linear-gradient(158deg,#e0674f,#7d2f33 46%,#1e1622)',
@@ -103,7 +103,7 @@ const THEMES={
 .deck-tile:hover,.smapp:hover{background:rgba(255,255,255,.24)}
 .dicon .aicon,.dockb .aicon,.tbwin .aicon,#startbtn .mark{box-shadow:0 10px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.55)}
 input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.36)}`},
-  spatial:{label:'Spatial (depth)',mode:'dark',font:{url:'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap',family:'Inter Tight'},
+  spatial:{label:'Spatial (depth)',mode:'dark',wall_img:'spatial',font:{url:'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap',family:'Inter Tight'},
     v:{bg:'#0d0f11',bg2:'#16191d',bg3:'#1e2226',bg4:'#282d33',line:'rgba(255,255,255,.14)',txt:'#eef1f4',dim:'#b3bbc4',dim2:'#8b949d',
        acc:'#4aa3ff',acc2:'#7ec8ff',warn:'#f5c26b',err:'#ff7a7a',ok:'#6ee7a0',glass:'rgba(28,32,37,.55)',
        wall:'radial-gradient(1300px 900px at 50% -8%,#39424c,transparent 66%),radial-gradient(900px 700px at 88% 88%,#22303b,transparent 60%),linear-gradient(180deg,#1c2126,#101316 58%,#08090b)',
@@ -129,7 +129,7 @@ input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255
 .deck-tile,.smapp{border-radius:20px}
 .deck-tile:hover,.smapp:hover{background:rgba(255,255,255,.11)}
 .dockb .aicon,.tbwin .aicon,.dicon .aicon,#startbtn .mark{box-shadow:0 16px 34px rgba(0,0,0,.62),inset 0 .5px 0 rgba(255,255,255,.3)}`},
-  clay:{label:'Claymorphism',mode:'light',font:{url:'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap',family:'Nunito'},
+  clay:{label:'Claymorphism',mode:'light',wall_img:'clay',font:{url:'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap',family:'Nunito'},
     v:{bg:'#e6dfff',bg2:'#ffffff',bg3:'#f4f1ff',bg4:'#e6e0ff',line:'#ddd5ff',txt:'#2a2352',dim:'#5e5595',dim2:'#8a80bd',
        acc:'#6c4ef0',acc2:'#f7889f',warn:'#e0952b',err:'#ef5f72',ok:'#3fbd87',glass:'rgba(255,255,255,.92)',
        wall:'radial-gradient(900px 760px at 16% 6%,#b9a4ff,transparent 62%),radial-gradient(880px 720px at 88% 90%,#ffc2d8,transparent 60%),linear-gradient(158deg,#d9ccff,#c9b9ff 52%,#e7dcff)',
@@ -163,7 +163,7 @@ input,textarea,select{background:rgba(255,255,255,.14);border-color:rgba(255,255
   box-shadow:0 10px 20px rgba(78,52,180,.3),inset 0 3px 5px rgba(255,255,255,.7),inset 0 -4px 7px rgba(0,0,0,.16)}
 input,textarea,select{background:#f4f1ff;border:none;box-shadow:inset 0 3px 7px rgba(108,78,240,.16)}
 .save,#send{box-shadow:0 8px 18px rgba(108,78,240,.42),inset 0 2px 4px rgba(255,255,255,.5)}`},
-  minimal:{label:'Minimalism',mode:'light',font:{url:'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',family:'Inter'},
+  minimal:{label:'Minimalism',mode:'light',wall_img:'minimal',font:{url:'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',family:'Inter'},
     v:{bg:'#ffffff',bg2:'#ffffff',bg3:'#f6f6f6',bg4:'#ededed',line:'#e6e6e6',txt:'#0b0b0b',dim:'#5f5f5f',dim2:'#8c8c8c',
        acc:'#4d9d2f',acc2:'#111111',warn:'#a97800',err:'#c8342a',ok:'#4d9d2f',glass:'rgba(255,255,255,.97)',
        wall:'#f4f4f2',
@@ -325,7 +325,12 @@ async function jarvisShellRefresh(){
 }
 function applyTheme(name){
   const t=allThemes()[name];if(!t)return;
+  const changed=name!==CURRENT_THEME;
   applyThemeObj(t);CURRENT_THEME=name;localStorage.setItem('theme',name);
+  // a theme can ship a wallpaper; picking the theme should dress the desktop for
+  // it too, unless the user's own wallpaper (a file, or a built-in they chose)
+  // already outranks it — loadWallpaper owns that precedence
+  if(changed&&typeof loadWallpaper==='function'&&document.body.dataset.themed)loadWallpaper();
 }
 async function loadThemes(){
   try{const d=await (await fetch('/api/themes')).json();

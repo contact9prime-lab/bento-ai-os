@@ -128,6 +128,20 @@ CREATE TABLE IF NOT EXISTS workflows (
     created_at REAL,
     updated_at REAL
 );
+-- A named, repeatable sequence of desktop steps. Unlike `workflows` (a DAG of
+-- subagent steps in the fabric control plane) an automation drives the DESKTOP:
+-- open these apps, switch to that theme, put the agent on this prompt. It is what
+-- a hot corner, the palette, or "run my morning routine" fires.
+CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,
+    icon TEXT DEFAULT '',
+    steps TEXT,                  -- JSON: [{kind:'app'|'action'|'theme'|'desktop'|'agent'|'wait', ...}]
+    created_at REAL,
+    updated_at REAL,
+    last_run REAL,
+    runs INTEGER DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS fabric_runs (
     id TEXT PRIMARY KEY,
     kind TEXT,                   -- 'delegate' | 'workflow' | 'step'
@@ -696,6 +710,58 @@ class Store:
 
     def delete_theme(self, name: str):
         self.db.execute("DELETE FROM themes WHERE name=?", (name,))
+        self.db.commit()
+
+    # -- automations: named, repeatable desktop sequences ---------------------
+
+    def save_automation(self, name: str, steps: str, icon: str = "", aid: str = "") -> str:
+        """Upsert by name — saving 'Morning' twice edits it rather than forking it."""
+        name = (name or "").strip()
+        now = time.time()
+        row = self.db.execute("SELECT id FROM automations WHERE name=?", (name,)).fetchone()
+        aid = row["id"] if row else (aid or uuid.uuid4().hex[:12])
+        self.db.execute(
+            "INSERT INTO automations (id, name, icon, steps, created_at, updated_at) VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon, "
+            "steps=excluded.steps, updated_at=excluded.updated_at",
+            (aid, name, icon or "", steps, now, now))
+        self.db.commit()
+        return aid
+
+    def list_automations(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, name, icon, steps, created_at, updated_at, last_run, runs "
+            "FROM automations ORDER BY name COLLATE NOCASE").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["steps"] = json.loads(r["steps"] or "[]")
+            except Exception:
+                d["steps"] = []
+            out.append(d)
+        return out
+
+    def get_automation(self, key: str) -> dict | None:
+        """By id or by name — callers say 'run Morning', not 'run 3f9a…'."""
+        row = self.db.execute(
+            "SELECT * FROM automations WHERE id=? OR name=? COLLATE NOCASE", (key, key)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["steps"] = json.loads(row["steps"] or "[]")
+        except Exception:
+            d["steps"] = []
+        return d
+
+    def delete_automation(self, key: str):
+        self.db.execute("DELETE FROM automations WHERE id=? OR name=? COLLATE NOCASE", (key, key))
+        self.db.commit()
+
+    def mark_automation_run(self, aid: str):
+        self.db.execute("UPDATE automations SET last_run=?, runs=COALESCE(runs,0)+1 WHERE id=?",
+                        (time.time(), aid))
         self.db.commit()
 
     def get_app_data(self, aid: str) -> str:

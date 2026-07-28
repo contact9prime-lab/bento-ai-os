@@ -49,6 +49,62 @@ what it learned.
 
 Missing optional tools degrade gracefully — the related feature simply isn't offered.
 
+### Architecture
+
+Nothing in AgentOS is x86-only. Every runtime dependency is pure Python or ships `aarch64`
+wheels, so it installs and runs on **arm64** — Apple Silicon, ARM servers, and a **Raspberry Pi**
+— exactly as it does on x86. `./packaging/build-deb.sh` takes its architecture from the build
+machine (`dpkg --print-architecture`), so running it on a Pi produces a real `arm64` package;
+building on a PC and installing on a Pi will not work, because the `.deb` bundles a venv.
+
+---
+
+## Raspberry Pi
+
+AgentOS runs on a Pi. What that's like depends entirely on where the model lives.
+
+**Recommended: Pi 4 or Pi 5, 4GB+, 64-bit Raspberry Pi OS (Bookworm or newer).**
+
+```bash
+sudo apt install python3 python3-venv git
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone <your fork> agentic-os && cd agentic-os
+uv sync && uv run agentos
+```
+
+**Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
+the server to the network — is the wrong one: AgentOS has no authentication and the agent has a
+real shell, so `--host 0.0.0.0` hands your Pi to anyone on the LAN. Forward the loopback port
+over SSH instead, and the [loopback-only guarantee](security.md) still holds:
+
+```bash
+ssh -L 8321:127.0.0.1:8321 pi@raspberrypi.local     # then open http://127.0.0.1:8321 locally
+```
+
+**The model is the constraint, not the OS.** The server, the desktop, the scheduler and the agent
+loop are light — the Pi is a fine *host*. Local inference is a different story: a Pi has no
+usable GPU for Ollama, so models run on CPU. A 3B model is slow but usable; 7B and up is
+painful. Two setups that work well:
+
+- **Cloud models** — the Pi is the always-on machine, inference happens elsewhere. The whole OS
+  stays responsive.
+- **Ollama on another box** — point `providers.ollama.base_url` at a desktop on your LAN. You keep
+  local-only inference and the Pi keeps being the thing that's always on.
+
+**Drawing the desktop.** Chromium on the Pi renders the shell fine, but the heavy-blur themes
+(Liquid Glass, Spatial) lean on `backdrop-filter`, which is expensive without GPU compositing.
+If the desktop feels sluggish on the Pi's own display, pick **Bento** or **Minimalism** — both are
+deliberately blur-free — or drive the Pi headless and open the desktop from a laptop or phone,
+which is where the [responsive layout](desktop.md#phone-tablet-desktop) pays off. The built-in
+wallpapers are SVG with no blur filters, so they cost nothing either way.
+
+**What won't be there.** The Train app (LoRA fine-tuning) needs an NVIDIA GPU and is simply not
+offered. Anything else that depends on a missing tool degrades the same way it does everywhere
+else — the feature isn't offered rather than failing.
+
+Boot-to-AgentOS (the sway session) has **not** been tested on a Pi; the source install above has
+the fewest moving parts and is what to use there.
+
 ---
 
 ## Run from source
@@ -93,7 +149,7 @@ network is needed at install time.
 
 **Build it:**
 ```bash
-./packaging/build-deb.sh          # → packaging/dist/agentos_<version>_amd64.deb
+./packaging/build-deb.sh          # → packaging/dist/agentos_<version>_<arch>.deb  (arm64 on a Pi)
 ```
 
 **Install it:**

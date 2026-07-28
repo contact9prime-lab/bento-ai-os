@@ -98,6 +98,68 @@ usual hues. The agent can create themes of its own with the same reach — see
 
 ---
 
+## Hot corners
+
+Rest the pointer in a screen corner and something happens. All four ship bound —
+an unbound corner teaches you nothing:
+
+| Corner | Default |
+|---|---|
+| Top left | **Overview** — every window on this desktop, laid out |
+| Top right | **Control Centre** — sound, brightness, network, battery |
+| Bottom left | **App deck** — the launcher |
+| Bottom right | **Show desktop** — everything out of the way, and back again |
+
+Rebind any corner in **Automations → Hot corners** to a desktop action, an app,
+or one of your automations. The action list is the same table the keyboard uses,
+so a corner can never do something a shortcut cannot.
+
+A corner fires on *dwell*, not on touch: a pointer flying at a close button
+clips the corner constantly, so nothing happens until the pointer has rested
+there (240ms by default, adjustable), and it must leave the zone before it can
+fire again. A quarter-disc fills during the dwell — that's both the affordance
+and the escape hatch. Hot corners stand down mid-drag, while an automation is
+running, and on phones, which have no pointer to rest.
+
+---
+
+## Automations
+
+An automation is a **named, repeatable sequence of desktop steps**. Set one up
+once, and from then on it does exactly that — every time, from anywhere.
+
+Build one in the **Automations** app, or just describe it:
+
+> *"Whenever I start work: open chat and the terminal, switch to the minimal
+> theme, and summarise what changed in my workspace. Call it Start work."*
+
+A step is one of:
+
+| Kind | What it does |
+|---|---|
+| `app` | open an AgentOS app |
+| `action` | a desktop action — overview, show desktop, app deck, tile windows, voice, … |
+| `theme` | apply a theme |
+| `wallpaper` | set a built-in wallpaper |
+| `desktop` | switch virtual desktop |
+| `agent` | put the agent on a task |
+| `wait` | pause between steps |
+
+**Ad-hoc, four ways:** type its name in the prompt bar, press **Run** in the
+Automations app, bind it to a hot corner, or ask the agent for it by name
+(`run_automation`). The agent can also build and edit them for you
+(`save_automation`, `list_automations`) — saving an existing name edits that
+automation rather than forking a second one with the same name.
+
+However it's fired, the sequence runs in one place: the server only *stores*
+automations and broadcasts "run this", and the desktop performs the steps. So a
+schedule, a hot corner, the palette and the agent can't drift apart.
+
+Malformed steps are rejected when you save, not when the automation runs — an
+automation replayed unattended at 7am should fail at the door or not at all.
+
+---
+
 ## Phone, tablet, desktop
 
 The desktop serves the same URL to every screen and adapts to the one it lands on. Nothing is
@@ -130,11 +192,21 @@ that just moved are dismissed rather than left pointing at nothing.
 ---
 
 ### Wallpaper
-In **Personalize** you can:
+AgentOS ships five wallpapers, one per design-language theme. They're **SVG**: a few KB each,
+sharp from a phone to a 4K panel, and drawn with gradients rather than blur filters so they cost
+almost nothing to rasterise on a slow GPU. They're part of this repository, under the same MIT
+licence as the rest of it — no third-party assets, no attribution to track.
+
+Pick a theme and its wallpaper follows automatically. In **Personalize** you can also:
+- **Pin a built-in** — use one wallpaper regardless of the theme (*Follow the theme* undoes it).
 - **Use your system wallpaper** — adopts the host desktop background so AgentOS matches your system.
 - **Generate a wallpaper** with AI from a text description (saved to a local gallery you can pick
   from later).
 - **Reset** to the built-in background.
+
+Precedence, most specific first: a wallpaper file you generated or adopted → a built-in you pinned
+→ the current theme's wallpaper → the default background. The wallpaper fills the whole viewport,
+including behind the menu bar, so translucent chrome has something to blur.
 
 See [Models & Appearance](models.md) for more.
 
