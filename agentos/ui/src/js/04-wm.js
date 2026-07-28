@@ -42,6 +42,12 @@ function createWin(app){
   const key=WM.wins.has(app.id)?app.id+'#'+(++WM.seq):app.id;
   const w={id:app.id,key,app,el,tb,min:false,max:false,prev:null,snap:null,desk:curDesk};
   WM.wins.set(key,w);
+  // on a phone a window IS the screen — open it as a sheet, remembering that the
+  // full-screen state was the device's idea so a wider viewport can undo it
+  if(typeof isMobile==='function'&&isMobile()){
+    w.prev={l:el.style.left,t:el.style.top,w:el.style.width,h:el.style.height};
+    w.wasMax=false;w.max=true;el.classList.add('maxed');
+  }
 
   tb.onclick=()=>{ if(w.min){restoreWin(w);focusWin(w)} else if(el.classList.contains('active')) minimizeWin(w); else focusWin(w); };
   el.addEventListener('pointerdown',()=>focusWin(w));
@@ -83,6 +89,9 @@ function focusWin(w){
 /* the dock auto-hides while a maximized window is focused; a bottom-edge peek brings it back */
 function updateDockHide(){
   let maxed=false;WM.wins.forEach(o=>{if(o.el.classList.contains('active')&&o.max&&!o.min)maxed=true});
+  // on a phone every window is maximized, so hiding the dock for one would hide
+  // it forever — and there is no pointer to peek with
+  if(typeof isMobile==='function'&&isMobile())maxed=false;
   document.body.classList.toggle('dock-hide',maxed);
   if(!maxed)document.body.classList.remove('dock-peek');
 }

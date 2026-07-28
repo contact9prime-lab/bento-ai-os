@@ -51,7 +51,8 @@ CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
 # Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
 # custom themes from the Themes store merge in at call time (list_themes).
 BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
-                  "aero", "field", "shell", "jarvis"]
+                  "aero", "field", "shell",
+                  "bento", "liquid", "spatial", "clay", "minimal", "jarvis"]
 
 # Tools that confirm with the user EVERY time — even for the main agent at full
 # autonomy. The PDP's default-allow is downgraded to ask at the enforcement sites

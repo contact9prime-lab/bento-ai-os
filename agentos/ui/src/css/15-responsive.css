@@ -1,0 +1,184 @@
+/* ================= cross-device layout =================
+   AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
+   here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
+   deck and windows are all still there. What changes is how much room each one
+   takes and whether windows float or fill the screen.
+
+   Rules are keyed off body.dev-mobile / .dev-tablet / .dev-touch (set in
+   00a-device.js) rather than raw media queries, so a single classification
+   drives CSS and JS alike and they can never disagree. This file loads last, so
+   it wins over the desktop chrome above it without !important gymnastics —
+   except where the base rule is itself !important (windows) or a theme's
+   injected CSS would otherwise take over (the sheet geometry).
+
+   Safe areas: every screen-edge surface pads by env(safe-area-inset-*) so the
+   dock clears a home indicator and the menu bar clears a notch. */
+
+:root{
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px);
+  --safe-r:env(safe-area-inset-right,0px);
+}
+
+/* ---------- touch: bigger targets everywhere, no hover-only affordances ---------- */
+body.dev-touch .win .tbtns button{width:17px;height:17px}
+body.dev-touch .win .ttl{height:46px}
+body.dev-touch #omnibar button,body.dev-touch #tray button{min-width:36px;min-height:36px}
+body.dev-touch .widget .wgh{opacity:1;pointer-events:auto}   /* no hover to reveal the grip */
+body.dev-touch .dockb::before,body.dev-touch .tbwin::before,
+body.dev-touch .tbnat::before,body.dev-touch #startbtn::before{display:none}   /* tooltips need a cursor */
+body.dev-touch ::-webkit-scrollbar{width:0;height:0}
+
+/* ================================================================
+   TABLET — windows still float, but the chrome slims down and the
+   deck/dock scale to a hand rather than a mouse.
+   ================================================================ */
+body.dev-tablet{--mbh:32px;--tbh:132px}
+body.dev-tablet #menubar{padding:0 10px;gap:8px}
+body.dev-tablet #mbwidgets{display:none}
+body.dev-tablet #tray{gap:9px}
+body.dev-tablet #taskbar{max-width:calc(100vw - 20px)}
+body.dev-tablet .dockb .aicon,body.dev-tablet .tbwin .aicon,
+body.dev-tablet .tbnat .aicon,body.dev-tablet #startbtn .mark{width:42px;height:42px}
+body.dev-tablet #tbnative{max-width:22vw}
+body.dev-tablet #deck{width:calc(100vw - 24px)}
+body.dev-tablet .deck-tile{width:76px}
+body.dev-tablet #omnibar{width:min(560px,92vw)}
+body.dev-tablet #omnicards{width:min(560px,92vw)}
+body.dev-tablet #barwidgets{display:none!important}     /* the bar needs the whole width */
+body.dev-tablet #ccpop,body.dev-tablet #notifpanel{width:min(380px,calc(100vw - 20px))}
+/* a 208px rail inside a 700px window is half the app — collapse to icons */
+body.dev-tablet .cside{width:150px;min-width:150px}
+body.dev-tablet .stside{flex-basis:170px;width:170px;max-width:170px}
+
+/* ================================================================
+   MOBILE — one thing at a time. Windows become full-bleed sheets, the
+   dock becomes a fixed bottom bar, the launcher becomes a full screen
+   of apps, and every popover becomes a bottom sheet.
+   ================================================================ */
+body.dev-mobile{--mbh:34px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
+  /* the bottom chrome a phone always shows: dock (64) + prompt bar (48) + gaps.
+     Windows and the deck both reserve it so nothing hides behind the agent. */
+  --chrome-b:calc(132px + var(--safe-b));
+  overscroll-behavior:none}
+
+/* ---- menu bar: identity + status only ---- */
+body.dev-mobile #menubar{height:calc(var(--mbh) + var(--safe-t));padding:var(--safe-t) 10px 0;gap:6px}
+body.dev-mobile #mbmenus,body.dev-mobile #mbwidgets,
+body.dev-mobile #pager,body.dev-mobile #mbapp{display:none!important}
+body.dev-mobile #tray{gap:6px;padding-left:0}
+body.dev-mobile #tray-voice,body.dev-mobile #tray-power{padding:2px 5px}
+body.dev-mobile #tbclock .dt{display:none}
+
+/* ---- windows are sheets: full canvas, no chrome to drag or resize ---- */
+body.dev-mobile #desktop{inset:calc(var(--mbh) + var(--safe-t)) 0 0 0}
+body.dev-mobile .win{inset:0!important;left:0!important;top:0!important;
+  width:100%!important;height:100%!important;max-width:none!important;
+  min-width:0!important;min-height:0!important;
+  border-radius:0!important;border:none!important;resize:none!important;
+  padding-bottom:var(--chrome-b)}
+body.dev-mobile .win .rz{display:none!important}
+body.dev-mobile .win .ttl{grid-template-columns:auto 1fr auto;height:48px;padding:0 12px}
+body.dev-mobile .win .tbtns .mn,body.dev-mobile .win .tbtns .mx{display:none}
+body.dev-mobile .win .tbtns .cls{width:26px;height:26px;border-radius:var(--r-full);
+  background:var(--bg4);border:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+body.dev-mobile .win .tname{font-size:var(--fs-base)}
+body.dev-mobile .copanel{display:none!important}   /* the copilot rail needs a second column */
+
+/* ---- in-app rails collapse: a phone shows one pane ---- */
+body.dev-mobile .cside,body.dev-mobile .stside{display:none!important}
+body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;padding-right:12px}
+body.dev-mobile .msg.user .bubble{max-width:92%}
+body.dev-mobile .pad{padding:12px 14px}
+body.dev-mobile table.plist,body.dev-mobile table.loglist{font-size:var(--fs-xs)}
+/* app toolbars are built for a wide window — let them wrap instead of clipping */
+body.dev-mobile #topbar,body.dev-mobile .stcompose{flex-wrap:wrap}
+body.dev-mobile #topbar>select,body.dev-mobile #modelsel{flex:1 1 46%;min-width:0;max-width:none}
+body.dev-mobile .stcompose .stmodel{max-width:none;flex:1 1 100%}
+body.dev-mobile .psearch{max-width:none}
+/* a one-row textarea can't show a three-line placeholder — truncate it instead */
+body.dev-mobile #input::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* wide tables and code stay inside the sheet by scrolling themselves */
+body.dev-mobile .pad table,body.dev-mobile .pbody table{display:block;overflow-x:auto}
+body.dev-mobile pre{overflow-x:auto}
+
+/* ---- the dock becomes a fixed bottom bar ---- */
+body.dev-mobile #taskbar{left:0;right:0;bottom:0;transform:none;max-width:none;
+  border-radius:0;border:none;border-top:1px solid var(--hairline);
+  padding:8px 10px calc(8px + var(--safe-b));gap:6px;
+  justify-content:space-between;align-items:center;overflow:hidden}
+body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+body.dev-mobile #dock::-webkit-scrollbar{display:none}
+body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
+body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
+body.dev-mobile #tbnative,body.dev-mobile .dsep{display:none!important}
+body.dev-mobile .dockb .aicon,body.dev-mobile .tbwin .aicon,
+body.dev-mobile #startbtn .mark{width:40px;height:40px}
+body.dev-mobile .dockb:hover,body.dev-mobile .tbwin:hover,body.dev-mobile #startbtn:hover{transform:none}
+body.dev-mobile .dockb:active,body.dev-mobile .tbwin:active,body.dev-mobile #startbtn:active{transform:scale(.92)}
+/* the auto-hide-on-maximize trick is wrong here — every window is maximized */
+body.dev-mobile.dock-hide #taskbar{transform:none;opacity:1;pointer-events:auto}
+
+/* ---- the prompt bar spans the width, just above the dock ---- */
+body.dev-mobile #omnibar{left:10px;right:10px;width:auto;transform:none;
+  bottom:calc(72px + var(--safe-b));height:48px;z-index:9100}
+body.dev-mobile #omnibar.pop{width:auto;height:52px}
+body.dev-mobile #omni-in{min-width:0}   /* the input yields, the buttons never clip */
+body.dev-mobile #omnicards{left:10px;right:10px;width:auto;transform:none;
+  bottom:var(--chrome-b);z-index:9100}
+body.dev-mobile .ocard{max-height:48vh}
+body.dev-mobile #omnilist{max-height:min(56vh,440px)}
+body.dev-mobile #barwidgets{display:none!important}
+
+/* ---- the deck fills what's left: one column of full-width groups ---- */
+/* column-reverse puts the ▾ toggle under the list, where a thumb reaches it */
+/* align-items:flex-end is a right-edge pin once the axis flips — stretch instead */
+body.dev-mobile #deck{left:0;right:0;width:auto;transform:none;
+  flex-direction:column-reverse;align-items:stretch;
+  bottom:var(--chrome-b);max-height:calc(100% - var(--chrome-b) - 24px);padding:0 10px 4px}
+body.dev-mobile #deck-toggle{align-self:center;margin:0 0 4px}
+body.dev-mobile #deck-scroll{flex-wrap:nowrap;flex-direction:column;
+  align-content:stretch;justify-content:flex-start;gap:8px}
+body.dev-mobile .deck-group{flex:none;width:100%}
+body.dev-mobile .deck-tiles{grid-template-rows:none;grid-auto-flow:row;
+  grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:2px}
+body.dev-mobile .deck-tile{width:auto}
+body.dev-mobile .deck-new{width:100%;height:64px;flex-direction:row;gap:8px}
+body.dev-mobile .deck-wgroup .deck-wframe{width:100%}
+body.dev-mobile #widgets{display:none}   /* free-floating widgets need a canvas */
+
+/* ---- launcher and popovers become sheets pinned to the bottom edge ---- */
+body.dev-mobile #startmenu{left:0;right:0;bottom:0;top:calc(var(--mbh) + var(--safe-t));
+  width:auto;transform:none;border-radius:0;border:none;
+  display:none;flex-direction:column;padding-bottom:var(--safe-b)}
+body.dev-mobile #startmenu.show{display:flex;animation:sheetup .18s var(--ease-out)}
+@keyframes sheetup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+body.dev-mobile #smapps{flex:1;max-height:none;
+  grid-template-columns:repeat(auto-fill,minmax(84px,1fr));align-content:start}
+body.dev-mobile #ccpop,body.dev-mobile #notifpanel,body.dev-mobile #powermenu{
+  top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;
+  max-height:76vh;border-radius:var(--r-xl) var(--r-xl) 0 0;
+  padding-bottom:calc(10px + var(--safe-b));z-index:10500}
+body.dev-mobile #powermenu button{padding:12px 14px;font-size:var(--fs-base)}
+body.dev-mobile #notifpanel .np-item{padding:10px 12px}
+
+/* ---- overlays sized for a phone ---- */
+body.dev-mobile #palbox,body.dev-mobile #keysbox{width:calc(100vw - 20px)}
+body.dev-mobile #swbox{max-width:calc(100vw - 24px)}
+body.dev-mobile .swcard{width:88px}
+body.dev-mobile .wiz-stage{width:calc(100vw - 24px)}
+body.dev-mobile #shell-exit,body.dev-mobile #js-exit{top:calc(var(--safe-t) + 6px);right:8px}
+
+/* the voice experience is the one shell that already fills the screen — just
+   stack its two columns so the orb keeps the room it needs */
+body.dev-mobile #js-mid{flex-direction:column}
+body.dev-mobile #js-side{width:auto;padding:0 14px 10px}
+body.dev-mobile #js-orb{width:150px;height:150px}
+body.dev-mobile #js-orb .rg.a{width:96px;height:96px}
+body.dev-mobile #js-orb .rg.b{width:124px;height:124px}
+body.dev-mobile #js-orb .rg.c{width:150px;height:150px}
+body.dev-mobile #js-orb .core{width:66px;height:66px}
+body.dev-mobile .js-node{width:60px;height:60px}
+body.dev-mobile #js-top{padding:10px 14px}
+body.dev-mobile #js-bottom{padding:0 14px calc(16px + var(--safe-b))}
