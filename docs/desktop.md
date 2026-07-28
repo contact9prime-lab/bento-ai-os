@@ -11,6 +11,12 @@ taskbar, virtual desktops, widgets, themes, shortcuts — and the catalog of bui
 Every app opens in a draggable, resizable window with minimize / maximize / close and proper
 z-ordering. Double-click a title bar to maximize. The **taskbar** at the bottom tracks open windows.
 
+### The app deck & system apps
+Apps live in bento groups on the deck above the prompt bar. Alongside your groups, a **System
+apps** group lists the applications installed on the machine itself, with their real icons — in
+every run mode, whether AgentOS *is* your session or a window inside someone else's. Click one to
+launch it on the host; right-click for *Show all applications*, or to hide the group.
+
 ### Start menu & dock
 - **Start** (bottom-left) opens the full app menu with descriptions.
 - The **dock** next to Start holds quick-launch shortcuts for your favorite apps, each showing a dot
@@ -142,8 +148,20 @@ A step is one of:
 | `theme` | apply a theme |
 | `wallpaper` | set a built-in wallpaper |
 | `desktop` | switch virtual desktop |
-| `agent` | put the agent on a task |
+| `agent` | put the agent on a task — the model decides how |
+| `tool` | call any agent or **MCP** tool directly with JSON arguments — no model in the loop |
+| `python` | run Python on this machine |
 | `wait` | pause between steps |
+
+`agent` and `tool`/`python` are the two halves of the same idea. Use `agent` when the step needs
+judgement ("summarise what changed today"); use `tool` or `python` when it is exact and should come
+out the same way every time. A `tool` step can reach anything the agent can, including every tool
+your connected [MCP servers](integrations.md) expose — so an automation can pull a Linear issue,
+query a database, or hit an internal API without a model deciding how.
+
+Both go through `/api/tool`, which means they inherit the **permission gate**: an automation gets
+no more reach than the agent has, it just skips the model. Their output surfaces as a card above
+the prompt bar, so a routine that computes something actually shows you what it found.
 
 **Ad-hoc, four ways:** type its name in the prompt bar, press **Run** in the
 Automations app, bind it to a hot corner, or ask the agent for it by name

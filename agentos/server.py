@@ -17,6 +17,7 @@ from . import config as cfgmod
 from . import fabric as fabricmod
 from . import knowledge
 from . import providers
+from . import remote as remotemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
@@ -231,14 +232,53 @@ async def shutdown():
 # UI + REST
 # ---------------------------------------------------------------------------
 
+# The desktop shell and the lock screen are the same URL with different answers,
+# so neither may be cached: a browser that kept the lock screen would show it
+# again after a successful sign-in (and, worse, could serve the desktop from
+# cache after a sign-out).
+NO_STORE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
+
+
 @app.get("/")
 async def index():
-    return FileResponse(UI_DIR / "index.html")
+    return FileResponse(UI_DIR / "index.html", headers=NO_STORE)
 
 
 ASSET_TYPES = {".css": "text/css", ".js": "application/javascript",
                ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
                ".woff2": "font/woff2", ".json": "application/json"}
+
+
+@app.get("/manifest.webmanifest")
+async def ui_manifest():
+    """Add to Home Screen on iOS/Android. `display: standalone` is what strips
+    the browser chrome, which is the whole reason a phone can feel like a client
+    for this rather than a tab pointed at it."""
+    return JSONResponse({
+        "name": "AgentOS", "short_name": "AgentOS",
+        "description": "Your machine, with a brain.",
+        "start_url": "/", "scope": "/",
+        "display": "standalone", "orientation": "any",
+        "background_color": "#0b0d10", "theme_color": "#0b0d10",
+        "icons": [
+            {"src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/assets/icon-maskable-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"},
+        ],
+    }, media_type="application/manifest+json")
+
+
+@app.get("/apple-touch-icon.png")
+@app.get("/apple-touch-icon-precomposed.png")
+async def ui_apple_icon():
+    # iOS looks for this at the site root before it reads the manifest
+    return FileResponse(UI_DIR / "assets" / "apple-touch-icon.png", media_type="image/png")
+
+
+@app.get("/favicon.ico")
+async def ui_favicon():
+    return FileResponse(UI_DIR / "assets" / "icon-192.png", media_type="image/png")
 
 
 @app.get("/assets/{name:path}")
@@ -2711,6 +2751,49 @@ async def app_privilege_guard(request: Request, call_next):
     return await call_next(request)
 
 
+# ---------------------------------------------------------------------------
+# Remote access gate.
+#
+# Declared after app_privilege_guard on purpose: Starlette runs the LAST
+# registered middleware FIRST, and nothing else in this file should ever see a
+# request from the network that has not proved it may be here.
+#
+# Loopback is trusted because the kernel, not a header, decides the source
+# address — so using AgentOS on the machine it runs on is unchanged whether or
+# not remote access is on.
+# ---------------------------------------------------------------------------
+
+REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/assets/", "/manifest.webmanifest",
+                     "/favicon.ico", "/apple-touch-icon.png")
+
+
+def _client_addr(request: Request) -> str:
+    return (request.client.host if request.client else "") or ""
+
+
+def _authed(request: Request) -> bool:
+    cfg = state["cfg"]
+    if not remotemod.enabled(cfg):
+        return True                                     # loopback-only: nothing to gate
+    if cfg["remote"].get("trust_loopback", True) and remotemod.is_loopback(_client_addr(request)):
+        return True
+    return remotemod.valid_session(cfg, request.cookies.get(remotemod.COOKIE, ""))
+
+
+@app.middleware("http")
+async def remote_access_gate(request: Request, call_next):
+    if _authed(request):
+        return await call_next(request)
+    path = request.url.path
+    if path.startswith(REMOTE_OPEN_PATHS):
+        return await call_next(request)
+    # an API caller gets a machine-readable 401; a browser gets the sign-in page
+    if path.startswith("/api/") or path.startswith("/ws"):
+        return JSONResponse({"error": "sign in required", "login": "/login"},
+                            status_code=401, headers=NO_STORE)
+    return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
+
+
 # ---- Run a single tool (for AI-built apps to reach the OS / MCP) -----------------
 
 def _principal_of(request) -> Principal:
@@ -3355,7 +3438,8 @@ async def api_wallpaper_system():
 # fired from the palette, a hot corner, a schedule, or the agent's own tool.
 # ---------------------------------------------------------------------------
 
-AUTOMATION_STEP_KINDS = {"app", "action", "theme", "wallpaper", "desktop", "agent", "wait"}
+AUTOMATION_STEP_KINDS = {"app", "action", "theme", "wallpaper", "desktop",
+                         "agent", "tool", "python", "wait"}
 
 
 def _clean_steps(steps) -> list[dict]:
@@ -3369,15 +3453,119 @@ def _clean_steps(steps) -> list[dict]:
         if kind not in AUTOMATION_STEP_KINDS:
             continue
         step = {"kind": kind}
-        for k in ("app", "action", "theme", "wallpaper", "prompt"):
+        for k in ("app", "action", "theme", "wallpaper", "prompt", "tool", "code"):
             if s.get(k):
-                step[k] = str(s[k])[:4000]
+                step[k] = str(s[k])[:20000]
+        if kind == "tool":
+            if not step.get("tool"):
+                continue                      # a tool step without a tool is nothing
+            args = s.get("args")
+            if isinstance(args, dict):
+                args = json.dumps(args)
+            step["args"] = str(args or "{}")[:20000]
+        if kind == "python" and not step.get("code"):
+            continue
         if kind == "desktop":
             step["desk"] = max(1, min(9, int(s.get("desk") or 1)))
         if kind == "wait":
             step["ms"] = max(0, min(60000, int(s.get("ms") or 500)))
         out.append(step)
     return out[:40]
+
+
+# ---------------------------------------------------------------------------
+# Remote access: the sign-in surface and the switch that turns it all on.
+# ---------------------------------------------------------------------------
+
+@app.get("/login")
+async def login_page():
+    return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
+
+
+@app.post("/api/remote/login")
+async def api_remote_login(body: dict, request: Request):
+    cfg = state["cfg"]
+    addr = _client_addr(request)
+    if not remotemod.enabled(cfg):
+        return {"ok": True}                        # nothing to sign in to
+    wait = remotemod.locked_for(addr)
+    if wait:
+        return JSONResponse({"error": f"too many attempts — try again in {wait}s"},
+                            status_code=429)
+    if not remotemod.check_passphrase(cfg, (body or {}).get("passphrase", "")):
+        held = remotemod.note_failure(addr)
+        state["store"].log("system", "remote sign-in failed", {"from": addr})
+        return JSONResponse(
+            {"error": "wrong passphrase" + (f" — locked out for {held}s" if held else "")},
+            status_code=401)
+    remotemod.note_success(addr)
+    state["store"].log("system", "remote sign-in", {"from": addr})
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(remotemod.COOKIE, remotemod.issue_session(cfg),
+                    max_age=int(cfg["remote"].get("session_days") or 30) * 86400,
+                    httponly=True, samesite="lax", path="/")
+    return resp
+
+
+@app.post("/api/remote/logout")
+async def api_remote_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(remotemod.COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/remote")
+async def api_remote_status():
+    return remotemod.status(state["cfg"])
+
+
+@app.post("/api/remote")
+async def api_remote_configure(body: dict, request: Request):
+    """Turn remote access on/off and set the passphrase.
+
+    Deliberately *not* reachable through configure_agentos: exposing this machine
+    to the network is a decision for the person sitting at it, so the call must
+    come from loopback. An agent, an app, or someone already signed in remotely
+    cannot widen this on their own.
+    """
+    cfg = state["cfg"]
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse(
+            {"error": "remote access can only be changed from the machine itself"},
+            status_code=403)
+    body = body or {}
+    r = cfg.setdefault("remote", {})
+
+    if "passphrase" in body:
+        pw = body["passphrase"] or ""
+        if pw:
+            problem = remotemod.passphrase_problem(pw)
+            if problem:
+                return JSONResponse({"error": problem}, status_code=400)
+            r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
+            remotemod.reset_failures()
+        else:
+            r["pass_hash"] = r["pass_salt"] = ""      # clearing it also disarms below
+
+    if "enabled" in body:
+        want = bool(body["enabled"])
+        if want and not r.get("pass_hash"):
+            return JSONResponse({"error": "set a passphrase before enabling remote access"},
+                                status_code=400)
+        r["enabled"] = want
+    for k in ("bind", "session_days", "trust_loopback"):
+        if k in body:
+            r[k] = body[k]
+
+    remotemod.sanitize_remote(cfg)
+    cfgmod.save_config(cfg)
+    state["store"].log("system", f"remote access {'enabled' if remotemod.enabled(cfg) else 'disabled'}",
+                       {"bind": r.get("bind")})
+    await state["broadcast"]({"type": "remote"})
+    st = remotemod.status(cfg)
+    st["restart_required"] = remotemod.enabled(cfg) and \
+        os.environ.get("AGENTOS_BOUND_HOST", "127.0.0.1") != remotemod.bind_host(cfg)
+    return st
 
 
 @app.get("/api/automations")
@@ -4196,9 +4384,25 @@ def _chat_images(data: dict, limit: int = 4) -> list[str]:
 # WebSocket: host terminal (PTY)
 # ---------------------------------------------------------------------------
 
+def _ws_authed(ws) -> bool:
+    """Websockets do not pass through HTTP middleware, so the same gate is
+    applied by hand here — a socket is a longer-lived and more capable channel
+    than any REST call, and the terminal one is literally a shell."""
+    cfg = state["cfg"]
+    if not remotemod.enabled(cfg):
+        return True
+    if cfg["remote"].get("trust_loopback", True) and \
+       remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
+        return True
+    return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+
+
 @app.websocket("/ws/terminal")
 async def ws_terminal(ws: WebSocket):
     """A real shell on the host, bridged to xterm.js in the Terminal app."""
+    if not _ws_authed(ws):
+        await ws.close(code=4401)
+        return
     import fcntl
     import os
     import pty
@@ -5014,6 +5218,9 @@ async def run_build(data: dict):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    if not _ws_authed(ws):
+        await ws.close(code=4401)
+        return
     await ws.accept()
     state["clients"].add(ws)
     turns, build = state["turns"], state["build"]

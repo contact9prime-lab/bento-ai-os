@@ -84,16 +84,34 @@ function buildDeck(){
   DECK._shown=open;
   box.innerHTML=`<button id="deck-toggle" title="${open?`Hide the deck on Desktop ${curDesk} (Ctrl+Shift+D)`:`Show the deck on Desktop ${curDesk} (Ctrl+Shift+D)`}">${open?'▾':'▴'}</button>
     <div id="deck-scroll">${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
+      ${deckNativeHTML()}
       ${deckWidgetsHTML()}
       <button class="deck-new" title="New group">＋<span>New group</span></button>
     </div>`;
   $('#deck-toggle').onclick=deckToggle;
   box.querySelector('.deck-new').onclick=deckNewGroup;
-  box.querySelectorAll('.deck-tile').forEach(t=>{
+  box.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
     t.onclick=()=>openApp(t.dataset.app);
     t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
   });
-  box.querySelectorAll('.deck-gname').forEach(h=>{
+  box.querySelectorAll('.deck-nat').forEach(t=>{
+    t.onclick=()=>launchNative(t.dataset.nat,t.dataset.natname);
+    t.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
+      {label:'Open',fn:()=>launchNative(t.dataset.nat,t.dataset.natname)},
+      {label:'Show all applications',fn:()=>openApp('apps')},
+      null,
+      {label:'Hide system apps from the deck',fn:deckToggleNative},
+    ])};
+  });
+  const more=box.querySelector('.deck-natmore');
+  if(more)more.onclick=()=>openApp('apps');
+  box.querySelectorAll('.deck-gname[data-native]').forEach(h=>{
+    h.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
+      {label:'Show all applications',fn:()=>openApp('apps')},
+      {label:'Hide system apps from the deck',fn:deckToggleNative},
+    ])};
+  });
+  box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
   });
   deckMeasure(open);
@@ -116,6 +134,28 @@ function deckGroupHTML(g){
         ${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
   </div>`;
 }
+/* ---- system apps ----
+   The machine's own applications belong on the same shelf as AgentOS's. This is
+   a SYNTHESIZED group rather than a stored one: the host's app list changes
+   whenever something is installed, so it is read from /api/native/apps every
+   time instead of being frozen into localStorage like the user's own groups.
+   It shows in every run mode — AgentOS being the session or a window inside
+   someone else's is not a reason to hide the machine's apps. */
+const DECK_NATIVE_MAX=14;
+function deckNativeHidden(){return !!(DECK&&DECK.hide_native)}
+function deckNativeHTML(){
+  const apps=(typeof NATIVEAPPS!=='undefined'?NATIVEAPPS:[]);
+  if(!apps.length||deckNativeHidden())return '';
+  const show=apps.slice(0,DECK_NATIVE_MAX), rest=apps.length-show.length;
+  return `<div class="deck-group deck-native">
+    <div class="deck-gname" data-native="1">System apps <span class="mut">${apps.length}</span></div>
+    <div class="deck-tiles">${show.map(a=>`
+      <button class="deck-tile deck-nat" data-nat="${esc(a.id)}" data-natname="${esc(a.name)}"
+              title="${esc(a.comment||a.name)}">${nativeIcon(a,46)}<span>${esc(a.name)}</span></button>`).join('')}
+      ${rest>0?`<button class="deck-tile deck-natmore" title="Every installed application">
+        ${appIcon('apps',46)}<span>+${rest} more</span></button>`:''}</div>
+  </div>`;
+}
 function deckWidgetsHTML(){
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
   const here=(WIDGETS||[]).filter(w=>w.place==='deck'&&apps[w.app_id]);
@@ -124,6 +164,11 @@ function deckWidgetsHTML(){
       <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
     <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
   </div>`).join('');
+}
+function deckToggleNative(){
+  DECK.hide_native=!deckNativeHidden();deckSave();buildDeck();
+  toast(DECK.hide_native?'system apps hidden — right-click any group header to bring them back'
+                        :'system apps back on the deck');
 }
 async function deckNewGroup(){
   const name=await osPrompt('Name the new group',{placeholder:'e.g. Work',confirmText:'Create'});
@@ -155,6 +200,7 @@ function deckGroupMenu(e,gid){
     {label:'Move group left',fn:()=>{const i=DECK.groups.indexOf(g);if(i>0){DECK.groups.splice(i,1);DECK.groups.splice(i-1,0,g);deckSave();buildDeck()}}},
     {label:'Move group right',fn:()=>{const i=DECK.groups.indexOf(g);if(i<DECK.groups.length-1){DECK.groups.splice(i,1);DECK.groups.splice(i+1,0,g);deckSave();buildDeck()}}},
     null,
+    {label:(deckNativeHidden()?'Show system apps':'Hide system apps'),fn:deckToggleNative},
     {label:(DECK.auto?'Always show the deck':'Hide the deck while working'),fn:()=>{
       DECK.auto=!DECK.auto;DECK.open=true;DECK._override=undefined;deckSave();buildDeck();
       toast(DECK.auto?'the deck steps aside while you work':'the deck always shows')}},

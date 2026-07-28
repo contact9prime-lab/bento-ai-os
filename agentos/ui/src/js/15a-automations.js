@@ -10,6 +10,17 @@
    in this one function and they can never drift apart. */
 
 let AUTOMATIONS=[];
+/* Every tool a `tool` step can call — the agent's own plus whatever the user's
+   connected MCP servers expose, so the picker grows with the machine. */
+let TOOLNAMES=[], TOOLDESCS={};
+async function loadToolNames(){
+  try{
+    const d=await (await fetch('/api/tools')).json();
+    TOOLNAMES=(d.tools||[]).map(t=>t.name).sort();
+    TOOLDESCS={};(d.tools||[]).forEach(t=>TOOLDESCS[t.name]=t.description||'');
+  }catch(e){TOOLNAMES=[]}
+  return TOOLNAMES;
+}
 async function loadAutomations(){
   try{AUTOMATIONS=(await (await fetch('/api/automations')).json()).automations||[]}catch(e){AUTOMATIONS=[]}
   return AUTOMATIONS;
@@ -37,6 +48,8 @@ function automationStepLabel(s){
     case 'desktop':return 'Go to desktop '+s.desk;
     case 'wait':return 'Wait '+s.ms+'ms';
     case 'agent':return 'Ask: '+String(s.prompt||'').slice(0,70);
+    case 'tool':return 'Call '+s.tool+(s.args&&s.args!=='{}'?' '+String(s.args).slice(0,40):'');
+    case 'python':return 'Python: '+String(s.code||'').replace(/\s+/g,' ').slice(0,60);
   }
   return s.kind;
 }
@@ -50,7 +63,35 @@ async function runAutomationStep(s){
     case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
     case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
     case 'agent':    palAsk(s.prompt); break;
+    // tool and python go to the server, where the permission gate lives — an
+    // automation gets no more reach than the agent does, it just skips the model
+    case 'tool':     await runAutomationTool(s.tool,s.args); break;
+    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
   }
+}
+async function runAutomationTool(name,args){
+  let parsed={};
+  try{parsed=args?JSON.parse(args):{}}catch(e){return toast('automation: '+name+' args are not valid JSON')}
+  try{
+    const r=await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,args:parsed})});
+    const d=await r.json();
+    // /api/tool answers {output} on success and {error} when the permission gate
+    // says no (403) — an automation must surface the refusal, not swallow it
+    const out=String(d.output??d.error??'');
+    if(!r.ok||d.error||out.startsWith('[error]')||out.startsWith('[denied]'))
+      toast(name+': '+out.slice(0,140));
+    else if(out.trim())automationOutput(name,out);
+    return out;
+  }catch(e){toast(name+' failed: '+e.message)}
+}
+/* Tool and Python steps produce real output; it surfaces as an omnibar card so
+   a routine that computes something actually shows you what it found. */
+function automationOutput(name,out){
+  if(typeof omniCard!=='function')return toast(name+': '+out.slice(0,120));
+  const c=omniCard(name);
+  c.feed.innerHTML='<pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:var(--fs-sm)">'
+    +esc(out.slice(0,4000))+'</pre>';
 }
 let AUTO_RUNNING=false;
 async function runAutomation(a){
@@ -131,6 +172,7 @@ function autoCardHTML(a){
   </div>`;
 }
 function autoEdit(id){
+  if(!TOOLNAMES.length)loadToolNames().then(()=>{if(AUTO_DRAFT)refreshApp('automations')});
   const a=id?AUTOMATIONS.find(x=>x.id===id):null;
   AUTO_DRAFT=a?{id:a.id,name:a.name,icon:a.icon||'',steps:JSON.parse(JSON.stringify(a.steps))}:autoNewDraft();
   refreshApp('automations');
@@ -158,6 +200,8 @@ function autoBuilderHTML(d){
         <option value="wallpaper">Set a wallpaper</option>
         <option value="desktop">Switch virtual desktop</option>
         <option value="agent">Put the agent on a task</option>
+        <option value="tool">Call a tool (agent or MCP)</option>
+        <option value="python">Run Python</option>
         <option value="wait">Wait</option>
       </select>
       <span id="auto-arg" style="flex:1;min-width:180px;display:flex">
@@ -175,6 +219,11 @@ function autoBuilderHTML(d){
     <template id="auto-opts-wallpaper"><select id="auto-val">${wallOpts}</select></template>
     <template id="auto-opts-desktop"><select id="auto-val">${[1,2,3,4,5,6].map(n=>`<option value="${n}">Desktop ${n}</option>`).join('')}</select></template>
     <template id="auto-opts-agent"><input id="auto-val" placeholder="What should the agent do? e.g. summarise my unread notifications"></template>
+    <template id="auto-opts-tool"><span style="display:flex;gap:8px;flex:1;min-width:0">
+      <select id="auto-val" style="flex:1;min-width:0">${(TOOLNAMES||[]).map(t=>`<option value="${esc(t)}" title="${esc((TOOLDESCS[t]||'').slice(0,140))}">${esc(t)}</option>`).join('')}</select>
+      <input id="auto-args" placeholder='{"arg": "value"}' value="{}" style="flex:1;min-width:0;font-family:var(--mono)">
+    </span></template>
+    <template id="auto-opts-python"><textarea id="auto-val" rows="4" placeholder="print('hello from your automation')" style="font-family:var(--mono);width:100%"></textarea></template>
     <template id="auto-opts-wait"><input id="auto-val" type="number" min="0" max="60000" step="100" value="500" placeholder="milliseconds"></template>
   </div>`;
 }
@@ -194,6 +243,13 @@ function autoAdd(){
   else if(kind==='desktop')step.desk=+v||1;
   else if(kind==='wait')step.ms=+v||500;
   else if(kind==='agent'){if(!String(v).trim())return toast('what should the agent do?');step.prompt=v}
+  else if(kind==='tool'){
+    if(!v)return toast('pick a tool');
+    const a=$('#auto-args')?$('#auto-args').value.trim()||'{}':'{}';
+    try{JSON.parse(a)}catch(e){return toast('the tool arguments must be valid JSON')}
+    step.tool=v;step.args=a;
+  }
+  else if(kind==='python'){if(!String(v).trim())return toast('write some Python first');step.code=v}
   AUTO_DRAFT.steps.push(step);autoKeepFields();refreshApp('automations');
 }
 function autoMove(i,d){

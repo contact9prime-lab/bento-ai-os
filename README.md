@@ -29,6 +29,32 @@ troubleshooting.
 | ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
 
+### Five design languages, not five palettes
+
+![The five built-in design-language themes: Bento, Liquid Glass, Spatial, Claymorphism, Minimalism](docs/screenshots/themes.png)
+
+**Bento · Liquid Glass · Spatial · Claymorphism · Minimalism.** Each re-cuts the whole shell —
+surfaces, radii, elevation, blur, type — and brings its own wallpaper. The wallpapers ship with
+AgentOS as SVG: a few KB each, sharp from a phone to a 4K panel.
+[More →](docs/desktop.md#themes)
+
+### One desktop, every screen
+
+![AgentOS on a phone: the lock screen, the desktop laid out for a phone, and an app as a full-bleed sheet](docs/screenshots/mobile.png)
+
+Phone, tablet, workstation — the same desktop, adapting. Windows become full-bleed sheets, the
+dock spans the bottom edge, popovers become sheets. Turn on **Remote access** and reach it from
+your phone over your network, behind a passphrase; *Add to Home Screen* makes it a full-screen
+app. [Remote access →](docs/remote-access.md) · [Responsive layout →](docs/desktop.md#phone-tablet-desktop)
+
+### Automations & hot corners
+
+![The Automations app with saved routines and the hot-corner map, and the step builder](docs/screenshots/automations.png)
+
+Name a sequence once — open these apps, switch theme, run this Python, call that MCP tool, put the
+agent on a task — and run it forever after from the prompt bar, a hot corner, a schedule, or by
+asking for it by name. [More →](docs/desktop.md#automations)
+
 ---
 
 ## Why AgentOS
@@ -38,7 +64,8 @@ troubleshooting.
 - **An agent with hands** — shell commands, file management, web research, desktop notifications,
   scheduled jobs, HTML reports, and app-building, all from plain language.
 - **Local-first and private** — everything can run on your hardware with Ollama; nothing leaves
-  your machine unless you add a cloud key. Binds to localhost only.
+  your machine unless you add a cloud key. Binds to localhost only, until you deliberately turn on
+  passphrase-protected [remote access](docs/remote-access.md) to reach it from your phone.
 - **The whole lifecycle under one roof** — **Train · Test · Operate · Build · Ship · Manage**,
   live on one screen (Mission Control): fine-tune your own models on your GPU (the Train app,
   LoRA included), test-gate every self-modification, run scheduled jobs, build apps, and ship

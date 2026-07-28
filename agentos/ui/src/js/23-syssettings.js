@@ -1,6 +1,6 @@
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
-const SYS_TABS=['Network','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
+const SYS_TABS=['Network','Remote access','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
 function sysTab(i){SYS.tab=i;refreshApp('syssettings')}
 async function renderSysSettings(body){
   body.innerHTML=`<div class="pad">
@@ -8,7 +8,7 @@ async function renderSysSettings(body){
     <div id="sys-body"><p class="mut">…</p></div></div>`;
   const el=$('#sys-body');
   try{
-    await [sysNet,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
+    await [sysNet,sysRemote,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
   }catch(e){el.innerHTML=`<p class="mut">${esc(String(e))}</p>`}
 }
 function sigBars(s){return s>75?'▂▄▆█':s>50?'▂▄▆':s>25?'▂▄':'▂'}
@@ -239,3 +239,85 @@ async function sysComponents(el){
     (shown above), so each one installs only when you say yes to it.</p>`;
 }
 
+
+/* ================= Remote access =================
+   Reach this desktop from your phone. Off until a human turns it on here and
+   sets a passphrase — and the server only accepts this call from the machine
+   itself, so nothing signed in remotely (and no agent, and no app) can widen
+   its own access. */
+let REMOTE={};
+async function sysRemote(el){
+  try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
+  const on=!!REMOTE.enabled, set=!!REMOTE.configured;
+  el.innerHTML=`
+    <div class="provbox">
+      <div class="ptitle">Remote access
+        <span class="rm-pill ${on?'on':''}">${on?'ON':'off'}</span></div>
+      <p class="mut" style="margin-top:8px;line-height:1.6">
+        Serve this desktop to your phone or another machine on your network.
+        <b>Everything you can do here, whoever signs in can do too</b> — including the
+        Terminal and the agent's shell — so it stays off until you set a passphrase.
+        Using AgentOS on this machine is unaffected either way.</p>
+
+      <label style="margin-top:14px">${set?'Change the passphrase':'Set a passphrase'}</label>
+      <div class="row" style="gap:8px">
+        <input id="rm-pw" type="password" autocomplete="new-password"
+               placeholder="at least 8 characters — a phrase beats a word" style="flex:1">
+        <button class="endbtn" onclick="rmSetPass()">${set?'Update':'Set'}</button>
+      </div>
+      ${set?'<p class="mut" style="margin-top:6px;font-size:11px">A passphrase is set. Changing it signs every remote device out.</p>':''}
+
+      <div class="row" style="margin-top:16px;gap:10px;align-items:center">
+        <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
+                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase first"'}>
+          ${on?'Turn remote access off':'Turn remote access on'}</button>
+        <span class="mut" style="font-size:12px">${set?'':'a passphrase is required first'}</span>
+      </div>
+    </div>
+
+    ${on?`<div class="provbox">
+      <div class="ptitle">Reach it from your phone</div>
+      ${(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
+          <div class="rm-row"><code>${esc(a)}</code>
+            <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
+        :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
+      <p class="mut" style="margin-top:10px;line-height:1.6">
+        Open that on your phone, sign in with the passphrase, then
+        <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
+        full-screen app with no browser chrome. The layout adapts to the phone on its own.</p>
+      ${REMOTE.listening_on&&REMOTE.listening_on!=='127.0.0.1'?'':
+        '<p class="mut" style="margin-top:8px;color:var(--warn)">Restart AgentOS for this to take effect — it is still listening on loopback only.</p>'}
+    </div>`:''}
+
+    <div class="provbox">
+      <div class="ptitle">Before you open it up</div>
+      <ul class="rm-notes">
+        <li>This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is.</li>
+        <li>Keep it on your <b>home network or a VPN</b>. Don't port-forward it to the open internet — there is no TLS here, so a passphrase would cross the network in the clear.</li>
+        <li>Over the internet, put it behind something that terminates TLS and authenticates — Tailscale, WireGuard, or a reverse proxy you trust.</li>
+        <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>
+      </ul>
+    </div>`;
+}
+async function rmPost(body){
+  const r=await fetch('/api/remote',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok){toast(d.error||'could not change remote access');return null}
+  return d;
+}
+async function rmSetPass(){
+  const pw=$('#rm-pw').value;
+  if(!pw)return toast('type a passphrase first');
+  if(await rmPost({passphrase:pw})){toast('✓ passphrase set');refreshApp('syssettings')}
+}
+async function rmToggle(on){
+  if(on&&!await osConfirm('Turn remote access on?',
+      'Anyone on your network who has the passphrase gets this desktop — including the Terminal and the agent’s shell. Keep it off the open internet.',
+      {confirmText:'Turn it on',danger:true}))return;
+  const d=await rmPost({enabled:on});
+  if(!d)return;
+  toast(on?'remote access on — restart AgentOS to start listening':'remote access off');
+  refreshApp('syssettings');
+}
+function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}

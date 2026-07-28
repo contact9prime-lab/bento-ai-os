@@ -33,8 +33,24 @@ def _port_free(host: str, port: int) -> bool:
 def serve(host: str, port: int, open_browser: bool):
     import uvicorn
     from . import config as cfgmod
-    cfg = cfgmod.load_config()
+    from . import remote as remotemod
+    cfg = remotemod.sanitize_remote(cfgmod.load_config())
     port = port or cfg.get("port", 8321)
+
+    # Binding off-loopback is the one thing this program will not do on a flag
+    # alone. AgentOS hands whoever loads it a real shell, so listening on the
+    # network requires the passphrase that guards it — set it in
+    # Settings → Remote access (or `agentos remote --passphrase ...`).
+    if host == "127.0.0.1" and remotemod.enabled(cfg):
+        host = remotemod.bind_host(cfg)          # the setting opts in; honour it
+    if not remotemod.is_loopback(host) and not remotemod.enabled(cfg):
+        print(f"Refusing to serve on {host}: remote access is off.\n"
+              f"  AgentOS has no login until you give it one, and the agent has a real\n"
+              f"  shell — an open port here is an open shell.\n"
+              f"  Turn it on:  agentos serve   (then Settings → Remote access)\n"
+              f"  or headless: agentos remote --on --passphrase '<something long>'")
+        sys.exit(4)
+    os.environ["AGENTOS_BOUND_HOST"] = host
     url = f"http://{host}:{port}"
     if not _port_free(host, port):
         # bail BEFORE the app's startup hook runs: a doomed instance must not spawn
@@ -53,8 +69,13 @@ def serve(host: str, port: int, open_browser: bool):
   │   {url:<34}│
   └─────────────────────────────────────┘
 """)
+    if remotemod.enabled(cfg):
+        print("  remote access is ON — this desktop is reachable from your network:")
+        for a in remotemod.lan_addresses(port):
+            print(f"    {a}")
+        print("  sign in with your passphrase; local use is unchanged.\n")
     if open_browser:
-        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.2, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
     uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning")
 
 
@@ -335,6 +356,51 @@ def doctor(fix: bool = False):
         print("  \033[90mrun `agentos doctor --fix` to auto-repair the fixable items above\033[0m\n")
 
 
+def _remote_cli(args):
+    """`agentos remote` — the headless equivalent of Settings → Remote access,
+    for machines you only ever reach over SSH (a Pi, a server)."""
+    import getpass
+
+    from . import config as cfgmod
+    from . import remote as remotemod
+    cfg = remotemod.sanitize_remote(cfgmod.load_config())
+    r = cfg.setdefault("remote", {})
+
+    pw = args.passphrase
+    if args.on and not pw and not r.get("pass_hash"):
+        pw = getpass.getpass("Set a remote-access passphrase: ")
+        if pw != getpass.getpass("Repeat it: "):
+            print("those did not match")
+            sys.exit(1)
+    if pw:
+        problem = remotemod.passphrase_problem(pw)
+        if problem:
+            print(f"passphrase: {problem}")
+            sys.exit(1)
+        r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
+    if args.bind:
+        r["bind"] = args.bind
+    if args.on:
+        if not r.get("pass_hash"):
+            print("set a passphrase first: agentos remote --on --passphrase '<something long>'")
+            sys.exit(1)
+        r["enabled"] = True
+    if args.off:
+        r["enabled"] = False
+    if args.on or args.off or pw or args.bind:
+        remotemod.sanitize_remote(cfg)
+        cfgmod.save_config(cfg)
+
+    st = remotemod.status(cfg)
+    print(f"remote access: {'ON' if st['enabled'] else 'off'}"
+          f"{'' if st['configured'] else '  (no passphrase set)'}")
+    print(f"  binds:   {remotemod.bind_host(cfg)}:{st['port']}")
+    for a in st["addresses"]:
+        print(f"  reach:   {a}")
+    if st["enabled"]:
+        print("  restart AgentOS for a bind change to take effect.")
+
+
 def main():
     _use_system_certs()
     parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
@@ -375,6 +441,12 @@ def main():
     p_sess.add_argument("--force", action="store_true",
                         help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
+    p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
+    p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
+    p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
+    p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
+    p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
+
     p_mode = sub.add_parser("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
     p_mode.add_argument("action", nargs="?", default="show", choices=["show", "mode", "run"])
     p_mode.add_argument("value", nargs="?", default="",
@@ -422,6 +494,8 @@ def main():
         else:
             session.install(wayland=not args.x11, autologin=args.autologin,
                             force=args.force)
+    elif args.cmd == "remote":
+        _remote_cli(args)
     elif args.cmd == "session":
         from . import config as cfgmod
         from . import runmode

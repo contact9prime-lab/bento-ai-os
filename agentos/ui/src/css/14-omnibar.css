@@ -299,3 +299,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .cp-send.stop{background:var(--err);color:#2b0606}
 .ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
   border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}
+/* system apps sit on the same shelf as AgentOS's own, with a quieter header */
+.deck-native .deck-gname .mut{font-size:var(--fs-2xs);opacity:.6;font-weight:600}
+.deck-nat img.na{width:46px;height:46px;object-fit:contain}
+.deck-nat .nafallback{width:46px;height:46px}

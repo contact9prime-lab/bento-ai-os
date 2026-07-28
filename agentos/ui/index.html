@@ -4,8 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0d10">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AgentOS">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/assets/icon-192.png" type="image/png">
 <title>AgentOS</title>
 <style>
 :root{
@@ -782,6 +789,19 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
   border:1px solid var(--line);border-radius:var(--r-sm);
   display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.5}
 .hc-screen span{font-size:var(--fs-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
+
+/* ---- remote access ---- */
+.rm-pill{margin-left:auto;font-size:var(--fs-2xs);font-weight:800;letter-spacing:.1em;
+  padding:2px 9px;border-radius:var(--r-full);background:var(--bg4);color:var(--dim)}
+.rm-pill.on{background:var(--ok);color:#04211c}
+.provbox .ptitle{display:flex;align-items:center;gap:8px}
+.rm-addr{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.rm-row{display:flex;align-items:center;gap:8px}
+.rm-row code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);
+  font-size:var(--fs-sm);padding:7px 10px;border-radius:var(--r-md);
+  background:var(--bg3);border:1px solid var(--line)}
+.rm-notes{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -1325,6 +1345,10 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .cp-send.stop{background:var(--err);color:#2b0606}
 .ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
   border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}
+/* system apps sit on the same shelf as AgentOS's own, with a quieter header */
+.deck-native .deck-gname .mut{font-size:var(--fs-2xs);opacity:.6;font-weight:600}
+.deck-nat img.na{width:46px;height:46px;object-fit:contain}
+.deck-nat .nafallback{width:46px;height:46px}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -3326,6 +3350,9 @@ let NATIVEAPPS=[];
 async function loadNativeApps(){
   try{const d=await (await fetch('/api/native/apps')).json();NATIVEAPPS=d.apps||[]}catch(e){NATIVEAPPS=[]}
   rebuildLaunchers();
+  // the deck carries a System apps group built from this list — it loads after
+  // the first paint, so the deck has to be told the shelf just grew
+  if(typeof buildDeck==='function'&&typeof DECK!=='undefined'&&DECK)buildDeck();
 }
 function nativeIcon(a,px){
   px=px||44;
@@ -3773,16 +3800,34 @@ function buildDeck(){
   DECK._shown=open;
   box.innerHTML=`<button id="deck-toggle" title="${open?`Hide the deck on Desktop ${curDesk} (Ctrl+Shift+D)`:`Show the deck on Desktop ${curDesk} (Ctrl+Shift+D)`}">${open?'▾':'▴'}</button>
     <div id="deck-scroll">${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
+      ${deckNativeHTML()}
       ${deckWidgetsHTML()}
       <button class="deck-new" title="New group">＋<span>New group</span></button>
     </div>`;
   $('#deck-toggle').onclick=deckToggle;
   box.querySelector('.deck-new').onclick=deckNewGroup;
-  box.querySelectorAll('.deck-tile').forEach(t=>{
+  box.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
     t.onclick=()=>openApp(t.dataset.app);
     t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
   });
-  box.querySelectorAll('.deck-gname').forEach(h=>{
+  box.querySelectorAll('.deck-nat').forEach(t=>{
+    t.onclick=()=>launchNative(t.dataset.nat,t.dataset.natname);
+    t.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
+      {label:'Open',fn:()=>launchNative(t.dataset.nat,t.dataset.natname)},
+      {label:'Show all applications',fn:()=>openApp('apps')},
+      null,
+      {label:'Hide system apps from the deck',fn:deckToggleNative},
+    ])};
+  });
+  const more=box.querySelector('.deck-natmore');
+  if(more)more.onclick=()=>openApp('apps');
+  box.querySelectorAll('.deck-gname[data-native]').forEach(h=>{
+    h.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
+      {label:'Show all applications',fn:()=>openApp('apps')},
+      {label:'Hide system apps from the deck',fn:deckToggleNative},
+    ])};
+  });
+  box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
   });
   deckMeasure(open);
@@ -3805,6 +3850,28 @@ function deckGroupHTML(g){
         ${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
   </div>`;
 }
+/* ---- system apps ----
+   The machine's own applications belong on the same shelf as AgentOS's. This is
+   a SYNTHESIZED group rather than a stored one: the host's app list changes
+   whenever something is installed, so it is read from /api/native/apps every
+   time instead of being frozen into localStorage like the user's own groups.
+   It shows in every run mode — AgentOS being the session or a window inside
+   someone else's is not a reason to hide the machine's apps. */
+const DECK_NATIVE_MAX=14;
+function deckNativeHidden(){return !!(DECK&&DECK.hide_native)}
+function deckNativeHTML(){
+  const apps=(typeof NATIVEAPPS!=='undefined'?NATIVEAPPS:[]);
+  if(!apps.length||deckNativeHidden())return '';
+  const show=apps.slice(0,DECK_NATIVE_MAX), rest=apps.length-show.length;
+  return `<div class="deck-group deck-native">
+    <div class="deck-gname" data-native="1">System apps <span class="mut">${apps.length}</span></div>
+    <div class="deck-tiles">${show.map(a=>`
+      <button class="deck-tile deck-nat" data-nat="${esc(a.id)}" data-natname="${esc(a.name)}"
+              title="${esc(a.comment||a.name)}">${nativeIcon(a,46)}<span>${esc(a.name)}</span></button>`).join('')}
+      ${rest>0?`<button class="deck-tile deck-natmore" title="Every installed application">
+        ${appIcon('apps',46)}<span>+${rest} more</span></button>`:''}</div>
+  </div>`;
+}
 function deckWidgetsHTML(){
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
   const here=(WIDGETS||[]).filter(w=>w.place==='deck'&&apps[w.app_id]);
@@ -3813,6 +3880,11 @@ function deckWidgetsHTML(){
       <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
     <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
   </div>`).join('');
+}
+function deckToggleNative(){
+  DECK.hide_native=!deckNativeHidden();deckSave();buildDeck();
+  toast(DECK.hide_native?'system apps hidden — right-click any group header to bring them back'
+                        :'system apps back on the deck');
 }
 async function deckNewGroup(){
   const name=await osPrompt('Name the new group',{placeholder:'e.g. Work',confirmText:'Create'});
@@ -3844,6 +3916,7 @@ function deckGroupMenu(e,gid){
     {label:'Move group left',fn:()=>{const i=DECK.groups.indexOf(g);if(i>0){DECK.groups.splice(i,1);DECK.groups.splice(i-1,0,g);deckSave();buildDeck()}}},
     {label:'Move group right',fn:()=>{const i=DECK.groups.indexOf(g);if(i<DECK.groups.length-1){DECK.groups.splice(i,1);DECK.groups.splice(i+1,0,g);deckSave();buildDeck()}}},
     null,
+    {label:(deckNativeHidden()?'Show system apps':'Hide system apps'),fn:deckToggleNative},
     {label:(DECK.auto?'Always show the deck':'Hide the deck while working'),fn:()=>{
       DECK.auto=!DECK.auto;DECK.open=true;DECK._override=undefined;deckSave();buildDeck();
       toast(DECK.auto?'the deck steps aside while you work':'the deck always shows')}},
@@ -5788,6 +5861,17 @@ function renderTaskMgr(body,w){
    in this one function and they can never drift apart. */
 
 let AUTOMATIONS=[];
+/* Every tool a `tool` step can call — the agent's own plus whatever the user's
+   connected MCP servers expose, so the picker grows with the machine. */
+let TOOLNAMES=[], TOOLDESCS={};
+async function loadToolNames(){
+  try{
+    const d=await (await fetch('/api/tools')).json();
+    TOOLNAMES=(d.tools||[]).map(t=>t.name).sort();
+    TOOLDESCS={};(d.tools||[]).forEach(t=>TOOLDESCS[t.name]=t.description||'');
+  }catch(e){TOOLNAMES=[]}
+  return TOOLNAMES;
+}
 async function loadAutomations(){
   try{AUTOMATIONS=(await (await fetch('/api/automations')).json()).automations||[]}catch(e){AUTOMATIONS=[]}
   return AUTOMATIONS;
@@ -5815,6 +5899,8 @@ function automationStepLabel(s){
     case 'desktop':return 'Go to desktop '+s.desk;
     case 'wait':return 'Wait '+s.ms+'ms';
     case 'agent':return 'Ask: '+String(s.prompt||'').slice(0,70);
+    case 'tool':return 'Call '+s.tool+(s.args&&s.args!=='{}'?' '+String(s.args).slice(0,40):'');
+    case 'python':return 'Python: '+String(s.code||'').replace(/\s+/g,' ').slice(0,60);
   }
   return s.kind;
 }
@@ -5828,7 +5914,35 @@ async function runAutomationStep(s){
     case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
     case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
     case 'agent':    palAsk(s.prompt); break;
+    // tool and python go to the server, where the permission gate lives — an
+    // automation gets no more reach than the agent does, it just skips the model
+    case 'tool':     await runAutomationTool(s.tool,s.args); break;
+    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
   }
+}
+async function runAutomationTool(name,args){
+  let parsed={};
+  try{parsed=args?JSON.parse(args):{}}catch(e){return toast('automation: '+name+' args are not valid JSON')}
+  try{
+    const r=await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,args:parsed})});
+    const d=await r.json();
+    // /api/tool answers {output} on success and {error} when the permission gate
+    // says no (403) — an automation must surface the refusal, not swallow it
+    const out=String(d.output??d.error??'');
+    if(!r.ok||d.error||out.startsWith('[error]')||out.startsWith('[denied]'))
+      toast(name+': '+out.slice(0,140));
+    else if(out.trim())automationOutput(name,out);
+    return out;
+  }catch(e){toast(name+' failed: '+e.message)}
+}
+/* Tool and Python steps produce real output; it surfaces as an omnibar card so
+   a routine that computes something actually shows you what it found. */
+function automationOutput(name,out){
+  if(typeof omniCard!=='function')return toast(name+': '+out.slice(0,120));
+  const c=omniCard(name);
+  c.feed.innerHTML='<pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:var(--fs-sm)">'
+    +esc(out.slice(0,4000))+'</pre>';
 }
 let AUTO_RUNNING=false;
 async function runAutomation(a){
@@ -5909,6 +6023,7 @@ function autoCardHTML(a){
   </div>`;
 }
 function autoEdit(id){
+  if(!TOOLNAMES.length)loadToolNames().then(()=>{if(AUTO_DRAFT)refreshApp('automations')});
   const a=id?AUTOMATIONS.find(x=>x.id===id):null;
   AUTO_DRAFT=a?{id:a.id,name:a.name,icon:a.icon||'',steps:JSON.parse(JSON.stringify(a.steps))}:autoNewDraft();
   refreshApp('automations');
@@ -5936,6 +6051,8 @@ function autoBuilderHTML(d){
         <option value="wallpaper">Set a wallpaper</option>
         <option value="desktop">Switch virtual desktop</option>
         <option value="agent">Put the agent on a task</option>
+        <option value="tool">Call a tool (agent or MCP)</option>
+        <option value="python">Run Python</option>
         <option value="wait">Wait</option>
       </select>
       <span id="auto-arg" style="flex:1;min-width:180px;display:flex">
@@ -5953,6 +6070,11 @@ function autoBuilderHTML(d){
     <template id="auto-opts-wallpaper"><select id="auto-val">${wallOpts}</select></template>
     <template id="auto-opts-desktop"><select id="auto-val">${[1,2,3,4,5,6].map(n=>`<option value="${n}">Desktop ${n}</option>`).join('')}</select></template>
     <template id="auto-opts-agent"><input id="auto-val" placeholder="What should the agent do? e.g. summarise my unread notifications"></template>
+    <template id="auto-opts-tool"><span style="display:flex;gap:8px;flex:1;min-width:0">
+      <select id="auto-val" style="flex:1;min-width:0">${(TOOLNAMES||[]).map(t=>`<option value="${esc(t)}" title="${esc((TOOLDESCS[t]||'').slice(0,140))}">${esc(t)}</option>`).join('')}</select>
+      <input id="auto-args" placeholder='{"arg": "value"}' value="{}" style="flex:1;min-width:0;font-family:var(--mono)">
+    </span></template>
+    <template id="auto-opts-python"><textarea id="auto-val" rows="4" placeholder="print('hello from your automation')" style="font-family:var(--mono);width:100%"></textarea></template>
     <template id="auto-opts-wait"><input id="auto-val" type="number" min="0" max="60000" step="100" value="500" placeholder="milliseconds"></template>
   </div>`;
 }
@@ -5972,6 +6094,13 @@ function autoAdd(){
   else if(kind==='desktop')step.desk=+v||1;
   else if(kind==='wait')step.ms=+v||500;
   else if(kind==='agent'){if(!String(v).trim())return toast('what should the agent do?');step.prompt=v}
+  else if(kind==='tool'){
+    if(!v)return toast('pick a tool');
+    const a=$('#auto-args')?$('#auto-args').value.trim()||'{}':'{}';
+    try{JSON.parse(a)}catch(e){return toast('the tool arguments must be valid JSON')}
+    step.tool=v;step.args=a;
+  }
+  else if(kind==='python'){if(!String(v).trim())return toast('write some Python first');step.code=v}
   AUTO_DRAFT.steps.push(step);autoKeepFields();refreshApp('automations');
 }
 function autoMove(i,d){
@@ -7488,7 +7617,7 @@ async function takeScreenshot(area){
 
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
-const SYS_TABS=['Network','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
+const SYS_TABS=['Network','Remote access','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
 function sysTab(i){SYS.tab=i;refreshApp('syssettings')}
 async function renderSysSettings(body){
   body.innerHTML=`<div class="pad">
@@ -7496,7 +7625,7 @@ async function renderSysSettings(body){
     <div id="sys-body"><p class="mut">…</p></div></div>`;
   const el=$('#sys-body');
   try{
-    await [sysNet,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
+    await [sysNet,sysRemote,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
   }catch(e){el.innerHTML=`<p class="mut">${esc(String(e))}</p>`}
 }
 function sigBars(s){return s>75?'▂▄▆█':s>50?'▂▄▆':s>25?'▂▄':'▂'}
@@ -7727,6 +7856,88 @@ async function sysComponents(el){
     (shown above), so each one installs only when you say yes to it.</p>`;
 }
 
+
+/* ================= Remote access =================
+   Reach this desktop from your phone. Off until a human turns it on here and
+   sets a passphrase — and the server only accepts this call from the machine
+   itself, so nothing signed in remotely (and no agent, and no app) can widen
+   its own access. */
+let REMOTE={};
+async function sysRemote(el){
+  try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
+  const on=!!REMOTE.enabled, set=!!REMOTE.configured;
+  el.innerHTML=`
+    <div class="provbox">
+      <div class="ptitle">Remote access
+        <span class="rm-pill ${on?'on':''}">${on?'ON':'off'}</span></div>
+      <p class="mut" style="margin-top:8px;line-height:1.6">
+        Serve this desktop to your phone or another machine on your network.
+        <b>Everything you can do here, whoever signs in can do too</b> — including the
+        Terminal and the agent's shell — so it stays off until you set a passphrase.
+        Using AgentOS on this machine is unaffected either way.</p>
+
+      <label style="margin-top:14px">${set?'Change the passphrase':'Set a passphrase'}</label>
+      <div class="row" style="gap:8px">
+        <input id="rm-pw" type="password" autocomplete="new-password"
+               placeholder="at least 8 characters — a phrase beats a word" style="flex:1">
+        <button class="endbtn" onclick="rmSetPass()">${set?'Update':'Set'}</button>
+      </div>
+      ${set?'<p class="mut" style="margin-top:6px;font-size:11px">A passphrase is set. Changing it signs every remote device out.</p>':''}
+
+      <div class="row" style="margin-top:16px;gap:10px;align-items:center">
+        <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
+                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase first"'}>
+          ${on?'Turn remote access off':'Turn remote access on'}</button>
+        <span class="mut" style="font-size:12px">${set?'':'a passphrase is required first'}</span>
+      </div>
+    </div>
+
+    ${on?`<div class="provbox">
+      <div class="ptitle">Reach it from your phone</div>
+      ${(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
+          <div class="rm-row"><code>${esc(a)}</code>
+            <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
+        :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
+      <p class="mut" style="margin-top:10px;line-height:1.6">
+        Open that on your phone, sign in with the passphrase, then
+        <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
+        full-screen app with no browser chrome. The layout adapts to the phone on its own.</p>
+      ${REMOTE.listening_on&&REMOTE.listening_on!=='127.0.0.1'?'':
+        '<p class="mut" style="margin-top:8px;color:var(--warn)">Restart AgentOS for this to take effect — it is still listening on loopback only.</p>'}
+    </div>`:''}
+
+    <div class="provbox">
+      <div class="ptitle">Before you open it up</div>
+      <ul class="rm-notes">
+        <li>This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is.</li>
+        <li>Keep it on your <b>home network or a VPN</b>. Don't port-forward it to the open internet — there is no TLS here, so a passphrase would cross the network in the clear.</li>
+        <li>Over the internet, put it behind something that terminates TLS and authenticates — Tailscale, WireGuard, or a reverse proxy you trust.</li>
+        <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>
+      </ul>
+    </div>`;
+}
+async function rmPost(body){
+  const r=await fetch('/api/remote',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok){toast(d.error||'could not change remote access');return null}
+  return d;
+}
+async function rmSetPass(){
+  const pw=$('#rm-pw').value;
+  if(!pw)return toast('type a passphrase first');
+  if(await rmPost({passphrase:pw})){toast('✓ passphrase set');refreshApp('syssettings')}
+}
+async function rmToggle(on){
+  if(on&&!await osConfirm('Turn remote access on?',
+      'Anyone on your network who has the passphrase gets this desktop — including the Terminal and the agent’s shell. Keep it off the open internet.',
+      {confirmText:'Turn it on',danger:true}))return;
+  const d=await rmPost({enabled:on});
+  if(!d)return;
+  toast(on?'remote access on — restart AgentOS to start listening':'remote access off');
+  refreshApp('syssettings');
+}
+function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}
 /* ================= notification center ================= */
 const NOTIF={unread:0,dnd:false};
 function svgBell(px){px=px||14;return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 9.5a6 6 0 0 1 12 0c0 5 1.7 6 1.7 6H4.3S6 14.5 6 9.5"/><path d="M10.3 19.5a2 2 0 0 0 3.4 0"/></svg>`}
@@ -9526,6 +9737,7 @@ tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();
 loadAutomations();   // the palette and the hot-corner picker both read this list
+loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
 APPS_READY=true;

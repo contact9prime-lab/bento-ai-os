@@ -149,6 +149,9 @@ let NATIVEAPPS=[];
 async function loadNativeApps(){
   try{const d=await (await fetch('/api/native/apps')).json();NATIVEAPPS=d.apps||[]}catch(e){NATIVEAPPS=[]}
   rebuildLaunchers();
+  // the deck carries a System apps group built from this list — it loads after
+  // the first paint, so the deck has to be told the shelf just grew
+  if(typeof buildDeck==='function'&&typeof DECK!=='undefined'&&DECK)buildDeck();
 }
 function nativeIcon(a,px){
   px=px||44;

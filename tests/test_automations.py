@@ -42,9 +42,25 @@ def test_clean_steps_keeps_every_supported_kind():
         {"kind": "wallpaper", "wallpaper": "spatial"},
         {"kind": "desktop", "desk": 2},
         {"kind": "agent", "prompt": "summarise my day"},
+        {"kind": "tool", "tool": "system_info", "args": "{}"},
+        {"kind": "python", "code": "print(1)"},
         {"kind": "wait", "ms": 500},
     ]
     assert _clean_steps(steps) == steps
+
+
+def test_tool_args_may_arrive_as_an_object():
+    out = _clean_steps([{"kind": "tool", "tool": "fetch_url", "args": {"url": "https://x"}}])
+    assert out == [{"kind": "tool", "tool": "fetch_url", "args": '{"url": "https://x"}'}]
+
+
+@pytest.mark.parametrize("half", [
+    {"kind": "tool"},                       # no tool named
+    {"kind": "python"},                     # no code
+    {"kind": "python", "code": ""},
+])
+def test_half_written_ai_steps_are_dropped(half):
+    assert _clean_steps([half]) == []
 
 
 @pytest.mark.parametrize("bad", [
@@ -113,9 +129,9 @@ def test_delete_removes_it(tmp_path):
 # the agent tools
 # ---------------------------------------------------------------------------
 
-def test_the_three_tools_are_registered_and_dispatchable():
+def test_the_automation_tools_are_registered_and_dispatchable():
     names = {t["name"] for t in AUTOMATION_TOOL_SCHEMAS}
-    assert names == {"list_automations", "run_automation", "save_automation"}
+    assert names == {"list_automations", "run_automation", "save_automation", "run_python"}
     registered = {t["name"] for t in TOOL_SCHEMAS}
     for n in names:
         assert n in registered, f"{n} missing from TOOL_SCHEMAS"

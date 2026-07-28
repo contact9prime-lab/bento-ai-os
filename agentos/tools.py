@@ -6,6 +6,7 @@ Every tool returns a string (what the model sees). Risk levels:
 """
 
 import asyncio
+import contextlib
 import html.parser
 import json
 import os
@@ -16,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -210,6 +212,10 @@ def _automation_step_label(s: dict) -> str:
         return f"wait {s.get('ms')}ms"
     if k == "agent":
         return "ask: " + str(s.get("prompt", ""))[:60]
+    if k == "tool":
+        return f"call {s.get('tool')}"
+    if k == "python":
+        return "python: " + " ".join(str(s.get("code", "")).split())[:60]
     return str(k)
 
 
@@ -1879,6 +1885,29 @@ class Toolbox:
             lines.append("custom: " + ", ".join(custom))
         return "\n".join(lines)
 
+    async def run_python(self, code: str, timeout: int = 120) -> str:
+        """Run a Python snippet and return its output.
+
+        Goes through run_command rather than around it, so the sandbox jail, the
+        risk classification and the permission gate all apply exactly as they do
+        to any other command — a Python escape hatch that skipped those would
+        quietly become the widest hole in the system.
+        """
+        if not (code or "").strip():
+            return "[error] nothing to run"
+        enabled, root = sandbox_conf(self.cfg)
+        base = root if enabled else os.path.expanduser(self.cfg["workspace"])
+        os.makedirs(base, exist_ok=True)
+        path = os.path.join(base, f".agentos-run-{uuid.uuid4().hex[:8]}.py")
+        try:
+            with open(path, "w") as fh:
+                fh.write(code)
+            out = await self.run_command(f"{shlex.quote(sys.executable)} {shlex.quote(path)}")
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+        return out or "(no output)"
+
     # -- automations: named desktop sequences the user can replay -------------
 
     async def list_automations(self) -> str:
@@ -3031,6 +3060,23 @@ TOOL_SCHEMAS.extend(DESKTOP_TOOL_SCHEMAS)
 
 AUTOMATION_TOOL_SCHEMAS = [
     {
+        "name": "run_python",
+        "description": "Run a Python snippet on this machine and get its stdout/stderr back. Use for "
+                       "real computation, data wrangling, file work or API calls where a shell "
+                       "one-liner would be awkward. It runs with the same interpreter AgentOS uses, "
+                       "inside the same sandbox jail and permission gate as run_command, so treat it "
+                       "as a real program on the user's computer. Print what you want to see — the "
+                       "return value is the process output.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "the Python source to execute; print() what you need back"},
+                "timeout": {"type": "integer", "description": "seconds before it is killed (default 120)"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
         "name": "list_automations",
         "description": "List the user's saved automations and what each one does. Call this before "
                        "run_automation when you are not sure of the exact name, and before "
@@ -3063,7 +3109,14 @@ AUTOMATION_TOOL_SCHEMAS = [
                        "{\"kind\":\"wallpaper\",\"wallpaper\":\"spatial\"} a built-in wallpaper · "
                        "{\"kind\":\"desktop\",\"desk\":2} switch virtual desktop · "
                        "{\"kind\":\"agent\",\"prompt\":\"...\"} put me on a task · "
-                       "{\"kind\":\"wait\",\"ms\":500} pause between steps.",
+                       "{\"kind\":\"tool\",\"tool\":\"<any tool name>\",\"args\":\"{...}\"} call an agent "
+                       "or MCP tool directly with JSON args — deterministic, no model in the loop "
+                       "(mcp_* names come from the user's connected MCP servers) · "
+                       "{\"kind\":\"python\",\"code\":\"print(...)\"} run Python · "
+                       "{\"kind\":\"wait\",\"ms\":500} pause between steps. "
+                       "Prefer `tool` and `python` when the work is exact and repeatable, and `agent` "
+                       "when it needs judgement — an automation should be as deterministic as the "
+                       "task allows.",
         "parameters": {
             "type": "object",
             "properties": {
