@@ -161,3 +161,109 @@ def test_wayland_install_never_touches_the_legacy_x11_script(home, monkeypatch):
     assert session.X11_SESSION_SCRIPT.read_text() == before
     assert session.SESSION_SCRIPT != session.X11_SESSION_SCRIPT
     assert "exec sway" not in before
+
+
+# --- display & input settings: what a Wayland session is expected to own -----
+
+def test_display_layout_survives_logout(home):
+    """Applying a mode over IPC lasts until logout. GNOME's Displays panel makes
+    it stick; so must ours, or every reboot forgets the second monitor."""
+    path = session.write_output_config([
+        {"name": "HDMI-A-1", "mode": "2560x1440@59.951Hz", "scale": 1.25,
+         "position": "0,0", "transform": "normal"},
+        {"name": "eDP-1", "enabled": False},
+        {"name": "", "mode": "junk"},                      # nameless output is skipped
+    ])
+    text = path.read_text()
+    assert 'output "HDMI-A-1" mode 2560x1440@59.951Hz scale 1.25 transform normal position 0,0 enable' in text
+    assert 'output "eDP-1" disable' in text
+    assert "junk" not in text
+    assert str(path.parent) == str(session.SWAY_DROPIN_DIR), "must land in the drop-in dir"
+
+
+def test_input_config_speaks_sway(home):
+    text = session.input_config_text({
+        "keyboard": {"layout": "in", "variant": "eng", "repeat_delay": 250, "repeat_rate": 40},
+        "touchpad": {"tap": True, "natural_scroll": False, "dwt": True, "accel": 0.3},
+    })
+    assert 'xkb_layout "in"' in text and 'xkb_variant "eng"' in text
+    assert "repeat_delay 250" in text and "repeat_rate 40" in text
+    assert "tap enabled" in text and "natural_scroll disabled" in text and "dwt enabled" in text
+    assert "pointer_accel 0.30" in text
+
+
+def test_empty_input_settings_write_nothing_to_override(home):
+    """Saving defaults must not pin the system's own keyboard layout."""
+    text = session.input_config_text({})
+    assert "input type:keyboard" not in text and "input type:touchpad" not in text
+
+
+def test_dropins_are_not_applied_outside_a_live_session(home, monkeypatch):
+    monkeypatch.delenv("SWAYSOCK", raising=False)
+    assert session.apply_dropins() is False
+
+
+def test_display_change_is_both_applied_and_persisted(home, monkeypatch):
+    """The endpoint used to have this block sitting after its `return`, so every
+    display change was forgotten at logout. Guard the wiring, not just the writer."""
+    import asyncio
+    from agentos import server, host
+
+    monkeypatch.setattr(host, "configure_output", lambda name, **kw: (True, "ok"))
+    monkeypatch.setattr(server.cfgmod, "save_config", lambda cfg: None)
+    server.state["cfg"] = {}
+    r = asyncio.run(server.api_wm_output_configure(
+        {"name": "HDMI-A-1", "scale": 1.5, "position": {"x": 1920, "y": 0}}))
+    assert r["ok"] is True
+    text = (session.SWAY_DROPIN_DIR / "outputs.conf").read_text()
+    assert 'output "HDMI-A-1" scale 1.5 position 1920,0 enable' in text
+    assert server.state["cfg"]["displays"]["HDMI-A-1"]["scale"] == 1.5
+
+
+def test_a_display_the_compositor_rejects_is_not_persisted(home, monkeypatch):
+    """Writing a layout the hardware refused would break the next login."""
+    import asyncio
+    from agentos import server, host
+
+    monkeypatch.setattr(host, "configure_output", lambda name, **kw: (False, "no such mode"))
+    monkeypatch.setattr(server.cfgmod, "save_config", lambda cfg: None)
+    server.state["cfg"] = {}
+    r = asyncio.run(server.api_wm_output_configure({"name": "HDMI-A-1", "mode": "9999x9999"}))
+    assert r["ok"] is False
+    assert not (session.SWAY_DROPIN_DIR / "outputs.conf").exists()
+    assert "displays" not in server.state["cfg"]
+
+
+def test_night_light_is_off_until_asked_for(home):
+    assert session.nightlight_cmd_text(None) == ":"
+    assert session.nightlight_cmd_text({"enabled": False, "night_temp": 3000}) == ":"
+
+
+def test_night_light_uses_the_hours_or_the_place(home):
+    by_clock = session.nightlight_cmd_text(
+        {"enabled": True, "night_temp": 3400, "day_temp": 6500, "from": "19:30", "to": "07:00"})
+    assert "wlsunset -t 3400 -T 6500 -S 19:30 -s 07:00" in by_clock
+    by_place = session.nightlight_cmd_text(
+        {"enabled": True, "night_temp": 4000, "lat": 12.97, "lon": 77.59})
+    assert "-l 12.97 -L 77.59" in by_place and "-S" not in by_place
+
+
+def test_night_light_lands_in_a_dropin_so_it_survives_reinstall(home):
+    path = session.stage_nightlight({"enabled": True, "night_temp": 3800})
+    assert path.parent == session.SWAY_DROPIN_DIR
+    assert "wlsunset" in path.read_text()
+    # turning it off must actively clear it, not merely stop writing
+    session.stage_nightlight({"enabled": False})
+    assert "wlsunset -t" not in path.read_text()
+    assert "pkill" in path.read_text()
+
+
+def test_the_session_provides_what_a_wayland_desktop_is_expected_to(home):
+    """Portals, auto-mount, media keys and idle inhibition are not extras — a
+    session without them silently fails at screen sharing, USB sticks, the
+    play/pause key, and locks the screen halfway through a film."""
+    conf = session.sway_config_text(9111)
+    assert "xdg-desktop-portal" in conf
+    assert "udiskie" in conf
+    assert "XF86AudioPlay exec playerctl play-pause" in conf
+    assert "inhibit_idle fullscreen" in conf

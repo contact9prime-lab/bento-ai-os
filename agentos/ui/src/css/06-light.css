@@ -32,3 +32,5 @@
 :root[data-theme=light] .widget .wgh button{background:rgba(0,0,0,.07);color:#1d1b19}
 :root[data-theme=light] #swbox,:root[data-theme=light] #keysbox,:root[data-theme=light] #palbox{border-color:var(--hairline-strong)}
 
+
+:root[data-theme=light] #mbmenus button:hover{background:rgba(0,0,0,.07)}

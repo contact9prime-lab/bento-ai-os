@@ -3,33 +3,24 @@
 const IS_MAC=/Mac/i.test(navigator.platform);
 const CMD='⌘/Ctrl';
 function cmd(e){return e.metaKey||e.ctrlKey}
-const KEYMAP=[
-  {group:'General',keys:[
-    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Focus the prompt bar (launch, act, or ask)'},
-    {k:[CMD,'K'],label:'Focus the prompt bar'},
-    {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
-    {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
-    {k:[CMD,','],label:'Settings'},
-    {k:['F11'],label:'Toggle fullscreen'},
-    {k:['Alt','J'],label:'Voice mode'},
-  ]},
-  {group:'Windows',keys:[
-    {k:['Ctrl','Tab'],alt:['Alt','Tab'],label:'Switch window (hold, Tab to cycle)'},
-    {k:['Ctrl','Shift','Tab'],label:'Switch window (backwards)'},
-    {k:['F3'],alt:['Ctrl','↑'],label:'Exposé — all windows at a glance'},
-    {k:[CMD,'W'],label:'Close active window'},
-    {k:[CMD,'M'],label:'Minimize active window'},
-    {k:[CMD,'F'],label:'Maximize / restore active window'},
-    {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'},
-  ]},
-  {group:'Desktops',keys:[
-    {k:['Ctrl','1…6'],label:'Switch virtual desktop'},
-  ]},
-  {group:'Apps',keys:[
-    {k:[CMD,'Enter'],label:'New chat'},
-    {k:['Ctrl','Alt','T'],label:'Open terminal'},
-  ]},
-];
+function KEYMAP_LIVE(){
+  const g=(name)=>((SHORTCUTS[name]||SC_DEFAULTS[name]||{}).keys||'').split('+');
+  const row=(name)=>({k:g(name),label:(SHORTCUTS[name]||SC_DEFAULTS[name]||{}).label||name});
+  return [
+    {group:'General',keys:[row('omnibar.focus'),row('omnibar.focus2'),
+      {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
+      {k:['Alt','1-9'],label:'Quick launch: a result row, else that dock app'},
+      {k:['Shift','Enter'],label:'Ask the agent instead of launching'},
+      row('deck'),row('help'),row('settings'),row('fullscreen'),row('voice')]},
+    {group:'Windows',keys:[row('switcher'),{k:['Alt','Tab'],label:'Switch window (session mode)'},
+      row('expose'),row('windows.arrange'),row('window.close'),row('window.minimize'),row('window.maximize'),
+      {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'}]},
+    {group:'Desktops',keys:[row('desktop.prev'),row('desktop.next'),
+      row('desktop.move.prev'),row('desktop.move.next'),
+      {k:['Ctrl','1-9'],label:'Jump straight to a desktop'}]},
+    {group:'Apps',keys:[row('chat.new'),row('chat.open'),row('terminal')]},
+  ];
+}
 function activeWin(){let a=null;WM.wins.forEach(w=>{if(w.el.classList.contains('active'))a=w});return a}
 
 // --- Ctrl+Tab window switcher (Cmd+Tab-style) ---
@@ -54,38 +45,25 @@ function switcherCommit(){
   const w=SW.list[SW.idx];if(w)focusWin(w);
 }
 
-// --- exposé: every window on this desktop, live, in a grid (F3 / Ctrl+↑) ---
+// --- Spaces: every desktop as a card, every window a tile you can throw between them ---
 let EXPO={on:false,wins:[]};
+function deskWins(n){const a=[];WM.wins.forEach(w=>{if((w.desk||1)===n&&!w.min)a.push(w)});return a}
 function exposeToggle(force){
   const on=force!==undefined?force:!EXPO.on;
   if(on===EXPO.on)return;
   let ov=$('#expose');
-  if(!ov){ov=document.createElement('div');ov.id='expose';document.body.appendChild(ov);
-    ov.addEventListener('mousedown',e=>{if(e.target.id==='expose')exposeToggle(false)})}
+  // inside #desktop, like the deck: #desktop is position:fixed and therefore its
+  // own stacking context — an overlay outside it would sit ABOVE the windows and
+  // blur the very thumbnails it is meant to show.
+  if(!ov){ov=document.createElement('div');ov.id='expose';$('#desktop').appendChild(ov);
+    ov.addEventListener('mousedown',e=>{if(e.target===ov||e.target.id==='expose-grid')exposeToggle(false)})}
   if(on){
-    const wins=switcherList();
-    if(!wins.length)return;
-    EXPO.on=true;EXPO.wins=wins;
+    EXPO.on=true;
     document.body.classList.add('exposing');
-    ov.classList.add('show');ov.innerHTML='';
-    const mbh=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mbh'))||30;
-    const W=innerWidth, H=innerHeight-mbh, pad=36, gap=26;
-    const n=wins.length, cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
-    const cw=(W-pad*2-gap*(cols-1))/cols, ch=(H-pad*2-64-gap*(rows-1))/rows;
-    wins.forEach((w,i)=>{
-      const r=w.el.getBoundingClientRect();
-      const col=i%cols,row=Math.floor(i/cols);
-      const s=Math.min(cw/r.width,ch/r.height,0.94);
-      const cx=pad+col*(cw+gap)+(cw-r.width*s)/2, cy=mbh+pad+row*(ch+gap)+(ch-r.height*s)/2;
-      w.el.classList.add('exp-win');
-      w.el.style.transformOrigin='top left';
-      w.el.style.transform=`translate(${cx-r.left}px,${cy-r.top}px) scale(${s})`;
-      const c=document.createElement('div');c.className='exp-catch';
-      c.style.left=cx+'px';c.style.top=(cy-mbh)+'px';c.style.width=r.width*s+'px';c.style.height=r.height*s+'px';
-      c.innerHTML=`<span class="exp-lbl">${appIcon(w.id,15)} ${esc(w.app.title)}</span>`;
-      c.onclick=()=>{exposeToggle(false);focusWin(w)};
-      ov.appendChild(c);
-    });
+    ov.classList.add('show');
+    ov.innerHTML=`<div id="expose-spaces"></div><div id="expose-grid"></div>
+      <div id="expose-hint">click a space to switch · drag a window onto a space to move it · double-click a window to open it</div>`;
+    exposeSpaces();exposeGrid();
   }else{
     EXPO.on=false;
     ov.classList.remove('show');ov.innerHTML='';
@@ -95,13 +73,93 @@ function exposeToggle(force){
     EXPO.wins=[];
   }
 }
+/* the spaces strip: a live mini-map of every desktop, and a drop target */
+function exposeSpaces(){
+  const box=$('#expose-spaces');if(!box)return;
+  const cards=[];
+  for(let n=1;n<=DESKS;n++){
+    const wins=deskWins(n);
+    const W=innerWidth,H=innerHeight;
+    const mini=wins.map(w=>{
+      const r=w.el.getBoundingClientRect();
+      return `<i style="left:${(r.left/W*100).toFixed(1)}%;top:${(r.top/H*100).toFixed(1)}%;
+        width:${(r.width/W*100).toFixed(1)}%;height:${(r.height/H*100).toFixed(1)}%"></i>`;
+    }).join('');
+    cards.push(`<div class="space${n===curDesk?' on':''}" data-n="${n}" title="Desktop ${n} — ${wins.length} window(s)">
+      <div class="sp-map">${mini}</div>
+      <div class="sp-lbl">Desktop ${n}${wins.length?` · ${wins.length}`:''}
+        ${DESKS>1?`<button class="sp-x" title="Remove this desktop">✕</button>`:''}</div></div>`);
+  }
+  if(DESKS<9)cards.push(`<div class="space add" id="sp-add" title="Add a desktop">＋<div class="sp-lbl">New desktop</div></div>`);
+  box.innerHTML=cards.join('');
+  box.querySelectorAll('.space[data-n]').forEach(c=>{
+    const n=+c.dataset.n;
+    c.onclick=e=>{
+      if(e.target.closest('.sp-x')){e.stopPropagation();removeDesk(n);return}
+      if(n!==curDesk){switchDesk(n);setTimeout(()=>{exposeSpaces();exposeGrid()},260)}
+    };
+    c.ondragover=e=>{e.preventDefault();c.classList.add('drop')};
+    c.ondragleave=()=>c.classList.remove('drop');
+    c.ondrop=e=>{
+      e.preventDefault();c.classList.remove('drop');
+      const key=e.dataTransfer.getData('text/agentos-window');
+      const w=WM.wins.get(key);if(!w||w.desk===n)return;
+      w.desk=n;applyDeskVisibility();
+      toast(`moved "${w.app.title}" to Desktop ${n}`);
+      exposeSpaces();exposeGrid();
+    };
+  });
+  const add=$('#sp-add');
+  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager();exposeSpaces()};
+}
+function removeDesk(n){
+  if(DESKS<=1)return;
+  deskWins(n).forEach(w=>{w.desk=Math.max(1,n-1)});     // never orphan a window
+  DESKS--;localStorage.setItem('desks',DESKS);
+  if(curDesk>DESKS)switchDesk(DESKS);
+  applyDeskVisibility();buildPager();exposeSpaces();exposeGrid();
+  toast('desktop removed');
+}
+/* the grid: the CURRENT desktop's real windows, scaled down and draggable */
+function exposeGrid(){
+  const ov=$('#expose'),grid=$('#expose-grid');if(!grid)return;
+  EXPO.wins.forEach(w=>{w.el.style.transform='';w.el.classList.remove('exp-win')});
+  grid.innerHTML='';
+  const wins=deskWins(curDesk).sort((a,b)=>(+b.el.style.zIndex||0)-(+a.el.style.zIndex||0));
+  EXPO.wins=wins;
+  if(!wins.length){grid.innerHTML='<div class="exp-empty">No windows on this desktop</div>';return}
+  const dr=$('#desktop').getBoundingClientRect();
+  const top=dr.top+150, W=dr.width, H=dr.height-150-110, pad=30, gap=26;
+  const n=wins.length, cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+  const cw=(W-pad*2-gap*(cols-1))/cols, ch=(H-gap*(rows-1))/rows;
+  wins.forEach((w,i)=>{
+    const r=w.el.getBoundingClientRect();
+    const col=i%cols,row=Math.floor(i/cols);
+    const s=Math.min(cw/r.width,ch/r.height,0.92);
+    const cx=pad+col*(cw+gap)+(cw-r.width*s)/2, cy=top+row*(ch+gap)+(ch-r.height*s)/2;
+    const lx=cx-dr.left, ly=cy-dr.top;                    // overlay coords are desktop-relative
+    w.el.classList.add('exp-win');
+    w.el.style.transformOrigin='top left';
+    w.el.style.transform=`translate(${cx-r.left}px,${cy-r.top}px) scale(${s})`;
+    const c=document.createElement('div');c.className='exp-catch';c.draggable=true;
+    c.style.left=lx+'px';c.style.top=ly+'px';c.style.width=r.width*s+'px';c.style.height=r.height*s+'px';
+    c.innerHTML=`<button class="exp-x" title="Close">✕</button>
+      <span class="exp-lbl">${appIcon(w.id,15)} ${esc(w.app.title)}</span>`;
+    c.ondragstart=e=>{e.dataTransfer.setData('text/agentos-window',w.key);e.dataTransfer.effectAllowed='move';
+      c.classList.add('dragging')};
+    c.ondragend=()=>c.classList.remove('dragging');
+    c.onclick=e=>{if(e.target.closest('.exp-x')){e.stopPropagation();closeWin(w);setTimeout(()=>{exposeSpaces();exposeGrid()},260);return}
+      exposeToggle(false);focusWin(w)};
+    grid.appendChild(c);
+  });
+}
 
 // --- shortcuts help overlay ---
 function keysHelp(on){
   const ov=$('#keyshelp');const show=on!==undefined?on:!ov.classList.contains('show');
   if(show){
-    $('#keysbox').innerHTML=`<div class="kh"><span>Keyboard shortcuts</span><button class="mclose" onclick="keysHelp(false)">✕</button></div>
-      <div class="kbody">${KEYMAP.map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
+    $('#keysbox').innerHTML=`<div class="kh"><span>Keyboard shortcuts</span><button class="mclose" style="font-size:var(--fs-xs);width:auto;padding:0 8px" onclick="keysHelp(false);openApp(&quot;settings&quot;)">Edit</button><button class="mclose" onclick="keysHelp(false)">✕</button></div>
+      <div class="kbody">${KEYMAP_LIVE().map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
   }
   ov.classList.toggle('show',show);
 }
@@ -235,35 +293,136 @@ function palAsk(q){
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }
+/* ================= shortcuts: one editable table =================
+   Every binding lives in cfg.shortcuts (Settings → Shortcuts) with these
+   defaults. Actions are named so the SAME table drives the browser shell and,
+   in session mode, sway keybindings that reach the shell over HTTP — which is
+   how they keep working while a native window has the keyboard. */
+const SC_DEFAULTS={
+  'omnibar.focus':   {keys:'Ctrl+Space',  label:'Focus the prompt bar',        session:true},
+  'omnibar.focus2':  {keys:'Alt+Space',   label:'Focus the prompt bar (alt)',  session:true},
+  'palette':         {keys:'Ctrl+K',      label:'Focus the prompt bar (alt)'},
+  'expose':          {keys:'Ctrl+Up',     label:'Spaces — desktops & windows',  session:true,typing:false},
+  'expose.f3':       {keys:'F3',          label:'Spaces (alternate)',           session:true},
+  'windows.arrange': {keys:'Ctrl+Down',   label:'Organise windows: tile → cascade → restore',typing:false},
+  'desktop.prev':    {keys:'Ctrl+Left',   label:'Previous desktop',             typing:false},
+  'desktop.next':    {keys:'Ctrl+Right',  label:'Next desktop',                 typing:false},
+  'desktop.move.prev':{keys:'Ctrl+Shift+Left', label:'Send window to the previous desktop',typing:false},
+  'desktop.move.next':{keys:'Ctrl+Shift+Right',label:'Send window to the next desktop',typing:false},
+  'switcher':        {keys:'Ctrl+Tab',    label:'Switch window'},
+  'window.close':    {keys:'Ctrl+W',      label:'Close active window'},
+  'window.minimize': {keys:'Ctrl+M',      label:'Minimize active window'},
+  'window.maximize': {keys:'Ctrl+F',      label:'Maximize / restore window'},
+  'chat.new':        {keys:'Ctrl+Enter',  label:'New chat'},
+  'chat.open':       {keys:'Ctrl+Shift+A',label:'Open Agent Chat',             session:true},
+  'copilot':         {keys:'Ctrl+Shift+Space',label:'Ask the agent about this window',session:true},
+  'agent.stop':      {keys:'Ctrl+.',    label:'Stop the agent — everywhere, now',session:true},
+  'terminal':        {keys:'Ctrl+Alt+T',  label:'Open Terminal',               session:true},
+  'settings':        {keys:'Ctrl+,',      label:'Settings'},
+  'voice':           {keys:'Alt+J',       label:'Voice mode',                  session:true},
+  'fullscreen':      {keys:'F11',         label:'Toggle fullscreen'},
+  'help':            {keys:'Ctrl+/',      label:'Keyboard shortcuts'},
+  'deck':            {keys:'Ctrl+Shift+D',label:'Show / hide the app deck'},
+};
+let SHORTCUTS=JSON.parse(JSON.stringify(SC_DEFAULTS));
+function scLoad(){
+  const saved=(cfg&&cfg.shortcuts)||{};
+  Object.keys(SC_DEFAULTS).forEach(k=>{
+    SHORTCUTS[k]={...SC_DEFAULTS[k],...(saved[k]?{keys:saved[k]}:{})};
+  });
+}
+function scParse(keys){
+  const p={ctrl:false,alt:false,shift:false,meta:false,key:''};
+  String(keys||'').split('+').map(s=>s.trim()).filter(Boolean).forEach(part=>{
+    const l=part.toLowerCase();
+    if(l==='ctrl'||l==='control')p.ctrl=true;
+    else if(l==='alt'||l==='option')p.alt=true;
+    else if(l==='shift')p.shift=true;
+    else if(l==='meta'||l==='cmd'||l==='super'||l==='win')p.meta=true;
+    else p.key=part;
+  });
+  return p;
+}
+/* "Left" in a binding and "ArrowLeft" from the browser are the same key — one
+   normaliser so the table can be written the way a person would say it. */
+const SC_ALIAS={left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown',
+  esc:'escape',ret:'enter',return:'enter',del:'delete',ins:'insert',
+  pgup:'pageup',pgdn:'pagedown','↑':'arrowup','↓':'arrowdown','←':'arrowleft','→':'arrowright'};
+function scKeyName(k){k=String(k||'').toLowerCase();return SC_ALIAS[k]||k}
+function scMatch(e,keys){
+  const p=scParse(keys);if(!p.key)return false;
+  // Cmd and Ctrl are interchangeable so the same table feels native on a Mac
+  const modOk=(p.ctrl?(e.ctrlKey||e.metaKey):(p.meta?e.metaKey:!e.ctrlKey&&!e.metaKey))
+    &&(!!p.alt===!!e.altKey)&&(!!p.shift===!!e.shiftKey);
+  if(!modOk)return false;
+  const want=scKeyName(p.key);
+  if(want==='space')return e.code==='Space';
+  return scKeyName(e.key)===want||(e.code||'').toLowerCase()==='key'+want;
+}
+const SC_ACTIONS={
+  'omnibar.focus':()=>omniFocus(),
+  'omnibar.focus2':()=>omniFocus(),
+  'palette':()=>omniFocus(),
+  'expose':()=>exposeToggle(),
+  'expose.f3':()=>exposeToggle(),
+  'windows.arrange':()=>arrangeWindows(),
+  'desktop.prev':()=>switchDeskBy(-1),
+  'desktop.next':()=>switchDeskBy(1),
+  'desktop.move.prev':()=>moveActiveDeskBy(-1),
+  'desktop.move.next':()=>moveActiveDeskBy(1),
+  'switcher':e=>switcherOpen(e&&e.shiftKey?-1:1),
+  'window.close':()=>{const a=activeWin();if(a)closeWin(a)},
+  'window.minimize':()=>{const a=activeWin();if(a)minimizeWin(a)},
+  'window.maximize':()=>{const a=activeWin();if(a)toggleMax(a)},
+  'chat.new':()=>{openApp('chat');newChat()},
+  'chat.open':()=>openApp('chat'),
+  'agent.stop':()=>stopAllAgents(),   // works while typing, in any app, in any window
+  'copilot':()=>{                     // works in full screen too — the panel is inside the window
+    const a=activeWin();
+    if(a)toggleCopilot(a);else omniFocus();
+  },
+  'terminal':()=>{omniPop(false);openApp('terminal')},
+  'settings':()=>openApp('settings'),
+  'voice':()=>jarvisMode(!JARVIS.on),
+  'fullscreen':()=>toggleFullscreen(),
+  'help':()=>keysHelp(),
+  'deck':()=>deckToggle(),
+};
+function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return false}
+
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
   const inTerm=e.target.closest&&e.target.closest('.xterm');
-  const k=e.key.toLowerCase();
-  const typing=/^(input|textarea|select)$/i.test((e.target.tagName||''));
-  // window switcher — Ctrl/Cmd+Tab (reliable), Alt+Tab (best-effort; the OS may grab it)
+  // "Typing" means a field with something in it. The prompt bar holds the caret
+  // by default, so treating an EMPTY bar as typing would mute every desktop
+  // shortcut on a fresh desktop — which is where you need them most.
+  const el=document.activeElement;
+  const inField=/^(input|textarea|select)$/i.test((el&&el.tagName)||'')||!!(el&&el.isContentEditable);
+  const idleBar=el&&el.id==='omni-in'&&!el.value&&!(typeof OMNI!=='undefined'&&OMNI.pop);
+  const typing=inField&&!idleBar;
+  if(SC_REC)return;                       // a Settings row is recording a new binding
+  // window switcher first: Alt+Tab is also accepted (sway forwards it in session mode)
   if((cmd(e)||e.altKey)&&e.key==='Tab'){e.preventDefault();switcherOpen(e.shiftKey?-1:1);return}
-  // Command-key window controls (Cmd on Mac, Ctrl elsewhere)
-  if(cmd(e)&&!e.altKey){
-    const a=activeWin();
-    if(k==='a'&&!typing&&!inTerm&&!a){e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}
-    if(k==='w'&&a){e.preventDefault();closeWin(a);return}
-    if(k==='m'&&a){e.preventDefault();minimizeWin(a);return}
-    if(k==='f'&&a){e.preventDefault();toggleMax(a);return}
-    if(k===','){e.preventDefault();openApp('settings');return}
-    if(e.key==='Enter'){e.preventDefault();openApp('chat');newChat();return}
-    if(k==='/'){e.preventDefault();keysHelp();return}
-  }
+  const fsw=[...WM.wins.values()].find(w=>w.fs);
+  if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
+  if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
+    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
-  if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
-  if(e.key==='F3'||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&e.key==='ArrowUp'&&!typing&&!inTerm)){e.preventDefault();exposeToggle();return}
-  // the launcher IS the omnibar: every hotkey pops it open + focused (Esc closes)
-  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();omniFocus()}             // works everywhere, incl. terminal
-  else if(e.key==='F11'){e.preventDefault();toggleFullscreen()}
-  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();omniFocus()}   // Alt+Space quick launch / ask AI
-  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();omniFocus()}
-  else if(e.ctrlKey&&e.altKey&&k==='t'){e.preventDefault();togglePalette(false);openApp('terminal')}
-  else if(e.altKey&&!e.ctrlKey&&!e.shiftKey&&k==='j'){e.preventDefault();jarvisMode(!JARVIS.on)}
-  else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
+  if(cmd(e)&&!e.altKey&&e.key.toLowerCase()==='a'&&!typing&&!inTerm&&!activeWin()){
+    e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}
+  // everything else comes from the (editable) table
+  for(const name in SHORTCUTS){
+    const sc=SHORTCUTS[name];
+    if(!scMatch(e,sc.keys))continue;
+    // window actions need a window; typing surfaces keep their own text editing keys
+    if(name.startsWith('window.')&&!activeWin())continue;
+    // Ctrl+←/→ is word-jump inside text; these bindings stand aside while typing
+    if(sc.typing===false&&(typing||inTerm))continue;
+    if(name==='agent.stop'){e.preventDefault();scRun(name,e);return}   // never blocked
+    if(inTerm&&!['omnibar.focus','omnibar.focus2','palette','chat.open','expose','fullscreen','help'].includes(name))continue;
+    e.preventDefault();scRun(name,e);return;
+  }
+  if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
     const n=+e.key;if(n<=DESKS){e.preventDefault();switchDesk(n)}}
 });
 

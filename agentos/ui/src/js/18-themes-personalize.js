@@ -128,7 +128,10 @@ async function pzGen(){
   const b=$('#pz-gen');b.disabled=true;b.textContent='⏳ generating…';
   try{
     const r=await fetch('/api/wallpaper/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})});
-    const d=await r.json();if(!d.ok)toast(d.result);else{toast('generated');refreshApp('personalize')}
+    const d=await r.json();
+    // a quota/key error is a paragraph, not a toast — show it where it can be read
+    if(!d.ok)await osAlert('Image generation failed',String(d.result||'').replace(/^\[error\]\s*/,''));
+    else{toast(String(d.result||'generated').replace(/^wallpaper generated with /,'✓ ').slice(0,110));refreshApp('personalize')}
   }catch(e){toast('generation failed — offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }

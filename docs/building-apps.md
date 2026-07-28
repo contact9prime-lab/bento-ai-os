@@ -74,11 +74,41 @@ a schedule, or open a WebSocket to `ws://<host>/ws` for real-time updates.
 
 ---
 
-## Widgets
+## Two surfaces: desktop and widget
 
-Any app can be pinned to the desktop as a **live widget** — see
-[The Desktop → Widgets](desktop.md#widgets). Because widgets are full apps, they keep updating,
-persist their data, and restore when the desktop starts.
+Every app has **two surfaces**, and both are part of the same HTML:
+
+| Surface | What it is | How to mark it |
+|---|---|---|
+| Desktop | the whole application | `<div class="desktop-only">…</div>` |
+| Widget | the one glanceable fact, plus at most one action | `<div class="widget-only">…</div>` |
+
+The OS shows exactly one — no script required, and no flash of the wrong surface, because the
+class is applied before the app's own code runs. When you do need to branch in JS:
+
+```js
+window.appSurface   // {mode:'widget'|'desktop', size:'s'|'m'|'l', widget:bool, desktop:bool}
+```
+
+Both views read the same `appData` state; never duplicate the logic.
+
+**Widget size is a property of the app**, chosen while editing it in App Studio (the **S · M · L**
+picker beside *Pin to Desktop*), so the same app looks the same wherever it is pinned:
+
+| Size | Canvas | Good for |
+|---|---|---|
+| S | 260 × 170 | one number or status line |
+| M | 340 × 240 | a couple of stats, a short list |
+| L | 460 × 340 | a small table or chart |
+
+*Preview widget* in App Studio renders the widget surface at exactly that size, so "does it still
+read at S?" is answered before pinning. Changing the size resizes every pinned copy and re-mounts
+it, and the right-click menu on a widget offers the three sizes too.
+
+Because widgets are full apps, they keep updating, persist their data, and restore when the
+desktop starts. They can also live somewhere other than the desktop — the app deck, beside the
+prompt bar, or shrunk into the menu bar (right-click → Move to). See
+[The Desktop → Widgets](desktop.md#widgets).
 
 ---
 

@@ -67,9 +67,13 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #js-exit:hover{color:var(--txt);border-color:var(--acc)}
 /* frameless by default — the app's own look shows through; controls appear on hover */
 .widget{position:absolute;display:flex;flex-direction:column;pointer-events:auto;
-  background:transparent;border:1px solid transparent;border-radius:var(--r-lg);overflow:hidden;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden;
+  box-shadow:var(--el-2),var(--glass-edge);
   resize:both;min-width:150px;min-height:100px;transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
-.widget:hover{border-color:rgba(94,234,212,.22);box-shadow:var(--el-3)}
+.widget:hover{border-color:color-mix(in srgb,var(--acc) 26%,var(--hairline-strong));box-shadow:var(--el-4),var(--glass-edge)}
+/* a widget's page paints ON the glass, so it must not carry its own opaque backdrop */
+.widget iframe{background:transparent}
 .widget .wgh{position:absolute;top:0;left:0;right:0;height:26px;display:flex;align-items:center;gap:6px;
   padding:0 6px 0 10px;cursor:grab;z-index:2;touch-action:none;pointer-events:none;opacity:0;transition:opacity var(--d-base) var(--ease-out);
   background:linear-gradient(rgba(11,13,16,.75),rgba(11,13,16,0))}
@@ -103,3 +107,15 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 :root[data-theme=light] .bento{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08)}
 :root[data-theme=light] .bento .blbl{color:rgba(0,0,0,.45);text-shadow:none}
 
+
+/* ---- widget mode: the size picker in App Studio and its live preview ---- */
+.wgsize{display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 10px;border-radius:999px;
+  border:1px solid var(--hairline);background:rgba(255,255,255,.04)}
+.wgsize .mut{font-size:var(--fs-2xs);letter-spacing:.04em;text-transform:uppercase}
+.wgsize button{width:24px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:800;
+  color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast)}
+.wgsize button:hover{background:rgba(255,255,255,.09);color:var(--txt)}
+.wgsize button.on{background:var(--acc);color:#04211c}
+.wgpreview{height:100%;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
+.wgpreview .widget{box-shadow:var(--el-4)}

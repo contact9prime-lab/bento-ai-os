@@ -11,6 +11,12 @@
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
   --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
   --glass:rgba(17,20,25,.82);
+  /* the glass recipe: translucent tint + heavy blur + a hairline of light along
+     the top edge. Every floating surface (deck groups, widgets, cards, popovers)
+     uses these so they read as one material. */
+  --glass-tint:color-mix(in srgb,var(--bg2) 52%,transparent);
+  --glass-blur:blur(30px) saturate(1.7);
+  --glass-edge:inset 0 .5px 0 rgba(255,255,255,.14);
   --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mbh:30px;      /* top menu bar */
@@ -40,6 +46,8 @@
   --ease-in-out:cubic-bezier(.65,0,.35,1);       /* moves between two on-screen states */
 }
 :root[data-theme=light]{
+  --glass-tint:color-mix(in srgb,#fff 62%,transparent);
+  --glass-edge:inset 0 .5px 0 rgba(255,255,255,.85);
   --hairline:rgba(0,0,0,.08);
   --hairline-strong:rgba(0,0,0,.14);
   --scrim:rgba(0,0,0,.28);
@@ -144,9 +152,13 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #js-exit:hover{color:var(--txt);border-color:var(--acc)}
 /* frameless by default — the app's own look shows through; controls appear on hover */
 .widget{position:absolute;display:flex;flex-direction:column;pointer-events:auto;
-  background:transparent;border:1px solid transparent;border-radius:var(--r-lg);overflow:hidden;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden;
+  box-shadow:var(--el-2),var(--glass-edge);
   resize:both;min-width:150px;min-height:100px;transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
-.widget:hover{border-color:rgba(94,234,212,.22);box-shadow:var(--el-3)}
+.widget:hover{border-color:color-mix(in srgb,var(--acc) 26%,var(--hairline-strong));box-shadow:var(--el-4),var(--glass-edge)}
+/* a widget's page paints ON the glass, so it must not carry its own opaque backdrop */
+.widget iframe{background:transparent}
 .widget .wgh{position:absolute;top:0;left:0;right:0;height:26px;display:flex;align-items:center;gap:6px;
   padding:0 6px 0 10px;cursor:grab;z-index:2;touch-action:none;pointer-events:none;opacity:0;transition:opacity var(--d-base) var(--ease-out);
   background:linear-gradient(rgba(11,13,16,.75),rgba(11,13,16,0))}
@@ -180,9 +192,21 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 :root[data-theme=light] .bento{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08)}
 :root[data-theme=light] .bento .blbl{color:rgba(0,0,0,.45);text-shadow:none}
 
+
+/* ---- widget mode: the size picker in App Studio and its live preview ---- */
+.wgsize{display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 10px;border-radius:999px;
+  border:1px solid var(--hairline);background:rgba(255,255,255,.04)}
+.wgsize .mut{font-size:var(--fs-2xs);letter-spacing:.04em;text-transform:uppercase}
+.wgsize button{width:24px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:800;
+  color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast)}
+.wgsize button:hover{background:rgba(255,255,255,.09);color:var(--txt)}
+.wgsize button.on{background:var(--acc);color:#04211c}
+.wgpreview{height:100%;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
+.wgpreview .widget{box-shadow:var(--el-4)}
 /* ================= windows (desktop chrome) ================= */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
-  background:var(--glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  background:var(--bg);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
   box-shadow:var(--el-4);
   resize:both;overflow:hidden}
@@ -262,6 +286,18 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .np-item .np-x:hover{opacity:1;color:var(--err)}
 .np-item.crit{border-color:var(--err)}
 
+
+/* ---- application menus (File · Edit · View · Window · Help) ----
+   Only the focused window's menus are shown, so the bar reads as belonging to
+   that app rather than to the shell. */
+#mbmenus{display:none;align-items:center;gap:1px;margin-left:8px;min-width:0}
+#mbmenus.on{display:flex}
+#mbmenus button{padding:3px 9px;border-radius:var(--r-sm);font-size:var(--fs-sm);color:var(--txt);
+  opacity:.86;white-space:nowrap;transition:background var(--d-fast) var(--ease-out),opacity var(--d-fast)}
+#mbmenus button:hover{background:rgba(255,255,255,.1);opacity:1}
+#mbmenus button.on{background:var(--acc);color:#fff;opacity:1}
+#ctxmenu .mk{margin-left:auto;padding-left:18px;color:var(--dim2);font-size:var(--fs-2xs);letter-spacing:.02em}
+@media (max-width:900px){#mbmenus{display:none!important}}
 /* ================= dock (floating, centered) ================= */
 #taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;height:auto;max-width:min(94vw,1100px);
   display:flex;align-items:flex-end;gap:4px;padding:7px 10px;border-radius:var(--r-xl);
@@ -337,6 +373,8 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 :root[data-theme=light] .widget .wgh button{background:rgba(0,0,0,.07);color:#1d1b19}
 :root[data-theme=light] #swbox,:root[data-theme=light] #keysbox,:root[data-theme=light] #palbox{border-color:var(--hairline-strong)}
 
+
+:root[data-theme=light] #mbmenus button:hover{background:rgba(0,0,0,.07)}
 /* ================= start menu (launcher) ================= */
 #startmenu{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tbh) + 16px);width:min(680px,92vw);z-index:9500;display:none;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline);border-radius:var(--r-xl);
@@ -858,26 +896,65 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 #ccpop.show{display:block}
 #ccpop .pad{padding:10px 14px}
 
-/* exposé (window overview): the REAL windows are FLIP-scaled into a grid, live */
-#expose{position:fixed;inset:var(--mbh) 0 0 0;z-index:9500;display:none;background:var(--scrim);backdrop-filter:blur(10px)}
-#expose.show{display:block}
+/* ===== Spaces: desktops as cards, windows as tiles you can throw ===== */
+#expose{position:absolute;inset:0;z-index:90;display:none;background:var(--scrim);backdrop-filter:blur(14px)}
+#expose.show{display:block;animation:fadein .16s var(--ease-out)}
 body.exposing .win{transition:transform var(--d-slow) var(--ease-out);will-change:transform}
-body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
-.exp-catch{position:absolute;z-index:9700;cursor:pointer;border-radius:var(--r-md);
+body.exposing .win.exp-win{z-index:200!important;box-shadow:var(--el-4)}
+#expose-spaces{position:absolute;top:18px;left:0;right:0;z-index:300;
+  display:flex;gap:14px;justify-content:center;flex-wrap:wrap;padding:0 20px}
+.space{width:190px;cursor:pointer;border-radius:var(--r-md);overflow:hidden;
+  border:1.5px solid var(--hairline-strong);background:var(--glass-tint);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--el-2);transition:border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+.space:hover{transform:translateY(-3px);box-shadow:var(--el-4)}
+.space.on{border-color:var(--acc);box-shadow:var(--el-4),0 0 22px color-mix(in srgb,var(--acc) 26%,transparent)}
+.space.drop{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 20%,transparent);transform:scale(1.04)}
+.space .sp-map{position:relative;height:96px;background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.space .sp-map i{position:absolute;background:color-mix(in srgb,var(--acc) 34%,transparent);
+  border:1px solid color-mix(in srgb,var(--acc) 60%,transparent);border-radius:3px}
+.space .sp-lbl{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:var(--fs-xs);font-weight:600;
+  border-top:1px solid var(--hairline)}
+.space .sp-x{margin-left:auto;color:var(--dim2);font-size:var(--fs-2xs)}
+.space .sp-x:hover{color:var(--err)}
+.space.add{display:flex;flex-direction:column;align-items:center;justify-content:center;height:130px;
+  font-size:var(--fs-2xl);color:var(--dim2);border-style:dashed;background:transparent}
+.space.add:hover{color:var(--acc);border-color:var(--acc)}
+#expose-grid{position:absolute;inset:0;z-index:250}
+.exp-empty{position:absolute;top:52%;left:0;right:0;text-align:center;color:var(--dim);font-size:var(--fs-md)}
+#expose-hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
+.exp-catch{position:absolute;z-index:300;cursor:pointer;border-radius:var(--r-md);
   outline:2px solid transparent;transition:outline-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .exp-catch:hover{outline-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.exp-catch.dragging{opacity:.5}
 .exp-catch .exp-lbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-30px;padding:4px 12px;white-space:nowrap;
   font-size:var(--fs-xs);font-weight:600;color:#fff;background:rgba(0,0,0,.55);border-radius:var(--r-full);
   display:flex;gap:6px;align-items:center}
+.exp-catch .exp-x{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--r-full);
+  background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-2xs);display:none;align-items:center;justify-content:center}
+.exp-catch:hover .exp-x{display:flex}
+
+/* a window taking the whole screen — over the menu bar and the dock */
+.win.fullwin{position:fixed!important;inset:0!important;width:auto!important;height:auto!important;
+  border-radius:0;border:none;z-index:9450!important}
+.win.fullwin .rz{display:none}
+body.has-fullwin #menubar,body.has-fullwin #taskbar,body.has-fullwin #omnibar{opacity:0;pointer-events:none;
+  transition:opacity var(--d-base) var(--ease-out)}
+
+/* the pager reflects what is actually on each desktop */
+.pgb.has::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:10px;height:2px;border-radius:2px;background:currentColor;opacity:.55}
+.pgb{position:relative}
+.pgb.drop{background:color-mix(in srgb,var(--acc) 34%,transparent);color:var(--txt);outline:1px solid var(--acc)}
+
 
 /* ================= the ever-present agent: omnibar + copilot panels ================= */
 
 /* ---- omnibar ---- */
-#omnibar{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;z-index:9100;
+#omnibar{position:absolute;left:50%;transform:translateX(-50%);bottom:86px;z-index:7;
   width:min(560px,86vw);height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;
-  border-radius:var(--r-full);background:var(--glass);
-  backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),inset 0 .5px 0 rgba(255,255,255,.12);
+  border-radius:var(--r-full);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
   transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
 #omnibar:focus-within{border-color:color-mix(in srgb,var(--acc) 55%,transparent);
   box-shadow:var(--el-4),0 0 24px color-mix(in srgb,var(--acc) 18%,transparent)}
@@ -900,31 +977,38 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 /* results list: direct actions, apps, and always the "ask" row */
 #omnilist{position:absolute;bottom:calc(100% + 10px);left:0;right:0;display:none;
   max-height:min(52vh,420px);overflow-y:auto;padding:6px;border-radius:var(--r-lg);
-  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-5),var(--glass-edge)}
 #omnilist.on{display:block;animation:pop .13s var(--ease-out)}
 #omnilist .palitem.ask .pi{color:var(--acc)}
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
+#omnilist .palitem{position:relative}
+#omnilist .palitem .ptext{flex:1;min-width:0}
+#omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px;opacity:0;transition:opacity var(--d-fast) var(--ease-out)}
+#omnilist .palitem:hover .ok,#omnilist .palitem.sel .ok{opacity:1}
+.omni-hint{display:flex;gap:14px;padding:8px 12px 4px;margin-top:4px;border-top:1px solid var(--hairline);
+  font-size:var(--fs-2xs);color:var(--dim2)}
+.omni-hint kbd{font-family:inherit;border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-right:4px}
 #omnibar button{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;
   border-radius:var(--r-full);color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
 #omnibar button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
 :root[data-theme=light] #omnibar button:hover{background:rgba(0,0,0,.07)}
-/* intent ghost: the grammar's instant read of what you're typing */
-#omni-ghost{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;align-items:center;gap:8px;
-  padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;cursor:pointer;
-  background:var(--glass);backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
-  color:var(--acc);box-shadow:var(--el-2)}
-#omni-ghost.on{display:flex}
-#omni-ghost .og-i{font-weight:700}
-#omni-ghost .og-k{font-size:var(--fs-2xs);color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* Summoned: Ctrl+Space, a double-tap of Ctrl, or typing on the desktop lifts the
+   bar over whatever is in front — including a full-screen window. Let go (Esc or
+   click away) and it drops back into the desktop, behind your work. */
+#omnibar.summoned,#omnicards.raised{z-index:99999}
+#omnibar.summoned{box-shadow:var(--el-5),0 0 34px color-mix(in srgb,var(--acc) 26%,transparent)}
+body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;pointer-events:auto}
 
 /* ---- answer cards ---- */
-#omnicards{position:fixed;left:50%;transform:translateX(-50%);bottom:142px;z-index:9099;
+#omnicards{position:absolute;left:50%;transform:translateX(-50%);bottom:142px;z-index:8;
   width:min(560px,86vw);display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .ocard{pointer-events:auto;border-radius:var(--r-lg);padding:12px 14px 8px;max-height:44vh;display:flex;flex-direction:column;
-  background:var(--glass);backdrop-filter:blur(28px) saturate(1.5);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-4)}
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-4),var(--glass-edge)}
 .ocard .oc-q{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-bottom:8px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
 .ocard .oc-feed{overflow-y:auto;min-height:22px;user-select:text}
@@ -932,6 +1016,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 .ocard .oc-tools button{font-size:var(--fs-2xs);font-weight:600;color:var(--dim);padding:3px 10px;border-radius:var(--r-full);
   transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
 .ocard .oc-tools button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+.ocard .oc-tools .oc-stop{margin-right:auto;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
 
 /* ---- shared mini-feed pieces (omnibar cards + copilot panels) ---- */
 .mf-user{align-self:flex-end;background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 20%,var(--bg3)),color-mix(in srgb,var(--acc2) 14%,var(--bg3)));
@@ -948,9 +1033,10 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 .win .wmain .wbody{flex:1;min-width:0}
 .win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
 .win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
-  display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;opacity:0;
   transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
-.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc)}
+.win:hover .cp-btn,.win.active .cp-btn,.win .cp-btn.on{opacity:.85}
+.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc);opacity:1}
 .win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
 .win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
   border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
@@ -981,6 +1067,187 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 /* ---- visible hands: a window/dock tile glows while the agent acts on it ---- */
 .win.agent-touch{box-shadow:var(--el-4),0 0 0 1.5px color-mix(in srgb,var(--acc) 70%,transparent),0 0 28px color-mix(in srgb,var(--acc) 30%,transparent)}
 .dockb.agent-touch .aicon{box-shadow:0 0 0 2px var(--acc),0 5px 14px rgba(0,0,0,.42)}
+
+/* ================= the app deck (bento tiles above the bar) =================
+   The deck claims as much desktop as it needs: groups WRAP into rows and the
+   whole thing grows upward from the bar, capped at the free space between the
+   menu bar and the prompt bar (then it scrolls). Its measured height feeds
+   --deckh, which every other bottom-anchored surface offsets by. */
+:root{--deckh:0px}
+#icons{display:none}            /* apps live in the deck now — the desktop is wallpaper */
+#deck{position:absolute;left:50%;transform:translateX(-50%);bottom:138px;z-index:6;
+  width:min(1680px,96vw);max-height:calc(100% - 170px);
+  display:flex;align-items:flex-end;gap:8px}
+#deck-toggle{flex:none;width:26px;height:26px;border-radius:var(--r-full);align-self:flex-end;margin-bottom:6px;
+  background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--hairline);color:var(--dim);
+  font-size:var(--fs-2xs);box-shadow:var(--el-1);transition:color var(--d-fast) var(--ease-out)}
+#deck-toggle:hover{color:var(--txt)}
+#deck-scroll{flex:1;min-width:0;max-height:100%;display:flex;flex-wrap:wrap;gap:12px;
+  align-content:flex-end;justify-content:center;overflow-y:auto;overflow-x:hidden;padding:2px 2px 6px;
+  scrollbar-color:var(--line) transparent}
+body:not(.deck-open) #deck-scroll{display:none}
+#deck-scroll::-webkit-scrollbar{width:6px}
+#deck-scroll::-webkit-scrollbar-track{background:transparent}
+#deck-scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--txt) 22%,transparent);border-radius:4px}
+#deck-scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--txt) 38%,transparent)}
+.deck-group{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;border-radius:var(--r-lg);
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
+  transition:border-color var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out)}
+.deck-group:hover{border-color:color-mix(in srgb,var(--acc) 26%,var(--hairline-strong));
+  box-shadow:var(--el-4),var(--glass-edge)}
+.deck-gname{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dim2);padding-left:2px;cursor:context-menu;display:flex;align-items:center;gap:6px}
+.deck-tiles{display:grid;grid-template-rows:repeat(2,minmax(0,1fr));grid-auto-flow:column;gap:4px 2px;
+  align-content:start;flex:1;min-height:0}
+.deck-tile{width:84px;padding:6px 2px 5px;border-radius:var(--r-md);display:flex;flex-direction:column;
+  align-items:center;gap:5px;transition:background var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out)}
+.deck-tile:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
+:root[data-theme=light] .deck-tile:hover{background:rgba(0,0,0,.06)}
+.deck-tile span{font-size:var(--fs-2xs);line-height:1.2;text-align:center;max-width:80px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.deck-new{flex:none;align-self:flex-end;width:96px;height:96px;border-radius:var(--r-lg);color:var(--dim2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:var(--fs-xl);
+  border:1.5px dashed var(--line);transition:border-color var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.deck-new span{font-size:var(--fs-2xs)}
+.deck-new:hover{border-color:var(--acc);color:var(--acc)}
+.deck-wgroup .deck-wframe{width:280px;height:150px;border-radius:var(--r-md);overflow:hidden;
+  background:color-mix(in srgb,var(--bg2) 40%,transparent)}
+.deck-wgroup iframe{width:100%;height:100%;border:none;display:block}
+.deck-wx{margin-left:auto;color:var(--dim2);font-size:var(--fs-2xs)}
+.deck-wx:hover{color:var(--err)}
+body.exposing #deck,body.omni-pop #deck{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
+
+/* widgets pinned beside the prompt bar */
+#barwidgets{position:absolute;bottom:86px;left:calc(50% + min(292px,45vw));z-index:7;display:none;gap:8px}
+#barwidgets.on{display:flex}
+.barwidget{width:210px;height:132px;display:flex;flex-direction:column;border-radius:var(--r-lg);overflow:hidden;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge)}
+.bw-h{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;font-size:var(--fs-2xs);
+  font-weight:700;color:var(--dim);border-bottom:1px solid var(--hairline)}
+.bw-h button{color:var(--dim2);font-size:var(--fs-2xs)}
+.bw-h button:hover{color:var(--err)}
+.barwidget iframe{flex:1;border:none;width:100%;background:transparent}
+
+/* a widget shrunk into the menu bar */
+#mbwidgets{display:flex;align-items:center;gap:8px;margin-left:12px}
+.mbwidget{width:200px;height:var(--mbh);border:none;background:transparent;display:block}
+
+/* surfaces that sit above the dock must clear the deck too */
+body.deck-open #omnicards{bottom:calc(142px + var(--deckh))}
+body.deck-open #toasts{bottom:calc(var(--tbh) + var(--deckh) + 12px)}
+body.deck-open #startmenu{bottom:calc(var(--tbh) + var(--deckh) + 16px)}
+body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
+
+/* ================= AI presence bubble (bottom-right) ================= */
+#aibubble{position:fixed;right:16px;bottom:88px;z-index:9400;display:none;align-items:center;gap:9px;
+  padding:8px 14px 8px 11px;border-radius:var(--r-full);cursor:pointer;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
+  transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+#aibubble.on{display:flex;animation:pop .18s var(--ease-out)}
+#aibubble:hover{transform:translateY(-2px);box-shadow:var(--el-4)}
+#aibubble .ab-orb{width:14px;height:14px;flex:none;border-radius:var(--r-full);
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%)}
+#aibubble.busy .ab-orb{animation:obusy 1s ease-in-out infinite}
+#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+#aibubble .ab-n{min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--acc);color:#06211d;
+  font-size:var(--fs-2xs);font-weight:800;display:flex;align-items:center;justify-content:center}
+
+/* shortcut editor rows (Settings → Shortcuts) */
+.sc-row{display:flex;align-items:center;gap:10px;padding:5px 2px;border-bottom:1px solid var(--hairline)}
+.sc-row:last-child{border-bottom:none}
+.sc-l{flex:1;font-size:var(--fs-md)}
+.sc-l em{font-style:normal;font-size:var(--fs-2xs);color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
+  border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle}
+.sc-k{flex:none;min-width:120px;text-align:center;font-size:var(--fs-sm);font-weight:600;padding:4px 10px;
+  border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--line);color:var(--txt);
+  transition:border-color var(--d-fast) var(--ease-out)}
+.sc-k:hover{border-color:var(--acc)}
+.sc-k.rec{border-color:var(--acc);color:var(--acc);animation:obusy 1s ease-in-out infinite}
+
+/* ================= preferences: a real settings layout =================
+   GNOME/macOS grammar: category rail on the left, preference GROUPS on the
+   right, each a card of ROWS with the label+description left and the control
+   right. One row primitive means every panel can adopt it. */
+.prefs{flex:1;min-height:0;display:flex;background:var(--bg)}
+.prefs-side{flex:0 0 188px;padding:10px 8px;overflow-y:auto;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;gap:2px}
+.prefs-side button{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--r-md);
+  font-size:var(--fs-md);font-weight:600;color:var(--dim);text-align:left;
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
+.prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
+.prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}
+.prefs-main{flex:1;min-width:0;overflow-y:auto;padding:22px 26px 30px}
+.prefs-main > h2{font-size:var(--fs-xl);font-weight:750;margin-bottom:4px}
+.prefs-main > .lead{font-size:var(--fs-md);color:var(--dim);margin-bottom:18px;max-width:62ch;line-height:1.5}
+.pgroup{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:18px;overflow:hidden}
+.pgroup > h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+  padding:12px 16px 0}
+.pgroup > .ghint{font-size:var(--fs-sm);color:var(--dim);padding:6px 16px 0;line-height:1.5}
+.prow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-top:1px solid var(--line)}
+.pgroup > h3 + .prow,.pgroup > .ghint + .prow,.pgroup > .prow:first-child{border-top:none}
+.prow:first-of-type{margin-top:4px}
+.prow .pl{flex:1;min-width:0}
+.prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
+.prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
+.prow .pc{flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
+  min-width:240px;max-width:340px}
+.prow .pc input[type=number]{min-width:96px}
+.prow.stack{display:block}
+.prow.stack .pc{margin-top:9px;justify-content:flex-start}
+.prow.stack .pc input,.prow.stack .pc select{width:100%;max-width:none}
+/* a switch instead of a raw checkbox — the single biggest "cheap form" tell */
+.psw{position:relative;width:40px;height:23px;flex:none;cursor:pointer}
+.psw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.psw i{position:absolute;inset:0;border-radius:var(--r-full);background:var(--bg4);border:1px solid var(--line);
+  transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
+.psw i::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:var(--r-full);
+  background:var(--txt);opacity:.75;transition:transform var(--d-base) var(--ease-spring),opacity var(--d-fast) var(--ease-out)}
+.psw input:checked + i{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent}
+.psw input:checked + i::after{transform:translateX(17px);background:#06211d;opacity:1}
+.psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
+.prow.danger .pl b{color:var(--err)}
+.pgroup.danger{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.prefs-main .savebar{position:sticky;bottom:-30px;margin:0 -26px -30px;padding:12px 26px;
+  background:linear-gradient(transparent,var(--bg) 34%);display:flex;justify-content:flex-end;gap:10px}
+
+/* a stored secret: shown, never re-editable until you ask to replace it */
+.psecret{display:flex;align-items:center;gap:8px}
+.psecret i{font-style:normal;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent);border-radius:var(--r-sm);padding:2px 7px}
+.psecret code{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim)}
+
+/* omnibar attachments: paste, drop or capture a screenshot with the question */
+#omni-shots{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;gap:8px;z-index:2}
+#omni-shots.on{display:flex}
+.oshot{position:relative;display:block}
+.oshot img{height:56px;width:auto;max-width:120px;object-fit:cover;border-radius:var(--r-sm);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-2);display:block}
+.oshot button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:var(--r-full);
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);font-size:var(--fs-2xs);
+  display:flex;align-items:center;justify-content:center}
+.oshot button:hover{color:var(--err);border-color:var(--err)}
+#omnibar.dropping{border-color:var(--acc);box-shadow:var(--el-4),0 0 26px color-mix(in srgb,var(--acc) 30%,transparent)}
+
+/* the build "what next?" card — a dead end becomes one click */
+.bchoice{margin:10px 0;padding:12px 14px;border-radius:var(--r-md);background:var(--bg2);
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));display:flex;flex-direction:column;gap:8px}
+.bchoice b{font-size:var(--fs-md)}
+.bchoice span{font-size:var(--fs-sm);color:var(--dim)}
+.bchoice .row{display:flex;gap:8px;align-items:center}
+.bchoice select{flex:1;min-width:0}
+
+/* stop controls: visible the moment something is running */
+#aibubble .ab-stop{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;justify-content:center}
+#aibubble .ab-stop:hover{color:var(--err);border-color:var(--err)}
+.cp-send.stop{background:var(--err);color:#2b0606}
+.ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
+  border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}
 </style>
 </head>
 <body>
@@ -988,6 +1255,8 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 <div id="menubar">
   <div id="mb-brand"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
   <span id="mbapp" title="focused app"></span>
+  <div id="mbmenus" role="menubar"></div>
+  <div id="mbwidgets"></div>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
   <div id="tray">
@@ -1000,16 +1269,6 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
-<!-- the ever-present agent: answers rise as cards above the bar -->
-<div id="omnicards"></div>
-<div id="omnibar">
-  <div id="omni-orb" title="your agent"></div>
-  <div id="omnilist"></div>
-  <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
-  <button id="omni-mic" title="Voice"></button>
-  <button id="omni-chat" title="Open Chat">⤢</button>
-</div>
-
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
@@ -1035,6 +1294,24 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
   <div id="jarvis-shell"></div>
   <div id="custom-shell"></div>
   <div id="icons"></div>
+  <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
+       #desktop is position:fixed, which creates a stacking context, so a deck
+       outside it would paint over every window regardless of z-index. -->
+  <div id="deck"></div>
+  <!-- the prompt bar lives in the desktop layer: a window covers it, and
+       Ctrl+Space (or a double-tap of Ctrl) summons it back to the front. -->
+  <div id="barwidgets"></div>
+  
+  <!-- the ever-present agent: answers rise as cards above the bar -->
+  <div id="omnicards"></div>
+  <div id="omnibar">
+    <div id="omni-orb" title="your agent"></div>
+    <div id="omnilist"></div>
+    <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
+    <button id="omni-shot" title="Attach a screenshot"></button>
+    <button id="omni-mic" title="Voice"></button>
+    <button id="omni-chat" title="Open Chat">⤢</button>
+  </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 
@@ -1423,8 +1700,23 @@ function buildPager(){
   const p=$('#pager');if(!p)return;p.innerHTML='';
   for(let i=1;i<=DESKS;i++){
     const b=document.createElement('button');b.className='pgb'+(i===curDesk?' on':'');b.textContent=i;
+    const names=[];WM.wins.forEach(w=>{if((w.desk||1)===i&&!w.min)names.push(w.app.title)});
+    b.title=`Desktop ${i}`+(names.length?` — ${names.join(', ')}`:' — empty')
+      +'\nclick to switch · right-click to send the active window here · drop a window to move it';
+    b.classList.toggle('has',names.length>0);
     b.onclick=()=>switchDesk(i);
     b.oncontextmenu=e=>{e.preventDefault();moveActiveToDesk(i)};
+    // the pager is a drop target for windows dragged out of the Spaces overview
+    b.ondragover=e=>{e.preventDefault();b.classList.add('drop')};
+    b.ondragleave=()=>b.classList.remove('drop');
+    b.ondrop=e=>{
+      e.preventDefault();b.classList.remove('drop');
+      const w=WM.wins.get(e.dataTransfer.getData('text/agentos-window'));
+      if(!w||w.desk===i)return;
+      w.desk=i;applyDeskVisibility();buildPager();
+      if(typeof EXPO!=='undefined'&&EXPO.on){exposeSpaces();exposeGrid()}
+      toast(`moved "${w.app.title}" to Desktop ${i}`);
+    };
     p.appendChild(b);
   }
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
@@ -1447,12 +1739,28 @@ function switchDesk(n){
   curDesk=n;localStorage.setItem('curDesk',n);
   const go=()=>{
     applyDeskVisibility();renderWidgets();buildPager();
+    if(typeof deckAuto==='function')deckAuto();
     let top=null;WM.wins.forEach(o=>{if(deskVisible(o)&&!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
     WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)Motion.run(w.el,[{transform:`translateX(${46*dir}px)`,opacity:0},{transform:'none',opacity:1}],{duration:220,easing:EASE.out})});
     if(top)focusWin(top);
   };
   Motion.reduced||!out.length?go():setTimeout(go,170);
   toast('▪ Desktop '+n);
+}
+/* Ctrl+← / Ctrl+→ walk the desktops (wrapping), Ctrl+Shift+← / → carry the
+   focused window with you — the pair people reach for without being told. */
+function switchDeskBy(delta){
+  if(DESKS<2)return toast('only one desktop — add another in Spaces (F3)');
+  switchDesk(((curDesk-1+delta)%DESKS+DESKS)%DESKS+1);
+}
+function moveActiveDeskBy(delta){
+  if(DESKS<2)return toast('only one desktop — add another in Spaces (F3)');
+  const a=(typeof activeWin==='function')&&activeWin();
+  if(!a)return toast('no active window to move');
+  const n=((curDesk-1+delta)%DESKS+DESKS)%DESKS+1;
+  a.desk=n;applyDeskVisibility();buildPager();
+  switchDesk(n);
+  toast(`"${a.app.title}" → Desktop ${n}`);
 }
 function moveActiveToDesk(n){
   let act=null;WM.wins.forEach(w=>{if(w.el.classList.contains('active'))act=w});
@@ -1649,11 +1957,14 @@ function createWin(app){
   el.querySelector('.cls').onclick=e=>{e.stopPropagation();closeWin(w)};
   const ttl=el.querySelector('.ttl');
   ttl.ondblclick=e=>{if(!e.target.closest('button'))toggleMax(w)};
+  ttl.oncontextmenu=e=>{e.preventDefault();winMenu(e,w)};
   dragify(w,ttl);
   resizify(w);
   // the agent inside this app: ✦ toggles the copilot panel (remembered per app)
   el.querySelector('.cp-btn').onclick=e=>{e.stopPropagation();toggleCopilot(w)};
-  if(localStorage.getItem('copilot:'+app.id))setTimeout(()=>toggleCopilot(w),80);
+  // the panel never opens by itself — a window is a window until you ask for the
+  // agent (✦ on the title bar, or the copilot shortcut, which also works in
+  // full screen). Until then it sits quietly out of the way.
 
   app.render(el.querySelector('.wbody'),w);
   setMenubarApp(app.title);
@@ -1672,6 +1983,8 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  if(typeof deckAuto==='function')deckAuto();
+  if(typeof buildPager==='function')buildPager();
   if(typeof buildDock==='function')buildDock();
 }
 /* the dock auto-hides while a maximized window is focused; a bottom-edge peek brings it back */
@@ -1685,17 +1998,19 @@ document.addEventListener('pointermove',e=>{
   if(e.clientY>innerHeight-6)document.body.classList.add('dock-peek');
   else if(document.body.classList.contains('dock-peek')&&e.clientY<innerHeight-110)document.body.classList.remove('dock-peek');
 });
-function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||''}
+function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||'';
+  if(typeof buildAppMenus==='function')buildAppMenus()}
 function minimizeWin(w){
   w.min=true;w.tb.classList.add('mini');w.tb.classList.remove('on');
   zoomWin(w.el,w.id,-1).then(()=>{if(w.min)w.el.style.display='none'});
   // hand focus to the topmost remaining window
   let top=null;WM.wins.forEach(o=>{if(!o.min&&o!==w&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
-  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof buildDock==='function')buildDock()}
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof deckAuto==='function')deckAuto();if(typeof buildDock==='function')buildDock()}
 }
 function restoreWin(w){
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
+  if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
 function toggleMax(w){
@@ -1708,12 +2023,92 @@ function toggleMax(w){
   focusWin(w);
   updateDockHide();
 }
+/* every window control in one place — the title bar's right-click menu */
+function winMenu(e,w){
+  const items=[
+    {label:w.fs?'Leave full screen':'Full screen',fn:()=>toggleFullWin(w)},
+    {label:w.max?'Restore size':'Maximize',fn:()=>toggleMax(w)},
+    {label:'Minimize',fn:()=>minimizeWin(w)},
+    null,
+    {label:'Tile left',fn:()=>tileWin(w,'left')},
+    {label:'Tile right',fn:()=>tileWin(w,'right')},
+    {label:'Centre',fn:()=>tileWin(w,'centre')},
+  ];
+  if(DESKS>1){
+    items.push(null);
+    for(let n=1;n<=DESKS;n++)if(n!==w.desk)items.push({label:'Move to Desktop '+n,fn:()=>{
+      w.desk=n;applyDeskVisibility();toast(`moved to Desktop ${n}`)}});
+  }
+  if(w.app.multi)items.push(null,{label:'New window',fn:()=>openAppNew(w.id)});
+  items.push(null,{label:'Close',danger:true,fn:()=>closeWin(w)});
+  showCtxItems(e,items);
+}
+/* true full screen: over the menu bar, dock and everything else */
+function toggleFullWin(w){
+  w.fs=!w.fs;
+  if(w.fs&&!w.prev)w.prev={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+  flipWin(w.el,()=>{
+    w.el.classList.toggle('fullwin',w.fs);
+    if(!w.fs&&w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;
+      w.el.style.width=w.prev.w;w.el.style.height=w.prev.h;w.prev=null}
+  });
+  document.body.classList.toggle('has-fullwin',w.fs);
+  if(w.fs)toast('full screen — Esc or F to exit');
+  focusWin(w);
+}
+/* Ctrl+↓ organises whatever is on this desktop: grid → cascade → back where
+   they were. Each window's pre-arrange geometry is remembered so the third
+   press really does restore, not approximate. */
+let ARRANGE_MODE=0;
+function arrangeWindows(){
+  const desk=$('#desktop'),W=desk.clientWidth,H=desk.clientHeight;
+  const wins=[];WM.wins.forEach(x=>{if(!x.min&&(x.desk||1)===curDesk&&!x.fs)wins.push(x)});
+  if(!wins.length)return toast('nothing to arrange on this desktop');
+  wins.forEach(x=>{if(!x.arr)x.arr={l:x.el.style.left,t:x.el.style.top,w:x.el.style.width,h:x.el.style.height}});
+  ARRANGE_MODE=(ARRANGE_MODE+1)%3;
+  if(ARRANGE_MODE===1){                      // grid
+    const n=wins.length,cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols),gap=10;
+    const cw=(W-gap*(cols+1))/cols, ch=(H-gap*(rows+1))/rows;
+    wins.forEach((x,i)=>{
+      const c=i%cols,r=Math.floor(i/cols);
+      if(x.max)toggleMax(x);
+      flipWin(x.el,()=>{x.el.style.left=(gap+c*(cw+gap))+'px';x.el.style.top=(gap+r*(ch+gap))+'px';
+        x.el.style.width=cw+'px';x.el.style.height=ch+'px'});
+    });
+    toast('▦ tiled — press again to cascade');
+  }else if(ARRANGE_MODE===2){                // cascade
+    wins.forEach((x,i)=>{
+      if(x.max)toggleMax(x);
+      flipWin(x.el,()=>{x.el.style.left=(40+i*38)+'px';x.el.style.top=(30+i*34)+'px';
+        x.el.style.width=Math.min(920,W-120)+'px';x.el.style.height=Math.min(620,H-110)+'px'});
+      focusWin(x);
+    });
+    toast('▤ cascaded — press again to restore');
+  }else{                                     // back where they were
+    wins.forEach(x=>{if(x.arr){const a=x.arr;flipWin(x.el,()=>{x.el.style.left=a.l;x.el.style.top=a.t;
+      x.el.style.width=a.w;x.el.style.height=a.h});x.arr=null}});
+    toast('windows restored');
+  }
+}
+function tileWin(w,where){
+  const desk=$('#desktop'),W=desk.clientWidth,H=desk.clientHeight;
+  const z=where==='left'?{l:0,t:0,w:W/2,h:H}
+    :where==='right'?{l:W/2,t:0,w:W/2,h:H}
+    :{l:W*0.15,t:H*0.08,w:W*0.7,h:H*0.8};
+  if(w.max)toggleMax(w);
+  if(!w.snap)w.snap={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+  flipWin(w.el,()=>{w.el.style.left=z.l+'px';w.el.style.top=z.t+'px';
+    w.el.style.width=z.w+'px';w.el.style.height=z.h+'px'});
+  focusWin(w);
+}
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide()}
+  if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
 
@@ -1886,16 +2281,50 @@ function claimConversation(ev){
   }
   return !!(ev.origin&&ev.origin!=='user');
 }
+/* One turn at a time per conversation is a server rule, so a second ask while
+   the agent is busy gets QUEUED (and says so) instead of being dropped. */
+const TURN_QUEUE=[];
+function agentQueueFlush(cid){
+  const i=TURN_QUEUE.findIndex(o=>o.cid===cid);
+  if(i<0)return;
+  const o=TURN_QUEUE.splice(i,1)[0];
+  setTimeout(()=>agentTurn(o),150);
+}
 function agentTurn(o){
   // o: {text, cid?, origin, title?, context?, sink, onCid?}
   if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
-  if(o.cid&&RUNNING.has(o.cid)){toast('that agent is already working — one turn at a time');return false}
+  if(o.cid&&RUNNING.has(o.cid)){
+    TURN_QUEUE.push(o);
+    if(o.sink){
+      if(o.sink.start)o.sink.start();
+      if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
+    }
+    // never a dead end: the caller can offer "stop what's running and send this now"
+    if(o.onQueued)o.onQueued(()=>{
+      try{ws.send(JSON.stringify({type:'abort',conversation_id:o.cid}))}catch(e){}
+    });
+    return true;
+  }
   if(o.cid)sinkOn(o.cid,o.sink);
   else PENDING_SINKS.push({origin:o.origin,sink:o.sink,onCid:o.onCid});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
-    model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
+    images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
     context:o.context||''}));
   return true;
+}
+
+/* ---- stopping: any turn, from anywhere, at any moment ---- */
+function stopAgent(cid){
+  if(!ws||ws.readyState!==1)return false;
+  ws.send(JSON.stringify({type:'abort',conversation_id:cid||null}));   // no id = stop everything
+  return true;
+}
+function stopAllAgents(){
+  const n=RUNNING.size+((window.STUDIO&&STUDIO.building)?1:0);
+  // drop anything queued behind it too, or the next turn starts the moment this one dies
+  if(typeof TURN_QUEUE!=='undefined')TURN_QUEUE.length=0;
+  if(!stopAgent(null))return toast('not connected to the server');
+  toast(n?`stopping ${n} running turn${n>1?'s':''}…`:'nothing is running right now');
 }
 
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
@@ -1909,12 +2338,18 @@ function miniFeed(box,opts){
   return {
     start(){
       text='';body=null;think=null;clearWorking();
+      if(opts.onStart)opts.onStart();
       working=document.createElement('div');working.className='mf-working';
       working.innerHTML='<span class="mfo"></span><span class="mft">thinking…</span>';
       box.appendChild(working);scroll();
     },
     status(ev){if(working)working.querySelector('.mft').textContent=ev.message||'working…'},
     thinking(t){
+      // answer surfaces (cards) stay clean: the reasoning trace only says "thinking…"
+      if(opts.showThinking===false){
+        if(working)working.querySelector('.mft').textContent='thinking…';
+        return;
+      }
       if(!think){think=document.createElement('div');think.className='think mf-think';box.insertBefore(think,working)}
       think.textContent+=t;think.scrollTop=think.scrollHeight;
     },
@@ -2059,11 +2494,17 @@ async function initCopilot(w,panel){
     if(RUNNING.has(cid))sinkOn(cid,mkSink());   // re-attach to a live turn
   }
   let live=null;
+  const setBusy=on=>{
+    sendBtn2.textContent=on?'◼':'↑';
+    sendBtn2.classList.toggle('stop',on);
+    sendBtn2.title=on?'Stop this agent':'Send';
+  };
   function mkSink(){
     if(live)return live;
     live=miniFeed(feedEl,{scrollEl:feedEl,
+      onStart:()=>setBusy(true),
       onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
-      onEnd:()=>{live=null;startersEl.style.display='none'}});
+      onEnd:()=>{live=null;setBusy(false);startersEl.style.display='none'}});
     return live;
   }
   function go(){
@@ -2076,8 +2517,131 @@ async function initCopilot(w,panel){
       title:'✦ '+w.app.title,context:copilotContext(w),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
-  sendBtn2.onclick=go;
+  sendBtn2.onclick=()=>{
+    const cid=COPILOT.cids[w.id];
+    if(cid&&RUNNING.has(cid)){stopAgent(cid);toast('stopping…');return}   // ◼ while it works
+    go();
+  };
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
+}
+/* ================= application menus =================
+   Every window gets File · Edit · View · Window · Help in the menu bar, the way
+   a desktop application is expected to. The set is generated for the focused
+   window, so it is never stale and no app has to opt in; an app can add its own
+   entries by declaring APPS[id].menus(w) — those are merged, not replacing the
+   basics. Edit acts on whatever has the caret, which is what makes Copy/Paste
+   behave like the rest of the system. */
+
+function menuStd(w){
+  const app=w&&w.app, id=w&&w.id;
+  const has=sel=>!!(w&&w.el.querySelector(sel));
+  const file=[];
+  if(app&&app.multi)file.push({label:'New window',keys:'',fn:()=>openAppNew(id)});
+  file.push({label:'New chat',fn:()=>{openApp('chat');newChat()}});
+  if(has('.psearch input'))file.push({label:'Find in this app',keys:'',fn:()=>{
+    const i=w.el.querySelector('.psearch input');if(i)i.focus()}});
+  file.push(null,
+    {label:'Take a screenshot',fn:()=>takeScreenshot('full')},
+    {label:'Close window',keys:(SHORTCUTS['window.close']||{}).keys,fn:()=>closeWin(w)});
+
+  const edit=[
+    {label:'Undo',keys:'Ctrl+Z',fn:()=>document.execCommand('undo')},
+    {label:'Redo',keys:'Ctrl+Shift+Z',fn:()=>document.execCommand('redo')},
+    null,
+    {label:'Cut',keys:'Ctrl+X',fn:()=>editDo('cut')},
+    {label:'Copy',keys:'Ctrl+C',fn:()=>editDo('copy')},
+    {label:'Paste',keys:'Ctrl+V',fn:()=>editPaste()},
+    {label:'Select all',keys:'Ctrl+A',fn:()=>document.execCommand('selectAll')},
+  ];
+
+  const view=[
+    {label:'Reload this app',fn:()=>refreshApp(id)},
+    {label:w&&w.fs?'Leave full screen':'Full screen',keys:'',fn:()=>toggleFullWin(w)},
+    {label:w&&w.max?'Restore size':'Maximize',keys:(SHORTCUTS['window.maximize']||{}).keys,fn:()=>toggleMax(w)},
+    null,
+    {label:(w&&w.el.querySelector('.copanel.open'))?'Hide the agent panel':'Ask the agent about this app',
+     keys:(SHORTCUTS['copilot']||{}).keys,fn:()=>toggleCopilot(w)},
+    {label:'Spaces overview',keys:(SHORTCUTS['expose']||{}).keys,fn:()=>exposeToggle(true)},
+  ];
+
+  const win=[
+    {label:'Minimize',keys:(SHORTCUTS['window.minimize']||{}).keys,fn:()=>minimizeWin(w)},
+    {label:'Tile left',fn:()=>tileWin(w,'left')},
+    {label:'Tile right',fn:()=>tileWin(w,'right')},
+    {label:'Centre',fn:()=>tileWin(w,'centre')},
+    {label:'Organise all windows',keys:(SHORTCUTS['windows.arrange']||{}).keys,fn:()=>arrangeWindows()},
+  ];
+  if(DESKS>1){
+    win.push(null);
+    for(let n=1;n<=DESKS;n++)if(n!==w.desk)
+      win.push({label:'Move to Desktop '+n,fn:()=>{w.desk=n;applyDeskVisibility();buildPager();toast('moved to Desktop '+n)}});
+  }
+  const openWins=[];WM.wins.forEach(o=>{if(o!==w&&!o.min)openWins.push(o)});
+  if(openWins.length){
+    win.push(null);
+    openWins.slice(0,8).forEach(o=>win.push({label:o.app.title,fn:()=>focusWin(o)}));
+  }
+
+  const help=[
+    {label:'Keyboard shortcuts',keys:(SHORTCUTS['help']||{}).keys,fn:()=>keysHelp(true)},
+    {label:'AgentOS manual',fn:()=>openApp('docs')},
+    {label:`Ask ${agentName()} about ${app?app.title:'this app'}`,fn:()=>copilotAsk(id,'')},
+    null,
+    {label:'About AgentOS',fn:()=>openApp('about')},
+  ];
+
+  const menus=[['File',file],['Edit',edit],['View',view],['Window',win],['Help',help]];
+  // an app's own menus merge into the standard ones (or add a new menu)
+  let extra=[];
+  try{extra=(app&&app.menus)?app.menus(w)||[]:[]}catch(e){}
+  extra.forEach(([title,items])=>{
+    const hit=menus.find(m=>m[0].toLowerCase()===String(title).toLowerCase());
+    if(hit)hit[1]=items.concat([null],hit[1]);
+    else menus.splice(menus.length-1,0,[title,items]);
+  });
+  return menus;
+}
+function editDo(cmd){
+  const el=document.activeElement;
+  if(el&&/^(input|textarea)$/i.test(el.tagName||''))el.focus();
+  if(!document.execCommand(cmd))toast('nothing selected');
+}
+async function editPaste(){
+  const el=document.activeElement;
+  if(!el||!/^(input|textarea)$/i.test(el.tagName||''))return toast('click into a text field first');
+  try{
+    const t=await navigator.clipboard.readText();
+    const s=el.selectionStart??el.value.length, e=el.selectionEnd??s;
+    el.value=el.value.slice(0,s)+t+el.value.slice(e);
+    el.selectionStart=el.selectionEnd=s+t.length;
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+  }catch(err){toast('press Ctrl+V — the browser kept the clipboard private')}
+}
+/* ---- the menu bar renders the focused window's menus ---- */
+function buildAppMenus(){
+  const box=$('#mbmenus');if(!box)return;
+  const w=(typeof activeWin==='function')&&activeWin();
+  if(!w){box.innerHTML='';box.classList.remove('on');return}
+  const menus=menuStd(w);
+  box.classList.add('on');
+  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  box.querySelectorAll('button').forEach(b=>{
+    const open=()=>{
+      const r=b.getBoundingClientRect();
+      box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+      // recomputed on open, not on focus: an app that renders asynchronously (or
+      // has since changed folder / tab) gets menus that describe it as it is now
+      const live=(activeWin()===w?menuStd(w):menus)[+b.dataset.i][1];
+      showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
+        live.map(it=>it&&({...it,
+          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})));
+      const m=$('#ctxmenu');
+      const clear=()=>{b.classList.remove('on');document.removeEventListener('click',clear,true)};
+      setTimeout(()=>document.addEventListener('click',clear,true),0);
+    };
+    b.onclick=open;
+    b.onmouseenter=()=>{if(box.querySelector('button.on'))open()};   // slide across like a real menu bar
+  });
 }
 /* ================= apps ================= */
 const APPS={
@@ -2091,9 +2655,18 @@ const APPS={
   taskmgr:{id:'taskmgr',title:'Task Manager',icon:'',w:660,h:560,desc:'CPU, memory, processes',
     render:renderTaskMgr,onClose(w){clearInterval(w.timer);return true}},
   terminal:{id:'terminal',title:'Terminal',icon:'',w:860,h:520,desc:'A real shell on this machine',multi:true,
-    render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true}},
+    render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true},
+    menus:w=>[['Edit',[
+      {label:'Clear the screen',fn:()=>{try{w.term.clear()}catch(e){}}},
+      {label:'Copy the selection',fn:()=>{try{navigator.clipboard.writeText(w.term.getSelection()||'')}catch(e){}}},
+    ]]]},
   browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
-  files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles},
+  files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles,
+    menus:w=>[['File',[
+      {label:'Go to workspace root',fn:()=>{w.path='';renderFiles(w.el.querySelector('.wbody'),w)}},
+      {label:'Go up one folder',fn:()=>{w.path=(w.path||'').split('/').slice(0,-1).join('/');renderFiles(w.el.querySelector('.wbody'),w)}},
+      {label:'Copy this path',fn:()=>{navigator.clipboard.writeText(w.path||'.').then(()=>toast('path copied'))}},
+    ]]]},
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
@@ -2565,12 +3138,211 @@ function updateDockSeps(){
 }
 function pinToDock(id){if(!DOCK.includes(id)){DOCK.push(id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('added to dock')}}
 function tickClock(){
+  // the menu-bar clock follows Settings → Locale (timezone + 12/24h), not the browser
+  const lo=(cfg&&cfg.locale)||{};
+  const o={};
+  if(lo.timezone)o.timeZone=lo.timezone;
+  const loc=lo.language||[];
   const n=new Date();
-  $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  $('#tbclock .dt').textContent=n.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
+  try{
+    $('#tbclock .tm').textContent=n.toLocaleTimeString(loc,{...o,hour:'2-digit',minute:'2-digit',
+      hour12:lo.clock?lo.clock==='12h':undefined});
+    $('#tbclock .dt').textContent=n.toLocaleDateString(loc,{...o,weekday:'short',day:'numeric',month:'short'});
+  }catch(e){
+    $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    $('#tbclock .dt').textContent=n.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
+  }
 }
 
-/* ================= desktop widgets ================= */
+/* ================= the deck: app tiles above the prompt bar =================
+   The desktop is wallpaper, not a filing cabinet. Every app lives in a bento
+   group inside one horizontally scrollable strip that sits directly above the
+   omnibar — plus any widget you pin into it. Groups are yours: rename, create,
+   move apps between them. Persisted in localStorage; nothing here is on the
+   server, so it stays instant. */
+const DECK_DEFAULTS=[
+  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Create',['store','studio','themes','personalize']],
+  ['Intelligence',['models','memory','kg','soul','profile']],
+  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['System',['taskmgr','control','syssettings','settings','policies','permissions','snapshots','logs','tokens']],
+  ['Library',['docs','mission','train','hermes','about']],
+];
+let DECK=null;
+function deckLoad(){
+  try{DECK=JSON.parse(localStorage.getItem('deck')||'null')}catch(e){DECK=null}
+  if(!DECK||!Array.isArray(DECK.groups))
+    DECK={open:true,groups:DECK_DEFAULTS.map(([name,apps],i)=>({id:'g'+i,name,apps:apps.slice()}))};
+  if(DECK.open===undefined)DECK.open=true;
+  if(DECK.auto===undefined)DECK.auto=true;   // step aside while you're working in a window
+  return DECK;
+}
+function deckSave(){localStorage.setItem('deck',JSON.stringify(DECK))}
+function deckGroupOf(id){return DECK.groups.find(g=>g.apps.includes(id))}
+/* every launchable app has a home: new built-ins land in More, user apps in Your apps */
+function deckReconcile(){
+  const ids=(typeof launcherIds==='function'?launcherIds():Object.keys(APPS)).filter(id=>APPS[id]);
+  DECK.groups.forEach(g=>g.apps=g.apps.filter(id=>APPS[id]));
+  const homeless=ids.filter(id=>!deckGroupOf(id));
+  if(homeless.length){
+    const ua=homeless.filter(id=>id.startsWith('ua_')), rest=homeless.filter(id=>!id.startsWith('ua_'));
+    const into=(name,list)=>{
+      if(!list.length)return;
+      let g=DECK.groups.find(x=>x.name===name);
+      if(!g){g={id:'g'+Date.now().toString(36),name,apps:[]};DECK.groups.push(g)}
+      g.apps.push(...list);
+    };
+    into('Your apps',ua); into('More',rest);
+  }
+  DECK.groups=DECK.groups.filter(g=>g.apps.length||g.widget);
+  deckSave();
+}
+/* auto mode: the deck shows on a bare desktop and gets out of the way the
+   moment a window is in use. Toggling it by hand pins that choice. */
+/* Which desktops carry the deck is a per-desktop choice: Desktop 1 is the
+   launcher by default, the rest start clear so windows have the whole canvas. */
+function deckAllowed(){
+  const m=(DECK&&DECK.desks)||{};
+  return m[curDesk]!==undefined?!!m[curDesk]:(curDesk===1);
+}
+function deckVisibleNow(){
+  if(!DECK)return false;
+  if(!deckAllowed())return false;                        // this space is kept clear
+  if(DECK._override!==undefined)return DECK._override;   // the user just toggled it
+  if(!DECK.auto)return !!DECK.open;
+  let busy=false;WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===curDesk)busy=true});
+  return !busy;
+}
+/* Window activity recomputes visibility and clears any manual override, so one
+   click on ▾ never leaves the deck stuck open over your work. */
+function deckAuto(){
+  if(!DECK)return;
+  DECK._override=undefined;
+  const want=deckVisibleNow();
+  if(want!==document.body.classList.contains('deck-open'))buildDeck();
+}
+function deckToggle(){
+  if(!DECK)deckLoad();
+  DECK.desks=DECK.desks||{};
+  const showing=document.body.classList.contains('deck-open');
+  DECK.desks[curDesk]=!showing;                 // remembered per desktop
+  DECK._override=showing?undefined:true;
+  deckSave();buildDeck();
+  toast(showing?`Desktop ${curDesk} is clear — Ctrl+Shift+D brings the deck back`
+               :`app deck on Desktop ${curDesk}`);
+}
+function buildDeck(){
+  const box=$('#deck');if(!box)return;
+  if(!DECK)deckLoad();
+  deckReconcile();
+  const open=deckVisibleNow();
+  document.body.classList.toggle('deck-open',open);
+  DECK._shown=open;
+  box.innerHTML=`<button id="deck-toggle" title="${open?`Hide the deck on Desktop ${curDesk} (Ctrl+Shift+D)`:`Show the deck on Desktop ${curDesk} (Ctrl+Shift+D)`}">${open?'▾':'▴'}</button>
+    <div id="deck-scroll">${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
+      ${deckWidgetsHTML()}
+      <button class="deck-new" title="New group">＋<span>New group</span></button>
+    </div>`;
+  $('#deck-toggle').onclick=deckToggle;
+  box.querySelector('.deck-new').onclick=deckNewGroup;
+  box.querySelectorAll('.deck-tile').forEach(t=>{
+    t.onclick=()=>openApp(t.dataset.app);
+    t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
+  });
+  box.querySelectorAll('.deck-gname').forEach(h=>{
+    h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
+  });
+  deckMeasure(open);
+}
+/* the deck's real height drives --deckh, so cards, toasts and the start menu
+   always sit above it however many rows it wrapped into */
+function deckMeasure(open){
+  const box=$('#deck');if(!box)return;
+  requestAnimationFrame(()=>{
+    const h=open?Math.ceil(box.getBoundingClientRect().height)+8:0;
+    document.documentElement.style.setProperty('--deckh',h+'px');
+  });
+}
+addEventListener('resize',()=>{if(DECK)deckMeasure(document.body.classList.contains('deck-open'))});
+function deckGroupHTML(g){
+  return `<div class="deck-group" data-g="${esc(g.id)}">
+    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}</div>
+    <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
+      <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
+        ${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
+  </div>`;
+}
+function deckWidgetsHTML(){
+  const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
+  const here=(WIDGETS||[]).filter(w=>w.place==='deck'&&apps[w.app_id]);
+  return here.map(w=>`<div class="deck-group deck-wgroup" data-w="${esc(w.app_id)}">
+    <div class="deck-gname">${esc(apps[w.app_id].name)}
+      <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
+    <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
+  </div>`).join('');
+}
+async function deckNewGroup(){
+  const name=await osPrompt('Name the new group',{placeholder:'e.g. Work',confirmText:'Create'});
+  if(!name||!name.trim())return;
+  DECK.groups.push({id:'g'+Date.now().toString(36),name:name.trim(),apps:[]});
+  deckSave();buildDeck();
+  toast('group "'+name.trim()+'" added — right-click any app to move it here');
+}
+function deckTileMenu(e,id){
+  const cur=deckGroupOf(id);
+  const items=[{label:'Open',fn:()=>openApp(id)}];
+  if(APPS[id]&&APPS[id].multi)items.push({label:'New window',fn:()=>openAppNew(id)});
+  items.push({label:'✦ Ask about this app',fn:()=>copilotAsk(id,'')});
+  items.push(null);
+  DECK.groups.filter(g=>g!==cur).forEach(g=>items.push({label:'Move to '+g.name,fn:()=>{
+    if(cur)cur.apps=cur.apps.filter(x=>x!==id);
+    g.apps.push(id);deckSave();buildDeck();
+  }}));
+  items.push(null,{label:'Pin to dock',fn:()=>pinToDock(id)});
+  if(id.startsWith('ua_'))items.push({label:'Pin as widget (deck)',fn:()=>setWidgetPlace(id.slice(3),'deck')});
+  showCtxItems(e,items);
+}
+function deckGroupMenu(e,gid){
+  const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
+  showCtxItems(e,[
+    {label:'Rename group…',fn:async()=>{
+      const v=await osPrompt('Rename group',{value:g.name,confirmText:'Rename'});
+      if(v&&v.trim()){g.name=v.trim();deckSave();buildDeck()}}},
+    {label:'Move group left',fn:()=>{const i=DECK.groups.indexOf(g);if(i>0){DECK.groups.splice(i,1);DECK.groups.splice(i-1,0,g);deckSave();buildDeck()}}},
+    {label:'Move group right',fn:()=>{const i=DECK.groups.indexOf(g);if(i<DECK.groups.length-1){DECK.groups.splice(i,1);DECK.groups.splice(i+1,0,g);deckSave();buildDeck()}}},
+    null,
+    {label:(DECK.auto?'Always show the deck':'Hide the deck while working'),fn:()=>{
+      DECK.auto=!DECK.auto;DECK.open=true;DECK._override=undefined;deckSave();buildDeck();
+      toast(DECK.auto?'the deck steps aside while you work':'the deck always shows')}},
+    {label:'Delete group',danger:true,fn:async()=>{
+      if(!await osConfirm(`Delete "${g.name}"?`,'Its apps move back into More — nothing is uninstalled.',{confirmText:'Delete',danger:true}))return;
+      DECK.groups=DECK.groups.filter(x=>x!==g);
+      deckSave();buildDeck();
+    }},
+  ]);
+}
+/* ================= desktop widgets =================
+   Every app has two surfaces: the desktop window (the whole application) and a
+   widget (the one glanceable fact). The widget's size is a property of the APP —
+   chosen while editing it — not of wherever it happens to be pinned, so the same
+   app looks the same on every desktop and after a re-pin. */
+const WIDGET_SIZES={s:{w:260,h:170,label:'Small'},m:{w:340,h:240,label:'Medium'},l:{w:460,h:340,label:'Large'}};
+function widgetSizeOf(appId){
+  const a=(USERAPPS||[]).find(x=>x.id===appId);
+  return WIDGET_SIZES[(a&&a.widget_size)||'m']||WIDGET_SIZES.m;
+}
+async function setWidgetSize(appId,size){
+  const a=(USERAPPS||[]).find(x=>x.id===appId);if(a)a.widget_size=size;
+  try{await fetch('/api/apps/'+appId,{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({widget_size:size})})}catch(e){}
+  const d=WIDGET_SIZES[size]||WIDGET_SIZES.m;
+  WIDGETS.filter(w=>w.app_id===appId).forEach(w=>{w.w=d.w;w.h=d.h});
+  // the iframe is told its size in the URL, so it must re-mount to re-render
+  if(widgetEls[appId]){widgetEls[appId].remove();delete widgetEls[appId]}
+  renderWidgets();saveWidgets();
+  if(typeof refreshApp==='function')refreshApp('studio');
+  toast('widget size → '+d.label);
+}
 let WIDGETS=[];              // [{app_id,x,y,w,h}]
 const widgetEls={};         // app_id -> element (kept alive so iframes never reload)
 let widgetSaveT=0, widgetEchoUntil=0;
@@ -2578,11 +3350,45 @@ async function loadWidgets(){
   try{const r=await fetch('/api/widgets');const d=await r.json();WIDGETS=d.widgets||[]}catch(e){WIDGETS=[]}
   renderWidgets();
 }
+/* A widget can live in four places: free on the desktop (default), as a card in
+   the deck, in the strip beside the prompt bar, or shrunk into the menu bar. */
+const WIDGET_PLACES=[['','Desktop'],['deck','App deck'],['bar','Beside the prompt bar'],['menubar','Menu bar']];
+function setWidgetPlace(appId,place){
+  let wd=WIDGETS.find(w=>w.app_id===appId);
+  if(!wd){wd={app_id:appId,desk:curDesk,x:200,y:60,w:300,h:210};WIDGETS.push(wd)}
+  wd.place=place||'';
+  if(!place){wd.desk=curDesk}
+  // the element is rebuilt in its new home; drop the cached one so it re-mounts
+  if(widgetEls[appId]){widgetEls[appId].remove();delete widgetEls[appId]}
+  renderWidgets();saveWidgets();
+  toast('widget → '+((WIDGET_PLACES.find(p=>p[0]===(place||''))||[])[1]||'desktop'));
+}
+function renderPlacedWidgets(){
+  const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
+  // beside the bar: compact live cards
+  const bar=$('#barwidgets');
+  if(bar){
+    const list=WIDGETS.filter(w=>w.place==='bar'&&apps[w.app_id]);
+    bar.classList.toggle('on',list.length>0);
+    bar.innerHTML=list.map(w=>`<div class="barwidget"><div class="bw-h">${esc(apps[w.app_id].name)}
+        <button onclick="setWidgetPlace('${esc(w.app_id)}','')" title="Unpin">✕</button></div>
+      <iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${esc((apps[w.app_id].widget_size)||'m')}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>`).join('');
+  }
+  // menu bar: a thin always-visible readout
+  const mb=$('#mbwidgets');
+  if(mb){
+    const list=WIDGETS.filter(w=>w.place==='menubar'&&apps[w.app_id]);
+    mb.innerHTML=list.map(w=>`<iframe class="mbwidget" title="${esc(apps[w.app_id].name)}"
+      src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=s" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`).join('');
+  }
+  if(typeof buildDeck==='function'&&$('#deck'))buildDeck();
+}
 function renderWidgets(){
   const box=$('#widgets');if(!box)return;
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
-  // only widgets pinned to the CURRENT desktop are shown → each desktop is its own space
-  const here=WIDGETS.filter(w=>apps[w.app_id]&&(w.desk||1)===curDesk);
+  renderPlacedWidgets();
+  // only free desktop widgets pinned to the CURRENT desktop are shown here
+  const here=WIDGETS.filter(w=>apps[w.app_id]&&!w.place&&(w.desk||1)===curDesk);
   const want=new Set(here.map(w=>w.app_id));
   Object.keys(widgetEls).forEach(id=>{if(!want.has(id)){widgetEls[id].remove();delete widgetEls[id]}});
   here.forEach(wd=>{
@@ -2590,19 +3396,24 @@ function renderWidgets(){
     let el=widgetEls[wd.app_id];
     if(!el){el=createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
     if(el._dragging||el._resizing)return;             // don't fight the user mid-gesture
+    const dim=widgetSizeOf(wd.app_id);
     el.style.left=(wd.x??40)+'px';el.style.top=(wd.y??40)+'px';
-    el.style.width=(wd.w??300)+'px';el.style.height=(wd.h??210)+'px';
+    el.style.width=(wd.w??dim.w)+'px';el.style.height=(wd.h??dim.h)+'px';
   });
 }
 function createWidgetEl(a){
   const el=document.createElement('div');el.className='widget';el.dataset.app=a.id;
   el.innerHTML=`<div class="wgh"><span class="wgt">${esc(a.name)}</span>
     <button class="rf" title="refresh">⟳</button><button class="op" title="open in window">⤢</button><button class="x" title="unpin">✕</button></div>
-    <iframe src="/api/apps/${a.id}/page" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+    <iframe src="/api/apps/${a.id}/page?surface=widget&size=${esc(a.widget_size||'m')}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
   const ifr=el.querySelector('iframe');
-  el.querySelector('.rf').onclick=()=>{ifr.src='/api/apps/'+a.id+'/page?t='+Date.now()};
+  el.querySelector('.rf').onclick=()=>{ifr.src='/api/apps/'+a.id+'/page?surface=widget&size='+(a.widget_size||'m')+'&t='+Date.now()};
   el.querySelector('.op').onclick=()=>openApp('ua_'+a.id);
   el.querySelector('.x').onclick=()=>unpinWidget(a.id);
+  el.querySelector('.wgh').oncontextmenu=e=>{e.preventDefault();
+    showCtxItems(e,Object.entries(WIDGET_SIZES).map(([k,d])=>({label:d.label+' widget',fn:()=>setWidgetSize(a.id,k)}))
+      .concat([null],WIDGET_PLACES.map(([p,label])=>({label:'Move to '+label,fn:()=>setWidgetPlace(a.id,p)})))
+      .concat([null,{label:'Unpin',danger:true,fn:()=>unpinWidget(a.id)}]))};
   widgetDrag(el,el.querySelector('.wgh'),a.id);
   widgetResize(el,a.id);
   return el;
@@ -2649,18 +3460,19 @@ async function saveWidgets(){
 }
 function pinWidget(appId){
   if(WIDGETS.some(w=>w.app_id===appId&&(w.desk||1)===curDesk))return toast('already on this desktop');
-  const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length;
-  WIDGETS.push({app_id:appId,desk:curDesk,x:170+(n%3)*320,y:40+(n%2)*235,w:300,h:210});
+  const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length,dim=widgetSizeOf(appId);
+  WIDGETS.push({app_id:appId,desk:curDesk,x:170+(n%3)*320,y:40+(n%2)*235,w:dim.w,h:dim.h});
   renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk);
 }
 function unpinWidget(appId){
-  WIDGETS=WIDGETS.filter(w=>!(w.app_id===appId&&(w.desk||1)===curDesk));
+  WIDGETS=WIDGETS.filter(w=>!(w.app_id===appId&&(w.place||(w.desk||1)===curDesk)));
   renderWidgets();saveWidgets();toast('unpinned');refreshApp('studio');
 }
 function arrangeWidgets(){
   const desk=$('#desktop'),cols=Math.max(1,Math.floor((desk.clientWidth-180)/320));
   WIDGETS.filter(w=>(w.desk||1)===curDesk).forEach((w,i)=>{
-    w.w=300;w.h=210;w.x=170+(i%cols)*315;w.y=20+Math.floor(i/cols)*225});
+    const dim=widgetSizeOf(w.app_id);
+    w.w=dim.w;w.h=dim.h;w.x=170+(i%cols)*315;w.y=20+Math.floor(i/cols)*225});
   renderWidgets();saveWidgets();toast('▦ widgets arranged on Desktop '+curDesk);
 }
 
@@ -2821,6 +3633,9 @@ async function shellCmd(ev){
           ||Object.keys(all).find(k=>k.toLowerCase().includes(q));
         if(!id)throw `no theme called "${target}" — themes: ${Object.keys(all).join(', ')}`;
         applyTheme(id);data=`theme is now ${id}`;break}
+      case 'shell_action':{            // a compositor keybinding reached the shell
+        if(typeof scRun!=='function'||!scRun(String(target)))throw `unknown action "${target}"`;
+        data=`ran ${target}`;break}
       case 'list_open_apps':{
         const arr=[];WM.wins.forEach(w=>arr.push({app:w.id,title:w.app.title,minimized:w.min,maximized:w.max,desktop:w.desk,active:w.el.classList.contains('active')}));
         data={open:arr,current_desktop:curDesk,desktops:DESKS,theme:CURRENT_THEME};break}
@@ -2865,6 +3680,37 @@ function updateSpin(){
   s.classList.toggle('on',RUNNING.size>0||running);
   s.title=RUNNING.size>1?RUNNING.size+' agent turns running':'agent is working';
   if(typeof omniPresence==='function')omniPresence();
+  if(typeof aiBubble==='function')aiBubble();
+}
+/* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
+   copilot panel, the omnibar, a background task — it shows here, and one click
+   opens that conversation in Agent Chat. ---- */
+let AIB={last:null,seen:0};
+function aiBubble(){
+  let b=$('#aibubble');
+  if(!b){
+    b=document.createElement('div');b.id='aibubble';
+    b.innerHTML='<span class="ab-orb"></span><span class="ab-t"></span><span class="ab-n"></span>'
+      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>';
+    document.body.appendChild(b);
+    b.querySelector('.ab-stop').onclick=e=>{e.stopPropagation();stopAllAgents()};
+    b.onclick=()=>{
+      const cid=[...RUNNING][0]||AIB.last||currentConv;
+      openApp('chat');if(cid)openConv(cid);
+      AIB.seen=0;aiBubble();
+    };
+  }
+  const n=RUNNING.size;
+  if(n)AIB.last=[...RUNNING][0];
+  const label=n?(n>1?`${agentName()} · ${n} turns`:`${agentName()} is working`)
+               :(AIB.seen?`${agentName()} replied`:'');
+  b.classList.toggle('on',!!(n||AIB.seen));
+  b.classList.toggle('busy',!!n);
+  b.querySelector('.ab-stop').style.display=n?'':'none';
+  b.querySelector('.ab-t').textContent=label;
+  const badge=b.querySelector('.ab-n');
+  badge.textContent=AIB.seen>1?AIB.seen:'';
+  badge.style.display=AIB.seen>1?'':'none';
 }
 
 function handle(ev){
@@ -2969,16 +3815,25 @@ function handle(ev){
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
-      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];}
+      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];agentQueueFlush(_cid);}
       updateSpin();
-      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){loadConvs();break}}
-      if(!_cur){toast('✓ background chat finished');loadConvs();break}
+      if(!_cur){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
+      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
+      if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
       else speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'task_started': toast('background task running…'); break;
     case 'task_finished': toast('task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
+    case 'control':    // a hardware key changed volume/brightness — show it at once
+      updateTray();refreshApp('control');
+      if(ev.volume!==undefined)toast('volume '+ev.volume+'%'+(ev.muted?' (muted)':''));
+      else if(ev.brightness!==undefined)toast('brightness '+ev.brightness+'%');
+      break;
+    case 'platform':   // the compositor appeared (or went away) — re-read what we can do
+      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
+      break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
@@ -3301,113 +4156,350 @@ async function loadConfig(){
   if($('#autosel'))$('#autosel').value=cfg.autonomy;
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
+  if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
 }
 
 /* ================= settings app ================= */
+/* ---- preference primitives: every row is label+description left, control right ---- */
+function pGroup(title,rows,o){
+  o=o||{};
+  return `<div class="pgroup${o.danger?' danger':''}" data-f="${esc(o.f||title)}">
+    ${title?`<h3>${esc(title)}</h3>`:''}${o.hint?`<div class="ghint">${o.hint}</div>`:''}
+    ${rows.join('')}</div>`;
+}
+function pRow(label,control,o){
+  o=o||{};
+  return `<div class="prow${o.stack?' stack':''}${o.danger?' danger':''}" data-f="${esc(o.f||label)}">
+    <div class="pl"><b>${esc(label)}</b>${o.desc?`<small>${o.desc}</small>`:''}</div>
+    <div class="pc">${control}</div></div>`;
+}
+const pSwitch=(id,on)=>`<label class="psw"><input type="checkbox" id="${id}" ${on?'checked':''}><i></i></label>`;
+/* A stored secret is never put back into an input: it shows as a locked chip
+   with the last four characters, and "Replace" swaps in an empty field. That
+   way nothing can echo the mask back to the server, and a shoulder-surfer sees
+   nothing useful. */
+function pSecret(id,hasKey,masked,ph){
+  if(!hasKey)return `<input type="password" id="${id}" placeholder="${esc(ph||'')}" autocomplete="off">`;
+  return `<span class="psecret" id="${id}-wrap"><i>saved</i><code>${esc(masked||'••••')}</code>
+    <button class="endbtn" onclick="pSecretReplace('${id}')">Replace</button></span>`;
+}
+function pSecretReplace(id){
+  const w=document.getElementById(id+'-wrap');if(!w)return;
+  w.outerHTML=`<input type="password" id="${id}" placeholder="new key…" autocomplete="off">`;
+  const el=document.getElementById(id);if(el)el.focus();
+}
+const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="${esc(val==null?'':val)}" placeholder="${esc(ph||'')}">`;
+const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
+  `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+
+const SETTINGS_TABS=[
+  ['ai','✦','AI providers'],
+  ['agent','◈','Agent'],
+  ['locale','◐','Locale'],
+  ['keys','⌘','Shortcuts'],
+  ['voice','◉','Voice'],
+  ['look','◧','Appearance'],
+  ['system','⚙','System'],
+];
+let SETTAB=localStorage.getItem('settab')||'ai';
+
 async function renderSettings(body){
   await loadConfig();
-  const p=cfg.providers;
-  const pb=panelShell(body,{
-    title:'Settings',
-    search:{id:'set-q',placeholder:'Find a setting…'},
-    actions:`<button class="pact" onclick="saveSettings()">Save</button>`,
+  body.innerHTML=`<div class="pshell">
+      <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
+        <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
+        <button class="pact" onclick="saveSettings()">Save</button>
+      </div>
+      <div class="prefs">
+        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
+          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi">${ic}</span>${esc(label)}</button>`).join('')}</div>
+        <div class="prefs-main" id="prefs-main"></div>
+      </div>
+    </div>`;
+  body.querySelectorAll('.prefs-side button').forEach(b=>b.onclick=()=>{
+    SETTAB=b.dataset.t;localStorage.setItem('settab',SETTAB);
+    body.querySelectorAll('.prefs-side button').forEach(x=>x.classList.toggle('on',x===b));
+    setTab(body);
   });
-  pb.innerHTML=`
-    <div class="provbox" data-f="ollama local models base url"><div class="ptitle">Ollama (local)</div>
-      <label>Base URL</label><input id="s-ollama-url" value="${esc(p.ollama.base_url)}"></div>
-    <div class="provbox" data-f="anthropic claude api key cloud models"><div class="ptitle">Anthropic <input type="checkbox" id="s-ant-on" ${p.anthropic.enabled?'checked':''}></div>
-      <label>API key ${p.anthropic._has_key?'(set)':''}</label><input id="s-ant-key" placeholder="sk-ant-…" value="${esc(p.anthropic.api_key||'')}">
-      <label>Models (comma-separated)</label><input id="s-ant-models" value="${esc((p.anthropic.models||[]).join(', '))}"></div>
-    <div class="provbox" data-f="openai gpt api key"><div class="ptitle">OpenAI <input type="checkbox" id="s-oai-on" ${p.openai.enabled?'checked':''}></div>
-      <label>API key ${p.openai._has_key?'(set)':''}</label><input id="s-oai-key" placeholder="sk-…" value="${esc(p.openai.api_key||'')}">
-      <label>Models</label><input id="s-oai-models" value="${esc((p.openai.models||[]).join(', '))}"></div>
-    <div class="provbox" data-f="openrouter api key hundreds of models"><div class="ptitle">OpenRouter — one key, hundreds of models <input type="checkbox" id="s-or-on" ${p.openrouter.enabled?'checked':''}></div>
-      <label>API key ${p.openrouter._has_key?'(set)':''}</label><input id="s-or-key" placeholder="sk-or-…" value="${esc(p.openrouter.api_key||'')}">
-      <label>Models (comma-separated, e.g. anthropic/claude-sonnet-4.5)</label><input id="s-or-models" value="${esc((p.openrouter.models||[]).join(', '))}"></div>
-    <div class="provbox" data-f="custom openai compatible endpoint lm studio llama.cpp base url"><div class="ptitle">Custom (OpenAI-compatible) <input type="checkbox" id="s-cus-on" ${p.custom.enabled?'checked':''}></div>
-      <label>Base URL (e.g. http://localhost:1234/v1)</label><input id="s-cus-url" value="${esc(p.custom.base_url||'')}">
-      <label>API key (optional)</label><input id="s-cus-key" value="${esc(p.custom.api_key||'')}">
-      <label>Models</label><input id="s-cus-models" value="${esc((p.custom.models||[]).join(', '))}"></div>
-    <div class="provbox" data-f="google gemini api key image generation chat models"><div class="ptitle">Google (Gemini) <input type="checkbox" id="s-goo-on" ${p.google&&p.google.enabled?'checked':''}></div>
-      <label>API key ${p.google&&p.google._has_key?'(set)':''}</label><input id="s-goo-key" placeholder="AIza…" value="${esc((p.google&&p.google.api_key)||'')}">
-      <label>Chat models (comma-separated, e.g. gemini-2.5-pro)</label><input id="s-goo-models" value="${esc((p.google&&p.google.models||[]).join(', '))}">
-      <p class="mut" style="margin-top:8px">Gemini models appear in the chat &amp; App Studio pickers, and power image generation. Free key at aistudio.google.com.</p></div>
-    <div class="provbox" data-f="image generation wallpaper provider model"><div class="ptitle">Image generation</div>
-      <label>Provider</label>
-      <select id="s-img-prov">${['auto','google','openai','pollinations'].map(v=>`<option value="${v}" ${((cfg.image&&cfg.image.provider)||'auto')===v?'selected':''}>${v}</option>`).join('')}</select>
-      <label>Model (optional)</label><input id="s-img-model" placeholder="gemini-2.5-flash-image / gpt-image-1" value="${esc((cfg.image&&cfg.image.model)||'')}">
-      <p class="mut" style="margin-top:8px">Powers wallpaper &amp; image generation. <b>auto</b> picks Google, then OpenAI (whichever has a key), else the free pollinations.ai service.</p></div>
-    <div class="provbox" data-f="appearance theme fullscreen wallpaper"><div class="ptitle">Appearance</div>
-      <label>Theme</label>
-      <div class="row">
-        <select id="s-theme">${Object.entries(allThemes()).map(([k,t])=>`<option value="${k}" ${CURRENT_THEME===k?'selected':''}>${esc(t.label||t.name||k)}${t.custom?' ·':''}</option>`).join('')}</select>
-        <button class="endbtn" style="flex:0 0 auto" onclick="openApp('themes')">Themes</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="toggleFullscreen()">Toggle fullscreen (F11)</button>
-        <button class="endbtn" onclick="wpSystem()">Use system wallpaper</button>
-      </div>
-      <p class="mut" style="margin-top:8px">Fullscreen hides the host taskbar; the app also launches fullscreen via <code>agentos app</code>.</p>
-    </div>
-    <div class="provbox" data-f="github git token push publish ship repositories"><div class="ptitle">GitHub (ship what you build)</div>
-      <label>Personal access token ${cfg.github&&cfg.github._has_token?'(set)':''}</label><input id="s-gh-token" type="password" placeholder="github_pat_… / ghp_…" value="${esc((cfg.github&&cfg.github.token)||'')}">
-      <label>Username (optional)</label><input id="s-gh-user" value="${esc((cfg.github&&cfg.github.username)||'')}">
-      <p class="mut" style="margin-top:8px">Lets the agent create repos and push projects/apps it builds (git_push, export_app_to_git).
-      Use a fine-grained token with only the repo permissions you want to grant. The token never appears in commands or logs.</p></div>
-    <div class="provbox" data-f="sandbox folder jail bubblewrap security workspace"><div class="ptitle">Sandbox (folder jail) <input type="checkbox" id="s-sb-on" ${(cfg.sandbox&&cfg.sandbox.enabled)?'checked':''}></div>
-      <label>Folder the agent &amp; Terminal can control</label>
-      <input id="s-sb-root" value="${esc((cfg.sandbox&&cfg.sandbox.root)||cfg.workspace)}">
-      <p class="mut" style="margin-top:8px">Commands and the Terminal run jailed to this folder (bubblewrap): everything else is read-only,
-      other files in /home are hidden, and sessions always start here. File tools refuse paths outside it.</p>
-    </div>
-    <div class="provbox" data-f="voice tts speech dictation microphone language rate"><div class="ptitle">Voice</div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="v-tts" style="width:auto" ${VOICE.tts?'checked':''}> Speak replies aloud (TTS)</label>
-      <label>TTS voice</label><select id="v-voice"></select>
-      <div class="row">
-        <div><label>Speech rate</label><input id="v-rate" type="number" step="0.1" min="0.5" max="2" value="${VOICE.rate||1}"></div>
-        <div><label>Mic language</label><input id="v-lang" value="${esc(VOICE.lang||'en-IN')}" placeholder="en-IN, en-US, hi-IN…"></div>
-      </div>
-      <p class="mut" style="margin-top:8px">Dictate with the button in chat; toggle speech with in the chat toolbar.</p>
-    </div>
-    <div class="row" data-f="agent name workspace directory max steps">
-      <div><label>Agent name</label><input id="s-name" value="${esc(cfg.agent_name||'Aria')}"></div>
-      <div><label>Workspace directory</label><input id="s-workspace" value="${esc(cfg.workspace)}"></div>
-      <div><label>Max steps per turn</label><input id="s-steps" type="number" value="${cfg.max_steps}"></div>
-    </div>
-    <button class="save" onclick="saveSettings()">Save</button>
-    <div class="provbox" data-f="danger zone factory reset wipe" style="margin-top:14px;border-color:var(--err,#f87171)"><div class="ptitle" style="color:var(--err,#f87171)">Danger zone</div>
-      <p class="mut" style="margin:4px 0 8px">Start fresh: wipes memory, knowledge, conversations, apps, subagents, soul and settings, then runs the first-time setup wizard again. Take a Snapshot first if you might want to come back.</p>
-      <button class="endbtn" style="border-color:var(--err,#f87171);color:var(--err,#f87171)" onclick="factoryReset()">Factory reset…</button></div>`;
-  $('#s-theme').onchange=()=>{applyTheme($('#s-theme').value);toast('theme applied')};
+  // search spans every category, so nothing hides behind a tab
+  const q=body.querySelector('#set-q');
+  let t;q.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{
+    const v=q.value.trim();
+    if(v){setTab(body,true);listFilter(body.querySelector('#prefs-main'),v)}
+    else setTab(body);
+  },140)};
+  setTab(body);
+}
+function setTab(body,all){
+  const main=(body||document).querySelector('#prefs-main');if(!main)return;
+  const p=cfg.providers;
+  const P=[];
+  const want=id=>all||SETTAB===id;
+  if(want('ai')){
+    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the model picker.</p>`);
+    P.push(pGroup('Local',[
+      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
+        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
+    ],{f:'ollama local'}));
+    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
+      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
+      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
+        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
+      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
+    ],{f:key+' '+name});
+    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
+    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
+    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
+    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
+    P.push(pGroup('Custom (OpenAI-compatible)',[
+      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
+      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
+      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
+      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
+    ],{f:'custom openai compatible endpoint lm studio'}));
+    P.push(pGroup('Image generation',[
+      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
+        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
+      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
+    ],{f:'image generation wallpaper'}));
+  }
+  if(want('agent')){
+    P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
+    P.push(pGroup('Identity',[
+      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
+      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
+      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
+        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
+    ],{f:'agent identity name workspace'}));
+    P.push(pGroup('Sandbox',[
+      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
+        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
+      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
+    ],{f:'sandbox security'}));
+    P.push(pGroup('GitHub',[
+      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
+        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
+      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
+    ],{f:'github git ship publish'}));
+  }
+  if(want('locale')){
+    P.push(`<h2>Locale</h2><p class="lead">Where and when you are. The agent localises anything place- or time-dependent — news, weather, prices, holidays, units — and the AgentOS session inherits your timezone and language.</p>`);
+    P.push(`<div class="pgroup" data-f="locale region country timezone language units clock"><div id="loc-box"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+  }
+  if(want('keys')){
+    P.push(`<h2>Shortcuts</h2><p class="lead">Click a binding, then press the keys you want. Shortcuts marked <em>session</em> are also registered with the compositor, so they keep working while a native app has the keyboard.</p>`);
+    P.push(`<div class="pgroup" data-f="shortcuts keyboard keys bindings hotkeys"><div id="sc-list"></div></div>`);
+    P.push(pGroup('',[
+      pRow('Restore defaults','<button class="endbtn" onclick="scReset()">Restore</button>',{desc:'Put every binding back the way it shipped.',f:'shortcuts reset'}),
+      pRow('Re-apply to session','<button class="endbtn" onclick="scApplySession()">Apply</button>',{desc:'Rewrite the compositor keybindings from this table.',f:'shortcuts session apply'}),
+    ],{f:'shortcuts actions'}));
+  }
+  if(want('voice')){
+    P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat; the agent can speak its replies back.</p>`);
+    P.push(pGroup('Speech',[
+      pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Text-to-speech for every answer.',f:'tts speak voice'}),
+      pRow('Voice','<select id="v-voice"></select>',{f:'tts voice picker'}),
+      pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
+      pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'Language the dictation recogniser listens for.',f:'mic language dictation'}),
+    ],{f:'voice tts speech microphone'}));
+  }
+  if(want('look')){
+    P.push(`<h2>Appearance</h2><p class="lead">How the desktop looks. Themes carry colours, fonts and even whole alternate shells.</p>`);
+    P.push(pGroup('Theme',[
+      pRow('Desktop theme',pSelect('s-theme',Object.entries(allThemes()).map(([k,t])=>[k,(t.label||t.name||k)+(t.custom?' ·':'')]),CURRENT_THEME)
+        +`<button class="endbtn" onclick="openApp('themes')">Gallery</button>`,{f:'theme appearance'}),
+      pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
+        {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
+      pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
+    ],{f:'appearance theme wallpaper'}));
+  }
+  if(want('system')){
+    P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    P.push(pGroup('Machine',[
+      pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
+        {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
+      pRow('Permissions','<button class="endbtn" onclick="openApp(\'permissions\')">Open</button>',{desc:'What apps and the agent are allowed to do.',f:'permissions grants'}),
+      pRow('Snapshots','<button class="endbtn" onclick="openApp(\'snapshots\')">Open</button>',{desc:'Restore points for the whole OS.',f:'snapshots restore'}),
+    ],{f:'system machine'}));
+    P.push(pGroup('Danger zone',[
+      pRow('Factory reset','<button class="endbtn" style="border-color:var(--err);color:var(--err)" onclick="factoryReset()">Reset…</button>',
+        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings, then runs first-time setup again. Take a Snapshot first.',f:'factory reset wipe danger'}),
+    ],{danger:true,f:'danger zone factory reset'}));
+  }
+  main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
+  const th=main.querySelector('#s-theme');
+  if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
+  if(main.querySelector('#sc-list')){scLoad();scRender()}
+  if(main.querySelector('#loc-box'))locRender();
+  if(main.querySelector('#v-voice'))settingsVoices();
+  const bm=main.querySelector('#s-build-model');
+  if(bm)fetch('/api/models').then(r=>r.json()).then(d=>{
+    const cur=(cfg.build&&cfg.build.model)||'';
+    bm.innerHTML='<option value="">Use my default model'+(d.default?' · '+d.default:'')+'</option>'+
+      (d.models||[]).map(m=>`<option value="${esc(m.id)}" ${m.id===cur?'selected':''}>${esc(m.id)}</option>`).join('');
+    if(cur&&![...bm.options].some(o=>o.value===cur))
+      bm.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}" selected>${esc(cur)} · unavailable right now</option>`);
+    bm.value=cur;
+  }).catch(()=>{});
+}
+function settingsVoices(){
   const vsel=$('#v-voice');
-  const fillVoices=()=>{
+  const fill=()=>{
     if(!window.speechSynthesis||!vsel)return;
     const vs=speechSynthesis.getVoices();
-    vsel.innerHTML='<option value="">(system default)</option>'+vs.map(v=>`<option ${v.name===VOICE.voice?'selected':''}>${esc(v.name)}</option>`).join('');
+    vsel.innerHTML='<option value="">(default)</option>'+vs.map(v=>
+      `<option value="${esc(v.name)}" ${VOICE.voice===v.name?'selected':''}>${esc(v.name)} · ${esc(v.lang)}</option>`).join('');
   };
-  fillVoices();
-  if(window.speechSynthesis)speechSynthesis.onvoiceschanged=fillVoices;
+  fill();
+  if(window.speechSynthesis)speechSynthesis.onvoiceschanged=fill;
 }
 async function saveSettings(){
-  VOICE.tts=$('#v-tts').checked;VOICE.voice=$('#v-voice').value;
-  VOICE.rate=+$('#v-rate').value||1;VOICE.lang=$('#v-lang').value.trim()||'en-IN';
-  saveVoice();
-  const models=s=>s.split(',').map(x=>x.trim()).filter(Boolean);
-  const patch={workspace:$('#s-workspace').value,max_steps:+$('#s-steps').value||25,
-    agent_name:$('#s-name').value.trim()||'Aria',
-    sandbox:{enabled:$('#s-sb-on').checked,root:$('#s-sb-root').value.trim()},providers:{
-    ollama:{base_url:$('#s-ollama-url').value},
-    anthropic:{enabled:$('#s-ant-on').checked,api_key:$('#s-ant-key').value,models:models($('#s-ant-models').value)},
-    openai:{enabled:$('#s-oai-on').checked,api_key:$('#s-oai-key').value,models:models($('#s-oai-models').value)},
-    openrouter:{enabled:$('#s-or-on').checked,api_key:$('#s-or-key').value,models:models($('#s-or-models').value)},
-    custom:{enabled:$('#s-cus-on').checked,base_url:$('#s-cus-url').value,api_key:$('#s-cus-key').value,models:models($('#s-cus-models').value)},
-    google:{enabled:$('#s-goo-on').checked,api_key:$('#s-goo-key').value,models:models($('#s-goo-models').value)},
-  },image:{provider:$('#s-img-prov').value,model:$('#s-img-model').value.trim()},
-  github:{token:$('#s-gh-token').value.trim(),username:$('#s-gh-user').value.trim()}};
+  // only the open category is in the DOM, so save exactly what is on screen —
+  // reading a field from a hidden tab would throw and lose the whole save
+  const el=id=>document.getElementById(id);
+  const val=id=>{const e=el(id);return e?e.value:undefined};
+  const on=id=>{const e=el(id);return e?e.checked:undefined};
+  const list=id=>{const v=val(id);return v===undefined?undefined:v.split(',').map(x=>x.trim()).filter(Boolean)};
+  const put=(o,k,v)=>{if(v!==undefined&&v!=='')o[k]=v;return o};
+  const prov=(key,idOn,idKey,idModels,idUrl)=>{
+    const o={};
+    if(on(idOn)!==undefined)o.enabled=on(idOn);
+    const k=val(idKey);
+    if(k!==undefined&&k!==''&&!k.startsWith('•'))o.api_key=k;   // masks are display-only
+    if(list(idModels)!==undefined)o.models=list(idModels);
+    if(idUrl&&val(idUrl)!==undefined)o.base_url=val(idUrl);
+    return Object.keys(o).length?o:undefined;
+  };
+  if(el('v-tts')){
+    VOICE.tts=on('v-tts');VOICE.voice=val('v-voice')||'';
+    VOICE.rate=+val('v-rate')||1;VOICE.lang=(val('v-lang')||'').trim()||'en-IN';
+    saveVoice();
+  }
+  const patch={};
+  put(patch,'workspace',val('s-workspace'));
+  if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
+  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
+  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
+  const providers={};
+  const add=(k,v)=>{if(v)providers[k]=v};
+  add('ollama',val('s-ollama-url')!==undefined?{base_url:val('s-ollama-url')}:undefined);
+  add('anthropic',prov('anthropic','s-ant-on','s-ant-key','s-ant-models'));
+  add('openai',prov('openai','s-oai-on','s-oai-key','s-oai-models'));
+  add('openrouter',prov('openrouter','s-or-on','s-or-key','s-or-models'));
+  add('custom',prov('custom','s-cus-on','s-cus-key','s-cus-models','s-cus-url'));
+  add('google',prov('google','s-goo-on','s-goo-key','s-goo-models'));
+  if(Object.keys(providers).length)patch.providers=providers;
+  if(val('s-build-model')!==undefined)patch.build={model:val('s-build-model')};
+  if(val('s-img-prov')!==undefined)patch.image={provider:val('s-img-prov'),model:(val('s-img-model')||'').trim()};
+  const ght=(val('s-gh-token')||'').trim();
+  if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
+    patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
+  if(!Object.keys(patch).length){toast('nothing to save on this page');return}
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   toast('settings saved');loadModels();loadConfig();
 }
 
+
+/* ---- shortcut editor: click a row, press the keys ---- */
+let SC_REC=null;
+function scRender(){
+  const box=$('#sc-list');if(!box)return;
+  box.innerHTML=Object.keys(SHORTCUTS).map(name=>{
+    const sc=SHORTCUTS[name];
+    return `<div class="sc-row" data-n="${esc(name)}">
+      <span class="sc-l">${esc(sc.label||name)}${sc.session?'<em>session</em>':''}</span>
+      <button class="sc-k">${esc(sc.keys||'—')}</button></div>`;
+  }).join('');
+  box.querySelectorAll('.sc-row').forEach(r=>{
+    r.querySelector('.sc-k').onclick=()=>scRecord(r.dataset.n,r.querySelector('.sc-k'));
+  });
+}
+function scRecord(name,btn){
+  if(SC_REC&&SC_REC.btn)SC_REC.btn.classList.remove('rec');
+  SC_REC={name,btn};btn.classList.add('rec');btn.textContent='press keys…';
+  const done=e=>{
+    e.preventDefault();e.stopPropagation();
+    if(e.key==='Escape'){cancel();return}
+    if(['Control','Alt','Shift','Meta'].includes(e.key))return;      // wait for a real key
+    const parts=[];
+    if(e.ctrlKey)parts.push('Ctrl');
+    if(e.altKey)parts.push('Alt');
+    if(e.shiftKey)parts.push('Shift');
+    if(e.metaKey)parts.push('Meta');
+    let k=e.key;
+    if(e.code==='Space')k='Space';
+    else if(k.length===1)k=k.toUpperCase();
+    parts.push(k);
+    const keys=parts.join('+');
+    const clash=Object.keys(SHORTCUTS).find(n=>n!==name&&SHORTCUTS[n].keys===keys);
+    SHORTCUTS[name].keys=keys;
+    cleanup();
+    scSave().then(()=>{scRender();toast(clash?`${keys} set — it was also ${SHORTCUTS[clash].label}`:`${keys} set`)});
+  };
+  const cancel=()=>{cleanup();scRender()};
+  const cleanup=()=>{window.removeEventListener('keydown',done,true);SC_REC=null};
+  window.addEventListener('keydown',done,true);
+}
+async function scSave(){
+  const out={};Object.keys(SHORTCUTS).forEach(n=>out[n]=SHORTCUTS[n].keys);
+  cfg.shortcuts=out;
+  try{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({shortcuts:out})});
+    scApplySession(true);
+  }catch(e){toast('could not save shortcuts')}
+}
+async function scReset(){
+  SHORTCUTS=JSON.parse(JSON.stringify(SC_DEFAULTS));
+  await scSave();scRender();toast('shortcuts restored');
+}
+async function scApplySession(quiet){
+  try{
+    const r=await fetch('/api/shortcuts/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const d=await r.json();
+    if(!quiet)toast(d.message||(d.ok?'session shortcuts applied':'not in session mode'));
+  }catch(e){if(!quiet)toast('could not reach the session')}
+}
+
+/* ---- locale editor ---- */
+let LOCALE=null;
+async function locRender(){
+  const box=$('#loc-box');if(!box)return;
+  try{LOCALE=await (await fetch('/api/locale')).json()}
+  catch(e){box.innerHTML=pRow('Locale','<span class="mut">could not read it</span>');return}
+  const lo=LOCALE.locale, det=LOCALE.detected;
+  const countries=Object.entries(LOCALE.countries).sort((a,b)=>a[1].localeCompare(b[1]));
+  box.innerHTML=[
+    pRow('Country / region',
+      pSelect('loc-country',[['','— not set —'],...countries.map(([c,n])=>[c,`${n} (${c})`])],lo.country),
+      {desc:'Decides what "local" means: news, prices, holidays, sport.',f:'country region locale'}),
+    pRow('Timezone',pSelect('loc-tz',[['','— not set —'],...LOCALE.timezones.map(t=>[t,t])],lo.timezone),
+      {desc:'Every "today" and "tonight" is resolved in this zone.',f:'timezone clock time'}),
+    pRow('Language',pText('loc-lang',lo.language||'','en-IN'),{f:'language locale'}),
+    pRow('City',pText('loc-city',lo.city||'','Bengaluru'),{desc:'Optional — sharpens weather and local answers.',f:'city location'}),
+    pRow('Units',pSelect('loc-units',[['metric','Metric'],['imperial','Imperial']],lo.units),{f:'units metric imperial'}),
+    pRow('Clock',pSelect('loc-clock',[['24h','24-hour'],['12h','12-hour']],lo.clock),{f:'clock 12 24 hour'}),
+    pRow('Detected on this machine',
+      `<button class="endbtn" onclick="locUseDetected()">Use detected</button>`,
+      {desc:`${esc(det.country||'?')} · ${esc(det.timezone||'?')} · ${esc(det.language||'?')}`,f:'detected locale'}),
+    pRow('Apply',`<button class="pact" onclick="locSave()">Save locale</button>`,
+      {desc:esc(LOCALE.describe.split('.')[0])+'.',f:'save locale apply session'}),
+  ].join('');
+}
+async function locSave(){
+  const payload={country:$('#loc-country').value,timezone:$('#loc-tz').value,
+    language:$('#loc-lang').value.trim(),city:$('#loc-city').value.trim(),
+    units:$('#loc-units').value,clock:$('#loc-clock').value};
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locale:payload})});
+  const r=await (await fetch('/api/locale/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+  await loadConfig();tickClock();locRender();
+  toast(r.message||'locale saved');
+}
+async function locUseDetected(){
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({locale:{country:'',timezone:'',language:'',city:'',units:'',clock:''}})});
+  await loadConfig();tickClock();locRender();toast('using the machine\'s own locale');
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -3806,7 +4898,7 @@ async function renderDocs(body){
    (POST /api/setup/say) with inline choice chips. Offline-safe end to end —
    every line has a canned fallback baked in here too. */
 let WIZ={agent_name:'Aria',autonomy:'balanced',default_model:'',providers:{},autostart:true,
-  open_at_login:true,wallpaper_preset:'',voice:false,step:1,info:null,convo:[],convoAt:0};
+  open_at_login:true,wallpaper_preset:'',voice:false,locale:null,step:1,info:null,convo:[],convoAt:0};
 async function checkSetup(){
   try{
     const s=await fetch('/api/setup').then(r=>r.json());
@@ -3818,6 +4910,7 @@ async function checkSetup(){
   }catch(e){}
 }
 const WIZ_SAY_FALLBACK={
+  locale:n=>`One thing that changes every answer: where you are. I read this off the machine — is it right? News, weather, prices and times all follow it.`,
   autonomy:n=>`I'm ${n} — good to meet you. How much should I do on my own? Balanced is a good start: I act freely and check with you before anything risky.`,
   autostart:()=>'Should I keep running in the background — for scheduled jobs, alerts and Telegram — even when this window is closed?',
   de_here:()=>"This is your desktop now, so I'm always here — nothing to install, nothing to start.",
@@ -3900,7 +4993,7 @@ function wizRender(){
     const de=PLATFORM.mode==='de';
     // de mode: autostart is meaningless (AgentOS IS the session) — replaced by a
     // one-line confirmation; wallpaper + voice are de-only questions
-    WIZ.convo=de?['autonomy','de_here','wallpaper','voice']:['autonomy','autostart'];
+    WIZ.convo=de?['locale','autonomy','de_here','wallpaper','voice']:['locale','autonomy','autostart'];
     WIZ.convoAt=0;
     wizAsk();
   }
@@ -3938,6 +5031,29 @@ async function wizAsk(){
 }
 function wizChips(step){
   let defs=null;
+  if(step==='locale'){
+    const el=document.createElement('div');el.className='wiz-chips';
+    const draw=()=>{
+      const lo=(WIZ.locale&&WIZ.locale.locale)||{};
+      el.innerHTML=`<button class="wiz-chip rec" data-a="ok">${esc((lo.country_name||lo.country||'?')+' · '+(lo.timezone||'?'))}<em>detected</em></button>
+        <button class="wiz-chip" data-a="edit">Somewhere else…</button>`;
+      el.querySelector('[data-a=ok]').onclick=b=>wizPicked(el,el.querySelector('[data-a=ok]'));
+      el.querySelector('[data-a=edit]').onclick=async()=>{
+        const c=await osPrompt('Which country are you in?',{value:lo.country||'',placeholder:'IN, US, GB…',confirmText:'Set'});
+        if(c===null)return;
+        const tz=await osPrompt('Timezone',{value:lo.timezone||'',placeholder:'Asia/Kolkata',confirmText:'Set'});
+        if(tz===null)return;
+        WIZ.locale_override={country:(c||'').trim().toUpperCase(),timezone:(tz||'').trim()};
+        await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({locale:WIZ.locale_override})});
+        try{WIZ.locale=await (await fetch('/api/locale')).json()}catch(e){}
+        draw();
+      };
+    };
+    fetch('/api/locale').then(r=>r.json()).then(d=>{WIZ.locale=d;draw()}).catch(()=>draw());
+    draw();
+    return el;
+  }
   if(step==='autonomy')defs=[
     ['Paranoid','asks before every action',()=>WIZ.autonomy='paranoid',false],
     ['Balanced','acts freely, asks for risky things',()=>WIZ.autonomy='balanced',true],
@@ -4618,7 +5734,10 @@ async function pzGen(){
   const b=$('#pz-gen');b.disabled=true;b.textContent='⏳ generating…';
   try{
     const r=await fetch('/api/wallpaper/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})});
-    const d=await r.json();if(!d.ok)toast(d.result);else{toast('generated');refreshApp('personalize')}
+    const d=await r.json();
+    // a quota/key error is a paragraph, not a toast — show it where it can be read
+    if(!d.ok)await osAlert('Image generation failed',String(d.result||'').replace(/^\[error\]\s*/,''));
+    else{toast(String(d.result||'generated').replace(/^wallpaper generated with /,'✓ ').slice(0,110));refreshApp('personalize')}
   }catch(e){toast('generation failed — offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
@@ -5403,7 +6522,7 @@ async function takeScreenshot(area){
 
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
-const SYS_TABS=['Network','Bluetooth','Displays','Sound','Power','Session','Components'];
+const SYS_TABS=['Network','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
 function sysTab(i){SYS.tab=i;refreshApp('syssettings')}
 async function renderSysSettings(body){
   body.innerHTML=`<div class="pad">
@@ -5411,7 +6530,7 @@ async function renderSysSettings(body){
     <div id="sys-body"><p class="mut">…</p></div></div>`;
   const el=$('#sys-body');
   try{
-    await [sysNet,sysBt,sysDisplays,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
+    await [sysNet,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
   }catch(e){el.innerHTML=`<p class="mut">${esc(String(e))}</p>`}
 }
 function sigBars(s){return s>75?'▂▄▆█':s>50?'▂▄▆':s>25?'▂▄':'▂'}
@@ -5499,11 +6618,74 @@ async function sysDisplays(el){
           ${['normal','90','180','270'].map(t=>`<option ${o.transform===t?'selected':''}>${t}</option>`).join('')}</select>
         <button class="endbtn" onclick="outCfg('${esc(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
       </div></div>`}).join('')||'<p class="mut">no outputs reported</p>';
+  el.insertAdjacentHTML('beforeend',await nightLightBox());
+}
+/* Night light: the display setting you notice by feeling tired rather than by
+   looking at a panel. Off unless asked for; warmth and hours are the user's. */
+async function nightLightBox(){
+  const d=await (await fetch('/api/nightlight')).json().catch(()=>null);
+  if(!d)return '';
+  const n=d.nightlight||{};
+  if(!d.available)return `<div class="provbox"><div class="ptitle">Night light</div>
+    <p class="mut" style="margin-top:6px">${esc(d.reason)}</p></div>`;
+  return `<div class="provbox"><div class="ptitle">Night light</div>
+    <div class="row" style="margin-top:8px;align-items:center;gap:10px;flex-wrap:wrap">
+      <label class="psw"><input type="checkbox" id="nl-on" ${n.enabled?'checked':''} onchange="saveNightLight()"><i></i></label>
+      <span class="mut">Warm the screen after dark</span>
+      <span style="flex:1"></span>
+      <label class="mut">from <input id="nl-from" type="time" value="${esc(n.from||'20:00')}" onchange="saveNightLight()"></label>
+      <label class="mut">to <input id="nl-to" type="time" value="${esc(n.to||'06:30')}" onchange="saveNightLight()"></label>
+      <label class="mut">warmth
+        <select id="nl-temp" onchange="saveNightLight()">
+          ${[[5000,'subtle'],[4500,'gentle'],[4000,'warm'],[3400,'warmer'],[2800,'candlelight']].map(([k,t])=>
+            `<option value="${k}" ${(+n.night_temp||4000)===k?'selected':''}>${t}</option>`).join('')}
+        </select></label>
+    </div></div>`;
+}
+async function saveNightLight(){
+  const body={enabled:$('#nl-on').checked,from:$('#nl-from').value,to:$('#nl-to').value,
+    night_temp:+$('#nl-temp').value,day_temp:6500};
+  const r=await fetch('/api/nightlight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();toast(d.message||'saved');
 }
 async function outCfg(name,opts){
   const r=await fetch('/api/wm/outputs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,...opts})});
   const d=await r.json();toast(d.ok?'✓ display updated':(d.message||d.error||'failed'));
   setTimeout(()=>refreshApp('syssettings'),600);
+}
+async function sysInput(el){
+  const d=await (await fetch('/api/input')).json().catch(()=>null);
+  if(!d){el.innerHTML='<p class="mut">could not read input settings</p>';return}
+  const kb=d.input.keyboard||{}, tp=d.input.touchpad||{};
+  const chk=(id,on,label,hint)=>`<div class="prow"><div class="pl"><b>${esc(label)}</b>${hint?`<small>${esc(hint)}</small>`:''}</div>
+    <div class="pc"><label class="psw"><input type="checkbox" id="${id}" ${on?'checked':''}><i></i></label></div></div>`;
+  el.innerHTML=`<div class="pgroup"><h3>Keyboard</h3>
+      <div class="prow"><div class="pl"><b>Layout</b><small>Which letters your keys type.</small></div>
+        <div class="pc"><select id="in-layout">${['',...d.layouts].map(l=>
+          `<option value="${esc(l)}" ${(kb.layout||'')===l?'selected':''}>${l?esc(l):'system default'}</option>`).join('')}</select>
+        <input id="in-variant" placeholder="variant (optional)" value="${esc(kb.variant||'')}" style="max-width:170px"></div></div>
+      <div class="prow"><div class="pl"><b>Repeat delay</b><small>Milliseconds before a held key repeats.</small></div>
+        <div class="pc"><input type="number" id="in-delay" value="${kb.repeat_delay||300}"></div></div>
+      <div class="prow"><div class="pl"><b>Repeat rate</b><small>Repeats per second once it starts.</small></div>
+        <div class="pc"><input type="number" id="in-rate" value="${kb.repeat_rate||30}"></div></div>
+    </div>
+    <div class="pgroup"><h3>Touchpad &amp; pointer</h3>
+      ${chk('in-tap',tp.tap!==false,'Tap to click','A tap counts as a click.')}
+      ${chk('in-nat',tp.natural_scroll!==false,'Natural scrolling','Content follows your fingers.')}
+      ${chk('in-dwt',tp.dwt!==false,'Disable while typing','Ignore the touchpad mid-sentence.')}
+      <div class="prow"><div class="pl"><b>Pointer speed</b><small>-1 slowest · 0 default · 1 fastest.</small></div>
+        <div class="pc"><input type="number" step="0.1" min="-1" max="1" id="in-accel" value="${tp.accel??0}"></div></div>
+      <div class="prow"><div class="pl"><b></b><small>${d.session?'Changes apply to this session immediately.':'Saved now; applied when you log into the AgentOS session.'}</small></div>
+        <div class="pc"><button class="pact" onclick="saveInput()">Save</button></div></div>
+    </div>`;
+}
+async function saveInput(){
+  const body={keyboard:{layout:$('#in-layout').value,variant:$('#in-variant').value.trim(),
+      repeat_delay:+$('#in-delay').value||300,repeat_rate:+$('#in-rate').value||30},
+    touchpad:{tap:$('#in-tap').checked,natural_scroll:$('#in-nat').checked,
+      dwt:$('#in-dwt').checked,accel:+$('#in-accel').value||0}};
+  const r=await fetch('/api/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();toast(d.message||'input settings saved');
 }
 async function sysSound(el){
   const d=await (await fetch('/api/audio/devices')).json().catch(()=>null);
@@ -6040,7 +7222,7 @@ async function storeImportStage(body){
 let IMPORT_PREREQS={mcp:[],skills:[]};
 
 /* ================= app studio (agentic builder) ================= */
-let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},model:localStorage.getItem('studioModel')||'auto'};
+let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},surface:'desktop',model:localStorage.getItem('studioModel')||'auto'};
 async function renderStudio(body,w){
   // preserve the builder session log across re-renders and app switches
   if(STUDIO.log&&STUDIO.log.isConnected&&STUDIO._logKey)STUDIO.logs[STUDIO._logKey]=STUDIO.log.innerHTML;
@@ -6115,15 +7297,26 @@ function studioSelect(id){
 }
 async function studioLoadModels(){
   const sel=$('#st-model');if(!sel)return;
+  const cur=STUDIO.model||'auto';
   try{
     const d=await (await fetch('/api/models')).json();
-    const cur=STUDIO.model||'auto';
-    sel.innerHTML='<option value="auto">Auto — best available</option>'+
-      (d.models||[]).map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
-    sel.value=[...sel.options].some(o=>o.value===cur)?cur:'auto';
-    STUDIO.model=sel.value;
-  }catch(e){}
-  sel.onchange=()=>{STUDIO.model=sel.value;localStorage.setItem('studioModel',sel.value)};
+    const list=(d.models||[]);
+    sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
+      list.map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
+    // A model you picked is YOUR choice: if the list doesn't have it this second
+    // (provider slow, key toggled, Ollama restarting) keep it selected and say so
+    // instead of silently dropping you back to Auto — that reset is exactly how a
+    // chosen cloud model turned back into a local one.
+    if(cur!=='auto'&&!list.some(m=>m.id===cur))
+      sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)} · unavailable right now</option>`);
+    sel.value=cur;
+  }catch(e){
+    if(cur!=='auto'&&![...sel.options].some(o=>o.value===cur))
+      sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)}</option>`);
+    sel.value=cur;                      // a failed fetch must never rewrite the choice
+  }
+  sel.onchange=()=>{STUDIO.model=sel.value;localStorage.setItem('studioModel',sel.value);
+    toast(sel.value==='auto'?'builds pick the best available model':'builds will use '+sel.value)};
 }
 async function studioLoadHistory(sel){
   // each app has ONE persistent build conversation ("build: <name>") — show it so
@@ -6173,17 +7366,42 @@ function studioAutoFix(){
 function studioActions(){
   const box=$('#st-actions');if(!box)return;
   const pinned=WIDGETS.some(w=>w.app_id===STUDIO.sel&&(w.desk||1)===curDesk);
+  const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel);
+  const size=(app&&app.widget_size)||'m';
   box.innerHTML=STUDIO.sel
     ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
       <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+      <span class="wgsize" title="How big this app is when pinned as a widget">
+        <span class="mut">Widget</span>
+        ${Object.entries(WIDGET_SIZES).map(([k,d])=>
+          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${STUDIO.sel}','${k}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
+      </span>
+      <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
       <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
       <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
+/* The preview switches between the app's two surfaces, at the exact size the
+   widget will be — so "does it still read at S?" is answered before pinning. */
+function studioPreviewSurface(){
+  STUDIO.surface=STUDIO.surface==='widget'?'desktop':'widget';
+  studioShowPreview();studioActions();
+}
 function studioShowPreview(){
   if(!STUDIO.preview)return;
-  STUDIO.preview.innerHTML=STUDIO.sel
-    ?`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`
-    :'<div class="mut" style="display:flex;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">the built app will preview here</div>';
+  if(!STUDIO.sel){
+    STUDIO.preview.innerHTML='<div class="mut" style="display:flex;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">the built app will preview here</div>';
+    return;
+  }
+  const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel), size=(app&&app.widget_size)||'m';
+  if(STUDIO.surface==='widget'){
+    const d=WIDGET_SIZES[size]||WIDGET_SIZES.m;
+    STUDIO.preview.innerHTML=`<div class="wgpreview"><div class="widget" style="position:relative;width:${d.w}px;height:${d.h}px">
+        <div class="wgh"><span class="wgt">${esc((app&&app.name)||'')}</span><span class="mut" style="font-size:10.5px">${d.label} · ${d.w}×${d.h}</span></div>
+        <iframe src="/api/apps/${STUDIO.sel}/page?surface=widget&size=${size}&t=${Date.now()}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+      </div></div>`;
+    return;
+  }
+  STUDIO.preview.innerHTML=`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
 }
 async function studioVersions(){
   const box=$('#st-versions'),live=$('#st-live');
@@ -6268,6 +7486,27 @@ function studioBuildEvent(ev){
       const ok=ev.ok!==false;
       if(!ok)studioLog(`<span style="color:var(--err)">✗ ${esc(ev.name)} — ${esc((ev.output||'').slice(0,220))}</span>`);
       else if(ev.name==='create_app')studioLog(`<span class="mut">✓ create_app</span>`);
+      break;}
+    case 'build_choice':{  // the build produced nothing — the USER picks what runs next
+      const opts=(ev.options||[]).filter(Boolean);
+      const id='bc'+Date.now().toString(36);
+      studioLog(`<div class="bchoice" id="${id}"><b>${esc(ev.message||'no app was produced')}</b>
+        <span>Nothing was installed. Run it again with:</span>
+        <span class="row">
+          <select class="bc-m">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')||'<option value="">no other model configured</option>'}</select>
+          <button class="pact bc-go">Retry</button>
+          <button class="endbtn bc-x">Not now</button>
+        </span></div>`);
+      const box=document.getElementById(id);
+      if(box){
+        box.querySelector('.bc-go').onclick=()=>{
+          const m=box.querySelector('.bc-m').value;
+          if(!m)return toast('add a cloud key in Settings → AI providers first');
+          const sel=$('#st-model');if(sel){sel.value=m;STUDIO.model=m;localStorage.setItem('studioModel',m)}
+          box.remove();studioBuild();
+        };
+        box.querySelector('.bc-x').onclick=()=>box.remove();
+      }
       break;}
     case 'build_status': // model-side heartbeat while it loads/evaluates
       STUDIO._smsg=ev.message||'';break;
@@ -6528,7 +7767,7 @@ function renderAbout(body){
    list rises above it, input focused and selected. Typing filters direct
    actions (intent grammar) + apps; Enter runs the highlighted row, or asks the
    agent when the row is "Ask …". Answers stream into cards above the bar. */
-const OMNI={cid:null,matches:[],idx:0,pop:false};
+const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
 function omniPresence(){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
@@ -6555,38 +7794,75 @@ function omniPop(on){
   }else{
     $('#omnilist').classList.remove('on');
     OMNI.matches=[];OMNI.idx=0;
+    if(!OMNI.imgs.length&&!$('#omnicards').children.length)omniSummon(false);
   }
 }
 /* the hotkey entry point (Ctrl+Space / Ctrl+K / Alt+Space): focus, select what's
    there so you can just retype, and show the list */
+function omniSummon(on){
+  const bar=$('#omnibar');if(!bar)return;
+  bar.classList.toggle('summoned',on!==false);
+}
 function omniFocus(){
   const inp=$('#omni-in');if(!inp)return;
+  omniSummon(true);                       // come to the front, over any window
   inp.focus();inp.select();
   omniPop(true);
 }
 function omniOpen(){return OMNI.pop}
 
-/* ---- the results list (direct actions first, then apps, then "ask") ---- */
+/* ---- the results list (direct actions first, then apps, then "ask") ----
+   Ranking rules that keep it a LAUNCHER, not a search box:
+   - the name is what matters; a hint only counts as a whole-word match
+   - when anything matches by prefix/substring, scattered-letter matches are
+     dropped entirely (they are what turned "logs" into "Clipboard Manager")
+   - AgentOS apps outrank built-in actions, which outrank host apps */
+function omniScore(q,it){
+  const ql=q.toLowerCase();
+  const t=palScore(q,it.label);                       // 3 prefix · 2 substring · 1 scattered
+  if(t>=2)return t;
+  if((it.hint||'').toLowerCase().includes(ql))return 1.5;
+  return t;                                           // 1 (scattered) or 0
+}
 function omniRender(q){
   const list=$('#omnilist');if(!list)return;
   q=(q||'').trim();
   const items=typeof palActions==='function'?palActions():[];
   const direct=q&&typeof palIntent==='function'?palIntent(q):[];
-  const fuzzy=q?items.map(it=>({it,s:palScore(q,it.label+' '+(it.hint||''))})).filter(x=>x.s>0)
-      .sort((a,b)=>b.s-a.s).map(x=>x.it).slice(0,Math.max(3,7-direct.length)):items.slice(0,7);
+  let fuzzy;
+  if(q){
+    const scored=items.map(it=>({it,s:omniScore(q,it)})).filter(x=>x.s>0);
+    const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
+    const kept=best>=1.5?scored.filter(x=>x.s>=1.5):scored;     // drop the scattered tail
+    const rank=x=>x.s+(x.it.id?0.4:x.it.nat?0:0.2);             // apps > actions > host apps
+    fuzzy=kept.sort((a,b)=>rank(b)-rank(a)).slice(0,Math.max(3,7-direct.length));
+    fuzzy.forEach(x=>x.it._t=x.s);
+    fuzzy=fuzzy.map(x=>x.it);
+  }else fuzzy=items.slice(0,7);
   OMNI.matches=[...direct,...fuzzy];
-  if(q)OMNI.matches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent',ask:true,
-    run:()=>omniAsk(q)});
-  // a command gets run by Enter; a question gets asked — highlight accordingly
-  OMNI.idx=direct.length?0:(q?OMNI.matches.length-1:0);
+  if(q)OMNI.matches.push({icon:'▲',label:`Ask ${agentName()}: “${q}”`,hint:'send to the agent · ⇧⏎',
+    ask:true,run:()=>omniAsk(q)});
+  OMNI.idx=omniDefaultIdx(q,direct);
   omniPaint();
   if(q&&!direct.length&&typeof palIntentAsync==='function')palIntentAsync(q);
+}
+/* What should Enter do? Launch, unless the query reads like something to ask. */
+function omniDefaultIdx(q,direct){
+  if(!q)return 0;
+  if(direct.length)return 0;                                    // a command → run it
+  const top=OMNI.matches[0];
+  const words=q.split(/\s+/).length;
+  const asks=/\?$/.test(q)||/^(what|who|why|how|when|where|is|are|can|should|do|does|tell|explain|summar|write|find out)\b/i.test(q);
+  if(top&&!top.ask&&(top._t>=2)&&words<=3&&!asks)return 0;       // a name → launch it
+  return OMNI.matches.length-1;                                 // otherwise → ask
 }
 function omniPaint(){
   const list=$('#omnilist');if(!list)return;
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
   list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
-    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span></div>`).join('');
+    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
+    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
+    +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{
     el.onmousedown=e=>{e.preventDefault();omniRun(+el.dataset.i)};      // keep focus in the input
@@ -6617,11 +7893,14 @@ function omniCard(question){
   const wrap=$('#omnicards');
   const card=document.createElement('div');card.className='ocard';
   card.innerHTML=`<div class="oc-q">${esc(question)}</div><div class="oc-feed"></div>
-    <div class="oc-tools"><button class="oc-chat">Open in Chat</button><button class="oc-x">✕</button></div>`;
+    <div class="oc-tools"><button class="oc-stopnow" style="display:none">◼ Stop</button>
+      <button class="oc-chat">Open in Chat</button><button class="oc-x">✕</button></div>`;
   wrap.appendChild(card);
+  wrap.classList.add('raised');
   while(wrap.children.length>3)wrap.firstChild.remove();
   popIn(card,{origin:'bottom'});
-  const close=()=>{popOut(card,()=>card.remove())};
+  const close=()=>{popOut(card,()=>{card.remove();
+    if(!wrap.children.length){wrap.classList.remove('raised');if(!OMNI.pop)omniSummon(false)}})};
   card.querySelector('.oc-x').onclick=close;
   card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
   return {card,feed:card.querySelector('.oc-feed'),close};
@@ -6635,23 +7914,88 @@ function omniContext(){
     open.length?`Open right now: ${open.join(', ')}. Current desktop ${curDesk}/${DESKS}, theme ${CURRENT_THEME}.`:'',
   ].filter(Boolean).join('\n');
 }
+/* ---- attachments: a screenshot is often the whole question ---- */
+function omniShots(){
+  let box=$('#omni-shots');
+  if(!box){box=document.createElement('div');box.id='omni-shots';$('#omnibar').appendChild(box)}
+  box.innerHTML=OMNI.imgs.map((u,i)=>`<span class="oshot"><img src="${u}"><button data-i="${i}" title="Remove">✕</button></span>`).join('');
+  box.classList.toggle('on',OMNI.imgs.length>0);
+  box.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();OMNI.imgs.splice(+b.dataset.i,1);omniShots()});
+}
+function omniAddImage(fileOrUrl){
+  const done=u=>{if(OMNI.imgs.length>=4)return toast('up to 4 images');OMNI.imgs.push(u);omniShots()};
+  if(typeof fileOrUrl==='string')return done(fileOrUrl);
+  const img=new Image();
+  img.onload=()=>{   // downscale big screenshots so a turn stays light
+    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    done(sc<1||fileOrUrl.size>800000?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(fileOrUrl);
+}
+async function omniShoot(){
+  if(!cap('screen.capture').available)return toast('screen capture is not available here');
+  toast('capturing the screen…');
+  try{
+    const r=await fetch('/api/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({area:'full',inline:true})});
+    const d=await r.json();
+    if(!r.ok||!d.data_url)return toast(d.error||'could not capture the screen');
+    omniAddImage(d.data_url);
+    omniFocus();
+  }catch(e){toast('screenshot failed')}
+}
 async function omniAsk(q){
-  q=(q||'').trim();if(!q)return;
+  q=(q||'').trim();
+  const imgs=OMNI.imgs.slice();
+  if(!q&&!imgs.length)return;
+  if(!q)q='What do you see here?';
   const inp=$('#omni-in');inp.value='';
+  OMNI.imgs=[];omniShots();
   omniPop(false);
   await omniThread();
   const {card,feed,close}=omniCard(q);
-  const sink=miniFeed(feed,{scrollEl:feed,onEnd:()=>{
+  const stopBtn=card.querySelector('.oc-stopnow');
+  stopBtn.onclick=()=>{stopAgent(OMNI.cid);stopBtn.textContent='stopping…';stopBtn.disabled=true};
+  const sink=miniFeed(feed,{scrollEl:feed,showThinking:false,
+    onStart:()=>{stopBtn.style.display='';stopBtn.disabled=false;stopBtn.textContent='◼ Stop'},
+    onEnd:()=>{
+    stopBtn.style.display='none';
     // linger, then fade — unless the pointer is on it or an approval is pending
     setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
   }});
-  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:'◉ Desktop',
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id}});
+  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:'◉ Desktop',images:imgs,
+    context:omniContext(),sink,onCid:id=>{OMNI.cid=id},
+    onQueued:stop=>{
+      const tools=card.querySelector('.oc-tools');
+      if(tools.querySelector('.oc-stop'))return;
+      const b=document.createElement('button');b.className='oc-stop';b.textContent='Stop current & send';
+      b.onclick=()=>{b.disabled=true;b.textContent='stopping…';stop()};
+      tools.prepend(b);
+    }});
   if(!ok)close();
 }
 (function(){
   const inp=$('#omni-in'),bar=$('#omnibar');if(!inp)return;
   $('#omni-mic').innerHTML=svgMic(13);
+  const shot=$('#omni-shot');
+  if(shot){shot.innerHTML='▣';shot.onmousedown=e=>{e.preventDefault();omniShoot()}}
+  // paste or drop an image straight onto the bar
+  inp.addEventListener('paste',e=>{
+    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
+    if(!items.length)return;
+    e.preventDefault();items.forEach(it=>omniAddImage(it.getAsFile()));
+  });
+  ['dragover','drop'].forEach(ev=>bar.addEventListener(ev,e=>{
+    if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;
+    e.preventDefault();
+    if(ev==='drop')[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/')).forEach(omniAddImage);
+    bar.classList.toggle('dropping',ev==='dragover');
+  }));
+  bar.addEventListener('dragleave',()=>bar.classList.remove('dropping'));
   $('#omni-mic').onmousedown=e=>{e.preventDefault();jarvisMode(true)};
   $('#omni-chat').onmousedown=e=>{e.preventDefault();openApp('chat');if(OMNI.cid)openConv(OMNI.cid)};
   // clicking anywhere on the bar puts the caret in it
@@ -6663,13 +8007,37 @@ async function omniAsk(q){
     if(e.key==='ArrowUp'){e.preventDefault();OMNI.idx=Math.max(OMNI.idx-1,0);omniPaint();return}
     if(e.key==='Tab'&&OMNI.matches.length){e.preventDefault();omniRun();return}
     if(e.key==='Enter'){e.preventDefault();
+      if(e.shiftKey){omniAsk(inp.value);return}         // ⇧⏎ always asks the agent
       if(OMNI.matches.length)omniRun();else omniAsk(inp.value);
       return}
-    if(e.key==='Escape'){e.preventDefault();inp.value='';omniPop(false);inp.blur()}
+    if(e.key==='Escape'){e.preventDefault();inp.value='';omniPop(false);omniSummon(false);inp.blur()}
   });
   // clicking away collapses the launcher (the bar itself stays, always)
   document.addEventListener('mousedown',e=>{
-    if(OMNI.pop&&!e.target.closest('#omnibar')&&!e.target.closest('#omnilist'))omniPop(false);
+    if(e.target.closest('#omnibar')||e.target.closest('#omnilist')||e.target.closest('#omnicards'))return;
+    if(OMNI.pop)omniPop(false);
+    if(!$('#omnicards').children.length)omniSummon(false);        // back behind the windows
+  });
+  /* Double-tap Ctrl summons the bar — hands stay on the keyboard, no chord to learn. */
+  let lastCtrl=0;
+  document.addEventListener('keyup',e=>{
+    if(e.key!=='Control')return;
+    const now=Date.now();
+    if(now-lastCtrl<450&&!OMNI.pop){lastCtrl=0;omniFocus();return}
+    lastCtrl=now;
+  });
+  document.addEventListener('keydown',e=>{if(e.key!=='Control')lastCtrl=0});   // a chord is not a double-tap
+  /* Alt+1…9 — always "launch the Nth thing in front of me": a result row when
+     the launcher is open, otherwise the Nth app in the dock. */
+  document.addEventListener('keydown',e=>{
+    if(!e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;
+    const m=/^Digit([1-9])$/.exec(e.code||'')||/^([1-9])$/.exec(e.key||'');
+    if(!m)return;
+    e.preventDefault();
+    const n=+m[1]-1;
+    if(OMNI.pop&&OMNI.matches[n])return omniRun(n);
+    const id=(typeof DOCK!=='undefined'&&DOCK[n])||null;
+    if(id&&APPS[id]){openApp(id);toast('▸ '+APPS[id].title)}
   });
   // type-anywhere: printable keys with no text field focused land in the bar
   document.addEventListener('keydown',e=>{
@@ -6678,6 +8046,7 @@ async function omniAsk(q){
     const t=document.activeElement;
     if(t&&(/^(input|textarea|select)$/i.test(t.tagName)||t.isContentEditable))return;
     if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('#setup-wiz')))return;
+    omniSummon(true);
     inp.focus();                                                  // the keypress lands in the bar
   });
   omniPresence();
@@ -6688,33 +8057,24 @@ async function omniAsk(q){
 const IS_MAC=/Mac/i.test(navigator.platform);
 const CMD='⌘/Ctrl';
 function cmd(e){return e.metaKey||e.ctrlKey}
-const KEYMAP=[
-  {group:'General',keys:[
-    {k:['Ctrl','Space'],alt:['Alt','Space'],label:'Focus the prompt bar (launch, act, or ask)'},
-    {k:[CMD,'K'],label:'Focus the prompt bar'},
-    {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
-    {k:['Ctrl','/'],alt:['?'],label:'This shortcuts help'},
-    {k:[CMD,','],label:'Settings'},
-    {k:['F11'],label:'Toggle fullscreen'},
-    {k:['Alt','J'],label:'Voice mode'},
-  ]},
-  {group:'Windows',keys:[
-    {k:['Ctrl','Tab'],alt:['Alt','Tab'],label:'Switch window (hold, Tab to cycle)'},
-    {k:['Ctrl','Shift','Tab'],label:'Switch window (backwards)'},
-    {k:['F3'],alt:['Ctrl','↑'],label:'Exposé — all windows at a glance'},
-    {k:[CMD,'W'],label:'Close active window'},
-    {k:[CMD,'M'],label:'Minimize active window'},
-    {k:[CMD,'F'],label:'Maximize / restore active window'},
-    {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'},
-  ]},
-  {group:'Desktops',keys:[
-    {k:['Ctrl','1…6'],label:'Switch virtual desktop'},
-  ]},
-  {group:'Apps',keys:[
-    {k:[CMD,'Enter'],label:'New chat'},
-    {k:['Ctrl','Alt','T'],label:'Open terminal'},
-  ]},
-];
+function KEYMAP_LIVE(){
+  const g=(name)=>((SHORTCUTS[name]||SC_DEFAULTS[name]||{}).keys||'').split('+');
+  const row=(name)=>({k:g(name),label:(SHORTCUTS[name]||SC_DEFAULTS[name]||{}).label||name});
+  return [
+    {group:'General',keys:[row('omnibar.focus'),row('omnibar.focus2'),
+      {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
+      {k:['Alt','1-9'],label:'Quick launch: a result row, else that dock app'},
+      {k:['Shift','Enter'],label:'Ask the agent instead of launching'},
+      row('deck'),row('help'),row('settings'),row('fullscreen'),row('voice')]},
+    {group:'Windows',keys:[row('switcher'),{k:['Alt','Tab'],label:'Switch window (session mode)'},
+      row('expose'),row('windows.arrange'),row('window.close'),row('window.minimize'),row('window.maximize'),
+      {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'}]},
+    {group:'Desktops',keys:[row('desktop.prev'),row('desktop.next'),
+      row('desktop.move.prev'),row('desktop.move.next'),
+      {k:['Ctrl','1-9'],label:'Jump straight to a desktop'}]},
+    {group:'Apps',keys:[row('chat.new'),row('chat.open'),row('terminal')]},
+  ];
+}
 function activeWin(){let a=null;WM.wins.forEach(w=>{if(w.el.classList.contains('active'))a=w});return a}
 
 // --- Ctrl+Tab window switcher (Cmd+Tab-style) ---
@@ -6739,38 +8099,25 @@ function switcherCommit(){
   const w=SW.list[SW.idx];if(w)focusWin(w);
 }
 
-// --- exposé: every window on this desktop, live, in a grid (F3 / Ctrl+↑) ---
+// --- Spaces: every desktop as a card, every window a tile you can throw between them ---
 let EXPO={on:false,wins:[]};
+function deskWins(n){const a=[];WM.wins.forEach(w=>{if((w.desk||1)===n&&!w.min)a.push(w)});return a}
 function exposeToggle(force){
   const on=force!==undefined?force:!EXPO.on;
   if(on===EXPO.on)return;
   let ov=$('#expose');
-  if(!ov){ov=document.createElement('div');ov.id='expose';document.body.appendChild(ov);
-    ov.addEventListener('mousedown',e=>{if(e.target.id==='expose')exposeToggle(false)})}
+  // inside #desktop, like the deck: #desktop is position:fixed and therefore its
+  // own stacking context — an overlay outside it would sit ABOVE the windows and
+  // blur the very thumbnails it is meant to show.
+  if(!ov){ov=document.createElement('div');ov.id='expose';$('#desktop').appendChild(ov);
+    ov.addEventListener('mousedown',e=>{if(e.target===ov||e.target.id==='expose-grid')exposeToggle(false)})}
   if(on){
-    const wins=switcherList();
-    if(!wins.length)return;
-    EXPO.on=true;EXPO.wins=wins;
+    EXPO.on=true;
     document.body.classList.add('exposing');
-    ov.classList.add('show');ov.innerHTML='';
-    const mbh=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mbh'))||30;
-    const W=innerWidth, H=innerHeight-mbh, pad=36, gap=26;
-    const n=wins.length, cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
-    const cw=(W-pad*2-gap*(cols-1))/cols, ch=(H-pad*2-64-gap*(rows-1))/rows;
-    wins.forEach((w,i)=>{
-      const r=w.el.getBoundingClientRect();
-      const col=i%cols,row=Math.floor(i/cols);
-      const s=Math.min(cw/r.width,ch/r.height,0.94);
-      const cx=pad+col*(cw+gap)+(cw-r.width*s)/2, cy=mbh+pad+row*(ch+gap)+(ch-r.height*s)/2;
-      w.el.classList.add('exp-win');
-      w.el.style.transformOrigin='top left';
-      w.el.style.transform=`translate(${cx-r.left}px,${cy-r.top}px) scale(${s})`;
-      const c=document.createElement('div');c.className='exp-catch';
-      c.style.left=cx+'px';c.style.top=(cy-mbh)+'px';c.style.width=r.width*s+'px';c.style.height=r.height*s+'px';
-      c.innerHTML=`<span class="exp-lbl">${appIcon(w.id,15)} ${esc(w.app.title)}</span>`;
-      c.onclick=()=>{exposeToggle(false);focusWin(w)};
-      ov.appendChild(c);
-    });
+    ov.classList.add('show');
+    ov.innerHTML=`<div id="expose-spaces"></div><div id="expose-grid"></div>
+      <div id="expose-hint">click a space to switch · drag a window onto a space to move it · double-click a window to open it</div>`;
+    exposeSpaces();exposeGrid();
   }else{
     EXPO.on=false;
     ov.classList.remove('show');ov.innerHTML='';
@@ -6780,13 +8127,93 @@ function exposeToggle(force){
     EXPO.wins=[];
   }
 }
+/* the spaces strip: a live mini-map of every desktop, and a drop target */
+function exposeSpaces(){
+  const box=$('#expose-spaces');if(!box)return;
+  const cards=[];
+  for(let n=1;n<=DESKS;n++){
+    const wins=deskWins(n);
+    const W=innerWidth,H=innerHeight;
+    const mini=wins.map(w=>{
+      const r=w.el.getBoundingClientRect();
+      return `<i style="left:${(r.left/W*100).toFixed(1)}%;top:${(r.top/H*100).toFixed(1)}%;
+        width:${(r.width/W*100).toFixed(1)}%;height:${(r.height/H*100).toFixed(1)}%"></i>`;
+    }).join('');
+    cards.push(`<div class="space${n===curDesk?' on':''}" data-n="${n}" title="Desktop ${n} — ${wins.length} window(s)">
+      <div class="sp-map">${mini}</div>
+      <div class="sp-lbl">Desktop ${n}${wins.length?` · ${wins.length}`:''}
+        ${DESKS>1?`<button class="sp-x" title="Remove this desktop">✕</button>`:''}</div></div>`);
+  }
+  if(DESKS<9)cards.push(`<div class="space add" id="sp-add" title="Add a desktop">＋<div class="sp-lbl">New desktop</div></div>`);
+  box.innerHTML=cards.join('');
+  box.querySelectorAll('.space[data-n]').forEach(c=>{
+    const n=+c.dataset.n;
+    c.onclick=e=>{
+      if(e.target.closest('.sp-x')){e.stopPropagation();removeDesk(n);return}
+      if(n!==curDesk){switchDesk(n);setTimeout(()=>{exposeSpaces();exposeGrid()},260)}
+    };
+    c.ondragover=e=>{e.preventDefault();c.classList.add('drop')};
+    c.ondragleave=()=>c.classList.remove('drop');
+    c.ondrop=e=>{
+      e.preventDefault();c.classList.remove('drop');
+      const key=e.dataTransfer.getData('text/agentos-window');
+      const w=WM.wins.get(key);if(!w||w.desk===n)return;
+      w.desk=n;applyDeskVisibility();
+      toast(`moved "${w.app.title}" to Desktop ${n}`);
+      exposeSpaces();exposeGrid();
+    };
+  });
+  const add=$('#sp-add');
+  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager();exposeSpaces()};
+}
+function removeDesk(n){
+  if(DESKS<=1)return;
+  deskWins(n).forEach(w=>{w.desk=Math.max(1,n-1)});     // never orphan a window
+  DESKS--;localStorage.setItem('desks',DESKS);
+  if(curDesk>DESKS)switchDesk(DESKS);
+  applyDeskVisibility();buildPager();exposeSpaces();exposeGrid();
+  toast('desktop removed');
+}
+/* the grid: the CURRENT desktop's real windows, scaled down and draggable */
+function exposeGrid(){
+  const ov=$('#expose'),grid=$('#expose-grid');if(!grid)return;
+  EXPO.wins.forEach(w=>{w.el.style.transform='';w.el.classList.remove('exp-win')});
+  grid.innerHTML='';
+  const wins=deskWins(curDesk).sort((a,b)=>(+b.el.style.zIndex||0)-(+a.el.style.zIndex||0));
+  EXPO.wins=wins;
+  if(!wins.length){grid.innerHTML='<div class="exp-empty">No windows on this desktop</div>';return}
+  const dr=$('#desktop').getBoundingClientRect();
+  const top=dr.top+150, W=dr.width, H=dr.height-150-110, pad=30, gap=26;
+  const n=wins.length, cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+  const cw=(W-pad*2-gap*(cols-1))/cols, ch=(H-gap*(rows-1))/rows;
+  wins.forEach((w,i)=>{
+    const r=w.el.getBoundingClientRect();
+    const col=i%cols,row=Math.floor(i/cols);
+    const s=Math.min(cw/r.width,ch/r.height,0.92);
+    const cx=pad+col*(cw+gap)+(cw-r.width*s)/2, cy=top+row*(ch+gap)+(ch-r.height*s)/2;
+    const lx=cx-dr.left, ly=cy-dr.top;                    // overlay coords are desktop-relative
+    w.el.classList.add('exp-win');
+    w.el.style.transformOrigin='top left';
+    w.el.style.transform=`translate(${cx-r.left}px,${cy-r.top}px) scale(${s})`;
+    const c=document.createElement('div');c.className='exp-catch';c.draggable=true;
+    c.style.left=lx+'px';c.style.top=ly+'px';c.style.width=r.width*s+'px';c.style.height=r.height*s+'px';
+    c.innerHTML=`<button class="exp-x" title="Close">✕</button>
+      <span class="exp-lbl">${appIcon(w.id,15)} ${esc(w.app.title)}</span>`;
+    c.ondragstart=e=>{e.dataTransfer.setData('text/agentos-window',w.key);e.dataTransfer.effectAllowed='move';
+      c.classList.add('dragging')};
+    c.ondragend=()=>c.classList.remove('dragging');
+    c.onclick=e=>{if(e.target.closest('.exp-x')){e.stopPropagation();closeWin(w);setTimeout(()=>{exposeSpaces();exposeGrid()},260);return}
+      exposeToggle(false);focusWin(w)};
+    grid.appendChild(c);
+  });
+}
 
 // --- shortcuts help overlay ---
 function keysHelp(on){
   const ov=$('#keyshelp');const show=on!==undefined?on:!ov.classList.contains('show');
   if(show){
-    $('#keysbox').innerHTML=`<div class="kh"><span>Keyboard shortcuts</span><button class="mclose" onclick="keysHelp(false)">✕</button></div>
-      <div class="kbody">${KEYMAP.map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
+    $('#keysbox').innerHTML=`<div class="kh"><span>Keyboard shortcuts</span><button class="mclose" style="font-size:var(--fs-xs);width:auto;padding:0 8px" onclick="keysHelp(false);openApp(&quot;settings&quot;)">Edit</button><button class="mclose" onclick="keysHelp(false)">✕</button></div>
+      <div class="kbody">${KEYMAP_LIVE().map(g=>`<div class="kgrp"><h4>${esc(g.group)}</h4>${g.keys.map(r=>`<div class="krow"><span>${esc(r.label)}</span><span class="kk">${(r.k).map(x=>`<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('')}</div>`).join('')}</div>`;
   }
   ov.classList.toggle('show',show);
 }
@@ -6920,35 +8347,136 @@ function palAsk(q){
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }
+/* ================= shortcuts: one editable table =================
+   Every binding lives in cfg.shortcuts (Settings → Shortcuts) with these
+   defaults. Actions are named so the SAME table drives the browser shell and,
+   in session mode, sway keybindings that reach the shell over HTTP — which is
+   how they keep working while a native window has the keyboard. */
+const SC_DEFAULTS={
+  'omnibar.focus':   {keys:'Ctrl+Space',  label:'Focus the prompt bar',        session:true},
+  'omnibar.focus2':  {keys:'Alt+Space',   label:'Focus the prompt bar (alt)',  session:true},
+  'palette':         {keys:'Ctrl+K',      label:'Focus the prompt bar (alt)'},
+  'expose':          {keys:'Ctrl+Up',     label:'Spaces — desktops & windows',  session:true,typing:false},
+  'expose.f3':       {keys:'F3',          label:'Spaces (alternate)',           session:true},
+  'windows.arrange': {keys:'Ctrl+Down',   label:'Organise windows: tile → cascade → restore',typing:false},
+  'desktop.prev':    {keys:'Ctrl+Left',   label:'Previous desktop',             typing:false},
+  'desktop.next':    {keys:'Ctrl+Right',  label:'Next desktop',                 typing:false},
+  'desktop.move.prev':{keys:'Ctrl+Shift+Left', label:'Send window to the previous desktop',typing:false},
+  'desktop.move.next':{keys:'Ctrl+Shift+Right',label:'Send window to the next desktop',typing:false},
+  'switcher':        {keys:'Ctrl+Tab',    label:'Switch window'},
+  'window.close':    {keys:'Ctrl+W',      label:'Close active window'},
+  'window.minimize': {keys:'Ctrl+M',      label:'Minimize active window'},
+  'window.maximize': {keys:'Ctrl+F',      label:'Maximize / restore window'},
+  'chat.new':        {keys:'Ctrl+Enter',  label:'New chat'},
+  'chat.open':       {keys:'Ctrl+Shift+A',label:'Open Agent Chat',             session:true},
+  'copilot':         {keys:'Ctrl+Shift+Space',label:'Ask the agent about this window',session:true},
+  'agent.stop':      {keys:'Ctrl+.',    label:'Stop the agent — everywhere, now',session:true},
+  'terminal':        {keys:'Ctrl+Alt+T',  label:'Open Terminal',               session:true},
+  'settings':        {keys:'Ctrl+,',      label:'Settings'},
+  'voice':           {keys:'Alt+J',       label:'Voice mode',                  session:true},
+  'fullscreen':      {keys:'F11',         label:'Toggle fullscreen'},
+  'help':            {keys:'Ctrl+/',      label:'Keyboard shortcuts'},
+  'deck':            {keys:'Ctrl+Shift+D',label:'Show / hide the app deck'},
+};
+let SHORTCUTS=JSON.parse(JSON.stringify(SC_DEFAULTS));
+function scLoad(){
+  const saved=(cfg&&cfg.shortcuts)||{};
+  Object.keys(SC_DEFAULTS).forEach(k=>{
+    SHORTCUTS[k]={...SC_DEFAULTS[k],...(saved[k]?{keys:saved[k]}:{})};
+  });
+}
+function scParse(keys){
+  const p={ctrl:false,alt:false,shift:false,meta:false,key:''};
+  String(keys||'').split('+').map(s=>s.trim()).filter(Boolean).forEach(part=>{
+    const l=part.toLowerCase();
+    if(l==='ctrl'||l==='control')p.ctrl=true;
+    else if(l==='alt'||l==='option')p.alt=true;
+    else if(l==='shift')p.shift=true;
+    else if(l==='meta'||l==='cmd'||l==='super'||l==='win')p.meta=true;
+    else p.key=part;
+  });
+  return p;
+}
+/* "Left" in a binding and "ArrowLeft" from the browser are the same key — one
+   normaliser so the table can be written the way a person would say it. */
+const SC_ALIAS={left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown',
+  esc:'escape',ret:'enter',return:'enter',del:'delete',ins:'insert',
+  pgup:'pageup',pgdn:'pagedown','↑':'arrowup','↓':'arrowdown','←':'arrowleft','→':'arrowright'};
+function scKeyName(k){k=String(k||'').toLowerCase();return SC_ALIAS[k]||k}
+function scMatch(e,keys){
+  const p=scParse(keys);if(!p.key)return false;
+  // Cmd and Ctrl are interchangeable so the same table feels native on a Mac
+  const modOk=(p.ctrl?(e.ctrlKey||e.metaKey):(p.meta?e.metaKey:!e.ctrlKey&&!e.metaKey))
+    &&(!!p.alt===!!e.altKey)&&(!!p.shift===!!e.shiftKey);
+  if(!modOk)return false;
+  const want=scKeyName(p.key);
+  if(want==='space')return e.code==='Space';
+  return scKeyName(e.key)===want||(e.code||'').toLowerCase()==='key'+want;
+}
+const SC_ACTIONS={
+  'omnibar.focus':()=>omniFocus(),
+  'omnibar.focus2':()=>omniFocus(),
+  'palette':()=>omniFocus(),
+  'expose':()=>exposeToggle(),
+  'expose.f3':()=>exposeToggle(),
+  'windows.arrange':()=>arrangeWindows(),
+  'desktop.prev':()=>switchDeskBy(-1),
+  'desktop.next':()=>switchDeskBy(1),
+  'desktop.move.prev':()=>moveActiveDeskBy(-1),
+  'desktop.move.next':()=>moveActiveDeskBy(1),
+  'switcher':e=>switcherOpen(e&&e.shiftKey?-1:1),
+  'window.close':()=>{const a=activeWin();if(a)closeWin(a)},
+  'window.minimize':()=>{const a=activeWin();if(a)minimizeWin(a)},
+  'window.maximize':()=>{const a=activeWin();if(a)toggleMax(a)},
+  'chat.new':()=>{openApp('chat');newChat()},
+  'chat.open':()=>openApp('chat'),
+  'agent.stop':()=>stopAllAgents(),   // works while typing, in any app, in any window
+  'copilot':()=>{                     // works in full screen too — the panel is inside the window
+    const a=activeWin();
+    if(a)toggleCopilot(a);else omniFocus();
+  },
+  'terminal':()=>{omniPop(false);openApp('terminal')},
+  'settings':()=>openApp('settings'),
+  'voice':()=>jarvisMode(!JARVIS.on),
+  'fullscreen':()=>toggleFullscreen(),
+  'help':()=>keysHelp(),
+  'deck':()=>deckToggle(),
+};
+function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return false}
+
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
   const inTerm=e.target.closest&&e.target.closest('.xterm');
-  const k=e.key.toLowerCase();
-  const typing=/^(input|textarea|select)$/i.test((e.target.tagName||''));
-  // window switcher — Ctrl/Cmd+Tab (reliable), Alt+Tab (best-effort; the OS may grab it)
+  // "Typing" means a field with something in it. The prompt bar holds the caret
+  // by default, so treating an EMPTY bar as typing would mute every desktop
+  // shortcut on a fresh desktop — which is where you need them most.
+  const el=document.activeElement;
+  const inField=/^(input|textarea|select)$/i.test((el&&el.tagName)||'')||!!(el&&el.isContentEditable);
+  const idleBar=el&&el.id==='omni-in'&&!el.value&&!(typeof OMNI!=='undefined'&&OMNI.pop);
+  const typing=inField&&!idleBar;
+  if(SC_REC)return;                       // a Settings row is recording a new binding
+  // window switcher first: Alt+Tab is also accepted (sway forwards it in session mode)
   if((cmd(e)||e.altKey)&&e.key==='Tab'){e.preventDefault();switcherOpen(e.shiftKey?-1:1);return}
-  // Command-key window controls (Cmd on Mac, Ctrl elsewhere)
-  if(cmd(e)&&!e.altKey){
-    const a=activeWin();
-    if(k==='a'&&!typing&&!inTerm&&!a){e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}
-    if(k==='w'&&a){e.preventDefault();closeWin(a);return}
-    if(k==='m'&&a){e.preventDefault();minimizeWin(a);return}
-    if(k==='f'&&a){e.preventDefault();toggleMax(a);return}
-    if(k===','){e.preventDefault();openApp('settings');return}
-    if(e.key==='Enter'){e.preventDefault();openApp('chat');newChat();return}
-    if(k==='/'){e.preventDefault();keysHelp();return}
-  }
+  const fsw=[...WM.wins.values()].find(w=>w.fs);
+  if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
+  if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
+    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
-  if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
-  if(e.key==='F3'||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&e.key==='ArrowUp'&&!typing&&!inTerm)){e.preventDefault();exposeToggle();return}
-  // the launcher IS the omnibar: every hotkey pops it open + focused (Esc closes)
-  if(e.ctrlKey&&e.shiftKey&&k==='p'){e.preventDefault();omniFocus()}             // works everywhere, incl. terminal
-  else if(e.key==='F11'){e.preventDefault();toggleFullscreen()}
-  else if((e.altKey&&e.code==='Space')&&!inTerm){e.preventDefault();omniFocus()}   // Alt+Space quick launch / ask AI
-  else if(!inTerm&&((e.ctrlKey&&e.code==='Space')||(e.ctrlKey&&!e.shiftKey&&!e.altKey&&k==='k'))){e.preventDefault();omniFocus()}
-  else if(e.ctrlKey&&e.altKey&&k==='t'){e.preventDefault();togglePalette(false);openApp('terminal')}
-  else if(e.altKey&&!e.ctrlKey&&!e.shiftKey&&k==='j'){e.preventDefault();jarvisMode(!JARVIS.on)}
-  else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
+  if(cmd(e)&&!e.altKey&&e.key.toLowerCase()==='a'&&!typing&&!inTerm&&!activeWin()){
+    e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}
+  // everything else comes from the (editable) table
+  for(const name in SHORTCUTS){
+    const sc=SHORTCUTS[name];
+    if(!scMatch(e,sc.keys))continue;
+    // window actions need a window; typing surfaces keep their own text editing keys
+    if(name.startsWith('window.')&&!activeWin())continue;
+    // Ctrl+←/→ is word-jump inside text; these bindings stand aside while typing
+    if(sc.typing===false&&(typing||inTerm))continue;
+    if(name==='agent.stop'){e.preventDefault();scRun(name,e);return}   // never blocked
+    if(inTerm&&!['omnibar.focus','omnibar.focus2','palette','chat.open','expose','fullscreen','help'].includes(name))continue;
+    e.preventDefault();scRun(name,e);return;
+  }
+  if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&/^[1-9]$/.test(e.key)&&!inTerm){
     const n=+e.key;if(n<=DESKS){e.preventDefault();switchDesk(n)}}
 });
 
@@ -6966,6 +8494,7 @@ paintLogo();
 buildDesktop();
 buildPager();
 buildDock();
+deckLoad();buildDeck();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
@@ -7028,7 +8557,6 @@ connect();
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;
-    openApp('chat');
     // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);

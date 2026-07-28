@@ -99,15 +99,54 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 #ccpop.show{display:block}
 #ccpop .pad{padding:10px 14px}
 
-/* exposé (window overview): the REAL windows are FLIP-scaled into a grid, live */
-#expose{position:fixed;inset:var(--mbh) 0 0 0;z-index:9500;display:none;background:var(--scrim);backdrop-filter:blur(10px)}
-#expose.show{display:block}
+/* ===== Spaces: desktops as cards, windows as tiles you can throw ===== */
+#expose{position:absolute;inset:0;z-index:90;display:none;background:var(--scrim);backdrop-filter:blur(14px)}
+#expose.show{display:block;animation:fadein .16s var(--ease-out)}
 body.exposing .win{transition:transform var(--d-slow) var(--ease-out);will-change:transform}
-body.exposing .win.exp-win{z-index:9600!important;box-shadow:var(--el-4)}
-.exp-catch{position:absolute;z-index:9700;cursor:pointer;border-radius:var(--r-md);
+body.exposing .win.exp-win{z-index:200!important;box-shadow:var(--el-4)}
+#expose-spaces{position:absolute;top:18px;left:0;right:0;z-index:300;
+  display:flex;gap:14px;justify-content:center;flex-wrap:wrap;padding:0 20px}
+.space{width:190px;cursor:pointer;border-radius:var(--r-md);overflow:hidden;
+  border:1.5px solid var(--hairline-strong);background:var(--glass-tint);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--el-2);transition:border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+.space:hover{transform:translateY(-3px);box-shadow:var(--el-4)}
+.space.on{border-color:var(--acc);box-shadow:var(--el-4),0 0 22px color-mix(in srgb,var(--acc) 26%,transparent)}
+.space.drop{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 20%,transparent);transform:scale(1.04)}
+.space .sp-map{position:relative;height:96px;background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.space .sp-map i{position:absolute;background:color-mix(in srgb,var(--acc) 34%,transparent);
+  border:1px solid color-mix(in srgb,var(--acc) 60%,transparent);border-radius:3px}
+.space .sp-lbl{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:var(--fs-xs);font-weight:600;
+  border-top:1px solid var(--hairline)}
+.space .sp-x{margin-left:auto;color:var(--dim2);font-size:var(--fs-2xs)}
+.space .sp-x:hover{color:var(--err)}
+.space.add{display:flex;flex-direction:column;align-items:center;justify-content:center;height:130px;
+  font-size:var(--fs-2xl);color:var(--dim2);border-style:dashed;background:transparent}
+.space.add:hover{color:var(--acc);border-color:var(--acc)}
+#expose-grid{position:absolute;inset:0;z-index:250}
+.exp-empty{position:absolute;top:52%;left:0;right:0;text-align:center;color:var(--dim);font-size:var(--fs-md)}
+#expose-hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
+.exp-catch{position:absolute;z-index:300;cursor:pointer;border-radius:var(--r-md);
   outline:2px solid transparent;transition:outline-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .exp-catch:hover{outline-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.exp-catch.dragging{opacity:.5}
 .exp-catch .exp-lbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-30px;padding:4px 12px;white-space:nowrap;
   font-size:var(--fs-xs);font-weight:600;color:#fff;background:rgba(0,0,0,.55);border-radius:var(--r-full);
   display:flex;gap:6px;align-items:center}
+.exp-catch .exp-x{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--r-full);
+  background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-2xs);display:none;align-items:center;justify-content:center}
+.exp-catch:hover .exp-x{display:flex}
+
+/* a window taking the whole screen — over the menu bar and the dock */
+.win.fullwin{position:fixed!important;inset:0!important;width:auto!important;height:auto!important;
+  border-radius:0;border:none;z-index:9450!important}
+.win.fullwin .rz{display:none}
+body.has-fullwin #menubar,body.has-fullwin #taskbar,body.has-fullwin #omnibar{opacity:0;pointer-events:none;
+  transition:opacity var(--d-base) var(--ease-out)}
+
+/* the pager reflects what is actually on each desktop */
+.pgb.has::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:10px;height:2px;border-radius:2px;background:currentColor;opacity:.55}
+.pgb{position:relative}
+.pgb.drop{background:color-mix(in srgb,var(--acc) 34%,transparent);color:var(--txt);outline:1px solid var(--acc)}
+
 

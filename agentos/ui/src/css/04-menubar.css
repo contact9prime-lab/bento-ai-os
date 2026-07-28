@@ -53,3 +53,15 @@
 .np-item .np-x:hover{opacity:1;color:var(--err)}
 .np-item.crit{border-color:var(--err)}
 
+
+/* ---- application menus (File · Edit · View · Window · Help) ----
+   Only the focused window's menus are shown, so the bar reads as belonging to
+   that app rather than to the shell. */
+#mbmenus{display:none;align-items:center;gap:1px;margin-left:8px;min-width:0}
+#mbmenus.on{display:flex}
+#mbmenus button{padding:3px 9px;border-radius:var(--r-sm);font-size:var(--fs-sm);color:var(--txt);
+  opacity:.86;white-space:nowrap;transition:background var(--d-fast) var(--ease-out),opacity var(--d-fast)}
+#mbmenus button:hover{background:rgba(255,255,255,.1);opacity:1}
+#mbmenus button.on{background:var(--acc);color:#fff;opacity:1}
+#ctxmenu .mk{margin-left:auto;padding-left:18px;color:var(--dim2);font-size:var(--fs-2xs);letter-spacing:.02em}
+@media (max-width:900px){#mbmenus{display:none!important}}

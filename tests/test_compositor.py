@@ -216,10 +216,16 @@ def test_command_failure_surfaces_sways_error(tmp_path):
         fake.stop()
 
 
-def test_unreachable_socket_raises_cleanly(tmp_path):
+def test_unreachable_socket_raises_cleanly(tmp_path, monkeypatch):
     c = comp.Compositor(sock=str(tmp_path / "absent.sock"))
     with pytest.raises(comp.CompositorError, match="cannot reach"):
         c.windows()
+    # No inherited SWAYSOCK *and* nothing discoverable: say so plainly. Discovery
+    # is pinned off here so the result doesn't depend on whether the machine
+    # running the tests happens to have a compositor of its own.
+    monkeypatch.delenv("SWAYSOCK", raising=False)
+    monkeypatch.delenv("I3SOCK", raising=False)
+    monkeypatch.setattr(comp, "_discover_socket", lambda: "")
     with pytest.raises(comp.CompositorError, match="SWAYSOCK"):
         comp.Compositor(sock="").windows()
 

@@ -1,5 +1,5 @@
 /* ================= app studio (agentic builder) ================= */
-let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},model:localStorage.getItem('studioModel')||'auto'};
+let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},surface:'desktop',model:localStorage.getItem('studioModel')||'auto'};
 async function renderStudio(body,w){
   // preserve the builder session log across re-renders and app switches
   if(STUDIO.log&&STUDIO.log.isConnected&&STUDIO._logKey)STUDIO.logs[STUDIO._logKey]=STUDIO.log.innerHTML;
@@ -74,15 +74,26 @@ function studioSelect(id){
 }
 async function studioLoadModels(){
   const sel=$('#st-model');if(!sel)return;
+  const cur=STUDIO.model||'auto';
   try{
     const d=await (await fetch('/api/models')).json();
-    const cur=STUDIO.model||'auto';
-    sel.innerHTML='<option value="auto">Auto — best available</option>'+
-      (d.models||[]).map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
-    sel.value=[...sel.options].some(o=>o.value===cur)?cur:'auto';
-    STUDIO.model=sel.value;
-  }catch(e){}
-  sel.onchange=()=>{STUDIO.model=sel.value;localStorage.setItem('studioModel',sel.value)};
+    const list=(d.models||[]);
+    sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
+      list.map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
+    // A model you picked is YOUR choice: if the list doesn't have it this second
+    // (provider slow, key toggled, Ollama restarting) keep it selected and say so
+    // instead of silently dropping you back to Auto — that reset is exactly how a
+    // chosen cloud model turned back into a local one.
+    if(cur!=='auto'&&!list.some(m=>m.id===cur))
+      sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)} · unavailable right now</option>`);
+    sel.value=cur;
+  }catch(e){
+    if(cur!=='auto'&&![...sel.options].some(o=>o.value===cur))
+      sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)}</option>`);
+    sel.value=cur;                      // a failed fetch must never rewrite the choice
+  }
+  sel.onchange=()=>{STUDIO.model=sel.value;localStorage.setItem('studioModel',sel.value);
+    toast(sel.value==='auto'?'builds pick the best available model':'builds will use '+sel.value)};
 }
 async function studioLoadHistory(sel){
   // each app has ONE persistent build conversation ("build: <name>") — show it so
@@ -132,17 +143,42 @@ function studioAutoFix(){
 function studioActions(){
   const box=$('#st-actions');if(!box)return;
   const pinned=WIDGETS.some(w=>w.app_id===STUDIO.sel&&(w.desk||1)===curDesk);
+  const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel);
+  const size=(app&&app.widget_size)||'m';
   box.innerHTML=STUDIO.sel
     ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
       <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+      <span class="wgsize" title="How big this app is when pinned as a widget">
+        <span class="mut">Widget</span>
+        ${Object.entries(WIDGET_SIZES).map(([k,d])=>
+          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${STUDIO.sel}','${k}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
+      </span>
+      <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
       <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
       <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
+/* The preview switches between the app's two surfaces, at the exact size the
+   widget will be — so "does it still read at S?" is answered before pinning. */
+function studioPreviewSurface(){
+  STUDIO.surface=STUDIO.surface==='widget'?'desktop':'widget';
+  studioShowPreview();studioActions();
+}
 function studioShowPreview(){
   if(!STUDIO.preview)return;
-  STUDIO.preview.innerHTML=STUDIO.sel
-    ?`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`
-    :'<div class="mut" style="display:flex;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">the built app will preview here</div>';
+  if(!STUDIO.sel){
+    STUDIO.preview.innerHTML='<div class="mut" style="display:flex;height:100%;align-items:center;justify-content:center;padding:20px;text-align:center">the built app will preview here</div>';
+    return;
+  }
+  const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel), size=(app&&app.widget_size)||'m';
+  if(STUDIO.surface==='widget'){
+    const d=WIDGET_SIZES[size]||WIDGET_SIZES.m;
+    STUDIO.preview.innerHTML=`<div class="wgpreview"><div class="widget" style="position:relative;width:${d.w}px;height:${d.h}px">
+        <div class="wgh"><span class="wgt">${esc((app&&app.name)||'')}</span><span class="mut" style="font-size:10.5px">${d.label} · ${d.w}×${d.h}</span></div>
+        <iframe src="/api/apps/${STUDIO.sel}/page?surface=widget&size=${size}&t=${Date.now()}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+      </div></div>`;
+    return;
+  }
+  STUDIO.preview.innerHTML=`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
 }
 async function studioVersions(){
   const box=$('#st-versions'),live=$('#st-live');
@@ -227,6 +263,27 @@ function studioBuildEvent(ev){
       const ok=ev.ok!==false;
       if(!ok)studioLog(`<span style="color:var(--err)">✗ ${esc(ev.name)} — ${esc((ev.output||'').slice(0,220))}</span>`);
       else if(ev.name==='create_app')studioLog(`<span class="mut">✓ create_app</span>`);
+      break;}
+    case 'build_choice':{  // the build produced nothing — the USER picks what runs next
+      const opts=(ev.options||[]).filter(Boolean);
+      const id='bc'+Date.now().toString(36);
+      studioLog(`<div class="bchoice" id="${id}"><b>${esc(ev.message||'no app was produced')}</b>
+        <span>Nothing was installed. Run it again with:</span>
+        <span class="row">
+          <select class="bc-m">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')||'<option value="">no other model configured</option>'}</select>
+          <button class="pact bc-go">Retry</button>
+          <button class="endbtn bc-x">Not now</button>
+        </span></div>`);
+      const box=document.getElementById(id);
+      if(box){
+        box.querySelector('.bc-go').onclick=()=>{
+          const m=box.querySelector('.bc-m').value;
+          if(!m)return toast('add a cloud key in Settings → AI providers first');
+          const sel=$('#st-model');if(sel){sel.value=m;STUDIO.model=m;localStorage.setItem('studioModel',m)}
+          box.remove();studioBuild();
+        };
+        box.querySelector('.bc-x').onclick=()=>box.remove();
+      }
       break;}
     case 'build_status': // model-side heartbeat while it loads/evaluates
       STUDIO._smsg=ev.message||'';break;

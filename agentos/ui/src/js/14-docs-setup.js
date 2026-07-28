@@ -23,7 +23,7 @@ async function renderDocs(body){
    (POST /api/setup/say) with inline choice chips. Offline-safe end to end —
    every line has a canned fallback baked in here too. */
 let WIZ={agent_name:'Aria',autonomy:'balanced',default_model:'',providers:{},autostart:true,
-  open_at_login:true,wallpaper_preset:'',voice:false,step:1,info:null,convo:[],convoAt:0};
+  open_at_login:true,wallpaper_preset:'',voice:false,locale:null,step:1,info:null,convo:[],convoAt:0};
 async function checkSetup(){
   try{
     const s=await fetch('/api/setup').then(r=>r.json());
@@ -35,6 +35,7 @@ async function checkSetup(){
   }catch(e){}
 }
 const WIZ_SAY_FALLBACK={
+  locale:n=>`One thing that changes every answer: where you are. I read this off the machine — is it right? News, weather, prices and times all follow it.`,
   autonomy:n=>`I'm ${n} — good to meet you. How much should I do on my own? Balanced is a good start: I act freely and check with you before anything risky.`,
   autostart:()=>'Should I keep running in the background — for scheduled jobs, alerts and Telegram — even when this window is closed?',
   de_here:()=>"This is your desktop now, so I'm always here — nothing to install, nothing to start.",
@@ -117,7 +118,7 @@ function wizRender(){
     const de=PLATFORM.mode==='de';
     // de mode: autostart is meaningless (AgentOS IS the session) — replaced by a
     // one-line confirmation; wallpaper + voice are de-only questions
-    WIZ.convo=de?['autonomy','de_here','wallpaper','voice']:['autonomy','autostart'];
+    WIZ.convo=de?['locale','autonomy','de_here','wallpaper','voice']:['locale','autonomy','autostart'];
     WIZ.convoAt=0;
     wizAsk();
   }
@@ -155,6 +156,29 @@ async function wizAsk(){
 }
 function wizChips(step){
   let defs=null;
+  if(step==='locale'){
+    const el=document.createElement('div');el.className='wiz-chips';
+    const draw=()=>{
+      const lo=(WIZ.locale&&WIZ.locale.locale)||{};
+      el.innerHTML=`<button class="wiz-chip rec" data-a="ok">${esc((lo.country_name||lo.country||'?')+' · '+(lo.timezone||'?'))}<em>detected</em></button>
+        <button class="wiz-chip" data-a="edit">Somewhere else…</button>`;
+      el.querySelector('[data-a=ok]').onclick=b=>wizPicked(el,el.querySelector('[data-a=ok]'));
+      el.querySelector('[data-a=edit]').onclick=async()=>{
+        const c=await osPrompt('Which country are you in?',{value:lo.country||'',placeholder:'IN, US, GB…',confirmText:'Set'});
+        if(c===null)return;
+        const tz=await osPrompt('Timezone',{value:lo.timezone||'',placeholder:'Asia/Kolkata',confirmText:'Set'});
+        if(tz===null)return;
+        WIZ.locale_override={country:(c||'').trim().toUpperCase(),timezone:(tz||'').trim()};
+        await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({locale:WIZ.locale_override})});
+        try{WIZ.locale=await (await fetch('/api/locale')).json()}catch(e){}
+        draw();
+      };
+    };
+    fetch('/api/locale').then(r=>r.json()).then(d=>{WIZ.locale=d;draw()}).catch(()=>draw());
+    draw();
+    return el;
+  }
   if(step==='autonomy')defs=[
     ['Paranoid','asks before every action',()=>WIZ.autonomy='paranoid',false],
     ['Balanced','acts freely, asks for risky things',()=>WIZ.autonomy='balanced',true],

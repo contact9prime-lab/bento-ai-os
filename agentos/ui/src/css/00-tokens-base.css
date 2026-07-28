@@ -4,6 +4,12 @@
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
   --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
   --glass:rgba(17,20,25,.82);
+  /* the glass recipe: translucent tint + heavy blur + a hairline of light along
+     the top edge. Every floating surface (deck groups, widgets, cards, popovers)
+     uses these so they read as one material. */
+  --glass-tint:color-mix(in srgb,var(--bg2) 52%,transparent);
+  --glass-blur:blur(30px) saturate(1.7);
+  --glass-edge:inset 0 .5px 0 rgba(255,255,255,.14);
   --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mbh:30px;      /* top menu bar */
@@ -33,6 +39,8 @@
   --ease-in-out:cubic-bezier(.65,0,.35,1);       /* moves between two on-screen states */
 }
 :root[data-theme=light]{
+  --glass-tint:color-mix(in srgb,#fff 62%,transparent);
+  --glass-edge:inset 0 .5px 0 rgba(255,255,255,.85);
   --hairline:rgba(0,0,0,.08);
   --hairline-strong:rgba(0,0,0,.14);
   --scrim:rgba(0,0,0,.28);

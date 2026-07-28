@@ -83,6 +83,41 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Battery level and charging state.",
         "detect": lambda: bool(shutil.which("upower")),
     },
+    "portals": {
+        "package": "xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk",
+        "method": "apt", "licence": "MIT and LGPL-2.1+",
+        "title": "Screen sharing & native file dialogs",
+        "unlocks": "\"Share your screen\" in a browser call, and the system file "
+                   "picker that snaps and Flatpaks open. Without these the "
+                   "button is there and nothing happens.",
+        "detect": lambda: _portal_present(),
+    },
+    "udiskie": {
+        "package": "udiskie", "method": "apt", "licence": "MIT",
+        "title": "Removable media",
+        "unlocks": "Plug in a USB stick or SD card and it mounts by itself, "
+                   "the way it does on every other desktop.",
+        "detect": lambda: bool(shutil.which("udiskie")),
+    },
+    "wlsunset": {
+        "package": "wlsunset", "method": "apt", "licence": "MIT",
+        "title": "Night light",
+        "unlocks": "Warms the screen after dark (System Settings \u2192 Displays).",
+        "detect": lambda: bool(shutil.which("wlsunset")),
+    },
+    "playerctl": {
+        "package": "playerctl", "method": "apt", "licence": "LGPL-3.0+",
+        "title": "Media keys",
+        "unlocks": "Play/pause, next and previous keys control whatever is "
+                   "playing, in any app.",
+        "detect": lambda: bool(shutil.which("playerctl")),
+    },
+    "printing": {
+        "package": "cups system-config-printer", "method": "apt", "licence": "Apache-2.0",
+        "title": "Printers",
+        "unlocks": "Discovering and printing to network and USB printers.",
+        "detect": lambda: bool(shutil.which("lpstat")),
+    },
     "plymouth-theme": {
         "package": "agentos boot theme", "method": "script", "licence": "MIT (AgentOS)",
         "title": "Branded boot splash",
@@ -92,6 +127,14 @@ CATALOG: dict[str, dict] = {
         "detect": lambda: _plymouth_theme_installed(),
     },
 }
+
+
+def _portal_present() -> bool:
+    """The portal binaries live in libexec, not on $PATH."""
+    from pathlib import Path
+    return any(Path(p).exists() for p in (
+        "/usr/libexec/xdg-desktop-portal", "/usr/lib/xdg-desktop-portal",
+        "/usr/libexec/xdg-desktop-portal-wlr", "/usr/lib/xdg-desktop-portal-wlr"))
 
 
 def _plymouth_theme_installed() -> bool:

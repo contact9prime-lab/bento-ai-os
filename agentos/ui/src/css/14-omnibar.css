@@ -1,11 +1,11 @@
 /* ================= the ever-present agent: omnibar + copilot panels ================= */
 
 /* ---- omnibar ---- */
-#omnibar{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;z-index:9100;
+#omnibar{position:absolute;left:50%;transform:translateX(-50%);bottom:86px;z-index:7;
   width:min(560px,86vw);height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;
-  border-radius:var(--r-full);background:var(--glass);
-  backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),inset 0 .5px 0 rgba(255,255,255,.12);
+  border-radius:var(--r-full);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
   transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
 #omnibar:focus-within{border-color:color-mix(in srgb,var(--acc) 55%,transparent);
   box-shadow:var(--el-4),0 0 24px color-mix(in srgb,var(--acc) 18%,transparent)}
@@ -28,31 +28,38 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 /* results list: direct actions, apps, and always the "ask" row */
 #omnilist{position:absolute;bottom:calc(100% + 10px);left:0;right:0;display:none;
   max-height:min(52vh,420px);overflow-y:auto;padding:6px;border-radius:var(--r-lg);
-  background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-5),var(--glass-edge)}
 #omnilist.on{display:block;animation:pop .13s var(--ease-out)}
 #omnilist .palitem.ask .pi{color:var(--acc)}
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
+#omnilist .palitem{position:relative}
+#omnilist .palitem .ptext{flex:1;min-width:0}
+#omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);
+  border:1px solid var(--line);border-radius:5px;padding:2px 6px;opacity:0;transition:opacity var(--d-fast) var(--ease-out)}
+#omnilist .palitem:hover .ok,#omnilist .palitem.sel .ok{opacity:1}
+.omni-hint{display:flex;gap:14px;padding:8px 12px 4px;margin-top:4px;border-top:1px solid var(--hairline);
+  font-size:var(--fs-2xs);color:var(--dim2)}
+.omni-hint kbd{font-family:inherit;border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-right:4px}
 #omnibar button{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;
   border-radius:var(--r-full);color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
 #omnibar button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
 :root[data-theme=light] #omnibar button:hover{background:rgba(0,0,0,.07)}
-/* intent ghost: the grammar's instant read of what you're typing */
-#omni-ghost{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;align-items:center;gap:8px;
-  padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;cursor:pointer;
-  background:var(--glass);backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
-  color:var(--acc);box-shadow:var(--el-2)}
-#omni-ghost.on{display:flex}
-#omni-ghost .og-i{font-weight:700}
-#omni-ghost .og-k{font-size:var(--fs-2xs);color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* Summoned: Ctrl+Space, a double-tap of Ctrl, or typing on the desktop lifts the
+   bar over whatever is in front — including a full-screen window. Let go (Esc or
+   click away) and it drops back into the desktop, behind your work. */
+#omnibar.summoned,#omnicards.raised{z-index:99999}
+#omnibar.summoned{box-shadow:var(--el-5),0 0 34px color-mix(in srgb,var(--acc) 26%,transparent)}
+body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;pointer-events:auto}
 
 /* ---- answer cards ---- */
-#omnicards{position:fixed;left:50%;transform:translateX(-50%);bottom:142px;z-index:9099;
+#omnicards{position:absolute;left:50%;transform:translateX(-50%);bottom:142px;z-index:8;
   width:min(560px,86vw);display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .ocard{pointer-events:auto;border-radius:var(--r-lg);padding:12px 14px 8px;max-height:44vh;display:flex;flex-direction:column;
-  background:var(--glass);backdrop-filter:blur(28px) saturate(1.5);
-  border:1px solid var(--hairline-strong);box-shadow:var(--el-4)}
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-4),var(--glass-edge)}
 .ocard .oc-q{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-bottom:8px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
 .ocard .oc-feed{overflow-y:auto;min-height:22px;user-select:text}
@@ -60,6 +67,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 .ocard .oc-tools button{font-size:var(--fs-2xs);font-weight:600;color:var(--dim);padding:3px 10px;border-radius:var(--r-full);
   transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
 .ocard .oc-tools button:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+.ocard .oc-tools .oc-stop{margin-right:auto;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
 
 /* ---- shared mini-feed pieces (omnibar cards + copilot panels) ---- */
 .mf-user{align-self:flex-end;background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 20%,var(--bg3)),color-mix(in srgb,var(--acc2) 14%,var(--bg3)));
@@ -76,9 +84,10 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 .win .wmain .wbody{flex:1;min-width:0}
 .win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
 .win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
-  display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;opacity:0;
   transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
-.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc)}
+.win:hover .cp-btn,.win.active .cp-btn,.win .cp-btn.on{opacity:.85}
+.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc);opacity:1}
 .win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
 .win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
   border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
@@ -109,3 +118,184 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 /* ---- visible hands: a window/dock tile glows while the agent acts on it ---- */
 .win.agent-touch{box-shadow:var(--el-4),0 0 0 1.5px color-mix(in srgb,var(--acc) 70%,transparent),0 0 28px color-mix(in srgb,var(--acc) 30%,transparent)}
 .dockb.agent-touch .aicon{box-shadow:0 0 0 2px var(--acc),0 5px 14px rgba(0,0,0,.42)}
+
+/* ================= the app deck (bento tiles above the bar) =================
+   The deck claims as much desktop as it needs: groups WRAP into rows and the
+   whole thing grows upward from the bar, capped at the free space between the
+   menu bar and the prompt bar (then it scrolls). Its measured height feeds
+   --deckh, which every other bottom-anchored surface offsets by. */
+:root{--deckh:0px}
+#icons{display:none}            /* apps live in the deck now — the desktop is wallpaper */
+#deck{position:absolute;left:50%;transform:translateX(-50%);bottom:138px;z-index:6;
+  width:min(1680px,96vw);max-height:calc(100% - 170px);
+  display:flex;align-items:flex-end;gap:8px}
+#deck-toggle{flex:none;width:26px;height:26px;border-radius:var(--r-full);align-self:flex-end;margin-bottom:6px;
+  background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--hairline);color:var(--dim);
+  font-size:var(--fs-2xs);box-shadow:var(--el-1);transition:color var(--d-fast) var(--ease-out)}
+#deck-toggle:hover{color:var(--txt)}
+#deck-scroll{flex:1;min-width:0;max-height:100%;display:flex;flex-wrap:wrap;gap:12px;
+  align-content:flex-end;justify-content:center;overflow-y:auto;overflow-x:hidden;padding:2px 2px 6px;
+  scrollbar-color:var(--line) transparent}
+body:not(.deck-open) #deck-scroll{display:none}
+#deck-scroll::-webkit-scrollbar{width:6px}
+#deck-scroll::-webkit-scrollbar-track{background:transparent}
+#deck-scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--txt) 22%,transparent);border-radius:4px}
+#deck-scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--txt) 38%,transparent)}
+.deck-group{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;border-radius:var(--r-lg);
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
+  transition:border-color var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out)}
+.deck-group:hover{border-color:color-mix(in srgb,var(--acc) 26%,var(--hairline-strong));
+  box-shadow:var(--el-4),var(--glass-edge)}
+.deck-gname{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dim2);padding-left:2px;cursor:context-menu;display:flex;align-items:center;gap:6px}
+.deck-tiles{display:grid;grid-template-rows:repeat(2,minmax(0,1fr));grid-auto-flow:column;gap:4px 2px;
+  align-content:start;flex:1;min-height:0}
+.deck-tile{width:84px;padding:6px 2px 5px;border-radius:var(--r-md);display:flex;flex-direction:column;
+  align-items:center;gap:5px;transition:background var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out)}
+.deck-tile:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
+:root[data-theme=light] .deck-tile:hover{background:rgba(0,0,0,.06)}
+.deck-tile span{font-size:var(--fs-2xs);line-height:1.2;text-align:center;max-width:80px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.deck-new{flex:none;align-self:flex-end;width:96px;height:96px;border-radius:var(--r-lg);color:var(--dim2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:var(--fs-xl);
+  border:1.5px dashed var(--line);transition:border-color var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.deck-new span{font-size:var(--fs-2xs)}
+.deck-new:hover{border-color:var(--acc);color:var(--acc)}
+.deck-wgroup .deck-wframe{width:280px;height:150px;border-radius:var(--r-md);overflow:hidden;
+  background:color-mix(in srgb,var(--bg2) 40%,transparent)}
+.deck-wgroup iframe{width:100%;height:100%;border:none;display:block}
+.deck-wx{margin-left:auto;color:var(--dim2);font-size:var(--fs-2xs)}
+.deck-wx:hover{color:var(--err)}
+body.exposing #deck,body.omni-pop #deck{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
+
+/* widgets pinned beside the prompt bar */
+#barwidgets{position:absolute;bottom:86px;left:calc(50% + min(292px,45vw));z-index:7;display:none;gap:8px}
+#barwidgets.on{display:flex}
+.barwidget{width:210px;height:132px;display:flex;flex-direction:column;border-radius:var(--r-lg);overflow:hidden;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge)}
+.bw-h{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;font-size:var(--fs-2xs);
+  font-weight:700;color:var(--dim);border-bottom:1px solid var(--hairline)}
+.bw-h button{color:var(--dim2);font-size:var(--fs-2xs)}
+.bw-h button:hover{color:var(--err)}
+.barwidget iframe{flex:1;border:none;width:100%;background:transparent}
+
+/* a widget shrunk into the menu bar */
+#mbwidgets{display:flex;align-items:center;gap:8px;margin-left:12px}
+.mbwidget{width:200px;height:var(--mbh);border:none;background:transparent;display:block}
+
+/* surfaces that sit above the dock must clear the deck too */
+body.deck-open #omnicards{bottom:calc(142px + var(--deckh))}
+body.deck-open #toasts{bottom:calc(var(--tbh) + var(--deckh) + 12px)}
+body.deck-open #startmenu{bottom:calc(var(--tbh) + var(--deckh) + 16px)}
+body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
+
+/* ================= AI presence bubble (bottom-right) ================= */
+#aibubble{position:fixed;right:16px;bottom:88px;z-index:9400;display:none;align-items:center;gap:9px;
+  padding:8px 14px 8px 11px;border-radius:var(--r-full);cursor:pointer;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-3),var(--glass-edge);
+  transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+#aibubble.on{display:flex;animation:pop .18s var(--ease-out)}
+#aibubble:hover{transform:translateY(-2px);box-shadow:var(--el-4)}
+#aibubble .ab-orb{width:14px;height:14px;flex:none;border-radius:var(--r-full);
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%)}
+#aibubble.busy .ab-orb{animation:obusy 1s ease-in-out infinite}
+#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+#aibubble .ab-n{min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--acc);color:#06211d;
+  font-size:var(--fs-2xs);font-weight:800;display:flex;align-items:center;justify-content:center}
+
+/* shortcut editor rows (Settings → Shortcuts) */
+.sc-row{display:flex;align-items:center;gap:10px;padding:5px 2px;border-bottom:1px solid var(--hairline)}
+.sc-row:last-child{border-bottom:none}
+.sc-l{flex:1;font-size:var(--fs-md)}
+.sc-l em{font-style:normal;font-size:var(--fs-2xs);color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
+  border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle}
+.sc-k{flex:none;min-width:120px;text-align:center;font-size:var(--fs-sm);font-weight:600;padding:4px 10px;
+  border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--line);color:var(--txt);
+  transition:border-color var(--d-fast) var(--ease-out)}
+.sc-k:hover{border-color:var(--acc)}
+.sc-k.rec{border-color:var(--acc);color:var(--acc);animation:obusy 1s ease-in-out infinite}
+
+/* ================= preferences: a real settings layout =================
+   GNOME/macOS grammar: category rail on the left, preference GROUPS on the
+   right, each a card of ROWS with the label+description left and the control
+   right. One row primitive means every panel can adopt it. */
+.prefs{flex:1;min-height:0;display:flex;background:var(--bg)}
+.prefs-side{flex:0 0 188px;padding:10px 8px;overflow-y:auto;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;gap:2px}
+.prefs-side button{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--r-md);
+  font-size:var(--fs-md);font-weight:600;color:var(--dim);text-align:left;
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+.prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
+.prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
+.prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}
+.prefs-main{flex:1;min-width:0;overflow-y:auto;padding:22px 26px 30px}
+.prefs-main > h2{font-size:var(--fs-xl);font-weight:750;margin-bottom:4px}
+.prefs-main > .lead{font-size:var(--fs-md);color:var(--dim);margin-bottom:18px;max-width:62ch;line-height:1.5}
+.pgroup{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:18px;overflow:hidden}
+.pgroup > h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+  padding:12px 16px 0}
+.pgroup > .ghint{font-size:var(--fs-sm);color:var(--dim);padding:6px 16px 0;line-height:1.5}
+.prow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-top:1px solid var(--line)}
+.pgroup > h3 + .prow,.pgroup > .ghint + .prow,.pgroup > .prow:first-child{border-top:none}
+.prow:first-of-type{margin-top:4px}
+.prow .pl{flex:1;min-width:0}
+.prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
+.prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
+.prow .pc{flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
+  min-width:240px;max-width:340px}
+.prow .pc input[type=number]{min-width:96px}
+.prow.stack{display:block}
+.prow.stack .pc{margin-top:9px;justify-content:flex-start}
+.prow.stack .pc input,.prow.stack .pc select{width:100%;max-width:none}
+/* a switch instead of a raw checkbox — the single biggest "cheap form" tell */
+.psw{position:relative;width:40px;height:23px;flex:none;cursor:pointer}
+.psw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.psw i{position:absolute;inset:0;border-radius:var(--r-full);background:var(--bg4);border:1px solid var(--line);
+  transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
+.psw i::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:var(--r-full);
+  background:var(--txt);opacity:.75;transition:transform var(--d-base) var(--ease-spring),opacity var(--d-fast) var(--ease-out)}
+.psw input:checked + i{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent}
+.psw input:checked + i::after{transform:translateX(17px);background:#06211d;opacity:1}
+.psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
+.prow.danger .pl b{color:var(--err)}
+.pgroup.danger{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.prefs-main .savebar{position:sticky;bottom:-30px;margin:0 -26px -30px;padding:12px 26px;
+  background:linear-gradient(transparent,var(--bg) 34%);display:flex;justify-content:flex-end;gap:10px}
+
+/* a stored secret: shown, never re-editable until you ask to replace it */
+.psecret{display:flex;align-items:center;gap:8px}
+.psecret i{font-style:normal;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent);border-radius:var(--r-sm);padding:2px 7px}
+.psecret code{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim)}
+
+/* omnibar attachments: paste, drop or capture a screenshot with the question */
+#omni-shots{position:absolute;bottom:calc(100% + 8px);left:14px;display:none;gap:8px;z-index:2}
+#omni-shots.on{display:flex}
+.oshot{position:relative;display:block}
+.oshot img{height:56px;width:auto;max-width:120px;object-fit:cover;border-radius:var(--r-sm);
+  border:1px solid var(--hairline-strong);box-shadow:var(--el-2);display:block}
+.oshot button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:var(--r-full);
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);font-size:var(--fs-2xs);
+  display:flex;align-items:center;justify-content:center}
+.oshot button:hover{color:var(--err);border-color:var(--err)}
+#omnibar.dropping{border-color:var(--acc);box-shadow:var(--el-4),0 0 26px color-mix(in srgb,var(--acc) 30%,transparent)}
+
+/* the build "what next?" card — a dead end becomes one click */
+.bchoice{margin:10px 0;padding:12px 14px;border-radius:var(--r-md);background:var(--bg2);
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));display:flex;flex-direction:column;gap:8px}
+.bchoice b{font-size:var(--fs-md)}
+.bchoice span{font-size:var(--fs-sm);color:var(--dim)}
+.bchoice .row{display:flex;gap:8px;align-items:center}
+.bchoice select{flex:1;min-width:0}
+
+/* stop controls: visible the moment something is running */
+#aibubble .ab-stop{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
+  background:var(--bg3);border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;justify-content:center}
+#aibubble .ab-stop:hover{color:var(--err);border-color:var(--err)}
+.cp-send.stop{background:var(--err);color:#2b0606}
+.ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
+  border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}

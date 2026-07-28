@@ -102,8 +102,19 @@ Test autologin in a VM before using it on a machine you depend on.
 | Battery & power profiles | UPower + power-profiles-daemon over D-Bus |
 | Notifications | AgentOS claims `org.freedesktop.Notifications` — native apps' notifications appear as toasts and in the bell menu, with do-not-disturb. (In hosted mode your desktop keeps this job; AgentOS never fights it for the bus name.) |
 | Lock & idle | swaylock, themed with your wallpaper; swayidle locks after `desktop.idle_lock_secs` (default 600), blanks outputs after `desktop.idle_screen_off_secs` (900), locks before sleep, and answers the ⏻ menu's Lock |
-| Screenshots | grim/slurp — full screen or region, saved to `<workspace>/Screenshots` |
+| Keyboard & mouse | layout and variant, key repeat delay/rate, tap-to-click, natural scrolling, disable-while-typing, pointer speed — **System Settings → Keyboard & Mouse**, applied live and kept for the next login |
+| Night light | warms the screen between hours you choose (**Displays**), via the optional `wlsunset` component |
+| Launching native apps | through the compositor, so the app inherits the session's own environment. A server started by systemd at login has no `WAYLAND_DISPLAY` of its own; spawning from there produces a process that dies the moment it opens a window |
+| Removable media | a USB stick or SD card mounts by itself, via the optional `udiskie` component |
+| Media keys | play/pause, next, previous drive whatever is playing (MPRIS), via the optional `playerctl` component |
+| Portals | screen sharing and native file dialogs, via `xdg-desktop-portal` + `-wlr`; sway exports the session environment to systemd and D-Bus so activated portals can actually open a window |
+| Autostart | your `~/.config/autostart` entries run, like any other session (via `dex`) |
+| Screenshots | grim/slurp — full screen or region, saved to `<workspace>/Screenshots`; Print and Shift+Print are bound |
 | Power menu | the ⏻ menu (lock / suspend / logout / restart / power off) via logind — no sudo, no polkit prompts |
+
+Every AgentOS window also carries the usual application menus — File · Edit ·
+View · Window · Help — in the top bar, following focus. Apps contribute their
+own entries, which merge into those menus rather than replacing them.
 
 Everything in that table is driven by capabilities: on a Mac, or hosted on
 GNOME, the same UI renders and the DE-only controls grey out with the reason.
@@ -147,8 +158,10 @@ in **System Settings → Components**: each shows its licence and what it
 unlocks, and installs only after you say yes to exactly that. Currently:
 `chromium` (snap-only on modern Ubuntu — this is why the renderer isn't
 bundled), `wl-clipboard` (GPL-3), `ddcutil` (GPL-2), `power-profiles-daemon`
-(GPL-3), `wmctrl` (GPL-2). A greyed-out control whose fix is a component links
-straight to it.
+(GPL-3), `wmctrl` (GPL-2), `udiskie` (MIT, removable media), `wlsunset` (MIT,
+night light), `playerctl` (LGPL-3, media keys), `cups` + `system-config-printer`
+(printing), and the `xdg-desktop-portal` trio (screen sharing and native file
+dialogs). A greyed-out control whose fix is a component links straight to it.
 
 ## Troubleshooting
 
@@ -176,3 +189,9 @@ straight to it.
   the first milestone of the in-house compositor.
 - Screen sharing works through xdg-desktop-portal-wlr; per-window sharing
   depends on the app supporting the portal.
+- Printers are installable (`cups` in Components) but there is no AgentOS
+  printer panel yet — configuration goes through `system-config-printer`.
+- Default applications and MIME associations are the system's (`xdg-mime`);
+  there is no "Default apps" panel yet.
+- Switching keyboard layout on the fly has no indicator or shortcut — the
+  layout is set in **Keyboard & Mouse** and applies to the session.

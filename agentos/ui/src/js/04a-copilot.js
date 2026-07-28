@@ -18,16 +18,50 @@ function claimConversation(ev){
   }
   return !!(ev.origin&&ev.origin!=='user');
 }
+/* One turn at a time per conversation is a server rule, so a second ask while
+   the agent is busy gets QUEUED (and says so) instead of being dropped. */
+const TURN_QUEUE=[];
+function agentQueueFlush(cid){
+  const i=TURN_QUEUE.findIndex(o=>o.cid===cid);
+  if(i<0)return;
+  const o=TURN_QUEUE.splice(i,1)[0];
+  setTimeout(()=>agentTurn(o),150);
+}
 function agentTurn(o){
   // o: {text, cid?, origin, title?, context?, sink, onCid?}
   if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
-  if(o.cid&&RUNNING.has(o.cid)){toast('that agent is already working — one turn at a time');return false}
+  if(o.cid&&RUNNING.has(o.cid)){
+    TURN_QUEUE.push(o);
+    if(o.sink){
+      if(o.sink.start)o.sink.start();
+      if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
+    }
+    // never a dead end: the caller can offer "stop what's running and send this now"
+    if(o.onQueued)o.onQueued(()=>{
+      try{ws.send(JSON.stringify({type:'abort',conversation_id:o.cid}))}catch(e){}
+    });
+    return true;
+  }
   if(o.cid)sinkOn(o.cid,o.sink);
   else PENDING_SINKS.push({origin:o.origin,sink:o.sink,onCid:o.onCid});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
-    model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
+    images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
     context:o.context||''}));
   return true;
+}
+
+/* ---- stopping: any turn, from anywhere, at any moment ---- */
+function stopAgent(cid){
+  if(!ws||ws.readyState!==1)return false;
+  ws.send(JSON.stringify({type:'abort',conversation_id:cid||null}));   // no id = stop everything
+  return true;
+}
+function stopAllAgents(){
+  const n=RUNNING.size+((window.STUDIO&&STUDIO.building)?1:0);
+  // drop anything queued behind it too, or the next turn starts the moment this one dies
+  if(typeof TURN_QUEUE!=='undefined')TURN_QUEUE.length=0;
+  if(!stopAgent(null))return toast('not connected to the server');
+  toast(n?`stopping ${n} running turn${n>1?'s':''}…`:'nothing is running right now');
 }
 
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
@@ -41,12 +75,18 @@ function miniFeed(box,opts){
   return {
     start(){
       text='';body=null;think=null;clearWorking();
+      if(opts.onStart)opts.onStart();
       working=document.createElement('div');working.className='mf-working';
       working.innerHTML='<span class="mfo"></span><span class="mft">thinking…</span>';
       box.appendChild(working);scroll();
     },
     status(ev){if(working)working.querySelector('.mft').textContent=ev.message||'working…'},
     thinking(t){
+      // answer surfaces (cards) stay clean: the reasoning trace only says "thinking…"
+      if(opts.showThinking===false){
+        if(working)working.querySelector('.mft').textContent='thinking…';
+        return;
+      }
       if(!think){think=document.createElement('div');think.className='think mf-think';box.insertBefore(think,working)}
       think.textContent+=t;think.scrollTop=think.scrollHeight;
     },
@@ -191,11 +231,17 @@ async function initCopilot(w,panel){
     if(RUNNING.has(cid))sinkOn(cid,mkSink());   // re-attach to a live turn
   }
   let live=null;
+  const setBusy=on=>{
+    sendBtn2.textContent=on?'◼':'↑';
+    sendBtn2.classList.toggle('stop',on);
+    sendBtn2.title=on?'Stop this agent':'Send';
+  };
   function mkSink(){
     if(live)return live;
     live=miniFeed(feedEl,{scrollEl:feedEl,
+      onStart:()=>setBusy(true),
       onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
-      onEnd:()=>{live=null;startersEl.style.display='none'}});
+      onEnd:()=>{live=null;setBusy(false);startersEl.style.display='none'}});
     return live;
   }
   function go(){
@@ -208,6 +254,10 @@ async function initCopilot(w,panel){
       title:'✦ '+w.app.title,context:copilotContext(w),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
-  sendBtn2.onclick=go;
+  sendBtn2.onclick=()=>{
+    const cid=COPILOT.cids[w.id];
+    if(cid&&RUNNING.has(cid)){stopAgent(cid);toast('stopping…');return}   // ◼ while it works
+    go();
+  };
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
 }

@@ -50,11 +50,14 @@ function createWin(app){
   el.querySelector('.cls').onclick=e=>{e.stopPropagation();closeWin(w)};
   const ttl=el.querySelector('.ttl');
   ttl.ondblclick=e=>{if(!e.target.closest('button'))toggleMax(w)};
+  ttl.oncontextmenu=e=>{e.preventDefault();winMenu(e,w)};
   dragify(w,ttl);
   resizify(w);
   // the agent inside this app: ✦ toggles the copilot panel (remembered per app)
   el.querySelector('.cp-btn').onclick=e=>{e.stopPropagation();toggleCopilot(w)};
-  if(localStorage.getItem('copilot:'+app.id))setTimeout(()=>toggleCopilot(w),80);
+  // the panel never opens by itself — a window is a window until you ask for the
+  // agent (✦ on the title bar, or the copilot shortcut, which also works in
+  // full screen). Until then it sits quietly out of the way.
 
   app.render(el.querySelector('.wbody'),w);
   setMenubarApp(app.title);
@@ -73,6 +76,8 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  if(typeof deckAuto==='function')deckAuto();
+  if(typeof buildPager==='function')buildPager();
   if(typeof buildDock==='function')buildDock();
 }
 /* the dock auto-hides while a maximized window is focused; a bottom-edge peek brings it back */
@@ -86,17 +91,19 @@ document.addEventListener('pointermove',e=>{
   if(e.clientY>innerHeight-6)document.body.classList.add('dock-peek');
   else if(document.body.classList.contains('dock-peek')&&e.clientY<innerHeight-110)document.body.classList.remove('dock-peek');
 });
-function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||''}
+function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||'';
+  if(typeof buildAppMenus==='function')buildAppMenus()}
 function minimizeWin(w){
   w.min=true;w.tb.classList.add('mini');w.tb.classList.remove('on');
   zoomWin(w.el,w.id,-1).then(()=>{if(w.min)w.el.style.display='none'});
   // hand focus to the topmost remaining window
   let top=null;WM.wins.forEach(o=>{if(!o.min&&o!==w&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
-  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof buildDock==='function')buildDock()}
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof deckAuto==='function')deckAuto();if(typeof buildDock==='function')buildDock()}
 }
 function restoreWin(w){
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
+  if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
 function toggleMax(w){
@@ -109,12 +116,92 @@ function toggleMax(w){
   focusWin(w);
   updateDockHide();
 }
+/* every window control in one place — the title bar's right-click menu */
+function winMenu(e,w){
+  const items=[
+    {label:w.fs?'Leave full screen':'Full screen',fn:()=>toggleFullWin(w)},
+    {label:w.max?'Restore size':'Maximize',fn:()=>toggleMax(w)},
+    {label:'Minimize',fn:()=>minimizeWin(w)},
+    null,
+    {label:'Tile left',fn:()=>tileWin(w,'left')},
+    {label:'Tile right',fn:()=>tileWin(w,'right')},
+    {label:'Centre',fn:()=>tileWin(w,'centre')},
+  ];
+  if(DESKS>1){
+    items.push(null);
+    for(let n=1;n<=DESKS;n++)if(n!==w.desk)items.push({label:'Move to Desktop '+n,fn:()=>{
+      w.desk=n;applyDeskVisibility();toast(`moved to Desktop ${n}`)}});
+  }
+  if(w.app.multi)items.push(null,{label:'New window',fn:()=>openAppNew(w.id)});
+  items.push(null,{label:'Close',danger:true,fn:()=>closeWin(w)});
+  showCtxItems(e,items);
+}
+/* true full screen: over the menu bar, dock and everything else */
+function toggleFullWin(w){
+  w.fs=!w.fs;
+  if(w.fs&&!w.prev)w.prev={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+  flipWin(w.el,()=>{
+    w.el.classList.toggle('fullwin',w.fs);
+    if(!w.fs&&w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;
+      w.el.style.width=w.prev.w;w.el.style.height=w.prev.h;w.prev=null}
+  });
+  document.body.classList.toggle('has-fullwin',w.fs);
+  if(w.fs)toast('full screen — Esc or F to exit');
+  focusWin(w);
+}
+/* Ctrl+↓ organises whatever is on this desktop: grid → cascade → back where
+   they were. Each window's pre-arrange geometry is remembered so the third
+   press really does restore, not approximate. */
+let ARRANGE_MODE=0;
+function arrangeWindows(){
+  const desk=$('#desktop'),W=desk.clientWidth,H=desk.clientHeight;
+  const wins=[];WM.wins.forEach(x=>{if(!x.min&&(x.desk||1)===curDesk&&!x.fs)wins.push(x)});
+  if(!wins.length)return toast('nothing to arrange on this desktop');
+  wins.forEach(x=>{if(!x.arr)x.arr={l:x.el.style.left,t:x.el.style.top,w:x.el.style.width,h:x.el.style.height}});
+  ARRANGE_MODE=(ARRANGE_MODE+1)%3;
+  if(ARRANGE_MODE===1){                      // grid
+    const n=wins.length,cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols),gap=10;
+    const cw=(W-gap*(cols+1))/cols, ch=(H-gap*(rows+1))/rows;
+    wins.forEach((x,i)=>{
+      const c=i%cols,r=Math.floor(i/cols);
+      if(x.max)toggleMax(x);
+      flipWin(x.el,()=>{x.el.style.left=(gap+c*(cw+gap))+'px';x.el.style.top=(gap+r*(ch+gap))+'px';
+        x.el.style.width=cw+'px';x.el.style.height=ch+'px'});
+    });
+    toast('▦ tiled — press again to cascade');
+  }else if(ARRANGE_MODE===2){                // cascade
+    wins.forEach((x,i)=>{
+      if(x.max)toggleMax(x);
+      flipWin(x.el,()=>{x.el.style.left=(40+i*38)+'px';x.el.style.top=(30+i*34)+'px';
+        x.el.style.width=Math.min(920,W-120)+'px';x.el.style.height=Math.min(620,H-110)+'px'});
+      focusWin(x);
+    });
+    toast('▤ cascaded — press again to restore');
+  }else{                                     // back where they were
+    wins.forEach(x=>{if(x.arr){const a=x.arr;flipWin(x.el,()=>{x.el.style.left=a.l;x.el.style.top=a.t;
+      x.el.style.width=a.w;x.el.style.height=a.h});x.arr=null}});
+    toast('windows restored');
+  }
+}
+function tileWin(w,where){
+  const desk=$('#desktop'),W=desk.clientWidth,H=desk.clientHeight;
+  const z=where==='left'?{l:0,t:0,w:W/2,h:H}
+    :where==='right'?{l:W/2,t:0,w:W/2,h:H}
+    :{l:W*0.15,t:H*0.08,w:W*0.7,h:H*0.8};
+  if(w.max)toggleMax(w);
+  if(!w.snap)w.snap={l:w.el.style.left,t:w.el.style.top,w:w.el.style.width,h:w.el.style.height};
+  flipWin(w.el,()=>{w.el.style.left=z.l+'px';w.el.style.top=z.t+'px';
+    w.el.style.width=z.w+'px';w.el.style.height=z.h+'px'});
+  focusWin(w);
+}
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide()}
+  if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
 

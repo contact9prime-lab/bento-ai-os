@@ -12,6 +12,7 @@ paintLogo();
 buildDesktop();
 buildPager();
 buildDock();
+deckLoad();buildDeck();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
@@ -74,7 +75,6 @@ connect();
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;
-    openApp('chat');
     // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);

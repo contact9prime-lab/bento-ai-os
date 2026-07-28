@@ -149,8 +149,12 @@ async def ollama_models(base_url: str) -> list[str]:
 # OpenAI-compatible (OpenAI, LM Studio, vLLM, Groq, ...)
 # ---------------------------------------------------------------------------
 
-async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, tools: list,
-                       options: dict | None = None) -> AsyncIterator[dict]:
+def _openai_messages(messages: list) -> list:
+    """Our neutral history → OpenAI-compatible wire messages.
+
+    Tool calls may carry provider baggage in `extra` (Gemini 2.5 signs every
+    function call and returns HTTP 400 on the next turn if the signature is not
+    replayed) — it is echoed back verbatim."""
     msgs = []
     for m in messages:
         if m["role"] == "tool":
@@ -161,7 +165,8 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                 "content": m.get("content") or None,
                 "tool_calls": [
                     {"id": tc["id"], "type": "function",
-                     "function": {"name": tc["name"], "arguments": json.dumps(tc["args"])}}
+                     "function": {"name": tc["name"], "arguments": json.dumps(tc["args"])},
+                     **(tc.get("extra") or {})}
                     for tc in m["tool_calls"]
                 ],
             })
@@ -172,6 +177,12 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
             msgs.append({"role": m["role"], "content": parts})
         else:
             msgs.append({"role": m["role"], "content": m.get("content") or ""})
+    return msgs
+
+
+async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, tools: list,
+                       options: dict | None = None) -> AsyncIterator[dict]:
+    msgs = _openai_messages(messages)
 
     payload = {"model": model, "messages": msgs, "stream": True}
     if tools:
@@ -193,7 +204,10 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                 args = json.loads(p["args_str"]) if p["args_str"].strip() else {}
             except Exception:
                 args = {"_raw": p["args_str"]}
-            out.append({"type": "tool_call", "id": p["id"] or _tool_id(), "name": p["name"], "args": args})
+            call = {"type": "tool_call", "id": p["id"] or _tool_id(), "name": p["name"], "args": args}
+            if p.get("extra"):
+                call["extra"] = p["extra"]
+            out.append(call)
         pending.clear()
         return out
 
@@ -223,9 +237,15 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                     yield {"type": "text", "text": delta["content"]}
                 for tc in delta.get("tool_calls") or []:
                     idx = tc.get("index", 0)
-                    p = pending.setdefault(idx, {"id": "", "name": "", "args_str": ""})
+                    p = pending.setdefault(idx, {"id": "", "name": "", "args_str": "", "extra": {}})
                     if tc.get("id"):
                         p["id"] = tc["id"]
+                    # Provider-specific baggage that MUST be echoed back verbatim.
+                    # Gemini 2.5 signs every function call ("thought_signature") and
+                    # rejects the next request with HTTP 400 if the signature is not
+                    # replayed with the call. Keep whatever we are handed.
+                    if isinstance(tc.get("extra_content"), dict):
+                        p["extra"].setdefault("extra_content", {}).update(tc["extra_content"])
                     fn = tc.get("function") or {}
                     if fn.get("name"):
                         p["name"] += fn["name"]

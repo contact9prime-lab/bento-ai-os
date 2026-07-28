@@ -1,6 +1,6 @@
 /* ================= windows (desktop chrome) ================= */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
-  background:var(--glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  background:var(--bg);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
   box-shadow:var(--el-4);
   resize:both;overflow:hidden}

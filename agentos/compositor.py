@@ -50,7 +50,48 @@ class CompositorError(Exception):
 
 
 def socket_path() -> str:
-    return os.environ.get("SWAYSOCK", "") or os.environ.get("I3SOCK", "")
+    env = os.environ.get("SWAYSOCK", "") or os.environ.get("I3SOCK", "")
+    if env and os.path.exists(env):
+        return env
+    return _discover_socket()
+
+
+def _discover_socket() -> str:
+    """Find the compositor socket when we did NOT inherit $SWAYSOCK.
+
+    The server is often started by systemd at login — outside the compositor —
+    and the AgentOS session then reuses that already-running server. Without
+    this, such a server can never see a window: it reports `hosted` forever even
+    while sitting inside the AgentOS session. sway names its socket
+    /run/user/<uid>/sway-ipc.<uid>.<pid>.sock, so the running compositor of this
+    very user is discoverable; we adopt the newest one that answers and export
+    it so every later call (and subprocess) agrees."""
+    import glob
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
+    cands = sorted(glob.glob(f"{runtime}/sway-ipc.*.sock")
+                   + glob.glob(f"{runtime}/i3/ipc-socket.*"),
+                   key=lambda p: os.stat(p).st_mtime if os.path.exists(p) else 0,
+                   reverse=True)
+    for path in cands:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sk:
+                sk.settimeout(0.4)
+                sk.connect(path)
+        except OSError:
+            continue
+        os.environ["SWAYSOCK"] = path      # everything downstream (incl. swaymsg) agrees
+        return path
+    return ""
+
+
+def compositor_pid(path: str = "") -> int:
+    """PID of the compositor owning the socket (encoded in sway's socket name)."""
+    path = path or socket_path()
+    try:
+        return int(os.path.basename(path).split(".")[-2])
+    except Exception:
+        return 0
 
 
 def available() -> bool:
@@ -155,6 +196,78 @@ class Compositor:
 
         walk(tree or {}, "")
         return wins
+
+    def exec(self, cmd: str) -> None:
+        """Have the COMPOSITOR spawn a process.
+
+        This is how a GUI app gets launched correctly in the AgentOS session:
+        the child inherits the compositor's own environment — WAYLAND_DISPLAY,
+        XDG_RUNTIME_DIR, DISPLAY for XWayland, the session bus — none of which a
+        server started by systemd at login has. Spawning from the server instead
+        produces a process that dies the moment it tries to open a window, which
+        looks exactly like "it says launching but nothing happens"."""
+        self.command(f"exec {cmd}")
+
+    def find_by_pid(self, pid: int) -> str:
+        """con_id of the window belonging to a process (its whole tree), or ''."""
+        tree = self._request(GET_TREE)
+        found = [""]
+
+        def walk(node):
+            if found[0]:
+                return
+            if node.get("pid") == pid and node.get("type") in ("con", "floating_con") \
+                    and (node.get("app_id") or node.get("window_properties")):
+                found[0] = str(node.get("id"))
+                return
+            for kid in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+                walk(kid)
+
+        walk(tree if isinstance(tree, dict) else {})
+        return found[0]
+
+    def find_shell(self, port: int) -> str:
+        """con_id of the AgentOS shell window itself.
+
+        Matching on app_id/class is unreliable: Chromium only applies --class to
+        XWayland's WM_CLASS, so under native Wayland the shell arrives with the
+        browser's own app_id and misses every rule written for "agentos" — which
+        left it FLOATING at a default size instead of filling the screen. The
+        command line is unambiguous: our renderer is the process pointed at our
+        own port."""
+        tree = self._request(GET_TREE)
+        found = [""]
+
+        def walk(node):
+            if found[0]:
+                return
+            pid = node.get("pid")
+            if pid and (node.get("app_id") or node.get("window_properties")):
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                        cmd = fh.read().decode(errors="replace")
+                except Exception:
+                    cmd = ""
+                if f"127.0.0.1:{port}" in cmd or "agentos/boot.html" in cmd:
+                    found[0] = str(node.get("id"))
+                    return
+            for kid in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+                walk(kid)
+
+        walk(tree if isinstance(tree, dict) else {})
+        return found[0]
+
+    def anchor_shell(self, port: int) -> bool:
+        """Make the shell the full-screen base layer: tiled, borderless, behind
+        every app window (which all float). Idempotent — safe to call whenever
+        the compositor reports a change."""
+        cid = self.find_shell(port)
+        if not cid:
+            return False
+        self.command(f"[con_id={cid}] floating disable")
+        self.command(f"[con_id={cid}] border none")
+        self.command(f"[con_id={cid}] fullscreen disable")
+        return True
 
     def focus(self, win_id: str) -> None:
         self.command(f"[con_id={int(win_id)}] focus")

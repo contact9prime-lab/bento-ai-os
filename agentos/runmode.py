@@ -46,6 +46,33 @@ def detect() -> str:
         return HOSTED
     if os.environ.get("AGENTOS_SESSION") == "1":
         return DE if os.environ.get("SWAYSOCK") else KIOSK
+    return _adopted_session()
+
+
+def _adopted_session() -> str:
+    """DE mode for a server that was NOT started by the session.
+
+    The service is usually started by systemd at login, so it inherits neither
+    AGENTOS_SESSION nor SWAYSOCK — and the AgentOS session reuses it rather than
+    starting a second one. Such a server used to call itself `hosted` forever,
+    which is why native windows never appeared in the shell. So: if a live
+    compositor socket exists for this user AND that compositor was started as
+    the AgentOS session (its own environment says so), we are in DE mode.
+    """
+    try:
+        from . import compositor
+        path = compositor.socket_path()
+        if not path:
+            return HOSTED
+        pid = compositor.compositor_pid(path)
+        if pid:
+            with open(f"/proc/{pid}/environ", "rb") as fh:
+                env = fh.read().split(b"\0")
+            if b"AGENTOS_SESSION=1" in env:
+                os.environ.setdefault("AGENTOS_SESSION", "1")
+                return DE
+    except Exception:
+        pass
     return HOSTED
 
 
@@ -61,6 +88,20 @@ def resolve(cfg: dict | None = None) -> tuple[str, str]:
     if want in MODES and IS_LINUX:
         return want, detected
     return detected, detected
+
+
+def mode() -> str:
+    """The effective mode right now, config included.
+
+    Callers that only want to know "am I the desktop?" should use this rather
+    than detect(), which ignores a pinned `desktop.mode`. The config import is
+    local so this module stays importable from anywhere."""
+    from . import config as cfgmod
+    try:
+        cfg = cfgmod.load_config()
+    except Exception:
+        cfg = {}
+    return resolve(cfg)[0]
 
 
 def describe(mode: str) -> str:

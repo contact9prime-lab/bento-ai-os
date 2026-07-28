@@ -9,6 +9,7 @@ someone's Mac.
 """
 
 import os
+from unittest import mock
 
 import pytest
 
@@ -89,7 +90,23 @@ def test_de_inherits_shared_behaviour_from_hosted():
     """App listing and volume are the same job whoever owns the session."""
     assert LinuxDE.list_apps is LinuxHosted.list_apps
     assert LinuxDE.get_volume is LinuxHosted.get_volume
-    assert LinuxDE.launch_app is LinuxHosted.launch_app
+
+
+def test_de_launches_apps_through_the_compositor():
+    """Spawned from systemd, the server has no Wayland display of its own — so in
+    DE mode a launch has to go through sway, or the app starts and dies unseen."""
+    assert LinuxDE.launch_app is not LinuxHosted.launch_app
+    de = LinuxDE()
+    assert de.launch_app("evil; rm -rf /") == (False, "invalid app id")
+
+    calls: list[str] = []
+    from agentos import compositor as comp
+    with mock.patch.object(comp, "available", lambda: True), \
+         mock.patch("shutil.which", lambda n: "/usr/bin/" + n if n == "gtk-launch" else None), \
+         mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+        launched, _ = de.launch_app("firefox")
+    assert launched is True
+    assert calls == ["gtk-launch 'firefox'"]
 
 
 def test_hosted_never_claims_the_notification_bus():
@@ -178,3 +195,23 @@ def test_list_windows_shape_is_stable_across_backends(backend):
     assert isinstance(w["windows"], list)
     if not w["available"]:
         assert w.get("reason", "").strip(), "an unavailable window list must say why"
+
+
+def test_mode_respects_a_pinned_desktop_mode(monkeypatch):
+    """Three endpoints ask runmode.mode() before touching the session; if it
+    ignored config, pinning `desktop.mode` would silently do nothing."""
+    from agentos import config as cfgmod
+    monkeypatch.setattr(runmode, "IS_LINUX", True)
+    monkeypatch.delenv("AGENTOS_SESSION", raising=False)
+    monkeypatch.setattr(cfgmod, "load_config", lambda: {"desktop": {"mode": "de"}})
+    assert runmode.mode() == runmode.DE
+    monkeypatch.setattr(cfgmod, "load_config", lambda: {})
+    assert runmode.mode() == runmode.HOSTED
+
+
+def test_mode_survives_an_unreadable_config(monkeypatch):
+    from agentos import config as cfgmod
+    monkeypatch.setattr(runmode, "IS_LINUX", True)
+    monkeypatch.delenv("AGENTOS_SESSION", raising=False)
+    monkeypatch.setattr(cfgmod, "load_config", lambda: (_ for _ in ()).throw(OSError("gone")))
+    assert runmode.mode() == runmode.HOSTED

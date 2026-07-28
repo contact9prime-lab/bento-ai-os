@@ -83,6 +83,20 @@ DEFAULTS = {
     # (defaults: google → gemini-2.5-flash-image "nano banana", openai → gpt-image-1).
     # auto picks google, then openai (whichever has a key), else free pollinations.ai.
     "image": {"provider": "auto", "model": ""},
+    # Where and when the user is. Blank fields are auto-detected from the machine
+    # (/etc/timezone, LANG); the wizard confirms them and Settings edits them. This
+    # is what makes "news today" mean the right country and "tonight" the right hour.
+    "locale": {"language": "", "country": "", "timezone": "", "city": "",
+               "units": "", "clock": ""},
+    # Which model builds apps in App Studio. "" = use default_model. The builder
+    # never substitutes a model on its own; this is the user's call.
+    "build": {"model": ""},
+    # Keyboard/pointer preferences and per-output display layout, both written
+    # into compositor drop-ins so they survive a logout like any desktop's.
+    "input": {"keyboard": {"layout": "", "variant": "", "options": "",
+                           "repeat_delay": 300, "repeat_rate": 30},
+              "touchpad": {"tap": True, "natural_scroll": True, "dwt": True, "accel": 0.0}},
+    "displays": {},
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full

@@ -250,7 +250,8 @@ class Store:
                 self.db.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
         acols = {r["name"] for r in self.db.execute("PRAGMA table_info(user_apps)").fetchall()}
         for col, ddl in (("manifest", "TEXT DEFAULT ''"),            # JSON permission manifest
-                         ("manifest_status", "TEXT DEFAULT 'none'")):  # none | proposed | approved
+                         ("manifest_status", "TEXT DEFAULT 'none'"),   # none | proposed | approved
+                         ("widget_size", "TEXT DEFAULT 'm'")):         # s | m | l — the app's widget mode
             if col not in acols:
                 self.db.execute(f"ALTER TABLE user_apps ADD COLUMN {col} {ddl}")
         gcols = {r["name"] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
@@ -573,7 +574,8 @@ class Store:
         return aid
 
     def rename_app(self, aid: str, name: str = "", icon: str | None = None,
-                   description: str | None = None) -> str | None:
+                   description: str | None = None,
+                   widget_size: str | None = None) -> str | None:
         """Rename/redecorate an app in place (id, data, versions and grants all key on
         the id, so nothing else moves). Returns an error string, or None on success."""
         app = self.get_app(aid)
@@ -595,6 +597,10 @@ class Store:
         if description is not None:
             sets.append("description=?")
             params.append(description)
+        if widget_size is not None:
+            # every app has a widget mode; the size is the user's, not the model's
+            sets.append("widget_size=?")
+            params.append(widget_size if widget_size in ("s", "m", "l") else "m")
         if not sets:
             return None
         sets.append("updated_at=?")

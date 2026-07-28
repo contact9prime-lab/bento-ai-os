@@ -111,6 +111,23 @@ def lock_cmd_text(wallpaper: str = "") -> str:
     return f"swaylock -f -c 0b0d10 {style}"
 
 
+def nightlight_cmd_text(nl: dict | None) -> str:
+    """The wlsunset invocation for the user's night-light setting, or a no-op.
+
+    Screens that stay blue-white at midnight are the one display setting people
+    notice by feeling tired, so it belongs in the session rather than in an app
+    the user has to remember to start."""
+    nl = nl or {}
+    if not nl.get("enabled"):
+        return ":"
+    day = int(nl.get("day_temp", 6500))
+    night = int(nl.get("night_temp", 4000))
+    lat, lon = nl.get("lat"), nl.get("lon")
+    where = f" -l {float(lat):.2f} -L {float(lon):.2f}" if lat is not None and lon is not None else \
+            f" -S {nl.get('from', '20:00')} -s {nl.get('to', '06:30')}"
+    return f"command -v wlsunset >/dev/null && wlsunset -t {night} -T {day}{where} >/dev/null 2>&1 &"
+
+
 def sway_config_text(port: int, idle_lock: int = 600, idle_off: int = 900,
                      wallpaper: str = "") -> str:
     """The generated compositor config. Deliberately small: sway is an invisible
@@ -135,6 +152,60 @@ focus_follows_mouse no
 
 # One pointer everywhere (compositor + XWayland), sized for modern displays.
 seat * xcursor_theme Adwaita 24
+
+# ---------------------------------------------------------------------------
+# Session environment. Without this, ANYTHING started outside sway — the
+# AgentOS server when systemd launches it at login, and every D-Bus activated
+# service (portals, the file chooser, screen sharing) — has no WAYLAND_DISPLAY
+# and cannot open a window. That is what makes "launch Chrome" say launching
+# and then do nothing.
+exec_always systemctl --user import-environment WAYLAND_DISPLAY DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE
+exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
+
+# The pieces a desktop session is expected to provide. Each is started only if
+# it is installed — a missing one degrades that feature, never the session.
+# polkit agent: without it, anything asking for authorisation (installing a
+# package, mounting a disk, changing the network) fails silently.
+exec_always sh -c 'pgrep -u "$USER" -f polkit-.*-authentication-agent >/dev/null && exit; \
+  for a in /usr/libexec/polkit-gnome-authentication-agent-1 \
+           /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 \
+           /usr/libexec/polkit-kde-authentication-agent-1 /usr/bin/lxpolkit; do \
+    [ -x "$a" ] && exec "$a"; done'
+# secret service: browsers and mail clients look for it to store passwords.
+exec_always sh -c 'command -v gnome-keyring-daemon >/dev/null && \
+  gnome-keyring-daemon --start --components=secrets,pkcs11 >/dev/null 2>&1'
+# the user's own autostart entries (~/.config/autostart), like any other session.
+exec_always sh -c 'command -v dex >/dev/null && dex -a -s "$HOME/.config/autostart" >/dev/null 2>&1'
+# desktop portals: what makes "Share your screen" in a browser, and the native
+# file chooser a Flatpak or snap opens, actually work. Without them the button
+# is there and nothing happens.
+exec_always sh -c 'command -v /usr/libexec/xdg-desktop-portal >/dev/null || \
+  command -v /usr/lib/xdg-desktop-portal >/dev/null || exit 0; \
+  systemctl --user restart xdg-desktop-portal-wlr.service xdg-desktop-portal.service 2>/dev/null'
+# removable media: plug in a USB stick and it mounts, the way it does everywhere
+# else. Nothing happens at all without a mount agent.
+exec_always sh -c 'command -v udiskie >/dev/null && \
+  (pgrep -u "$USER" -x udiskie >/dev/null || udiskie --no-automount-notify >/dev/null 2>&1 &)'
+
+# Hardware keys, answered by AgentOS itself so the on-screen feedback matches.
+bindsym --locked XF86AudioRaiseVolume exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"volume_step":5}}' http://127.0.0.1:{port}/api/control
+bindsym --locked XF86AudioLowerVolume exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"volume_step":-5}}' http://127.0.0.1:{port}/api/control
+bindsym --locked XF86AudioMute exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"mute_toggle":true}}' http://127.0.0.1:{port}/api/control
+bindsym --locked XF86MonBrightnessUp exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"step":10}}' http://127.0.0.1:{port}/api/brightness
+bindsym --locked XF86MonBrightnessDown exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"step":-10}}' http://127.0.0.1:{port}/api/brightness
+# Media keys, answered by whatever is playing (MPRIS), like any other desktop.
+bindsym --locked XF86AudioPlay exec playerctl play-pause
+bindsym --locked XF86AudioNext exec playerctl next
+bindsym --locked XF86AudioPrev exec playerctl previous
+bindsym --locked XF86AudioStop exec playerctl stop
+bindsym Print exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"area":"full"}}' http://127.0.0.1:{port}/api/screenshot
+bindsym Shift+Print exec curl -sf -m 2 -X POST -H "Content-Type: application/json" -d '{{"area":"select"}}' http://127.0.0.1:{port}/api/screenshot
+
+# Input and outputs the user configured in AgentOS Settings live in the
+# drop-in directory, so changing them never rewrites this file.
+
+# Watching something full screen must not trigger the idle lock.
+for_window [title=".*"] inhibit_idle fullscreen
 
 # Drag native windows with Super held down.
 floating_modifier Mod4
@@ -296,6 +367,8 @@ export XDG_CURRENT_DESKTOP=AgentOS
 export XDG_SESSION_DESKTOP={APP_ID}
 export XCURSOR_THEME=Adwaita
 export XCURSOR_SIZE=24
+# Locale (Settings → Locale): timezone + language for the whole session
+[ -f "$HOME/.config/agentos/locale.env" ] && . "$HOME/.config/agentos/locale.env"
 LOG="$HOME/.agentos/session.log"
 mkdir -p "$HOME/.agentos"
 echo "=== AgentOS session $(date) ===" >> "$LOG"
@@ -357,6 +430,177 @@ Keywords=agent;ai;
 """
 
 
+#: shell shortcut names the compositor can carry, mapped to sway modifiers.
+#: Only these reach sway — window-management keys stay with the shell.
+SESSION_ACTIONS = ("omnibar.focus", "omnibar.focus2", "chat.open", "terminal",
+                   "voice", "expose")
+
+
+def _sway_binding(keys: str) -> str:
+    """'Ctrl+Shift+A' → 'Ctrl+Shift+a' in sway's spelling (Mod1 = Alt, Mod4 = Super)."""
+    parts = [p.strip() for p in str(keys or "").split("+") if p.strip()]
+    if not parts:
+        return ""
+    out = []
+    for p in parts[:-1]:
+        low = p.lower()
+        out.append({"ctrl": "Ctrl", "control": "Ctrl", "alt": "Mod1", "option": "Mod1",
+                    "shift": "Shift", "meta": "Mod4", "cmd": "Mod4", "super": "Mod4",
+                    "win": "Mod4"}.get(low, p))
+    key = parts[-1]
+    key = {"space": "space", "enter": "Return", "tab": "Tab", "escape": "Escape"}.get(
+        key.lower(), key.lower() if len(key) == 1 else key)
+    out.append(key)
+    return "+".join(out)
+
+
+def write_shortcut_bindings(shortcuts: dict, port: int) -> int:
+    """Generate the session keybinding drop-in and reload sway. Returns the count.
+
+    Each binding curls /api/shell/action, which the server relays to the shell —
+    so one editable table drives both the browser shell and the compositor."""
+    SWAY_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ["# Generated by AgentOS (Settings → Shortcuts). Do not edit by hand.",
+             "# Each binding asks the running shell to perform a named action."]
+    n = 0
+    for action in SESSION_ACTIONS:
+        keys = shortcuts.get(action)
+        if not keys:
+            continue
+        binding = _sway_binding(keys)
+        if not binding:
+            continue
+        lines.append(
+            f"bindsym {binding} exec curl -sf -m 2 -X POST "
+            f"-H 'Content-Type: application/json' -d '{{\"action\":\"{action}\"}}' "
+            f"http://127.0.0.1:{port}/api/shell/action")
+        n += 1
+    (SWAY_DROPIN_DIR / "shortcuts.conf").write_text("\n".join(lines) + "\n")
+    _run(["swaymsg", "reload"])
+    return n
+
+
+LOCALE_ENV = Path.home() / ".config" / APP_ID / "locale.env"
+
+
+def write_locale_env(env: dict) -> Path:
+    """Persist the session locale as a sourceable env file. The session script
+    sources it before exec'ing sway, so the compositor and every app launched
+    from AgentOS inherit the user's timezone and language."""
+    LOCALE_ENV.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# Generated by AgentOS (Settings → Locale). Do not edit by hand."]
+    lines += [f'export {k}="{v}"' for k, v in sorted(env.items())]
+    LOCALE_ENV.write_text("\n".join(lines) + "\n")
+    return LOCALE_ENV
+
+
+def apply_session_env(env: dict) -> bool:
+    """Update the live session: sway's env (for apps started from now on) and
+    this process (so the server's own clock agrees immediately)."""
+    if not os.environ.get("SWAYSOCK"):
+        return False
+    ok = True
+    for k, v in env.items():
+        os.environ[k] = v
+        good, _ = _run(["swaymsg", "exec", f"systemctl --user set-environment {k}={v}"])
+        ok = ok and good
+    if env.get("TZ"):
+        import time as _t
+        _t.tzset()
+    return ok
+
+
+def write_output_config(outputs: list) -> Path:
+    """Persist display layout to a compositor drop-in.
+
+    Applying a mode over IPC lasts until logout; a display setting the user made
+    must survive it, exactly as it would in GNOME's Displays panel."""
+    SWAY_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ["# Generated by AgentOS (System Settings → Displays). Do not edit by hand."]
+    for o in outputs or []:
+        name = str(o.get("name") or "").strip()
+        if not name:
+            continue
+        parts = [f'output "{name}"']
+        if o.get("enabled") is False:
+            parts.append("disable")
+        else:
+            if o.get("mode"):
+                parts.append(f"mode {o['mode']}")
+            if o.get("scale"):
+                parts.append(f"scale {o['scale']}")
+            if o.get("transform"):
+                parts.append(f"transform {o['transform']}")
+            if o.get("position"):
+                parts.append(f"position {o['position']}")
+            parts.append("enable")
+        lines.append(" ".join(parts))
+    path = SWAY_DROPIN_DIR / "outputs.conf"
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def input_config_text(inp: dict) -> str:
+    """Keyboard and pointer preferences — the other half of "display settings"
+    that a session is expected to own."""
+    inp = inp or {}
+    kb, tp = inp.get("keyboard") or {}, inp.get("touchpad") or {}
+    lines = ["# Generated by AgentOS (System Settings → Keyboard & Mouse)."]
+    k = []
+    if kb.get("layout"):
+        k.append(f'    xkb_layout "{kb["layout"]}"')
+    if kb.get("variant"):
+        k.append(f'    xkb_variant "{kb["variant"]}"')
+    if kb.get("options"):
+        k.append(f'    xkb_options "{kb["options"]}"')
+    if kb.get("repeat_delay"):
+        k.append(f'    repeat_delay {int(kb["repeat_delay"])}')
+    if kb.get("repeat_rate"):
+        k.append(f'    repeat_rate {int(kb["repeat_rate"])}')
+    if k:
+        lines += ["input type:keyboard {"] + k + ["}"]
+    t = []
+    if tp.get("tap") is not None:
+        t.append(f'    tap {"enabled" if tp["tap"] else "disabled"}')
+    if tp.get("natural_scroll") is not None:
+        t.append(f'    natural_scroll {"enabled" if tp["natural_scroll"] else "disabled"}')
+    if tp.get("dwt") is not None:
+        t.append(f'    dwt {"enabled" if tp["dwt"] else "disabled"}')
+    if tp.get("accel") is not None:
+        t.append(f'    pointer_accel {float(tp["accel"]):.2f}')
+    if t:
+        lines += ["input type:touchpad {"] + t + ["}"]
+    return "\n".join(lines) + "\n"
+
+
+def stage_nightlight(nl: dict | None) -> Path:
+    """Put the night-light launcher in a drop-in so it survives the next login.
+
+    The main config is regenerated by `install-session`; a preference the user
+    set from Settings must not depend on that ever being run again."""
+    SWAY_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+    path = SWAY_DROPIN_DIR / "nightlight.conf"
+    cmd = nightlight_cmd_text(nl)
+    path.write_text("# Generated by AgentOS (System Settings \u2192 Displays).\n"
+                    f"exec_always sh -c 'pkill -u \"$USER\" -x wlsunset >/dev/null 2>&1; {cmd}'\n")
+    return path
+
+
+def write_input_config(inp: dict) -> Path:
+    SWAY_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
+    path = SWAY_DROPIN_DIR / "input.conf"
+    path.write_text(input_config_text(inp))
+    return path
+
+
+def apply_dropins() -> bool:
+    """Reload the compositor so freshly written drop-ins take effect now."""
+    if not os.environ.get("SWAYSOCK"):
+        return False
+    ok, _ = _run(["swaymsg", "reload"])
+    return ok
+
+
 def apply_wallpaper_live(wallpaper: str | None) -> bool:
     """Propagate a wallpaper change to the live compositor + lock screen.
 
@@ -374,11 +618,13 @@ def apply_wallpaper_live(wallpaper: str | None) -> bool:
     # swayidle holds the old lock command; respawn it with the new one so the
     # NEXT lock shows the new wallpaper. Config on disk is refreshed too.
     try:
-        desk = cfgmod.load_config().get("desktop", {})
+        _cfg = cfgmod.load_config()
+        desk = _cfg.get("desktop", {})
         idle_lock = int(desk.get("idle_lock_secs", 600))
         idle_off = int(desk.get("idle_screen_off_secs", 900))
         SWAY_CONF.write_text(sway_config_text(
             _port(), idle_lock=idle_lock, idle_off=idle_off, wallpaper=wallpaper or ""))
+        stage_nightlight(_cfg.get("nightlight"))
         lock = lock_cmd_text(wallpaper or "")
         idle_args = []
         if idle_lock > 0:
@@ -410,9 +656,10 @@ def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
 
     if wayland:
         try:
-            desk = cfgmod.load_config().get("desktop", {})
+            _cfg = cfgmod.load_config()
         except Exception:
-            desk = {}
+            _cfg = {}
+        desk = _cfg.get("desktop", {})
         wallpaper = cfgmod.AGENTOS_HOME / "wallpaper.png"
         SWAY_CONF.parent.mkdir(parents=True, exist_ok=True)
         SWAY_DROPIN_DIR.mkdir(parents=True, exist_ok=True)
@@ -422,6 +669,7 @@ def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
             idle_off=int(desk.get("idle_screen_off_secs", 900)),
             wallpaper=str(wallpaper) if wallpaper.exists() else ""))
         written.append(SWAY_CONF)
+        written.append(stage_nightlight(_cfg.get("nightlight")))
         SHELL_SCRIPT.write_text(shell_script_text(port))
         SHELL_SCRIPT.chmod(0o755)
         written.append(SHELL_SCRIPT)

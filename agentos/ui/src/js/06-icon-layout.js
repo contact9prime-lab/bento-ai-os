@@ -283,8 +283,19 @@ function updateDockSeps(){
 }
 function pinToDock(id){if(!DOCK.includes(id)){DOCK.push(id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('added to dock')}}
 function tickClock(){
+  // the menu-bar clock follows Settings → Locale (timezone + 12/24h), not the browser
+  const lo=(cfg&&cfg.locale)||{};
+  const o={};
+  if(lo.timezone)o.timeZone=lo.timezone;
+  const loc=lo.language||[];
   const n=new Date();
-  $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  $('#tbclock .dt').textContent=n.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
+  try{
+    $('#tbclock .tm').textContent=n.toLocaleTimeString(loc,{...o,hour:'2-digit',minute:'2-digit',
+      hour12:lo.clock?lo.clock==='12h':undefined});
+    $('#tbclock .dt').textContent=n.toLocaleDateString(loc,{...o,weekday:'short',day:'numeric',month:'short'});
+  }catch(e){
+    $('#tbclock .tm').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    $('#tbclock .dt').textContent=n.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
+  }
 }
 

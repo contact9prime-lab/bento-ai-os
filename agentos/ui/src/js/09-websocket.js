@@ -54,6 +54,9 @@ async function shellCmd(ev){
           ||Object.keys(all).find(k=>k.toLowerCase().includes(q));
         if(!id)throw `no theme called "${target}" — themes: ${Object.keys(all).join(', ')}`;
         applyTheme(id);data=`theme is now ${id}`;break}
+      case 'shell_action':{            // a compositor keybinding reached the shell
+        if(typeof scRun!=='function'||!scRun(String(target)))throw `unknown action "${target}"`;
+        data=`ran ${target}`;break}
       case 'list_open_apps':{
         const arr=[];WM.wins.forEach(w=>arr.push({app:w.id,title:w.app.title,minimized:w.min,maximized:w.max,desktop:w.desk,active:w.el.classList.contains('active')}));
         data={open:arr,current_desktop:curDesk,desktops:DESKS,theme:CURRENT_THEME};break}
@@ -98,6 +101,37 @@ function updateSpin(){
   s.classList.toggle('on',RUNNING.size>0||running);
   s.title=RUNNING.size>1?RUNNING.size+' agent turns running':'agent is working';
   if(typeof omniPresence==='function')omniPresence();
+  if(typeof aiBubble==='function')aiBubble();
+}
+/* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
+   copilot panel, the omnibar, a background task — it shows here, and one click
+   opens that conversation in Agent Chat. ---- */
+let AIB={last:null,seen:0};
+function aiBubble(){
+  let b=$('#aibubble');
+  if(!b){
+    b=document.createElement('div');b.id='aibubble';
+    b.innerHTML='<span class="ab-orb"></span><span class="ab-t"></span><span class="ab-n"></span>'
+      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>';
+    document.body.appendChild(b);
+    b.querySelector('.ab-stop').onclick=e=>{e.stopPropagation();stopAllAgents()};
+    b.onclick=()=>{
+      const cid=[...RUNNING][0]||AIB.last||currentConv;
+      openApp('chat');if(cid)openConv(cid);
+      AIB.seen=0;aiBubble();
+    };
+  }
+  const n=RUNNING.size;
+  if(n)AIB.last=[...RUNNING][0];
+  const label=n?(n>1?`${agentName()} · ${n} turns`:`${agentName()} is working`)
+               :(AIB.seen?`${agentName()} replied`:'');
+  b.classList.toggle('on',!!(n||AIB.seen));
+  b.classList.toggle('busy',!!n);
+  b.querySelector('.ab-stop').style.display=n?'':'none';
+  b.querySelector('.ab-t').textContent=label;
+  const badge=b.querySelector('.ab-n');
+  badge.textContent=AIB.seen>1?AIB.seen:'';
+  badge.style.display=AIB.seen>1?'':'none';
 }
 
 function handle(ev){
@@ -202,16 +236,25 @@ function handle(ev){
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
-      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];}
+      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];agentQueueFlush(_cid);}
       updateSpin();
-      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){loadConvs();break}}
-      if(!_cur){toast('✓ background chat finished');loadConvs();break}
+      if(!_cur){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
+      if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
+      if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
       else speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'task_started': toast('background task running…'); break;
     case 'task_finished': toast('task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
+    case 'control':    // a hardware key changed volume/brightness — show it at once
+      updateTray();refreshApp('control');
+      if(ev.volume!==undefined)toast('volume '+ev.volume+'%'+(ev.muted?' (muted)':''));
+      else if(ev.brightness!==undefined)toast('brightness '+ev.brightness+'%');
+      break;
+    case 'platform':   // the compositor appeared (or went away) — re-read what we can do
+      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
+      break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated

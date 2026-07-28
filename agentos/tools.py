@@ -442,45 +442,95 @@ class Toolbox:
                               height: int = 720) -> tuple[bytes | None, str]:
         """Generate an image with the configured provider. Returns (bytes, provider label)
         on success or (None, error). cfg['image']: provider auto|google|openai|pollinations
-        (auto = google → openai → pollinations, by which keys are set), model optional."""
+        (auto = google → openai → pollinations, by which keys are set), model optional.
+
+        A PINNED provider is tried first and honoured — but a rate limit or an
+        outage is not a reason to leave the user without an image, so a retryable
+        failure falls through to the others (free pollinations last) and the
+        returned label says which one actually drew it.
+        """
+        import asyncio as _aio
         import base64
         import urllib.parse
         icfg = self.cfg.get("image") or {}
         choice = (icfg.get("provider") or "auto").lower()
         google = self.cfg["providers"].get("google") or {}
         openai = self.cfg["providers"].get("openai") or {}
+        keyed = ((["google"] if google.get("api_key") else [])
+                 + (["openai"] if openai.get("api_key") else []) + ["pollinations"])
         if choice == "auto":
-            order = ((["google"] if google.get("api_key") else [])
-                     + (["openai"] if openai.get("api_key") else []) + ["pollinations"])
+            order = keyed
         else:
-            order = [choice]
+            order = [choice] + [p for p in keyed if p != choice]   # pinned first, then a safety net
         errors: list[str] = []
-        for prov in order:
+
+        def _msg(resp) -> str:
+            """The API's own explanation, not just a status code."""
+            try:
+                j = resp.json()
+                e = j.get("error") or j
+                return str(e.get("message") or e)[:180]
+            except Exception:
+                return (resp.text or "")[:180]
+
+        for pos, prov in enumerate(order):
             try:
                 if prov == "google":
                     if not google.get("api_key"):
-                        errors.append("google: API key not set (Settings → Google)")
+                        errors.append("google: API key not set (Settings → AI providers → Google)")
                         continue
                     model = icfg.get("model") or "gemini-2.5-flash-image"
                     base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
-                    async with httpx.AsyncClient(timeout=240.0) as c:
-                        r = await c.post(f"{base}/v1beta/models/{model}:generateContent",
-                                         headers={"x-goog-api-key": google["api_key"]},
-                                         json={"contents": [{"parts": [{"text": prompt}]}]})
-                    if r.status_code == 200:
-                        cands = r.json().get("candidates") or [{}]
-                        for part in (cands[0].get("content") or {}).get("parts", []):
-                            data = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
+                    headers = {"x-goog-api-key": google["api_key"]}
+                    # Imagen models speak :predict; Gemini image models speak
+                    # :generateContent and must be told to answer with an image.
+                    if model.startswith("imagen"):
+                        url = f"{base}/v1beta/models/{model}:predict"
+                        body = {"instances": [{"prompt": prompt}],
+                                "parameters": {"sampleCount": 1,
+                                               "aspectRatio": "16:9" if width >= height else "9:16"}}
+                    else:
+                        url = f"{base}/v1beta/models/{model}:generateContent"
+                        body = {"contents": [{"parts": [{"text": prompt}]}],
+                                "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}}
+                    data = None
+                    for attempt in (0, 1):        # one retry: 429s are often a burst limit
+                        async with httpx.AsyncClient(timeout=240.0) as c:
+                            r = await c.post(url, headers=headers, json=body)
+                        if r.status_code == 200:
+                            j = r.json()
+                            for pred in (j.get("predictions") or []):
+                                data = pred.get("bytesBase64Encoded")
+                                if data:
+                                    break
+                            if not data:
+                                cands = j.get("candidates") or [{}]
+                                for part in (cands[0].get("content") or {}).get("parts", []):
+                                    d = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
+                                    if d:
+                                        data = d
+                                        break
                             if data:
                                 return base64.b64decode(data), f"google/{model}"
-                        errors.append("google: response had no image")
-                    else:
-                        errors.append(f"google: HTTP {r.status_code}")
+                            errors.append(f"google/{model}: the response carried no image")
+                            break
+                        if r.status_code == 429 and attempt == 0:
+                            await _aio.sleep(3)
+                            continue
+                        detail = _msg(r)
+                        if r.status_code == 429:
+                            errors.append(f"google/{model}: rate-limited / out of quota (HTTP 429). {detail}")
+                        elif r.status_code in (400, 404):
+                            errors.append(f"google/{model}: HTTP {r.status_code} — is that a real image model? {detail}")
+                        else:
+                            errors.append(f"google/{model}: HTTP {r.status_code}. {detail}")
+                        break
                 elif prov == "openai":
                     if not openai.get("api_key"):
-                        errors.append("openai: API key not set (Settings → OpenAI)")
+                        errors.append("openai: API key not set (Settings → AI providers → OpenAI)")
                         continue
-                    model = icfg.get("model") or "gpt-image-1"
+                    model = icfg.get("model") if choice == "openai" else ""
+                    model = model or "gpt-image-1"
                     body = {"model": model, "prompt": prompt}
                     if model.startswith("dall-e"):
                         body["size"] = "1792x1024" if width >= height else "1024x1792"
@@ -503,20 +553,18 @@ class Toolbox:
                                 return img.content, f"openai/{model}"
                         errors.append("openai: response had no image")
                     else:
-                        detail = ""
-                        try:
-                            detail = ": " + r.json()["error"]["message"][:120]
-                        except Exception:
-                            pass
-                        errors.append(f"openai: HTTP {r.status_code}{detail}")
-                else:  # pollinations.ai — free, no key (caps resolution at ~1024x576)
-                    url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:400])
-                           + f"?width={width}&height={height}&model=flux&nologo=true&enhance=true&nofeed=true")
-                    async with httpx.AsyncClient(timeout=240.0, follow_redirects=True,
-                                                 headers={"User-Agent": "AgentOS/0.1"}) as c:
+                        errors.append(f"openai/{model}: HTTP {r.status_code}. {_msg(r)}")
+                else:
+                    q = urllib.parse.quote(prompt[:400])
+                    url = (f"https://image.pollinations.ai/prompt/{q}"
+                           f"?width={width}&height={height}&nologo=true")
+                    async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as c:
                         r = await c.get(url)
                     if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
-                        return r.content, "pollinations/flux"
+                        label = "pollinations/flux"
+                        if pos > 0:
+                            label += " (fallback)"
+                        return r.content, label
                     errors.append(f"pollinations: HTTP {r.status_code}")
             except Exception as e:
                 errors.append(f"{prov}: {type(e).__name__}: {e}")
@@ -541,6 +589,9 @@ class Toolbox:
         note = (" (The free service caps resolution; add a Google or OpenAI key in Settings "
                 "for sharper images, or use set_wallpaper with a photo file/URL.)"
                 if src.startswith("pollinations") else "")
+        if "(fallback)" in src:
+            note = (" Your pinned provider was unavailable (rate limit or outage), so this "
+                    "came from the free service — try again later for the pinned one." + note)
         return f"wallpaper generated with {src} ({len(data) // 1024} KB), saved to the gallery, and applied.{note}"
 
     async def set_wallpaper(self, source: str = "") -> str:

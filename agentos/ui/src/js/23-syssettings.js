@@ -1,6 +1,6 @@
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
-const SYS_TABS=['Network','Bluetooth','Displays','Sound','Power','Session','Components'];
+const SYS_TABS=['Network','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
 function sysTab(i){SYS.tab=i;refreshApp('syssettings')}
 async function renderSysSettings(body){
   body.innerHTML=`<div class="pad">
@@ -8,7 +8,7 @@ async function renderSysSettings(body){
     <div id="sys-body"><p class="mut">…</p></div></div>`;
   const el=$('#sys-body');
   try{
-    await [sysNet,sysBt,sysDisplays,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
+    await [sysNet,sysBt,sysDisplays,sysInput,sysSound,sysPower,sysSession,sysComponents][SYS.tab](el);
   }catch(e){el.innerHTML=`<p class="mut">${esc(String(e))}</p>`}
 }
 function sigBars(s){return s>75?'▂▄▆█':s>50?'▂▄▆':s>25?'▂▄':'▂'}
@@ -96,11 +96,74 @@ async function sysDisplays(el){
           ${['normal','90','180','270'].map(t=>`<option ${o.transform===t?'selected':''}>${t}</option>`).join('')}</select>
         <button class="endbtn" onclick="outCfg('${esc(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
       </div></div>`}).join('')||'<p class="mut">no outputs reported</p>';
+  el.insertAdjacentHTML('beforeend',await nightLightBox());
+}
+/* Night light: the display setting you notice by feeling tired rather than by
+   looking at a panel. Off unless asked for; warmth and hours are the user's. */
+async function nightLightBox(){
+  const d=await (await fetch('/api/nightlight')).json().catch(()=>null);
+  if(!d)return '';
+  const n=d.nightlight||{};
+  if(!d.available)return `<div class="provbox"><div class="ptitle">Night light</div>
+    <p class="mut" style="margin-top:6px">${esc(d.reason)}</p></div>`;
+  return `<div class="provbox"><div class="ptitle">Night light</div>
+    <div class="row" style="margin-top:8px;align-items:center;gap:10px;flex-wrap:wrap">
+      <label class="psw"><input type="checkbox" id="nl-on" ${n.enabled?'checked':''} onchange="saveNightLight()"><i></i></label>
+      <span class="mut">Warm the screen after dark</span>
+      <span style="flex:1"></span>
+      <label class="mut">from <input id="nl-from" type="time" value="${esc(n.from||'20:00')}" onchange="saveNightLight()"></label>
+      <label class="mut">to <input id="nl-to" type="time" value="${esc(n.to||'06:30')}" onchange="saveNightLight()"></label>
+      <label class="mut">warmth
+        <select id="nl-temp" onchange="saveNightLight()">
+          ${[[5000,'subtle'],[4500,'gentle'],[4000,'warm'],[3400,'warmer'],[2800,'candlelight']].map(([k,t])=>
+            `<option value="${k}" ${(+n.night_temp||4000)===k?'selected':''}>${t}</option>`).join('')}
+        </select></label>
+    </div></div>`;
+}
+async function saveNightLight(){
+  const body={enabled:$('#nl-on').checked,from:$('#nl-from').value,to:$('#nl-to').value,
+    night_temp:+$('#nl-temp').value,day_temp:6500};
+  const r=await fetch('/api/nightlight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();toast(d.message||'saved');
 }
 async function outCfg(name,opts){
   const r=await fetch('/api/wm/outputs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,...opts})});
   const d=await r.json();toast(d.ok?'✓ display updated':(d.message||d.error||'failed'));
   setTimeout(()=>refreshApp('syssettings'),600);
+}
+async function sysInput(el){
+  const d=await (await fetch('/api/input')).json().catch(()=>null);
+  if(!d){el.innerHTML='<p class="mut">could not read input settings</p>';return}
+  const kb=d.input.keyboard||{}, tp=d.input.touchpad||{};
+  const chk=(id,on,label,hint)=>`<div class="prow"><div class="pl"><b>${esc(label)}</b>${hint?`<small>${esc(hint)}</small>`:''}</div>
+    <div class="pc"><label class="psw"><input type="checkbox" id="${id}" ${on?'checked':''}><i></i></label></div></div>`;
+  el.innerHTML=`<div class="pgroup"><h3>Keyboard</h3>
+      <div class="prow"><div class="pl"><b>Layout</b><small>Which letters your keys type.</small></div>
+        <div class="pc"><select id="in-layout">${['',...d.layouts].map(l=>
+          `<option value="${esc(l)}" ${(kb.layout||'')===l?'selected':''}>${l?esc(l):'system default'}</option>`).join('')}</select>
+        <input id="in-variant" placeholder="variant (optional)" value="${esc(kb.variant||'')}" style="max-width:170px"></div></div>
+      <div class="prow"><div class="pl"><b>Repeat delay</b><small>Milliseconds before a held key repeats.</small></div>
+        <div class="pc"><input type="number" id="in-delay" value="${kb.repeat_delay||300}"></div></div>
+      <div class="prow"><div class="pl"><b>Repeat rate</b><small>Repeats per second once it starts.</small></div>
+        <div class="pc"><input type="number" id="in-rate" value="${kb.repeat_rate||30}"></div></div>
+    </div>
+    <div class="pgroup"><h3>Touchpad &amp; pointer</h3>
+      ${chk('in-tap',tp.tap!==false,'Tap to click','A tap counts as a click.')}
+      ${chk('in-nat',tp.natural_scroll!==false,'Natural scrolling','Content follows your fingers.')}
+      ${chk('in-dwt',tp.dwt!==false,'Disable while typing','Ignore the touchpad mid-sentence.')}
+      <div class="prow"><div class="pl"><b>Pointer speed</b><small>-1 slowest · 0 default · 1 fastest.</small></div>
+        <div class="pc"><input type="number" step="0.1" min="-1" max="1" id="in-accel" value="${tp.accel??0}"></div></div>
+      <div class="prow"><div class="pl"><b></b><small>${d.session?'Changes apply to this session immediately.':'Saved now; applied when you log into the AgentOS session.'}</small></div>
+        <div class="pc"><button class="pact" onclick="saveInput()">Save</button></div></div>
+    </div>`;
+}
+async function saveInput(){
+  const body={keyboard:{layout:$('#in-layout').value,variant:$('#in-variant').value.trim(),
+      repeat_delay:+$('#in-delay').value||300,repeat_rate:+$('#in-rate').value||30},
+    touchpad:{tap:$('#in-tap').checked,natural_scroll:$('#in-nat').checked,
+      dwt:$('#in-dwt').checked,accel:+$('#in-accel').value||0}};
+  const r=await fetch('/api/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();toast(d.message||'input settings saved');
 }
 async function sysSound(el){
   const d=await (await fetch('/api/audio/devices')).json().catch(()=>null);

@@ -256,5 +256,6 @@ async function loadConfig(){
   if($('#autosel'))$('#autosel').value=cfg.autonomy;
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
+  if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
 }
 

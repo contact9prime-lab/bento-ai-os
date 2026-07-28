@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from . import config as cfgmod
+from . import localeinfo
 from . import providers
 from .policy import MAIN, Principal
 from .tools import ALWAYS_ASK, Toolbox
@@ -30,6 +31,11 @@ Guidelines:
   ("every day…", "each morning…") → schedule_task (a headless JOB that runs on its own and should end by
   writing a report and/or telegram_send); an interactive tool the user will click → create_app (UI).
 - Prefer acting over describing. If the user asks for something the machine can do, use tools and report the real result.
+- NEVER end a turn by announcing what you are about to do ("Let me fetch…", "I can get that for you:").
+  Either do it in the same turn and show the result, or state plainly what blocked you.
+- NEVER invent credentials. If a source needs an API key you don't have, do not guess one — a fabricated
+  key just returns 401. Use a keyless source instead (RSS feeds like https://news.google.com/rss,
+  public endpoints, Wikipedia), or a connected MCP server, or tell the user which key to add in Settings.
 - Chain tools as needed; check results and adapt. Don't claim something worked without seeing its output.
 - Some actions require the user's approval; if an action is denied, respect that and adjust.
 - Build your understanding over time: `remember` durable facts (scope="user") or facts that only
@@ -66,7 +72,7 @@ Guidelines:
 === end soul ===
 {memories}
 
-{machine}Current time: {now}"""
+{machine}{locale}\nCurrent time: {now}"""
 # NOTE: the timestamp deliberately sits at the very END of the system prompt — as the
 # first line it changed every turn and busted the provider's prompt-prefix cache,
 # forcing local models to re-evaluate the entire (large) prompt from scratch each turn.
@@ -247,6 +253,8 @@ class Agent:
         }
         if self.cfg.get("ollama_think") is not None:
             opts["think"] = bool(self.cfg["ollama_think"])
+        if getattr(self, "_think_off", False):
+            opts["think"] = False       # set after a reply that was all thinking, no answer
         return opts
 
     async def _stream(self, messages: list):
@@ -291,6 +299,29 @@ class Agent:
                 nxt.cancel()
             with contextlib.suppress(Exception):
                 await gen.aclose()
+
+    @staticmethod
+    def _looks_unfinished(text: str, steps: list) -> bool:
+        """A turn that promised work and delivered none.
+
+        Two tells: the reply is a lead-in ending in a colon/ellipsis, or its last
+        tool failed (or returned nothing) and the reply never mentions that."""
+        t = (text or "").strip()
+        if not t:
+            return False
+        if t.endswith(":") or t.endswith("…") or t.endswith("..."):
+            return True
+        tools = [s for s in steps if s.get("type") == "tool"]
+        if tools:
+            out = str(tools[-1].get("output") or "").strip()
+            failed = (not tools[-1].get("ok")) or not out or out.startswith("(no output)") \
+                or out.startswith("[4") or out.startswith("[5")     # [401]/[500] fetch_url bodies
+            said_so = any(w in t.lower() for w in
+                          ("sorry", "couldn't", "could not", "cannot", "can't", "failed", "unable",
+                           "error", "invalid", "api key", "blocked", "no result"))
+            if failed and not said_so and len(t) < 400:
+                return True
+        return False
 
     def _tools(self) -> list:
         schemas = self.toolbox.schemas()
@@ -371,7 +402,8 @@ class Agent:
                    if sb_on else "")
         base = SYSTEM_PROMPT.format(
             name=self.cfg.get("agent_name") or "Aria",
-            now=time.strftime("%A %Y-%m-%d %H:%M %Z"),
+            now=localeinfo.now_string(self.cfg),
+            locale=localeinfo.describe(self.cfg),
             workspace=self.cfg["workspace"],
             sandbox=sb_text,
             soul=cfgmod.load_soul()[:4000],
@@ -391,6 +423,9 @@ class Agent:
         tokens = {"input": 0, "output": 0}
         carry = ""       # accumulated text across token-limit continuations
         cont_rounds = 0  # bounded: never chase a runaway continuation loop
+        silent_retry = False  # one retry with thinking off when a reply is all-thinking
+        nudged = False        # one push when a turn announces work and then stops
+        repeats: dict[str, int] = {}   # tool-call signature → how often this turn used it
         if self.toolbox.pdp:
             mdec = self.toolbox.pdp.decide(self.principal, "model.use",
                                            f"model:{self.model_id}",
@@ -468,17 +503,68 @@ class Agent:
                 self._final_text = text
                 steps.append({"type": "text", "text": text})
 
+            # A thinking model can spend the whole reply in its thinking channel and
+            # return nothing at all: no text, no tool call, finish_reason "stop". That
+            # used to end the turn with a silent empty bubble. Retry once with thinking
+            # off (which reliably produces an answer), then give up out loud.
+            if not tool_calls and not self.aborted and not text.strip():
+                if not silent_retry:
+                    silent_retry = True
+                    self._think_off = True          # honoured by _stream's options
+                    await self.emit({"type": "status",
+                                     "message": "the model answered in its thinking channel — retrying…"})
+                    continue
+                msg = ("the model finished without producing an answer (it spent the reply in "
+                       "its thinking channel). Try again, turn thinking off for this model, or "
+                       "pick a stronger one.")
+                await self.emit({"type": "error", "message": msg})
+                steps.append({"type": "error", "message": msg})
+                break
+
+            # "Let me fetch…:" and then silence. Weak local models routinely announce
+            # work and end the turn, or run a tool that fails and never say so. Push
+            # once for the actual deliverable before letting the turn end.
+            if (not tool_calls and not self.aborted and not nudged
+                    and getattr(self, 'nudge_unfinished', True)
+                    and self._looks_unfinished(text, steps)):
+                nudged = True
+                await self.emit({"type": "status",
+                                 "message": "the reply stopped before delivering — nudging it to finish…"})
+                messages.append({"role": "assistant", "content": text})
+                messages.append({"role": "user", "content":
+                                 "You ended without delivering the result. Do it NOW with your tools and "
+                                 "show the actual content. If something genuinely blocked you (a source "
+                                 "needs an API key you don't have, a site refused), say that plainly in one "
+                                 "sentence and use a keyless alternative such as an RSS feed. Do not "
+                                 "restate the plan."})
+                continue
+
             if not tool_calls or self.aborted:
                 break
 
             messages.append({
                 "role": "assistant",
                 "content": text,
-                "tool_calls": [{"id": t["id"], "name": t["name"], "args": t["args"]} for t in tool_calls],
+                "tool_calls": [{"id": t["id"], "name": t["name"], "args": t["args"],
+                                **({"extra": t["extra"]} if t.get("extra") else {})}
+                               for t in tool_calls],
             })
 
             for tc in tool_calls:
                 if self.aborted:
+                    break
+                # Loop guard: the same tool with the same arguments, over and over,
+                # is never progress — it is a model stuck in a groove. Stop the turn
+                # and say so rather than spending the whole step budget on it.
+                sig = tc["name"] + "|" + json.dumps(tc.get("args") or {}, sort_keys=True)[:300]
+                repeats[sig] = repeats.get(sig, 0) + 1
+                if repeats[sig] > 3:
+                    msg = (f"stopped: the same call ({tc['name']}) repeated "
+                           f"{repeats[sig]} times with identical arguments — that is a loop, "
+                           "not progress. Try rephrasing, or run it again with a different model.")
+                    await self.emit({"type": "error", "message": msg})
+                    steps.append({"type": "error", "message": msg})
+                    self.aborted = True
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
                 if name in ("remember", "delegate", "run_workflow") and self.conversation_id:

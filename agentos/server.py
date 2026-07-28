@@ -106,13 +106,63 @@ async def startup():
         # In the AgentOS session, the compositor tells us the moment a window
         # opens/closes/focuses or an output changes — the UI listens for these
         # "wm" events instead of polling /api/windows every 3 seconds.
+        #
+        # This waits for the compositor instead of giving up when it isn't there
+        # yet: the service is usually started by systemd at login, BEFORE (or
+        # without) the AgentOS session, and the session then reuses this very
+        # server. Attaching late is the difference between native windows
+        # appearing in the shell and never showing up at all.
         from . import compositor as comp
-        while comp.available():
+        from . import runmode as _rm
+        attached = False
+        while True:
+            if not comp.available():
+                attached = False
+                await asyncio.sleep(3)
+                continue
+            if not attached:
+                attached = True
+                await _on_compositor_attached()
             try:
                 async for ev in comp.Compositor().subscribe():
+                    if ev.get("change") in ("new", "close", "move", "floating"):
+                        with contextlib.suppress(Exception):
+                            comp.Compositor().anchor_shell(_port_of(cfg))
                     await broadcast({"type": "wm", **ev})
             except Exception:
-                await asyncio.sleep(3)   # compositor hiccup — retry while the socket exists
+                pass
+            await asyncio.sleep(2)       # compositor hiccup or session ended — re-probe
+
+    async def _on_compositor_attached():
+        """We can see the compositor now — re-probe capabilities, tell the shell,
+        and claim what only the session owner may claim."""
+        from . import runmode as _rm
+        try:
+            from .platform import get_platform
+            get_platform(refresh=True)
+        except Exception:
+            pass
+        if _rm.resolve(cfg)[0] == _rm.DE and not state.get("notifd"):
+            try:
+                from .notifications import NotificationDaemon
+                nd = NotificationDaemon(broadcast)
+                state["notifd"] = nd
+                toolbox.notifd = nd
+                nd.on_notification = scheduler.offer_notification
+                asyncio.create_task(nd.start())
+            except Exception:
+                pass
+        # The shell must be the tiled base layer filling the screen; app windows
+        # float above it. Chromium's app_id is not ours under native Wayland, so
+        # this is done by process identity rather than a window rule.
+        try:
+            from . import compositor as _c
+            if _c.Compositor().anchor_shell(_port_of(cfg)):
+                store.log("system", "shell anchored as the session's base layer")
+        except Exception:
+            pass
+        store.log("system", "compositor attached — native window management is live")
+        await broadcast({"type": "platform"})
     asyncio.create_task(wm_events())
 
     # When AgentOS is the session, nobody else can receive desktop
@@ -245,6 +295,141 @@ def _safe_file(rel: str) -> Path | None:
     if p == root or root in p.parents:
         return p
     return None
+
+
+@app.get("/api/locale")
+async def api_locale():
+    """What AgentOS believes about where/when the user is: the saved locale, what
+    the machine detects, and the timezone list the picker needs."""
+    from . import localeinfo
+    return {"locale": localeinfo.effective(state["cfg"]),
+            "detected": localeinfo.detect(),
+            "saved": state["cfg"].get("locale") or {},
+            "countries": localeinfo.COUNTRIES,
+            "timezones": localeinfo.timezones(),
+            "describe": localeinfo.describe(state["cfg"])}
+
+
+@app.post("/api/locale/apply")
+async def api_locale_apply(body: dict):
+    """Push the locale into the running session (de mode): LANG/LC_*/TZ that
+    native apps launched from AgentOS inherit. Harmless elsewhere."""
+    from . import localeinfo
+    from . import runmode as _rm
+    from . import session as sessionmod
+    env = localeinfo.session_env(state["cfg"])
+    wrote = sessionmod.write_locale_env(env)
+    applied = False
+    if _rm.mode() == "de":
+        applied = sessionmod.apply_session_env(env)
+    await state["broadcast"]({"type": "config"})
+    return {"ok": True, "env": env, "written": str(wrote),
+            "message": ("locale applied to this session" if applied
+                        else "saved — it applies to the AgentOS session at next login")}
+
+
+@app.get("/api/nightlight")
+async def api_nightlight_get():
+    """Warm the screen after dark — the display setting people notice by feeling
+    tired rather than by looking at a panel."""
+    import shutil as _sh
+    nl = state["cfg"].get("nightlight") or {}
+    return {"nightlight": nl, "available": bool(_sh.which("wlsunset")),
+            "reason": "" if _sh.which("wlsunset") else
+                      "wlsunset is not installed — install it from Components"}
+
+
+@app.post("/api/nightlight")
+async def api_nightlight_set(body: dict):
+    import subprocess
+    from . import session as sessionmod
+    cfg = state["cfg"]
+    nl = cfg.setdefault("nightlight", {})
+    for k in ("enabled", "day_temp", "night_temp", "from", "to", "lat", "lon"):
+        if k in (body or {}):
+            nl[k] = body[k]
+    cfgmod.save_config(cfg)
+    # Rewrite the session config so it survives logout, and apply it right now.
+    try:
+        sessionmod.stage_nightlight(nl)
+    except Exception as e:
+        print(f"[nightlight] not persisted: {e}")
+    applied = False
+    try:
+        subprocess.run(["pkill", "-x", "wlsunset"], capture_output=True, timeout=5)
+        cmd = sessionmod.nightlight_cmd_text(nl)
+        if cmd != ":" and os.environ.get("SWAYSOCK"):
+            subprocess.Popen(["sh", "-c", cmd], start_new_session=True)
+            applied = True
+    except Exception:
+        pass
+    return {"ok": True, "nightlight": nl,
+            "message": "night light on" if (nl.get("enabled") and applied)
+                       else ("night light off" if not nl.get("enabled")
+                             else "saved — it applies in the AgentOS session")}
+
+
+@app.get("/api/input")
+async def api_input_get():
+    """Keyboard and pointer preferences — the half of "display settings" that is
+    about how the machine answers your hands."""
+    from . import runmode as _rm
+    inp = state["cfg"].get("input") or {}
+    return {"input": inp, "session": _rm.mode() == "de",
+            "layouts": ["us", "gb", "in", "de", "fr", "es", "it", "ru", "jp", "cn", "br", "se"]}
+
+
+@app.post("/api/input")
+async def api_input_set(body: dict):
+    from . import session as sessionmod
+    cfg = state["cfg"]
+    inp = cfg.setdefault("input", {})
+    for section in ("keyboard", "touchpad"):
+        if isinstance(body.get(section), dict):
+            inp.setdefault(section, {}).update(body[section])
+    cfgmod.save_config(cfg)
+    path = sessionmod.write_input_config(inp)
+    applied = sessionmod.apply_dropins()
+    return {"ok": True, "written": str(path),
+            "message": "applied to this session" if applied
+                       else "saved — it applies when you next log into AgentOS"}
+
+
+@app.post("/api/shell/action")
+async def api_shell_action(body: dict):
+    """Run a named shell action (the shortcut table's actions). This is what the
+    compositor's keybindings curl in session mode, so a shortcut still works
+    while a native window holds the keyboard."""
+    action = str((body or {}).get("action") or "")[:40]
+    if not action:
+        return JSONResponse({"error": "action required"}, status_code=400)
+    ok, data = await shell_command("shell_action", {"target": action})
+    return {"ok": ok, "result": data}
+
+
+@app.post("/api/shortcuts/apply")
+async def api_shortcuts_apply(body: dict):
+    """Write the session-level shortcuts into the compositor and reload it.
+
+    Only meaningful in `de` mode; elsewhere it reports that plainly instead of
+    pretending. Bindings are generated into a sway drop-in (never the generated
+    main config), each one curling /api/shell/action."""
+    from . import runmode as _rm
+    from . import session as sessionmod
+    if _rm.mode() != "de":
+        return {"ok": False, "message": "not running as the desktop session — "
+                                        "in-app shortcuts still work"}
+    shortcuts = state["cfg"].get("shortcuts") or {}
+    written = sessionmod.write_shortcut_bindings(shortcuts, _port_of(state["cfg"]))
+    return {"ok": bool(written), "message": (f"{written} session shortcuts applied"
+                                             if written else "no session shortcuts to apply")}
+
+
+def _port_of(cfg: dict) -> int:
+    try:
+        return int(cfg.get("port", 8321))
+    except Exception:
+        return 8321
 
 
 @app.get("/api/search")
@@ -476,6 +661,23 @@ async def api_wm_output_configure(body: dict):
     if body.get("enabled") is not None:
         kw["enabled"] = bool(body["enabled"])
     ok, msg = host.configure_output(name, **kw)
+    # A display setting must outlive the session that made it: applying a mode
+    # over IPC lasts until logout, so the accepted layout is also written to a
+    # compositor drop-in — the same promise GNOME's Displays panel makes.
+    if ok:
+        try:
+            from . import session as sessionmod
+            cfg = state["cfg"]
+            outs = cfg.setdefault("displays", {})
+            saved = outs.setdefault(name, {})
+            saved.update({k: v for k, v in body.items() if k != "name"})
+            if isinstance(saved.get("position"), dict):
+                p = saved["position"]
+                saved["position"] = f"{int(p.get('x', 0))},{int(p.get('y', 0))}"
+            cfgmod.save_config(cfg)
+            sessionmod.write_output_config([{"name": n, **v} for n, v in outs.items()])
+        except Exception as e:
+            print(f"[displays] layout not persisted: {e}")
     return {"ok": ok, "message": msg}
 
 
@@ -503,8 +705,22 @@ async def api_control_set(body: dict):
     if "settings" in body:
         ok, msg = host.open_settings(body.get("settings", ""))
         return {"ok": ok, "message": msg}
-    host.set_volume(percent=body.get("volume"), mute=body.get("mute"))
-    return host.get_volume()
+    # Hardware keys send a STEP, not an absolute level — the compositor binds
+    # XF86AudioRaise/Lower/Mute to these so the change shows in AgentOS's own UI.
+    cur = host.get_volume()
+    if body.get("volume_step") is not None:
+        now = cur.get("volume")
+        if now is None:
+            return cur
+        host.set_volume(percent=max(0, min(100, int(now) + int(body["volume_step"]))))
+    elif body.get("mute_toggle"):
+        host.set_volume(mute=not cur.get("muted"))
+    else:
+        host.set_volume(percent=body.get("volume"), mute=body.get("mute"))
+    out = host.get_volume()
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "control", **out})
+    return out
 
 
 # ---- DE-mode system controls (hostctl: D-Bus daemons + PipeWire) ----------------
@@ -594,10 +810,18 @@ async def api_brightness():
 async def api_brightness_set(body: dict):
     from .hostctl import HostCtlError, brightness
     try:
-        await brightness.set_level(str(body.get("name", "")),
-                                   int(body.get("percent", 50)),
+        pct = body.get("percent")
+        if body.get("step") is not None:           # brightness keys send a delta
+            cur = 50
+            with contextlib.suppress(Exception):
+                bl = brightness.backlights()
+                cur = int(bl[0]["percent"]) if bl else 50
+            pct = max(1, min(100, cur + int(body["step"])))
+        await brightness.set_level(str(body.get("name", "")), int(pct if pct is not None else 50),
                                    kind=str(body.get("kind", "")))
-        return {"ok": True}
+        with contextlib.suppress(Exception):
+            await state["broadcast"]({"type": "control", "brightness": pct})
+        return {"ok": True, "percent": pct}
     except (HostCtlError, ValueError) as e:
         return _hostctl_error(e)
 
@@ -751,7 +975,17 @@ async def api_screenshot(body: dict):
                 else 400 if res == "selection cancelled" else 500)
         return JSONResponse({"error": res}, code)
     state["store"].log("system", f"screenshot saved: {Path(res).name}")
-    return {"ok": True, "path": res}
+    out = {"ok": True, "path": res}
+    if (body or {}).get("inline"):
+        # hand the bytes back so the shell can attach the shot to a question
+        try:
+            import base64
+            raw = Path(res).read_bytes()
+            if len(raw) <= 12_000_000:
+                out["data_url"] = "data:image/png;base64," + base64.b64encode(raw).decode()
+        except Exception as e:
+            out["inline_error"] = str(e)
+    return out
 
 
 # ---- Power & session: the desktop's own power menu (AgentOS as the DE) ----------
@@ -1036,6 +1270,18 @@ async def api_put_config(patch: dict):
     for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name", "policies", "sandbox"):
         if key in patch:
             cfg[key] = patch[key]
+    if isinstance(patch.get("build"), dict) and "model" in patch["build"]:
+        cfg.setdefault("build", {})["model"] = str(patch["build"]["model"] or "")[:80]
+    if isinstance(patch.get("locale"), dict):
+        from . import localeinfo
+        lo = cfg.setdefault("locale", {})
+        for k in localeinfo.FIELDS:
+            if k in patch["locale"]:
+                lo[k] = str(patch["locale"][k] or "")[:64]
+    if isinstance(patch.get("shortcuts"), dict):
+        # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
+        # for the compositor bindings written by /api/shortcuts/apply
+        cfg["shortcuts"] = {str(k)[:40]: str(v)[:40] for k, v in patch["shortcuts"].items()}
     if isinstance(patch.get("memory"), dict):
         mem = cfg.setdefault("memory", {})
         for k in ("auto_extract", "model", "inject_user", "inject_session", "inject_facts",
@@ -1422,6 +1668,24 @@ APP_UI_CSS = """
   --mut:#8a94a6;--acc:#5eead4;--acc2:#22d3ee;--errc:#f87171;--okc:#34d399;--warnc:#fbbf24}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;margin:0;padding:18px}
+/* ---- the two surfaces every app has -------------------------------------
+   Desktop: the whole application. Widget: the one thing worth a glance, at the
+   size the user picked (S/M/L). Mark the two views with .widget-only and
+   .desktop-only and the right one is shown — no script, no flash of the wrong
+   surface, because the class is set before the app's own code runs. */
+html[data-surface="desktop"] .widget-only{display:none!important}
+html[data-surface="widget"] .desktop-only{display:none!important}
+/* pinned as a widget: the AgentOS glass shows through behind the content */
+html.agentos-widget,html.agentos-widget body{background:transparent}
+html.agentos-widget body{padding:14px;overflow:auto}
+html.agentos-widget h1{font-size:15px} html.agentos-widget h2{font-size:13px}
+html.agentos-widget .card{padding:11px;border-radius:11px;margin-bottom:8px}
+html.agentos-widget .kpi b{font-size:21px}
+/* Small is a single glanceable number; Large can afford a table or a chart. */
+html.agentos-widget-s body{padding:11px;font-size:12.5px}
+html.agentos-widget-s h1{font-size:13.5px} html.agentos-widget-s .kpi b{font-size:26px}
+html.agentos-widget-s .card{padding:9px}
+html.agentos-widget-l body{padding:15px}
 h1{font-size:18px;font-weight:750;margin:0 0 2px}
 h2{font-size:15px;font-weight:700;margin:0 0 8px}
 h3{font-size:11.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin:0 0 6px}
@@ -1541,12 +1805,14 @@ async def api_save_app(body: dict):
 
 @app.put("/api/apps/{aid}")
 async def api_rename_app(aid: str, body: dict):
-    """Rename/redecorate an app (name, icon, description) — the id stays, so its data,
-    versions, grants and widgets all follow along."""
+    """Rename/redecorate an app (name, icon, description, widget size) — the id
+    stays, so its data, versions, grants and widgets all follow along."""
     err = state["store"].rename_app(aid, name=body.get("name", ""),
                                     icon=body.get("icon") if "icon" in body else None,
                                     description=body.get("description")
-                                    if "description" in body else None)
+                                    if "description" in body else None,
+                                    widget_size=body.get("widget_size")
+                                    if "widget_size" in body else None)
     if err:
         return JSONResponse({"error": err}, status_code=400)
     state["store"].log("system", f"app renamed: {aid} → {body.get('name', '')}")
@@ -1564,6 +1830,19 @@ async def api_delete_app(aid: str):
 APP_RUNTIME = """<script>
 window.APP_ID = %r;
 window.APP_TOKEN = %r; // runtime identity: the OS knows WHICH app is calling (permission gate)
+// Which surface is this app being drawn on? Every app has two: the desktop
+// window (the whole thing) and a widget (the one glanceable fact), at the size
+// the user chose. The page is told BEFORE its own script runs, so it can render
+// the right one from the first frame instead of flashing the wrong one.
+window.appSurface = {mode: %r, size: %r, widget: false, desktop: true};
+window.appSurface.widget = window.appSurface.mode === 'widget';
+window.appSurface.desktop = !window.appSurface.widget;
+try{
+  const de = document.documentElement;
+  de.dataset.surface = window.appSurface.mode;
+  de.dataset.widgetSize = window.appSurface.size;
+  if(window.appSurface.widget) de.classList.add('agentos-widget','agentos-widget-'+window.appSurface.size);
+}catch(e){}
 // ===== AgentOS app runtime v2 — injected into every built app =====
 //   appData.get() / appData.set(obj)          the app's private server-side JSON store
 //   appTool(name, args)                       run any OS/MCP tool (permission-gated)
@@ -1703,7 +1982,7 @@ window.addEventListener('unhandledrejection', e => {
 
 
 @app.get("/api/apps/{aid}/page")
-async def api_app_page(aid: str):
+async def api_app_page(aid: str, surface: str = "", size: str = ""):
     from fastapi.responses import HTMLResponse
     a = state["store"].get_app(aid)
     if not a:
@@ -1716,7 +1995,11 @@ async def api_app_page(aid: str):
     for k, v in list(state["app_tokens"].items()):
         if now - v["issued"] > 86400:
             state["app_tokens"].pop(k, None)
-    runtime = APP_RUNTIME % (aid, tok)
+    mode = "widget" if surface == "widget" else "desktop"
+    wsize = (size or a.get("widget_size") or "m").lower()
+    if wsize not in ("s", "m", "l"):
+        wsize = "m"
+    runtime = APP_RUNTIME % (aid, tok, mode, wsize)
     return HTMLResponse(_compose_app_page(a["html"] or "", runtime))
 
 
@@ -2163,6 +2446,17 @@ BUILD QUALITY — this matters; make it look and feel professional, not a demo:
     height — never stretched tall or full-screen.
   · Every input/select/textarea gets a <label> above it. Related controls share one .row.
   · One h1 title + a .muted subtitle at the top, then .card sections. Nothing may overlap.
+- TWO SURFACES, ALWAYS. Every app is opened as a desktop window AND can be pinned to the desktop as a
+  WIDGET (S, M or L — the user's choice). Build both, in the same HTML:
+    · Wrap the full application in `<div class="desktop-only">…</div>`.
+    · Wrap a compact glanceable view in `<div class="widget-only">…</div>` — the ONE number, status or
+      next item that makes the app worth a glance, plus at most one action. A .kpi tile or two short
+      lines is usually right; never a table, form or nav in the widget.
+    · The OS shows exactly one of them — no script needed. `window.appSurface` = {mode:'widget'|'desktop',
+      size:'s'|'m'|'l', widget:bool, desktop:bool} if you need to branch in JS (e.g. poll less often, or
+      show more rows at size 'l'). Both views read the SAME appData state — never duplicate the logic.
+    · Widget canvases are small: S ≈ 260×170, M ≈ 340×240, L ≈ 460×340 CSS px. The widget must be
+      readable and complete at S, with no horizontal scrolling.
 - NO external CDNs, fonts, or images (blocked) — inline any extra CSS/JS, assets as data URIs.
 - Every async action shows a loading state (.spin) and a readable .err state; every list has an
   .empty state telling the user what to do first; numbers/dates are formatted, not raw.
@@ -3240,6 +3534,8 @@ async def api_setup_reset(body: dict):
 # path except that the text arrives in one chunk (the JS bakes these in too,
 # for when the endpoint itself is unreachable)
 SAY_FALLBACK = {
+    "locale": "One thing that changes every answer: where you are. I read this off the machine — "
+              "is it right? News, weather, prices and times all follow it.",
     "autonomy": "I'm {name} — good to meet you. How much should I do on my own? "
                 "Balanced is a good start: I act freely and check with you before anything risky.",
     "autostart": "Should I keep running in the background — for scheduled jobs, alerts and "
@@ -3253,6 +3549,10 @@ SAY_FALLBACK = {
 }
 
 _SAY_ASKS = {
+    "locale": "Tell the user that where they are changes every answer you give — news, "
+              "weather, prices, times — say you have read it off their machine, and ask them "
+              "to confirm it. Their detected country and timezone are shown as buttons under "
+              "your message; do NOT name them yourself and do not list the choices.",
     "autonomy": "Introduce yourself by name in a few words, then ask how much autonomy you "
                 "should have when working for them, recommending the Balanced setting (act "
                 "freely, ask before risky actions). The choices are shown as buttons under "
@@ -4112,20 +4412,65 @@ def _build_history(cid: str, keep: int = 6) -> list[dict]:
     return hist
 
 
-def _pick_build_model(models, current, cloud_only=False):
-    """Prefer a model known to tool-call reliably: cloud first, then strong local families.
-    With cloud_only=True (the failure-retry path) local models are excluded — "retrying"
-    onto a bigger local model usually means CPU offload: slower and worse, not better."""
-    ids = [m["id"] for m in models if m["id"] != current]
-    markers = ("claude", "gpt-5", "gpt-4") if cloud_only \
-        else ("claude", "gpt-5", "gpt-4", "qwen", "devstral", "mistral", "llama3")
-    for marker in markers:
-        pool = [i for i in ids if marker in i.lower()]
-        if cloud_only:
-            pool = [i for i in pool if not i.startswith("ollama/")]
-        if pool:
-            return pool[0]
-    return None
+def _salvage_app_html(content: str) -> tuple[str, str, str]:
+    """Pull an app out of a reply that wrote it as TEXT instead of calling create_app.
+
+    Models routinely stream a perfectly good ```html block and never make the tool
+    call — the build then failed with a screen full of the app's own source. If the
+    block really is an app, build it rather than throwing the work away.
+    Returns (name, description, html) or ("", "", "")."""
+    if not content:
+        return "", "", ""
+    blocks = re.findall(r"```(?:html|HTML)?\s*\n(.*?)```", content, re.S)
+    html = ""
+    for b in blocks:
+        low = b.lower()
+        if ("<!doctype" in low or "<html" in low
+                or ("<script" in low and ("<div" in low or "<body" in low))):
+            if len(b.strip()) > len(html):
+                html = b.strip()
+    if len(html) < 200:
+        return "", "", ""
+    name = desc = ""
+    for line in content.splitlines():
+        low = line.strip().lower()
+        if low.startswith("name:") and not name:
+            name = line.split(":", 1)[1].strip().strip('"').strip("'")[:60]
+        elif low.startswith("description:") and not desc:
+            desc = line.split(":", 1)[1].strip().strip('"').strip("'")[:200]
+        if name and desc:
+            break
+    return name, desc, html
+
+
+def _resolve_build_model(cfg: dict, avail: list, requested: str = "") -> str:
+    """Which model builds this app? The one the USER chose.
+
+    There is deliberately no ranking of model names here. A hardcoded ladder is
+    always out of date (it once had no "gemini" in it, so a machine with a Gemini
+    key quietly built with a local 9B) and it overrides a preference the user has
+    already expressed. Order of authority:
+
+        1. the model picked for THIS build (App Studio's dropdown)
+        2. the saved build preference   (Settings → Agent → Build model)
+        3. the configured default model (Settings → AI providers)
+        4. whatever single model exists
+
+    Anything unavailable is skipped rather than substituted silently.
+    """
+    ids = [m["id"] for m in avail]
+    for cand in (requested,
+                 ((cfg.get("build") or {}).get("model") or ""),
+                 (cfg.get("default_model") or "")):
+        c = (cand or "").strip()
+        if c and c.lower() != "auto" and (not ids or c in ids):
+            return c
+    return ids[0] if ids else ""
+
+
+def _other_models(avail: list, current: str) -> list:
+    """Everything else the user could retry with — for THEM to choose from."""
+    return [m["id"] for m in avail if m["id"] != current and "embed" not in m["id"].lower()]
 
 
 @app.get("/api/lifecycle")
@@ -4414,6 +4759,7 @@ async def run_build(data: dict):
                           "announce the app — OUTPUT it.\n\n") + extra)
             agent = Agent(bcfg, toolbox, use_model, bemit, bapprove,
                           extra_system=extra, tool_filter=tf)
+            agent.nudge_unfinished = False   # the build path owns its own retries
             build["agent"] = agent
             knowledge.turn_started()
             try:
@@ -4459,12 +4805,12 @@ async def run_build(data: dict):
                 _avail = await providers.available_models(cfg)
             except Exception:
                 _avail = []
-            model = (_pick_build_model(_avail, "") or cfg.get("default_model", "")
-                     or (_avail[0]["id"] if _avail else ""))
+            model = _resolve_build_model(cfg, _avail)
             if model:
                 await bcast({"type": "build_text",
-                             "text": f"\n(Auto-selected {model.split('/')[-1]} to build this app.)\n"})
-                store.log("system", f"build auto-selected {model}")
+                             "text": f"\n(building with {model.split('/')[-1]} — your default; "
+                                     f"change it in App Studio or Settings → Agent)\n"})
+                store.log("system", f"build using {model} (user preference)")
 
         used_model = model
         built, result = await attempt(model)
@@ -4482,31 +4828,44 @@ async def run_build(data: dict):
                             "above it)."})
             built, result = await attempt(model)
 
+        # The reply may contain the finished app as text (no tool call). Build it
+        # instead of failing: the work is right there.
+        if not built and not build.get("cancel_requested"):
+            sname, sdesc, shtml = _salvage_app_html(result.get("content") or "")
+            if shtml:
+                await bcast({"type": "build_text",
+                             "text": "\n(the model wrote the app instead of calling create_app — building it)\n"})
+                try:
+                    out = await toolbox.create_app(sname or (prompt[:40] or "New app"), "",
+                                                   sdesc or prompt[:160], shtml)
+                    if not str(out).startswith("[error]"):
+                        apps = store.list_apps()
+                        newest = apps[0] if apps else None
+                        if newest:
+                            built = newest
+                            store.log("system", f"build salvaged from text ({len(shtml)} chars)")
+                except Exception as e:
+                    store.log("error", f"salvage failed: {type(e).__name__}: {e}")
+
         if not built and build.get("cancel_requested"):
             store.add_message(cid, "assistant", result["content"] or "(build cancelled)",
                               {"steps": result["steps"]})
             await terminal({"type": "build_error", "message": "build cancelled"})
             return
 
-        # Auto-retry with a tool-capable model if the selected one produced nothing
-        # (some local models, e.g. gemma, don't reliably tool-call under a large prompt).
+        # Nothing was produced. Do NOT quietly swap models — say what happened and
+        # let the user choose what to run next; the UI turns this into one click.
         if not built:
             if build.get("timed_out"):
                 await bcast({"type": "build_text",
-                             "text": f"\n(build timed out after {build_timeout}s…)\n"})
+                             "text": f"\n(build timed out after {build_timeout}s)\n"})
             try:
                 models = await providers.available_models(cfg)
             except Exception:
                 models = []
-            better = _pick_build_model(models, model, cloud_only=True)
-            if better:
-                await bcast({"type": "build_text",
-                             "text": f"\n({model.split('/')[-1]} produced nothing — retrying with {better.split('/')[-1]}…)\n"})
-                store.log("system", f"build retry with {better} (from {model})")
-                build["timed_out"] = False
-                built, result = await attempt(better)
-                if built:
-                    used_model = better
+            others = _other_models(models, model)
+            await bcast({"type": "build_choice", "model": model, "options": others,
+                         "message": f"{model.split('/')[-1]} did not produce an app."})
 
         # Verification: structural completeness (truncation) + static lint (things that
         # WILL break at runtime). The model gets ONE fix pass.

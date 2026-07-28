@@ -1,5 +1,13 @@
 # The living desktop — motion, language, initiative
 
+> **The prompt bar is also the launcher.** Ctrl+Space (or Ctrl+K / Alt+Space)
+> pops it; typing anywhere on the desktop lands in it. Type a name and **Enter
+> launches** — the ask row is only the default for things that read like
+> questions (multi-word, or starting with what/why/how…, or ending in "?");
+> **⇧Enter** always asks instead. **Alt+1…9** is quick launch: a result row when
+> the list is open, otherwise that dock app. Ranking is name-first — scattered-
+> letter matches are dropped whenever real prefix/substring matches exist.
+>
 > **Second drop — the ever-present agent.** The agent is no longer an app:
 > the **omnibar** floats above the dock always (start typing anywhere on the
 > desktop; Tab accepts the intent ghost; Enter streams an answer card; one

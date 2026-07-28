@@ -85,6 +85,7 @@ def _ask(prompt: str, default: str = "") -> str:
 
 
 def run_cli_wizard() -> None:
+    from . import localeinfo
     from . import providers
     cfg = cfgmod.load_config()
     print("\n▲ AgentOS first-time setup — five quick questions.\n")

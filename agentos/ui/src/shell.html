@@ -2,6 +2,8 @@
 <div id="menubar">
   <div id="mb-brand"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
   <span id="mbapp" title="focused app"></span>
+  <div id="mbmenus" role="menubar"></div>
+  <div id="mbwidgets"></div>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
   <div id="tray">
@@ -14,16 +16,6 @@
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
-<!-- the ever-present agent: answers rise as cards above the bar -->
-<div id="omnicards"></div>
-<div id="omnibar">
-  <div id="omni-orb" title="your agent"></div>
-  <div id="omnilist"></div>
-  <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
-  <button id="omni-mic" title="Voice"></button>
-  <button id="omni-chat" title="Open Chat">⤢</button>
-</div>
-
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
@@ -49,6 +41,24 @@
   <div id="jarvis-shell"></div>
   <div id="custom-shell"></div>
   <div id="icons"></div>
+  <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
+       #desktop is position:fixed, which creates a stacking context, so a deck
+       outside it would paint over every window regardless of z-index. -->
+  <div id="deck"></div>
+  <!-- the prompt bar lives in the desktop layer: a window covers it, and
+       Ctrl+Space (or a double-tap of Ctrl) summons it back to the front. -->
+  <div id="barwidgets"></div>
+  
+  <!-- the ever-present agent: answers rise as cards above the bar -->
+  <div id="omnicards"></div>
+  <div id="omnibar">
+    <div id="omni-orb" title="your agent"></div>
+    <div id="omnilist"></div>
+    <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
+    <button id="omni-shot" title="Attach a screenshot"></button>
+    <button id="omni-mic" title="Voice"></button>
+    <button id="omni-chat" title="Open Chat">⤢</button>
+  </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 

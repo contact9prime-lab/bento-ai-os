@@ -28,6 +28,39 @@ from .linux_hosted import LinuxHosted
 
 class LinuxDE(LinuxHosted):
     name = "AgentOS"
+    # --- launching ---------------------------------------------------------
+
+    def launch_app(self, app_id: str) -> tuple[bool, str]:
+        """Launch through the compositor, not from this process.
+
+        The server is normally started by systemd at login, so its environment
+        has no WAYLAND_DISPLAY / DISPLAY / session bus — a GUI app spawned from
+        here connects to nothing and exits immediately ("launching…" and then
+        nothing appears). Asking sway to exec it gives the child the session's
+        own environment and puts the window on the current workspace."""
+        import re
+        import shutil
+        from pathlib import Path
+        from .linux_hosted import APP_DIRS
+        if not re.fullmatch(r"[\w .+()&,'-]+", app_id or ""):
+            return False, "invalid app id"
+        if comp.available():
+            cmd = ""
+            if shutil.which("gtk-launch"):
+                cmd = f"gtk-launch '{app_id}'"
+            elif shutil.which("gio"):
+                path = next((str(Path(d) / f"{app_id}.desktop") for d in APP_DIRS
+                             if (Path(d) / f"{app_id}.desktop").is_file()), "")
+                if path:
+                    cmd = f"gio launch '{path}'"
+            if cmd:
+                try:
+                    comp.Compositor().exec(cmd)   # raises if sway refuses
+                    return True, "launched"
+                except Exception:
+                    pass          # sway said no — fall through to the plain spawn
+        return super().launch_app(app_id)
+
 
     def __init__(self, mode: str = "de"):
         super().__init__(mode=mode)
