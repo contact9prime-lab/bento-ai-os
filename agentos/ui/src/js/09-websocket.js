@@ -323,7 +323,7 @@ function handle(ev){
       jarvisOff();
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
     case 'wm':{ // compositor event (AgentOS session) — replaces window polling
-      if(NATIVE_POLL){clearInterval(NATIVE_POLL);NATIVE_POLL=null}
+      stopNativePoll();
       clearTimeout(wmDebounce);
       wmDebounce=setTimeout(()=>{updateNativeWindows();
         if(ev.event==='output'||ev.event==='workspace')refreshApp('syssettings')},120);

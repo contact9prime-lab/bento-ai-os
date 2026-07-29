@@ -44,7 +44,8 @@ async function renderKG(body,w){
     g.edges=g.edges.filter(e=>keep.has(e.src)&&keep.has(e.dst));
   }
   const canvas=$('#kgc');if(!canvas)return;
-  cancelAnimationFrame(w.raf);
+  cancelAnimationFrame(w.raf);w.raf=0;
+  stopWinTicks(w);                       // a re-render (search, refresh) replaces the old loop
   if(!g.nodes.length){$('#kg-empty').style.display='flex';
     if(q)$('#kg-empty').innerHTML='Nothing in the graph matches “'+esc(w._kgq)+'”.';return}
   const dpr=devicePixelRatio||1;
@@ -55,7 +56,9 @@ async function renderKG(body,w){
   const COLORS={person:'#5eead4',org:'#22d3ee',project:'#fbbf24',tool:'#c084fc','':'#8a94a6'};
   let ticks=0;
   const step=()=>{
+    w.raf=0;
     if(!canvas.isConnected)return;
+    if(!winAwake(w))return;               // nobody is looking — kick() repaints on the way back
     const W=canvas.clientWidth,H=canvas.clientHeight;
     canvas.width=W*dpr;canvas.height=H*dpr;
     // physics
@@ -95,9 +98,17 @@ async function renderKG(body,w){
       ctx.fillStyle='#e6ebf2';ctx.fillText(n.name,n.x+11,n.y+4);
     }
     ctx.restore();
-    w.raf=requestAnimationFrame(step);
+    // The layout settles after 400 ticks and then nothing moves. Holding a 60fps
+    // loop open to redraw an identical picture forever is the single most
+    // expensive idle thing this shell used to do — so the loop simply ends, and
+    // a resize or a wake kicks one more frame. An idle graph costs nothing.
+    if(ticks<400)w.raf=requestAnimationFrame(step);
   };
-  step();
+  const kick=()=>{if(!w.raf)w.raf=requestAnimationFrame(step)};
+  if(w._kgro)w._kgro.disconnect();
+  w._kgro=new ResizeObserver(kick);w._kgro.observe(canvas);
+  winTick(w,kick,0,{key:'paint'});                      // ms:0 — repaint when the window comes back, never on a timer
+  kick();
 }
 async function kgAdd(){
   const s=$('#kg-s').value.trim(),rel=$('#kg-r').value.trim(),o=$('#kg-o').value.trim();

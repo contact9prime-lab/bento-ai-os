@@ -331,6 +331,9 @@ function applyTheme(name){
   // it too, unless the user's own wallpaper (a file, or a built-in they chose)
   // already outranks it — loadWallpaper owns that precedence
   if(changed&&typeof loadWallpaper==='function'&&document.body.dataset.themed)loadWallpaper();
+  // a glass theme costs orders of magnitude more to draw than a flat one, so the
+  // machine gets re-measured whenever the material changes
+  if(changed&&typeof glassProbe==='function')glassProbe(true);
 }
 async function loadThemes(){
   try{const d=await (await fetch('/api/themes')).json();

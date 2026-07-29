@@ -76,9 +76,10 @@ function exposeToggle(force){
     ov.classList.remove('show');ov.innerHTML='';
     EXPO.wins.forEach(w=>{w.el.style.transform='';
       setTimeout(()=>{w.el.classList.remove('exp-win');w.el.style.transformOrigin=''},300)});
-    setTimeout(()=>document.body.classList.remove('exposing'),320);
+    setTimeout(()=>{document.body.classList.remove('exposing');applyWindowActivity()},320);
     EXPO.wins=[];
   }
+  applyWindowActivity();   // in Spaces everything is on show, so everything wakes
 }
 /* the spaces strip: a live mini-map of every desktop, and a drop target */
 function exposeSpaces(){

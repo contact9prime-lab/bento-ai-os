@@ -13,7 +13,7 @@
    desktop. It answers "did it open, and what is it showing", which is the actual
    question. For controlling that screen, see the note at the bottom of the app. */
 
-const HOSTSCREEN={timer:null,busy:false,every:2000,scale:0.75,fit:true};
+const HOSTSCREEN={tick:null,busy:false,every:2000,scale:0.75,fit:true};
 
 async function renderHostScreen(body,w){
   const capable=cap('screen.capture').available;
@@ -49,8 +49,9 @@ async function renderHostScreen(body,w){
   hsFrame(w);
   hsLive(true,w);
 }
-/* One frame. Chained rather than on a fixed interval: a slow capture must not
-   stack up requests behind itself on a machine that is already busy drawing. */
+/* One frame. `busy` is the point: a capture slower than the refresh interval must
+   not stack requests behind itself on a machine that is already busy drawing —
+   a late tick is dropped, not queued. */
 async function hsFrame(w){
   if(HOSTSCREEN.busy)return;
   const img=$('#hs-img'), stat=$('#hs-stat');
@@ -73,17 +74,14 @@ async function hsFrame(w){
   }catch(e){if(stat)stat.textContent='capture failed: '+e.message}
   HOSTSCREEN.busy=false;
 }
+/* Live refresh, owned by the window. A full-screen PNG every two seconds is the
+   most expensive thing the shell does, so it must not survive the window being
+   minimised — winTick guarantees that, and repaints the moment you come back. */
 function hsLive(on,w){
-  clearTimeout(HOSTSCREEN.timer);HOSTSCREEN.timer=null;
-  if(!on)return;
-  const tick=async()=>{
-    if(!$('#hs-img'))return;                       // window gone — stop for good
-    await hsFrame(w);
-    HOSTSCREEN.timer=setTimeout(tick,HOSTSCREEN.every);
-  };
-  HOSTSCREEN.timer=setTimeout(tick,HOSTSCREEN.every);
+  hsStop();
+  if(on)HOSTSCREEN.tick=winTick(w,()=>hsFrame(w),HOSTSCREEN.every,{now:false,key:'frame'});
 }
-function hsStop(){clearTimeout(HOSTSCREEN.timer);HOSTSCREEN.timer=null}
+function hsStop(){stopTick(HOSTSCREEN.tick);HOSTSCREEN.tick=null}
 
 
 /* ---- taking control: streaming pixels AND sending input back is remote-desktop

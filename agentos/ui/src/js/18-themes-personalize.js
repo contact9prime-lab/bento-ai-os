@@ -15,6 +15,21 @@ async function renderThemes(body){
     <div class="row" style="margin-top:14px">
       <button class="save" style="margin:0" onclick="themeBuilder()">Open Theme Builder</button>
     </div>
+    <label style="margin-top:16px">Effects</label>
+    <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
+      window you open — five stacked glass windows can cost eight times the frame time of one.
+      ${glassLevel()==='full'?'This machine keeps up.':'<b>Turned down on this machine</b> to keep windows smooth.'}</p>
+    <div class="gq-row">${[
+      ['auto','Automatic','measure this machine and turn glass down only if it cannot keep up'],
+      ['full','Full glass','every surface blurs, as the theme designed it'],
+      ['reduced','Reduced','only the focused window blurs — flat cost, however many are open'],
+      ['off','Off','no blur anywhere, panels go solid. Best on a Raspberry Pi or a VM'],
+    ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
+        onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
+    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')} —
+      ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
+        reduced:'only the focused window blurs — flat cost, however many are open',
+        off:'no blur anywhere, panels go solid'})[GLASS.pref]||'')}.</p>
     <label style="margin-top:16px">Design a theme with AI</label>
     <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>

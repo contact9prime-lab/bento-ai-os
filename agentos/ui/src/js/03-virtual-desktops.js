@@ -34,6 +34,7 @@ function applyDeskVisibility(){
     w.el.style.display=(on&&!w.min)?'':'none';
     w.tb.style.display=on?'':'none';
   });
+  applyWindowActivity();   // windows on the desktops you left stop working until you come back
 }
 function switchDesk(n){
   if(n===curDesk)return;

@@ -1,5 +1,6 @@
 /* ================= mission control (lifecycle) ================= */
 async function renderMission(body,w){
+  stopWinTicks(w);          // a re-render replaces the poller, it does not add another
   body.style.cssText='padding:16px;overflow:auto;height:100%';
   body.innerHTML='<div class="mut">loading lifecycle state…</div>';
   const lane=(title,app,rows,accent)=>`
@@ -51,12 +52,13 @@ async function renderMission(body,w){
       </div>`;
   };
   await paint();
-  w.timer=setInterval(paint,6000);
+  winTick(w,paint,6000,{now:false,key:'poll'});
 }
 
 /* ================= hermes app (companion agent + wrapper) ================= */
 const HERMES_SETUP_LISTENERS=new Set();
 async function renderHermes(body,w){
+  stopWinTicks(w);
   body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
   const load=async()=>{try{return await (await fetch('/api/hermes/status')).json()}catch(e){return{installed:false}}};
   const log=(m)=>{const el=$('#hz-log');if(el){el.textContent=m;el.scrollTop=el.scrollHeight}};
@@ -114,12 +116,13 @@ async function renderHermes(body,w){
   w._onSetup=ev=>{if(ev.type==='hermes_setup'){log(ev.message||'');if(ev.done)setTimeout(paint,800)}};
   HERMES_SETUP_LISTENERS.add(w._onSetup);
   await paint();
-  w.timer=setInterval(async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000);
+  winTick(w,async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000,{now:false,key:'poll'});
 }
 
 /* ================= train app (TrainForge) ================= */
 const TRAIN_SETUP_LISTENERS=new Set();
 async function renderTrain(body,w){
+  stopWinTicks(w);
   body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
   body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
   const paint=async()=>{
@@ -128,7 +131,7 @@ async function renderTrain(body,w){
     if(st.running){
       if(!body.querySelector('iframe')){
         body.innerHTML=`<iframe src="${esc(st.url||'http://127.0.0.1:8377')}" style="border:0;width:100%;height:100%;flex:1" title="TrainForge"></iframe>`;
-        clearInterval(w.timer);
+        stopTick(w._tick);   // the iframe is the UI now — stop polling for good
       }
       return;
     }
@@ -163,6 +166,6 @@ async function renderTrain(body,w){
   w._onSetup=ev=>{if(ev.type==='train_setup'){const el=$('#tf-msg');if(el)el.textContent=ev.message||''}};
   TRAIN_SETUP_LISTENERS.add(w._onSetup);
   await paint();
-  w.timer=setInterval(paint,4000);
+  w._tick=winTick(w,paint,4000,{now:false,key:'poll'});
 }
 

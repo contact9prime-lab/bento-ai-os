@@ -51,7 +51,7 @@ document.addEventListener('click',e=>{
 updateTray();setInterval(updateTray,15000);
 // Polling is the fallback; the first compositor 'wm' event switches the
 // taskbar to event-driven updates (see the WebSocket handler).
-updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,1200);
+updateNativeWindows();startNativePoll();
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();

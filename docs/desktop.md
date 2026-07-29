@@ -11,6 +11,29 @@ taskbar, virtual desktops, widgets, themes, shortcuts — and the catalog of bui
 Every app opens in a draggable, resizable window with minimize / maximize / close and proper
 z-ordering. Double-click a title bar to maximize. The **taskbar** at the bottom tracks open windows.
 
+### Windows sleep when you stop looking at them
+On a native desktop every app is its own process, and a window you cannot see costs you nothing.
+AgentOS apps are all live DOM in a single browser tab, so nothing about being minimized used to
+stop an app's poller from firing — ten open apps meant ten pollers, ten requests and ten
+re-renders competing for one main thread. That is the "it gets slow once several apps are loaded"
+a native desktop doesn't have.
+
+So windows have a lifecycle. A window is **awake** when you can actually see it, and **asleep**
+when it is minimized, on another desktop, buried under a maximized window, or the page itself is
+in the background. Asleep windows keep their state and their DOM — reopening is instant — but
+stop doing periodic work. Waking runs that work immediately, so a window never comes back showing
+a stale frame.
+
+Measured on a desktop with six apps open, every one of them minimized:
+
+| | requests in 10s |
+|---|---|
+| before | 25, including five full-screen captures from Host Screen |
+| after | 2 |
+
+Task Manager marks sleeping windows, so a background app whose numbers have stopped is
+explained rather than mysterious.
+
 ### The app deck & system apps
 Apps live in bento groups on the deck above the prompt bar. Alongside your groups, a **System
 apps** group lists the applications installed on the machine itself, with their real icons — in
@@ -101,6 +124,34 @@ Themes control tokens, not just colours: anything in a theme's `v` map becomes a
 property, so a theme can redefine `--r-lg`, `--el-4`, `--glass-blur` or `--wall` alongside the
 usual hues. The agent can create themes of its own with the same reach — see
 [Models & Appearance](models.md).
+
+### Effects: what glass costs, and the knob for it
+
+`backdrop-filter` is the most expensive thing a desktop shell can ask a browser for, and the cost
+**compounds**: every translucent surface makes the compositor re-blur everything beneath it, so
+each window you open makes all of them more expensive. Measured with five windows open, in the
+same session, on the same machine:
+
+| Theme | frame rate |
+|---|---|
+| Bento, Claymorphism, Minimalism (no window blur) | 60 fps |
+| Liquid Glass | 6.5 fps |
+| Spatial | 6.3 fps |
+
+**Themes → Effects** is the volume knob, and it defaults to **Automatic**:
+
+| | |
+|---|---|
+| **Automatic** | full glass until the machine says otherwise. It measures real frame times with real windows open — no device sniffing, no GPU allowlist — and steps down only if it has to, telling you it did. |
+| **Full glass** | every surface blurs, as the theme designed it. |
+| **Reduced** | only the *focused* window is glass; the ones behind it go solid. Cost stops growing with the number of open windows. Liquid Glass went from 6.5 to 27 fps this way. |
+| **Off** | no blur anywhere, panels go solid. 60 fps in every theme. The right answer on a Raspberry Pi or a VM. |
+
+"Reduced" makes unfocused windows **solid**, not merely un-blurred: a glass window is around 66%
+opaque and relies on the blur to turn what is behind it into a wash. Remove the blur and keep the
+transparency and you get four windows of text legible through each other.
+
+Flat themes cost nothing to begin with, so none of this applies to them.
 
 ---
 
