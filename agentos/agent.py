@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import re
 import time
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -199,8 +200,33 @@ def _image_data_url(path: str, limit: int = 8_000_000) -> str:
     except Exception:
         return ""
 
+# ---- Mid-turn steering ------------------------------------------------------------
+# Typing again while the agent is working is not an error to swallow. The message is
+# queued by the server and handed to the running agent, which decides AT A STEP
+# BOUNDARY (never mid-tool) whether it belongs to what it is doing right now:
+#   "now"   -> fold it into the live run, so the rest of the turn accounts for it
+#   "later" -> leave it queued; it starts as its own turn the moment this one ends
+# The decision is one tiny completion, and it is started the MOMENT the message
+# arrives — in parallel with the reply already streaming. Paying for it at the
+# boundary instead would stall the very turn we are keeping moving, and on a local
+# backend a cold classifier costs 20s. When no model answers in time, the wording
+# heuristic below decides and defaults to "later": waiting is always recoverable,
+# hijacking a task in flight is not.
+
+_STEER_HINTS = re.compile(
+    r"^\s*(?:wait\b|hold on\b|stop\b|actually\b|instead\b|no[,.! ]|nope\b|"
+    r"scratch that\b|correction\b|sorry[,. ]|don'?t\b|do not\b|cancel\b|"
+    r"ignore that\b|not that\b|never ?mind\b)", re.I)
+
+_STEER_PREFACE = (
+    "[The user sent this WHILE you were working on the task above. Decide what it "
+    "changes and act on it now — adjust, extend or drop the current plan accordingly, "
+    "then carry the turn through to a finished result.]\n")
+
+
 # Emitted event types (mirrored to the UI):
-#   text_delta, thinking_delta, tool_start, tool_end, approval_request (via approver), turn_end, error
+#   text_delta, thinking_delta, tool_start, tool_end, approval_request (via approver),
+#   steer, turn_end, error
 
 
 class Agent:
@@ -234,6 +260,12 @@ class Agent:
         self.principal = principal
         self.surface = surface
         self.aborted = False
+        # messages the user sent while this turn was already running: triaged at the
+        # next step boundary (see _drain_inbox). The server owns the queue these come
+        # from and is told each decision through on_steer_decision(item, mode, reason).
+        self.inbox: list[dict] = []
+        self.on_steer_decision: Callable[[dict, str, str], Awaitable[None]] | None = None
+        self._task_text = ""      # what this turn was asked to do — context for triage
         # live partial results: if this turn is force-cancelled (user stop, shutdown),
         # the caller can still persist whatever streamed so far
         self._text_buf: list[str] = []
@@ -322,6 +354,105 @@ class Agent:
             if failed and not said_so and len(t) < 400:
                 return True
         return False
+
+    @staticmethod
+    def _progress_digest(steps: list, limit: int = 4) -> str:
+        """What this turn has actually done so far, in one line — the context the
+        steering triage needs to tell "that changes THIS" from "that's a new job"."""
+        out = []
+        for s in steps[-limit:]:
+            if s.get("type") == "tool":
+                out.append(f"ran {s.get('name')} ({'ok' if s.get('ok') else 'failed'})")
+            elif s.get("type") == "text":
+                out.append("said: " + " ".join(str(s.get("text") or "").split())[:140])
+            elif s.get("type") == "steer":
+                out.append("already folded in: "
+                           + " ".join(str(s.get("text") or "").split())[:80])
+        return "; ".join(out) or "just started — no steps yet"
+
+    async def _triage_steer(self, item: dict, task: str, steps: list) -> tuple[str, str]:
+        """-> ("now"|"later", reason). Cheap, bounded, and never fatal: any failure
+        falls through to the wording heuristic, which defaults to "later"."""
+        text = " ".join(str(item.get("text") or "").split())[:600]
+        if not text and item.get("images"):
+            text = "(an image, no text)"
+        if not text:
+            return "later", "empty message"
+        if not self.cfg.get("steer_queued_messages", True):
+            return "later", "mid-turn steering is off"
+        prompt = (
+            "An AI agent is MID-TASK for its user. A new message from that user just arrived.\n"
+            "Decide whether the agent must take it into account in the run it is doing RIGHT NOW, "
+            "or whether it is a separate request that should wait until this task finishes.\n"
+            '"now"   — it corrects, redirects, narrows, extends or cancels the task in progress, '
+            "or answers something the agent needs in order to continue.\n"
+            '"later" — it is a new or unrelated request that stands on its own as the next task.\n'
+            'When unsure, answer "later".\n\n'
+            f"Task in progress: {' '.join(str(task or '').split())[:400]}\n"
+            f"Progress so far: {self._progress_digest(steps)}\n"
+            f"New message: {text}\n\n"
+            'Reply with ONLY compact JSON: {"mode":"now|later","reason":"<max 10 words>"}')
+        # the small extraction model if one is configured: this is a one-word
+        # classification, and on a local backend the turn's own model is busy
+        # streaming — a second request to it queues behind the reply
+        model = (self.cfg.get("memory") or {}).get("model") or self.model_id
+        try:
+            raw = await asyncio.wait_for(
+                providers.complete(self.cfg, model, prompt,
+                                   system="You are a dispatcher. Answer with JSON only."),
+                timeout=float(self.cfg.get("steer_triage_timeout", 30)))
+            m = re.search(r"\{.*\}", raw, re.S)
+            d = json.loads(m.group(0)) if m else {}
+            mode = str(d.get("mode") or "").strip().lower()
+            if mode in ("now", "later"):
+                return mode, str(d.get("reason") or "")[:140]
+        except Exception:
+            pass
+        return (("now", "reads as a correction to what's running")
+                if _STEER_HINTS.match(text) else ("later", "reads as a separate request"))
+
+    def offer(self, item: dict) -> None:
+        """Hand this turn a message the user sent while it was running. Triage starts
+        immediately, alongside the reply in flight; the step boundary only reads it."""
+        self.inbox.append(item)
+        if not self._task_text:
+            return          # offered before run() started: the boundary knows the task, we don't
+        with contextlib.suppress(RuntimeError):     # no running loop: decide at the boundary
+            item["_triage"] = asyncio.ensure_future(
+                self._triage_steer(item, self._task_text, list(self.partial_steps)))
+
+    def clear_inbox(self) -> None:
+        """Stop means stop: drop what was queued behind this turn, triage and all."""
+        for item in self.inbox:
+            t = item.pop("_triage", None)
+            if t is not None:
+                t.cancel()
+        self.inbox.clear()
+
+    async def _drain_inbox(self, messages: list, steps: list, task: str) -> bool:
+        """Step boundary: decide every queued message, fold in the ones that belong to
+        this run. Returns True if anything was folded in."""
+        folded = False
+        while self.inbox and not self.aborted:
+            item = self.inbox.pop(0)
+            pending = item.pop("_triage", None)
+            # already decided (or deciding) since it arrived — it is bounded by its
+            # own timeout, so awaiting it here cannot hang the turn
+            mode, why = await (pending if pending is not None
+                               else self._triage_steer(item, task, steps))
+            if mode == "now":
+                folded = True
+                msg = {"role": "user", "content": _STEER_PREFACE + str(item.get("text") or "")}
+                if item.get("images"):
+                    msg["images"] = item["images"]
+                messages.append(msg)
+                steps.append({"type": "steer", "text": item.get("text") or "", "reason": why})
+            await self.emit({"type": "steer", "id": item.get("id", ""), "mode": mode,
+                             "text": item.get("text") or "", "reason": why})
+            if self.on_steer_decision:                 # the server owns the queue itself
+                with contextlib.suppress(Exception):
+                    await self.on_steer_decision(item, mode, why)
+        return folded
 
     def _tools(self) -> list:
         schemas = self.toolbox.schemas()
@@ -417,6 +548,7 @@ class Agent:
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence."""
         last_user = next((m.get("content", "") for m in reversed(history)
                           if m.get("role") == "user"), "")
+        self._task_text = last_user
         steps: list[dict] = []
         self.partial_steps = steps  # same list object: mutations are visible to a canceller
         final_text = ""
@@ -442,6 +574,12 @@ class Agent:
         for _ in range(int(self.cfg.get("max_steps", 25))):
             if self.aborted:
                 break
+            # Step boundary — the one safe place to take on what the user said while
+            # this turn was already running (never between a tool call and its result).
+            if self.inbox:
+                await self._drain_inbox(messages, steps, last_user)
+                if self.aborted:
+                    break
             text_parts: list[str] = []
             self._text_buf = text_parts  # live buffer for partial_text
             tool_calls: list[dict] = []
@@ -540,6 +678,13 @@ class Agent:
                 continue
 
             if not tool_calls or self.aborted:
+                # About to end — but a message may have landed while that last reply
+                # was streaming. Decide it here too: if it belongs to this run, the
+                # turn keeps going rather than closing a job the user just changed.
+                if self.inbox and not self.aborted:
+                    messages.append({"role": "assistant", "content": text})
+                    if await self._drain_inbox(messages, steps, last_user):
+                        continue
                 break
 
             messages.append({
@@ -647,4 +792,8 @@ class Agent:
             final_text += note
             await self.emit({"type": "text_delta", "text": note})
 
+        for item in self.inbox:   # turn over: an undecided message has no reader left,
+            t = item.pop("_triage", None)   # and runs as its own turn anyway
+            if t is not None:
+                t.cancel()
         return {"content": final_text, "steps": steps, "tokens": tokens}

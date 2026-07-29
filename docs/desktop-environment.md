@@ -93,7 +93,8 @@ Test autologin in a VM before using it on a machine you depend on.
 
 | Area | How |
 |---|---|
-| Native window management | sway IPC (`$SWAYSOCK`) — list, focus, close, float, move between workspaces; the taskbar updates from compositor events, not polling. Right-click a native window's taskbar icon for the menu. |
+| Native window management | sway IPC (`$SWAYSOCK`) — list, focus, **minimize** (parked in the scratchpad, still in the taskbar), **full screen**, close, float, move between workspaces; the taskbar updates from compositor events, not polling, and shows each app's real icon. Right-click a native window's taskbar icon for the menu, or use the menu bar, which follows native focus. |
+| Window switching | Alt+Tab / Super+Tab cycle one ring: the AgentOS desktop, then every native window. **Super+D** shows the desktop, **Super+H** minimizes, **Super+F** / F11 toggles full screen, **Super+Q** closes. |
 | Displays | resolution / refresh / scale / rotation / on-off per output, live, in **System Settings → Displays** |
 | Wifi | scan, join (WPA2/WPA3/open), forget, airplane mode — NetworkManager over D-Bus; passphrases travel over the bus, never a command line |
 | Bluetooth | power, discovery, pair/connect/trust/remove, device battery — BlueZ over D-Bus |
@@ -114,7 +115,14 @@ Test autologin in a VM before using it on a machine you depend on.
 
 Every AgentOS window also carries the usual application menus — File · Edit ·
 View · Window · Help — in the top bar, following focus. Apps contribute their
-own entries, which merge into those menus rather than replacing them.
+own entries, which merge into those menus rather than replacing them. A focused
+**external** window puts its own name and a Window menu there too: every verb the
+window manager genuinely owns. Its File and Edit belong to that application and
+are not faked.
+
+Ctrl+Space reaches the desktop from anywhere. Native windows float above the
+shell — sway always paints floating above tiled — so summoning brings the whole
+desktop forward and releasing puts it back underneath.
 
 Everything in that table is driven by capabilities: on a Mac, or hosted on
 GNOME, the same UI renders and the DE-only controls grey out with the reason.
@@ -189,6 +197,10 @@ dialogs). A greyed-out control whose fix is a component links straight to it.
   the first milestone of the in-house compositor.
 - Screen sharing works through xdg-desktop-portal-wlr; per-window sharing
   depends on the app supporting the portal.
+- **An application's own minimize button cannot work.** sway does not implement
+  `xdg_toplevel.set_minimized` — no wlroots compositor does — so a client asking
+  to be minimized is ignored at the protocol level. AgentOS minimizes from the
+  taskbar tile, the Window menu and Super+H instead, using the scratchpad.
 - Printers are installable (`cups` in Components) but there is no AgentOS
   printer panel yet — configuration goes through `system-config-printer`.
 - Default applications and MIME associations are the system's (`xdg-mime`);

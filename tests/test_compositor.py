@@ -155,7 +155,8 @@ def test_windows_flattens_the_tree_and_hides_the_shell(client):
     assert set(by_app) == {"firefox", "pavucontrol", "Gimp"}
     ff = by_app["firefox"]
     assert ff == {"id": "13", "pid": 5001, "app": "firefox", "title": "Mozilla Firefox",
-                  "workspace": "1", "focused": True, "floating": False, "fullscreen": False}
+                  "workspace": "1", "focused": True, "floating": False,
+                  "fullscreen": False, "minimized": False}
     assert by_app["pavucontrol"]["floating"] is True
     assert by_app["Gimp"]["workspace"] == "2"
     assert by_app["Gimp"]["title"] == "GNU Image Manipulation Program"
@@ -168,6 +169,9 @@ def test_window_commands_generate_correct_criteria(client, sway):
     client.set_floating("13", True)
     client.set_floating("13", False)
     assert sway.commands == [
+        # focus tries the scratchpad first, so focusing a MINIMISED window brings
+        # it back rather than doing nothing; sway shrugs off the no-op otherwise
+        "[con_id=13] scratchpad show",
         "[con_id=13] focus",
         "[con_id=13] kill",
         '[con_id=13] move container to workspace "2"',
@@ -289,7 +293,8 @@ def test_alt_tab_cycles_natives_then_returns_to_shell(sway, monkeypatch):
     sway.commands.clear()
     ok, what = de.cycle_focus("prev")
     assert ok and what == "shell"
-    assert sway.commands == ['[app_id="^agentos$"] focus']
+    assert sway.commands == ['[app_id="^agentos$"] focus'], (
+        "with no shell found by command line, the app_id criteria must still work")
 
 
 def test_cycle_focus_reports_compositor_failure(tmp_path, monkeypatch):
@@ -316,3 +321,111 @@ def test_de_backend_windows_through_fake_sway(sway, monkeypatch):
     from agentos.platform import caps as C
     assert de.capabilities(refresh=True)[C.WINDOWS_MANAGE].available is True
     assert de.capabilities()[C.DISPLAY_CONFIGURE].available is True
+
+
+# --- windows behaving like windows -----------------------------------------
+
+def test_minimize_uses_the_scratchpad(client, sway):
+    """sway has no minimise. The scratchpad is exactly "hidden but still alive",
+    which is what a person means by minimise — and it keeps the window listed."""
+    client.minimize("13")
+    client.unminimize("13")
+    assert sway.commands == [
+        "[con_id=13] move scratchpad",
+        "[con_id=13] scratchpad show",
+        "[con_id=13] focus",
+    ]
+
+
+def test_a_minimized_window_is_reported_not_dropped(client, monkeypatch):
+    """A taskbar that forgets a minimised window leaves no way to bring it back."""
+    wins = client.windows()
+    assert all(w["minimized"] is False for w in wins)
+    # the scratchpad lives on its own workspace; anything there is minimised
+    scratch = {"id": 1, "type": "root", "nodes": [{
+        "id": 2, "type": "output", "name": "__i3", "nodes": [{
+            "id": 30, "type": "workspace", "name": "__i3_scratch", "nodes": [
+                {"id": 31, "pid": 7001, "app_id": "firefox", "name": "Mozilla Firefox",
+                 "focused": False, "fullscreen_mode": 0, "nodes": [], "floating_nodes": []},
+            ], "floating_nodes": []}]}]}
+    monkeypatch.setattr(client, "_request", lambda t, p="": scratch)
+    assert client.windows()[0]["minimized"] is True
+
+
+def test_fullscreen_is_a_real_verb(client, sway):
+    client.set_fullscreen("13", True)
+    client.set_fullscreen("13", False)
+    client.set_fullscreen("13")
+    assert sway.commands == ["[con_id=13] fullscreen enable",
+                            "[con_id=13] fullscreen disable",
+                            "[con_id=13] fullscreen toggle"]
+
+
+def test_raising_the_shell_floats_it_rather_than_fullscreening_it(client, sway, monkeypatch):
+    """Focus alone cannot help: sway paints floating windows above tiled ones and
+    the shell is the tiled base layer, so Ctrl+Space would summon a prompt bar
+    nobody can see. Fullscreen would work too — but Chromium reads it as the PAGE
+    going full screen and flashes "press and hold Esc" every single time."""
+    monkeypatch.setattr(client, "find_shell", lambda port: "11")
+    assert client.raise_shell(True) is True
+    assert sway.commands == ["[con_id=11] floating enable, "
+                            "resize set width 3840 px height 2160 px, "
+                            "move absolute position 0 0, focus"], (
+        "must be ONE chained command — sent separately, the client acks its "
+        "remembered floating size before the resize lands")
+    assert not any("fullscreen" in c for c in sway.commands)
+    sway.commands.clear()
+    client.raise_shell(False)
+    assert sway.commands == ["[con_id=11] floating disable, border none"]
+
+
+def test_show_desktop_hides_every_native_window(client, sway, monkeypatch):
+    """The escape hatch: without it, one native window covering the screen with a
+    broken minimise leaves the user with nowhere to go."""
+    monkeypatch.setattr(client, "find_shell", lambda port: "11")
+    n = client.show_desktop()
+    assert n == 3                                     # firefox, pavucontrol, Gimp
+    assert sway.commands[:3] == ["[con_id=13] move scratchpad",
+                                 "[con_id=14] move scratchpad",
+                                 "[con_id=21] move scratchpad"]
+    assert sway.commands[-1] == "[con_id=11] focus"
+
+
+def test_maximize_fills_the_desk_but_spares_the_menu_bar(client, sway):
+    """Maximize and full screen are different things and people expect both: a
+    maximized window leaves the menu bar reachable."""
+    client.maximize("13")
+    assert sway.commands == ["[con_id=13] floating enable",
+                            "[con_id=13] resize set width 3840 px height 2126 px",   # 2160 - 34
+                            "[con_id=13] move absolute position 0 34"]
+
+
+def test_work_area_comes_from_the_real_output(client):
+    x, y, w, h = client.work_area(top=34)
+    assert (x, y, w, h) == (0, 34, 3840, 2126)
+
+
+def test_a_desktop_is_a_real_workspace_and_the_shell_follows(client, sway, monkeypatch):
+    """AgentOS desktops used to be a page-level idea while native windows lived on
+    sway workspaces — which is exactly why every external app showed up on every
+    desktop."""
+    monkeypatch.setattr(client, "find_shell", lambda port: "11")
+    client.goto_desktop(3)
+    assert sway.commands == ["[con_id=11] move container to workspace 3",
+                            "workspace 3",
+                            "[con_id=11] floating disable"]
+
+
+def test_anchoring_never_undoes_a_deliberate_summon(client, sway, monkeypatch):
+    """anchor_shell runs on EVERY window event and does `floating disable`. It
+    used to drop the desktop back behind the apps the instant Ctrl+Space raised
+    it, so the prompt bar was summoned and then immediately hidden again."""
+    monkeypatch.setattr(client, "find_shell", lambda port: "11")
+    client.raise_shell(True)
+    sway.commands.clear()
+    assert client.anchor_shell(8321) is True
+    assert sway.commands == [], "anchoring must be a no-op while the shell is summoned"
+    client.raise_shell(False)
+    sway.commands.clear()
+    client.anchor_shell(8321)
+    assert any("floating disable" in c for c in sway.commands)

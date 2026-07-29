@@ -21,6 +21,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "BIN_DIR", tmp_path / "bin")
     monkeypatch.setattr(session, "SESSION_SCRIPT", tmp_path / "bin" / "agentos-session-wayland")
     monkeypatch.setattr(session, "SHELL_SCRIPT", tmp_path / "bin" / "agentos-shell")
+    monkeypatch.setattr(session, "IDLE_SCRIPT", tmp_path / "bin" / "agentos-idle")
     monkeypatch.setattr(session, "X11_SESSION_SCRIPT", tmp_path / "bin" / "agentos-session")
     monkeypatch.setattr(session, "SWAY_CONF", tmp_path / "cfg" / "sway.conf")
     monkeypatch.setattr(session, "SWAY_DROPIN_DIR", tmp_path / "cfg" / "sway.d")
@@ -67,7 +68,9 @@ def test_sway_conf_is_an_invisible_engine_with_an_escape_hatch(home):
     session.stage(wayland=True)
     conf = session.SWAY_CONF.read_text()
     assert "xwayland enable" in conf
-    assert "bar" not in conf.split("include")[0].lower().replace("bars", "")  # no bar block
+    import re as _re
+    body = conf.split("include")[0]
+    assert not _re.search(r"^\s*bar\s*\{", body, _re.M), "sway must draw no bar of its own"
     assert "Ctrl+Alt+BackSpace" in conf                  # the one keybinding
     assert "swaymsg exit" in conf                        # renderer death ends the session
     assert str(session.SWAY_DROPIN_DIR) in conf          # user overrides survive regeneration
@@ -211,7 +214,7 @@ def test_display_change_is_both_applied_and_persisted(home, monkeypatch):
 
     monkeypatch.setattr(host, "configure_output", lambda name, **kw: (True, "ok"))
     monkeypatch.setattr(server.cfgmod, "save_config", lambda cfg: None)
-    server.state["cfg"] = {}
+    monkeypatch.setitem(server.state, "cfg", {})
     r = asyncio.run(server.api_wm_output_configure(
         {"name": "HDMI-A-1", "scale": 1.5, "position": {"x": 1920, "y": 0}}))
     assert r["ok"] is True
@@ -227,7 +230,7 @@ def test_a_display_the_compositor_rejects_is_not_persisted(home, monkeypatch):
 
     monkeypatch.setattr(host, "configure_output", lambda name, **kw: (False, "no such mode"))
     monkeypatch.setattr(server.cfgmod, "save_config", lambda cfg: None)
-    server.state["cfg"] = {}
+    monkeypatch.setitem(server.state, "cfg", {})
     r = asyncio.run(server.api_wm_output_configure({"name": "HDMI-A-1", "mode": "9999x9999"}))
     assert r["ok"] is False
     assert not (session.SWAY_DROPIN_DIR / "outputs.conf").exists()
@@ -267,3 +270,72 @@ def test_the_session_provides_what_a_wayland_desktop_is_expected_to(home):
     assert "udiskie" in conf
     assert "XF86AudioPlay exec playerctl play-pause" in conf
     assert "inhibit_idle fullscreen" in conf
+
+
+def test_the_session_identifies_itself_as_something_other_software_knows(home):
+    """XDG_CURRENT_DESKTOP is a list, and it is how portals pick a backend and
+    how secret storage decides it is on a real desktop. "AgentOS" alone means
+    nothing to them — which is what produced "OS keyring couldn't be identified
+    for your current desktop environment" and secrets stored in plain text."""
+    script = session.session_script_text()
+    assert "XDG_CURRENT_DESKTOP=AgentOS:sway:wlroots:GNOME" in script
+    assert "XDG_SESSION_TYPE=wayland" in script
+
+
+def test_the_secret_service_starts_before_the_compositor(home):
+    """Started from inside sway it would only reach D-Bus-activated services;
+    apps launched by the session would still find no keyring."""
+    script = session.session_script_text()
+    keyring = script.index("gnome-keyring-daemon")
+    assert keyring < script.index("exec sway")
+    assert "export SSH_AUTH_SOCK GNOME_KEYRING_CONTROL" in script
+
+
+def test_native_windows_can_be_switched_and_put_away(home):
+    conf = session.sway_config_text(9111)
+    assert "Mod1+Tab" in conf and "Mod4+Tab" in conf
+    assert "/api/windows/showdesktop" in conf
+    assert "/api/windows/minimize" in conf
+    # Ctrl+Tab belongs to the focused app (browser tabs), not to the window manager
+    assert "bindsym Ctrl+Tab" not in conf
+
+
+def test_coming_back_from_suspend_or_lock_is_handled(home):
+    """Without after-resume and unlock hooks the outputs stayed powered off and
+    the shell kept no focus — a black screen with no way back to the desktop."""
+    idle = session.idle_script_text(9111, wallpaper="/w.png")
+    assert "after-resume" in idle and "unlock '" in idle
+    assert idle.count("/api/shell/wake") == 2
+    assert idle.count("output * power on") == 3      # idle-resume, after-resume, unlock
+    # the sway config must RESTART it, or a reload silently keeps the old daemon
+    conf = session.sway_config_text(9111)
+    assert "exec_always" in conf and str(session.IDLE_SCRIPT) in conf
+    assert "pkill" in idle and idle.index("pkill") < idle.index("exec swayidle")
+
+
+def test_the_idle_script_survives_an_apostrophe_in_the_wallpaper_path(home):
+    """The reason swayidle lives in its own file: the lock command is already
+    full of quotes, and nesting it inside sh -c '…' breaks on the first one."""
+    import subprocess
+    path = session.write_idle_script(9111, wallpaper="/home/a/Bob's photos/w.png")
+    r = subprocess.run(["sh", "-n", str(path)], capture_output=True, text=True)
+    assert r.returncode == 0, f"generated idle script is not valid shell: {r.stderr}"
+
+
+def test_alt_tab_is_a_mode_so_the_switcher_can_be_seen(home):
+    """A single keypress can switch windows but never show anything: the shell
+    sits behind the native windows. Holding Alt has to be a sway mode."""
+    conf = session.sway_config_text(9111)
+    assert 'mode "switcher"' in conf
+    assert '"action":"open"' in conf and '"action":"step"' in conf
+    assert '--release Alt_L mode "default"' in conf
+    assert '"action":"commit"' in conf and '"action":"cancel"' in conf
+
+
+def test_native_windows_have_title_bars_that_actually_do_something(home):
+    """An app's own minimize button can never work (sway does not implement
+    xdg_toplevel.set_minimized), but its title bar is ours to bind."""
+    conf = session.sway_config_text(9111)
+    assert "default_border normal" in conf and "default_floating_border normal" in conf
+    assert "--border --release button3 move scratchpad" in conf   # minimize
+    assert "--border --release button2 kill" in conf              # close

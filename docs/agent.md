@@ -21,6 +21,32 @@ The agent also chooses the right *shape* for a request:
 
 ---
 
+## Talking while it works
+
+You never have to wait for a turn to finish before typing the next thing. Send it and the message is
+**queued** — it appears in the *Up next* strip above the composer, this chat's visible to-do list.
+(With the composer empty, the same button is still the stop button.)
+
+Between steps — never in the middle of a tool call — the running turn decides what each queued
+message is:
+
+- **It changes what's happening now** ("actually make it a bullet list", "put it in Documents
+  instead") → it is folded into the run in flight. A `↩ took in: …` line marks the moment in the
+  transcript, and the rest of the turn accounts for it.
+- **It's a separate ask** ("also tell me a joke afterwards") → it waits, and starts as its own turn
+  the moment this one ends. Queued messages run in the order you typed them.
+
+The decision is made by a small model call that starts the instant you hit send, so it runs
+alongside the reply already streaming rather than holding it up. It uses `memory.model` if you have
+a small model configured for that, and falls back to the message's wording — defaulting to *wait* —
+if no model answers in time. Set `steer_queued_messages: false` in the config to skip the judgement
+entirely and have every queued message simply wait its turn.
+
+Stopping a turn (`◼`, `Ctrl+.`) drops its backlog too — stop means stop. You can also drop a single
+queued message with the `✕` beside it.
+
+---
+
 ## The tool set
 
 Everything the agent can do is a tool. The built-in tools:

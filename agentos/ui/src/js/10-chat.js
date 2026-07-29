@@ -1,4 +1,6 @@
 /* ================= chat app ================= */
+const PLACEHOLDER_IDLE='Ask, tell it what to do, paste an image — or @subagent to address a team member directly';
+const PLACEHOLDER_BUSY='Say what comes next — it decides whether that changes the run in flight or waits its turn';
 function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
@@ -18,8 +20,9 @@ function renderChat(body){
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
+        <div id="queue"></div>
         <div id="combox">
-          <textarea id="input" rows="1" placeholder="Ask, tell it what to do, paste an image — or @subagent to address a team member directly"></textarea>
+          <textarea id="input" rows="1" placeholder="${PLACEHOLDER_IDLE}"></textarea>
           <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
@@ -29,7 +32,7 @@ function renderChat(body){
   feed=$('#feed');chatEl=$('#chat');input=$('#input');sendBtn=$('#send');
   sendBtn.onclick=send;
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
-  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';if(!running)sendBtn.disabled=!input.value.trim()&&!PENDING_IMGS.length});
+  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend()});
   input.addEventListener('paste',e=>{
     const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
     if(!items.length)return;
@@ -52,14 +55,47 @@ function renderChat(body){
   loadModels();loadConfig();loadConvs();
   if(currentConv)openConv(currentConv);else showWelcome();
   setRunning(RUNNING.has(currentConv));
+  renderQueue();
 }
 function setRunning(r){running=r;
   $('#spin').classList.toggle('on',r);
   if(r)jarvisOn();else jarvisOff();
   if(!sendBtn)return;
-  sendBtn.classList.toggle('stop',r);
-  sendBtn.textContent=r?'◼':'➤';
-  sendBtn.disabled=r?false:(!input.value.trim()&&!PENDING_IMGS.length);
+  input.placeholder=r?PLACEHOLDER_BUSY:PLACEHOLDER_IDLE;
+  syncSend();
+}
+/* One button, two jobs while a turn runs: with something typed it QUEUES that
+   message (the running turn gets to decide whether it changes what it's doing);
+   empty, it is the stop button it has always been. */
+function syncSend(){
+  if(!sendBtn||!input)return;
+  const has=!!input.value.trim()||PENDING_IMGS.length>0;
+  const stop=running&&!has;
+  sendBtn.classList.toggle('stop',stop);
+  sendBtn.textContent=stop?'◼':'➤';
+  sendBtn.title=stop?'Stop the agent':(running?'Queue this — it runs next, or gets folded into what\'s running':'Send');
+  sendBtn.disabled=!(has||stop);
+}
+/* the queue strip above the composer: this conversation's visible to-do list */
+function renderQueue(){
+  const box=$('#queue'); if(!box)return;
+  const q=(currentConv&&QUEUES[currentConv])||[];
+  box.classList.toggle('on',q.length>0);
+  box.innerHTML='';
+  if(!q.length)return;
+  const h=document.createElement('div');h.className='qhead';
+  h.textContent='Up next · '+q.length;box.appendChild(h);
+  q.forEach(i=>{
+    const el=document.createElement('div');el.className='qitem'+(i.status==='deferred'?' deferred':'');
+    el.innerHTML='<span class="qt"></span><span class="qs"></span><button class="qx" title="remove">✕</button>';
+    el.querySelector('.qt').textContent=i.text||'(image)';
+    el.querySelector('.qs').textContent=i.status==='deferred'?'after this turn':'queued';
+    if(i.reason)el.title=i.reason;
+    el.querySelector('.qx').onclick=()=>{
+      if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'queue_remove',conversation_id:currentConv,id:i.id}));
+    };
+    box.appendChild(el);
+  });
 }
 let PENDING_IMGS=[];
 function bubbleImgs(el,urls){
@@ -85,25 +121,35 @@ function addPastedImage(file){
 }
 function renderAttach(){
   let a=$('#attach');
-  if(!PENDING_IMGS.length){a?.remove();if(sendBtn&&!running)sendBtn.disabled=!input.value.trim();return}
+  if(!PENDING_IMGS.length){a?.remove();syncSend();return}
   if(!a){a=document.createElement('div');a.id='attach';const cb=$('#combox');cb.parentNode.insertBefore(a,cb)}
   a.innerHTML=PENDING_IMGS.map((u,i)=>`<div class="att"><img src="${u}"><button onclick="rmAttach(${i})" title="remove">×</button></div>`).join('');
-  if(sendBtn&&!running)sendBtn.disabled=false;
+  syncSend();
 }
 function rmAttach(i){PENDING_IMGS.splice(i,1);renderAttach()}
-function send(){
-  if(running){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
-  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
-  if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
+function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
   m.innerHTML='<div class="who">you</div><div class="bubble"></div>';
   m.querySelector('.bubble').textContent=text;
   bubbleImgs(m.querySelector('.bubble'),imgs);
   feed.appendChild(m);
-  showWorking();scrollDown();
+  return m;
+}
+function send(){
+  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
+  // nothing typed while a turn runs → the button is the stop button
+  if(running&&!text&&!imgs.length){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
+  if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
+  const wasRunning=running;
+  // A turn is already running: the server queues this instead of refusing it. The
+  // agent triages it at its next step boundary — folded into the live run, or kept
+  // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
+  if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:$('#modelsel').value}));
-  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();setRunning(true);
+  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
+  if(wasRunning){syncSend();scrollDown();return}
+  showWorking();scrollDown();setRunning(true);
 }
 let WORK_TICK=null, WORK_T0=0, WORK_MSG='';
 function showWorking(){
@@ -177,6 +223,9 @@ async function openConv(cid){
           card.querySelector('.out').textContent=s.output||'';
           card.querySelector('.head').onclick=()=>card.classList.toggle('open');
           m.appendChild(card);}
+        else if(s.type==='steer'){   // something you said mid-run, taken into it
+          const d=document.createElement('div');d.className='steer';
+          d.textContent='took in: '+(s.text||'');d.title=s.reason||'';m.appendChild(d);}
       });
       const b=document.createElement('div');b.className='body';b.innerHTML=md(msg.content||'');m.appendChild(b);}
     feed.appendChild(m);
@@ -196,12 +245,14 @@ async function openConv(cid){
     showWorking();
   }
   setRunning(RUNNING.has(cid));
+  renderQueue();
   loadConvs();scrollDown();
 }
 function newChat(){
   currentConv=null;curBody=null;curThink=null;curText='';
   if(feed){feed.innerHTML='';showWelcome()}
   setRunning(false);
+  renderQueue();
   loadConvs();
 }
 async function clearSession(){

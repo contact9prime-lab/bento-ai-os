@@ -132,6 +132,23 @@
 #attach .att button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-sm);line-height:1;cursor:pointer}
 .bubble .bimgs{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .bubble .bimgs img{max-width:220px;max-height:160px;border-radius:var(--r-md);display:block}
+/* what you said while it was working, taken into the run in flight */
+.steer{color:var(--acc);background:rgba(94,234,212,.06);border-left:2px solid var(--acc);
+  border-radius:0 var(--r-md) var(--r-md) 0;padding:7px 12px;margin:0 0 12px;
+  font-size:var(--fs-sm);white-space:pre-wrap;overflow-wrap:anywhere}
+.steer::before{content:'↩ ';opacity:.7}
+/* the queue strip: this chat's to-do list while a turn is running */
+#queue{display:none;max-width:780px;margin:0 auto 8px;flex-direction:column;gap:4px}
+#queue.on{display:flex}
+#queue .qhead{font-size:var(--fs-xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.08em;padding:0 2px 2px}
+#queue .qitem{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:6px 6px 6px 11px;font-size:var(--fs-sm)}
+#queue .qitem.deferred{border-style:dashed}
+#queue .qt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+#queue .qs{flex:none;font-size:var(--fs-xs);color:var(--dim2);opacity:.8}
+#queue .qx{flex:none;width:22px;height:22px;border-radius:var(--r-md);color:var(--dim2);
+  display:flex;align-items:center;justify-content:center;font-size:var(--fs-sm)}
+#queue .qx:hover{background:var(--bg4);color:var(--txt)}
 #combox{max-width:780px;margin:0 auto;position:relative;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-lg);transition:border-color var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out)}
 #combox:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px rgba(94,234,212,.08)}
 #input{width:100%;background:none;border:none;resize:none;padding:12px 88px 12px 14px;max-height:160px;line-height:1.5}

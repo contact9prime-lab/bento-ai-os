@@ -65,3 +65,16 @@
 #mbmenus button.on{background:var(--acc);color:#fff;opacity:1}
 #ctxmenu .mk{margin-left:auto;padding-left:18px;color:var(--dim2);font-size:var(--fs-2xs);letter-spacing:.02em}
 @media (max-width:900px){#mbmenus{display:none!important}}
+
+/* ---- window controls for the native tile under the pointer ----
+   Fixed-position and mounted on the desktop, because #tbnative scrolls and its
+   overflow was clipping these into invisibility. */
+#natctl{position:fixed;z-index:9500;display:none;gap:3px;padding:4px;border-radius:999px;
+  background:var(--glass-tint);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--hairline);box-shadow:var(--el-4),var(--glass-edge)}
+#natctl.on{display:flex}
+#natctl button{width:24px;height:24px;border-radius:50%;font-size:12px;line-height:1;
+  color:var(--txt);background:rgba(255,255,255,.09);transition:background var(--d-fast) var(--ease-out)}
+#natctl button:hover{background:var(--acc);color:#04211c}
+#natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
+.tbnat.mini{opacity:.45}

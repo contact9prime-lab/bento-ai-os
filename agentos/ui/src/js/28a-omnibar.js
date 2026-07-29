@@ -38,7 +38,11 @@ function omniPop(on){
    there so you can just retype, and show the list */
 function omniSummon(on){
   const bar=$('#omnibar');if(!bar)return;
-  bar.classList.toggle('summoned',on!==false);
+  const want=on!==false;
+  bar.classList.toggle('summoned',want);
+  // In session mode the whole shell is behind the native windows, so a z-index
+  // inside the page cannot help: the desktop itself has to come forward.
+  if(typeof raiseShell==='function')raiseShell(want);
 }
 function omniFocus(){
   const inp=$('#omni-in');if(!inp)return;

@@ -91,6 +91,8 @@ async def startup():
                  pending_installs={},   # install_id -> staged app package awaiting consent
                  turns={},              # conversation_id -> {"agent","task","model"} — GLOBAL:
                                         # turns survive a page reload/reconnect; events broadcast
+                 queues={},             # conversation_id -> [queued user message] — what the
+                                        # user typed while a turn was running (see _queue_add)
                  build={"agent": None, "task": None, "cancel_requested": False,
                         "timed_out": False})  # App Studio build slot (global, one at a time)
     asyncio.create_task(scheduler.run_forever())
@@ -449,8 +451,86 @@ async def api_shell_action(body: dict):
     action = str((body or {}).get("action") or "")[:40]
     if not action:
         return JSONResponse({"error": "action required"}, status_code=400)
+    # Most shortcuts are only useful if you can SEE the desktop. In session mode
+    # native windows float above the shell, so summoning the prompt bar behind a
+    # browser would look like nothing happened — bring the shell forward first.
+    if action in SHELL_ACTIONS_NEEDING_FOCUS:
+        from . import host
+        from . import runmode as _rm
+        if _rm.mode() == "de":
+            try:
+                host.raise_shell(True)
+            except Exception:
+                pass
     ok, data = await shell_command("shell_action", {"target": action})
     return {"ok": ok, "result": data}
+
+
+# Actions that are meaningless unless the AgentOS desktop is in front. Stopping
+# the agent is deliberately NOT here: it must never steal focus mid-task.
+SHELL_ACTIONS_NEEDING_FOCUS = frozenset({
+    "omnibar.focus", "omnibar.focus2", "palette", "expose", "expose.f3",
+    "windows.arrange", "chat.open", "chat.new", "settings", "help", "deck",
+    "copilot", "terminal", "voice", "desktop.prev", "desktop.next",
+    "desktop.move.prev", "desktop.move.next", "switcher",
+})
+
+
+@app.post("/api/wm/desktop")
+async def api_wm_desktop(body: dict):
+    """Switch desktops for real: the sway workspace moves too, and the shell
+    comes along. Without this, AgentOS desktops were a page-level idea and every
+    external window appeared on all of them."""
+    from . import host
+    ok, msg = host.goto_desktop(int(body.get("desktop", 1)))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/shell/wake")
+async def api_shell_wake(body: dict | None = None):
+    """The screen is yours again — after a resume from suspend, or an unlock.
+
+    Both used to leave the machine unusable: the outputs stayed powered off and
+    the shell kept neither focus nor its place as the base layer, so there was no
+    way back to the desktop. Powering the outputs on is swayidle's job (it runs
+    before calling this); ours is to put the desktop back together.
+    """
+    from . import host
+    from . import runmode as _rm
+    done = []
+    if _rm.mode() == "de":
+        from . import compositor as comp
+        try:
+            c = comp.Compositor()
+            if c.anchor_shell(comp.shell_port()):
+                done.append("anchored")
+            c.focus_shell()
+            done.append("focused")
+        except Exception as e:
+            done.append(f"compositor: {e}")
+    # A page that was hidden for hours may hold a dead websocket and a stale
+    # clock; telling it to repaint is cheaper than making the user find Ctrl+R.
+    await state["broadcast"]({"type": "wake"})
+    return {"ok": True, "did": done}
+
+
+@app.post("/api/shell/reload")
+async def api_shell_reload(body: dict | None = None):
+    """Reload the desktop itself. The shell is a page: a new build is on disk but
+    not on screen until it reloads, and asking the user to find Ctrl+R on their
+    own desktop is not a deploy step."""
+    await state["broadcast"]({"type": "reload",
+                              "delay": int((body or {}).get("delay", 400))})
+    return {"ok": True}
+
+
+@app.post("/api/shell/raise")
+async def api_shell_raise(body: dict | None = None):
+    """Put the AgentOS desktop in front of (or back behind) the native windows."""
+    from . import host
+    on = True if body is None else bool(body.get("on", True))
+    ok, msg = host.raise_shell(on)
+    return {"ok": ok, "message": msg}
 
 
 @app.post("/api/shortcuts/apply")
@@ -654,6 +734,114 @@ async def api_windows_floating(body: dict):
     from . import host
     ok, msg = host.set_window_floating(body.get("id", ""), bool(body.get("floating", True)))
     return {"ok": ok, "message": msg}
+
+
+def _window_id(body: dict) -> str:
+    """Accept a con_id or the literal "focused".
+
+    The compositor keybindings cannot know an id, so they say "focused" and the
+    server resolves it — which is also what a person means by "minimise this"."""
+    wid = str((body or {}).get("id", "") or "")
+    if wid != "focused":
+        return wid
+    from . import host
+    for w in (host.list_windows().get("windows") or []):
+        if w.get("focused") and not w.get("minimized"):
+            return str(w.get("id") or "")
+    return ""
+
+
+@app.post("/api/windows/minimize")
+async def api_windows_minimize(body: dict):
+    """Minimise a native window. sway has no minimise of its own — the window is
+    parked in the scratchpad, which is exactly "hidden but alive", and stays in
+    the taskbar so it can be brought back."""
+    from . import host
+    ok, msg = host.minimize_window(_window_id(body))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/restore")
+async def api_windows_restore(body: dict):
+    from . import host
+    ok, msg = host.restore_window(_window_id(body))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/maximize")
+async def api_windows_maximize(body: dict):
+    """Fill the desk but leave the menu bar reachable — which is what people mean
+    by maximize, and a different thing from full screen."""
+    from . import host
+    ok, msg = host.maximize_window(_window_id(body), bool(body.get("maximize", True)))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/fullscreen")
+async def api_windows_fullscreen(body: dict):
+    from . import host
+    on = body.get("fullscreen")
+    ok, msg = host.fullscreen_window(_window_id(body),
+                                     None if on is None else bool(on))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/showdesktop")
+async def api_windows_show_desktop(body: dict | None = None):
+    """The escape hatch: hide every native window and put the keyboard back on
+    the AgentOS desktop. Without it, a native window covering the screen with no
+    working minimise leaves the user stuck."""
+    from . import host
+    ok, msg = host.show_desktop()
+    return {"ok": ok, "message": msg}
+
+
+SWITCHER: dict = {"open": False, "ring": [], "idx": 0}
+
+
+@app.post("/api/windows/switcher")
+async def api_windows_switcher(body: dict):
+    """The Alt-Tab overlay, driven by a sway binding mode.
+
+    A single keypress could switch windows but never SHOW anything — the shell is
+    behind the native windows, so a HUD it draws is invisible. Holding Alt puts
+    sway in a mode: open raises the desktop so the switcher can be seen, step
+    moves the selection, and releasing Alt commits and drops the desktop back.
+    """
+    from . import host
+    action = str((body or {}).get("action") or "")
+    step = -1 if (body or {}).get("direction") == "prev" else 1
+
+    if action == "open":
+        wins = (host.list_windows().get("windows") or [])
+        ring = [{"id": "", "shell": True, "title": "Desktop", "app": "agentos"}]
+        ring += [w for w in wins if not w.get("minimized")]
+        # start on the entry after wherever the user is, like every other Alt-Tab
+        cur = next((i for i, w in enumerate(ring) if w.get("focused")), 0)
+        SWITCHER.update({"open": True, "ring": ring,
+                         "idx": (cur + step) % len(ring) if len(ring) > 1 else 0})
+        host.raise_shell(True)
+    elif action == "step" and SWITCHER["open"]:
+        n = len(SWITCHER["ring"]) or 1
+        SWITCHER["idx"] = (SWITCHER["idx"] + step) % n
+    elif action in ("commit", "cancel"):
+        ring, idx = SWITCHER["ring"], SWITCHER["idx"]
+        SWITCHER.update({"open": False, "ring": [], "idx": 0})
+        await state["broadcast"]({"type": "switcher", "open": False})
+        if action == "commit" and ring:
+            target = ring[idx]
+            if target.get("shell"):
+                host.raise_shell(True)          # stay on the desktop
+            else:
+                host.raise_shell(False)         # get out of the app's way
+                host.focus_window(str(target.get("id") or ""))
+        else:
+            host.raise_shell(False)
+        return {"ok": True, "closed": True}
+
+    await state["broadcast"]({"type": "switcher", "open": SWITCHER["open"],
+                              "ring": SWITCHER["ring"], "idx": SWITCHER["idx"]})
+    return {"ok": True, "idx": SWITCHER["idx"], "count": len(SWITCHER["ring"])}
 
 
 @app.post("/api/windows/cycle")
@@ -1313,7 +1501,8 @@ async def api_get_config():
 @app.put("/api/config")
 async def api_put_config(patch: dict):
     cfg = state["cfg"]
-    for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name", "policies", "sandbox"):
+    for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name",
+                "policies", "sandbox", "steer_queued_messages"):
         if key in patch:
             cfg[key] = patch[key]
     if isinstance(patch.get("build"), dict) and "model" in patch["build"]:
@@ -2997,6 +3186,10 @@ WS_EVENTS = {
         "text_delta {text}", "thinking_delta {text}", "tool_start {call_id,name,args}",
         "tool_end {call_id,ok,output}", "approval_request {id,name,args,reason,offer?}",
         "turn_start / turn_end {conversation_id}", "error {message}",
+        "queue_update {conversation_id,queue[],added?/decided?/started?/removed?/cleared?} "
+        "(messages typed while a turn runs)",
+        "steer {id,mode:'now'|'later',text,reason} (a queued message was folded into "
+        "the live turn, or left for the next one)",
         "apps / themes / widgets / wallpaper / models / files / config / grants  (refresh hints)",
         "theme_apply {theme}", "model_pull {name,status,done}", "fabric_event / fabric_defs",
         "telegram_in / telegram_out {conversation_id,text}", "knowledge_update",
@@ -3008,8 +3201,10 @@ WS_EVENTS = {
         "apply_theme/list_open_apps)",
     ],
     "inbound (client → server)": [
-        "chat {text, conversation_id?, model?}", "build {prompt, app_id?, model?}",
+        "chat {text, conversation_id?, model?} (queued when that chat is already busy)",
+        "build {prompt, app_id?, model?}",
         "approval {id, approved, remember?}", "abort {}",
+        "queue_remove {conversation_id, id} (drop a queued message)",
     ],
 }
 
@@ -4502,6 +4697,99 @@ async def _force_cancel(task: asyncio.Task, grace: float = 8.0):
         task.cancel()
 
 
+# ---------------------------------------------------------------------------
+# Mid-turn message queue
+#
+# One turn at a time per conversation stays the rule, but typing again while one is
+# running is no longer an error: the message is QUEUED. Two things then happen to it —
+#   · the running agent triages it at its next step boundary and either folds it into
+#     the live run ("now") or leaves it queued ("later"); see Agent._drain_inbox
+#   · whatever is still queued when the turn ends starts as the next turn, in order
+# The queue is this conversation's visible to-do list until then. It lives in memory
+# beside state["turns"], for the same reason: both die with the process, together.
+# ---------------------------------------------------------------------------
+
+_QUEUE_MAX = 8   # per conversation — a backlog longer than this is a runaway, not a plan
+
+
+def _queue_add(cid: str, data: dict) -> dict:
+    """Park a message sent into a busy conversation. Nothing is written to the store
+    yet: a deferred item is persisted by the turn it eventually starts, a folded-in
+    one by the steer hook — never both."""
+    item = {"id": uuid.uuid4().hex[:12],
+            "text": (data.get("text") or "").strip(),
+            "images": _chat_images(data),
+            "model": data.get("model") or "",
+            "surface": data.get("surface") or "gui",
+            "origin": str(data.get("origin") or "user")[:40],
+            "context": str(data.get("context") or "")[:4096],
+            "status": "queued", "reason": "", "at": time.time()}
+    state["queues"].setdefault(cid, []).append(item)
+    return item
+
+
+def _queue_public(cid: str) -> list[dict]:
+    """The queue as the UI sees it — text and decision only, never image payloads."""
+    return [{"id": i["id"], "text": i["text"], "images": len(i["images"]),
+             "status": i["status"], "reason": i["reason"], "at": i["at"]}
+            for i in state["queues"].get(cid) or []]
+
+
+async def _queue_broadcast(cid: str, **extra):
+    await state["broadcast"]({"type": "queue_update", "conversation_id": cid,
+                              "queue": _queue_public(cid), **extra})
+
+
+def _queue_drop(cid: str, qid: str = "") -> int:
+    """Remove one queued item (or the whole queue). Returns how many went."""
+    q = state["queues"].get(cid) or []
+    n = len(q)
+    keep = [i for i in q if qid and i["id"] != qid]
+    if keep:
+        state["queues"][cid] = keep
+    else:
+        state["queues"].pop(cid, None)
+    return n - len(keep)
+
+
+def _steer_hook(cid: str):
+    """Given to the running agent: it reports each triage decision here, and the
+    queue — the thing the user can see and edit — is updated to match."""
+    async def hook(item: dict, mode: str, reason: str):
+        item["reason"] = reason
+        if mode == "now":
+            # folded into the live turn: it is a real user message in this
+            # conversation now, so persist it here (the turn it would have
+            # started, and would have persisted it, never happens)
+            meta = {"steered": True}
+            if item["images"]:
+                meta["images"] = item["images"]
+            with contextlib.suppress(Exception):
+                state["store"].add_message(cid, "user", item["text"], meta)
+            _queue_drop(cid, item["id"])
+        else:
+            item["status"] = "deferred"
+        await _queue_broadcast(cid, decided={"id": item["id"], "mode": mode,
+                                             "reason": reason})
+    return hook
+
+
+async def _queue_flush(cid: str):
+    """A turn just ended: start the next queued message as its own turn."""
+    q = state["queues"].get(cid) or []
+    if not q or cid in state["turns"]:
+        return
+    item = q.pop(0)
+    if not q:
+        state["queues"].pop(cid, None)
+    data = {"text": item["text"], "images": item["images"], "model": item["model"],
+            "surface": item["surface"], "origin": item["origin"],
+            "context": item["context"], "conversation_id": cid}
+    state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
+    state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
+    await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
+
+
 async def run_chat(cid: str, data: dict):
     """One chat turn, running as its own task — several conversations may run at
     once. Two guarantees on every exit path: the turn slot is released, and a
@@ -4579,6 +4867,11 @@ async def run_chat(cid: str, data: dict):
             extra = "".join(ch for ch in extra if ch == "\n" or ch == "\t" or ord(ch) >= 32)
             agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid,
                           surface=surface, extra_system=extra)
+            # anything the user queued while this turn was being set up (the slot is
+            # claimed before the task starts) is handed over here, once
+            for queued in state["queues"].get(cid) or []:
+                agent.offer(queued)
+            agent.on_steer_decision = _steer_hook(cid)
             turns[cid] = {"agent": agent, "task": asyncio.current_task(), "model": model}
             knowledge.turn_started()
             started = True
@@ -4617,6 +4910,10 @@ async def run_chat(cid: str, data: dict):
         turns.pop(cid, None)
         with contextlib.suppress(Exception):
             await evsend({"type": "turn_end"})
+        # the slot is free: whatever the user queued and the agent left for later
+        # becomes the next turn, in the order it was typed
+        with contextlib.suppress(Exception):
+            await _queue_flush(cid)
 
 def _validate_app_html(html: str) -> list[str]:
     """Structural completeness checks — catches the truncated / half-generated apps a
@@ -5233,6 +5530,7 @@ async def ws_endpoint(ws: WebSocket):
     # strands a spinner — the UI re-attaches (or clears) by conversation_id
     await send({"type": "state_sync",
                 "running": list(turns.keys()),
+                "queues": {c: _queue_public(c) for c in state["queues"]},
                 "build_running": bool(build.get("task") and not build["task"].done())})
 
     def _stop(tinfo: dict):
@@ -5255,9 +5553,19 @@ async def ws_endpoint(ws: WebSocket):
                     continue
                 cid = data.get("conversation_id")
                 if cid and cid in turns:
-                    await send({"type": "error", "conversation_id": cid,
-                                "message": "This conversation already has a turn running — "
-                                           "stop it, or continue in another chat."})
+                    # busy: queue it instead of dropping it. The running agent decides
+                    # at its next step boundary whether this belongs to what it is
+                    # doing now; anything left over runs as the next turn.
+                    if len(state["queues"].get(cid) or []) >= _QUEUE_MAX:
+                        await send({"type": "error", "conversation_id": cid,
+                                    "message": f"{_QUEUE_MAX} messages are already queued in "
+                                               "this chat — let it catch up first."})
+                        continue
+                    item = _queue_add(cid, data)
+                    ag = turns[cid].get("agent")
+                    if ag is not None:
+                        ag.offer(item)   # triage starts now, not at the boundary
+                    await _queue_broadcast(cid, added=item["id"])
                     continue
                 if not cid:
                     title = (data.get("title") or "").strip()[:60] or text[:60] or "(image)"
@@ -5287,13 +5595,35 @@ async def ws_endpoint(ws: WebSocket):
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
                                        remember=bool(data.get("remember")))
+            elif t == "queue_remove":
+                cid = data.get("conversation_id")
+                if cid and _queue_drop(cid, str(data.get("id") or "")):
+                    ag = (turns.get(cid) or {}).get("agent")
+                    if ag is not None:   # never triage a message the user took back
+                        for gone in [i for i in ag.inbox if i["id"] == data.get("id")]:
+                            ag.inbox.remove(gone)
+                            if (t := gone.pop("_triage", None)) is not None:
+                                t.cancel()
+                    await _queue_broadcast(cid, removed=data.get("id"))
             elif t == "abort":
                 cid = data.get("conversation_id")
                 if cid:  # stop one conversation's turn
+                    # stop means stop: the backlog goes with it, or the next queued
+                    # message would start the instant this turn dies
+                    if _queue_drop(cid):
+                        ag = (turns.get(cid) or {}).get("agent")
+                        if ag is not None:
+                            ag.clear_inbox()
+                        await _queue_broadcast(cid, cleared=True)
                     if cid in turns:
                         _stop(turns[cid])
                 else:    # legacy/global abort: stop every running turn + build
+                    for qcid in list(state["queues"]):
+                        _queue_drop(qcid)
+                        await _queue_broadcast(qcid, cleared=True)
                     for tinfo in list(turns.values()):
+                        if tinfo.get("agent") is not None:
+                            tinfo["agent"].clear_inbox()
                         _stop(tinfo)
                     build["cancel_requested"] = True
                     if build.get("agent"):

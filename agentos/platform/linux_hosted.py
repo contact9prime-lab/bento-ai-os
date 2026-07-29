@@ -42,6 +42,18 @@ SETTINGS_PANELS = {
 }
 
 
+def _clean_exec(cmd: str) -> str:
+    """A .desktop Exec= line with the field codes removed.
+
+    %f %F %u %U %i %c %k are placeholders the launcher is supposed to substitute;
+    run verbatim they become literal arguments and confuse the app. We launch
+    without documents, so dropping them is exactly right.
+    """
+    import re as _re
+    cmd = _re.sub(r"%[fFuUdDnNickvm]", "", cmd or "")
+    return " ".join(cmd.split())
+
+
 def _parse_desktop(path: Path) -> dict | None:
     try:
         text = path.read_text(errors="replace")
@@ -72,6 +84,14 @@ def _parse_desktop(path: Path) -> dict | None:
         "icon": entry.get("Icon", ""),
         "categories": [c for c in entry.get("Categories", "").split(";") if c],
         "terminal": entry.get("Terminal", "").lower() == "true",
+        # How a RUNNING window identifies itself. Toolkits disagree with the
+        # .desktop file name often enough that without this the taskbar shows a
+        # letter instead of the app's icon.
+        "wmclass": entry.get("StartupWMClass", ""),
+        # The command itself, so a launch does not have to pay for gtk-launch
+        # re-reading and re-parsing this same file in another process.
+        "exec": _clean_exec(entry.get("Exec", "")),
+        "dbus": entry.get("DBusActivatable", "").lower() == "true",
     }
 
 

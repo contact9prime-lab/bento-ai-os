@@ -72,6 +72,8 @@ function jarvisSpeakAndListen(text){
 }
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen
+const QUEUES={};           // conversation_id -> [{id,text,status,reason}]: typed while a turn ran.
+                           // The server owns it; this is the mirror the composer renders as "Up next".
 let APPS_READY=false;   // APPS (const) is in the temporal dead zone until its definition — gate on this
 let curBody=null, curThink=null, curText='';
 let feed=null, chatEl=null, input=null, sendBtn=null;   // bound when the Chat window is open

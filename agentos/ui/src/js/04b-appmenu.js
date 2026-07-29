@@ -91,25 +91,76 @@ async function editPaste(){
     el.dispatchEvent(new Event('input',{bubbles:true}));
   }catch(err){toast('press Ctrl+V — the browser kept the clipboard private')}
 }
+/* ---- native (external) windows get menus too -------------------------------
+   We cannot reach inside someone else's app for its File and Edit, and
+   pretending otherwise would be worse than useless. What we CAN offer is every
+   verb the window manager owns — and saying so plainly, under the app's real
+   name, is what makes an external app feel like part of the machine rather than
+   a rectangle floating on top of it. */
+function menuNative(w){
+  const name=(typeof natName==='function'&&natName(w))||w.app||'Application';
+  const app=[
+    {label:'Show the desktop',keys:'Super+D',fn:showDesktop},
+    {label:'Switch window',keys:'Alt+Tab',fn:()=>fetch('/api/windows/cycle',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:'next'})})},
+    null,
+    {label:'Close '+name,keys:'Super+Q',danger:true,fn:()=>natWin('close',w.id)},
+  ];
+  const win=natWinItems(w).filter(it=>!it||it.label!=='Close window');
+  const help=[
+    {label:'Keyboard shortcuts',keys:(SHORTCUTS['help']||{}).keys,fn:()=>{
+      raiseShell(true);keysHelp(true)}},
+    {label:`Ask ${agentName()} about ${name}`,fn:()=>{raiseShell(true);
+      omniFocus&&omniFocus();const i=$('#omni-in');if(i){i.value='About the '+name+' window: ';omniPop(true)}}},
+    null,
+    {label:'AgentOS desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
+  ];
+  return [[name,app],['Window',win],['Help',help]];
+}
+/* Bring the AgentOS desktop in front of the native windows (or send it back).
+   In session mode the shell is the tiled base layer and sway paints floating
+   windows above tiled ones, so this is what "come to the front" has to mean. */
+function raiseShell(on){
+  if(PLATFORM.mode!=='de')return Promise.resolve();
+  return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({on:on!==false})}).catch(()=>{});
+}
 /* ---- the menu bar renders the focused window's menus ---- */
 function buildAppMenus(){
   const box=$('#mbmenus');if(!box)return;
-  const w=(typeof activeWin==='function')&&activeWin();
-  if(!w){box.innerHTML='';box.classList.remove('on');return}
+  // The COMPOSITOR's focus is the truth, not the shell's idea of it. A focused
+  // external window owns the bar even while an AgentOS window is still marked
+  // active inside the page — otherwise the bar says "Task Manager" while you are
+  // typing in VS Code.
+  const nat=(typeof natFocused==='function')?natFocused():null;
+  const w=nat?null:((typeof activeWin==='function')&&activeWin());
+  const label=$('#mbapp');
+  if(label&&label.dataset.native){label.textContent='';delete label.dataset.native}
+  if(!w&&!nat){box.innerHTML='';box.classList.remove('on');return}
+  if(nat){
+    if(label){label.textContent=natName(nat);label.dataset.native='1'}
+    box.classList.add('on');
+    paintMenuBar(box,menuNative(nat),()=>menuNative(natFocused()||nat));
+    return;
+  }
   const menus=menuStd(w);
   box.classList.add('on');
+  // recomputed on open, not on focus: an app that renders asynchronously (or has
+  // since changed folder / tab) gets menus that describe it as it is now
+  paintMenuBar(box,menus,()=>(activeWin()===w?menuStd(w):menus));
+}
+function paintMenuBar(box,menus,live){
   box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
   box.querySelectorAll('button').forEach(b=>{
     const open=()=>{
       const r=b.getBoundingClientRect();
       box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-      // recomputed on open, not on focus: an app that renders asynchronously (or
-      // has since changed folder / tab) gets menus that describe it as it is now
-      const live=(activeWin()===w?menuStd(w):menus)[+b.dataset.i][1];
+      let set=menus;
+      try{set=live()||menus}catch(e){}
+      const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
-        live.map(it=>it&&({...it,
+        items.map(it=>it&&({...it,
           label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})));
-      const m=$('#ctxmenu');
       const clear=()=>{b.classList.remove('on');document.removeEventListener('click',clear,true)};
       setTimeout(()=>document.addEventListener('click',clear,true),0);
     };

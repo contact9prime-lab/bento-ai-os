@@ -102,11 +102,40 @@ def test_de_launches_apps_through_the_compositor():
     calls: list[str] = []
     from agentos import compositor as comp
     with mock.patch.object(comp, "available", lambda: True), \
+         mock.patch.object(LinuxDE, "list_apps", lambda self: []), \
          mock.patch("shutil.which", lambda n: "/usr/bin/" + n if n == "gtk-launch" else None), \
          mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
         launched, _ = de.launch_app("firefox")
     assert launched is True
     assert calls == ["gtk-launch 'firefox'"]
+
+
+def test_a_known_app_launches_without_paying_for_gtk_launch():
+    """We already parsed the .desktop file; spawning gtk-launch just to read the
+    same file again is latency the user feels when opening an app."""
+    from agentos import compositor as comp
+    calls: list[str] = []
+    entry = {"id": "foot", "name": "foot", "exec": "foot", "terminal": False, "dbus": False}
+    with mock.patch.object(comp, "available", lambda: True), \
+         mock.patch.object(LinuxDE, "list_apps", lambda self: [entry]), \
+         mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+        launched, _ = LinuxDE().launch_app("foot")
+    assert launched is True
+    assert calls == ["foot"], "should exec the command directly"
+
+
+def test_terminal_and_dbus_apps_still_go_through_gtk_launch():
+    """Those two need a launcher's help; running Exec= verbatim would misbehave."""
+    from agentos import compositor as comp
+    for odd in ({"id": "htop", "exec": "htop", "terminal": True, "dbus": False},
+                {"id": "org.x.App", "exec": "app", "terminal": False, "dbus": True}):
+        calls: list[str] = []
+        with mock.patch.object(comp, "available", lambda: True), \
+             mock.patch.object(LinuxDE, "list_apps", lambda self, e=odd: [e]), \
+             mock.patch("shutil.which", lambda n: "/usr/bin/" + n if n == "gtk-launch" else None), \
+             mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+            LinuxDE().launch_app(odd["id"])
+        assert calls == [f"gtk-launch '{odd['id']}'"]
 
 
 def test_hosted_never_claims_the_notification_bus():
@@ -115,6 +144,18 @@ def test_hosted_never_claims_the_notification_bus():
 
 
 # --- run mode detection ----------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _no_live_session(monkeypatch):
+    """Pin detection to the environment under test.
+
+    detect() falls back to probing the real machine for an AgentOS compositor —
+    correct in production, but it makes every mode assertion depend on whether
+    whoever runs the tests happens to be logged into the AgentOS session.
+    """
+    monkeypatch.setattr(runmode, "_adopted_session", lambda: runmode.HOSTED)
+
+
 
 def test_detect_hosted_without_session_marker(monkeypatch):
     monkeypatch.delenv("AGENTOS_SESSION", raising=False)
@@ -215,3 +256,12 @@ def test_mode_survives_an_unreadable_config(monkeypatch):
     monkeypatch.delenv("AGENTOS_SESSION", raising=False)
     monkeypatch.setattr(cfgmod, "load_config", lambda: (_ for _ in ()).throw(OSError("gone")))
     assert runmode.mode() == runmode.HOSTED
+
+
+def test_desktop_field_codes_never_reach_the_command_line():
+    """%U and friends are placeholders a launcher substitutes; run verbatim they
+    become literal arguments and the app opens confused."""
+    from agentos.platform.linux_hosted import _clean_exec
+    assert _clean_exec("firefox %u") == "firefox"
+    assert _clean_exec("/usr/bin/app --new-window %U %i %c") == "/usr/bin/app --new-window"
+    assert _clean_exec("") == ""

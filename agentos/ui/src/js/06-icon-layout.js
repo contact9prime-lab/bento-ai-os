@@ -190,8 +190,12 @@ function buildDesktop(){
     if(e.target.closest('.win'))return;
     e.preventDefault();
     const m=$('#ctxmenu');
+    const shots=cap('screen.capture').available;
     m.innerHTML=`<button data-a="chat">New chat</button><button data-a="taskmgr">Task Manager</button>
       <button data-a="studio">App Studio</button><hr>
+      ${shots?`<button data-x="shot-full">Take a screenshot</button>
+      <button data-x="shot-sel">Screenshot a region…</button><hr>`:''}
+      <button data-x="showdesk">Show the desktop</button>
       <button data-x="arr-grid">Auto arrange icons</button>
       <button data-x="arr-name">Sort icons by name</button>
       <button data-x="arr-bento">Group icons (bento)</button>
@@ -204,6 +208,9 @@ function buildDesktop(){
       else if(x==='arr-grid')arrangeIcons(false);
       else if(x==='arr-name')arrangeIcons(true);
       else if(x==='arr-bento')arrangeBento();
+      else if(x==='shot-full')takeScreenshot('full');
+      else if(x==='shot-sel')takeScreenshot('select');
+      else if(x==='showdesk')showDesktop();
       else openApp(b.dataset.a)});
     ctxShow(e,m);
   });

@@ -2,6 +2,138 @@
 
 ## Unreleased — the ever-present agent (2026-07-26, second drop)
 
+### You can keep talking while it works (2026-07-29)
+
+Typing into a busy chat used to be refused outright: *"This conversation already has a turn
+running — stop it, or continue in another chat."* Your next thought was worth less than the
+agent's convenience. Now it is **queued**, and the running turn has to decide what it is.
+
+- **A queue per conversation.** Whatever you send while a turn is running lands in the *Up
+  next* strip above the composer — this chat's visible to-do list, with a `✕` on each row.
+  It survives a reload (it rides `state_sync` like running turns do).
+- **The turn triages it, at a step boundary.** Between steps — never mid-tool — the agent
+  decides whether each queued message belongs to what it is doing *right now*. "Actually make
+  it a bullet list", "put it in Documents instead" gets **folded into the live run**, marked in
+  the transcript with `↩ took in: …`, and the rest of the turn accounts for it. "Also tell me a
+  joke afterwards" **waits**, and starts as its own turn the moment this one ends. A turn that
+  is about to end checks once more, so a message that lands during the final reply still counts.
+- **The decision does not cost you time.** It starts the instant you hit send and runs alongside
+  the reply already streaming, on `memory.model` if you have a small model set for that. If no
+  model answers within `steer_triage_timeout`, the wording decides — and the default is to wait,
+  because waiting is recoverable and hijacking a task in flight is not. `steer_queued_messages:
+  false` turns the judgement off entirely and makes everything wait its turn.
+- **The send button learned a second job.** While a turn runs, with something typed it queues
+  (`➤`); empty, it is the stop button it always was (`◼`). Stopping drops the backlog with the
+  turn — stop means stop.
+
+### Window controls you can actually reach, and a session that feels immediate (2026-07-29)
+
+- **The minimize button was being drawn and then clipped away.** The per-window controls
+  lived inside `#tbnative`, which is `overflow-x:auto` — so the popup was rendered and
+  silently cut off by the scroll container. That is what "minimize doesn't work" was: not
+  a missing feature, an invisible one. The controls (minimize · maximize · full screen ·
+  close) now live in a fixed-position element on the desktop, verified on screen and
+  hit-tested so a click lands on the button rather than on whatever is over it.
+- **Minimize from the window's own title bar.** Right-click a native title bar to minimize,
+  middle-click to close. An app's *own* minimize button still cannot work — sway does not
+  implement `xdg_toplevel.set_minimized`, so the request never arrives — but the title bar
+  is ours to bind, and this is the real thing.
+- **Window controls respond immediately.** The server answers in about two milliseconds;
+  the sluggishness was a hard-coded 150 ms wait before redrawing, plus no optimistic
+  update, so the tile sat unchanged through the whole round trip. State is applied to the
+  tile first and the request goes out behind it; the compositor event that follows
+  reconciles anything guessed wrong.
+- **Apps launch straight from their `Exec` line.** We already parsed the .desktop file, so
+  spawning `gtk-launch` to read the same file again was latency for nothing. Measured
+  launch-to-window is now ~97 ms. Terminal and DBusActivatable entries still go through
+  `gtk-launch`, which they need.
+
+### Getting the machine back, and desktops that mean something (2026-07-29)
+
+- **Lock and suspend no longer strand you.** swayidle was told what to do when the screen
+  goes away but nothing about coming back: it had `before-sleep` and `lock` hooks and
+  neither `after-resume` nor `unlock`. So a resume left the outputs powered off and the
+  shell unfocused — a black screen with no way to the desktop. Both hooks now power the
+  outputs on and call `/api/shell/wake`, which re-anchors the desktop, focuses it and
+  repaints the things that go stale after hours asleep. swayidle also moved into its own
+  script (`~/.local/bin/agentos-idle`): `swaymsg reload` can now actually restart it —
+  with `exec` the old daemon kept running with the old arguments and an idle-timeout
+  change silently did nothing — and the lock command's quotes can no longer break it.
+- **Desktops move external windows.** An AgentOS desktop is now a real sway workspace, so
+  switching carries the desktop with you and leaves the apps where you put them. They
+  used to appear on every desktop because the two ideas of "desktop" were unrelated.
+- **Alt-Tab shows you something.** It was a single keypress that just switched. It is now
+  a compositor *mode*: hold Alt and the desktop comes forward with a switcher — the
+  AgentOS desktop plus every window, real icons — Tab moves the selection, releasing Alt
+  commits, Escape cancels. That is the only way to show an overlay while a native window
+  is on top.
+- **Ctrl+Space actually comes forward now.** Two bugs on top of each other: `anchor_shell`
+  runs on every window event and does `floating disable`, so it dropped the desktop back
+  behind the apps the instant it was raised; and the raise was four separate sway commands,
+  which let the client ack its remembered floating size before the resize landed — the
+  desktop came forward at half width. It is one chained command now, and anchoring stands
+  aside while the desktop is deliberately summoned.
+- **No more "press and hold Esc".** Raising by full screen made Chromium believe the *page*
+  had gone full screen, so it flashed that bubble on every summon. Floating the desktop and
+  sizing it to the output looks identical and says nothing.
+- **The menu bar follows the compositor, not the page.** It said "Task Manager" while you
+  were typing in VS Code. A focused external window now owns the bar.
+- **AgentOS refuses to open inside AgentOS.** It is not a window, it is a second session
+  fighting this one for the screen, the notification bus and the port — so it says that
+  instead of launching.
+- **Native windows have title bars** (middle-click to close). Worth being straight about
+  the limit: sway does not implement `xdg_toplevel.set_minimized` at all, so an app's own
+  minimize button cannot work under any wlroots compositor. AgentOS provides minimize from
+  the taskbar tile, the Window menu and Super+H.
+
+### External apps are windows on this desktop (2026-07-29)
+
+The session treated native windows as second-class: they could not be minimised, they
+had no icons, Alt-Tab did nothing, and one of them covering the screen left nowhere to go.
+
+- **The shell was being mistaken for an app.** Chromium applies `--class` only to
+  XWayland, so under Wayland the AgentOS desktop arrived looking like the browser and
+  matched no rule written for `agentos`. It was therefore listed in its own taskbar, and
+  "Alt-Tab back to the desktop" — which searched for `app_id="agentos"` — never matched.
+  The shell is now identified by its command line (the process serving our port), which
+  is the one honest signal. This was the root of several of the symptoms below.
+- **Minimize works.** sway has no minimise; AgentOS parks the window in the scratchpad —
+  hidden but alive — and *keeps it in the taskbar*, so it can be brought back. Click a
+  focused tile to put it away, click a hidden one to bring it back, exactly like an
+  AgentOS window. **Super+H** minimises the focused window.
+- **Alt-Tab, Super-Tab.** One ring: the AgentOS desktop, then every native window in a
+  stable order (sorted by window id, because sway reshuffles tree order under you and
+  that made Alt-Tab ping-pong between two windows). Ctrl+Tab switches windows while the
+  desktop has the keyboard, and is deliberately left to the app otherwise — browsers and
+  editors need it for their own tabs.
+- **Show the desktop.** **Super+D**, the desktop right-click menu, or any native
+  window's menu hides every native window and puts the keyboard back on AgentOS. This is
+  the escape hatch that was missing.
+- **Maximize and full screen are different things, and you get both.** Maximize fills the
+  desk but leaves the menu bar reachable; full screen covers everything. Minimize,
+  maximize and close also sit right on the window's taskbar tile, so they are one click
+  away rather than a menu hunt.
+- **Real icons.** A running window's app_id is matched against the installed desktop
+  entries (including `StartupWMClass`, which is what makes "org.gnome.Nautilus",
+  "nautilus" and "Nautilus" the same program) and the app's own icon is shown instead of
+  its first letter.
+- **External apps get a menu bar.** The focused native window puts its real name and a
+  Window menu in the top bar — minimise, full screen, tile/float, move to desktop,
+  close, show desktop — plus Help. We do not fake the app's own File and Edit; what is
+  offered is what the window manager genuinely owns.
+- **Ctrl+Space works over a native window.** The shell is the tiled base layer and sway
+  paints floating windows above tiled ones, so no z-index inside the page could help:
+  summoning now brings the whole desktop forward (full screen, the one state that
+  outranks floating) and releasing puts it straight back underneath.
+- **Screenshots from the desktop right-click** — whole screen or a region.
+- **The keyring error at login.** `XDG_CURRENT_DESKTOP` was set to `AgentOS`, a name no
+  other software recognises — which is why apps reported *"OS keyring couldn't be
+  identified for storing the encryption related data in your current desktop
+  environment"* and fell back to plain text, and why portals could not pick a backend.
+  It is a colon-separated list, and it now reads `AgentOS:sway:wlroots:GNOME`. The secret
+  service is also started *before* sway, so every app the session launches inherits
+  `SSH_AUTH_SOCK` and `GNOME_KEYRING_CONTROL` rather than only D-Bus-activated ones.
+
 ### Every app has a widget mode (2026-07-28)
 
 - **Two surfaces, one app.** Every built app now has a desktop surface (the whole application) and

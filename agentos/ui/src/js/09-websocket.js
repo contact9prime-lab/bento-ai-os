@@ -142,6 +142,9 @@ function handle(ev){
     case 'state_sync':{ // sent on every (re)connect: what is actually still running
       RUNNING.clear();
       (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''}});
+      for(const k in QUEUES)delete QUEUES[k];
+      Object.assign(QUEUES,ev.queues||{});      // the backlog survives a reload too
+      renderQueue();
       if(currentConv&&RUNNING.has(currentConv)){setRunning(true);showWorking();}
       else{setRunning(false);removeWorking();}
       updateSpin();
@@ -245,6 +248,29 @@ function handle(ev){
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
       else speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
+    case 'queue_update':{
+      if(ev.queue&&ev.queue.length)QUEUES[_cid]=ev.queue; else delete QUEUES[_cid];
+      if(_sk&&_sk.queue)_sk.queue(ev);
+      renderQueue();
+      // a queued message just became its own turn — it needs the bubble send() skipped
+      if(ev.started&&_cur&&feed){userBubble(ev.started.text||'',[]);showWorking();scrollDown()}
+      if(ev.added&&!_cur)toast('queued in another chat');
+      break;}
+    case 'steer':{ // the running turn decided what to do with a queued message
+      if(_sk&&_sk.steer)_sk.steer(ev);
+      if(ev.mode==='now'){
+        const line='took in: '+ev.text;
+        if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text=''}
+          _s.html+='<div class="steer">'+esc(line)+'</div>';}
+        if(_cur){
+          if(!curBody)startAssistant();
+          if(curBody){flushText();
+            const d=document.createElement('div');d.className='steer';d.textContent=line;
+            d.title=ev.reason||'';curBody.parentNode.insertBefore(d,curBody);scrollDown()}
+        }
+        toast('folded into the running turn');
+      }else if(_cur)toast('queued for after this turn');
+      break;}
     case 'task_started': toast('background task running…'); break;
     case 'task_finished': toast('task done: '+(ev.result||'').slice(0,80)); loadConvs(); break;
     case 'control':    // a hardware key changed volume/brightness — show it at once
@@ -265,6 +291,13 @@ function handle(ev){
     case 'fabric_event': fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); break;
     case 'setup': location.reload(); break;
+    // the desktop is a page, so a new build only appears after a reload — this is
+    // how a deploy reaches the screen without the user hunting for Ctrl+R
+    case 'reload': setTimeout(()=>location.reload(),ev.delay||400); break;
+    // back from suspend or the lock screen: the page may have been frozen for
+    // hours, so repaint the things that go stale rather than sit there wrong
+    case 'wake': onWake(); break;
+    case 'switcher': sessionSwitcher(ev); break;   // Alt-Tab overlay, driven by sway
     case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
@@ -324,3 +357,23 @@ function startAssistant(){
   m.appendChild(curBody);feed.appendChild(m);curThink=null;
 }
 
+
+/* Coming back from suspend or the lock screen. The page was alive but frozen:
+   the clock is wrong, the window list is from before, and the wallpaper canvas
+   may have lost its GPU context. Repaint what goes stale — and if the page is
+   genuinely broken (no websocket after a grace period), reload it rather than
+   leave the user staring at a dead desktop with no way back. */
+function onWake(){
+  try{
+    if(typeof tickClock==='function')tickClock();
+    if(typeof updateNativeWindows==='function')updateNativeWindows();
+    if(typeof loadPlatform==='function')loadPlatform();
+    if(typeof loadWallpaper==='function')loadWallpaper();
+    if(typeof deckMeasure==='function')deckMeasure();
+    document.body.classList.remove('dock-hide','dock-peek');
+  }catch(e){}
+  setTimeout(()=>{
+    const live=(typeof ws!=='undefined'&&ws&&ws.readyState===1);
+    if(!live)location.reload();
+  },4000);
+}

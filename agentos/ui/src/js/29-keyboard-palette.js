@@ -25,24 +25,31 @@ function activeWin(){let a=null;WM.wins.forEach(w=>{if(w.el.classList.contains('
 
 // --- Ctrl+Tab window switcher (Cmd+Tab-style) ---
 let SW={open:false,list:[],idx:0};
+/* The switcher is the machine's window list, not AgentOS's: in session mode the
+   external apps are windows on this desktop too, and leaving them out is what
+   made Ctrl+Tab feel broken the moment a browser was open. */
 function switcherList(){
   const arr=[];WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)arr.push(w)});
-  return arr.sort((a,b)=>(+b.el.style.zIndex||0)-(+a.el.style.zIndex||0));
+  arr.sort((a,b)=>(+b.el.style.zIndex||0)-(+a.el.style.zIndex||0));
+  const nat=(typeof NATWINS!=='undefined'?NATWINS:[]).filter(w=>!w.minimized);
+  return arr.concat(nat.map(w=>({native:w,id:w.app,app:{title:(typeof natName==='function'?natName(w):w.app)}})));
 }
 function switcherOpen(dir){
   SW.list=switcherList();
-  if(SW.list.length<2){if(SW.list.length===1)focusWin(SW.list[0]);return}
+  if(SW.list.length<2){if(SW.list.length===1){SW.open=true;SW.idx=0;switcherCommit()}return}
   if(!SW.open){SW.open=true;SW.idx=1;$('#switcher').classList.add('show')}
   else{SW.idx=(SW.idx+dir+SW.list.length)%SW.list.length}
   switcherRender();
 }
 function switcherRender(){
   $('#swbox').innerHTML=SW.list.map((w,i)=>`<div class="swcard${i===SW.idx?' sel':''}">
-    ${appIcon(w.id,48)}<span class="sn">${esc(w.app.title)}</span></div>`).join('');
+    ${w.native?natIcon(w.native,48):appIcon(w.id,48)}<span class="sn">${esc(w.app.title)}</span></div>`).join('');
 }
 function switcherCommit(){
   if(!SW.open)return;SW.open=false;$('#switcher').classList.remove('show');
-  const w=SW.list[SW.idx];if(w)focusWin(w);
+  const w=SW.list[SW.idx];if(!w)return;
+  if(w.native){if(typeof raiseShell==='function')raiseShell(false);natWin('focus',w.native.id)}
+  else focusWin(w);
 }
 
 // --- Spaces: every desktop as a card, every window a tile you can throw between them ---
@@ -448,3 +455,21 @@ document.addEventListener('keydown',e=>{
     const n=+e.key;if(n<=DESKS){e.preventDefault();switchDesk(n)}}
 });
 
+
+/* ---- the session's Alt-Tab overlay -------------------------------------
+   In session mode the compositor owns Alt-Tab, so the shell cannot see the key
+   at all — it is told what to draw. Same overlay as the in-shell switcher, fed
+   from the server's ring (the AgentOS desktop, then every native window). */
+function sessionSwitcher(ev){
+  const box=$('#switcher');if(!box)return;
+  if(!ev.open){box.classList.remove('show');return}
+  const ring=ev.ring||[];
+  $('#swbox').innerHTML=ring.map((w,i)=>{
+    const icon=w.shell?appIcon('chat',48)
+      :(typeof natIcon==='function'?natIcon(w,48):emojiIcon('▭',48));
+    const name=w.shell?'Desktop'
+      :((typeof natName==='function'?natName(w):w.app)||w.title||'window');
+    return `<div class="swcard${i===ev.idx?' sel':''}">${icon}<span class="sn">${esc(name)}</span></div>`;
+  }).join('');
+  box.classList.add('show');
+}

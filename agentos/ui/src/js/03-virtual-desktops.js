@@ -42,6 +42,12 @@ function switchDesk(n){
   const out=[];WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)out.push(w)});
   out.forEach(w=>Motion.run(w.el,[{transform:'none',opacity:1},{transform:`translateX(${-46*dir}px)`,opacity:0}],{duration:200,easing:EASE.in}));
   curDesk=n;localStorage.setItem('curDesk',n);
+  // In session mode a desktop is a real sway workspace, so external windows move
+  // with it instead of following you everywhere. The shell comes along too.
+  if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
+    fetch('/api/wm/desktop',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({desktop:n})}).then(()=>{
+        if(typeof updateNativeWindows==='function')setTimeout(updateNativeWindows,200)}).catch(()=>{});
   const go=()=>{
     applyDeskVisibility();renderWidgets();buildPager();
     if(typeof deckAuto==='function')deckAuto();

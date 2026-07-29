@@ -171,6 +171,31 @@ class Platform:
     def cycle_focus(self, direction: str = "next") -> tuple[bool, str]:
         return False, "Window cycling isn't available here."
 
+    def minimize_window(self, win_id: str) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
+    def restore_window(self, win_id: str) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
+    def maximize_window(self, win_id: str, on: bool = True) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
+    def fullscreen_window(self, win_id: str, on: bool | None = None) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
+    def show_desktop(self) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
+    def goto_desktop(self, n: int) -> tuple[bool, str]:
+        """Only the session owns real workspaces; elsewhere desktops are ours
+        alone and the shell already handles them."""
+        return False, "Not applicable — AgentOS isn't the desktop here."
+
+    def raise_shell(self, on: bool = True) -> tuple[bool, str]:
+        """Only meaningful when AgentOS owns the session; elsewhere the shell is
+        an ordinary window and the host desktop decides its stacking."""
+        return False, "Not applicable — AgentOS isn't the desktop here."
+
     # --- workspaces & displays (compositor-backed; DE mode only) ------------
 
     def workspaces(self) -> dict:

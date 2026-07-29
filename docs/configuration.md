@@ -29,6 +29,8 @@ Override the config/data location with the `AGENTOS_HOME` environment variable.
 | `agent_name` | what the agent calls itself (default **Aria**) |
 | `autonomy` | `paranoid` \| `balanced` \| `full` |
 | `max_steps` | maximum tool steps per turn |
+| `steer_queued_messages` | when you type again mid-turn, let the running turn decide whether that message belongs to the run in flight (default `true`; `false` = every queued message waits its turn) |
+| `steer_triage_timeout` | seconds that decision may take before the message's wording decides instead (default `30`) |
 | `workspace` | the agent's working directory (default `~/AgentOS`) |
 | `port` | server port (default `8321`) |
 | `sandbox` | `{ enabled, root }` — the folder jail (see below) |

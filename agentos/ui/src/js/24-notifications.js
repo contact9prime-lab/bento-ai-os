@@ -87,38 +87,150 @@ function showSuggestion(ev){
     ()=>fetch('/api/suggestions/'+ev.id+'/dismiss',{method:'POST'}));
 }
 
-function natIcon(app){const c=(app||'?').trim().charAt(0).toUpperCase();return /[A-Z0-9]/.test(c)?c:'▭'}
-let NATIVE_POLL=null,wmDebounce=null;
+/* A running native window reports its app_id (or X11 class); the desktop entry
+   that owns that id is what has the real icon. Matching walks from exact id to
+   the loosest sensible match, because toolkits disagree: "org.gnome.Nautilus",
+   "nautilus" and "Nautilus" are all the same program. */
+function natApp(appId){
+  const list=(typeof NATIVEAPPS!=='undefined'?NATIVEAPPS:[]);
+  if(!list.length||!appId)return null;
+  const a=String(appId).toLowerCase(), tail=a.split('.').pop();
+  return list.find(x=>x.id.toLowerCase()===a)
+    || list.find(x=>x.id.toLowerCase()===tail)
+    || list.find(x=>(x.wmclass||'').toLowerCase()===a)
+    || list.find(x=>x.id.toLowerCase().endsWith('.'+tail)||x.id.toLowerCase().startsWith(tail+'-'))
+    || list.find(x=>x.name.toLowerCase()===tail)
+    || null;
+}
+function natIcon(w,px){
+  px=px||46;
+  const a=natApp(w.app);
+  if(a&&a.has_icon)return `<img class="na" src="/api/native/icon/${encodeURIComponent(a.id)}" loading="lazy" alt="" style="width:${px}px;height:${px}px;object-fit:contain">`;
+  const c=((w.app||w.title||'?').trim().charAt(0)||'?').toUpperCase();
+  return `<span class="nafallback" style="width:${px}px;height:${px}px;font-size:${Math.round(px*.43)}px">${esc(/[A-Z0-9]/.test(c)?c:'▭')}</span>`;
+}
+function natName(w){const a=natApp(w.app);return (a&&a.name)||w.app||w.title||'window'}
+let NATIVE_POLL=null,wmDebounce=null,NATWINS=[];
+/* The compositor pushes window events, but focus moving BETWEEN two native
+   windows is easy to miss; a short poll keeps the menu bar honest. */
 async function updateNativeWindows(){
   const box=$('#tbnative');if(!box)return;
   let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
-  if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';return}
-  box.classList.toggle('has',d.windows.length>0);
-  box.innerHTML=d.windows.slice(0,8).map(w=>`<button class="tbnat ${w.focused?'on':''}" data-id="${esc(w.id)}" data-tip="${esc(w.title)}">
-    ${emojiIcon(natIcon(w.app),46)}</button>`).join('');
-  const wins=Object.fromEntries(d.windows.map(w=>[String(w.id),w]));
+  if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';NATWINS=[];return}
+  NATWINS=d.windows||[];
+  paintNativeTiles();
+}
+function paintNativeTiles(){
+  const box=$('#tbnative');if(!box)return;
+  box.classList.toggle('has',NATWINS.length>0);
+  box.innerHTML=NATWINS.slice(0,10).map(w=>`<button class="tbnat ${w.focused?'on':''} ${w.minimized?'mini':''}"
+      data-id="${esc(w.id)}" data-tip="${esc(natName(w)+' — '+(w.title||''))}">${natIcon(w,46)}</button>`).join('');
+  const wins=Object.fromEntries(NATWINS.map(w=>[String(w.id),w]));
   box.querySelectorAll('.tbnat').forEach(b=>{
-    b.onclick=()=>fetch('/api/windows/focus',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
-    b.oncontextmenu=e=>{e.preventDefault();natWinMenu(e,wins[b.dataset.id]||{id:b.dataset.id,title:''})};
+    const w=wins[b.dataset.id]||{id:b.dataset.id,title:''};
+    // exactly like an AgentOS window's taskbar tile: click the focused one to
+    // put it away, click a hidden one to bring it back
+    b.onclick=()=>natWin(w.minimized?'restore':(w.focused?'minimize':'focus'),w.id);
+    b.oncontextmenu=e=>{e.preventDefault();natWinMenu(e,w)};
+    b.onpointerenter=()=>natCtlShow(b,w);
+    b.onpointerleave=()=>natCtlHide(600);
   });
+  buildAppMenus();                 // the menu bar follows native focus too
   if(typeof updateDockSeps==='function')updateDockSeps();
 }
-function natWinMenu(e,w){
-  const m=$('#ctxmenu');
-  const arrange=cap('windows.arrange').available;
-  m.innerHTML=`<button data-a="focus">Focus</button>
-    ${arrange?`<button data-a="float">${w.floating?'Tile':'Float'}</button>
-    ${[1,2,3,4].map(n=>`<button data-a="ws${n}">Move to desktop ${n}</button>`).join('')}<hr>`:'<hr>'}
-    <button data-a="close" style="color:var(--err,#f87171)">Close window</button>`;
-  const post=(url,body)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(()=>setTimeout(updateNativeWindows,200));
-  m.querySelector('[data-a=focus]').onclick=()=>{m.classList.remove('show');post('/api/windows/focus',{id:w.id})};
-  if(arrange){
-    m.querySelector('[data-a=float]').onclick=()=>{m.classList.remove('show');post('/api/windows/floating',{id:w.id,floating:!w.floating})};
-    [1,2,3,4].forEach(n=>{m.querySelector(`[data-a=ws${n}]`).onclick=()=>{m.classList.remove('show');post('/api/windows/move',{id:w.id,workspace:String(n)})}});
+/* Window controls for the tile under the pointer.
+   They live in a FIXED-position element attached to the desktop, not inside the
+   tile: #tbnative scrolls horizontally, and `overflow-x:auto` silently clipped
+   an absolutely-positioned popup — the buttons were being drawn and then cut
+   off, which is exactly what "minimize doesn't work" looked like. */
+let NATCTL_T=0;
+function natCtlEl(){
+  let el=$('#natctl');
+  if(!el){
+    el=document.createElement('div');el.id='natctl';
+    (($('#desktop'))||document.body).appendChild(el);
+    el.onpointerenter=()=>clearTimeout(NATCTL_T);
+    el.onpointerleave=()=>natCtlHide(200);
   }
-  m.querySelector('[data-a=close]').onclick=()=>{m.classList.remove('show');post('/api/windows/close',{id:w.id})};
-  ctxShow(e,m);
+  return el;
 }
+function natCtlShow(tile,w){
+  clearTimeout(NATCTL_T);
+  const el=natCtlEl();
+  el.innerHTML=`<button data-do="${w.minimized?'restore':'minimize'}" title="${w.minimized?'Restore':'Minimize'} — Super+H">${w.minimized?'▴':'–'}</button>
+    <button data-do="maximize" title="Maximize">▢</button>
+    <button data-do="fullscreen" title="Full screen — Super+F">⤢</button>
+    <button data-do="close" title="Close — Super+Q">✕</button>`;
+  el.querySelectorAll('button').forEach(b=>b.onclick=e=>{
+    e.stopPropagation();natCtlHide(0);
+    const a=b.dataset.do;
+    natWin(a,w.id,a==='maximize'?{maximize:true}:a==='fullscreen'?{fullscreen:!w.fullscreen}:undefined);
+  });
+  const r=tile.getBoundingClientRect();
+  el.classList.add('on');
+  el.style.left=Math.round(r.left+r.width/2-el.offsetWidth/2)+'px';
+  el.style.top=Math.round(r.top-el.offsetHeight-8)+'px';
+}
+function natCtlHide(delay){
+  clearTimeout(NATCTL_T);
+  NATCTL_T=setTimeout(()=>{const el=$('#natctl');if(el)el.classList.remove('on')},delay||0);
+}
+
+/* One door for every native window command.
+   The state is applied to the tile IMMEDIATELY and the request goes out behind
+   it. The server answers in about two milliseconds, but waiting for the round
+   trip before redrawing — and then waiting another 150ms on top — is what made
+   minimizing a window feel slow when nothing slow was happening. The compositor
+   event that follows reconciles anything we guessed wrong. */
+const NAT_OPTIMISTIC={
+  minimize:w=>({minimized:true,focused:false}),
+  restore:w=>({minimized:false,focused:true}),
+  focus:w=>({minimized:false,focused:true}),
+  fullscreen:(w,x)=>({fullscreen:x&&x.fullscreen!==undefined?!!x.fullscreen:!w.fullscreen}),
+};
+function natWin(action,id,extra){
+  const w=NATWINS.find(x=>String(x.id)===String(id));
+  if(w&&NAT_OPTIMISTIC[action]){
+    const patch=NAT_OPTIMISTIC[action](w,extra);
+    if(patch.focused)NATWINS.forEach(o=>{o.focused=false});
+    Object.assign(w,patch);
+    paintNativeTiles();                      // redrawn now, not in 150ms
+  }else if(action==='close'&&w){
+    NATWINS=NATWINS.filter(x=>x!==w);paintNativeTiles();
+  }
+  return fetch('/api/windows/'+action,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,...(extra||{})})})
+    .then(r=>r.json()).catch(()=>({ok:false}))
+    .then(d=>{if(!d||d.ok===false)updateNativeWindows();return d});
+}
+function natFocused(){return NATWINS.find(w=>w.focused&&!w.minimized)||null}
+async function showDesktop(){
+  const d=await fetch('/api/windows/showdesktop',{method:'POST'}).then(r=>r.json()).catch(()=>({ok:false}));
+  setTimeout(updateNativeWindows,200);
+  toast(d.ok?(d.message||'desktop shown'):'could not hide the windows');
+}
+/* Everything you can do to a native window, in one menu — the same verbs an
+   AgentOS window offers, so there is no second-class kind of window here. */
+function natWinItems(w){
+  const arrange=cap('windows.arrange').available;
+  const items=[
+    w.minimized?{label:'Restore',keys:'Super+H',fn:()=>natWin('restore',w.id)}
+               :{label:'Minimize',keys:'Super+H',fn:()=>natWin('minimize',w.id)},
+    {label:'Maximize',fn:()=>natWin('maximize',w.id,{maximize:true})},
+    {label:'Restore size',fn:()=>natWin('maximize',w.id,{maximize:false})},
+    {label:w.fullscreen?'Leave full screen':'Full screen',keys:'Super+F',
+     fn:()=>natWin('fullscreen',w.id,{fullscreen:!w.fullscreen})},
+    {label:'Focus',fn:()=>natWin('focus',w.id)},
+  ];
+  if(arrange){
+    items.push(null,{label:w.floating?'Tile':'Float',fn:()=>natWin('floating',w.id,{floating:!w.floating})});
+    for(let n=1;n<=4;n++)items.push({label:'Move to desktop '+n,fn:()=>natWin('move',w.id,{workspace:String(n)})});
+  }
+  items.push(null,{label:'Show the desktop',fn:showDesktop},
+             {label:'Close window',danger:true,fn:()=>natWin('close',w.id)});
+  return items;
+}
+function natWinMenu(e,w){showCtxItems(e,natWinItems(w))}
 function svgMic(px){
   px=px||15;
   return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v2.5"/></svg>`;

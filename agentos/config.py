@@ -101,6 +101,14 @@ DEFAULTS = {
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
     "max_steps": 25,
+    # Typing again while a turn is running queues the message. With this on, the agent
+    # decides at each step boundary whether that message belongs to the run in flight
+    # (fold it in) or is a separate ask (leave it queued for the next turn). Off = every
+    # queued message simply waits its turn. That decision runs in parallel with the reply
+    # already streaming, on memory.model if one is set, and steer_triage_timeout bounds
+    # it — past that the message's wording decides, and waiting is the safe default.
+    "steer_queued_messages": True,
+    "steer_triage_timeout": 30,
     "workspace": str(Path.home() / "AgentOS"),
     "port": 8321,
     # How AgentOS presents itself on this machine. "auto" reads the environment

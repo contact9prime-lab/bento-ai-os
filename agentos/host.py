@@ -119,6 +119,34 @@ def set_window_floating(win_id: str, floating: bool) -> tuple[bool, str]:
     return _p().set_window_floating(win_id, floating)
 
 
+def minimize_window(win_id: str) -> tuple[bool, str]:
+    return _p().minimize_window(win_id)
+
+
+def restore_window(win_id: str) -> tuple[bool, str]:
+    return _p().restore_window(win_id)
+
+
+def maximize_window(win_id: str, on: bool = True) -> tuple[bool, str]:
+    return _p().maximize_window(win_id, on)
+
+
+def fullscreen_window(win_id: str, on: bool | None = None) -> tuple[bool, str]:
+    return _p().fullscreen_window(win_id, on)
+
+
+def show_desktop() -> tuple[bool, str]:
+    return _p().show_desktop()
+
+
+def raise_shell(on: bool = True) -> tuple[bool, str]:
+    return _p().raise_shell(on)
+
+
+def goto_desktop(n: int) -> tuple[bool, str]:
+    return _p().goto_desktop(n)
+
+
 def cycle_focus(direction: str = "next") -> tuple[bool, str]:
     return _p().cycle_focus(direction)
 

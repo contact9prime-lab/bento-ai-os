@@ -41,12 +41,27 @@ class LinuxDE(LinuxHosted):
         import re
         import shutil
         from pathlib import Path
+        from ..session import APP_ID
         from .linux_hosted import APP_DIRS
         if not re.fullmatch(r"[\w .+()&,'-]+", app_id or ""):
             return False, "invalid app id"
+        # AgentOS inside AgentOS is not a window, it is a second desktop session
+        # fighting this one for the compositor, the notification bus and the
+        # port. You are already in it.
+        if app_id.lower() in (APP_ID, f"{APP_ID}-wayland", f"{APP_ID}-session"):
+            return False, ("AgentOS is already running — this session IS AgentOS. "
+                           "Opening a second one would fight this one for the "
+                           "screen, the notification bus and the port.")
         if comp.available():
+            # Fastest first: we already parsed this .desktop file, so run its
+            # command directly instead of spawning gtk-launch to read the very
+            # same file again. gtk-launch stays as the fallback because it also
+            # handles DBusActivatable entries and terminal apps.
             cmd = ""
-            if shutil.which("gtk-launch"):
+            entry = next((a for a in self.list_apps() if a["id"] == app_id), None)
+            if entry and entry.get("exec") and not entry.get("terminal") and not entry.get("dbus"):
+                cmd = entry["exec"]
+            elif shutil.which("gtk-launch"):
                 cmd = f"gtk-launch '{app_id}'"
             elif shutil.which("gio"):
                 path = next((str(Path(d) / f"{app_id}.desktop") for d in APP_DIRS
@@ -182,6 +197,39 @@ class LinuxDE(LinuxHosted):
         except comp.CompositorError as e:
             return False, str(e)
 
+    def minimize_window(self, win_id: str) -> tuple[bool, str]:
+        return self._win(self._comp.minimize, win_id)
+
+    def restore_window(self, win_id: str) -> tuple[bool, str]:
+        return self._win(self._comp.unminimize, win_id)
+
+    def maximize_window(self, win_id: str, on: bool = True) -> tuple[bool, str]:
+        return self._win(lambda i: (self._comp.maximize(i) if on
+                                    else self._comp.unmaximize(i)), win_id)
+
+    def fullscreen_window(self, win_id: str, on: bool | None = None) -> tuple[bool, str]:
+        return self._win(lambda i: self._comp.set_fullscreen(i, on), win_id)
+
+    def goto_desktop(self, n: int) -> tuple[bool, str]:
+        try:
+            self._comp.goto_desktop(n)
+            return True, f"desktop {n}"
+        except comp.CompositorError as e:
+            return False, str(e)
+
+    def raise_shell(self, on: bool = True) -> tuple[bool, str]:
+        try:
+            return (True, "ok") if self._comp.raise_shell(on) else (False, "shell not found")
+        except comp.CompositorError as e:
+            return False, str(e)
+
+    def show_desktop(self) -> tuple[bool, str]:
+        try:
+            n = self._comp.show_desktop()
+            return True, f"{n} window{'' if n == 1 else 's'} minimised"
+        except comp.CompositorError as e:
+            return False, str(e)
+
     def set_window_floating(self, win_id: str, floating: bool) -> tuple[bool, str]:
         if not str(win_id).isdigit():
             return False, "invalid window id"
@@ -192,7 +240,12 @@ class LinuxDE(LinuxHosted):
             return False, str(e)
 
     def cycle_focus(self, direction: str = "next") -> tuple[bool, str]:
-        """Alt-Tab: shell → native windows in order → back to the shell.
+        """Alt-Tab over one ring: the AgentOS desktop, then every native window.
+
+        The desktop is a stop on the ring rather than a special case, so pressing
+        Alt-Tab repeatedly visits everything exactly once and comes back — which
+        is the only behaviour that feels right with three windows open. Minimised
+        windows are skipped; they are reached from the taskbar.
 
         Bound in the generated sway config, so it works no matter which window
         holds the keyboard — the compositor sees the chord before any client.
@@ -201,26 +254,23 @@ class LinuxDE(LinuxHosted):
             wins = self._comp.windows(include_shell=True)
         except comp.CompositorError as e:
             return False, str(e)
-        natives = [w for w in wins if not w.get("shell")]
-        if not natives:
-            return True, "no native windows"
+        # Sorted by con_id, not by tree order: sway moves the focused floating
+        # window to the end of its parent's list, so a tree-order ring reshuffles
+        # under you and Alt-Tab ping-pongs between two windows instead of walking
+        # through them all.
+        ring = [w for w in wins if w.get("shell")][:1]
+        ring += sorted((w for w in wins if not w.get("shell") and not w.get("minimized")),
+                       key=lambda w: int(w["id"]))
+        if len(ring) < 2:
+            return True, "nothing to switch to"
         step = -1 if direction == "prev" else 1
-        cur = next((i for i, w in enumerate(natives) if w["focused"]), None)
-        if cur is None:                       # on the shell (or nowhere): enter the ring
-            target = natives[0] if step > 0 else natives[-1]
-        else:
-            nxt = cur + step
-            if 0 <= nxt < len(natives):
-                target = natives[nxt]
-            else:                             # walked off the end: back to the shell
-                for crit in ('[app_id="^agentos$"] focus', '[class="^agentos$"] focus'):
-                    try:
-                        self._comp.command(crit)
-                        return True, "shell"
-                    except comp.CompositorError:
-                        continue
-                return False, "could not focus the shell"
+        cur = next((i for i, w in enumerate(ring) if w["focused"]), 0)
+        target = ring[(cur + step) % len(ring)]
         try:
+            if target.get("shell"):
+                if self._comp.focus_shell():
+                    return True, "shell"
+                return False, "could not focus the shell"
             self._comp.focus(target["id"])
             return True, target["app"] or target["title"]
         except comp.CompositorError as e:
