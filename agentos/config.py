@@ -173,6 +173,27 @@ DEFAULTS = {
         "bot_token": "",       # from @BotFather
         "owner_chat_id": 0,    # paired automatically on the first /start message
     },
+    # Remote access: reach this desktop from your phone or another machine.
+    #
+    # OFF, and it stays off until a human turns it on in Settings → Remote access
+    # and sets a passphrase. Nothing here can be enabled by the agent, by an app,
+    # or by a config push: the API refuses to bind off-loopback without a
+    # passphrase, because AgentOS gives whoever is looking at it a real shell.
+    #
+    #   enabled       — serve to more than loopback
+    #   passphrase    — never stored; only this PBKDF2 hash + salt are
+    #   bind          — the interface to listen on once enabled (0.0.0.0 = every one)
+    #   session_days  — how long a signed-in device stays signed in
+    #   trust_loopback— requests from this machine skip the login (the socket
+    #                   proves they are local; a LAN client cannot forge it)
+    "remote": {
+        "enabled": False,
+        "bind": "0.0.0.0",
+        "pass_hash": "",
+        "pass_salt": "",
+        "session_days": 30,
+        "trust_loopback": True,
+    },
 }
 
 

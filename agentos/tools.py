@@ -6,6 +6,7 @@ Every tool returns a string (what the model sees). Risk levels:
 """
 
 import asyncio
+import contextlib
 import html.parser
 import json
 import os
@@ -16,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -51,7 +53,8 @@ CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
 # Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
 # custom themes from the Themes store merge in at call time (list_themes).
 BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
-                  "aero", "field", "shell", "jarvis"]
+                  "aero", "field", "shell",
+                  "bento", "liquid", "spatial", "clay", "minimal", "jarvis"]
 
 # Tools that confirm with the user EVERY time — even for the main agent at full
 # autonomy. The PDP's default-allow is downgraded to ask at the enforcement sites
@@ -190,6 +193,30 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more chars]"
+
+
+def _automation_step_label(s: dict) -> str:
+    """One step as a short phrase — what list_automations shows the model."""
+    k = s.get("kind")
+    if k == "app":
+        return f"open {s.get('app')}"
+    if k == "action":
+        return str(s.get("action"))
+    if k == "theme":
+        return f"theme {s.get('theme')}"
+    if k == "wallpaper":
+        return f"wallpaper {s.get('wallpaper')}"
+    if k == "desktop":
+        return f"desktop {s.get('desk')}"
+    if k == "wait":
+        return f"wait {s.get('ms')}ms"
+    if k == "agent":
+        return "ask: " + str(s.get("prompt", ""))[:60]
+    if k == "tool":
+        return f"call {s.get('tool')}"
+    if k == "python":
+        return "python: " + " ".join(str(s.get("code", "")).split())[:60]
+    return str(k)
 
 
 class Toolbox:
@@ -1858,6 +1885,76 @@ class Toolbox:
             lines.append("custom: " + ", ".join(custom))
         return "\n".join(lines)
 
+    async def run_python(self, code: str, timeout: int = 120) -> str:
+        """Run a Python snippet and return its output.
+
+        Goes through run_command rather than around it, so the sandbox jail, the
+        risk classification and the permission gate all apply exactly as they do
+        to any other command — a Python escape hatch that skipped those would
+        quietly become the widest hole in the system.
+        """
+        if not (code or "").strip():
+            return "[error] nothing to run"
+        enabled, root = sandbox_conf(self.cfg)
+        base = root if enabled else os.path.expanduser(self.cfg["workspace"])
+        os.makedirs(base, exist_ok=True)
+        path = os.path.join(base, f".agentos-run-{uuid.uuid4().hex[:8]}.py")
+        try:
+            with open(path, "w") as fh:
+                fh.write(code)
+            out = await self.run_command(f"{shlex.quote(sys.executable)} {shlex.quote(path)}")
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+        return out or "(no output)"
+
+    # -- automations: named desktop sequences the user can replay -------------
+
+    async def list_automations(self) -> str:
+        """Every saved automation, with its steps — so you can run one by name."""
+        rows = self.store.list_automations()
+        if not rows:
+            return ("no automations saved yet. Create one with save_automation, or the user can "
+                    "build one in the Automations app.")
+        out = []
+        for a in rows:
+            steps = ", ".join(_automation_step_label(s) for s in a["steps"])
+            out.append(f"- {a['name']}  ({len(a['steps'])} steps: {steps})")
+        return "\n".join(out)
+
+    async def run_automation(self, name: str) -> str:
+        """Fire a saved automation on the desktop, exactly as the user set it up."""
+        a = self.store.get_automation(name)
+        if not a:
+            known = ", ".join(r["name"] for r in self.store.list_automations()) or "none saved"
+            return f"[error] no automation named {name!r}. Saved: {known}"
+        self.store.mark_automation_run(a["id"])
+        if self.broadcast:
+            await self.broadcast({"type": "automation.run", "automation": a})
+        self.store.log("automation", f"ran {a['name']}", {"via": "agent"})
+        return f"ran automation '{a['name']}' ({len(a['steps'])} steps)"
+
+    async def save_automation(self, name: str, steps: str, icon: str = "") -> str:
+        """Create or edit an automation. Saving an existing name edits it in place."""
+        try:
+            parsed = json.loads(steps) if isinstance(steps, str) else steps
+        except Exception as e:
+            return f"[error] steps must be a JSON array: {e}"
+        if not isinstance(parsed, list):
+            return "[error] steps must be a JSON array of step objects"
+        from .server import _clean_steps
+        clean = _clean_steps(parsed)
+        if not clean:
+            return ("[error] no valid steps. Each step needs a kind: app | action | theme | "
+                    "wallpaper | desktop | agent | wait")
+        existed = self.store.get_automation(name) is not None
+        self.store.save_automation(name.strip(), json.dumps(clean), icon)
+        if self.broadcast:
+            await self.broadcast({"type": "automations"})
+        verb = "updated" if existed else "created"
+        return (f"{verb} automation '{name.strip()}' with {len(clean)} steps — "
+                f"run it any time from the prompt bar, a hot corner, or by asking me.")
+
     async def wifi(self, action: str = "status", ssid: str = "", password: str = "") -> str:
         """Wifi via NetworkManager: status | list | connect | forget | enable | disable."""
         try:
@@ -2960,6 +3057,78 @@ DESKTOP_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(DESKTOP_TOOL_SCHEMAS)
+
+AUTOMATION_TOOL_SCHEMAS = [
+    {
+        "name": "run_python",
+        "description": "Run a Python snippet on this machine and get its stdout/stderr back. Use for "
+                       "real computation, data wrangling, file work or API calls where a shell "
+                       "one-liner would be awkward. It runs with the same interpreter AgentOS uses, "
+                       "inside the same sandbox jail and permission gate as run_command, so treat it "
+                       "as a real program on the user's computer. Print what you want to see — the "
+                       "return value is the process output.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "the Python source to execute; print() what you need back"},
+                "timeout": {"type": "integer", "description": "seconds before it is killed (default 120)"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "list_automations",
+        "description": "List the user's saved automations and what each one does. Call this before "
+                       "run_automation when you are not sure of the exact name, and before "
+                       "save_automation when the user says 'add X to my morning routine' — you edit "
+                       "an automation by saving its existing name with the full new step list.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "run_automation",
+        "description": "Run a saved automation by name — the desktop performs its steps in order. "
+                       "Use when the user says 'run my morning routine', 'do the focus setup', or "
+                       "names anything list_automations reports.",
+        "parameters": {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "the automation's name, as shown by list_automations"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "save_automation",
+        "description": "Create a named automation, or edit one by reusing its name (steps REPLACE "
+                       "the old list, so pass the complete sequence). Use when the user describes a "
+                       "routine they want to repeat: 'every time I start work, open chat and the "
+                       "terminal, switch to the minimal theme and summarise my day'. `steps` is a "
+                       "JSON array run in order, each one of: "
+                       "{\"kind\":\"app\",\"app\":\"chat\"} open an app · "
+                       "{\"kind\":\"action\",\"action\":\"deck\"} a desktop action (deck, expose, "
+                       "windows.arrange, chat.new, voice, fullscreen, terminal, settings) · "
+                       "{\"kind\":\"theme\",\"theme\":\"minimal\"} apply a theme · "
+                       "{\"kind\":\"wallpaper\",\"wallpaper\":\"spatial\"} a built-in wallpaper · "
+                       "{\"kind\":\"desktop\",\"desk\":2} switch virtual desktop · "
+                       "{\"kind\":\"agent\",\"prompt\":\"...\"} put me on a task · "
+                       "{\"kind\":\"tool\",\"tool\":\"<any tool name>\",\"args\":\"{...}\"} call an agent "
+                       "or MCP tool directly with JSON args — deterministic, no model in the loop "
+                       "(mcp_* names come from the user's connected MCP servers) · "
+                       "{\"kind\":\"python\",\"code\":\"print(...)\"} run Python · "
+                       "{\"kind\":\"wait\",\"ms\":500} pause between steps. "
+                       "Prefer `tool` and `python` when the work is exact and repeatable, and `agent` "
+                       "when it needs judgement — an automation should be as deterministic as the "
+                       "task allows.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "what the user will call it; reuse an existing name to edit it"},
+                "steps": {"type": "string", "description": "JSON array of step objects, run in order"},
+                "icon": {"type": "string", "description": "optional single emoji shown on the automation's tile"},
+            },
+            "required": ["name", "steps"],
+        },
+    },
+]
+TOOL_SCHEMAS.extend(AUTOMATION_TOOL_SCHEMAS)
 
 PROACTIVITY_TOOL_SCHEMAS = [
     {

@@ -11,6 +11,12 @@ taskbar, virtual desktops, widgets, themes, shortcuts — and the catalog of bui
 Every app opens in a draggable, resizable window with minimize / maximize / close and proper
 z-ordering. Double-click a title bar to maximize. The **taskbar** at the bottom tracks open windows.
 
+### The app deck & system apps
+Apps live in bento groups on the deck above the prompt bar. Alongside your groups, a **System
+apps** group lists the applications installed on the machine itself, with their real icons — in
+every run mode, whether AgentOS *is* your session or a window inside someone else's. Click one to
+launch it on the host; right-click for *Show all applications*, or to hide the group.
+
 ### Start menu & dock
 - **Start** (bottom-left) opens the full app menu with descriptions.
 - The **dock** next to Start holds quick-launch shortcuts for your favorite apps, each showing a dot
@@ -74,15 +80,151 @@ Open **Settings → Appearance** and pick a theme; the entire interface recolors
 - **Ember** (light)
 - **Dracula**
 - **Nord**
+- **Frost** (glass) · **Field** (warm light) · **Shell** (terminal) · **Aura** (voice-first)
 
 Your choice is remembered.
 
+### Design-language themes
+
+Five themes go further than a palette — each one re-cuts the whole shell (surfaces, radii,
+elevation, blur and type) into a different visual language:
+
+| Theme | Language |
+|---|---|
+| **Bento (grid)** | flat, chunky, gapped tiles with hard offset shadows and alternating tile weights — no blur anywhere |
+| **Liquid Glass** | near-invisible surfaces: the wallpaper refracts through every pane, with a bright rim holding each one together |
+| **Spatial (depth)** | panes floating in a room — heavy blur, deep drop shadows, nothing opaque |
+| **Claymorphism** | puffed-up clay: fat radii, a soft outer shadow *and* an inner highlight, so surfaces look pressed out of the background |
+| **Minimalism** | paper: hairlines instead of shadows, one accent colour, nothing else |
+
+Themes control tokens, not just colours: anything in a theme's `v` map becomes a CSS custom
+property, so a theme can redefine `--r-lg`, `--el-4`, `--glass-blur` or `--wall` alongside the
+usual hues. The agent can create themes of its own with the same reach — see
+[Models & Appearance](models.md).
+
+---
+
+## Hot corners
+
+Rest the pointer in a screen corner and something happens. All four ship bound —
+an unbound corner teaches you nothing:
+
+| Corner | Default |
+|---|---|
+| Top left | **Overview** — every window on this desktop, laid out |
+| Top right | **Control Centre** — sound, brightness, network, battery |
+| Bottom left | **App deck** — the launcher |
+| Bottom right | **Show desktop** — everything out of the way, and back again |
+
+Rebind any corner in **Automations → Hot corners** to a desktop action, an app,
+or one of your automations. The action list is the same table the keyboard uses,
+so a corner can never do something a shortcut cannot.
+
+A corner fires on *dwell*, not on touch: a pointer flying at a close button
+clips the corner constantly, so nothing happens until the pointer has rested
+there (240ms by default, adjustable), and it must leave the zone before it can
+fire again. A quarter-disc fills during the dwell — that's both the affordance
+and the escape hatch. Hot corners stand down mid-drag, while an automation is
+running, and on phones, which have no pointer to rest.
+
+---
+
+## Automations
+
+An automation is a **named, repeatable sequence of desktop steps**. Set one up
+once, and from then on it does exactly that — every time, from anywhere.
+
+Build one in the **Automations** app, or just describe it:
+
+> *"Whenever I start work: open chat and the terminal, switch to the minimal
+> theme, and summarise what changed in my workspace. Call it Start work."*
+
+A step is one of:
+
+| Kind | What it does |
+|---|---|
+| `app` | open an AgentOS app |
+| `action` | a desktop action — overview, show desktop, app deck, tile windows, voice, … |
+| `theme` | apply a theme |
+| `wallpaper` | set a built-in wallpaper |
+| `desktop` | switch virtual desktop |
+| `agent` | put the agent on a task — the model decides how |
+| `tool` | call any agent or **MCP** tool directly with JSON arguments — no model in the loop |
+| `python` | run Python on this machine |
+| `wait` | pause between steps |
+
+`agent` and `tool`/`python` are the two halves of the same idea. Use `agent` when the step needs
+judgement ("summarise what changed today"); use `tool` or `python` when it is exact and should come
+out the same way every time. A `tool` step can reach anything the agent can, including every tool
+your connected [MCP servers](integrations.md) expose — so an automation can pull a Linear issue,
+query a database, or hit an internal API without a model deciding how.
+
+Both go through `/api/tool`, which means they inherit the **permission gate**: an automation gets
+no more reach than the agent has, it just skips the model. Their output surfaces as a card above
+the prompt bar, so a routine that computes something actually shows you what it found.
+
+**Ad-hoc, four ways:** type its name in the prompt bar, press **Run** in the
+Automations app, bind it to a hot corner, or ask the agent for it by name
+(`run_automation`). The agent can also build and edit them for you
+(`save_automation`, `list_automations`) — saving an existing name edits that
+automation rather than forking a second one with the same name.
+
+However it's fired, the sequence runs in one place: the server only *stores*
+automations and broadcasts "run this", and the desktop performs the steps. So a
+schedule, a hot corner, the palette and the agent can't drift apart.
+
+Malformed steps are rejected when you save, not when the automation runs — an
+automation replayed unattended at 7am should fail at the door or not at all.
+
+---
+
+## Phone, tablet, desktop
+
+The desktop serves the same URL to every screen and adapts to the one it lands on. Nothing is
+removed on a small screen — the menu bar, dock, prompt bar, app deck and windows are all still
+there; they just take a different amount of room.
+
+| | Phone (< 720px) | Tablet (720–1179px) | Desktop (≥ 1180px) |
+|---|---|---|---|
+| Windows | full-bleed sheets, one at a time | floating, draggable | floating, draggable, snappable |
+| Dock | fixed bar across the bottom edge | floating, slimmed down | floating |
+| Prompt bar | full width above the dock | centred | centred |
+| App deck | one column of full-width groups, 4 icons across | full width, tighter tiles | multi-column |
+| Launcher | full-screen sheet | popover | popover |
+| Menu bar | brand + status only | no app menus | everything |
+| Popovers | bottom sheets | anchored panels | anchored panels |
+
+The classification is on the **viewport**, not the user agent, so a narrow browser window on a
+laptop gets the phone layout too — which is what you want when AgentOS is docked beside an editor.
+Touch is tracked separately (`body.dev-touch`), so a touchscreen laptop gets larger hit targets at
+desktop widths and hover-only affordances such as dock tooltips stand down.
+
+Screen-edge surfaces pad by `env(safe-area-inset-*)`, so the dock clears a home indicator and the
+menu bar clears a notch. On a phone the window sheet reserves the height of the dock and the prompt
+bar, so the agent stays reachable without ever covering an app's own composer.
+
+Resizing across a breakpoint re-lays the desktop live: windows become sheets (and go back to their
+remembered geometry on the way out), the dock and deck rebuild, and popovers anchored to chrome
+that just moved are dismissed rather than left pointing at nothing.
+
+---
+
 ### Wallpaper
-In **Personalize** you can:
+AgentOS ships five wallpapers, one per design-language theme. They're **SVG**: a few KB each,
+sharp from a phone to a 4K panel, and drawn with gradients rather than blur filters so they cost
+almost nothing to rasterise on a slow GPU. They're part of this repository, under the same MIT
+licence as the rest of it — no third-party assets, no attribution to track.
+
+Pick a theme and its wallpaper follows automatically. In **Personalize** you can also:
+- **Pin a built-in** — use one wallpaper regardless of the theme (*Follow the theme* undoes it).
 - **Use your system wallpaper** — adopts the host desktop background so AgentOS matches your system.
 - **Generate a wallpaper** with AI from a text description (saved to a local gallery you can pick
   from later).
 - **Reset** to the built-in background.
+
+Precedence, most specific first: a wallpaper file you generated or adopted → a built-in you pinned
+→ the current theme's wallpaper → the default background. The wallpaper fills the whole viewport,
+including behind the menu bar, so translucent chrome has something to blur.
 
 See [Models & Appearance](models.md) for more.
 

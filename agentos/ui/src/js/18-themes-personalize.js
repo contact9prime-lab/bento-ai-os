@@ -105,8 +105,24 @@ async function tbSave(){
 /* ================= personalize app + wallpaper gallery ================= */
 async function renderPersonalize(body){
   let gal=[];try{gal=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+  const picked=pickedWall();
   body.innerHTML=`<div class="pad">
-    <label>Describe your wallpaper</label>
+    <label>Built-in wallpapers</label>
+    <p class="mut" style="margin:2px 0 8px">Ship with AgentOS, one per design-language theme. They're SVG — a few KB
+      each, sharp at any resolution. Pick a theme and its wallpaper follows automatically; choose one here to pin it instead.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
+        style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
+          border:2px solid ${id===picked?'var(--acc)':'var(--line)'}">
+        <img src="${builtinWallURL(id)}" alt="${esc(id)} wallpaper" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
+        <span style="position:absolute;left:0;right:0;bottom:0;padding:3px 7px;text-align:left;font-size:var(--fs-2xs);
+          background:linear-gradient(transparent,rgba(0,0,0,.6));color:#fff">${esc(id)}</span>
+      </button>`).join('')}
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="endbtn" onclick="clearBuiltinWallpaper();refreshApp('personalize')">Follow the theme</button>
+    </div>
+    <label style="margin-top:18px">Describe your wallpaper</label>
     <textarea id="pz-prompt" rows="2" placeholder="e.g. dark cyberpunk skyline at dusk, teal neon reflections, rain, cinematic"></textarea>
     <div class="row" style="margin-top:10px">
       <button class="save" style="margin:0" id="pz-gen" onclick="pzGen()">Generate wallpaper</button>
@@ -135,7 +151,11 @@ async function pzGen(){
   }catch(e){toast('generation failed — offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
-async function pzSet(id){await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('applied')}
+async function pzBuiltin(id){await setBuiltinWallpaper(id);refreshApp('personalize')}
+async function pzSet(id){
+  localStorage.removeItem('wallpaper.builtin');   // a generated wallpaper replaces the pinned built-in
+  await fetch('/api/wallpapers/'+id+'/set',{method:'POST'});toast('applied');
+}
 async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'POST'});const d=await r.json();toast(d.ok?'using your system wallpaper':(d.error||'failed'))}
 async function pzDel(id){await fetch('/api/wallpapers/'+id,{method:'DELETE'});refreshApp('personalize')}
 

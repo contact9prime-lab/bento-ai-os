@@ -3,7 +3,11 @@
 # Targets the build machine's Python (currently 3.13 / Ubuntu 25.10). Run from anywhere.
 #
 #   ./packaging/build-deb.sh
-#   sudo dpkg -i packaging/dist/agentos_<version>_amd64.deb
+#   sudo dpkg -i packaging/dist/agentos_<version>_<arch>.deb
+#
+# The architecture comes from the build machine (dpkg --print-architecture), so
+# running this on a Raspberry Pi produces a real arm64 package. Every dependency
+# is pure Python or ships arm64 wheels, so nothing here is x86-only.
 #
 set -euo pipefail
 
@@ -13,8 +17,11 @@ BUILD="$HERE/build"
 DIST="$HERE/dist"
 VER="$(grep -m1 '^version' "$REPO/pyproject.toml" | sed 's/.*"\(.*\)".*/\1/')"
 PYVER="$(python3 -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+# a bundled venv is machine-code-bearing, so the package must declare the arch it
+# was actually built on — hardcoding amd64 would make a Pi build uninstallable
+ARCH="$(dpkg --print-architecture)"
 
-echo "▲ Building AgentOS .deb  version=$VER  python=$PYVER"
+echo "▲ Building AgentOS .deb  version=$VER  python=$PYVER  arch=$ARCH"
 rm -rf "$BUILD" "$DIST"
 mkdir -p "$BUILD/DEBIAN" "$BUILD/opt/agentos" "$BUILD/usr/bin" \
          "$BUILD/usr/share/applications" "$BUILD/usr/share/icons/hicolor/scalable/apps" \
@@ -86,7 +93,7 @@ Package: agentos
 Version: $VER
 Section: utils
 Priority: optional
-Architecture: amd64
+Architecture: $ARCH
 Depends: python3 (>= $PYVER), python3 (<< $(python3 -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor+1}")'))
 Recommends: bubblewrap, xdg-utils
 Suggests: ollama, nodejs, git
@@ -126,7 +133,7 @@ exit 0
 EOF
 chmod 755 "$BUILD/DEBIAN/prerm"
 
-DEB="$DIST/agentos_${VER}_amd64.deb"
+DEB="$DIST/agentos_${VER}_${ARCH}.deb"
 echo "  → assembling $DEB"
 fakeroot dpkg-deb --build --root-owner-group "$BUILD" "$DEB" >/dev/null
 

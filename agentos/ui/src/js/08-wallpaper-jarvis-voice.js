@@ -1,18 +1,48 @@
-/* ================= wallpaper ================= */
+/* ================= wallpaper =================
+   Four sources, most-specific first:
+     1. a wallpaper file the user generated or adopted from the host,
+     2. a built-in they picked by hand (remembered per-machine),
+     3. the wallpaper the current theme ships with — this is what makes picking
+        Claymorphism also dress the desktop for it,
+     4. the wizard's preset gradient, or the stylesheet's mesh.
+   The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
+   cheap to rasterise on slow GPUs (no blur filters — gradients only). */
+const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial'];
+const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
+function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
+function themeWall(){
+  const t=allThemes()[CURRENT_THEME];
+  return (t&&t.wall_img&&BUILTIN_WALLS.includes(t.wall_img))?t.wall_img:'';
+}
+function applyWallImage(url){
+  const w=$('#wall');
+  if(!w)return;
+  if(url){w.style.backgroundImage='url("'+url+'")';w.classList.add('has')}
+  else{w.style.backgroundImage='';w.classList.remove('has')}
+}
 function loadWallpaper(){
-  const w=$('#wall'),url='/api/wallpaper?t='+Date.now();
+  const url='/api/wallpaper?t='+Date.now();
   const img=new Image();
-  img.onload=()=>{w.style.backgroundImage='url("'+url+'")';w.classList.add('has')};
+  img.onload=()=>applyWallImage(url);
   img.onerror=()=>{
-    // no wallpaper file: the wizard's preset gradient (config-only) if one was
-    // chosen, else the built-in mesh fallback from the stylesheet
+    const id=pickedWall()||themeWall();
+    if(id)return applyWallImage(builtinWallURL(id));
     const preset=cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset;
     if(preset&&typeof WIZ_WALLS!=='undefined'&&WIZ_WALLS[preset]){
-      w.style.backgroundImage=WIZ_WALLS[preset];w.classList.add('has');
-    }else{w.style.backgroundImage='';w.classList.remove('has')}
+      const w=$('#wall');w.style.backgroundImage=WIZ_WALLS[preset];w.classList.add('has');
+    }else applyWallImage('');
   };
   img.src=url;
 }
+/* Picking a built-in clears any generated wallpaper file, because a file always
+   wins — leaving one behind would make the choice look like it did nothing. */
+async function setBuiltinWallpaper(id){
+  if(!BUILTIN_WALLS.includes(id))return toast('no built-in wallpaper "'+id+'"');
+  localStorage.setItem('wallpaper.builtin',id);
+  try{await fetch('/api/wallpaper',{method:'DELETE'})}catch(e){}
+  loadWallpaper();
+}
+function clearBuiltinWallpaper(){localStorage.removeItem('wallpaper.builtin');loadWallpaper()}
 
 /* ================= jarvis thinking animation ================= */
 let jrRaf=0,jrPulse=0,jrActive=false,jrTimeout=0;

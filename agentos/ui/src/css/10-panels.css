@@ -167,3 +167,60 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   border:1px solid var(--hairline-strong)}
 .wiz-finish{padding-left:44px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .wiz-finish .sub{font-size:var(--fs-sm);color:var(--dim)}
+
+/* ================= automations & hot corners ================= */
+.auto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:4px}
+.auto-card{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:var(--r-lg);
+  border:1px solid var(--line);background:var(--bg2)}
+.auto-top{display:flex;align-items:center;gap:9px}
+.auto-ic{width:30px;height:30px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
+  font-size:var(--fs-lg);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.auto-nm{font-size:var(--fs-base);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auto-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
+.auto-steps li::marker{color:var(--dim2);font-size:var(--fs-xs)}
+.auto-steps.edit{padding-left:20px}
+.auto-steps.edit li{display:flex;align-items:center;gap:6px}
+.auto-steps.edit li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+.auto-steps.edit li button{padding:1px 7px;font-size:var(--fs-xs)}
+.auto-foot{display:flex;align-items:center;gap:6px;margin-top:2px}
+.auto-foot .mut{font-size:var(--fs-xs)}
+/* a form is not more usable at 1400px — the builder keeps a readable measure
+   even when the window is maximised */
+.auto-builder{margin-bottom:16px;max-width:820px}
+.auto-builder .row>button{flex:0 0 auto}
+.auto-builder .save{width:auto}
+.auto-add select,.auto-add input{max-width:none}
+.auto-add>select{flex:0 0 auto}
+/* an automation drives the desktop on its own — say so while it does */
+body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
+
+.hc-box{margin-top:18px}
+.hc-box .row>button{flex:0 0 auto}
+.hc-box .ptitle{display:flex;align-items:center;gap:10px}
+.hc-on{margin-left:auto;font-size:var(--fs-xs);font-weight:400;color:var(--dim);display:flex;align-items:center;gap:5px}
+.hc-on input{width:auto}
+/* the four corners laid out as the screen they map to — the picker IS the map */
+.hc-grid{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:44px 10px;
+  padding:10px;border:1px dashed var(--line);border-radius:var(--r-lg)}
+.hc-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hc-cell select{width:100%}
+.hc-cell-tr,.hc-cell-br{align-items:flex-end}
+.hc-lbl{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2)}
+.hc-screen{position:absolute;left:32%;right:32%;top:50%;transform:translateY(-50%);height:26px;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.5}
+.hc-screen span{font-size:var(--fs-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
+
+/* ---- remote access ---- */
+.rm-pill{margin-left:auto;font-size:var(--fs-2xs);font-weight:800;letter-spacing:.1em;
+  padding:2px 9px;border-radius:var(--r-full);background:var(--bg4);color:var(--dim)}
+.rm-pill.on{background:var(--ok);color:#04211c}
+.provbox .ptitle{display:flex;align-items:center;gap:8px}
+.rm-addr{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.rm-row{display:flex;align-items:center;gap:8px}
+.rm-row code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);
+  font-size:var(--fs-sm);padding:7px 10px;border-radius:var(--r-md);
+  background:var(--bg3);border:1px solid var(--line)}
+.rm-notes{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.55}

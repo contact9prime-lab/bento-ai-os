@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>AgentOS — sign in</title>
+<style>
+/* Standalone on purpose: the desktop is 600KB and none of it should load for
+   someone who has not signed in yet. */
+:root{--bg:#0b0d10;--bg2:#111419;--line:#232a35;--txt:#e6ebf2;--dim:#8a94a6;
+  --acc:#5eead4;--acc2:#22d3ee;--err:#f87171;
+  --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:
+    radial-gradient(1100px 700px at 78% 18%,rgba(34,211,238,.13),transparent 60%),
+    radial-gradient(900px 650px at 15% 85%,rgba(94,234,212,.10),transparent 60%),
+    linear-gradient(160deg,#0a0f16,#0b0d10 55%,#0d1118);
+  color:var(--txt);display:flex;align-items:center;justify-content:center;
+  padding:calc(24px + var(--safe-t)) 20px calc(24px + var(--safe-b));
+  font:400 15px/1.5 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url('/assets/InterVariable.woff2') format('woff2')}
+form{width:min(380px,100%);display:flex;flex-direction:column;gap:14px;text-align:center}
+.mark{width:64px;height:64px;margin:0 auto 4px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 12px 34px rgba(0,0,0,.5)}
+h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+p.sub{color:var(--dim);font-size:13px}
+input{width:100%;padding:14px 16px;font:inherit;font-size:16px;   /* 16px: iOS zooms anything smaller */
+  color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;outline:none}
+input:focus{border-color:var(--acc)}
+button{width:100%;padding:14px;font:inherit;font-weight:700;color:#04211c;border:none;border-radius:12px;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.err{min-height:18px;font-size:13px;color:var(--err)}
+.tip{font-size:12px;color:var(--dim);opacity:.8;line-height:1.6}
+</style>
+</head>
+<body>
+<form id="f" autocomplete="on">
+  <div class="mark"><svg viewBox="0 0 24 24" width="64%" height="64%">
+    <path d="M12 4.3 L19.6 18.4 Q20.1 19.3 19.1 19.3 L4.9 19.3 Q3.9 19.3 4.4 18.4 Z" fill="#04211c"/>
+    <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
+    <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/></svg></div>
+  <h1>AgentOS</h1>
+  <p class="sub">This desktop is locked. Sign in to continue.</p>
+  <input id="pw" type="password" name="password" placeholder="Passphrase"
+         autocomplete="current-password" autofocus enterkeyhint="go">
+  <button id="go" type="submit">Sign in</button>
+  <div class="err" id="err"></div>
+  <p class="tip">On iPhone: <b>Share → Add to Home Screen</b> for a full-screen app.</p>
+</form>
+<script>
+const f=document.getElementById('f'),pw=document.getElementById('pw'),
+      go=document.getElementById('go'),err=document.getElementById('err');
+f.addEventListener('submit',async e=>{
+  e.preventDefault();
+  err.textContent='';go.disabled=true;go.textContent='Signing in…';
+  try{
+    const r=await fetch('/api/remote/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({passphrase:pw.value})});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok)return location.replace('/');
+    err.textContent=d.error||'sign-in failed';
+  }catch(e){err.textContent='could not reach AgentOS'}
+  go.disabled=false;go.textContent='Sign in';pw.select();
+});
+</script>
+</body>
+</html>

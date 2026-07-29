@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Liquid Glass: warm caustics for the glass to refract. Radial gradients
+       only — no feGaussianBlur, which is what keeps this cheap to rasterize at
+       4K and on a Pi. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#e0674f"/><stop offset="0.46" stop-color="#7d2f33"/><stop offset="1" stop-color="#1e1622"/>
+    </linearGradient>
+    <radialGradient id="g1" cx="0.2" cy="0.12" r="0.62">
+      <stop offset="0" stop-color="#ffb08c" stop-opacity="0.95"/><stop offset="1" stop-color="#ffb08c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="0.82" cy="0.26" r="0.58">
+      <stop offset="0" stop-color="#c4443c" stop-opacity="0.9"/><stop offset="1" stop-color="#c4443c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g3" cx="0.55" cy="1.05" r="0.62">
+      <stop offset="0" stop-color="#2f4a5c" stop-opacity="0.85"/><stop offset="1" stop-color="#2f4a5c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sheen" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#base)"/>
+  <rect width="1600" height="1000" fill="url(#g1)"/>
+  <rect width="1600" height="1000" fill="url(#g2)"/>
+  <rect width="1600" height="1000" fill="url(#g3)"/>
+  <ellipse cx="430" cy="250" rx="360" ry="200" fill="url(#sheen)"/>
+  <ellipse cx="1180" cy="640" rx="300" ry="170" fill="url(#sheen)" opacity="0.6"/>
+  <g fill="none" stroke="#fff" opacity="0.10">
+    <path d="M-40 700 C 300 560 520 760 860 620 S 1380 520 1660 640" stroke-width="2"/>
+    <path d="M-40 780 C 320 650 560 830 900 700 S 1400 610 1660 720" stroke-width="1.5" opacity="0.7"/>
+  </g>
+</svg>

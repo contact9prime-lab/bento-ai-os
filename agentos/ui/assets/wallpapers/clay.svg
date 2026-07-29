@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Claymorphism: pastel blobs pressed out of a violet field. The bevel is two
+       offset copies of each blob (light above, shadow below) rather than a
+       filter, so it stays sharp at any size and costs nothing to draw. -->
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#d9ccff"/><stop offset="0.52" stop-color="#c9b9ff"/><stop offset="1" stop-color="#e7dcff"/>
+    </linearGradient>
+    <radialGradient id="p1" cx="0.16" cy="0.06" r="0.62">
+      <stop offset="0" stop-color="#b9a4ff" stop-opacity="0.95"/><stop offset="1" stop-color="#b9a4ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="p2" cx="0.88" cy="0.9" r="0.6">
+      <stop offset="0" stop-color="#ffc2d8" stop-opacity="0.95"/><stop offset="1" stop-color="#ffc2d8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="clay" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#fdfbff"/><stop offset="1" stop-color="#ece5ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#field)"/>
+  <rect width="1600" height="1000" fill="url(#p1)"/>
+  <rect width="1600" height="1000" fill="url(#p2)"/>
+  <g opacity="0.75">
+    <ellipse cx="300" cy="770" rx="215" ry="150" fill="#6c4ef0" opacity="0.16"/>
+    <ellipse cx="296" cy="758" rx="215" ry="150" fill="url(#clay)"/>
+    <ellipse cx="1315" cy="245" rx="180" ry="180" fill="#6c4ef0" opacity="0.16"/>
+    <ellipse cx="1311" cy="233" rx="180" ry="180" fill="#f7889f" opacity="0.55"/>
+    <rect x="620" y="150" width="330" height="230" rx="86" fill="#6c4ef0" opacity="0.14"/>
+    <rect x="616" y="138" width="330" height="230" rx="86" fill="url(#clay)"/>
+    <circle cx="1130" cy="800" r="96" fill="#6c4ef0" opacity="0.16"/>
+    <circle cx="1126" cy="788" r="96" fill="#6c4ef0" opacity="0.42"/>
+  </g>
+</svg>

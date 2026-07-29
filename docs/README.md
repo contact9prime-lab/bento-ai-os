@@ -22,6 +22,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Training Models](training.md) | The Train app (TrainForge): datasets, LoRA fine-tuning, evaluation, publishing |
 | [Git & Shipping](git.md) | The git toolset, GitHub setup, exporting apps to repos |
 | [The TUI](tui.md) | AgentOS in a terminal — over SSH or without a browser |
+| [Remote access](remote-access.md) | Reach the desktop from your phone — the opt-in switch, the lock, and what it is not |
 | [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
 | [Hermes](hermes.md) | The Hermes companion agent — use it as a chat engine, download & configure it in AgentOS |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
