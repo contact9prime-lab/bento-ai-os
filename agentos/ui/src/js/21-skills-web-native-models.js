@@ -156,6 +156,12 @@ function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
 async function launchNative(id,name){
   const label=name||id;
   toast('↗ starting '+label+'…');
+  // The launch now WAITS for the window to map instead of returning instantly and
+  // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —
+  // an app that takes four seconds should look like it is coming, not like the
+  // click missed.
+  const tiles=[...document.querySelectorAll(`[data-nat="${CSS.escape(id)}"]`)];
+  tiles.forEach(t=>t.classList.add('launching'));
   try{
     const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
     const d=await r.json();
@@ -170,6 +176,7 @@ async function launchNative(id,name){
     }
     return d;
   }catch(e){toast(label+': '+e.message)}
+  finally{tiles.forEach(t=>t.classList.remove('launching'))}
 }
 /* The card a remote client gets instead of a lie. */
 function hostAppOpenedCard(label){

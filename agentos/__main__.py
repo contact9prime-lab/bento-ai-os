@@ -324,6 +324,23 @@ def doctor(fix: bool = False):
             warn("no chromium-family browser — the AgentOS session cannot draw its shell "
                  "(snap install chromium)")
 
+        try:
+            from . import session as _sess
+            if _sess.SWAY_CONF.is_file() and _sess.config_is_stale():
+                if fix:
+                    _changed, _how = _sess.refresh_config()
+                    fixed(f"compositor config was from an older AgentOS — {_how}")
+                else:
+                    bad("the installed compositor config is older than this AgentOS. "
+                        "Window rules shipped since you installed the session are not "
+                        "active — that is what 'no window controls' and 'apps always on "
+                        "top' look like")
+                    todo("agentos doctor --fix   (or `agentos install-session` again)")
+            elif _sess.SWAY_CONF.is_file():
+                ok("compositor config matches this version of AgentOS")
+        except Exception:
+            pass
+
         if effective == runmode.DE and os.environ.get("AGENTOS_SESSION") != "1":
             warn("server reports DE mode but wasn't started by the session launcher — "
                  "a stale server from another session may be holding the port")

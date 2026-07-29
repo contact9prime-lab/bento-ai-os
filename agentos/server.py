@@ -162,6 +162,22 @@ async def startup():
             get_platform(refresh=True)
         except Exception:
             pass
+        # An upgrade must actually reach the compositor. SWAY_CONF is generated
+        # and was only ever written by install-session, so window rules shipped
+        # after the user installed the session never arrived — the desktop looked
+        # like it had no window controls and every app was stuck on top, because
+        # on that machine it did and they were.
+        if _rm.resolve(cfg)[0] == _rm.DE:
+            try:
+                from . import session as sessionmod
+                changed, how = sessionmod.refresh_config()
+                if changed:
+                    state["store"].log("system", f"session config: {how}")
+                    await broadcast({"type": "toast",
+                                     "text": "Compositor settings updated for this "
+                                             "version of AgentOS"})
+            except Exception:
+                pass
         if _rm.resolve(cfg)[0] == _rm.DE and not state.get("notifd"):
             try:
                 from .notifications import NotificationDaemon

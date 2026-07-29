@@ -201,6 +201,29 @@ night light), `playerctl` (LGPL-3, media keys), `cups` + `system-config-printer`
 (printing), and the `xdg-desktop-portal` trio (screen sharing and native file
 dialogs). A greyed-out control whose fix is a component links straight to it.
 
+### Window controls on native apps
+
+Native windows are floating and carry a **sway title bar**: drag it to move,
+middle-click it to close, right-click it to minimise (to the scratchpad — still
+listed in the taskbar). **Super+drag** moves from anywhere in the window,
+**Super+right-drag** resizes. **Super+D** shows the desktop, **Super+H**
+minimises, **Super+F** / F11 full-screens, **Super+Q** closes. The taskbar tile
+and the menu bar's Window menu do the same things over compositor IPC, so they
+work from a phone too.
+
+An app's *own* minimise button cannot be made to work by anyone: sway does not
+implement `xdg_toplevel.set_minimized`, so the request never arrives. That is why
+minimise lives on our title bar, the taskbar and Super+H instead.
+
+> **If none of that seems to be true on your machine, your compositor config is
+> from an older AgentOS.** `~/.config/agentos/sway.conf` is generated, and until
+> recently only `install-session` ever wrote it — so window rules added after you
+> installed the session never reached the disk. AgentOS now compares the file
+> with what this build would generate, rewrites it and reloads sway live at
+> startup (the shell is started with `exec`, not `exec_always`, so reloading does
+> not restart your desktop). `agentos doctor` reports it; `agentos doctor --fix`
+> applies it. Your own overrides in the drop-in directory are never touched.
+
 ## Checking it yourself
 
 `agentos doctor`, run inside the session, verifies the three things that decide

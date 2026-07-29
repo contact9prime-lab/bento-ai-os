@@ -770,6 +770,65 @@ def apply_wallpaper_live(wallpaper: str | None) -> bool:
 # install / remove
 # =============================================================================
 
+def current_config_text() -> str:
+    """The sway config this build WOULD generate right now, from live settings."""
+    try:
+        cfg = cfgmod.load_config()
+    except Exception:
+        cfg = {}
+    desk = cfg.get("desktop", {}) or {}
+    wallpaper = cfgmod.AGENTOS_HOME / "wallpaper.png"
+    return sway_config_text(
+        _port(),
+        idle_lock=int(desk.get("idle_lock_secs", 600)),
+        idle_off=int(desk.get("idle_screen_off_secs", 900)),
+        wallpaper=str(wallpaper) if wallpaper.exists() else "")
+
+
+def config_is_stale() -> bool:
+    """Is the installed compositor config older than this build's?
+
+    It matters more than it looks. SWAY_CONF is GENERATED, written once by
+    `install-session`, and never touched again by an upgrade — so a machine that
+    installed the session months ago kept running that month's window rules
+    forever. Every fix since (title bars on native windows, Super-drag to move,
+    Super+D for the desktop, the layering that stops apps opening underneath the
+    shell) was in the template and not on the disk. From the user's chair that
+    reads as "AgentOS has no window controls and every app is stuck on top",
+    which is exactly what it was.
+
+    User customisation is safe: overrides belong in the drop-in directory, which
+    this never touches.
+    """
+    try:
+        return SWAY_CONF.is_file() and SWAY_CONF.read_text() != current_config_text()
+    except Exception:
+        return False
+
+
+def refresh_config(reload_now: bool = True) -> tuple[bool, str]:
+    """Rewrite the generated config if this build's differs, and apply it live.
+
+    `swaymsg reload` re-reads the file and re-runs exec_always. The shell itself
+    is started with plain `exec`, so reloading does NOT restart the desktop —
+    the new rules simply take effect, and windows opened from then on get them.
+    """
+    if not SWAY_CONF.is_file():
+        return False, "no session config installed"
+    want = current_config_text()
+    if SWAY_CONF.read_text() == want:
+        return False, "already current"
+    SWAY_CONF.write_text(want)
+    if not reload_now:
+        return True, "config refreshed — log out and back in to apply"
+    try:
+        from . import compositor as comp
+        comp.Compositor().command("reload")
+        return True, "compositor config refreshed and reloaded"
+    except Exception as e:
+        return True, f"config refreshed; reload it by hand (swaymsg reload): {e}"
+
+
 def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
     """Write every user-owned file. Root is not needed for any of this."""
     port = port or _port()
