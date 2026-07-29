@@ -224,3 +224,15 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
   background:var(--bg3);border:1px solid var(--line)}
 .rm-notes{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+
+/* ---- host screen ---- */
+.hs-live{display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);color:var(--dim);white-space:nowrap}
+.hs-live input{width:auto}
+.hs-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px;min-height:0;overflow:auto}
+.hs-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-lg);border:1px solid var(--line);background:#000;overflow:hidden}
+.hs-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.hs-foot{display:flex;align-items:center;gap:10px;font-size:var(--fs-xs)}
+.hs-note{font-size:var(--fs-xs);line-height:1.6}
+.hs-note code{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px}

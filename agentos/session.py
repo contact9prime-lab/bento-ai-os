@@ -444,13 +444,19 @@ START_URL="http://127.0.0.1:$PORT"
 [ -f "$HOME/.agentos/boot.html" ] && START_URL="file://$HOME/.agentos/boot.html"
 # --ozone-platform-hint=auto: native Wayland when it works, XWayland when it
 # doesn't (NVIDIA setups) — both render inside our compositor either way.
+# The bubble/infobar flags matter more here than in a browser: a "Restore pages?"
+# bar or a translate prompt across the top of the shell is a strip of Chromium
+# painted across your operating system. Unknown flags are ignored, so this stays
+# safe across Chromium versions.
 # NOT --kiosk: chrome's kiosk mode forces a fullscreen surface, which sway
 # keeps above everything — hiding every native app. The shell is a plain app
 # window; sway tiles it alone, which IS edge-to-edge, with floats above it.
 # --class names the XWayland window, --wayland-app-id the Wayland one.
 exec "$RENDERER" --app="$START_URL" \\
   --user-data-dir="$prof" --class={APP_ID} --wayland-app-id={APP_ID} \\
-  --ozone-platform-hint=auto --no-first-run --no-default-browser-check >> "$LOG" 2>&1
+  --ozone-platform-hint=auto --no-first-run --no-default-browser-check \\
+  --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-infobars \\
+  --disable-features=Translate,MediaRouter >> "$LOG" 2>&1
 """
 
 
@@ -523,7 +529,8 @@ prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
 for b in {' '.join(RENDERERS)}; do
   if command -v "$b" >/dev/null 2>&1; then
     exec "$b" --app="http://127.0.0.1:$PORT" --kiosk --user-data-dir="$prof" \\
-         --no-first-run --no-default-browser-check --class={APP_ID}
+         --no-first-run --no-default-browser-check --class={APP_ID} \\
+         --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-infobars
   fi
 done
 command -v xmessage >/dev/null 2>&1 && xmessage "AgentOS session: no chromium-based browser found."

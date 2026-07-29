@@ -832,6 +832,18 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
   background:var(--bg3);border:1px solid var(--line)}
 .rm-notes{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+
+/* ---- host screen ---- */
+.hs-live{display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);color:var(--dim);white-space:nowrap}
+.hs-live input{width:auto}
+.hs-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px;min-height:0;overflow:auto}
+.hs-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-lg);border:1px solid var(--line);background:#000;overflow:hidden}
+.hs-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.hs-foot{display:flex;align-items:center;gap:10px;font-size:var(--fs-xs)}
+.hs-note{font-size:var(--fs-xs);line-height:1.6}
+.hs-note code{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -1980,6 +1992,7 @@ const ICONS={
   telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
   logs:['#A8A29E','#57534E','<path d="M7 4.6h6.8l3.8 3.8v11H7Z"/><path d="M13.6 4.8v3.8h3.8"/><path d="M9.6 12.6h4.8M9.6 15.6h4.8"/>'],
   tasks:['#F87171','#DC2626','<circle cx="12" cy="12" r="7.8"/><path d="M12 7.6V12l3 1.8"/>'],
+  hostscreen:['#38BDF8','#0C4A6E','<rect x="3.2" y="5" width="17.6" height="11.4" rx="1.8"/><path d="M8.4 19.4h7.2M12 16.4v3"/><path d="M6.6 12.6l2.6-2.6 2 2 3.2-3.4 3 3.2"/>'],
   automations:['#F0A93B','#C2410C','<path d="M13.2 3.6 5.4 13.4h5.1l-.7 7 7.8-9.8h-5.1Z"/>'],
   skills:['#34D399','#059669','<path d="M5.4 5.6c0-.9.7-1.6 1.6-1.6h11.6v14.4H7a1.6 1.6 0 0 0-1.6 1.6Z"/><path d="M5.4 5.6V20M9.3 8h5.4"/>'],
   policies:['#7C8CA3','#3A4759','<path d="M12 4.2 18.8 6.6v5c0 4-2.7 6.9-6.8 8.2-4.1-1.3-6.8-4.2-6.8-8.2v-5Z"/><path d="M9.3 12l1.9 1.9 3.5-3.7"/>'],
@@ -3402,6 +3415,8 @@ const APPS={
       {label:'Copy this path',fn:()=>{navigator.clipboard.writeText(w.path||'.').then(()=>toast('path copied'))}},
     ]]]},
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
+  hostscreen:{id:'hostscreen',title:'Host Screen',icon:'',w:900,h:620,desc:'See the machine’s real display — native apps included',
+    render:renderHostScreen,onClose(){hsStop();return true}},
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
@@ -3446,6 +3461,7 @@ const APP_CTX={
   terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
   browser:()=>'the web launcher (opens URLs in the host browser)',
   apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
+  hostscreen:()=>`a live still of the host machine's physical screen (native app windows are visible here and nowhere else)`,
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
@@ -3910,7 +3926,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Essentials',['chat','apps','hostscreen','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
@@ -7672,7 +7688,17 @@ async function renderNativeApps(body,w){
 /* Launching a host app is not instant — in session mode the server waits for the
    window to actually map before answering, because "launched" used to be true
    while nothing was on screen. So say "starting…" up front, and replace it with
-   the truth when the answer comes. */
+   the truth when the answer comes.
+
+   And when the browser is somewhere else, say WHERE it opened. A native app is a
+   window the compositor draws on the host's physical display; it is not part of
+   this page and never travels over HTTP. From a phone, launching one used to
+   look broken — a taskbar entry and no app — when in fact it had started
+   perfectly well, in another room. */
+function remoteClient(){return typeof PLATFORM!=='undefined'&&!!PLATFORM.remote_client}
+function hostName(){return (typeof PLATFORM!=='undefined'&&PLATFORM.hostname)||'the host'}
+function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
+
 async function launchNative(id,name){
   const label=name||id;
   toast('↗ starting '+label+'…');
@@ -7681,7 +7707,8 @@ async function launchNative(id,name){
     const d=await r.json();
     if(d.ok){
       if(typeof updateNativeWindows==='function')updateNativeWindows();
-      toast('✓ '+label);
+      if(nativeRunsElsewhere())hostAppOpenedCard(label);
+      else toast('✓ '+label);
     }else{
       // a failure here means the app never opened a window — that is worth more
       // than a toast the user cannot read twice
@@ -7689,6 +7716,19 @@ async function launchNative(id,name){
     }
     return d;
   }catch(e){toast(label+': '+e.message)}
+}
+/* The card a remote client gets instead of a lie. */
+function hostAppOpenedCard(label){
+  if(typeof omniCard!=='function')return toast(label+' opened on '+hostName());
+  const c=omniCard(label+' — opened on '+hostName());
+  c.feed.innerHTML=`<p style="margin:0 0 8px;line-height:1.55">
+    It is running on that machine's screen. Native apps are drawn by the
+    compositor on the host display — they are not part of this page, so they
+    cannot appear here.</p>
+    <button class="pact hs-open">View the host screen</button>`;
+  // acting on the card dismisses it: on a phone the cards sit above the windows,
+  // so leaving it up would cover the very screen it just offered to show
+  c.feed.querySelector('.hs-open').onclick=()=>{c.close();openApp('hostscreen')};
 }
 
 /* ================= model manager ================= */
@@ -8505,6 +8545,92 @@ async function updateTray(){
   }catch(e){}
 }
 
+/* ================= Host Screen =================
+   What a remote client cannot otherwise see.
+
+   The AgentOS shell is HTML and travels over HTTP. Native apps are windows the
+   compositor paints onto the machine's physical display — different pixels, in a
+   different place, never part of the page. So from a phone, a launched app is
+   invisible: the taskbar knows it exists (the compositor told the server, and the
+   server told this page) but there is nothing to render.
+
+   This app closes that gap the cheap, honest way: it asks the server for a frame
+   of the real screen (grim, which the session already ships for screenshots) and
+   shows it. A still, refreshed — not a video pipeline, and not a fake remote
+   desktop. It answers "did it open, and what is it showing", which is the actual
+   question. For controlling that screen, see the note at the bottom of the app. */
+
+const HOSTSCREEN={timer:null,busy:false,every:2000,scale:0.75,fit:true};
+
+async function renderHostScreen(body,w){
+  const capable=cap('screen.capture').available;
+  body.innerHTML=`<div class="phead">
+      <span class="pt">Host screen</span>
+      <span class="ps">${esc(hostName())} — the real display, including native apps</span>
+      <span class="sp"></span>
+      <label class="hs-live"><input type="checkbox" id="hs-live" ${capable?'checked':'disabled'}> live</label>
+      <select id="hs-every" ${capable?'':'disabled'}>
+        <option value="1000">every 1s</option>
+        <option value="2000" selected>every 2s</option>
+        <option value="5000">every 5s</option>
+        <option value="15000">every 15s</option>
+      </select>
+      <button class="pact" id="hs-now" ${capable?'':'disabled'}>Refresh</button>
+    </div>
+    <div class="pbody hs-body">
+      ${capable?`<div class="hs-stage"><img id="hs-img" alt="the host machine's screen"></div>
+        <div class="hs-foot"><span class="mut" id="hs-stat">loading…</span></div>`
+       :`<div class="empty"><div class="eh">${capNote('screen.capture')||
+          'Screen capture is not available here — it needs the AgentOS Wayland session and grim.'}</div></div>`}
+      <p class="mut hs-note">This is a picture, refreshed — you can see the host screen but not click on
+        it. Native windows can still be <b>moved, focused, minimised and closed</b> from the taskbar and the
+        Window menu, which go through the compositor and work from anywhere.
+        For a real interactive remote desktop, run a VNC server for wlroots
+        (<code>wayvnc</code>) on the host and connect to that alongside AgentOS.</p>
+    </div>`;
+  if(!capable)return;
+  const live=$('#hs-live'), every=$('#hs-every');
+  live.onchange=()=>hsLive(live.checked,w);
+  every.onchange=()=>{HOSTSCREEN.every=+every.value;if(live.checked)hsLive(true,w)};
+  $('#hs-now').onclick=()=>hsFrame(w);
+  hsFrame(w);
+  hsLive(true,w);
+}
+/* One frame. Chained rather than on a fixed interval: a slow capture must not
+   stack up requests behind itself on a machine that is already busy drawing. */
+async function hsFrame(w){
+  if(HOSTSCREEN.busy)return;
+  const img=$('#hs-img'), stat=$('#hs-stat');
+  if(!img)return;                                  // the window was closed
+  HOSTSCREEN.busy=true;
+  const t0=performance.now();
+  try{
+    const r=await fetch('/api/screen/frame?scale='+HOSTSCREEN.scale+'&t='+Date.now());
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      if(stat)stat.textContent=d.error||('capture failed ('+r.status+')');
+      HOSTSCREEN.busy=false;return;
+    }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const old=img.dataset.url;
+    img.src=url;img.dataset.url=url;
+    if(old)URL.revokeObjectURL(old);             // one frame in flight, one in memory
+    if(stat)stat.textContent=`${new Date().toLocaleTimeString()} · ${Math.round(performance.now()-t0)}ms · ${(blob.size/1024).toFixed(0)} KB`;
+  }catch(e){if(stat)stat.textContent='capture failed: '+e.message}
+  HOSTSCREEN.busy=false;
+}
+function hsLive(on,w){
+  clearTimeout(HOSTSCREEN.timer);HOSTSCREEN.timer=null;
+  if(!on)return;
+  const tick=async()=>{
+    if(!$('#hs-img'))return;                       // window gone — stop for good
+    await hsFrame(w);
+    HOSTSCREEN.timer=setTimeout(tick,HOSTSCREEN.every);
+  };
+  HOSTSCREEN.timer=setTimeout(tick,HOSTSCREEN.every);
+}
+function hsStop(){clearTimeout(HOSTSCREEN.timer);HOSTSCREEN.timer=null}
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
   w.path=w.path||'';

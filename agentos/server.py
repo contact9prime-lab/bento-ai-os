@@ -6,12 +6,13 @@ import json
 import os
 import re
 import secrets
+import socket
 import time
 import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import config as cfgmod
 from . import fabric as fabricmod
@@ -944,15 +945,55 @@ async def api_wm_output_configure(body: dict):
 
 
 @app.get("/api/platform")
-async def api_platform():
+async def api_platform(request: Request):
     """What this machine can actually do, and which desktop mode we're in.
 
     The UI renders from this instead of branching on the operating system: every
     capability reports whether it's available and, when it isn't, a sentence
     explaining why plus the optional component that would fix it.
+
+    `remote_client` is per-request, not per-machine: it says whether THIS browser
+    is somewhere else. It matters because native apps are drawn by the compositor
+    onto the host's physical display — they are not part of the page — so a phone
+    that launches one gets a taskbar entry and no pixels unless it is told why.
     """
     from . import host
-    return host.platform_state()
+    state_ = host.platform_state()
+    state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
+    state_["hostname"] = socket.gethostname()
+    return state_
+
+
+@app.get("/api/screen/frame")
+async def api_screen_frame(scale: float = 1.0):
+    """One frame of the host's actual screen, as PNG.
+
+    This is the only way a remote client can see a native window: those windows
+    live on the compositor's output, not in the HTML the browser loaded. It is a
+    still, not a stream — enough to answer "did my app open, and what is it
+    showing" without pulling a video pipeline into the OS. For interactive
+    control of the real screen, run a VNC server for wlroots (wayvnc) alongside.
+    """
+    import shutil as _sh
+    if not _sh.which("grim"):
+        return JSONResponse({"error": "screen capture needs grim (Wayland session only)"},
+                            status_code=503)
+    argv = ["grim"]
+    if scale and scale != 1.0:
+        argv += ["-s", str(max(0.1, min(1.0, scale)))]
+    argv += ["-t", "png", "-"]
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return JSONResponse({"error": "screen capture timed out"}, status_code=504)
+    if proc.returncode != 0 or not out:
+        return JSONResponse({"error": (err or b"").decode(errors="replace")[:200]
+                             or "screen capture failed"}, status_code=500)
+    return Response(content=out, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/control")

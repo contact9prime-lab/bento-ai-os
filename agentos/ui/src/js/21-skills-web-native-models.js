@@ -142,7 +142,17 @@ async function renderNativeApps(body,w){
 /* Launching a host app is not instant — in session mode the server waits for the
    window to actually map before answering, because "launched" used to be true
    while nothing was on screen. So say "starting…" up front, and replace it with
-   the truth when the answer comes. */
+   the truth when the answer comes.
+
+   And when the browser is somewhere else, say WHERE it opened. A native app is a
+   window the compositor draws on the host's physical display; it is not part of
+   this page and never travels over HTTP. From a phone, launching one used to
+   look broken — a taskbar entry and no app — when in fact it had started
+   perfectly well, in another room. */
+function remoteClient(){return typeof PLATFORM!=='undefined'&&!!PLATFORM.remote_client}
+function hostName(){return (typeof PLATFORM!=='undefined'&&PLATFORM.hostname)||'the host'}
+function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
+
 async function launchNative(id,name){
   const label=name||id;
   toast('↗ starting '+label+'…');
@@ -151,7 +161,8 @@ async function launchNative(id,name){
     const d=await r.json();
     if(d.ok){
       if(typeof updateNativeWindows==='function')updateNativeWindows();
-      toast('✓ '+label);
+      if(nativeRunsElsewhere())hostAppOpenedCard(label);
+      else toast('✓ '+label);
     }else{
       // a failure here means the app never opened a window — that is worth more
       // than a toast the user cannot read twice
@@ -159,6 +170,19 @@ async function launchNative(id,name){
     }
     return d;
   }catch(e){toast(label+': '+e.message)}
+}
+/* The card a remote client gets instead of a lie. */
+function hostAppOpenedCard(label){
+  if(typeof omniCard!=='function')return toast(label+' opened on '+hostName());
+  const c=omniCard(label+' — opened on '+hostName());
+  c.feed.innerHTML=`<p style="margin:0 0 8px;line-height:1.55">
+    It is running on that machine's screen. Native apps are drawn by the
+    compositor on the host display — they are not part of this page, so they
+    cannot appear here.</p>
+    <button class="pact hs-open">View the host screen</button>`;
+  // acting on the card dismisses it: on a phone the cards sit above the windows,
+  // so leaving it up would cover the very screen it just offered to show
+  c.feed.querySelector('.hs-open').onclick=()=>{c.close();openApp('hostscreen')};
 }
 
 /* ================= model manager ================= */

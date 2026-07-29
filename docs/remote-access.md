@@ -39,6 +39,43 @@ the launcher and popovers become sheets. See [Phone, tablet, desktop](desktop.md
 
 ---
 
+## What travels, and what doesn't
+
+This is the one thing worth understanding before you use it from a phone, because
+it explains a result that otherwise looks like a bug.
+
+There are **two different things** on the host machine:
+
+| | Where it lives | Does it reach your phone? |
+|---|---|---|
+| The AgentOS **shell** — windows, dock, deck, apps, chat | an HTML page served over HTTP | **Yes.** This is what remote access sends |
+| **Native apps** — LibreOffice, a browser, a terminal | windows the compositor paints on the host's physical display | **No.** They were never in the page |
+
+So launching a system app from your phone really does start it — **on the machine
+at home**, on that machine's monitor. Your phone gets the taskbar entry, because
+the compositor tells the server and the server tells the page. It does not get the
+pixels, because those pixels are on a screen in another room.
+
+AgentOS says so now rather than looking broken: a launch from a remote client
+answers with *"opened on <host>"* and an explanation, not a bare tick.
+
+**What you can still do from anywhere:** every window verb goes through the
+compositor, so native windows can be focused, moved between desktops, minimised,
+maximised and closed from the taskbar and the Window menu, remotely, exactly as
+if you were sitting there.
+
+**To see them: the Host Screen app.** It fetches a frame of the machine's real
+display (`grim`, which the session already ships for screenshots) and refreshes
+it. That is a picture, not a video, and you cannot click on it — but it answers
+"did it open, and what is it showing", which is usually the question.
+
+**For a real interactive remote desktop**, run a VNC server for wlroots —
+[`wayvnc`](https://github.com/any1/wayvnc) — on the host and connect to that
+alongside AgentOS. Streaming and injecting input is remote-desktop work, and a
+tool that does only that does it better than an OS bolting it on.
+
+---
+
 ## What the lock actually does
 
 | | |

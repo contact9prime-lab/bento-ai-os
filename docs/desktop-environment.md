@@ -127,6 +127,13 @@ screen to an app — launching it, clicking its taskbar tile, Alt-Tab — lowers
 desktop first, and the compositor's own focus events lower it too, so the two can
 never disagree about who is in front.
 
+### Seeing it from somewhere else
+
+The shell is HTML and travels; native windows are compositor pixels and do not.
+The **Host Screen** app closes that gap with a refreshing still of the real
+display, so a phone can at least see what launched. See
+[Remote access → What travels, and what doesn't](remote-access.md#what-travels-and-what-doesnt).
+
 ### It stops behaving like a browser
 
 The session is drawn by Chromium, but in DE and kiosk mode it is the desktop, so
