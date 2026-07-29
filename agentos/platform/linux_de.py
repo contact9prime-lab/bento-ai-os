@@ -79,8 +79,13 @@ class LinuxDE(LinuxHosted):
                     if res.get("ok"):
                         return True, "launched"
                     return False, res.get("reason") or "the app did not open a window"
-                except Exception:
-                    pass          # sway said no — fall through to the plain spawn
+                except Exception as e:
+                    # Do NOT fall through to a plain spawn here. This process has
+                    # no WAYLAND_DISPLAY of its own (that is the entire reason the
+                    # compositor path exists), so the fallback would fork a child
+                    # that dies the instant it opens a window — and report success.
+                    # A visible error beats a silent guaranteed failure.
+                    return False, f"the compositor refused to launch it: {e}"
         return super().launch_app(app_id)
 
 

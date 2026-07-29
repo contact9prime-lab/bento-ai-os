@@ -307,6 +307,7 @@ def doctor(fix: bool = False):
                     ok(f"compositor reachable on $SWAYSOCK ({n} managed windows)")
                 except Exception as e:
                     bad(f"compositor socket present but not answering: {e}")
+                _doctor_session_handover(compmod, effective, runmode, ok, warn, bad)
             elif effective == runmode.DE:
                 bad("in DE mode but $SWAYSOCK is not set — window management is dead")
             else:
@@ -354,6 +355,58 @@ def doctor(fix: bool = False):
     print()
     if not fix:
         print("  \033[90mrun `agentos doctor --fix` to auto-repair the fixable items above\033[0m\n")
+
+
+
+def _doctor_session_handover(compmod, effective, runmode, ok, warn, bad):
+    """The three facts that decide whether launching an app actually works.
+
+    Every one of these was broken at some point in a way no unit test could see,
+    because they are properties of a LIVE compositor: the desktop has to be
+    findable, it has to be able to step back, and a command has to survive sway's
+    own parser on the way to the shell.
+    """
+    if effective != runmode.DE:
+        return
+    C = compmod.Compositor()
+    port = compmod.shell_port()
+
+    shell = ""
+    try:
+        shell = C.find_shell(port)
+    except Exception as e:
+        bad(f"could not look for the desktop window: {e}")
+    if shell:
+        ok(f"the desktop window is identifiable (con_id {shell}) — raise/lower can work")
+    else:
+        bad(f"the desktop window was NOT found on port {port}. Launching an app cannot "
+            f"lower it, so the app will open behind a screen-filling window and look "
+            f"like nothing happened")
+
+    # can the desktop actually step back? do it and put it straight back.
+    if shell:
+        try:
+            was = compmod.SHELL_RAISED[0]
+            C.raise_shell(False)
+            floating = next((w["floating"] for w in C.windows(include_shell=True)
+                             if w["id"] == shell), None)
+            if floating:
+                warn("the desktop is still floating after being lowered — apps will be "
+                     "painted underneath it")
+            else:
+                ok("the desktop steps back on demand (apps can come to the front)")
+            if was:
+                C.raise_shell(True)
+        except Exception as e:
+            bad(f"lowering the desktop failed: {e}")
+
+    # does a command survive sway's parser? `,` and `;` are separators to it, and
+    # real .desktop Exec lines are full of them.
+    try:
+        C.exec("sh -c 'exit 0'  # agentos doctor, ignore")
+        ok("the compositor accepts launch commands verbatim (.desktop Exec lines are safe)")
+    except Exception as e:
+        bad(f"the compositor rejected a launch command: {e}")
 
 
 def _remote_cli(args):

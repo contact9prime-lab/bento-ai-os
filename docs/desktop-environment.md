@@ -194,6 +194,23 @@ night light), `playerctl` (LGPL-3, media keys), `cups` + `system-config-printer`
 (printing), and the `xdg-desktop-portal` trio (screen sharing and native file
 dialogs). A greyed-out control whose fix is a component links straight to it.
 
+## Checking it yourself
+
+`agentos doctor`, run inside the session, verifies the three things that decide
+whether launching an app actually works — all of them properties of a live
+compositor that no unit test can see:
+
+```
+✓ the desktop window is identifiable (con_id 6) — raise/lower can work
+✓ the desktop steps back on demand (apps can come to the front)
+✓ the compositor accepts launch commands verbatim (.desktop Exec lines are safe)
+```
+
+If the first fails, the desktop cannot be lowered and every app will open behind
+a screen-filling window — which looks exactly like nothing happening. If the
+third fails, `.desktop` Exec lines containing `,` `;` `<` `>` or quotes are being
+mangled by sway's own command parser before they reach the shell.
+
 ## Troubleshooting
 
 - **`agentos doctor`** has a desktop section: run mode, session entry, sway,

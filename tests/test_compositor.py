@@ -36,8 +36,10 @@ TREE = {
                 ], "floating_nodes": []},
             ],
             "floating_nodes": [
+                # No "floating" key: sway does not send one. Being in
+                # floating_nodes IS the fact, and that is what windows() reads.
                 {"id": 14, "pid": 5002, "app_id": "pavucontrol", "name": "Volume Control",
-                 "focused": False, "floating": "user_on", "fullscreen_mode": 0,
+                 "focused": False, "fullscreen_mode": 0,
                  "nodes": [], "floating_nodes": []},
             ],
         }, {
@@ -458,8 +460,7 @@ def test_anchoring_never_undoes_a_deliberate_summon(client, sway, monkeypatch):
 # ---------------------------------------------------------------------------
 
 NEW_WIN = {"id": 99, "pid": 7777, "app_id": "libreoffice", "name": "Untitled 1",
-           "focused": False, "floating": "user_on", "fullscreen_mode": 0,
-           "nodes": [], "floating_nodes": []}
+           "focused": False, "fullscreen_mode": 0, "nodes": [], "floating_nodes": []}
 
 
 def test_focusing_an_app_lowers_the_desktop_first(client, sway):
@@ -485,7 +486,9 @@ def test_launch_waits_for_the_window_and_focuses_it(client, sway):
     res = client.launch_and_focus("libreoffice --writer", timeout=3, poll=0.05)
     assert res["ok"] is True
     assert res["window"] == "99" and res["title"] == "Untitled 1"
-    assert any(c == "exec libreoffice --writer" for c in sway.commands)
+    import base64 as _b64
+    blob = _b64.b64encode(b"libreoffice --writer").decode()
+    assert any(blob in c for c in sway.commands), "the command must survive verbatim"
     # the new window is focused, and the desktop was lowered before it appeared
     assert "[con_id=99] focus" in sway.commands
     assert any("floating disable" in c for c in sway.commands)
@@ -505,3 +508,26 @@ def test_launch_ignores_windows_that_were_already_open(client, sway):
     res = client.launch_and_focus("slowapp", timeout=0.3, poll=0.05)
     assert res["ok"] is False
     assert "[con_id=13] focus" not in sway.commands
+
+
+def test_floating_comes_from_the_tree_shape_not_a_field():
+    """sway sends no `floating` key on window nodes — i3 does, and reading for it
+    made every window report floating=False on every real session. The array a
+    node sits in is the only fact there is."""
+    assert "floating" not in TREE["nodes"][0]["nodes"][0]["floating_nodes"][0]
+
+
+def test_exec_survives_sways_own_command_parser(client, sway):
+    """sway parses the rest of an `exec` line itself: `,` and `;` separate
+    commands and `<`/`>`/quotes are eaten or rejected. Real .desktop Exec lines
+    are full of them — `--app=data:text/html,<title>x</title>` came back as
+    "Unknown/invalid command '<title>x</title>'" and the app never started.
+    Base64 makes the payload inert to that parser."""
+    import base64 as _b64
+    nasty = 'foot -T "T" sh -c "echo hi, there; echo <x>"'
+    client.exec(nasty)
+    sent = sway.commands[-1]
+    assert nasty not in sent, "the raw command must not reach sway's parser"
+    assert _b64.b64encode(nasty.encode()).decode() in sent
+    for ch in (",", ";", "<", ">", '"'):
+        assert ch not in sent.split("echo ")[1].split(" |")[0], f"{ch!r} reached the parser"

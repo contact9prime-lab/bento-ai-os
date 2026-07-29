@@ -24,6 +24,7 @@ little-endian, both directions. Events arrive with the high bit of the type set.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import os
@@ -218,10 +219,15 @@ class Compositor:
         port = shell_port()
         wins: list[dict] = []
 
-        def walk(node: dict, workspace: str):
+        def walk(node: dict, workspace: str, floating: bool = False):
             if node.get("type") == "workspace":
                 workspace = node.get("name") or workspace
-            for child in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+            # Which ARRAY the child is in is the only thing sway tells us about
+            # floating. It emits no "floating" key on window nodes at all (i3
+            # does, which is where that read came from) — so the old check was
+            # False for every window on every real session.
+            for child, floats in ([(c, floating) for c in (node.get("nodes") or [])]
+                                  + [(c, True) for c in (node.get("floating_nodes") or [])]):
                 # A view (real window) has no child containers of its own.
                 if not child.get("nodes") and not child.get("floating_nodes") and (
                         child.get("pid") or child.get("app_id") or
@@ -239,7 +245,8 @@ class Compositor:
                         "title": title,
                         "workspace": workspace,
                         "focused": bool(child.get("focused")),
-                        "floating": "on" in str(child.get("floating", "")),
+                        # i3's own key first (it does send one), else the array
+                        "floating": "on" in str(child.get("floating", "")) or floats,
                         "fullscreen": bool(child.get("fullscreen_mode")),
                         "minimized": workspace.startswith("__i3_scratch"),
                     }
@@ -247,13 +254,22 @@ class Compositor:
                         row["shell"] = True
                     wins.append(row)
                 else:
-                    walk(child, workspace)
+                    walk(child, workspace, floats)
 
         walk(tree or {}, "")
         return wins
 
     def exec(self, cmd: str) -> None:
-        """Have the COMPOSITOR spawn a process.
+        """Have the COMPOSITOR spawn a process, byte for byte.
+
+        The command is base64'd and decoded by the shell on the far side, because
+        sway parses the rest of an `exec` line with its OWN tokenizer first: `,`
+        and `;` are command separators, and quotes and angle brackets are eaten
+        or rejected outright. Real `.desktop` Exec lines contain all of those —
+        `Exec=chromium --app=data:text/html,<title>x</title>` came back as
+        "Unknown/invalid command '<title>x</title>'" and the app never started.
+        Base64's alphabet is inert to that parser, so what the app receives is
+        exactly what the .desktop file said.
 
         This is how a GUI app gets launched correctly in the AgentOS session:
         the child inherits the compositor's own environment — WAYLAND_DISPLAY,
@@ -261,7 +277,8 @@ class Compositor:
         server started by systemd at login has. Spawning from the server instead
         produces a process that dies the moment it tries to open a window, which
         looks exactly like "it says launching but nothing happens"."""
-        self.command(f"exec {cmd}")
+        blob = base64.b64encode(cmd.encode()).decode()
+        self.command(f"exec sh -c 'echo {blob} | base64 -d | sh'")
 
     def find_by_pid(self, pid: int) -> str:
         """con_id of the window belonging to a process (its whole tree), or ''."""
@@ -348,7 +365,7 @@ class Compositor:
             pass                                  # not minimised — the normal case
         self.command(f"[con_id={cid}] focus")
 
-    def launch_and_focus(self, cmd: str, timeout: float = 8.0,
+    def launch_and_focus(self, cmd: str, timeout: float = 15.0,
                          poll: float = 0.15) -> dict:
         """Spawn an app through the compositor and hand it the screen.
 
