@@ -188,6 +188,10 @@ function buildDesktop(){
   });
   $('#desktop').addEventListener('contextmenu',e=>{
     if(e.target.closest('.win'))return;
+    // A text field keeps the platform's own menu — right-clicking the prompt bar
+    // should offer Paste, not "Auto arrange icons". This is the same rule the
+    // shell guard uses, so the two never disagree about who owns a right-click.
+    if(e.target.closest('input,textarea,[contenteditable="true"]'))return;
     e.preventDefault();
     const m=$('#ctxmenu');
     const shots=cap('screen.capture').available;

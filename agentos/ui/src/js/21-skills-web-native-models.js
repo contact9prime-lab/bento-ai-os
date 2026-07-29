@@ -139,10 +139,26 @@ async function renderNativeApps(body,w){
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
 }
+/* Launching a host app is not instant — in session mode the server waits for the
+   window to actually map before answering, because "launched" used to be true
+   while nothing was on screen. So say "starting…" up front, and replace it with
+   the truth when the answer comes. */
 async function launchNative(id,name){
-  const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-  const d=await r.json();
-  toast(d.ok?'↗ launched '+(name||id):'launch failed: '+(d.message||''));
+  const label=name||id;
+  toast('↗ starting '+label+'…');
+  try{
+    const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    if(d.ok){
+      if(typeof updateNativeWindows==='function')updateNativeWindows();
+      toast('✓ '+label);
+    }else{
+      // a failure here means the app never opened a window — that is worth more
+      // than a toast the user cannot read twice
+      osAlert(label+' did not start', String(d.message||'No window appeared.'));
+    }
+    return d;
+  }catch(e){toast(label+': '+e.message)}
 }
 
 /* ================= model manager ================= */

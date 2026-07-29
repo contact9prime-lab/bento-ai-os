@@ -70,8 +70,15 @@ class LinuxDE(LinuxHosted):
                     cmd = f"gio launch '{path}'"
             if cmd:
                 try:
-                    comp.Compositor().exec(cmd)   # raises if sway refuses
-                    return True, "launched"
+                    # launch_and_focus, not exec: the desktop has to get out of
+                    # the way and the app has to actually appear before we call
+                    # this a success. `exec` returned the instant sway forked,
+                    # which is how "launched" could be true while nothing was on
+                    # screen — see compositor.launch_and_focus.
+                    res = comp.Compositor().launch_and_focus(cmd)
+                    if res.get("ok"):
+                        return True, "launched"
+                    return False, res.get("reason") or "the app did not open a window"
                 except Exception:
                     pass          # sway said no — fall through to the plain spawn
         return super().launch_app(app_id)

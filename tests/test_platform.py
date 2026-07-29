@@ -92,6 +92,15 @@ def test_de_inherits_shared_behaviour_from_hosted():
     assert LinuxDE.get_volume is LinuxHosted.get_volume
 
 
+def _fake_launch(calls, ok=True):
+    """Stand in for Compositor.launch_and_focus, recording the command."""
+    def go(self, cmd, **kw):
+        calls.append(cmd)
+        return ({"ok": True, "window": "99", "title": "x"} if ok
+                else {"ok": False, "window": "", "reason": "no window appeared"})
+    return go
+
+
 def test_de_launches_apps_through_the_compositor():
     """Spawned from systemd, the server has no Wayland display of its own — so in
     DE mode a launch has to go through sway, or the app starts and dies unseen."""
@@ -104,10 +113,26 @@ def test_de_launches_apps_through_the_compositor():
     with mock.patch.object(comp, "available", lambda: True), \
          mock.patch.object(LinuxDE, "list_apps", lambda self: []), \
          mock.patch("shutil.which", lambda n: "/usr/bin/" + n if n == "gtk-launch" else None), \
-         mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+         mock.patch.object(comp.Compositor, "launch_and_focus", _fake_launch(calls)):
         launched, _ = de.launch_app("firefox")
     assert launched is True
     assert calls == ["gtk-launch 'firefox'"]
+
+
+def test_a_launch_that_never_opens_a_window_is_reported_as_a_failure():
+    """`exec` returns the moment sway forks, so "launched" used to be true even
+    when the app died on startup — and the desktop said so while showing nothing.
+    A launch is only a success once a window exists."""
+    from agentos import compositor as comp
+    calls: list[str] = []
+    entry = {"id": "foot", "name": "foot", "exec": "foot", "terminal": False, "dbus": False}
+    with mock.patch.object(comp, "available", lambda: True), \
+         mock.patch.object(LinuxDE, "list_apps", lambda self: [entry]), \
+         mock.patch.object(comp.Compositor, "launch_and_focus", _fake_launch(calls, ok=False)), \
+         mock.patch.object(LinuxHosted, "launch_app", lambda self, aid: (False, "no fallback")):
+        ok, msg = LinuxDE().launch_app("foot")
+    assert ok is False
+    assert "no window appeared" in msg
 
 
 def test_a_known_app_launches_without_paying_for_gtk_launch():
@@ -118,7 +143,7 @@ def test_a_known_app_launches_without_paying_for_gtk_launch():
     entry = {"id": "foot", "name": "foot", "exec": "foot", "terminal": False, "dbus": False}
     with mock.patch.object(comp, "available", lambda: True), \
          mock.patch.object(LinuxDE, "list_apps", lambda self: [entry]), \
-         mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+         mock.patch.object(comp.Compositor, "launch_and_focus", _fake_launch(calls)):
         launched, _ = LinuxDE().launch_app("foot")
     assert launched is True
     assert calls == ["foot"], "should exec the command directly"
@@ -133,7 +158,7 @@ def test_terminal_and_dbus_apps_still_go_through_gtk_launch():
         with mock.patch.object(comp, "available", lambda: True), \
              mock.patch.object(LinuxDE, "list_apps", lambda self, e=odd: [e]), \
              mock.patch("shutil.which", lambda n: "/usr/bin/" + n if n == "gtk-launch" else None), \
-             mock.patch.object(comp.Compositor, "exec", lambda self, cmd: calls.append(cmd)):
+             mock.patch.object(comp.Compositor, "launch_and_focus", _fake_launch(calls)):
             LinuxDE().launch_app(odd["id"])
         assert calls == [f"gtk-launch '{odd['id']}'"]
 

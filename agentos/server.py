@@ -128,6 +128,21 @@ async def startup():
                 await _on_compositor_attached()
             try:
                 async for ev in comp.Compositor().subscribe():
+                    # The compositor is the authority on where the user actually
+                    # is. Focus landing on something that is not our shell means
+                    # the desktop is no longer in front, however it got there —
+                    # a click, sway's own Alt-Tab, a new window mapping. Without
+                    # this, SHELL_RAISED stayed true forever and anchor_shell
+                    # (which respects it) stopped putting the desktop back to
+                    # being the base layer, so apps opened behind it.
+                    if ev.get("change") == "focus":
+                        con = ev.get("container") or {}
+                        props = con.get("window_properties") or {}
+                        is_shell = comp._is_shell_node(
+                            con, con.get("app_id") or props.get("class") or "",
+                            con.get("name") or "", _port_of(cfg))
+                        if not is_shell:
+                            comp.SHELL_RAISED[0] = False
                     if ev.get("change") in ("new", "close", "move", "floating"):
                         with contextlib.suppress(Exception):
                             comp.Compositor().anchor_shell(_port_of(cfg))
@@ -694,10 +709,23 @@ async def api_native_icon(app_id: str):
 
 @app.post("/api/native/launch")
 async def api_native_launch(body: dict):
+    """Launch a host application.
+
+    In session mode this waits for the app's window to actually map (see
+    compositor.launch_and_focus), so it runs in a thread — blocking the event
+    loop for the seconds a heavy app takes to start would freeze every other
+    client, including the desktop that is waiting for this answer.
+    """
     from . import host
-    ok, msg = host.launch_app(body.get("id", ""))
+    app_id = body.get("id", "")
+    ok, msg = await asyncio.to_thread(host.launch_app, app_id)
+    state["store"].log("system",
+                       f"launched native app: {app_id}" if ok
+                       else f"native app failed to launch: {app_id} — {msg}",
+                       {"ok": ok})
     if ok:
-        state["store"].log("system", f"launched native app: {body.get('id','')}")
+        # the taskbar should show the new window now, not on the next poll
+        await state["broadcast"]({"type": "wm"})
     return {"ok": ok, "message": msg}
 
 

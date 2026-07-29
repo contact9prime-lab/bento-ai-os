@@ -24,10 +24,12 @@ little-endian, both directions. Events arrive with the high bit of the type set.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import socket
 import struct
+import time
 
 MAGIC = b"i3-ipc"
 _HEADER = struct.Struct("<6sII")
@@ -294,10 +296,15 @@ class Compositor:
         def walk(node):
             if found[0]:
                 return
-            pid = node.get("pid")
-            if pid and (node.get("app_id") or node.get("window_properties")):
-                cmd = _cmdline(pid)
-                if f"127.0.0.1:{port}" in cmd or "agentos/boot.html" in cmd:
+            props = node.get("window_properties") or {}
+            if node.get("pid") and (node.get("app_id") or props):
+                # the SAME test windows() uses, so the taskbar and the raise/lower
+                # logic can never disagree about which window is the desktop.
+                # It falls back to app_id/class when /proc is unreadable, which is
+                # what kept raise_shell silently doing nothing on those machines.
+                app = node.get("app_id") or props.get("class") or ""
+                title = node.get("name") or props.get("title") or ""
+                if _is_shell_node(node, app, title, port):
                     found[0] = str(node.get("id"))
                     return
             for kid in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
@@ -324,6 +331,14 @@ class Compositor:
         return True
 
     def focus(self, win_id: str) -> None:
+        # Handing the screen to an app has to LOWER the desktop first. While the
+        # shell is raised it is a floating window the size of the whole output,
+        # and sway paints floating above tiled — so focusing an app without
+        # lowering gives the keyboard to a window nobody can see. That is what
+        # made session mode feel like a browser page that had eaten the screen:
+        # the app really was running, behind the desktop.
+        if SHELL_RAISED[0]:
+            self.raise_shell(False)
         # A minimised window lives in the scratchpad; focusing it has to bring it
         # back first, or the click on its taskbar tile does nothing at all.
         cid = int(win_id)
@@ -332,6 +347,47 @@ class Compositor:
         except CompositorError:
             pass                                  # not minimised — the normal case
         self.command(f"[con_id={cid}] focus")
+
+    def launch_and_focus(self, cmd: str, timeout: float = 8.0,
+                         poll: float = 0.15) -> dict:
+        """Spawn an app through the compositor and hand it the screen.
+
+        `exec` alone was never enough. It returns the instant sway forks, so the
+        desktop said "launched" while the shell was still the full-screen window
+        in front — and a GUI app that takes two seconds to map (anything
+        LibreOffice-sized) appeared behind it, or never appeared at all if it
+        died on startup. Both looked identical to the user: nothing happened.
+
+        So: lower the desktop out of the way, watch the tree for a window that
+        was not there before, and focus it. If nothing maps inside `timeout`,
+        put the desktop back and say so — an app that failed to start must not
+        leave the user staring at an empty screen wondering.
+        """
+        before = {w["id"] for w in self.windows()}
+        self.raise_shell(False)                     # the app is about to own the screen
+        self.exec(cmd)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            time.sleep(poll)
+            try:
+                fresh = [w for w in self.windows() if w["id"] not in before]
+            except CompositorError:
+                continue
+            if fresh:
+                win = fresh[0]
+                with contextlib.suppress(CompositorError):
+                    self.command(f"[con_id={int(win['id'])}] focus")
+                return {"ok": True, "window": win["id"], "title": win.get("title", "")}
+        # Nothing mapped in time — give the desktop back rather than stranding the
+        # user on a blank screen. If the app was merely slow and turns up later,
+        # it still ends in front: sway focuses a newly mapped window, the server's
+        # event pump clears SHELL_RAISED on that focus, and the following window
+        # event re-anchors the shell underneath it.
+        with contextlib.suppress(CompositorError):
+            self.raise_shell(True)
+        return {"ok": False, "window": "",
+                "reason": "no window appeared — the app may have failed to start "
+                          "(see the Logs app), or it is still loading"}
 
     def focus_shell(self, port: int = 0) -> bool:
         """Put the keyboard back on the AgentOS desktop.
