@@ -69,10 +69,37 @@ display (`grim`, which the session already ships for screenshots) and refreshes
 it. That is a picture, not a video, and you cannot click on it — but it answers
 "did it open, and what is it showing", which is usually the question.
 
-**For a real interactive remote desktop**, run a VNC server for wlroots —
-[`wayvnc`](https://github.com/any1/wayvnc) — on the host and connect to that
-alongside AgentOS. Streaming and injecting input is remote-desktop work, and a
-tool that does only that does it better than an OS bolting it on.
+### Actually using a native app: Take control
+
+Seeing is not using. To click and type inside a native app you need pixels
+streamed *and* input sent back — remote-desktop work, which
+[`wayvnc`](https://github.com/any1/wayvnc) (ISC) does properly for wlroots. So
+AgentOS starts it rather than reinventing it: **Host Screen → Take control**
+offers *Install wayvnc…* if it is missing, then Start/Stop, and shows the address.
+
+**It binds `127.0.0.1` only, always.** wayvnc ships with security type "None" — no
+password — so putting it on the network would hand the whole machine to anyone
+who can reach port 5900, undoing every other lock here. AgentOS will not do that
+on your behalf. Reach it the way you reach anything else on that machine:
+
+```bash
+ssh -L 5900:127.0.0.1:5900 you@your-machine     # then point a VNC client at localhost:5900
+```
+
+or over the VPN you already use (Tailscale/WireGuard). The panel shows the exact
+tunnel command with a copy button. If you want it exposed directly, configure
+wayvnc's own authentication and run it yourself — that is a deliberate choice,
+not a checkbox here.
+
+It stops when you stop it, and when AgentOS shuts down — an orphaned VNC server
+is an unauthenticated door left open.
+
+| | Host Screen (built in) | Take control (wayvnc) |
+|---|---|---|
+| See the host display | yes, a refreshing still | yes, live |
+| Click and type in native apps | no | yes |
+| Needs installing | no | yes, one click |
+| Reachable over the LAN | through AgentOS's passphrase | no — loopback + your tunnel |
 
 ---
 

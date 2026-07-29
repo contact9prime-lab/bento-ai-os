@@ -32,6 +32,15 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Copy and paste between AgentOS and native Wayland apps.",
         "detect": lambda: bool(shutil.which("wl-copy")),
     },
+    "wayvnc": {
+        "package": "wayvnc", "method": "apt", "licence": "ISC",
+        "title": "Interactive remote control",
+        "unlocks": "Use native apps from another device — a real VNC server for "
+                   "the AgentOS compositor, streaming the screen and sending your "
+                   "clicks and keys back. AgentOS starts it on loopback only, "
+                   "because wayvnc ships with no password.",
+        "detect": lambda: bool(shutil.which("wayvnc")),
+    },
     "ddcutil": {
         "package": "ddcutil", "method": "apt", "licence": "GPL-2.0+",
         "title": "External monitor brightness",

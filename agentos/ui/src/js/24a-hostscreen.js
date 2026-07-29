@@ -37,10 +37,10 @@ async function renderHostScreen(body,w){
           'Screen capture is not available here — it needs the AgentOS Wayland session and grim.'}</div></div>`}
       <p class="mut hs-note">This is a picture, refreshed — you can see the host screen but not click on
         it. Native windows can still be <b>moved, focused, minimised and closed</b> from the taskbar and the
-        Window menu, which go through the compositor and work from anywhere.
-        For a real interactive remote desktop, run a VNC server for wlroots
-        (<code>wayvnc</code>) on the host and connect to that alongside AgentOS.</p>
+        Window menu, which go through the compositor and work from anywhere.</p>
+      <div id="hs-control" class="provbox"><p class="mut">…</p></div>
     </div>`;
+  hsControl();
   if(!capable)return;
   const live=$('#hs-live'), every=$('#hs-every');
   live.onchange=()=>hsLive(live.checked,w);
@@ -84,3 +84,39 @@ function hsLive(on,w){
   HOSTSCREEN.timer=setTimeout(tick,HOSTSCREEN.every);
 }
 function hsStop(){clearTimeout(HOSTSCREEN.timer);HOSTSCREEN.timer=null}
+
+
+/* ---- taking control: streaming pixels AND sending input back is remote-desktop
+   work, so AgentOS starts wayvnc rather than reinventing it. It binds loopback
+   only — wayvnc has no password of its own, and putting an unauthenticated
+   remote desktop on the network would undo every other lock in this system. */
+async function hsControl(){
+  const box=$('#hs-control');if(!box)return;
+  let d={};
+  try{d=await (await fetch('/api/screen/control')).json()}catch(e){box.innerHTML='';return}
+  const body=!d.installed
+    ? `<p class="mut" style="margin-top:6px">Not installed. <b>wayvnc</b> (ISC) turns this
+         read-only view into a real remote desktop: it streams the screen and sends your
+         clicks and keys back to it.</p>
+       <button class="pact" style="margin-top:10px" onclick="installComponent('wayvnc')">Install wayvnc…</button>`
+    : d.running
+      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — point any VNC
+           client at it and you can use the machine, native apps included.</p>
+         <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
+           <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
+         <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
+         <button class="endbtn" style="margin-top:10px" onclick="hsControlSet('stop')">Stop remote control</button>`
+      : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
+           another device — everything on that screen, not just the AgentOS shell.</p>
+         <p class="mut">${esc(d.note)}</p>
+         <button class="pact" style="margin-top:10px" onclick="hsControlSet('start')">Start remote control</button>`;
+  box.innerHTML=`<div class="ptitle">Take control${d.running?' <span class="rm-pill on">ON</span>':''}</div>${body}`;
+}
+async function hsControlSet(action){
+  const r=await fetch('/api/screen/control',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action})});
+  const d=await r.json();
+  if(!r.ok)return toast(d.error||'could not change remote control');
+  toast(action==='start'?'remote control on — connect a VNC client through the tunnel':'remote control off');
+  hsControl();
+}

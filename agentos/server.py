@@ -86,6 +86,7 @@ async def startup():
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
                  fabric=control, pdp=pdp, trainforge=trainforge,
+                 wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  shell_pending={},      # cmd id -> Future — shell-control channel (see below)
                  app_tokens={},         # runtime token -> {"app_id","issued"} — app identity
@@ -244,6 +245,12 @@ async def shutdown():
     if "trainforge" in state:
         with contextlib.suppress(Exception):
             await state["trainforge"].stop()
+    # never outlive the session that started it — an orphaned VNC server is an
+    # unauthenticated door left open on the machine
+    proc = state.get("wayvnc")
+    if proc and proc.returncode is None:
+        with contextlib.suppress(Exception):
+            proc.terminate()
 
 
 # ---------------------------------------------------------------------------
@@ -962,6 +969,82 @@ async def api_platform(request: Request):
     state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
     state_["hostname"] = socket.gethostname()
     return state_
+
+
+# ---------------------------------------------------------------------------
+# Interactive control of the real screen.
+#
+# The Host Screen view is a picture — enough to see a native app, not to use one.
+# Using one means streaming pixels AND sending input back, which is remote-desktop
+# work; wayvnc does it properly for wlroots, so AgentOS starts it rather than
+# reinventing it.
+#
+# It binds LOOPBACK ONLY, always. wayvnc's default security type is "None" — no
+# password — so putting it on the network would hand the machine to anyone who
+# can reach the port, which is strictly worse than everything else in this
+# system. Reach it over the SSH tunnel or the VPN that docs/remote-access.md
+# already recommends. Anyone who wants it exposed can configure wayvnc's own
+# auth and run it themselves; AgentOS will not do that quietly on their behalf.
+# ---------------------------------------------------------------------------
+
+VNC_PORT = 5900
+
+
+def _vnc_running() -> bool:
+    proc = state.get("wayvnc")
+    return bool(proc and proc.returncode is None)
+
+
+@app.get("/api/screen/control")
+async def api_screen_control_status():
+    import shutil as _sh
+    return {
+        "installed": bool(_sh.which("wayvnc")),
+        "running": _vnc_running(),
+        "host": "127.0.0.1", "port": VNC_PORT,
+        "component": "wayvnc",
+        "note": ("wayvnc has no password of its own, so AgentOS only ever binds it to "
+                 "127.0.0.1. Reach it through an SSH tunnel or your VPN."),
+        "tunnel": f"ssh -L {VNC_PORT}:127.0.0.1:{VNC_PORT} {os.environ.get('USER') or 'you'}@{socket.gethostname()}",
+    }
+
+
+@app.post("/api/screen/control")
+async def api_screen_control(body: dict):
+    """{action: "start" | "stop"} — run wayvnc against this compositor."""
+    import shutil as _sh
+    from . import runmode as _rm
+    action = (body or {}).get("action", "")
+    if action == "stop":
+        proc = state.get("wayvnc")
+        if proc and proc.returncode is None:
+            proc.terminate()
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(proc.wait(), timeout=5)
+        state["wayvnc"] = None
+        state["store"].log("system", "interactive remote control stopped")
+        return {"ok": True, "running": False}
+    if action != "start":
+        return JSONResponse({"error": "action must be start or stop"}, status_code=400)
+    if _rm.mode() != "de":
+        return JSONResponse({"error": "interactive control needs the AgentOS Wayland session"},
+                            status_code=503)
+    if not _sh.which("wayvnc"):
+        return JSONResponse({"error": "wayvnc is not installed", "component": "wayvnc"},
+                            status_code=503)
+    if _vnc_running():
+        return {"ok": True, "running": True, "port": VNC_PORT}
+    proc = await asyncio.create_subprocess_exec(
+        "wayvnc", "127.0.0.1", str(VNC_PORT),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    await asyncio.sleep(1.0)                      # let it bind or fail loudly
+    if proc.returncode is not None:
+        err = (await proc.stderr.read())[-300:].decode(errors="replace")
+        return JSONResponse({"error": err.strip() or "wayvnc exited immediately"},
+                            status_code=500)
+    state["wayvnc"] = proc
+    state["store"].log("system", f"interactive remote control started on 127.0.0.1:{VNC_PORT}")
+    return {"ok": True, "running": True, "port": VNC_PORT}
 
 
 @app.get("/api/screen/frame")
