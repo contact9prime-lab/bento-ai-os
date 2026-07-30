@@ -321,11 +321,26 @@ def doctor(fix: bool = False):
         # surface or a window pretending to be one.
         from . import shellhost as _sh
         from . import desktop as desktopmod
+        # A previous login tried the native surface and got nothing on screen, so
+        # the session launcher parked it. Say so loudly: otherwise the machine
+        # silently keeps using the fallback and nobody knows why.
+        _lsfail = cfgmod.AGENTOS_HOME / "layer-shell-failed"
+        if _lsfail.is_file():
+            warn("the native desktop surface is DISABLED — it failed to render here")
+            for _line in _lsfail.read_text().splitlines()[:2]:
+                print(f"      {_line}")
+            if fix:
+                _lsfail.unlink()
+                fixed("cleared the flag — the next login will try the native surface again")
+            else:
+                todo(f"agentos doctor --fix   (or: rm {_lsfail})   to try it again")
         _py, _wk = _sh.python_with_gi()
-        if _py:
+        if _py and not _lsfail.is_file():
             ok(f"native desktop surface available (WebKit2GTK {_wk} via {_py})")
             ok("  → app windows stack above the desktop natively; the menu bar and dock "
                "are reserved with the compositor")
+        elif _py:
+            pass                        # already reported as disabled above
         else:
             warn("no native desktop surface — the session will draw the desktop in a "
                  "Chromium window instead, which has to fake the stacking order")
