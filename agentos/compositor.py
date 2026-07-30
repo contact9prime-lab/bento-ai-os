@@ -525,6 +525,44 @@ class Compositor:
         self.command(f"[con_id={cid}] resize set width {nw} px height {nh} px")
         self.command(f"[con_id={cid}] move absolute position {x + (w - nw) // 2} {y + (h - nh) // 3}")
 
+    #: Snap zones, as fractions of the usable area: (x, y, w, h).
+    SNAP_ZONES = {
+        "left":   (0.0, 0.0, 0.5, 1.0),
+        "right":  (0.5, 0.0, 0.5, 1.0),
+        "top":    (0.0, 0.0, 1.0, 0.5),
+        "bottom": (0.0, 0.5, 1.0, 0.5),
+        "tl":     (0.0, 0.0, 0.5, 0.5),
+        "tr":     (0.5, 0.0, 0.5, 0.5),
+        "bl":     (0.0, 0.5, 0.5, 0.5),
+        "br":     (0.5, 0.5, 0.5, 0.5),
+        "center": (0.18, 0.12, 0.64, 0.76),
+        "full":   (0.0, 0.0, 1.0, 1.0),
+    }
+
+    def snap(self, win_id: str, zone: str) -> None:
+        """Put a native window in half or a quarter of the screen.
+
+        AgentOS's own windows have snapped to screen edges since the beginning;
+        native ones could only be moved and resized by hand, which made them feel
+        like second-class windows on their own desktop. The geometry comes from
+        work_area(), so a snapped window lands between the menu bar and the dock
+        rather than underneath them.
+        """
+        frac = self.SNAP_ZONES.get(zone)
+        if not frac:
+            raise CompositorError(
+                f"unknown snap zone '{zone}' (try: {', '.join(self.SNAP_ZONES)})")
+        x, y, w, h = self.work_area()
+        fx, fy, fw, fh = frac
+        nx, ny = int(x + w * fx), int(y + h * fy)
+        nw, nh = int(w * fw), int(h * fh)
+        cid = int(win_id)
+        # One chained command: sent separately, sway acks the float before the
+        # resize lands and the window flashes at its old size on the way.
+        self.command(f"[con_id={cid}] floating enable, "
+                     f"resize set width {nw} px height {nh} px, "
+                     f"move absolute position {nx} {ny}")
+
     def set_fullscreen(self, win_id: str, on: bool | None = None) -> None:
         arg = "toggle" if on is None else ("enable" if on else "disable")
         self.command(f"[con_id={int(win_id)}] fullscreen {arg}")

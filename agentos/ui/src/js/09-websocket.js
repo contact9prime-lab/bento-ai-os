@@ -330,6 +330,9 @@ function handle(ev){
       break;}
     case 'notification':{ // a native app's notification, via our own daemon
       toast((ev.app?ev.app+': ':'')+ev.summary); updateBell(); break;}
+    case 'native_apps':      // something was installed or removed on the machine
+      if(typeof loadNativeApps==='function')loadNativeApps();
+      refreshApp('apps'); break;
     case 'notification_center': updateBell(); break;
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);

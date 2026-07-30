@@ -82,6 +82,14 @@ status)
   ;;
 
 shot)
+  # Force a full-output repaint before capturing. sway only re-renders damaged
+  # regions, and on the headless/pixman backend that means a screenshot can show
+  # stale black where the desktop surface has not changed since the last frame —
+  # the pixels are fine, the capture is not. Nudging the background damages
+  # everything, so what lands in the file is what is actually on screen.
+  SWAYSOCK=$(sock); export SWAYSOCK
+  swaymsg 'output * bg #0b0d10 solid_color' >/dev/null 2>&1 || true
+  sleep 1
   grim "${2:-$RT/shot.png}" && echo "wrote ${2:-$RT/shot.png}"
   ;;
 

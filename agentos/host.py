@@ -135,6 +135,10 @@ def fullscreen_window(win_id: str, on: bool | None = None) -> tuple[bool, str]:
     return _p().fullscreen_window(win_id, on)
 
 
+def snap_window(win_id: str, zone: str) -> tuple[bool, str]:
+    return _p().snap_window(win_id, zone)
+
+
 def show_desktop() -> tuple[bool, str]:
     return _p().show_desktop()
 

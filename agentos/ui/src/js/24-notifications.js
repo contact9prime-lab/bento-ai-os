@@ -240,6 +240,10 @@ async function showDesktop(){
 }
 /* Everything you can do to a native window, in one menu — the same verbs an
    AgentOS window offers, so there is no second-class kind of window here. */
+//: the snap zones offered in the Window menu, in reading order
+const NAT_SNAP=[['left','left half'],['right','right half'],
+                ['tl','top left'],['tr','top right'],['bl','bottom left'],['br','bottom right'],
+                ['center','centred'],['full','the whole desk']];
 function natWinItems(w){
   const arrange=cap('windows.arrange').available;
   const items=[
@@ -253,6 +257,11 @@ function natWinItems(w){
   ];
   if(arrange){
     items.push(null,{label:w.floating?'Tile':'Float',fn:()=>natWin('floating',w.id,{floating:!w.floating})});
+    // Snapping a native window to half or a quarter of the screen. AgentOS's own
+    // windows have done this from the start; without it, native windows were the
+    // only ones on the desktop you could not put side by side.
+    NAT_SNAP.forEach(([zone,label])=>items.push(
+      {label:'Snap '+label,fn:()=>natWin('snap',w.id,{zone})}));
     for(let n=1;n<=4;n++)items.push({label:'Move to desktop '+n,fn:()=>natWin('move',w.id,{workspace:String(n)})});
   }
   items.push(null,{label:'Show the desktop',fn:showDesktop},

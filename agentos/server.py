@@ -746,6 +746,48 @@ async def api_native_apps():
     return {"apps": apps}
 
 
+@app.get("/api/native/store")
+async def api_native_store(q: str = "", limit: int = 40):
+    """Search the machine's own application catalogue.
+
+    A desktop you cannot install software on is a demo. This asks appstream /
+    flatpak / apt — whichever the machine has — and never ships or mirrors
+    anything itself.
+    """
+    from . import appstore
+    if not q:
+        return {"results": [], "backends": appstore.backends(), "message": ""}
+    return await appstore.search(q, max(1, min(int(limit or 40), 100)))
+
+
+@app.post("/api/native/store")
+async def api_native_store_act(request: Request, body: dict):
+    """Install or remove a native application.
+
+    Loopback only. Installing software is a change to the machine, and a browser
+    somewhere else — even one holding a valid remote-access session — is not the
+    right place to authorise it. The user is asked in the UI first; the exact
+    command is always returned.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse(
+            {"error": "installing software is only allowed from the machine itself"},
+            status_code=403)
+    from . import appstore
+    action = str((body or {}).get("action") or "install")
+    pkg = str((body or {}).get("id") or "")
+    backend = str((body or {}).get("backend") or "")
+    res = await appstore.act(action, pkg, backend)
+    state["store"].log("system",
+                       f"{action} {pkg} ({backend or 'auto'}): "
+                       f"{'ok' if res.get('ok') else res.get('message', '')[:200]}",
+                       {"ok": bool(res.get("ok")), "command": res.get("command", "")})
+    if res.get("ok"):
+        # a new .desktop entry means the deck's System apps group just changed
+        await state["broadcast"]({"type": "native_apps"})
+    return res
+
+
 @app.get("/api/native/icon/{app_id}")
 async def api_native_icon(app_id: str):
     from . import host
@@ -862,6 +904,21 @@ async def api_windows_fullscreen(body: dict):
     on = body.get("fullscreen")
     ok, msg = host.fullscreen_window(_window_id(body),
                                      None if on is None else bool(on))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/snap")
+async def api_windows_snap(body: dict):
+    """Snap a native window to half or a quarter of the usable screen.
+
+    AgentOS's own windows have snapped to edges from the start; native ones could
+    only be dragged, which made them second-class windows on their own desktop.
+    Zones: left/right/top/bottom, tl/tr/bl/br, center, full.
+    """
+    from . import host
+    ok, msg = host.snap_window(_window_id(body), str((body or {}).get("zone") or "left"))
+    if ok:
+        await state["broadcast"]({"type": "wm"})
     return {"ok": ok, "message": msg}
 
 

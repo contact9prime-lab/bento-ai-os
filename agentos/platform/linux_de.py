@@ -222,6 +222,9 @@ class LinuxDE(LinuxHosted):
     def fullscreen_window(self, win_id: str, on: bool | None = None) -> tuple[bool, str]:
         return self._win(lambda i: self._comp.set_fullscreen(i, on), win_id)
 
+    def snap_window(self, win_id: str, zone: str) -> tuple[bool, str]:
+        return self._win(lambda i: self._comp.snap(i, zone), win_id)
+
     def goto_desktop(self, n: int) -> tuple[bool, str]:
         try:
             self._comp.goto_desktop(n)

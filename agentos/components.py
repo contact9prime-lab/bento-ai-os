@@ -61,6 +61,18 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Switch between power-saver, balanced and performance modes.",
         "detect": lambda: bool(shutil.which("powerprofilesctl")),
     },
+    "session-ui": {
+        "package": ("python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1 "
+                    "gir1.2-webkit2-4.1"),
+        "method": "apt", "licence": "MIT (gtk-layer-shell), LGPL-2.1+ (GTK, WebKitGTK)",
+        "title": "Native desktop surface (session UI)",
+        "unlocks": "Draws the AgentOS desktop as a real Wayland layer-shell "
+                   "surface instead of a browser window, so application windows "
+                   "stack above it normally and the menu bar and dock cannot be "
+                   "covered. Without it the session falls back to a Chromium "
+                   "window, which works but has to fake the stacking order.",
+        "detect": lambda: _sui_available(),
+    },
     "wmctrl": {
         "package": "wmctrl", "method": "apt", "licence": "GPL-2.0+",
         "title": "X11 window control",
@@ -154,6 +166,11 @@ def _plymouth_theme_installed() -> bool:
 def _plymouth_script() -> str:
     from pathlib import Path
     return str(Path(__file__).resolve().parent / "de_assets" / "plymouth" / "install.sh")
+
+
+def _sui_available() -> bool:
+    from . import shellhost
+    return shellhost.available()
 
 
 def _has_renderer() -> bool:
