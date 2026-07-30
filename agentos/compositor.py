@@ -101,6 +101,12 @@ _SHELL_PORT = [0]
 # True while the desktop has been deliberately brought to the front (Ctrl+Space,
 # the Alt-Tab overlay). Read by anchor_shell, which must not undo it.
 SHELL_RAISED = [False]
+# True when the desktop is drawn by the native session host as a layer-shell
+# surface instead of a Chromium window (see agentos/shellhost.py). Then there is
+# no shell WINDOW: stacking is correct by construction, the chrome bands are
+# reserved as exclusive zones, and every anchor/raise/lower below has nothing to
+# do. The page tells us, because only the host injects the bridge that lets it.
+SUI_HOST = [False]
 
 
 def shell_port() -> int:
@@ -331,6 +337,10 @@ class Compositor:
         return found[0]
 
     def anchor_shell(self, port: int) -> bool:
+        # Under the session host there is nothing to anchor: the desktop is a
+        # BACKGROUND-layer surface, which is below every window by definition.
+        if SUI_HOST[0]:
+            return True
         # Never fight a deliberate summon. anchor_shell runs on every window
         # event, and it does `floating disable` — which used to drop the shell
         # straight back behind the apps the instant Ctrl+Space raised it.
@@ -435,6 +445,9 @@ class Compositor:
         that outranks floating, so summoning fullscreens the shell and releasing
         puts it straight back to being the layer everything else sits on.
         """
+        # The session host changes its own layer, atomically, from the page.
+        if SUI_HOST[0]:
+            return True
         cid = self.find_shell(port or shell_port())
         if not cid:
             return False
@@ -470,11 +483,27 @@ class Compositor:
         self.command(f"[con_id={cid}] focus")
 
     def work_area(self, top: int = 34) -> tuple[int, int, int, int]:
-        """The screen minus the AgentOS menu bar — where a maximized window goes.
+        """The usable screen — where a maximized window goes.
 
         Maximize and full screen are different things and people expect both: a
-        maximized window fills the desk but leaves the menu bar reachable; a full
-        screen one covers everything."""
+        maximized window fills the desk but leaves the menu bar and dock
+        reachable; a full screen one covers everything.
+
+        The compositor already knows the answer when the session host is running:
+        the AgentOS menu bar and dock are declared as layer-shell exclusive
+        zones, and sway subtracts those from the WORKSPACE rect. Using it means
+        maximize lands exactly between our own chrome, for whatever height the
+        current theme and device happen to give it — instead of the fixed 34px
+        guess, which was wrong for every theme that resized the menu bar and knew
+        nothing about the dock at all.
+
+        `top` stays as the fallback for the Chromium session, where there are no
+        exclusive zones to read.
+        """
+        ws = [w for w in (self._request(GET_WORKSPACES) or []) if w.get("focused")]
+        rect = (ws[0].get("rect") if ws else None) or {}
+        if rect.get("width") and rect.get("height"):
+            return int(rect["x"]), int(rect["y"]), int(rect["width"]), int(rect["height"])
         outs = [o for o in (self._request(GET_OUTPUTS) or []) if o.get("active")]
         focused = next((o for o in outs if o.get("focused")), None) or (outs[0] if outs else None)
         r = (focused or {}).get("rect") or {"x": 0, "y": 0, "width": 1920, "height": 1080}

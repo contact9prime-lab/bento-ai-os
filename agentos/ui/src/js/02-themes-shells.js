@@ -334,6 +334,9 @@ function applyTheme(name){
   // a glass theme costs orders of magnitude more to draw than a flat one, so the
   // machine gets re-measured whenever the material changes
   if(changed&&typeof glassProbe==='function')glassProbe(true);
+  // a theme can resize the menu bar and the dock; in the session UI those
+  // heights are reserved with the compositor, so they must be re-sent
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
 }
 async function loadThemes(){
   try{const d=await (await fetch('/api/themes')).json();

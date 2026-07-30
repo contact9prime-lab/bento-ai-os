@@ -572,6 +572,33 @@ async def api_shell_raise(body: dict | None = None):
     return {"ok": ok, "message": msg}
 
 
+@app.post("/api/shell/sui")
+async def api_shell_sui(request: Request, body: dict | None = None):
+    """The desktop declaring that it is drawn by the native session host.
+
+    Only the layer-shell host injects the bridge that makes this call possible,
+    so receiving it is proof the desktop is a BACKGROUND-layer surface rather
+    than a Chromium window. Once known, every anchor/raise/lower in the
+    compositor layer becomes a no-op — the stacking order is correct by
+    construction, and there is no window to shuffle.
+
+    Loopback only: this changes how the server manages the session's windows, so
+    a remote browser must not be able to claim it. A phone connected to this
+    desktop is a viewer of the session, never its host.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only the machine's own desktop can claim this"},
+                            status_code=403)
+    from . import compositor as comp
+    on = True if body is None else bool(body.get("on", True))
+    was = comp.SUI_HOST[0]
+    comp.SUI_HOST[0] = on
+    if on and not was:
+        state["store"].log("system", "desktop is a native layer-shell surface "
+                                     "(session UI) — window stacking is native")
+    return {"ok": True, "sui": on}
+
+
 @app.post("/api/shortcuts/apply")
 async def api_shortcuts_apply(body: dict):
     """Write the session-level shortcuts into the compositor and reload it.
@@ -984,6 +1011,15 @@ async def api_platform(request: Request):
     state_ = host.platform_state()
     state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
     state_["hostname"] = socket.gethostname()
+    # Is the desktop a native layer-shell surface right now, and could it be?
+    # The UI shows this in About/System Settings, and the doctor uses the second
+    # half to print the one apt line that upgrades a Chromium session to a real
+    # desktop surface.
+    from . import compositor as comp
+    from . import shellhost
+    state_["sui"] = bool(comp.SUI_HOST[0])
+    state_["sui_available"] = shellhost.available()
+    state_["sui_install_hint"] = "" if state_["sui_available"] else shellhost.install_hint()
     return state_
 
 

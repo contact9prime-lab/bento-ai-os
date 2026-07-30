@@ -27,6 +27,9 @@ function applyDevice(){
   b.classList.toggle('dev-touch',DEVICE_TOUCH);
   b.classList.toggle('dev-portrait',innerHeight>=innerWidth);
   document.documentElement.dataset.device=DEVICE;
+  // a different device class means different chrome, so the session's
+  // reserved bands have to move with it
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
   return DEVICE!==prev;
 }
 applyDevice();
