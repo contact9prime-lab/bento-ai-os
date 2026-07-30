@@ -500,13 +500,82 @@ raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then
     fi
   done
 fi
+# A machine that has already failed to draw with layer-shell goes straight to the
+# fallback instead of making the user wait through the same failure every login.
+# `agentos doctor --fix` clears it, as does deleting the file.
+LSFAIL="$HOME/.agentos/layer-shell-failed"
+[ -f "$LSFAIL" ] && {{ HOSTPY=""; echo "layer-shell disabled by $LSFAIL" >> "$LOG"; }}
+
 if [ -n "$HOSTPY" ]; then
   echo "renderer: session host (layer-shell) via $HOSTPY" >> "$LOG"
   BOOT=""
   [ -f "$HOME/.agentos/boot.html" ] && BOOT="--boot $HOME/.agentos/boot.html"
-  # Struts start at the menu-bar height only; the page measures its own chrome
-  # once it loads and tells the host the real numbers (see 00c-sui.js).
-  exec "$HOSTPY" "$SHELLHOST" --port "$PORT" --top 30 --bottom 0 $BOOT >> "$LOG" 2>&1
+  # layer-shell is a WAYLAND protocol. If GDK picks X11 — and $DISPLAY is set
+  # above for XWayland apps — gtk_layer_init_for_window() aborts the process.
+  # Ask for Wayland by name rather than trusting the backend search order.
+  #
+  # NOT `exec`: the whole point of having a fallback is being able to reach it.
+  # Importing the libraries proves nothing about whether WebKit can draw on this
+  # GPU — it can import fine and then render nothing, and a BACKGROUND-layer
+  # surface that renders nothing has no chrome to click and takes no keyboard, so
+  # a blank screen with no way out is exactly what you get. So the host runs as a
+  # child, and we wait for PROOF that the desktop came up.
+  HOSTSTART=$(date +%s)
+  GDK_BACKEND=wayland "$HOSTPY" "$SHELLHOST" --port "$PORT" --top 30 --bottom 0 \
+    $BOOT >> "$LOG" 2>&1 &
+  HOSTPID=$!
+
+  # Wait for PROOF that pixels reached the screen, and not for long: every second
+  # spent here is a second of black screen for someone who is just trying to log
+  # in. The host prints "desktop is up" when a page — even the splash — finishes
+  # loading, which is the signal that distinguishes "WebKit works on this GPU"
+  # from "WebKit is alive and drawing nothing".
+  READY=""
+  i=0
+  while [ $i -lt 50 ]; do                       # ~25s, generous for a cold WebKit
+    kill -0 "$HOSTPID" 2>/dev/null || break     # host died — stop waiting
+    if grep -q "shell-host: desktop is up" "$LOG" 2>/dev/null; then READY=1; break; fi
+    i=$((i+1)); sleep 0.5
+  done
+
+  # A renderer that fails must never END THE SESSION — it must hand over to the
+  # other one. Measured here: WebKit can print "desktop is up", having genuinely
+  # loaded and run the page, and segfault a moment later. So the marker is not
+  # enough on its own; the host's EXIT STATUS is the other half of the truth.
+  HOSTRC=0
+  if [ -n "$READY" ]; then
+    echo "desktop is up (layer-shell)" >> "$LOG"
+    wait "$HOSTPID"; HOSTRC=$?
+    # A clean exit is the user logging out. Anything else is a renderer that
+    # died, and the right answer to that is the fallback, not a black screen.
+    [ "$HOSTRC" = 0 ] && exit 0
+    echo "layer-shell desktop exited with $HOSTRC — falling back to Chromium" >> "$LOG"
+  else
+    echo "layer-shell desktop never rendered — falling back to Chromium" >> "$LOG"
+    kill "$HOSTPID" 2>/dev/null
+    i=0
+    while [ $i -lt 20 ] && kill -0 "$HOSTPID" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
+    kill -9 "$HOSTPID" 2>/dev/null
+  fi
+
+  # Remember only if it failed EARLY. Dying two minutes in means it cannot draw on
+  # this machine and the next login should not repeat the wait; dying after three
+  # hours of use is a crash, not a verdict on the hardware.
+  NOW=$(date +%s)
+  if [ $((NOW - HOSTSTART)) -lt 120 ]; then
+    mkdir -p "$HOME/.agentos"
+    {{
+      echo "The native (layer-shell) desktop failed to render on this machine."
+      echo "Written by agentos-shell on $(date)."
+      echo "AgentOS is using the Chromium fallback instead, which works: everything"
+      echo "functions, but app windows are arranged rather than naturally stacked."
+      echo "Delete this file (or run: agentos doctor --fix) to try the native one again."
+      echo "Diagnosis: the 'shell-host' lines in $LOG"
+    }} > "$LSFAIL"
+  fi
+  # Say it on the screen, not only in a log nobody knows about. Backgrounded, so
+  # the desktop still comes up behind it.
+  (swaynag -t warning -m "AgentOS could not draw its desktop with the native Wayland surface on this machine, so it is using the Chromium fallback. Everything works; app windows are arranged rather than naturally stacked. Details: $LOG" -Z "OK" "true" >/dev/null 2>&1 &) 2>/dev/null
 fi
 echo "session host unavailable — falling back to a Chromium window" >> "$LOG"
 
