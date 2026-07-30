@@ -92,14 +92,30 @@ async function hsControl(){
   const box=$('#hs-control');if(!box)return;
   let d={};
   try{d=await (await fetch('/api/screen/control')).json()}catch(e){box.innerHTML='';return}
+  /* The browser client is what makes this reachable from a phone with nothing
+     installed on the phone: AgentOS relays the VNC stream over its own
+     authenticated connection, so the VNC port itself never leaves loopback. */
+  const web=d.running&&d.novnc
+    ? `<div class="rm-addr" style="margin-top:10px"><div class="rm-row">
+         <b style="flex:1">Open on this device</b>
+         <button class="pact" style="flex:0 0 auto" onclick="openRemoteDesktop()">Remote Desktop ↗</button></div></div>
+       <p class="mut" style="margin-top:6px">On your phone, open AgentOS, sign in, and go to
+         <code>/remote-desktop</code> — or tap <b>Remote Desktop</b> in Quick Settings. No VNC app needed;
+         it runs in the browser over the same passphrase-protected connection.</p>`
+    : d.running&&!d.novnc
+      ? `<p class="mut" style="margin-top:8px">To use this <b>from a phone browser</b> — no VNC app —
+           install the noVNC client (MPL-2.0, a distribution package):</p>
+         <button class="endbtn" style="margin-top:8px" onclick="installComponent('novnc')">Install noVNC…</button>`
+      : '';
   const body=!d.installed
     ? `<p class="mut" style="margin-top:6px">Not installed. <b>wayvnc</b> (ISC) turns this
          read-only view into a real remote desktop: it streams the screen and sends your
          clicks and keys back to it.</p>
        <button class="pact" style="margin-top:10px" onclick="installComponent('wayvnc')">Install wayvnc…</button>`
     : d.running
-      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — point any VNC
-           client at it and you can use the machine, native apps included.</p>
+      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — you can use the
+           machine, native apps included.</p>${web}
+         <p class="mut" style="margin-top:10px">Or point a native VNC client through a tunnel:</p>
          <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
            <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
          <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
@@ -107,8 +123,56 @@ async function hsControl(){
       : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
            another device — everything on that screen, not just the AgentOS shell.</p>
          <p class="mut">${esc(d.note)}</p>
+         ${d.novnc?'<p class="mut">The browser client is installed, so a phone needs nothing at all.</p>'
+                  :'<p class="mut">Install <b>noVNC</b> too and it works from a phone browser with no VNC app.</p>'}
          <button class="pact" style="margin-top:10px" onclick="hsControlSet('start')">Start remote control</button>`;
   box.innerHTML=`<div class="ptitle">Take control${d.running?' <span class="rm-pill on">ON</span>':''}</div>${body}`;
+}
+/* ---- Remote Desktop -------------------------------------------------------
+   The real screen, usable, from anywhere — including a phone with nothing
+   installed on it. AgentOS relays the VNC stream over its own authenticated
+   connection (see agentos/remotedesktop.py), so the VNC port stays on loopback.
+
+   Two ways in, because both are right at different moments:
+     · /remote-desktop  a standalone page. On a phone the remote machine should
+                        own the whole screen, with no dock drawn over it.
+     · this app         a window on the desktop, for using the machine's own
+                        screen from another computer alongside everything else.
+   On a phone the window IS the screen, so the app gets you the same thing. */
+function openRemoteDesktop(){
+  // In the session UI, "open a tab" means nothing — there is no browser. Use the
+  // app window, which the phone layout already makes full-bleed.
+  if((typeof SUI!=='undefined'&&SUI.on)||(typeof isMobile==='function'&&isMobile()))
+    return openApp('remotedesk');
+  window.open('/remote-desktop','_blank');
+}
+async function renderRemoteDesk(body,w){
+  body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
+  let d={};
+  try{d=await (await fetch('/api/screen/control')).json()}catch(e){}
+  if(!d.installed||!d.novnc||!d.running){
+    const missing=!d.installed?'wayvnc':(!d.novnc?'novnc':'');
+    body.innerHTML=`<div class="pad"><div class="provbox">
+      <div class="ptitle">Remote Desktop</div>
+      <p class="mut" style="margin-top:6px">Use this machine's real screen — native apps
+        included — from your phone or another computer, in a browser. AgentOS relays it over
+        the same passphrase-protected connection as the desktop, so the VNC port never leaves
+        <code>127.0.0.1</code>.</p>
+      ${missing?`<p class="mut" style="margin-top:8px">Needs <b>${esc(missing)}</b>, a distribution
+          package AgentOS does not bundle.</p>
+        <button class="pact" style="margin-top:10px" onclick="installComponent('${esc(missing)}')">Install ${esc(missing)}…</button>`
+       :`<p class="mut" style="margin-top:8px">Everything is installed — the service is just off.</p>
+         <button class="pact" style="margin-top:10px" onclick="hsControlSet('start').then(()=>refreshApp('remotedesk'))">Turn Remote Desktop on</button>`}
+      <p class="mut" style="margin-top:10px">See also <b>Host Screen</b>, which shows the same
+        display as a refreshing picture without needing anything installed.</p>
+    </div></div>`;
+    return;
+  }
+  // An iframe, deliberately: the page inside is the same one a phone browser
+  // loads, so there is exactly one remote-desktop client to maintain and to fix.
+  body.innerHTML=`<iframe src="/remote-desktop" title="Remote Desktop"
+     style="border:0;width:100%;height:100%;flex:1;background:#000"
+     allow="clipboard-read; clipboard-write"></iframe>`;
 }
 async function hsControlSet(action){
   const r=await fetch('/api/screen/control',{method:'POST',headers:{'Content-Type':'application/json'},

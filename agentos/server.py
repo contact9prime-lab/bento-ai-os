@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import config as cfgmod
 from . import fabric as fabricmod
@@ -1104,14 +1104,79 @@ def _vnc_running() -> bool:
     return bool(proc and proc.returncode is None)
 
 
+@app.get("/novnc/{path:path}")
+async def novnc_asset(path: str):
+    """Serve the noVNC client that is already installed on this machine.
+
+    AgentOS bundles no part of it. Served rather than linked because the page
+    imports it as an ES module, and a module can only be imported from an origin
+    the browser is already on.
+
+    The path is resolved and then checked to be INSIDE the noVNC directory. Not a
+    string check for "..": a symlink or an encoded separator makes that kind of
+    filter wrong in a way that is hard to see, and this route reads files.
+    """
+    from . import remotedesktop as rd
+    base = rd.novnc_dir()
+    if not base:
+        return JSONResponse({"error": "noVNC is not installed"}, status_code=404)
+    root = os.path.realpath(base)
+    target = os.path.realpath(os.path.join(root, path))
+    if not (target == root or target.startswith(root + os.sep)) or not os.path.isfile(target):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    ext = os.path.splitext(target)[1].lower()
+    mt = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+          ".html": "text/html", ".json": "application/json", ".svg": "image/svg+xml",
+          ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2",
+          }.get(ext, "application/octet-stream")
+    return FileResponse(target, media_type=mt,
+                        headers={"Cache-Control": "max-age=86400"})
+
+
+@app.get("/remote-desktop")
+async def remote_desktop_page(request: Request):
+    """The real screen, on a phone, in the browser — no VNC app to install.
+
+    Its own page rather than a window in the desktop: on a phone you want the
+    whole screen for the remote machine, not the AgentOS dock drawn over it.
+    Reaching this page already required the AgentOS passphrase (the remote-access
+    gate runs as middleware), which is exactly the authentication wayvnc lacks.
+    """
+    from . import remotedesktop as rd
+    have = rd.available()
+    if not have["novnc"]:
+        return HTMLResponse(
+            "<body style='background:#0b0d10;color:#e6ebf2;font:15px system-ui;padding:34px'>"
+            "<h2>Remote Desktop needs the noVNC client</h2>"
+            "<p>It is a distribution package — AgentOS does not bundle it. Install it from "
+            "<b>System Settings &rarr; Components</b>, or run:</p>"
+            "<pre style='background:#151920;padding:12px;border-radius:8px'>sudo apt install novnc</pre>"
+            "</body>", status_code=503, headers=NO_STORE)
+    if not _vnc_running():
+        return HTMLResponse(
+            "<body style='background:#0b0d10;color:#e6ebf2;font:15px system-ui;padding:34px'>"
+            "<h2>Remote Desktop is switched off</h2>"
+            "<p>Turn it on at the machine: <b>System Settings &rarr; Remote access &rarr; "
+            "Remote Desktop</b>, or the Host Screen app's <b>Take control</b> panel. "
+            "Then reload this page.</p></body>", status_code=503, headers=NO_STORE)
+    return HTMLResponse(rd.page("/ws/vnc", socket.gethostname()), headers=NO_STORE)
+
+
 @app.get("/api/screen/control")
 async def api_screen_control_status():
     import shutil as _sh
+    from . import remotedesktop as rd
+    have = rd.available()
     return {
         "installed": bool(_sh.which("wayvnc")),
         "running": _vnc_running(),
         "host": "127.0.0.1", "port": VNC_PORT,
         "component": "wayvnc",
+        # The browser client, which is what makes this reachable from a phone
+        # without installing anything on the phone.
+        "novnc": have["novnc"],
+        "novnc_component": "novnc",
+        "web_url": "/remote-desktop" if have["novnc"] else "",
         "note": ("wayvnc has no password of its own, so AgentOS only ever binds it to "
                  "127.0.0.1. Reach it through an SSH tunnel or your VPN."),
         "tunnel": f"ssh -L {VNC_PORT}:127.0.0.1:{VNC_PORT} {os.environ.get('USER') or 'you'}@{socket.gethostname()}",
@@ -1152,6 +1217,23 @@ async def api_screen_control(body: dict):
         return JSONResponse({"error": err.strip() or "wayvnc exited immediately"},
                             status_code=500)
     state["wayvnc"] = proc
+    # Nudge the compositor into repainting the whole output. sway only re-renders
+    # DAMAGED regions, so on a desktop that has been sitting still — which is
+    # exactly the state you find it in when you reach for your phone — the first
+    # frame a new client receives can be missing everything that had not changed
+    # recently. The desktop's own surface is the usual casualty: you connect and
+    # see the app you launched floating on black. One repaint costs nothing and
+    # makes the first frame the whole screen.
+    #
+    # It re-applies the background the session already set, rather than setting a
+    # colour: re-sending the same value damages the whole output and changes
+    # nothing, where a fixed colour would quietly throw away the user's wallpaper.
+    with contextlib.suppress(Exception):
+        from . import compositor as _c
+        wall = cfgmod.AGENTOS_HOME / "wallpaper.png"
+        _c.Compositor().command(
+            f"output * bg '{wall}' fill" if wall.is_file()
+            else "output * bg #0b0d10 solid_color")
     state["store"].log("system", f"interactive remote control started on 127.0.0.1:{VNC_PORT}")
     return {"ok": True, "running": True, "port": VNC_PORT}
 
@@ -4851,6 +4933,75 @@ def _ws_authed(ws) -> bool:
        remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
         return True
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+
+
+@app.websocket("/ws/vnc")
+async def ws_vnc(ws: WebSocket):
+    """Relay this WebSocket to wayvnc on loopback — the Remote Desktop transport.
+
+    This is the whole security argument for the feature, so it is worth stating
+    plainly. wayvnc has no password of its own, which is why AgentOS has always
+    bound it to 127.0.0.1 and refused to put it on the network. Bridging it here
+    means the phone authenticates to AGENTOS — passphrase, PBKDF2, signed session
+    cookie, backoff, the loopback trust rule — and the VNC port still never
+    leaves the machine. Nothing new is exposed; the client just moved into the
+    browser.
+
+    Byte-for-byte in both directions with no interpretation: this speaks RFB
+    only in the sense that a pipe speaks whatever is poured into it. That is also
+    why it is the same job websockify does, and why AgentOS does not need it.
+    """
+    if not _ws_authed(ws):
+        await ws.close(code=4401)
+        return
+    if not _vnc_running():
+        # Refuse rather than hang: a client waiting forever on a socket that will
+        # never carry anything is indistinguishable from a broken network.
+        await ws.close(code=4404)
+        return
+    # noVNC asks for the 'binary' subprotocol; accepting it is what stops it
+    # falling back to base64 framing, which would double the bytes on a phone.
+    sub = "binary" if "binary" in (ws.scope.get("subprotocols") or []) else None
+    await ws.accept(subprotocol=sub)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", VNC_PORT)
+    except Exception as e:                                        # noqa: BLE001
+        state["store"].log("system", f"remote desktop: cannot reach wayvnc — {e}")
+        await ws.close(code=1011)
+        return
+
+    async def to_vnc():
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect":
+                return
+            data = msg.get("bytes")
+            if data is None and msg.get("text") is not None:
+                data = msg["text"].encode()
+            if data:
+                writer.write(data)
+                await writer.drain()
+
+    async def to_client():
+        while True:
+            chunk = await reader.read(65536)
+            if not chunk:
+                return
+            await ws.send_bytes(chunk)
+
+    tasks = [asyncio.create_task(to_vnc()), asyncio.create_task(to_client())]
+    try:
+        # Either direction ending ends the session — a half-open RFB connection
+        # shows the user a frozen screen rather than a disconnect.
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in tasks:
+            t.cancel()
+        with contextlib.suppress(Exception):
+            writer.close()
+            await writer.wait_closed()
+        with contextlib.suppress(Exception):
+            await ws.close()
 
 
 @app.websocket("/ws/terminal")

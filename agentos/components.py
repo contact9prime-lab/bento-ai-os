@@ -41,6 +41,15 @@ CATALOG: dict[str, dict] = {
                    "because wayvnc ships with no password.",
         "detect": lambda: bool(shutil.which("wayvnc")),
     },
+    "novnc": {
+        "package": "novnc", "method": "apt", "licence": "MPL-2.0",
+        "title": "Remote Desktop in a browser",
+        "unlocks": "Use the real screen — native apps included — from a phone or "
+                   "any browser, with no VNC app to install. AgentOS relays it "
+                   "over its own authenticated connection, so the VNC port stays "
+                   "on 127.0.0.1 and nothing new is exposed to the network.",
+        "detect": lambda: _novnc_present(),
+    },
     "ddcutil": {
         "package": "ddcutil", "method": "apt", "licence": "GPL-2.0+",
         "title": "External monitor brightness",
@@ -166,6 +175,11 @@ def _plymouth_theme_installed() -> bool:
 def _plymouth_script() -> str:
     from pathlib import Path
     return str(Path(__file__).resolve().parent / "de_assets" / "plymouth" / "install.sh")
+
+
+def _novnc_present() -> bool:
+    from . import remotedesktop
+    return bool(remotedesktop.novnc_dir())
 
 
 def _sui_available() -> bool:

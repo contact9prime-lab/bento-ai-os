@@ -2137,6 +2137,7 @@ const ICONS={
   telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
   logs:['#A8A29E','#57534E','<path d="M7 4.6h6.8l3.8 3.8v11H7Z"/><path d="M13.6 4.8v3.8h3.8"/><path d="M9.6 12.6h4.8M9.6 15.6h4.8"/>'],
   tasks:['#F87171','#DC2626','<circle cx="12" cy="12" r="7.8"/><path d="M12 7.6V12l3 1.8"/>'],
+  remotedesk:['#34D399','#064E3B','<rect x="2.6" y="4.4" width="13.4" height="9.2" rx="1.6"/><path d="M6.6 16.6h5.4"/><rect x="15.6" y="10.4" width="5.8" height="9.6" rx="1.6"/><path d="M17.9 18.2h1.2"/>'],
   hostscreen:['#38BDF8','#0C4A6E','<rect x="3.2" y="5" width="17.6" height="11.4" rx="1.8"/><path d="M8.4 19.4h7.2M12 16.4v3"/><path d="M6.6 12.6l2.6-2.6 2 2 3.2-3.4 3 3.2"/>'],
   automations:['#F0A93B','#C2410C','<path d="M13.2 3.6 5.4 13.4h5.1l-.7 7 7.8-9.8h-5.1Z"/>'],
   skills:['#34D399','#059669','<path d="M5.4 5.6c0-.9.7-1.6 1.6-1.6h11.6v14.4H7a1.6 1.6 0 0 0-1.6 1.6Z"/><path d="M5.4 5.6V20M9.3 8h5.4"/>'],
@@ -3769,6 +3770,8 @@ const APPS={
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
   hostscreen:{id:'hostscreen',title:'Host Screen',icon:'',w:900,h:620,desc:'See the machine’s real display — native apps included',
     render:renderHostScreen,onClose(){hsStop();return true}},
+  remotedesk:{id:'remotedesk',title:'Remote Desktop',icon:'',w:1000,h:700,
+    desc:'Use the real screen from here — or from your phone, in a browser',render:renderRemoteDesk},
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
@@ -3814,6 +3817,7 @@ const APP_CTX={
   browser:()=>'the web launcher (opens URLs in the host browser)',
   apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
   hostscreen:()=>`a live still of the host machine's physical screen (native app windows are visible here and nowhere else)`,
+  remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
@@ -4280,7 +4284,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['chat','apps','hostscreen','browser','files','terminal']],
+  ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
@@ -9150,14 +9154,30 @@ async function hsControl(){
   const box=$('#hs-control');if(!box)return;
   let d={};
   try{d=await (await fetch('/api/screen/control')).json()}catch(e){box.innerHTML='';return}
+  /* The browser client is what makes this reachable from a phone with nothing
+     installed on the phone: AgentOS relays the VNC stream over its own
+     authenticated connection, so the VNC port itself never leaves loopback. */
+  const web=d.running&&d.novnc
+    ? `<div class="rm-addr" style="margin-top:10px"><div class="rm-row">
+         <b style="flex:1">Open on this device</b>
+         <button class="pact" style="flex:0 0 auto" onclick="openRemoteDesktop()">Remote Desktop ↗</button></div></div>
+       <p class="mut" style="margin-top:6px">On your phone, open AgentOS, sign in, and go to
+         <code>/remote-desktop</code> — or tap <b>Remote Desktop</b> in Quick Settings. No VNC app needed;
+         it runs in the browser over the same passphrase-protected connection.</p>`
+    : d.running&&!d.novnc
+      ? `<p class="mut" style="margin-top:8px">To use this <b>from a phone browser</b> — no VNC app —
+           install the noVNC client (MPL-2.0, a distribution package):</p>
+         <button class="endbtn" style="margin-top:8px" onclick="installComponent('novnc')">Install noVNC…</button>`
+      : '';
   const body=!d.installed
     ? `<p class="mut" style="margin-top:6px">Not installed. <b>wayvnc</b> (ISC) turns this
          read-only view into a real remote desktop: it streams the screen and sends your
          clicks and keys back to it.</p>
        <button class="pact" style="margin-top:10px" onclick="installComponent('wayvnc')">Install wayvnc…</button>`
     : d.running
-      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — point any VNC
-           client at it and you can use the machine, native apps included.</p>
+      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — you can use the
+           machine, native apps included.</p>${web}
+         <p class="mut" style="margin-top:10px">Or point a native VNC client through a tunnel:</p>
          <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
            <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
          <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
@@ -9165,8 +9185,56 @@ async function hsControl(){
       : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
            another device — everything on that screen, not just the AgentOS shell.</p>
          <p class="mut">${esc(d.note)}</p>
+         ${d.novnc?'<p class="mut">The browser client is installed, so a phone needs nothing at all.</p>'
+                  :'<p class="mut">Install <b>noVNC</b> too and it works from a phone browser with no VNC app.</p>'}
          <button class="pact" style="margin-top:10px" onclick="hsControlSet('start')">Start remote control</button>`;
   box.innerHTML=`<div class="ptitle">Take control${d.running?' <span class="rm-pill on">ON</span>':''}</div>${body}`;
+}
+/* ---- Remote Desktop -------------------------------------------------------
+   The real screen, usable, from anywhere — including a phone with nothing
+   installed on it. AgentOS relays the VNC stream over its own authenticated
+   connection (see agentos/remotedesktop.py), so the VNC port stays on loopback.
+
+   Two ways in, because both are right at different moments:
+     · /remote-desktop  a standalone page. On a phone the remote machine should
+                        own the whole screen, with no dock drawn over it.
+     · this app         a window on the desktop, for using the machine's own
+                        screen from another computer alongside everything else.
+   On a phone the window IS the screen, so the app gets you the same thing. */
+function openRemoteDesktop(){
+  // In the session UI, "open a tab" means nothing — there is no browser. Use the
+  // app window, which the phone layout already makes full-bleed.
+  if((typeof SUI!=='undefined'&&SUI.on)||(typeof isMobile==='function'&&isMobile()))
+    return openApp('remotedesk');
+  window.open('/remote-desktop','_blank');
+}
+async function renderRemoteDesk(body,w){
+  body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
+  let d={};
+  try{d=await (await fetch('/api/screen/control')).json()}catch(e){}
+  if(!d.installed||!d.novnc||!d.running){
+    const missing=!d.installed?'wayvnc':(!d.novnc?'novnc':'');
+    body.innerHTML=`<div class="pad"><div class="provbox">
+      <div class="ptitle">Remote Desktop</div>
+      <p class="mut" style="margin-top:6px">Use this machine's real screen — native apps
+        included — from your phone or another computer, in a browser. AgentOS relays it over
+        the same passphrase-protected connection as the desktop, so the VNC port never leaves
+        <code>127.0.0.1</code>.</p>
+      ${missing?`<p class="mut" style="margin-top:8px">Needs <b>${esc(missing)}</b>, a distribution
+          package AgentOS does not bundle.</p>
+        <button class="pact" style="margin-top:10px" onclick="installComponent('${esc(missing)}')">Install ${esc(missing)}…</button>`
+       :`<p class="mut" style="margin-top:8px">Everything is installed — the service is just off.</p>
+         <button class="pact" style="margin-top:10px" onclick="hsControlSet('start').then(()=>refreshApp('remotedesk'))">Turn Remote Desktop on</button>`}
+      <p class="mut" style="margin-top:10px">See also <b>Host Screen</b>, which shows the same
+        display as a refreshing picture without needing anything installed.</p>
+    </div></div>`;
+    return;
+  }
+  // An iframe, deliberately: the page inside is the same one a phone browser
+  // loads, so there is exactly one remote-desktop client to maintain and to fix.
+  body.innerHTML=`<iframe src="/remote-desktop" title="Remote Desktop"
+     style="border:0;width:100%;height:100%;flex:1;background:#000"
+     allow="clipboard-read; clipboard-write"></iframe>`;
 }
 async function hsControlSet(action){
   const r=await fetch('/api/screen/control',{method:'POST',headers:{'Content-Type':'application/json'},
