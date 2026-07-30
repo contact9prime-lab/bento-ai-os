@@ -8304,7 +8304,11 @@ async function installComponent(id){
   let comp=null;
   try{const d=await (await fetch('/api/components')).json();comp=(d.components||[]).find(c=>c.id===id)}catch(e){}
   if(!comp)return toast('unknown component: '+id);
-  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}`,{confirmText:'Install'}))return;
+  if(!comp.available)return osAlert(`${comp.title} is not available here`,comp.reason||'This machine has no way to install it.');
+  /* `manager` is the package manager resolved for THIS distro, not the word
+     "apt" printed at everyone. Showing the real command is the whole point of
+     the consent dialog — it is what will run. */
+  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.manager||comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}\n\n${comp.command}`,{confirmText:'Install'}))return;
   toast('installing '+comp.title+'…');
   const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   const d=await r.json();
@@ -8669,17 +8673,41 @@ async function pinMode(mode){
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
   toast('desktop.mode = '+mode+' (takes effect on next server start)');refreshApp('syssettings');
 }
+/* Components, grouped by how much the machine needs them, and honest about the
+   distro it is actually running on. The server resolves package names per
+   distro family, so `c.package` and `c.command` here are what would really run
+   — not a Debian command shown to a Fedora user. When there is no route to a
+   component at all, `c.available` is false and `c.reason` says why: a sentence
+   beats a button that cannot work. */
+const COMPGROUPS=[['required','Required','Without these there is no AgentOS session.'],
+                  ['recommended','Recommended','A desktop that behaves like one.'],
+                  ['optional','Optional','']];
 async function sysComponents(el){
   const d=await (await fetch('/api/components')).json();
-  el.innerHTML=(d.components||[]).map(c=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
+  const rows=d.components||[], os=d.os||{};
+  const head=`<div class="provbox"><div class="ptitle">This machine</div>
+    <p class="mut" style="margin-top:6px">${esc(os.describe||'unknown system')}</p>
+    ${os.why?`<p class="mut" style="margin-top:4px">${esc(os.why)}</p>`:''}</div>`;
+  const card=c=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(c.title)} <span class="mut" style="font-weight:400">· ${esc(c.licence)}</span></div>
         <div class="mut" style="font-size:11.5px;margin-top:2px">${esc(c.unlocks)}</div>
+        ${c.available&&!c.installed?`<div class="mut" style="font-size:11px;margin-top:3px;font-family:monospace">${esc(c.command)}</div>`:''}
       </div>
-      ${c.installed?'<span class="mut">✓ installed</span>':`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`}
-    </div>`).join('');
+      ${c.installed?'<span class="mut">✓ installed</span>'
+        :c.available?`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`
+        :`<span class="mut" style="max-width:200px;text-align:right;font-size:11.5px">${esc(c.reason||'unavailable here')}</span>`}
+    </div>`;
+  el.innerHTML=head+COMPGROUPS.map(([g,label,note])=>{
+    const mine=rows.filter(c=>c.group===g); if(!mine.length)return '';
+    const miss=mine.filter(c=>!c.installed&&c.available).length;
+    return `<div class="ptitle" style="margin-top:10px">${label}
+        <span class="mut" style="font-weight:400">${miss?`· ${miss} missing`:'· all present'}</span></div>
+      ${note?`<p class="mut" style="font-size:11.5px;margin:2px 0 6px">${note}</p>`:''}
+      ${mine.map(card).join('')}`;
+  }).join('');
   el.innerHTML+=`<p class="mut" style="margin-top:4px">These aren't bundled with AgentOS — some carry other licences
-    (shown above), so each one installs only when you say yes to it.</p>`;
+    (shown above), so each one installs only when you say yes to it. From a terminal: <code>agentos installer</code>.</p>`;
 }
 
 

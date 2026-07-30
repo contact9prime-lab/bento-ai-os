@@ -1450,8 +1450,18 @@ async def api_power_profile_set(body: dict):
 
 @app.get("/api/components")
 async def api_components():
-    from . import components
-    return {"components": components.catalog()}
+    """The catalogue, resolved for the distro this machine actually runs.
+
+    `os` travels with it because the panel has to be able to say "AgentOS does
+    not know how this distro installs packages" rather than showing buttons that
+    would run a command from somebody else's operating system.
+    """
+    from . import components, osdetect
+    d = osdetect.detect()
+    return {"components": components.catalog(),
+            "os": {"describe": osdetect.describe(), "family": d["family"],
+                   "manager": d["manager"], "pretty": d["pretty"],
+                   "session_capable": d["session_capable"], "why": d["why"]}}
 
 
 @app.post("/api/components")

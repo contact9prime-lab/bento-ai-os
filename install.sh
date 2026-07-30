@@ -1,6 +1,10 @@
 #!/bin/sh
 # AgentOS one-command installer (Linux/macOS):
-#   curl -fsSL https://raw.githubusercontent.com/<you>/agentic-os/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+#
+# NOTE: master, not main. Both branches exist on the remote; HEAD is master and
+# main is stale, so a raw URL pointing at main 404s and the pipe silently
+# installs nothing.
 #
 # Order matters here, and it is the order a person would use:
 #   1. check the network FIRST. Every step below downloads something, and a
@@ -13,7 +17,23 @@
 #   4. doctor, launcher, done.
 set -e
 
-REPO="${AGENTOS_REPO:-https://github.com/YOUR_ORG/agentic-os.git}"
+# The real, public, MIT-licensed repository — over HTTPS, which needs no
+# credentials for a public repo.
+#
+# This was `https://github.com/YOUR_ORG/agentic-os.git`, a placeholder nobody
+# filled in, and the way it failed is worth remembering: git did not say "no
+# such repository". GitHub cannot admit a repo is missing without confirming to
+# an anonymous caller that it is missing — that would leak the existence of
+# private repos — so it answers a 404 the same way it answers a private repo,
+# by asking who you are. The prompt for a GitHub username and password was
+# therefore not a sign that the install needed a login. It was the only symptom
+# a wrong URL is allowed to have.
+#
+# (And the password could never have worked: GitHub removed password auth for
+# git over HTTPS in August 2021. Anyone who typed one got "Support for password
+# authentication was removed", which points at credentials — the one thing that
+# was never the problem.)
+REPO="${AGENTOS_REPO:-https://github.com/contact9prime-lab/bento-ai-os.git}"
 DIR="${AGENTOS_DIR:-$HOME/.local/src/agentic-os}"
 ASSUME_YES="${AGENTOS_YES:-}"
 
@@ -83,47 +103,30 @@ say "installing dependencies"
 uv sync
 
 # ---------------------------------------------------------------------------
-# 3. the desktop session (Linux only, entirely optional)
+# 3. hand off to the AgentOS installer
 #
-# AgentOS runs as a browser desktop with nothing extra. These packages are what
-# turn it into a Linux SESSION you can log into, where the desktop is a real
-# Wayland surface and native app windows stack above it. They belong to the
-# distribution — AgentOS neither ships nor redistributes them — so they are
-# offered, with what each one does, and never installed silently.
+# This step used to live here as a hardcoded apt block: `command -v apt-get`,
+# then a fixed list of Debian package names. It had two faults that only show up
+# on somebody else's machine. Behind that apt test, every Fedora, Arch and
+# openSUSE user was silently offered NOTHING and told the install had succeeded.
+# And the package list, being a second copy, drifted from the real one — it was
+# still missing python3-gi-cairo long after that was known to be the difference
+# between a desktop and a black screen at login.
+#
+# So it is not duplicated here any more. `agentos installer` detects the distro,
+# resolves the package names for it, shows each licence, and installs only what
+# is agreed to — and it is the same catalogue the desktop's Settings panel uses,
+# so there is one list to keep true instead of three.
 # ---------------------------------------------------------------------------
-if [ "$(uname -s)" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
-  # sway: the compositor engine. python3-gi + gtk-layer-shell + webkit2gtk: the
-  # native desktop surface. grim/slurp: screenshots. swaylock/swayidle: locking.
-  SESSION_PKGS="sway swaybg swayidle swaylock grim slurp foot"
-  SUI_PKGS="python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1 gir1.2-webkit2-4.1"
-  missing=""
-  command -v sway >/dev/null 2>&1 || missing="$missing sway"
-  if ! python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' >/dev/null 2>&1; then
-    missing="$missing layer-shell"
-  fi
-  if [ -n "$missing" ]; then
-    echo
-    say "optional: run AgentOS as your Linux desktop session"
-    echo "   Two groups of distribution packages, and what they are for:"
-    echo "     · sway + swaybg/swayidle/swaylock/grim  — the compositor engine, wallpaper,"
-    echo "       screen lock and screenshots.                                   (MIT)"
-    echo "     · python3-gi, gtk-layer-shell, webkit2gtk — draw the AgentOS desktop as a real"
-    echo "       Wayland layer-shell surface, so app windows stack above it normally."
-    echo "                                       (MIT; GTK and WebKitGTK are LGPL-2.1+)"
-    echo "   Without them AgentOS still works — as a window on your current desktop."
-    if ask "install these now?"; then
-      sudo apt-get update
-      # shellcheck disable=SC2086
-      sudo apt-get install -y $SESSION_PKGS $SUI_PKGS
-      say "session packages installed — run 'agentos install-session' to add AgentOS"
-      say "to your login screen"
-    else
-      echo "   Later, either of:"
-      echo "     sudo apt install $SESSION_PKGS"
-      echo "     sudo apt install $SUI_PKGS"
-      echo "   or from the desktop: System Settings → Components."
-    fi
-  fi
+say "checking what this machine needs"
+if [ -n "$ASSUME_YES" ]; then
+  uv run agentos installer --yes || true
+elif [ -t 0 ]; then
+  uv run agentos installer < /dev/tty || true
+else
+  # No terminal to ask on: report, change nothing, and say how to finish.
+  uv run agentos installer < /dev/null || true
+  say "run 'agentos installer' from a terminal to install what is missing"
 fi
 
 # ---------------------------------------------------------------------------

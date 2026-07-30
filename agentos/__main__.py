@@ -625,6 +625,18 @@ def main():
     sub.add_parser("uninstall", help="remove launcher + boot service")
     p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
+    # The installer is the one entry point that has to work BEFORE anything is
+    # set up — on a machine where the session packages are missing and the
+    # server has never run. That is why it is a plain terminal UI rather than a
+    # screen in `agentos tui`, which needs Textual and a live server.
+    p_inst = sub.add_parser("installer",
+                            help="terminal installer — detect this OS and install what "
+                                 "AgentOS needs (re-runnable; shows what is missing)")
+    p_inst.add_argument("--session", action="store_true",
+                        help="only what the login session needs")
+    p_inst.add_argument("--yes", action="store_true",
+                        help="install everything offered without asking (still prints "
+                             "every package and licence first)")
     p_sess = sub.add_parser("install-session",
                             help="add AgentOS as a login session (Linux only) — pick it at the login screen, "
                                  "or --autologin to boot straight into it")
@@ -687,6 +699,9 @@ def main():
                 _a.run(clitui.run_tui())
             except KeyboardInterrupt:
                 pass
+    elif args.cmd == "installer":
+        from . import installer
+        raise SystemExit(installer.run(session_only=args.session, assume_yes=args.yes))
     elif args.cmd == "install":
         from . import desktop
         desktop.install(autostart=not args.no_service, open_at_login=not args.no_login)

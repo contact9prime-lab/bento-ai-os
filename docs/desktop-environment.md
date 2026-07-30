@@ -31,7 +31,14 @@ exactly as they are; switching back is logging out and picking Ubuntu.
 
 ## Install
 
-The quick way, on a machine that has the sway compositor available:
+The quick way, on any supported distro:
+
+```bash
+agentos installer                # detects the distro, installs what's missing, adds the session
+```
+
+By hand on Debian/Ubuntu (the package names differ elsewhere — that is what the
+installer is for):
 
 ```bash
 sudo apt install sway swaylock swayidle swaybg grim slurp xdg-desktop-portal-wlr

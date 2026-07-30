@@ -83,6 +83,12 @@ PROBE = """
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
+# PyGObject's cairo bridge is its own package (Debian: python3-gi-cairo) and is
+# NOT pulled in by python3-gi or python3-cairo. The host needs it to give the
+# strut surfaces an empty input region. Probing for it here is what makes the
+# difference between "fall back to the Chromium renderer" and "the session host
+# starts, dies on the first strut, and takes the compositor down with it".
+gi.require_foreign("cairo")
 ok = ""
 for v in ("4.1", "4.0"):
     try:
@@ -134,14 +140,28 @@ def available(refresh: bool = False) -> bool:
     return bool(python_with_gi(refresh)[0])
 
 
-#: What to tell the user to install, per package manager. Nothing here is
-#: bundled with AgentOS — these are the distribution's own packages.
+#: What to tell the user to install, per package manager.
+#:
+#: This IS a second copy of what components.CATALOG["session-ui"] holds, and it
+#: has to be: this module must stay importable by a bare system python that
+#: cannot see the AgentOS package at all (see the module docstring and
+#: tests/test_sui_remotedesktop.py, which enforces it). The duplication is
+#: therefore deliberate — but duplication is how python3-gi-cairo came to be in
+#: one list and not the other, which decided whether a user's desktop worked
+#: depending on which message they happened to read. So
+#: tests/test_components.py asserts the two agree, package for package.
 INSTALL_HINTS = (
-    ("apt", "sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1 "
-            "gir1.2-webkit2-4.1"),
-    ("dnf", "sudo dnf install python3-gobject gtk3 gtk-layer-shell webkit2gtk4.1"),
-    ("pacman", "sudo pacman -S python-gobject gtk3 gtk-layer-shell webkit2gtk-4.1"),
-    ("zypper", "sudo zypper install python3-gobject gtk3 gtk-layer-shell webkit2gtk-4_1"),
+    # python3-gi-cairo is NOT redundant with python3-gi or python3-cairo: it is
+    # the foreign-type bridge that lets PyGObject pass a cairo.Region into GDK.
+    # Leaving it out is what made the desktop start and then die on its struts.
+    ("apt", "sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 "
+            "gir1.2-gtklayershell-0.1 gir1.2-webkit2-4.1"),
+    ("dnf", "sudo dnf install python3-gobject python3-cairo gtk3 gtk-layer-shell "
+            "webkit2gtk4.1"),
+    ("pacman", "sudo pacman -S python-gobject python-cairo gtk3 gtk-layer-shell "
+               "webkit2gtk-4.1"),
+    ("zypper", "sudo zypper install python3-gobject python3-gobject-cairo python3-cairo "
+               "gtk3 gtk-layer-shell typelib-1_0-WebKit2-4_1"),
 )
 
 
@@ -307,10 +327,24 @@ def main(argv: list[str] | None = None) -> int:
         w.set_size_request(-1, max(1, int(size)))
         w.show_all()
         # Empty input region => every click falls through to the desktop.
+        #
+        # This is the ONLY place the host needs cairo, and it needs it through
+        # PyGObject's foreign-type bridge (Debian: python3-gi-cairo), which is a
+        # SEPARATE package from python3-gi and python3-cairo. Without it the
+        # call raises `KeyError: could not find foreign type Region` — and
+        # because struts are built before the first frame, an unguarded call
+        # killed the host, which took sway with it and left a black screen at
+        # login. A band that swallows clicks is a small bug; no desktop at all
+        # is not. So this degrades instead of raising.
         gw = w.get_window()
         if gw is not None:
-            import cairo
-            gw.input_shape_combine_region(cairo.Region(), 0, 0)
+            try:
+                import cairo
+                gw.input_shape_combine_region(cairo.Region(), 0, 0)
+            except Exception as exc:                                # pragma: no cover
+                print(f"agentos shell-host: strut is not click-through ({exc}); "
+                      f"install the cairo bridge for PyGObject "
+                      f"(apt: python3-gi-cairo) to fix", flush=True)
         return w
 
     def apply_struts():

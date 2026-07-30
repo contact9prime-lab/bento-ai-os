@@ -9,26 +9,133 @@ capability can point at must actually exist in the catalog, or the UI's
 
 import asyncio
 
-from agentos import components
+import pytest
+
+from agentos import components, osdetect
+
+
+@pytest.fixture
+def as_family(monkeypatch):
+    """Pretend to be a given distro family, for package-name assertions."""
+    def use(family, manager, argv, pretty="Test Linux", os_name="linux", why=""):
+        monkeypatch.setattr(osdetect, "_CACHE", [{
+            "os": os_name, "id": family, "id_like": [], "version_id": "1",
+            "pretty": pretty, "family": family, "manager": manager,
+            "install_argv": list(argv), "refresh_argv": [],
+            "session_capable": os_name == "linux", "why": why,
+        }])
+    return use
 
 
 def test_catalog_entries_are_complete():
     for row in components.catalog():
-        assert row["id"] and row["title"] and row["package"]
+        assert row["id"] and row["title"]
         assert row["licence"], f"{row['id']} has no licence to show in the consent dialog"
         assert row["unlocks"], f"{row['id']} doesn't say what it unlocks"
-        assert row["method"] in ("apt", "snap", "script")
-        assert row["command"].startswith("sudo "), "the shown command must be runnable as-is"
+        assert row["method"] in ("system", "snap", "script")
+        assert row["group"] in components.GROUPS
         assert isinstance(row["installed"], bool)
+        if row["available"]:
+            assert row["command"].startswith("sudo "), "the shown command must be runnable as-is"
+        else:
+            assert row["reason"], f"{row['id']} is unavailable without saying why"
+
+
+def test_every_component_has_a_name_for_every_supported_family():
+    """A missing spelling is not a crash — it is a component silently absent.
+
+    Each family AgentOS claims to support must have a package name for every
+    system component, or users of that distro are quietly offered less than
+    users of Debian with no indication that anything is missing.
+    """
+    for cid, comp in components.CATALOG.items():
+        if comp["method"] == "script":
+            continue
+        for family in components.FAMILIES:
+            assert comp["packages"].get(family), (
+                f"component '{cid}' has no {family} package name")
+
+
+def test_install_command_is_the_running_distros_command(as_family):
+    """The whole point: a Fedora user must never be shown an apt command."""
+    ddcutil = components.CATALOG["ddcutil"]
+
+    as_family("debian", "apt", ["apt-get", "install", "-y"])
+    assert components.install_command(ddcutil) == "apt-get install -y ddcutil"
+
+    as_family("rhel", "dnf", ["dnf", "install", "-y"])
+    assert components.install_command(ddcutil) == "dnf install -y ddcutil"
+
+    as_family("arch", "pacman", ["pacman", "-S", "--noconfirm", "--needed"])
+    assert components.install_command(ddcutil) == "pacman -S --noconfirm --needed ddcutil"
+
+    as_family("suse", "zypper", ["zypper", "--non-interactive", "install"])
+    assert components.install_command(ddcutil) == "zypper --non-interactive install ddcutil"
+
+
+def test_the_cairo_bridge_is_in_every_familys_session_ui(as_family):
+    """The package whose absence was a black screen at login.
+
+    python3-gi does not pull in the PyGObject<->cairo bridge on any distro, and
+    without it the shell host dies building its first strut. Each family's
+    spelling of that bridge must be present.
+    """
+    pkgs = components.CATALOG["session-ui"]["packages"]
+    assert "python3-gi-cairo" in pkgs["debian"]
+    assert "python3-cairo" in pkgs["rhel"]
+    assert "python-cairo" in pkgs["arch"]
+    assert "cairo" in pkgs["suse"]
+
+
+def test_an_unknown_distro_is_told_so_rather_than_guessed_at(as_family):
+    as_family("", "", [], pretty="Void Linux",
+              why="AgentOS does not know how Void Linux installs packages.")
+    ddcutil = components.CATALOG["ddcutil"]
+    assert components.install_command(ddcutil) == ""
+    assert "Void Linux" in components.unavailable_reason(ddcutil)
+    row = next(r for r in components.catalog() if r["id"] == "ddcutil")
+    assert row["available"] is False and row["command"] == "" and row["reason"]
+
+
+def test_non_linux_gets_the_reason_that_actually_matters(as_family):
+    """'no macos-family package name' is true and useless; the session is Linux-only."""
+    as_family("macos", "brew", [], pretty="macOS 15.2", os_name="macos",
+              why="The AgentOS login session is a Wayland session and exists only on Linux.")
+    reason = components.unavailable_reason(components.CATALOG["compositor"])
+    assert "Linux" in reason and "package name" not in reason
+
+
+def test_installing_where_there_is_no_route_is_not_reported_as_failure(as_family):
+    as_family("", "", [], pretty="Void Linux", why="no package manager known")
+    r = asyncio.run(components.install("ddcutil"))
+    assert r["ok"] is False
+    assert r["needs_terminal"] is False, "there is no command to hand back"
+    assert r["command"] == ""
+    assert "cannot be installed here" in r["message"]
 
 
 def test_install_command_shapes():
-    assert components.install_command(
-        {"method": "apt", "package": "ddcutil"}) == "apt-get install -y ddcutil"
-    assert components.install_command(
-        {"method": "snap", "package": "chromium"}) == "snap install chromium"
-    cmd = components.install_command({"method": "script", "package": "agentos boot theme"})
+    cmd = components.install_command({"method": "script", "packages": {}})
     assert cmd.startswith("sh ") and cmd.endswith("install.sh")
+
+
+def test_shellhost_hints_agree_with_the_catalogue():
+    """The one duplicate list in the codebase must not be allowed to drift.
+
+    shellhost.py cannot import from agentos — it has to be runnable by a bare
+    system python — so its INSTALL_HINTS really is a second copy of the
+    session-ui package list. That duplication is exactly how python3-gi-cairo
+    ended up in one list and not the other, and which message a user happened to
+    read decided whether their desktop worked. If you change one, change both.
+    """
+    from agentos import shellhost
+    hints = dict(shellhost.INSTALL_HINTS)
+    catalogue = components.CATALOG["session-ui"]["packages"]
+    for mgr, family in (("apt", "debian"), ("dnf", "rhel"),
+                        ("pacman", "arch"), ("zypper", "suse")):
+        hinted = set(hints[mgr].split()) - {"sudo", mgr, "install", "-S"}
+        assert set(catalogue[family].split()) == hinted, (
+            f"shellhost's {mgr} hint and the catalogue's {family} packages disagree")
 
 
 def test_unknown_component_is_refused():
