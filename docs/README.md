@@ -17,6 +17,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
 | [The session UI (SUI)](session-ui.md) | AgentOS **as** your Linux desktop: the layer-shell surface, native window management, installing applications, and what to install |
 | [AgentOS as your DE](desktop-environment.md) | The AgentOS **login session** — boot into AgentOS, run modes, System Settings, notifications, lock screen, licences |
+| [Licensing & trademarks](licensing.md) | What AgentOS ships and what it only *asks for*; why it redistributes no distribution; where the Ubuntu/Canonical trademark line sits |
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
