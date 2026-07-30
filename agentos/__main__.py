@@ -317,12 +317,37 @@ def doctor(fix: bool = False):
         else:
             warn("sway not installed — needed only for the AgentOS Wayland session")
 
+        # How the desktop gets DRAWN, which decides whether it is a real desktop
+        # surface or a window pretending to be one.
+        from . import shellhost as _sh
         from . import desktop as desktopmod
-        if desktopmod.find_browser():
-            ok("shell renderer found (chromium-family browser)")
+        _py, _wk = _sh.python_with_gi()
+        if _py:
+            ok(f"native desktop surface available (WebKit2GTK {_wk} via {_py})")
+            ok("  → app windows stack above the desktop natively; the menu bar and dock "
+               "are reserved with the compositor")
         else:
-            warn("no chromium-family browser — the AgentOS session cannot draw its shell "
-                 "(snap install chromium)")
+            warn("no native desktop surface — the session will draw the desktop in a "
+                 "Chromium window instead, which has to fake the stacking order")
+            todo(_sh.install_hint())
+        if desktopmod.find_browser():
+            ok("Chromium-family browser found (the fallback renderer, and the Web app)")
+        elif not _py:
+            bad("nothing can draw the desktop: no WebKitGTK layer-shell stack and no "
+                "chromium-family browser")
+        else:
+            warn("no chromium-family browser (only needed as the fallback renderer)")
+
+        # The browser remote desktop: reachable from a phone with nothing on it.
+        from . import remotedesktop as _rd
+        _have = _rd.available()
+        if _have["wayvnc"] and _have["novnc"]:
+            ok("Remote Desktop ready (wayvnc + noVNC) — usable from a phone browser")
+        elif _have["wayvnc"]:
+            warn("wayvnc is installed but noVNC is not — remote control needs a VNC "
+                 "client app until you add it (apt install novnc)")
+        else:
+            warn("Remote Desktop not installed (apt install wayvnc novnc) — optional")
 
         try:
             from . import session as _sess

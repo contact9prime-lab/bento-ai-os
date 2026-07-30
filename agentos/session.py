@@ -1127,6 +1127,26 @@ def install(wayland: bool = True, autologin: bool = False, force: bool = False):
               "  (or install the agentos-desktop package, which depends on it)")
         return
 
+    # How the desktop will be drawn, said before anything is written. The two
+    # answers are genuinely different desktops, and the difference is worth one
+    # apt line — but it is the user's line to run, not ours to run quietly.
+    if wayland:
+        from . import shellhost
+        py, wk = shellhost.python_with_gi()
+        if py:
+            print(f"✓ desktop surface  native Wayland layer-shell (WebKit2GTK {wk})")
+            print("                   app windows stack above the desktop; the menu bar and")
+            print("                   dock are reserved with the compositor")
+        else:
+            print("! desktop surface  Chromium window (fallback)")
+            print("  The desktop can be a real Wayland surface instead, which is what makes")
+            print("  application windows stack above it normally rather than trading places")
+            print("  with it. That needs three distribution packages — AgentOS does not")
+            print("  bundle them:\n")
+            print(f"    {shellhost.install_hint()}\n")
+            print("  Install them and run this again, or carry on: the Chromium fallback")
+            print("  works, it just has to fake the stacking order.\n")
+
     port = _port()
     for p in stage(wayland=wayland, port=port):
         print(f"✓ wrote           {p}")
