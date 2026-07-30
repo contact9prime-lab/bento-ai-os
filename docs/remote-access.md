@@ -69,7 +69,33 @@ display (`grim`, which the session already ships for screenshots) and refreshes
 it. That is a picture, not a video, and you cannot click on it — but it answers
 "did it open, and what is it showing", which is usually the question.
 
-### Actually using a native app: Take control
+### Actually using a native app: Remote Desktop
+
+Seeing is not using. To click and type inside a native app you need pixels streamed *and* input
+sent back. AgentOS does that **through its own authenticated connection**, which is what makes it
+safe and what makes it work from a phone with nothing installed on the phone:
+
+```
+phone browser ──HTTP──> AgentOS ──loopback──> wayvnc ──> the real screen
+               passphrase +      127.0.0.1:5900
+               signed session
+```
+
+Turn it on at the machine (**Host Screen → Take control → Start**, or the **Remote Desktop** app),
+then open `/remote-desktop` on the phone — you are already signed in. The client is
+[noVNC](https://novnc.com) (MPL-2.0), a distribution package AgentOS serves rather than bundles;
+install it from **System Settings → Components** if it is missing.
+
+The VNC port **never leaves `127.0.0.1`**, exactly as before. That is the whole point: wayvnc has no
+password of its own, so instead of exposing it, AgentOS is the thing you authenticate to — the same
+passphrase, PBKDF2, signed cookie and backoff as the rest of this page. Nothing new is opened to the
+network; the client just moved into the browser.
+
+The page is built for a thumb: a toolbar for the keys a phone keyboard has no room for (Esc, Tab,
+latching Ctrl/Alt/Super, arrows, Ctrl+Alt+Del), *Fit* versus *1:1 and pan*, and safe-area insets so
+it works added to the home screen.
+
+### A native VNC client instead: Take control
 
 Seeing is not using. To click and type inside a native app you need pixels
 streamed *and* input sent back — remote-desktop work, which
@@ -94,12 +120,15 @@ not a checkbox here.
 It stops when you stop it, and when AgentOS shuts down — an orphaned VNC server
 is an unauthenticated door left open.
 
-| | Host Screen (built in) | Take control (wayvnc) |
-|---|---|---|
-| See the host display | yes, a refreshing still | yes, live |
-| Click and type in native apps | no | yes |
-| Needs installing | no | yes, one click |
-| Reachable over the LAN | through AgentOS's passphrase | no — loopback + your tunnel |
+| | Host Screen | Remote Desktop | A native VNC client |
+|---|---|---|---|
+| See the host display | a refreshing still | yes, live | yes, live |
+| Click and type in native apps | no | **yes** | yes |
+| Works from a phone | yes | **yes, in the browser** | only with a VNC app |
+| Needs installing on the machine | no | wayvnc + novnc, one click each | wayvnc |
+| Needs installing on the phone | no | **nothing** | a VNC client |
+| How it is protected | AgentOS's passphrase | **AgentOS's passphrase** | your SSH tunnel or VPN |
+| VNC port exposed | n/a | no — loopback only | no — loopback only |
 
 ---
 

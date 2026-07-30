@@ -164,3 +164,31 @@ def test_novnc_route_resolves_before_checking_containment():
     route = server.split("async def novnc_asset")[1][:1200]
     assert "os.path.realpath" in route
     assert "startswith(root + os.sep)" in route
+
+
+# --- the three faces --------------------------------------------------------
+# CLAUDE.md's first rule: every feature is considered in GUI, TUI and SUI. These
+# assert the TUI half of the two new capabilities exists, because a headless Pi
+# reached over SSH is a first-class way to run AgentOS and "install a program" is
+# the most ordinary thing anyone does with a machine.
+
+def test_native_apps_and_remote_desktop_are_reachable_from_a_terminal():
+    cli = (SRC / "__main__.py").read_text()
+    assert 'sub.add_parser("apps"' in cli
+    assert 'sub.add_parser("remote-desktop"' in cli
+    assert "def _apps_cli" in cli and "def _remote_desktop_cli" in cli
+
+
+def test_the_cli_shows_the_command_before_running_it():
+    """Installing software on someone's machine is not a thing to do invisibly."""
+    cli = (SRC / "__main__.py").read_text()
+    body = cli.split("def _apps_cli")[1].split("def _remote_desktop_cli")[0]
+    assert 'res.get("command")' in body and "$ {res['command']}" in body
+
+
+def test_doctor_reports_which_desktop_you_get():
+    """The two answers are genuinely different desktops; the doctor must say
+    which one, and print the line that upgrades the weaker one."""
+    cli = (SRC / "__main__.py").read_text()
+    assert "native desktop surface available" in cli
+    assert "install_hint()" in cli

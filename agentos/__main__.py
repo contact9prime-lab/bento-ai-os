@@ -451,6 +451,107 @@ def _doctor_session_handover(compmod, effective, runmode, ok, warn, bad):
         bad(f"the compositor rejected a launch command: {e}")
 
 
+def _apps_cli(args):
+    """Native applications from a terminal.
+
+    The same catalogue and the same consent ladder as the desktop's
+    Applications -> Get apps. It exists because a headless Pi reached over SSH is
+    a first-class way to run AgentOS, and "install this program" is the most
+    ordinary thing anyone does with a machine.
+    """
+    from . import appstore
+    b = appstore.backends()
+    if not appstore.available():
+        print("No package manager found (looked for flatpak, apt, dnf, pacman).")
+        sys.exit(1)
+
+    if args.action == "list" and not args.name:
+        print("available here: " + ", ".join(k for k, v in b.items() if v and k != "needs_root"))
+        print("\n  agentos apps search <query>")
+        print("  agentos apps install <package> [--backend flatpak|apt|dnf|pacman]")
+        print("  agentos apps remove  <package>")
+        return
+
+    if args.action in ("list", "search"):
+        res = asyncio.run(appstore.search(args.name, 40))
+        if res.get("message"):
+            print(res["message"])
+        for r in res["results"]:
+            mark = "installed" if r["installed"] else ""
+            print(f"  {r['name'][:34]:36} {r['backend']:8} {mark:9} {r['summary'][:60]}")
+        if not res["results"]:
+            print("  nothing matched")
+        return
+
+    if not args.name:
+        print(f"which package? e.g. agentos apps {args.action} gimp")
+        sys.exit(2)
+    # Say what will run before running it. This is someone's machine.
+    print(f"{args.action}: {args.name}"
+          + (f" (via {args.backend})" if args.backend else ""))
+    res = asyncio.run(appstore.act(args.action, args.name, args.backend))
+    if res.get("command"):
+        print(f"  $ {res['command']}")
+    print(("✓ " if res.get("ok") else "✗ ") + (res.get("message") or ""))
+    sys.exit(0 if res.get("ok") else 1)
+
+
+def _remote_desktop_cli(args):
+    """Turn the browser remote desktop on or off without a desktop to click in.
+
+    This is the switch you want over SSH: enable it, then open the machine's
+    AgentOS address on your phone and go to /remote-desktop. The VNC server it
+    starts is bound to 127.0.0.1 — AgentOS relays it over the connection your
+    passphrase already protects.
+    """
+    import urllib.error
+    import urllib.request
+    from . import config as cfgmod
+    from . import remotedesktop as rd
+
+    port = cfgmod.load_config().get("port", 8321)
+    base = f"http://127.0.0.1:{port}"
+    have = rd.available()
+
+    def call(path, data=None):
+        req = urllib.request.Request(base + path, method="POST" if data else "GET",
+                                     data=json.dumps(data).encode() if data else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return {"error": json.loads(e.read() or b"{}").get("error", str(e))}
+        except Exception as e:                                    # noqa: BLE001
+            return {"error": f"{e} — is AgentOS running? (agentos serve)"}
+
+    if args.on or args.off:
+        if args.on and not (have["wayvnc"] and have["novnc"]):
+            missing = [n for n in ("wayvnc", "novnc") if not have[n]]
+            print(f"! {' and '.join(missing)} not installed — the packages that make this work.")
+            print(f"    sudo apt install {' '.join(missing)}")
+            sys.exit(1)
+        res = call("/api/screen/control", {"action": "start" if args.on else "stop"})
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        print("✓ remote desktop " + ("on" if args.on else "off"))
+
+    st = call("/api/screen/control")
+    if st.get("error"):
+        print(f"  ({st['error']})")
+        return
+    print(f"  wayvnc installed : {st.get('installed')}")
+    print(f"  noVNC client     : {st.get('novnc')}")
+    print(f"  running          : {st.get('running')}")
+    if st.get("running"):
+        from . import remote as remotemod
+        print("  open on your phone:")
+        for a in (remotemod.lan_addresses(port) or [f"http://127.0.0.1:{port}"]):
+            print(f"    {a.rstrip('/')}/remote-desktop")
+        print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -542,6 +643,19 @@ def main():
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
     p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
 
+    # Every graphical capability needs a way in from a terminal too — a headless
+    # Pi reached over SSH is a first-class way to run AgentOS, not an edge case.
+    p_apps = sub.add_parser("apps", help="find, install and remove native applications")
+    p_apps.add_argument("action", nargs="?", default="list",
+                        choices=["list", "search", "install", "remove"])
+    p_apps.add_argument("name", nargs="?", default="", help="query, or the package to act on")
+    p_apps.add_argument("--backend", default="", help="flatpak, apt, dnf or pacman")
+
+    p_rd = sub.add_parser("remote-desktop",
+                          help="the browser remote desktop — use the real screen from a phone")
+    p_rd.add_argument("--on", action="store_true", help="start it")
+    p_rd.add_argument("--off", action="store_true", help="stop it")
+
     p_mode = sub.add_parser("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
     p_mode.add_argument("action", nargs="?", default="show", choices=["show", "mode", "run"])
     p_mode.add_argument("value", nargs="?", default="",
@@ -591,6 +705,10 @@ def main():
                             force=args.force)
     elif args.cmd == "remote":
         _remote_cli(args)
+    elif args.cmd == "apps":
+        _apps_cli(args)
+    elif args.cmd == "remote-desktop":
+        _remote_desktop_cli(args)
     elif args.cmd == "session":
         from . import config as cfgmod
         from . import runmode
