@@ -8,7 +8,7 @@ const APPS={
       return true;
     }},
   taskmgr:{id:'taskmgr',title:'Task Manager',icon:'',w:660,h:560,desc:'CPU, memory, processes',
-    render:renderTaskMgr,onClose(w){clearInterval(w.timer);return true}},
+    render:renderTaskMgr},
   terminal:{id:'terminal',title:'Terminal',icon:'',w:860,h:520,desc:'A real shell on this machine',multi:true,
     render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true},
     menus:w=>[['Edit',[
@@ -23,6 +23,10 @@ const APPS={
       {label:'Copy this path',fn:()=>{navigator.clipboard.writeText(w.path||'.').then(()=>toast('path copied'))}},
     ]]]},
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
+  hostscreen:{id:'hostscreen',title:'Host Screen',icon:'',w:900,h:620,desc:'See the machine’s real display — native apps included',
+    render:renderHostScreen,onClose(){hsStop();return true}},
+  remotedesk:{id:'remotedesk',title:'Remote Desktop',icon:'',w:1000,h:700,
+    desc:'Use the real screen from here — or from your phone, in a browser',render:renderRemoteDesk},
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
@@ -31,12 +35,12 @@ const APPS={
   fabric:{id:'fabric',title:'Team',icon:'',w:860,h:660,desc:'Subagents, visual workflows & data-plane observability',render:renderFabric},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
-    render:renderKG,onClose(w){cancelAnimationFrame(w.raf);return true}},
+    render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
   soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
   mcp:{id:'mcp',title:'MCP Servers',icon:'',w:680,h:600,desc:'External tools via Model Context Protocol',render:renderMCP},
   telegram:{id:'telegram',title:'Telegram',icon:'',w:560,h:560,desc:'Chat with your machine from anywhere',render:renderTelegram},
   logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
-    render:renderLogs,onClose(w){clearInterval(w.timer);return true}},
+    render:renderLogs},
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
   automations:{id:'automations',title:'Automations',icon:'',w:760,h:640,desc:'Named routines & hot corners',render:renderAutomations},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
@@ -49,11 +53,11 @@ const APPS={
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
   train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
-    render:renderTrain,onClose(w){clearInterval(w.timer);if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
+    render:renderTrain,onClose(w){if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
-    render:renderMission,onClose(w){clearInterval(w.timer);return true}},
+    render:renderMission},
   hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
-    render:renderHermes,onClose(w){clearInterval(w.timer);if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
+    render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
@@ -67,6 +71,8 @@ const APP_CTX={
   terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
   browser:()=>'the web launcher (opens URLs in the host browser)',
   apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
+  hostscreen:()=>`a live still of the host machine's physical screen (native app windows are visible here and nowhere else)`,
+  remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
@@ -152,6 +158,8 @@ async function loadNativeApps(){
   // the deck carries a System apps group built from this list — it loads after
   // the first paint, so the deck has to be told the shelf just grew
   if(typeof buildDeck==='function'&&typeof DECK!=='undefined'&&DECK)buildDeck();
+  // real icons and names arrive with this list; the taskbar drew placeholders
+  if(typeof paintNativeTiles==='function')paintNativeTiles();
 }
 function nativeIcon(a,px){
   px=px||44;

@@ -339,3 +339,64 @@ def test_native_windows_have_title_bars_that_actually_do_something(home):
     assert "default_border normal" in conf and "default_floating_border normal" in conf
     assert "--border --release button3 move scratchpad" in conf   # minimize
     assert "--border --release button2 kill" in conf              # close
+
+
+# ---------------------------------------------------------------------------
+# The generated config must not outlive the build that generated it.
+#
+# SWAY_CONF is written by install-session and was never touched again, so a
+# machine that installed the session months ago kept that month's window rules
+# forever. Every fix since — title bars on native windows, Super-drag to move,
+# Super+D for the desktop, the layering that stops apps opening under the shell
+# — shipped in the template and never reached the disk. From the user's chair
+# that is "AgentOS has no window controls and every app is stuck on top".
+# ---------------------------------------------------------------------------
+
+def test_a_config_from_an_older_build_is_detected_and_repaired(tmp_path, monkeypatch):
+    from agentos import session as sess
+    conf = tmp_path / "sway.conf"
+    monkeypatch.setattr(sess, "SWAY_CONF", conf)
+
+    current = sess.current_config_text()
+    stale = "\n".join(l for l in current.splitlines()
+                      if not l.startswith(("default_floating_border", "floating_modifier",
+                                           "bindsym Mod4+d")))
+    conf.write_text(stale)
+    assert sess.config_is_stale() is True
+
+    changed, _how = sess.refresh_config(reload_now=False)
+    assert changed is True
+    text = conf.read_text()
+    for rule in ("default_floating_border normal 2",   # a title bar to grab
+                 "floating_modifier Mod4",             # Super-drag to move
+                 "bindsym Mod4+d"):                    # show the desktop
+        assert rule in text, f"{rule!r} did not reach the installed config"
+    assert sess.config_is_stale() is False
+
+
+def test_a_current_config_is_left_alone(tmp_path, monkeypatch):
+    from agentos import session as sess
+    conf = tmp_path / "sway.conf"
+    monkeypatch.setattr(sess, "SWAY_CONF", conf)
+    conf.write_text(sess.current_config_text())
+    assert sess.config_is_stale() is False
+    changed, how = sess.refresh_config(reload_now=False)
+    assert changed is False and how == "already current"
+
+
+def test_nothing_happens_without_an_installed_session(tmp_path, monkeypatch):
+    from agentos import session as sess
+    monkeypatch.setattr(sess, "SWAY_CONF", tmp_path / "absent.conf")
+    assert sess.config_is_stale() is False
+    assert sess.refresh_config(reload_now=False) == (False, "no session config installed")
+
+
+def test_the_shell_survives_a_reload():
+    """refresh_config() reloads sway live. That is only safe because the shell is
+    started with plain `exec` — `exec_always` would relaunch the desktop under
+    the user every time an upgrade landed."""
+    from agentos import session as sess
+    text = sess.current_config_text()
+    shell = next(l for l in text.splitlines() if sess.SHELL_SCRIPT.name in l)
+    assert shell.startswith("exec "), shell
+    assert not shell.startswith("exec_always"), "a reload would restart the desktop"

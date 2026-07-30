@@ -219,8 +219,16 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
 .wgpreview .widget{box-shadow:var(--el-4)}
 /* ================= windows (desktop chrome) ================= */
+/* No backdrop-filter here, deliberately. `--bg` is an opaque colour in every
+   theme, so a blur on this rule blurred a backdrop that the window's own
+   background then painted over completely — invisible, and the single most
+   expensive thing in the shell: five open windows dropped a 60fps desktop to
+   8fps, because every stacked translucent surface makes the compositor re-blur
+   everything beneath it. Themes that genuinely want glass windows (Liquid Glass,
+   Spatial) set a translucent background AND their own backdrop-filter, which is
+   the only place the cost buys anything. */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
-  background:var(--bg);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  background:var(--bg);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
   box-shadow:var(--el-4);
   resize:both;overflow:hidden}
@@ -832,6 +840,18 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
   background:var(--bg3);border:1px solid var(--line)}
 .rm-notes{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+
+/* ---- host screen ---- */
+.hs-live{display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);color:var(--dim);white-space:nowrap}
+.hs-live input{width:auto}
+.hs-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px;min-height:0;overflow:auto}
+.hs-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-lg);border:1px solid var(--line);background:#000;overflow:hidden}
+.hs-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.hs-foot{display:flex;align-items:center;gap:10px;font-size:var(--fs-xs)}
+.hs-note{font-size:var(--fs-xs);line-height:1.6}
+.hs-note code{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -1379,6 +1399,14 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-native .deck-gname .mut{font-size:var(--fs-2xs);opacity:.6;font-weight:600}
 .deck-nat img.na{width:46px;height:46px;object-fit:contain}
 .deck-nat .nafallback{width:46px;height:46px}
+/* a native app being started: the wait is real (the server holds the answer
+   until the window maps), so the tile says so rather than looking inert */
+.deck-tile.launching{opacity:.55;pointer-events:none}
+.deck-tile.launching::after{content:'';position:absolute;left:50%;top:14px;
+  width:18px;height:18px;margin-left:-9px;border-radius:50%;
+  border:2px solid color-mix(in srgb,var(--acc) 70%,transparent);border-top-color:transparent;
+  animation:rot .8s linear infinite}
+.deck-tile{position:relative}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -1568,6 +1596,41 @@ body.dev-mobile #js-orb .core{width:66px;height:66px}
 body.dev-mobile .js-node{width:60px;height:60px}
 body.dev-mobile #js-top{padding:10px 14px}
 body.dev-mobile #js-bottom{padding:0 14px calc(16px + var(--safe-b))}
+/* ================= glass quality =================
+   Loads last so it out-orders the themes, which inject their own <style>.
+   See 04d-glass.js for why this knob exists and what picks a level.
+
+   Specificity, not order, is what beats a theme: a theme's `.win{...!important}`
+   is one class, `body.glass-off .win{...!important}` is two — so these win
+   wherever they need to, including over an AI-designed theme nobody has written
+   yet. */
+
+/* ---- reduced: only the focused window is glass ----
+   The window you are working in keeps the full material. The ones behind it go
+   solid — and they must go SOLID, not merely un-blurred: a glass theme's window
+   is ~66% opaque and relies on the blur to turn what is behind it into a wash.
+   Take the blur away and leave the transparency and you get four windows of text
+   legible through each other, which is worse than either honest option.
+   Focused-is-glass / unfocused-is-solid is a real convention (macOS does the
+   same thing with vibrancy), and it makes the cost flat: one blurring surface,
+   however many windows are open. */
+body.glass-lite{--glass-blur:blur(12px) saturate(1.4)}
+body.glass-lite .win:not(.active){
+  background:var(--bg)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.glass-lite .win:not(.active) .ttl{backdrop-filter:none!important}
+body.glass-lite #expose{backdrop-filter:blur(4px)}
+
+/* ---- off: no blur anywhere ----
+   Tints go solid in the same move: an unblurred 50%-transparent panel over a
+   photographic wallpaper is not a cheaper design, it is an unreadable one. */
+body.glass-off{--glass-tint:var(--bg2);--glass:var(--bg2);--glass-blur:none}
+body.glass-off *,body.glass-off *::before,body.glass-off *::after{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.glass-off .win{background:var(--bg)!important}
+
+/* the picker in Themes → Effects */
+.gq-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.gq-row .endbtn.on{border-color:var(--acc);color:var(--txt)}
 </style>
 </head>
 <body>
@@ -1791,6 +1854,97 @@ function toast(t){
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
+/* ================= SUI: the page, running as the session's desktop =========
+
+   AgentOS has three faces and they are the same code:
+
+     GUI  a window (or tab) on someone else's desktop — macOS, Windows, Linux
+     TUI  the terminal client, for a machine with no screen
+     SUI  the session UI: this page IS the Linux desktop, drawn by the AgentOS
+          session host as a wlr-layer-shell surface on the BACKGROUND layer
+
+   In SUI the page can do two things a web page normally cannot, because the host
+   asks the compositor on its behalf (see agentos/shellhost.py):
+
+     struts   reserve the bands the menu bar and dock occupy, so no application
+              window can ever cover them — the same mechanism every panel in
+              every Linux desktop uses. This is why a maximised native app stops
+              above the dock instead of swallowing it.
+     raise    come to the front for a moment (Ctrl+Space, a hot corner) by moving
+              to the OVERLAY layer, and drop back to BACKGROUND afterwards.
+
+   Loaded early (00-) and declared with `var`, not `let`: device and theme setup
+   run before this file in the concatenated bundle and call into it, and a `let`
+   read before its own line executes throws instead of being undefined.
+
+   Everything here is a no-op in GUI and TUI. `window.suiCall` only exists when
+   the host injected it, so the feature test is the presence of the host, never
+   the user agent. */
+
+var SUI = {on: false, top: 0, bottom: 0, raised: false};
+
+function suiActive(){ return !!(window.AGENTOS_SUI && typeof window.suiCall === 'function') }
+function suiSend(cmd, args){ if(suiActive()) window.suiCall(cmd, args) }
+
+/* How much vertical space our own chrome needs, measured from the live layout
+   rather than hardcoded: themes change the menu bar height, the responsive
+   layout changes the dock band, and a phone has different numbers again.
+   Measuring means the struts are right for whatever is actually on screen. */
+function suiChrome(){
+  const h = innerHeight || 900;
+  const mb = document.getElementById('menubar');
+  const top = mb && mb.offsetHeight ? Math.round(mb.getBoundingClientRect().bottom) : 30;
+  let lowest = h;
+  for(const id of ['dock', 'omnibar']){
+    const el = document.getElementById(id);
+    if(!el || !el.offsetHeight) continue;
+    const r = el.getBoundingClientRect();
+    if(r.height && r.top < lowest) lowest = r.top;
+  }
+  // A hidden dock (a maximised AgentOS window auto-hides it) must not give back
+  // the band — the user peeks it open again, and a strut that came and went
+  // would resize every native window on the desktop twice for each peek.
+  const bottom = Math.max(0, Math.round(h - lowest));
+  return {top: Math.max(0, top), bottom: bottom};
+}
+
+var SUI_STRUT_T = 0;
+function suiSyncStruts(){
+  if(!suiActive()) return;
+  clearTimeout(SUI_STRUT_T);
+  SUI_STRUT_T = setTimeout(() => {
+    const c = suiChrome();
+    if(c.top === SUI.top && c.bottom === SUI.bottom) return;   // nothing moved
+    SUI.top = c.top; SUI.bottom = c.bottom;
+    suiSend('struts', c);
+  }, 120);
+}
+
+/* Come to the front / go back to being the desktop. In SUI this is a layer
+   change, which is atomic; the HTTP fallback is the compositor dance the
+   Chromium-rendered session still needs. */
+function suiRaise(on){
+  if(!suiActive()) return false;
+  SUI.raised = on !== false;
+  suiSend(SUI.raised ? 'raise' : 'lower');
+  document.body.classList.toggle('sui-raised', SUI.raised);
+  return true;
+}
+
+function suiInit(){
+  if(!suiActive()) return;
+  SUI.on = true;
+  document.body.classList.add('sui');
+  // Tell the server, so it stops trying to manage a shell window that no longer
+  // exists. Only the host can make this call happen, so it is proof, not a claim.
+  fetch('/api/shell/sui', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({on: true})}).catch(() => {});
+  suiSyncStruts();
+  // The chrome moves for exactly three reasons: the viewport changed, the theme
+  // changed, or the device class changed. All three end up here.
+  addEventListener('resize', suiSyncStruts);
+  suiSyncStruts();
+}
 /* ================= device classes =================
    One desktop, three form factors. The CSS in 15-responsive.css does the layout
    work off `body.dev-*`; this file owns the classification and the handful of
@@ -1820,6 +1974,9 @@ function applyDevice(){
   b.classList.toggle('dev-touch',DEVICE_TOUCH);
   b.classList.toggle('dev-portrait',innerHeight>=innerWidth);
   document.documentElement.dataset.device=DEVICE;
+  // a different device class means different chrome, so the session's
+  // reserved bands have to move with it
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
   return DEVICE!==prev;
 }
 applyDevice();
@@ -1870,6 +2027,95 @@ function trackViewportHeight(){
   else addEventListener('resize',set);
 }
 trackViewportHeight();
+/* ================= shell guard: stop being a web page =================
+   In session mode AgentOS IS the desktop, but Chromium is still drawing it —
+   and Chromium keeps its own affordances on top of ours. That is what makes the
+   session feel "like an interface in the browser", and some of it is worse than
+   cosmetic:
+
+     Ctrl+W          closes the Chromium window. Not an app window — the whole
+                     desktop goes black and sway is left with nothing on it.
+                     AgentOS binds Ctrl+W to "close the active window", but that
+                     binding stands aside when there is no window open and inside
+                     the Terminal (where Ctrl+W is delete-word) — which is
+                     exactly when the browser gets it instead.
+     Ctrl+N / Ctrl+T open a browser window on top of the desktop.
+     F5 / Ctrl+R     reload the shell, dropping every open window.
+     right-click     "Back / Reload / Inspect" wherever we have not put a menu of
+                     our own — the loudest single tell that this is a page.
+     Ctrl+P/S/O      print, save-page-as and open-file dialogs.
+     Ctrl +/-/0      browser zoom, which desynchronises every pixel the window
+                     manager measures.
+     Alt+←/→         history navigation, off the desktop entirely.
+
+   This is a BACKSTOP, not a keymap. It runs on `window` in the bubble phase, so
+   every AgentOS handler (they are on `document`) and every app widget has
+   already had the key; anything already handled is left alone. It only acts on
+   what would otherwise reach Chromium.
+
+   And only when AgentOS is the session. In hosted mode the browser belongs to
+   the user — taking Ctrl+W out of somebody's own tab would be hostile.
+
+   Escape hatches stay: Ctrl+Shift+R reloads the shell (the recovery move when
+   the desktop itself is wedged), and the power menu has "Restart AgentOS". */
+
+function shellOwnsScreen(){
+  // PLATFORM loads async; until it answers, assume hosted and take nothing away
+  return typeof PLATFORM!=='undefined' && (PLATFORM.mode==='de'||PLATFORM.mode==='kiosk');
+}
+
+/* Browser-owned keys with no meaning for a desktop. Deliberately narrow: keys
+   AgentOS or an app might legitimately want (Ctrl+F, Ctrl+U, Ctrl+J, …) are not
+   here — if the OS wants them it has already claimed them above us, and if an
+   app wants them it should get them. */
+function browserOnlyKey(e){
+  const k=(e.key||'').toLowerCase(), ctrl=e.ctrlKey||e.metaKey;
+  if(ctrl&&e.shiftKey&&k==='r')return false;                        // deliberate reload
+  if(k==='f5')return true;
+  if(ctrl&&!e.altKey&&!e.shiftKey&&['w','n','t','p','s','o','r'].includes(k))return true;
+  if(ctrl&&!e.altKey&&['+','-','=','0'].includes(k))return true;    // zoom
+  if(ctrl&&e.shiftKey&&['n','t','i','j'].includes(k))return true;   // incognito, devtools, downloads
+  if(e.altKey&&!ctrl&&(k==='arrowleft'||k==='arrowright'))return true;
+  return false;
+}
+
+addEventListener('keydown',e=>{
+  if(e.defaultPrevented)return;          // AgentOS, xterm or an app already took it
+  if(!shellOwnsScreen())return;
+  if(!browserOnlyKey(e))return;
+  e.preventDefault();
+  // Ctrl+W is muscle memory from a browser and would take the desktop with it.
+  // Swallowing it silently would look like a broken key, so say what it does
+  // here — the binding itself lives in the shortcuts table, not in this guard.
+  if((e.key||'').toLowerCase()==='w'&&typeof toast==='function')
+    toast('Ctrl+W closes a window — there isn’t one focused. The desktop stays.');
+});
+
+/* The browser's context menu only earns its place where text is edited (paste,
+   spellcheck, emoji). Everywhere else the desktop either put a menu there
+   itself — in which case it already called preventDefault — or should show
+   nothing at all. */
+addEventListener('contextmenu',e=>{
+  if(e.defaultPrevented)return;
+  if(!shellOwnsScreen())return;
+  const t=e.target;
+  if(t&&t.closest('input,textarea,[contenteditable="true"],.xterm'))return;
+  if(t&&t.closest('iframe'))return;      // a user app owns what happens inside it
+  e.preventDefault();
+});
+
+/* A desktop does not drag its own chrome into a download, and it never
+   navigates away from itself because something was dropped on it. */
+addEventListener('dragstart',e=>{
+  if(e.defaultPrevented||!shellOwnsScreen())return;
+  if(e.target&&e.target.closest('[draggable="true"]'))return;   // ours
+  e.preventDefault();
+});
+addEventListener('dragover',e=>{if(shellOwnsScreen()&&!e.defaultPrevented)e.preventDefault()});
+addEventListener('drop',e=>{if(shellOwnsScreen()&&!e.defaultPrevented)e.preventDefault()});
+addEventListener('wheel',e=>{
+  if(shellOwnsScreen()&&(e.ctrlKey||e.metaKey))e.preventDefault();   // pinch/ctrl zoom
+},{passive:false});
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
@@ -1891,6 +2137,8 @@ const ICONS={
   telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
   logs:['#A8A29E','#57534E','<path d="M7 4.6h6.8l3.8 3.8v11H7Z"/><path d="M13.6 4.8v3.8h3.8"/><path d="M9.6 12.6h4.8M9.6 15.6h4.8"/>'],
   tasks:['#F87171','#DC2626','<circle cx="12" cy="12" r="7.8"/><path d="M12 7.6V12l3 1.8"/>'],
+  remotedesk:['#34D399','#064E3B','<rect x="2.6" y="4.4" width="13.4" height="9.2" rx="1.6"/><path d="M6.6 16.6h5.4"/><rect x="15.6" y="10.4" width="5.8" height="9.6" rx="1.6"/><path d="M17.9 18.2h1.2"/>'],
+  hostscreen:['#38BDF8','#0C4A6E','<rect x="3.2" y="5" width="17.6" height="11.4" rx="1.8"/><path d="M8.4 19.4h7.2M12 16.4v3"/><path d="M6.6 12.6l2.6-2.6 2 2 3.2-3.4 3 3.2"/>'],
   automations:['#F0A93B','#C2410C','<path d="M13.2 3.6 5.4 13.4h5.1l-.7 7 7.8-9.8h-5.1Z"/>'],
   skills:['#34D399','#059669','<path d="M5.4 5.6c0-.9.7-1.6 1.6-1.6h11.6v14.4H7a1.6 1.6 0 0 0-1.6 1.6Z"/><path d="M5.4 5.6V20M9.3 8h5.4"/>'],
   policies:['#7C8CA3','#3A4759','<path d="M12 4.2 18.8 6.6v5c0 4-2.7 6.9-6.8 8.2-4.1-1.3-6.8-4.2-6.8-8.2v-5Z"/><path d="M9.3 12l1.9 1.9 3.5-3.7"/>'],
@@ -1923,6 +2171,83 @@ function emojiIcon(emoji,px,cls){
     `<span class="em" style="font-size:${Math.round(px*.5)}px">${emoji||'▭'}</span></span>`;
 }
 
+/* ================= glass quality =================
+   (Numbered 01a so it is initialised before 02-themes applies a theme on load —
+   applyTheme re-probes, and a `const` read before its own file has run throws.)
+
+   `backdrop-filter` is the most expensive thing a desktop shell can ask a
+   browser for, and the cost is not per-window — it compounds. Every translucent
+   surface makes the compositor re-blur everything beneath it, so stacked windows
+   multiply: on this machine five open windows in the Liquid Glass theme took the
+   desktop from 60fps to 6.5. That is the "it gets slow once several apps are
+   loaded" that a native desktop does not have, and no amount of throttling
+   JavaScript touches it, because it is not JavaScript.
+
+   The base window rule no longer blurs at all (see 03-windows.css — it was
+   blurring behind an opaque background, which cost everything and showed
+   nothing). What is left is the themes that genuinely are glass, where the blur
+   IS the design. For those, this is the volume knob:
+
+     full     — every surface, as designed
+     reduced  — only the focused window; the rest keep the tint, lose the blur.
+                Cost stops growing with the number of open windows.
+     off      — no blur anywhere, tints become solid. For a Raspberry Pi, a VM,
+                or anything drawing in software.
+
+   The default is `auto`: full until the machine says otherwise. It measures real
+   frame times with real windows open — no device sniffing, no GPU allowlist,
+   because the only honest test of whether this machine can draw this desktop is
+   drawing it. */
+
+const GLASS={pref:localStorage.getItem('glass')||'auto', level:'full', timer:null, told:false};
+
+function glassLevel(){return GLASS.pref==='auto'?GLASS.level:GLASS.pref}
+function applyGlass(){
+  const l=glassLevel();
+  document.body.classList.toggle('glass-lite',l==='reduced');
+  document.body.classList.toggle('glass-off',l==='off');
+}
+function setGlass(pref){
+  GLASS.pref=pref;localStorage.setItem('glass',pref);
+  if(pref!=='auto')GLASS.level=pref;else GLASS.level='full';   // give the machine another chance
+  applyGlass();
+  if(typeof refreshApp==='function')refreshApp('themes');
+  if(pref==='auto')glassProbe(true);
+}
+
+/* Measure, don't guess. Sampled a moment after the desktop changes, so we are
+   timing the thing the user is actually looking at.
+
+   Sampling is bounded by TIME, not by a frame count: a frame count is a trap
+   here, because the slower the machine — the case this exists for — the longer
+   it takes to reach it, so the machine that most needs the help waits longest
+   for it. ~1s of frames is plenty to tell 60fps from 7. */
+function glassProbe(force){
+  if(GLASS.pref!=='auto'||GLASS.level==='off')return;   // nothing left to turn off
+  if(!force&&GLASS.level!=='full')return;
+  clearTimeout(GLASS.timer);
+  GLASS.timer=setTimeout(()=>{
+    let visible=0;
+    if(typeof WM!=='undefined')WM.wins.forEach(w=>{if(typeof winAwake==='function'&&winAwake(w))visible++});
+    if(visible<2)return;                              // one window is not a test of anything
+    const gaps=[],t0=performance.now();let last=t0;
+    const step=t=>{
+      gaps.push(t-last);last=t;
+      if(t-t0<900||gaps.length<8)return void requestAnimationFrame(step);
+      const s=gaps.slice(2).sort((a,b)=>a-b), med=s[(s.length/2)|0]||0;
+      if(med<=34)return;                              // ~30fps or better: leave the design alone
+      GLASS.level=GLASS.level==='full'?'reduced':'off';
+      applyGlass();
+      if(typeof toast==='function'&&!GLASS.told){
+        GLASS.told=true;
+        toast('glass effects turned down to keep the desktop smooth — Themes → Effects');
+      }
+      glassProbe(true);                               // did that fix it? if not, step down again
+    };
+    requestAnimationFrame(step);
+  },1400);
+}
+applyGlass();
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -2256,6 +2581,12 @@ function applyTheme(name){
   // it too, unless the user's own wallpaper (a file, or a built-in they chose)
   // already outranks it — loadWallpaper owns that precedence
   if(changed&&typeof loadWallpaper==='function'&&document.body.dataset.themed)loadWallpaper();
+  // a glass theme costs orders of magnitude more to draw than a flat one, so the
+  // machine gets re-measured whenever the material changes
+  if(changed&&typeof glassProbe==='function')glassProbe(true);
+  // a theme can resize the menu bar and the dock; in the session UI those
+  // heights are reserved with the compositor, so they must be re-sent
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
 }
 async function loadThemes(){
   try{const d=await (await fetch('/api/themes')).json();
@@ -2308,6 +2639,7 @@ function applyDeskVisibility(){
     w.el.style.display=(on&&!w.min)?'':'none';
     w.tb.style.display=on?'':'none';
   });
+  applyWindowActivity();   // windows on the desktops you left stop working until you come back
 }
 function switchDesk(n){
   if(n===curDesk)return;
@@ -2561,6 +2893,7 @@ function createWin(app){
   setMenubarApp(app.title);
   focusWin(w);
   zoomWin(el,app.id,1);
+  if(typeof glassProbe==='function')glassProbe();   // more windows on screen — can this machine still draw them?
   return w;
 }
 function focusWin(w){
@@ -2574,6 +2907,8 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  // raising a window can bury (or uncover) another one — re-check who is visible
+  applyWindowActivity();
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildPager==='function')buildPager();
   if(typeof buildDock==='function')buildDock();
@@ -2600,10 +2935,12 @@ function minimizeWin(w){
   // hand focus to the topmost remaining window
   let top=null;WM.wins.forEach(o=>{if(!o.min&&o!==w&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof deckAuto==='function')deckAuto();if(typeof buildDock==='function')buildDock()}
+  applyWindowActivity();       // nothing to see — stop this window's periodic work
 }
 function restoreWin(w){
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
+  applyWindowActivity();       // and back to work, refreshing on the way in
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
@@ -2697,11 +3034,12 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
-  if(top)focusWin(top);else{setMenubarApp('');updateDockHide()}
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
@@ -3238,9 +3576,17 @@ function menuNative(w){
   return [[name,app],['Window',win],['Help',help]];
 }
 /* Bring the AgentOS desktop in front of the native windows (or send it back).
-   In session mode the shell is the tiled base layer and sway paints floating
-   windows above tiled ones, so this is what "come to the front" has to mean. */
+
+   In the session UI this is a one-call layer change on our own surface — the
+   desktop lives on the BACKGROUND layer, coming forward means OVERLAY, and
+   nothing else on the screen is touched.
+
+   The HTTP path below is for the older Chromium-rendered session, where the
+   desktop is a WINDOW and "in front" has to be faked by floating it at the size
+   of the output and lowering it again. That is the trade the layer-shell host
+   exists to remove; it stays for machines without WebKitGTK. */
 function raiseShell(on){
+  if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
   return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
@@ -3288,6 +3634,115 @@ function paintMenuBar(box,menus,live){
     b.onmouseenter=()=>{if(box.querySelector('button.on'))open()};   // slide across like a real menu bar
   });
 }
+/* ================= window lifecycle: sleep and wake =================
+
+   Why this exists.
+
+   On a native desktop every app is its own process, and a window you cannot see
+   costs you nothing: it is not drawn, its animations do not run, and a polite app
+   stops working when it is minimised. Ten open apps feel like one.
+
+   AgentOS apps are all live DOM in a single Chromium renderer. Nothing about
+   being minimised, on another desktop, or buried under a maximized window stops
+   an app's `setInterval` from firing — so ten open apps meant ten pollers, ten
+   `fetch`es, ten re-renders and ten sets of layout work competing for one main
+   thread. That is exactly the "it gets slow once several apps are loaded" that a
+   native desktop does not have, and it is a lifecycle problem, not a speed one.
+
+   So windows get the lifecycle they were missing. A window is AWAKE when you can
+   actually see it, and ASLEEP otherwise; asleep windows keep their state and
+   their DOM (reopening is instant) but stop doing periodic work.
+
+   Two rules make this safe to use everywhere:
+
+     1. Waking runs the work immediately, so a window is never revealed showing a
+        stale frame from ten minutes ago. There is no "refreshing…" gap.
+     2. Ticks belong to the window, so closing it stops them — the old
+        `clearInterval(w.timer)`-in-onClose pattern leaked any second timer an app
+        added, and leaked everything if onClose was forgotten.
+
+   Apps opt in by using `winTick(w, fn, ms)` instead of `setInterval(fn, ms)`.
+   Anything animating with requestAnimationFrame should bail on `!winAwake(w)`. */
+
+const LIFE={asleep:0, awake:0, stopped:0};   // stopped = timers currently not running (Task Manager shows it)
+
+/* Is this window worth spending time on? */
+function winAwake(w){
+  if(!w||!w.el||!w.el.isConnected)return false;
+  if(w.min)return false;                                   // minimised
+  if(typeof deskVisible==='function'&&!deskVisible(w))return false;   // another desktop
+  if(document.hidden)return false;                         // the whole page is in the background
+  return !winOccluded(w);
+}
+/* Fully covered by a maximized or full-screen window above it. Overlapping
+   windows do NOT count — only a window that owns the whole desktop, because
+   that is the case we can be certain about without hit-testing every pixel.
+   During Spaces everything is on show, so nothing is occluded. */
+function winOccluded(w){
+  if(w.max||w.fs)return false;
+  if(document.body.classList.contains('exposing'))return false;
+  const z=+w.el.style.zIndex||0;
+  let covered=false;
+  WM.wins.forEach(o=>{
+    if(covered||o===w||o.min||(typeof deskVisible==='function'&&!deskVisible(o)))return;
+    if((o.max||o.fs)&&(+o.el.style.zIndex||0)>z)covered=true;
+  });
+  return covered;
+}
+
+/* A repeating job that belongs to a window. Runs once now (so the first paint is
+   not an empty box), then every `ms` for as long as the window is awake.
+   ms:0             — run on WAKE only, never on a schedule. For work that has
+                      nothing to poll (a canvas repaint) but must not be left
+                      showing whatever was on screen when the window went away.
+   opts.key         — replaces any tick this window already has under that name.
+                      Renders re-run (refreshApp, a websocket event, the user
+                      pressing ↻) and two of them can overlap, so "register" has
+                      to mean "replace" or a busy app quietly grows pollers.
+   opts.now:false   — do not run immediately on creation
+   opts.eager:false — do not run immediately on WAKE either (for jobs whose result
+                      cannot go stale, or that are expensive enough to wait a tick) */
+function winTick(w,fn,ms,opts){
+  opts=opts||{};
+  if(opts.key)(w._ticks||[]).filter(t=>t.key===opts.key).forEach(stopTick);
+  const t={fn,ms,id:null,key:opts.key||null,eager:opts.eager!==false,alive:true,w};
+  (w._ticks||(w._ticks=[])).push(t);
+  if(opts.now!==false&&winAwake(w))fn();
+  applyWindowActivity();
+  return t;
+}
+/* Stop one tick early (its window stays alive) */
+function stopTick(t){if(!t)return;t.alive=false;clearInterval(t.id);t.id=null;
+  const a=t.w&&t.w._ticks;if(a){const i=a.indexOf(t);if(i>=0)a.splice(i,1)}}
+/* Stop every tick a window owns. closeWin does this for you. */
+function stopWinTicks(w){(w._ticks||[]).forEach(t=>{t.alive=false;clearInterval(t.id);t.id=null});w._ticks=[]}
+
+/* The single pass that puts every window in the right state. Cheap and
+   idempotent — call it from anything that changes what is visible. */
+function applyWindowActivity(){
+  let asleep=0,awake=0,stopped=0;
+  WM.wins.forEach(w=>{
+    const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
+    w._awake=on;
+    on?awake++:asleep++;
+    w.el.classList.toggle('asleep',!on);
+    (w._ticks||[]).forEach(t=>{
+      if(!t.alive)return;
+      if(on){
+        if(!was&&t.eager)t.fn();                     // waking: refresh now, never show a stale frame
+        if(t.ms&&!t.id)t.id=setInterval(t.fn,t.ms);
+      }else if(t.id){
+        clearInterval(t.id);t.id=null;
+      }
+      if(t.ms&&!t.id)stopped++;
+    });
+  });
+  LIFE.asleep=asleep;LIFE.awake=awake;LIFE.stopped=stopped;
+}
+
+/* The page itself going to the background is the same thing as every window
+   being hidden — and on a phone, switching apps is the common case. */
+document.addEventListener('visibilitychange',()=>applyWindowActivity());
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -3298,7 +3753,7 @@ const APPS={
       return true;
     }},
   taskmgr:{id:'taskmgr',title:'Task Manager',icon:'',w:660,h:560,desc:'CPU, memory, processes',
-    render:renderTaskMgr,onClose(w){clearInterval(w.timer);return true}},
+    render:renderTaskMgr},
   terminal:{id:'terminal',title:'Terminal',icon:'',w:860,h:520,desc:'A real shell on this machine',multi:true,
     render:renderTerminal,onClose(w){try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}return true},
     menus:w=>[['Edit',[
@@ -3313,6 +3768,10 @@ const APPS={
       {label:'Copy this path',fn:()=>{navigator.clipboard.writeText(w.path||'.').then(()=>toast('path copied'))}},
     ]]]},
   apps:{id:'apps',title:'Applications',icon:'',w:760,h:600,desc:'All your installed desktop apps',render:renderNativeApps},
+  hostscreen:{id:'hostscreen',title:'Host Screen',icon:'',w:900,h:620,desc:'See the machine’s real display — native apps included',
+    render:renderHostScreen,onClose(){hsStop();return true}},
+  remotedesk:{id:'remotedesk',title:'Remote Desktop',icon:'',w:1000,h:700,
+    desc:'Use the real screen from here — or from your phone, in a browser',render:renderRemoteDesk},
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
@@ -3321,12 +3780,12 @@ const APPS={
   fabric:{id:'fabric',title:'Team',icon:'',w:860,h:660,desc:'Subagents, visual workflows & data-plane observability',render:renderFabric},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
-    render:renderKG,onClose(w){cancelAnimationFrame(w.raf);return true}},
+    render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
   soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
   mcp:{id:'mcp',title:'MCP Servers',icon:'',w:680,h:600,desc:'External tools via Model Context Protocol',render:renderMCP},
   telegram:{id:'telegram',title:'Telegram',icon:'',w:560,h:560,desc:'Chat with your machine from anywhere',render:renderTelegram},
   logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
-    render:renderLogs,onClose(w){clearInterval(w.timer);return true}},
+    render:renderLogs},
   tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
   automations:{id:'automations',title:'Automations',icon:'',w:760,h:640,desc:'Named routines & hot corners',render:renderAutomations},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
@@ -3339,11 +3798,11 @@ const APPS={
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
   train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
-    render:renderTrain,onClose(w){clearInterval(w.timer);if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
+    render:renderTrain,onClose(w){if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
-    render:renderMission,onClose(w){clearInterval(w.timer);return true}},
+    render:renderMission},
   hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
-    render:renderHermes,onClose(w){clearInterval(w.timer);if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
+    render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
@@ -3357,6 +3816,8 @@ const APP_CTX={
   terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
   browser:()=>'the web launcher (opens URLs in the host browser)',
   apps:()=>`the installed native applications grid (${(typeof NATIVEAPPS!=='undefined'&&NATIVEAPPS.length)||0} apps)`,
+  hostscreen:()=>`a live still of the host machine's physical screen (native app windows are visible here and nowhere else)`,
+  remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
@@ -3442,6 +3903,8 @@ async function loadNativeApps(){
   // the deck carries a System apps group built from this list — it loads after
   // the first paint, so the deck has to be told the shelf just grew
   if(typeof buildDeck==='function'&&typeof DECK!=='undefined'&&DECK)buildDeck();
+  // real icons and names arrive with this list; the taskbar drew placeholders
+  if(typeof paintNativeTiles==='function')paintNativeTiles();
 }
 function nativeIcon(a,px){
   px=px||44;
@@ -3692,6 +4155,10 @@ function buildDesktop(){
   });
   $('#desktop').addEventListener('contextmenu',e=>{
     if(e.target.closest('.win'))return;
+    // A text field keeps the platform's own menu — right-clicking the prompt bar
+    // should offer Paste, not "Auto arrange icons". This is the same rule the
+    // shell guard uses, so the two never disagree about who owns a right-click.
+    if(e.target.closest('input,textarea,[contenteditable="true"]'))return;
     e.preventDefault();
     const m=$('#ctxmenu');
     const shots=cap('screen.capture').available;
@@ -3817,7 +4284,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
@@ -4613,6 +5080,7 @@ function handle(ev){
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
+    case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
     case 'automations': loadAutomations().then(()=>refreshApp('automations')); break;
     // the server never runs an automation itself — it says "run this" and the
@@ -4633,13 +5101,16 @@ function handle(ev){
       jarvisOff();
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
     case 'wm':{ // compositor event (AgentOS session) — replaces window polling
-      if(NATIVE_POLL){clearInterval(NATIVE_POLL);NATIVE_POLL=null}
+      stopNativePoll();
       clearTimeout(wmDebounce);
       wmDebounce=setTimeout(()=>{updateNativeWindows();
         if(ev.event==='output'||ev.event==='workspace')refreshApp('syssettings')},120);
       break;}
     case 'notification':{ // a native app's notification, via our own daemon
       toast((ev.app?ev.app+': ':'')+ev.summary); updateBell(); break;}
+    case 'native_apps':      // something was installed or removed on the machine
+      if(typeof loadNativeApps==='function')loadNativeApps();
+      refreshApp('apps'); break;
     case 'notification_center': updateBell(); break;
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
@@ -6037,7 +6508,11 @@ function renderTaskMgr(body,w){
     if(wl){wl.innerHTML='';
       WM.wins.forEach(o=>{
         const row=document.createElement('div');row.className='item';
-        row.innerHTML=`${appIcon(o.id,26)}<div class="grow">${esc(o.app.title)}<div class="sub">${o.min?'minimized':o.max?'maximized':'windowed'}</div></div>`;
+        // "sleeping" is worth saying out loud: it is why a background app's numbers
+        // are not moving, and it is the reason ten open apps still feel like one.
+        const state=o.min?'minimized':o.max?'maximized':'windowed';
+        row.innerHTML=`${appIcon(o.id,26)}<div class="grow">${esc(o.app.title)}<div class="sub">${state}${
+          o._awake===false?' · <b>sleeping</b> — no background work':''}</div></div>`;
         const b=document.createElement('button');b.className='endbtn';b.textContent='End task';
         b.onclick=()=>{closeWin(o)};
         row.appendChild(b);wl.appendChild(row);
@@ -6045,8 +6520,8 @@ function renderTaskMgr(body,w){
       if(!WM.wins.size)wl.innerHTML='<p class="mut">no open windows</p>';
     }
   };
-  clearInterval(w.timer);
-  poll();w.timer=setInterval(poll,2000);
+  stopWinTicks(w);
+  winTick(w,poll,2000,{key:'poll'});   // stops when the window is minimised or on another desktop
 }
 
 /* ================= automations =================
@@ -6740,9 +7215,8 @@ function renderLogs(body,w){
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
   $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
-  clearInterval(w.timer);
-  loadLogs(w);
-  w.timer=setInterval(()=>{if(document.getElementById('log-rows'))loadLogs(w);else clearInterval(w.timer)},5000);
+  stopWinTicks(w);
+  winTick(w,()=>loadLogs(w),5000,{key:'poll'});
 }
 async function loadLogs(w){
   const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||''));const d=await r.json();
@@ -6812,7 +7286,8 @@ async function renderKG(body,w){
     g.edges=g.edges.filter(e=>keep.has(e.src)&&keep.has(e.dst));
   }
   const canvas=$('#kgc');if(!canvas)return;
-  cancelAnimationFrame(w.raf);
+  cancelAnimationFrame(w.raf);w.raf=0;
+  stopWinTicks(w);                       // a re-render (search, refresh) replaces the old loop
   if(!g.nodes.length){$('#kg-empty').style.display='flex';
     if(q)$('#kg-empty').innerHTML='Nothing in the graph matches “'+esc(w._kgq)+'”.';return}
   const dpr=devicePixelRatio||1;
@@ -6823,7 +7298,9 @@ async function renderKG(body,w){
   const COLORS={person:'#5eead4',org:'#22d3ee',project:'#fbbf24',tool:'#c084fc','':'#8a94a6'};
   let ticks=0;
   const step=()=>{
+    w.raf=0;
     if(!canvas.isConnected)return;
+    if(!winAwake(w))return;               // nobody is looking — kick() repaints on the way back
     const W=canvas.clientWidth,H=canvas.clientHeight;
     canvas.width=W*dpr;canvas.height=H*dpr;
     // physics
@@ -6863,9 +7340,17 @@ async function renderKG(body,w){
       ctx.fillStyle='#e6ebf2';ctx.fillText(n.name,n.x+11,n.y+4);
     }
     ctx.restore();
-    w.raf=requestAnimationFrame(step);
+    // The layout settles after 400 ticks and then nothing moves. Holding a 60fps
+    // loop open to redraw an identical picture forever is the single most
+    // expensive idle thing this shell used to do — so the loop simply ends, and
+    // a resize or a wake kicks one more frame. An idle graph costs nothing.
+    if(ticks<400)w.raf=requestAnimationFrame(step);
   };
-  step();
+  const kick=()=>{if(!w.raf)w.raf=requestAnimationFrame(step)};
+  if(w._kgro)w._kgro.disconnect();
+  w._kgro=new ResizeObserver(kick);w._kgro.observe(canvas);
+  winTick(w,kick,0,{key:'paint'});                      // ms:0 — repaint when the window comes back, never on a timer
+  kick();
 }
 async function kgAdd(){
   const s=$('#kg-s').value.trim(),rel=$('#kg-r').value.trim(),o=$('#kg-o').value.trim();
@@ -6896,6 +7381,21 @@ async function renderThemes(body){
     <div class="row" style="margin-top:14px">
       <button class="save" style="margin:0" onclick="themeBuilder()">Open Theme Builder</button>
     </div>
+    <label style="margin-top:16px">Effects</label>
+    <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
+      window you open — five stacked glass windows can cost eight times the frame time of one.
+      ${glassLevel()==='full'?'This machine keeps up.':'<b>Turned down on this machine</b> to keep windows smooth.'}</p>
+    <div class="gq-row">${[
+      ['auto','Automatic','measure this machine and turn glass down only if it cannot keep up'],
+      ['full','Full glass','every surface blurs, as the theme designed it'],
+      ['reduced','Reduced','only the focused window blurs — flat cost, however many are open'],
+      ['off','Off','no blur anywhere, panels go solid. Best on a Raspberry Pi or a VM'],
+    ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
+        onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
+    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')} —
+      ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
+        reduced:'only the focused window blurs — flat cost, however many are open',
+        off:'no blur anywhere, panels go solid'})[GLASS.pref]||'')}.</p>
     <label style="margin-top:16px">Design a theme with AI</label>
     <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>
@@ -7561,7 +8061,11 @@ function renderBrowser(body,w){
 
 /* ================= native applications launcher ================= */
 async function renderNativeApps(body,w){
-  body.innerHTML=`<div class="apptop"><input id="na-q" placeholder="Search installed apps…" style="flex:1"><span class="mut" id="na-n"></span></div>
+  body.innerHTML=`<div class="apptop">
+      <input id="na-q" placeholder="Search installed apps…" style="flex:1">
+      <button class="endbtn" id="na-get">＋ Get apps…</button>
+      <span class="mut" id="na-n"></span></div>
+    <div id="na-store" style="display:none"></div>
     <div id="na-grid" style="flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;align-content:start"></div>`;
   let apps=[];try{apps=(await (await fetch('/api/native/apps')).json()).apps||[]}catch(e){}
   const grid=$('#na-grid');
@@ -7575,11 +8079,133 @@ async function renderNativeApps(body,w){
   };
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
+  $('#na-get').onclick=()=>naStore();
 }
+
+/* ---- getting a NEW app ----------------------------------------------------
+   A desktop you cannot install software on is a demo. This asks the machine's
+   own package manager (appstream / flatpak / apt) — AgentOS ships and mirrors
+   nothing — and shows exactly which command will run before it runs. */
+async function naStore(open){
+  const box=$('#na-store');if(!box)return;
+  const showing=box.style.display!=='none';
+  if(open===undefined&&showing){box.style.display='none';return}
+  box.style.display='';
+  box.innerHTML=`<div class="provbox" style="margin:12px 12px 0">
+      <div class="ptitle">Get applications</div>
+      <p class="mut" style="margin-top:6px">Installs with this machine's own package
+        manager. Nothing is downloaded by AgentOS, and you see the command first.</p>
+      <div class="row" style="margin-top:8px">
+        <input id="nas-q" placeholder="e.g. gimp, inkscape, vlc, libreoffice" style="flex:1">
+        <button class="pact" style="flex:0 0 90px" id="nas-go">Search</button></div>
+      <div id="nas-res" style="margin-top:10px"></div>
+      <p class="mut" id="nas-back" style="margin-top:8px"></p>
+    </div>`;
+  const go=async()=>{
+    const q=$('#nas-q').value.trim();
+    const res=$('#nas-res');
+    if(q.length<2){res.innerHTML='<p class="mut">type at least two characters</p>';return}
+    res.innerHTML='<p class="mut">searching the catalogue…</p>';
+    let d={};
+    try{d=await (await fetch('/api/native/store?q='+encodeURIComponent(q))).json()}
+    catch(e){res.innerHTML='<p class="mut">search failed</p>';return}
+    const b=d.backends||{};
+    $('#nas-back').textContent='available here: '+
+      (['appstream','flatpak','apt','dnf','pacman'].filter(k=>b[k]).join(', ')||'no package manager');
+    const rows=d.results||[];
+    if(!rows.length){res.innerHTML=`<p class="mut">${esc(d.message||'nothing matched')}</p>`;return}
+    res.innerHTML=rows.map(r=>`<div class="item">
+        <div class="grow"><b>${esc(r.name)}</b>
+          <span class="mut" style="font-size:11px">· ${esc(r.backend)}${r.installed?' · installed':''}</span>
+          <div class="sub">${esc((r.summary||'').slice(0,140))}</div></div>
+        ${r.installed
+          ? `<button class="endbtn" data-act="remove" data-id="${esc(r.id)}" data-b="${esc(r.backend)}">Remove</button>`
+          : `<button class="pact" style="flex:0 0 84px" data-act="install" data-id="${esc(r.id)}" data-b="${esc(r.backend)}">Install</button>`}
+      </div>`).join('');
+    res.querySelectorAll('[data-act]').forEach(btn=>btn.onclick=()=>naStoreAct(btn,go));
+  };
+  $('#nas-go').onclick=go;
+  $('#nas-q').addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+  $('#nas-q').focus();
+}
+async function naStoreAct(btn,refresh){
+  const act=btn.dataset.act, id=btn.dataset.id, backend=btn.dataset.b;
+  const verb=act==='install'?'Install':'Remove';
+  // flatpak --user needs no password; everything else changes the whole machine,
+  // so say so before asking for it.
+  const note=backend==='flatpak'
+    ? 'Installs into your home directory only — no password needed.'
+    : 'This changes software for every user on the machine, so it needs administrator access.';
+  if(!await osConfirm(`${verb} ${id}?`,note,{confirmText:verb,danger:act==='remove'}))return;
+  btn.disabled=true;btn.textContent=act==='install'?'installing…':'removing…';
+  let d={};
+  try{
+    d=await (await fetch('/api/native/store',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:act,id,backend})})).json();
+  }catch(e){d={ok:false,message:String(e)}}
+  btn.disabled=false;btn.textContent=verb;
+  if(d.ok){toast('✓ '+(d.message||id));refreshApp('apps');if(refresh)refresh();return}
+  if(d.needs_terminal&&d.command){
+    // No silent failure and no dead end: hand over the exact line.
+    await osConfirm('Administrator access needed',
+      (d.message||'')+'\n\n'+d.command,{confirmText:'Copy command'});
+    try{await navigator.clipboard.writeText(d.command);toast('command copied')}catch(e){}
+    return;
+  }
+  toast(d.message||'could not '+act);
+}
+/* Launching a host app is not instant — in session mode the server waits for the
+   window to actually map before answering, because "launched" used to be true
+   while nothing was on screen. So say "starting…" up front, and replace it with
+   the truth when the answer comes.
+
+   And when the browser is somewhere else, say WHERE it opened. A native app is a
+   window the compositor draws on the host's physical display; it is not part of
+   this page and never travels over HTTP. From a phone, launching one used to
+   look broken — a taskbar entry and no app — when in fact it had started
+   perfectly well, in another room. */
+function remoteClient(){return typeof PLATFORM!=='undefined'&&!!PLATFORM.remote_client}
+function hostName(){return (typeof PLATFORM!=='undefined'&&PLATFORM.hostname)||'the host'}
+function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
+
 async function launchNative(id,name){
-  const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-  const d=await r.json();
-  toast(d.ok?'↗ launched '+(name||id):'launch failed: '+(d.message||''));
+  const label=name||id;
+  toast('↗ starting '+label+'…');
+  // The launch now WAITS for the window to map instead of returning instantly and
+  // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —
+  // an app that takes four seconds should look like it is coming, not like the
+  // click missed.
+  const tiles=[...document.querySelectorAll(`[data-nat="${CSS.escape(id)}"]`)];
+  tiles.forEach(t=>t.classList.add('launching'));
+  try{
+    const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    if(d.ok){
+      if(typeof updateNativeWindows==='function')updateNativeWindows();
+      if(nativeRunsElsewhere())hostAppOpenedCard(label);
+      else toast('✓ '+label);
+    }else{
+      // a failure here means the app never opened a window — that is worth more
+      // than a toast the user cannot read twice
+      osAlert(label+' did not start', String(d.message||'No window appeared.'));
+    }
+    return d;
+  }catch(e){toast(label+': '+e.message)}
+  finally{tiles.forEach(t=>t.classList.remove('launching'))}
+}
+/* The card a remote client gets instead of a lie. */
+function hostAppOpenedCard(label){
+  if(typeof omniCard!=='function')return toast(label+' opened on '+hostName());
+  const c=omniCard(label+' — opened on '+hostName());
+  c.feed.innerHTML=`<p style="margin:0 0 8px;line-height:1.55">
+    It is running on that machine's screen. Native apps are drawn by the
+    compositor on the host display — they are not part of this page, so they
+    cannot appear here.</p>
+    <button class="pact hs-open">View the host screen</button>`;
+  // acting on the card dismisses it: on a phone the cards sit above the windows,
+  // so leaving it up would cover the very screen it just offered to show
+  c.feed.querySelector('.hs-open').onclick=()=>{c.close();openApp('hostscreen')};
 }
 
 /* ================= model manager ================= */
@@ -8252,13 +8878,41 @@ function natIcon(w,px){
 function natName(w){const a=natApp(w.app);return (a&&a.name)||w.app||w.title||'window'}
 let NATIVE_POLL=null,wmDebounce=null,NATWINS=[];
 /* The compositor pushes window events, but focus moving BETWEEN two native
-   windows is easy to miss; a short poll keeps the menu bar honest. */
+   windows is easy to miss; a short poll keeps the menu bar honest.
+
+   It backs off while nothing changes. A fixed 1.2s poll is the one piece of
+   background work that survives everything else going to sleep, and on a Pi it
+   is a request, a compositor IPC round trip and a taskbar repaint every 1.2s
+   forever to learn that nothing happened. Any actual change — or any 'wm' event
+   — snaps it straight back to responsive. */
+const NAT_MIN=1200, NAT_MAX=8000;
+let NAT_EVERY=NAT_MIN, NAT_SIG=null;
+function startNativePoll(){
+  stopNativePoll();
+  const tick=async()=>{
+    if(NATIVE_POLL===null)return;               // stopped while we were away
+    if(!document.hidden)await updateNativeWindows();
+    if(NATIVE_POLL!==null)NATIVE_POLL=setTimeout(tick,NAT_EVERY);
+  };
+  NATIVE_POLL=setTimeout(tick,NAT_EVERY);
+}
+function stopNativePoll(){clearTimeout(NATIVE_POLL);NATIVE_POLL=null}
+function natPollNow(){NAT_EVERY=NAT_MIN}      // something happened — poll like you mean it
 async function updateNativeWindows(){
   const box=$('#tbnative');if(!box)return;
   let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
-  if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';NATWINS=[];return}
+  if(!d.available){
+    box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';NATWINS=[];
+    // No compositor on this machine — there is nothing for the fallback poll to
+    // find, so stop asking. If a session starts later its 'wm' events drive the
+    // taskbar directly, which is the path this poll was only ever standing in for.
+    stopNativePoll();
+    return;
+  }
   NATWINS=d.windows||[];
-  paintNativeTiles();
+  const sig=NATWINS.map(x=>[x.id,x.focused,x.minimized,x.title].join('')).join('');
+  if(sig===NAT_SIG)NAT_EVERY=Math.min(NAT_MAX,Math.round(NAT_EVERY*1.5));
+  else{NAT_SIG=sig;NAT_EVERY=NAT_MIN;paintNativeTiles()}   // repaint only when something actually moved
 }
 function paintNativeTiles(){
   const box=$('#tbnative');if(!box)return;
@@ -8329,6 +8983,7 @@ const NAT_OPTIMISTIC={
   fullscreen:(w,x)=>({fullscreen:x&&x.fullscreen!==undefined?!!x.fullscreen:!w.fullscreen}),
 };
 function natWin(action,id,extra){
+  natPollNow();                              // you just moved a window — watch closely again
   const w=NATWINS.find(x=>String(x.id)===String(id));
   if(w&&NAT_OPTIMISTIC[action]){
     const patch=NAT_OPTIMISTIC[action](w,extra);
@@ -8351,6 +9006,10 @@ async function showDesktop(){
 }
 /* Everything you can do to a native window, in one menu — the same verbs an
    AgentOS window offers, so there is no second-class kind of window here. */
+//: the snap zones offered in the Window menu, in reading order
+const NAT_SNAP=[['left','left half'],['right','right half'],
+                ['tl','top left'],['tr','top right'],['bl','bottom left'],['br','bottom right'],
+                ['center','centred'],['full','the whole desk']];
 function natWinItems(w){
   const arrange=cap('windows.arrange').available;
   const items=[
@@ -8364,6 +9023,11 @@ function natWinItems(w){
   ];
   if(arrange){
     items.push(null,{label:w.floating?'Tile':'Float',fn:()=>natWin('floating',w.id,{floating:!w.floating})});
+    // Snapping a native window to half or a quarter of the screen. AgentOS's own
+    // windows have done this from the start; without it, native windows were the
+    // only ones on the desktop you could not put side by side.
+    NAT_SNAP.forEach(([zone,label])=>items.push(
+      {label:'Snap '+label,fn:()=>natWin('snap',w.id,{zone})}));
     for(let n=1;n<=4;n++)items.push({label:'Move to desktop '+n,fn:()=>natWin('move',w.id,{workspace:String(n)})});
   }
   items.push(null,{label:'Show the desktop',fn:showDesktop},
@@ -8396,6 +9060,190 @@ async function updateTray(){
   }catch(e){}
 }
 
+/* ================= Host Screen =================
+   What a remote client cannot otherwise see.
+
+   The AgentOS shell is HTML and travels over HTTP. Native apps are windows the
+   compositor paints onto the machine's physical display — different pixels, in a
+   different place, never part of the page. So from a phone, a launched app is
+   invisible: the taskbar knows it exists (the compositor told the server, and the
+   server told this page) but there is nothing to render.
+
+   This app closes that gap the cheap, honest way: it asks the server for a frame
+   of the real screen (grim, which the session already ships for screenshots) and
+   shows it. A still, refreshed — not a video pipeline, and not a fake remote
+   desktop. It answers "did it open, and what is it showing", which is the actual
+   question. For controlling that screen, see the note at the bottom of the app. */
+
+const HOSTSCREEN={tick:null,busy:false,every:2000,scale:0.75,fit:true};
+
+async function renderHostScreen(body,w){
+  const capable=cap('screen.capture').available;
+  body.innerHTML=`<div class="phead">
+      <span class="pt">Host screen</span>
+      <span class="ps">${esc(hostName())} — the real display, including native apps</span>
+      <span class="sp"></span>
+      <label class="hs-live"><input type="checkbox" id="hs-live" ${capable?'checked':'disabled'}> live</label>
+      <select id="hs-every" ${capable?'':'disabled'}>
+        <option value="1000">every 1s</option>
+        <option value="2000" selected>every 2s</option>
+        <option value="5000">every 5s</option>
+        <option value="15000">every 15s</option>
+      </select>
+      <button class="pact" id="hs-now" ${capable?'':'disabled'}>Refresh</button>
+    </div>
+    <div class="pbody hs-body">
+      ${capable?`<div class="hs-stage"><img id="hs-img" alt="the host machine's screen"></div>
+        <div class="hs-foot"><span class="mut" id="hs-stat">loading…</span></div>`
+       :`<div class="empty"><div class="eh">${capNote('screen.capture')||
+          'Screen capture is not available here — it needs the AgentOS Wayland session and grim.'}</div></div>`}
+      <p class="mut hs-note">This is a picture, refreshed — you can see the host screen but not click on
+        it. Native windows can still be <b>moved, focused, minimised and closed</b> from the taskbar and the
+        Window menu, which go through the compositor and work from anywhere.</p>
+      <div id="hs-control" class="provbox"><p class="mut">…</p></div>
+    </div>`;
+  hsControl();
+  if(!capable)return;
+  const live=$('#hs-live'), every=$('#hs-every');
+  live.onchange=()=>hsLive(live.checked,w);
+  every.onchange=()=>{HOSTSCREEN.every=+every.value;if(live.checked)hsLive(true,w)};
+  $('#hs-now').onclick=()=>hsFrame(w);
+  hsFrame(w);
+  hsLive(true,w);
+}
+/* One frame. `busy` is the point: a capture slower than the refresh interval must
+   not stack requests behind itself on a machine that is already busy drawing —
+   a late tick is dropped, not queued. */
+async function hsFrame(w){
+  if(HOSTSCREEN.busy)return;
+  const img=$('#hs-img'), stat=$('#hs-stat');
+  if(!img)return;                                  // the window was closed
+  HOSTSCREEN.busy=true;
+  const t0=performance.now();
+  try{
+    const r=await fetch('/api/screen/frame?scale='+HOSTSCREEN.scale+'&t='+Date.now());
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      if(stat)stat.textContent=d.error||('capture failed ('+r.status+')');
+      HOSTSCREEN.busy=false;return;
+    }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const old=img.dataset.url;
+    img.src=url;img.dataset.url=url;
+    if(old)URL.revokeObjectURL(old);             // one frame in flight, one in memory
+    if(stat)stat.textContent=`${new Date().toLocaleTimeString()} · ${Math.round(performance.now()-t0)}ms · ${(blob.size/1024).toFixed(0)} KB`;
+  }catch(e){if(stat)stat.textContent='capture failed: '+e.message}
+  HOSTSCREEN.busy=false;
+}
+/* Live refresh, owned by the window. A full-screen PNG every two seconds is the
+   most expensive thing the shell does, so it must not survive the window being
+   minimised — winTick guarantees that, and repaints the moment you come back. */
+function hsLive(on,w){
+  hsStop();
+  if(on)HOSTSCREEN.tick=winTick(w,()=>hsFrame(w),HOSTSCREEN.every,{now:false,key:'frame'});
+}
+function hsStop(){stopTick(HOSTSCREEN.tick);HOSTSCREEN.tick=null}
+
+
+/* ---- taking control: streaming pixels AND sending input back is remote-desktop
+   work, so AgentOS starts wayvnc rather than reinventing it. It binds loopback
+   only — wayvnc has no password of its own, and putting an unauthenticated
+   remote desktop on the network would undo every other lock in this system. */
+async function hsControl(){
+  const box=$('#hs-control');if(!box)return;
+  let d={};
+  try{d=await (await fetch('/api/screen/control')).json()}catch(e){box.innerHTML='';return}
+  /* The browser client is what makes this reachable from a phone with nothing
+     installed on the phone: AgentOS relays the VNC stream over its own
+     authenticated connection, so the VNC port itself never leaves loopback. */
+  const web=d.running&&d.novnc
+    ? `<div class="rm-addr" style="margin-top:10px"><div class="rm-row">
+         <b style="flex:1">Open on this device</b>
+         <button class="pact" style="flex:0 0 auto" onclick="openRemoteDesktop()">Remote Desktop ↗</button></div></div>
+       <p class="mut" style="margin-top:6px">On your phone, open AgentOS, sign in, and go to
+         <code>/remote-desktop</code> — or tap <b>Remote Desktop</b> in Quick Settings. No VNC app needed;
+         it runs in the browser over the same passphrase-protected connection.</p>`
+    : d.running&&!d.novnc
+      ? `<p class="mut" style="margin-top:8px">To use this <b>from a phone browser</b> — no VNC app —
+           install the noVNC client (MPL-2.0, a distribution package):</p>
+         <button class="endbtn" style="margin-top:8px" onclick="installComponent('novnc')">Install noVNC…</button>`
+      : '';
+  const body=!d.installed
+    ? `<p class="mut" style="margin-top:6px">Not installed. <b>wayvnc</b> (ISC) turns this
+         read-only view into a real remote desktop: it streams the screen and sends your
+         clicks and keys back to it.</p>
+       <button class="pact" style="margin-top:10px" onclick="installComponent('wayvnc')">Install wayvnc…</button>`
+    : d.running
+      ? `<p class="mut" style="margin-top:6px">Running on <code>${esc(d.host)}:${d.port}</code> — you can use the
+           machine, native apps included.</p>${web}
+         <p class="mut" style="margin-top:10px">Or point a native VNC client through a tunnel:</p>
+         <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
+           <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
+         <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
+         <button class="endbtn" style="margin-top:10px" onclick="hsControlSet('stop')">Stop remote control</button>`
+      : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
+           another device — everything on that screen, not just the AgentOS shell.</p>
+         <p class="mut">${esc(d.note)}</p>
+         ${d.novnc?'<p class="mut">The browser client is installed, so a phone needs nothing at all.</p>'
+                  :'<p class="mut">Install <b>noVNC</b> too and it works from a phone browser with no VNC app.</p>'}
+         <button class="pact" style="margin-top:10px" onclick="hsControlSet('start')">Start remote control</button>`;
+  box.innerHTML=`<div class="ptitle">Take control${d.running?' <span class="rm-pill on">ON</span>':''}</div>${body}`;
+}
+/* ---- Remote Desktop -------------------------------------------------------
+   The real screen, usable, from anywhere — including a phone with nothing
+   installed on it. AgentOS relays the VNC stream over its own authenticated
+   connection (see agentos/remotedesktop.py), so the VNC port stays on loopback.
+
+   Two ways in, because both are right at different moments:
+     · /remote-desktop  a standalone page. On a phone the remote machine should
+                        own the whole screen, with no dock drawn over it.
+     · this app         a window on the desktop, for using the machine's own
+                        screen from another computer alongside everything else.
+   On a phone the window IS the screen, so the app gets you the same thing. */
+function openRemoteDesktop(){
+  // In the session UI, "open a tab" means nothing — there is no browser. Use the
+  // app window, which the phone layout already makes full-bleed.
+  if((typeof SUI!=='undefined'&&SUI.on)||(typeof isMobile==='function'&&isMobile()))
+    return openApp('remotedesk');
+  window.open('/remote-desktop','_blank');
+}
+async function renderRemoteDesk(body,w){
+  body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
+  let d={};
+  try{d=await (await fetch('/api/screen/control')).json()}catch(e){}
+  if(!d.installed||!d.novnc||!d.running){
+    const missing=!d.installed?'wayvnc':(!d.novnc?'novnc':'');
+    body.innerHTML=`<div class="pad"><div class="provbox">
+      <div class="ptitle">Remote Desktop</div>
+      <p class="mut" style="margin-top:6px">Use this machine's real screen — native apps
+        included — from your phone or another computer, in a browser. AgentOS relays it over
+        the same passphrase-protected connection as the desktop, so the VNC port never leaves
+        <code>127.0.0.1</code>.</p>
+      ${missing?`<p class="mut" style="margin-top:8px">Needs <b>${esc(missing)}</b>, a distribution
+          package AgentOS does not bundle.</p>
+        <button class="pact" style="margin-top:10px" onclick="installComponent('${esc(missing)}')">Install ${esc(missing)}…</button>`
+       :`<p class="mut" style="margin-top:8px">Everything is installed — the service is just off.</p>
+         <button class="pact" style="margin-top:10px" onclick="hsControlSet('start').then(()=>refreshApp('remotedesk'))">Turn Remote Desktop on</button>`}
+      <p class="mut" style="margin-top:10px">See also <b>Host Screen</b>, which shows the same
+        display as a refreshing picture without needing anything installed.</p>
+    </div></div>`;
+    return;
+  }
+  // An iframe, deliberately: the page inside is the same one a phone browser
+  // loads, so there is exactly one remote-desktop client to maintain and to fix.
+  body.innerHTML=`<iframe src="/remote-desktop" title="Remote Desktop"
+     style="border:0;width:100%;height:100%;flex:1;background:#000"
+     allow="clipboard-read; clipboard-write"></iframe>`;
+}
+async function hsControlSet(action){
+  const r=await fetch('/api/screen/control',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action})});
+  const d=await r.json();
+  if(!r.ok)return toast(d.error||'could not change remote control');
+  toast(action==='start'?'remote control on — connect a VNC client through the tunnel':'remote control off');
+  hsControl();
+}
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
   w.path=w.path||'';
@@ -9033,6 +9881,7 @@ async function studioDel(id){
 
 /* ================= mission control (lifecycle) ================= */
 async function renderMission(body,w){
+  stopWinTicks(w);          // a re-render replaces the poller, it does not add another
   body.style.cssText='padding:16px;overflow:auto;height:100%';
   body.innerHTML='<div class="mut">loading lifecycle state…</div>';
   const lane=(title,app,rows,accent)=>`
@@ -9084,12 +9933,13 @@ async function renderMission(body,w){
       </div>`;
   };
   await paint();
-  w.timer=setInterval(paint,6000);
+  winTick(w,paint,6000,{now:false,key:'poll'});
 }
 
 /* ================= hermes app (companion agent + wrapper) ================= */
 const HERMES_SETUP_LISTENERS=new Set();
 async function renderHermes(body,w){
+  stopWinTicks(w);
   body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
   const load=async()=>{try{return await (await fetch('/api/hermes/status')).json()}catch(e){return{installed:false}}};
   const log=(m)=>{const el=$('#hz-log');if(el){el.textContent=m;el.scrollTop=el.scrollHeight}};
@@ -9147,12 +9997,13 @@ async function renderHermes(body,w){
   w._onSetup=ev=>{if(ev.type==='hermes_setup'){log(ev.message||'');if(ev.done)setTimeout(paint,800)}};
   HERMES_SETUP_LISTENERS.add(w._onSetup);
   await paint();
-  w.timer=setInterval(async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000);
+  winTick(w,async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000,{now:false,key:'poll'});
 }
 
 /* ================= train app (TrainForge) ================= */
 const TRAIN_SETUP_LISTENERS=new Set();
 async function renderTrain(body,w){
+  stopWinTicks(w);
   body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
   body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
   const paint=async()=>{
@@ -9161,7 +10012,7 @@ async function renderTrain(body,w){
     if(st.running){
       if(!body.querySelector('iframe')){
         body.innerHTML=`<iframe src="${esc(st.url||'http://127.0.0.1:8377')}" style="border:0;width:100%;height:100%;flex:1" title="TrainForge"></iframe>`;
-        clearInterval(w.timer);
+        stopTick(w._tick);   // the iframe is the UI now — stop polling for good
       }
       return;
     }
@@ -9196,7 +10047,7 @@ async function renderTrain(body,w){
   w._onSetup=ev=>{if(ev.type==='train_setup'){const el=$('#tf-msg');if(el)el.textContent=ev.message||''}};
   TRAIN_SETUP_LISTENERS.add(w._onSetup);
   await paint();
-  w.timer=setInterval(paint,4000);
+  w._tick=winTick(w,paint,4000,{now:false,key:'poll'});
 }
 
 /* ================= terminal app ================= */
@@ -9623,9 +10474,10 @@ function exposeToggle(force){
     ov.classList.remove('show');ov.innerHTML='';
     EXPO.wins.forEach(w=>{w.el.style.transform='';
       setTimeout(()=>{w.el.classList.remove('exp-win');w.el.style.transformOrigin=''},300)});
-    setTimeout(()=>document.body.classList.remove('exposing'),320);
+    setTimeout(()=>{document.body.classList.remove('exposing');applyWindowActivity()},320);
     EXPO.wins=[];
   }
+  applyWindowActivity();   // in Spaces everything is on show, so everything wakes
 }
 /* the spaces strip: a live mini-map of every desktop, and a drop target */
 function exposeSpaces(){
@@ -10073,7 +10925,7 @@ document.addEventListener('click',e=>{
 updateTray();setInterval(updateTray,15000);
 // Polling is the fallback; the first compositor 'wm' event switches the
 // taskbar to event-driven updates (see the WebSocket handler).
-updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,1200);
+updateNativeWindows();startNativePoll();
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();
@@ -10082,6 +10934,9 @@ loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
 APPS_READY=true;
+// If this page is the Linux session's desktop, tell the compositor how much
+// room our chrome needs so no application window can cover it.
+if(typeof suiInit==='function')suiInit();
 if(EXPERIENCE==='jarvis')buildJarvisShell();   // APPS now defined — populate the shell if a theme selected it early
 connect();
 /* the splash leaves when the desktop is actually ready (config + platform +

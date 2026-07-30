@@ -6,12 +6,13 @@ import json
 import os
 import re
 import secrets
+import socket
 import time
 import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import config as cfgmod
 from . import fabric as fabricmod
@@ -85,6 +86,7 @@ async def startup():
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
                  fabric=control, pdp=pdp, trainforge=trainforge,
+                 wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  shell_pending={},      # cmd id -> Future — shell-control channel (see below)
                  app_tokens={},         # runtime token -> {"app_id","issued"} — app identity
@@ -128,6 +130,21 @@ async def startup():
                 await _on_compositor_attached()
             try:
                 async for ev in comp.Compositor().subscribe():
+                    # The compositor is the authority on where the user actually
+                    # is. Focus landing on something that is not our shell means
+                    # the desktop is no longer in front, however it got there —
+                    # a click, sway's own Alt-Tab, a new window mapping. Without
+                    # this, SHELL_RAISED stayed true forever and anchor_shell
+                    # (which respects it) stopped putting the desktop back to
+                    # being the base layer, so apps opened behind it.
+                    if ev.get("change") == "focus":
+                        con = ev.get("container") or {}
+                        props = con.get("window_properties") or {}
+                        is_shell = comp._is_shell_node(
+                            con, con.get("app_id") or props.get("class") or "",
+                            con.get("name") or "", _port_of(cfg))
+                        if not is_shell:
+                            comp.SHELL_RAISED[0] = False
                     if ev.get("change") in ("new", "close", "move", "floating"):
                         with contextlib.suppress(Exception):
                             comp.Compositor().anchor_shell(_port_of(cfg))
@@ -145,6 +162,22 @@ async def startup():
             get_platform(refresh=True)
         except Exception:
             pass
+        # An upgrade must actually reach the compositor. SWAY_CONF is generated
+        # and was only ever written by install-session, so window rules shipped
+        # after the user installed the session never arrived — the desktop looked
+        # like it had no window controls and every app was stuck on top, because
+        # on that machine it did and they were.
+        if _rm.resolve(cfg)[0] == _rm.DE:
+            try:
+                from . import session as sessionmod
+                changed, how = sessionmod.refresh_config()
+                if changed:
+                    state["store"].log("system", f"session config: {how}")
+                    await broadcast({"type": "toast",
+                                     "text": "Compositor settings updated for this "
+                                             "version of AgentOS"})
+            except Exception:
+                pass
         if _rm.resolve(cfg)[0] == _rm.DE and not state.get("notifd"):
             try:
                 from .notifications import NotificationDaemon
@@ -228,6 +261,12 @@ async def shutdown():
     if "trainforge" in state:
         with contextlib.suppress(Exception):
             await state["trainforge"].stop()
+    # never outlive the session that started it — an orphaned VNC server is an
+    # unauthenticated door left open on the machine
+    proc = state.get("wayvnc")
+    if proc and proc.returncode is None:
+        with contextlib.suppress(Exception):
+            proc.terminate()
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +572,33 @@ async def api_shell_raise(body: dict | None = None):
     return {"ok": ok, "message": msg}
 
 
+@app.post("/api/shell/sui")
+async def api_shell_sui(request: Request, body: dict | None = None):
+    """The desktop declaring that it is drawn by the native session host.
+
+    Only the layer-shell host injects the bridge that makes this call possible,
+    so receiving it is proof the desktop is a BACKGROUND-layer surface rather
+    than a Chromium window. Once known, every anchor/raise/lower in the
+    compositor layer becomes a no-op — the stacking order is correct by
+    construction, and there is no window to shuffle.
+
+    Loopback only: this changes how the server manages the session's windows, so
+    a remote browser must not be able to claim it. A phone connected to this
+    desktop is a viewer of the session, never its host.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only the machine's own desktop can claim this"},
+                            status_code=403)
+    from . import compositor as comp
+    on = True if body is None else bool(body.get("on", True))
+    was = comp.SUI_HOST[0]
+    comp.SUI_HOST[0] = on
+    if on and not was:
+        state["store"].log("system", "desktop is a native layer-shell surface "
+                                     "(session UI) — window stacking is native")
+    return {"ok": True, "sui": on}
+
+
 @app.post("/api/shortcuts/apply")
 async def api_shortcuts_apply(body: dict):
     """Write the session-level shortcuts into the compositor and reload it.
@@ -680,6 +746,48 @@ async def api_native_apps():
     return {"apps": apps}
 
 
+@app.get("/api/native/store")
+async def api_native_store(q: str = "", limit: int = 40):
+    """Search the machine's own application catalogue.
+
+    A desktop you cannot install software on is a demo. This asks appstream /
+    flatpak / apt — whichever the machine has — and never ships or mirrors
+    anything itself.
+    """
+    from . import appstore
+    if not q:
+        return {"results": [], "backends": appstore.backends(), "message": ""}
+    return await appstore.search(q, max(1, min(int(limit or 40), 100)))
+
+
+@app.post("/api/native/store")
+async def api_native_store_act(request: Request, body: dict):
+    """Install or remove a native application.
+
+    Loopback only. Installing software is a change to the machine, and a browser
+    somewhere else — even one holding a valid remote-access session — is not the
+    right place to authorise it. The user is asked in the UI first; the exact
+    command is always returned.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse(
+            {"error": "installing software is only allowed from the machine itself"},
+            status_code=403)
+    from . import appstore
+    action = str((body or {}).get("action") or "install")
+    pkg = str((body or {}).get("id") or "")
+    backend = str((body or {}).get("backend") or "")
+    res = await appstore.act(action, pkg, backend)
+    state["store"].log("system",
+                       f"{action} {pkg} ({backend or 'auto'}): "
+                       f"{'ok' if res.get('ok') else res.get('message', '')[:200]}",
+                       {"ok": bool(res.get("ok")), "command": res.get("command", "")})
+    if res.get("ok"):
+        # a new .desktop entry means the deck's System apps group just changed
+        await state["broadcast"]({"type": "native_apps"})
+    return res
+
+
 @app.get("/api/native/icon/{app_id}")
 async def api_native_icon(app_id: str):
     from . import host
@@ -694,10 +802,23 @@ async def api_native_icon(app_id: str):
 
 @app.post("/api/native/launch")
 async def api_native_launch(body: dict):
+    """Launch a host application.
+
+    In session mode this waits for the app's window to actually map (see
+    compositor.launch_and_focus), so it runs in a thread — blocking the event
+    loop for the seconds a heavy app takes to start would freeze every other
+    client, including the desktop that is waiting for this answer.
+    """
     from . import host
-    ok, msg = host.launch_app(body.get("id", ""))
+    app_id = body.get("id", "")
+    ok, msg = await asyncio.to_thread(host.launch_app, app_id)
+    state["store"].log("system",
+                       f"launched native app: {app_id}" if ok
+                       else f"native app failed to launch: {app_id} — {msg}",
+                       {"ok": ok})
     if ok:
-        state["store"].log("system", f"launched native app: {body.get('id','')}")
+        # the taskbar should show the new window now, not on the next poll
+        await state["broadcast"]({"type": "wm"})
     return {"ok": ok, "message": msg}
 
 
@@ -783,6 +904,21 @@ async def api_windows_fullscreen(body: dict):
     on = body.get("fullscreen")
     ok, msg = host.fullscreen_window(_window_id(body),
                                      None if on is None else bool(on))
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/api/windows/snap")
+async def api_windows_snap(body: dict):
+    """Snap a native window to half or a quarter of the usable screen.
+
+    AgentOS's own windows have snapped to edges from the start; native ones could
+    only be dragged, which made them second-class windows on their own desktop.
+    Zones: left/right/top/bottom, tl/tr/bl/br, center, full.
+    """
+    from . import host
+    ok, msg = host.snap_window(_window_id(body), str((body or {}).get("zone") or "left"))
+    if ok:
+        await state["broadcast"]({"type": "wm"})
     return {"ok": ok, "message": msg}
 
 
@@ -916,15 +1052,222 @@ async def api_wm_output_configure(body: dict):
 
 
 @app.get("/api/platform")
-async def api_platform():
+async def api_platform(request: Request):
     """What this machine can actually do, and which desktop mode we're in.
 
     The UI renders from this instead of branching on the operating system: every
     capability reports whether it's available and, when it isn't, a sentence
     explaining why plus the optional component that would fix it.
+
+    `remote_client` is per-request, not per-machine: it says whether THIS browser
+    is somewhere else. It matters because native apps are drawn by the compositor
+    onto the host's physical display — they are not part of the page — so a phone
+    that launches one gets a taskbar entry and no pixels unless it is told why.
     """
     from . import host
-    return host.platform_state()
+    state_ = host.platform_state()
+    state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
+    state_["hostname"] = socket.gethostname()
+    # Is the desktop a native layer-shell surface right now, and could it be?
+    # The UI shows this in About/System Settings, and the doctor uses the second
+    # half to print the one apt line that upgrades a Chromium session to a real
+    # desktop surface.
+    from . import compositor as comp
+    from . import shellhost
+    state_["sui"] = bool(comp.SUI_HOST[0])
+    state_["sui_available"] = shellhost.available()
+    state_["sui_install_hint"] = "" if state_["sui_available"] else shellhost.install_hint()
+    return state_
+
+
+# ---------------------------------------------------------------------------
+# Interactive control of the real screen.
+#
+# The Host Screen view is a picture — enough to see a native app, not to use one.
+# Using one means streaming pixels AND sending input back, which is remote-desktop
+# work; wayvnc does it properly for wlroots, so AgentOS starts it rather than
+# reinventing it.
+#
+# It binds LOOPBACK ONLY, always. wayvnc's default security type is "None" — no
+# password — so putting it on the network would hand the machine to anyone who
+# can reach the port, which is strictly worse than everything else in this
+# system. Reach it over the SSH tunnel or the VPN that docs/remote-access.md
+# already recommends. Anyone who wants it exposed can configure wayvnc's own
+# auth and run it themselves; AgentOS will not do that quietly on their behalf.
+# ---------------------------------------------------------------------------
+
+VNC_PORT = 5900
+
+
+def _vnc_running() -> bool:
+    proc = state.get("wayvnc")
+    return bool(proc and proc.returncode is None)
+
+
+@app.get("/novnc/{path:path}")
+async def novnc_asset(path: str):
+    """Serve the noVNC client that is already installed on this machine.
+
+    AgentOS bundles no part of it. Served rather than linked because the page
+    imports it as an ES module, and a module can only be imported from an origin
+    the browser is already on.
+
+    The path is resolved and then checked to be INSIDE the noVNC directory. Not a
+    string check for "..": a symlink or an encoded separator makes that kind of
+    filter wrong in a way that is hard to see, and this route reads files.
+    """
+    from . import remotedesktop as rd
+    base = rd.novnc_dir()
+    if not base:
+        return JSONResponse({"error": "noVNC is not installed"}, status_code=404)
+    root = os.path.realpath(base)
+    target = os.path.realpath(os.path.join(root, path))
+    if not (target == root or target.startswith(root + os.sep)) or not os.path.isfile(target):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    ext = os.path.splitext(target)[1].lower()
+    mt = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+          ".html": "text/html", ".json": "application/json", ".svg": "image/svg+xml",
+          ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2",
+          }.get(ext, "application/octet-stream")
+    return FileResponse(target, media_type=mt,
+                        headers={"Cache-Control": "max-age=86400"})
+
+
+@app.get("/remote-desktop")
+async def remote_desktop_page(request: Request):
+    """The real screen, on a phone, in the browser — no VNC app to install.
+
+    Its own page rather than a window in the desktop: on a phone you want the
+    whole screen for the remote machine, not the AgentOS dock drawn over it.
+    Reaching this page already required the AgentOS passphrase (the remote-access
+    gate runs as middleware), which is exactly the authentication wayvnc lacks.
+    """
+    from . import remotedesktop as rd
+    have = rd.available()
+    if not have["novnc"]:
+        return HTMLResponse(
+            "<body style='background:#0b0d10;color:#e6ebf2;font:15px system-ui;padding:34px'>"
+            "<h2>Remote Desktop needs the noVNC client</h2>"
+            "<p>It is a distribution package — AgentOS does not bundle it. Install it from "
+            "<b>System Settings &rarr; Components</b>, or run:</p>"
+            "<pre style='background:#151920;padding:12px;border-radius:8px'>sudo apt install novnc</pre>"
+            "</body>", status_code=503, headers=NO_STORE)
+    if not _vnc_running():
+        return HTMLResponse(
+            "<body style='background:#0b0d10;color:#e6ebf2;font:15px system-ui;padding:34px'>"
+            "<h2>Remote Desktop is switched off</h2>"
+            "<p>Turn it on at the machine: <b>System Settings &rarr; Remote access &rarr; "
+            "Remote Desktop</b>, or the Host Screen app's <b>Take control</b> panel. "
+            "Then reload this page.</p></body>", status_code=503, headers=NO_STORE)
+    return HTMLResponse(rd.page("/ws/vnc", socket.gethostname()), headers=NO_STORE)
+
+
+@app.get("/api/screen/control")
+async def api_screen_control_status():
+    import shutil as _sh
+    from . import remotedesktop as rd
+    have = rd.available()
+    return {
+        "installed": bool(_sh.which("wayvnc")),
+        "running": _vnc_running(),
+        "host": "127.0.0.1", "port": VNC_PORT,
+        "component": "wayvnc",
+        # The browser client, which is what makes this reachable from a phone
+        # without installing anything on the phone.
+        "novnc": have["novnc"],
+        "novnc_component": "novnc",
+        "web_url": "/remote-desktop" if have["novnc"] else "",
+        "note": ("wayvnc has no password of its own, so AgentOS only ever binds it to "
+                 "127.0.0.1. Reach it through an SSH tunnel or your VPN."),
+        "tunnel": f"ssh -L {VNC_PORT}:127.0.0.1:{VNC_PORT} {os.environ.get('USER') or 'you'}@{socket.gethostname()}",
+    }
+
+
+@app.post("/api/screen/control")
+async def api_screen_control(body: dict):
+    """{action: "start" | "stop"} — run wayvnc against this compositor."""
+    import shutil as _sh
+    from . import runmode as _rm
+    action = (body or {}).get("action", "")
+    if action == "stop":
+        proc = state.get("wayvnc")
+        if proc and proc.returncode is None:
+            proc.terminate()
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(proc.wait(), timeout=5)
+        state["wayvnc"] = None
+        state["store"].log("system", "interactive remote control stopped")
+        return {"ok": True, "running": False}
+    if action != "start":
+        return JSONResponse({"error": "action must be start or stop"}, status_code=400)
+    if _rm.mode() != "de":
+        return JSONResponse({"error": "interactive control needs the AgentOS Wayland session"},
+                            status_code=503)
+    if not _sh.which("wayvnc"):
+        return JSONResponse({"error": "wayvnc is not installed", "component": "wayvnc"},
+                            status_code=503)
+    if _vnc_running():
+        return {"ok": True, "running": True, "port": VNC_PORT}
+    proc = await asyncio.create_subprocess_exec(
+        "wayvnc", "127.0.0.1", str(VNC_PORT),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    await asyncio.sleep(1.0)                      # let it bind or fail loudly
+    if proc.returncode is not None:
+        err = (await proc.stderr.read())[-300:].decode(errors="replace")
+        return JSONResponse({"error": err.strip() or "wayvnc exited immediately"},
+                            status_code=500)
+    state["wayvnc"] = proc
+    # Nudge the compositor into repainting the whole output. sway only re-renders
+    # DAMAGED regions, so on a desktop that has been sitting still — which is
+    # exactly the state you find it in when you reach for your phone — the first
+    # frame a new client receives can be missing everything that had not changed
+    # recently. The desktop's own surface is the usual casualty: you connect and
+    # see the app you launched floating on black. One repaint costs nothing and
+    # makes the first frame the whole screen.
+    #
+    # It re-applies the background the session already set, rather than setting a
+    # colour: re-sending the same value damages the whole output and changes
+    # nothing, where a fixed colour would quietly throw away the user's wallpaper.
+    with contextlib.suppress(Exception):
+        from . import compositor as _c
+        wall = cfgmod.AGENTOS_HOME / "wallpaper.png"
+        _c.Compositor().command(
+            f"output * bg '{wall}' fill" if wall.is_file()
+            else "output * bg #0b0d10 solid_color")
+    state["store"].log("system", f"interactive remote control started on 127.0.0.1:{VNC_PORT}")
+    return {"ok": True, "running": True, "port": VNC_PORT}
+
+
+@app.get("/api/screen/frame")
+async def api_screen_frame(scale: float = 1.0):
+    """One frame of the host's actual screen, as PNG.
+
+    This is the only way a remote client can see a native window: those windows
+    live on the compositor's output, not in the HTML the browser loaded. It is a
+    still, not a stream — enough to answer "did my app open, and what is it
+    showing" without pulling a video pipeline into the OS. For interactive
+    control of the real screen, run a VNC server for wlroots (wayvnc) alongside.
+    """
+    import shutil as _sh
+    if not _sh.which("grim"):
+        return JSONResponse({"error": "screen capture needs grim (Wayland session only)"},
+                            status_code=503)
+    argv = ["grim"]
+    if scale and scale != 1.0:
+        argv += ["-s", str(max(0.1, min(1.0, scale)))]
+    argv += ["-t", "png", "-"]
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return JSONResponse({"error": "screen capture timed out"}, status_code=504)
+    if proc.returncode != 0 or not out:
+        return JSONResponse({"error": (err or b"").decode(errors="replace")[:200]
+                             or "screen capture failed"}, status_code=500)
+    return Response(content=out, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/control")
@@ -4590,6 +4933,75 @@ def _ws_authed(ws) -> bool:
        remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
         return True
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+
+
+@app.websocket("/ws/vnc")
+async def ws_vnc(ws: WebSocket):
+    """Relay this WebSocket to wayvnc on loopback — the Remote Desktop transport.
+
+    This is the whole security argument for the feature, so it is worth stating
+    plainly. wayvnc has no password of its own, which is why AgentOS has always
+    bound it to 127.0.0.1 and refused to put it on the network. Bridging it here
+    means the phone authenticates to AGENTOS — passphrase, PBKDF2, signed session
+    cookie, backoff, the loopback trust rule — and the VNC port still never
+    leaves the machine. Nothing new is exposed; the client just moved into the
+    browser.
+
+    Byte-for-byte in both directions with no interpretation: this speaks RFB
+    only in the sense that a pipe speaks whatever is poured into it. That is also
+    why it is the same job websockify does, and why AgentOS does not need it.
+    """
+    if not _ws_authed(ws):
+        await ws.close(code=4401)
+        return
+    if not _vnc_running():
+        # Refuse rather than hang: a client waiting forever on a socket that will
+        # never carry anything is indistinguishable from a broken network.
+        await ws.close(code=4404)
+        return
+    # noVNC asks for the 'binary' subprotocol; accepting it is what stops it
+    # falling back to base64 framing, which would double the bytes on a phone.
+    sub = "binary" if "binary" in (ws.scope.get("subprotocols") or []) else None
+    await ws.accept(subprotocol=sub)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", VNC_PORT)
+    except Exception as e:                                        # noqa: BLE001
+        state["store"].log("system", f"remote desktop: cannot reach wayvnc — {e}")
+        await ws.close(code=1011)
+        return
+
+    async def to_vnc():
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect":
+                return
+            data = msg.get("bytes")
+            if data is None and msg.get("text") is not None:
+                data = msg["text"].encode()
+            if data:
+                writer.write(data)
+                await writer.drain()
+
+    async def to_client():
+        while True:
+            chunk = await reader.read(65536)
+            if not chunk:
+                return
+            await ws.send_bytes(chunk)
+
+    tasks = [asyncio.create_task(to_vnc()), asyncio.create_task(to_client())]
+    try:
+        # Either direction ending ends the session — a half-open RFB connection
+        # shows the user a frozen screen rather than a disconnect.
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in tasks:
+            t.cancel()
+        with contextlib.suppress(Exception):
+            writer.close()
+            await writer.wait_closed()
+        with contextlib.suppress(Exception):
+            await ws.close()
 
 
 @app.websocket("/ws/terminal")

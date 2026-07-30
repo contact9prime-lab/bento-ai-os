@@ -255,9 +255,8 @@ function renderLogs(body,w){
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
   $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
-  clearInterval(w.timer);
-  loadLogs(w);
-  w.timer=setInterval(()=>{if(document.getElementById('log-rows'))loadLogs(w);else clearInterval(w.timer)},5000);
+  stopWinTicks(w);
+  winTick(w,()=>loadLogs(w),5000,{key:'poll'});
 }
 async function loadLogs(w){
   const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||''));const d=await r.json();

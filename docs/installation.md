@@ -91,12 +91,23 @@ painful. Two setups that work well:
 - **Ollama on another box** — point `providers.ollama.base_url` at a desktop on your LAN. You keep
   local-only inference and the Pi keeps being the thing that's always on.
 
-**Drawing the desktop.** Chromium on the Pi renders the shell fine, but the heavy-blur themes
-(Liquid Glass, Spatial) lean on `backdrop-filter`, which is expensive without GPU compositing.
-If the desktop feels sluggish on the Pi's own display, pick **Bento** or **Minimalism** — both are
-deliberately blur-free — or drive the Pi headless and open the desktop from a laptop or phone,
-which is where the [responsive layout](desktop.md#phone-tablet-desktop) pays off. The built-in
-wallpapers are SVG with no blur filters, so they cost nothing either way.
+**Drawing the desktop.** Chromium on the Pi renders the shell fine. The thing that hurts a Pi is
+`backdrop-filter` — the heavy-blur themes (Liquid Glass, Spatial) lean on it, and its cost
+compounds with every window you open, because each translucent surface makes the compositor
+re-blur everything beneath it.
+
+You do not have to manage that by hand: **Themes → Effects** defaults to *Automatic*, which
+measures real frame times with real windows open and turns glass down if this machine cannot keep
+up — first to *Reduced* (only the focused window is glass, so the cost stops growing with the
+number of windows), then to *Off*. You can pin any level yourself; on a Pi's own display, **Off**
+is a reasonable thing to just choose. See
+[Effects](desktop.md#effects-what-glass-costs-and-the-knob-for-it).
+
+Everything else is already cheap: the flat themes (**Bento**, **Claymorphism**, **Minimalism**)
+never blur, the built-in wallpapers are SVG with no blur filters, and windows you cannot see
+[stop doing background work entirely](desktop.md#windows-sleep-when-you-stop-looking-at-them).
+Or drive the Pi headless and open the desktop from a laptop or phone, which is where the
+[responsive layout](desktop.md#phone-tablet-desktop) pays off.
 
 **What won't be there.** The Train app (LoRA fine-tuning) needs an NVIDIA GPU and is simply not
 offered. Anything else that depends on a missing tool degrades the same way it does everywhere

@@ -307,6 +307,7 @@ def doctor(fix: bool = False):
                     ok(f"compositor reachable on $SWAYSOCK ({n} managed windows)")
                 except Exception as e:
                     bad(f"compositor socket present but not answering: {e}")
+                _doctor_session_handover(compmod, effective, runmode, ok, warn, bad)
             elif effective == runmode.DE:
                 bad("in DE mode but $SWAYSOCK is not set — window management is dead")
             else:
@@ -316,12 +317,54 @@ def doctor(fix: bool = False):
         else:
             warn("sway not installed — needed only for the AgentOS Wayland session")
 
+        # How the desktop gets DRAWN, which decides whether it is a real desktop
+        # surface or a window pretending to be one.
+        from . import shellhost as _sh
         from . import desktop as desktopmod
-        if desktopmod.find_browser():
-            ok("shell renderer found (chromium-family browser)")
+        _py, _wk = _sh.python_with_gi()
+        if _py:
+            ok(f"native desktop surface available (WebKit2GTK {_wk} via {_py})")
+            ok("  → app windows stack above the desktop natively; the menu bar and dock "
+               "are reserved with the compositor")
         else:
-            warn("no chromium-family browser — the AgentOS session cannot draw its shell "
-                 "(snap install chromium)")
+            warn("no native desktop surface — the session will draw the desktop in a "
+                 "Chromium window instead, which has to fake the stacking order")
+            todo(_sh.install_hint())
+        if desktopmod.find_browser():
+            ok("Chromium-family browser found (the fallback renderer, and the Web app)")
+        elif not _py:
+            bad("nothing can draw the desktop: no WebKitGTK layer-shell stack and no "
+                "chromium-family browser")
+        else:
+            warn("no chromium-family browser (only needed as the fallback renderer)")
+
+        # The browser remote desktop: reachable from a phone with nothing on it.
+        from . import remotedesktop as _rd
+        _have = _rd.available()
+        if _have["wayvnc"] and _have["novnc"]:
+            ok("Remote Desktop ready (wayvnc + noVNC) — usable from a phone browser")
+        elif _have["wayvnc"]:
+            warn("wayvnc is installed but noVNC is not — remote control needs a VNC "
+                 "client app until you add it (apt install novnc)")
+        else:
+            warn("Remote Desktop not installed (apt install wayvnc novnc) — optional")
+
+        try:
+            from . import session as _sess
+            if _sess.SWAY_CONF.is_file() and _sess.config_is_stale():
+                if fix:
+                    _changed, _how = _sess.refresh_config()
+                    fixed(f"compositor config was from an older AgentOS — {_how}")
+                else:
+                    bad("the installed compositor config is older than this AgentOS. "
+                        "Window rules shipped since you installed the session are not "
+                        "active — that is what 'no window controls' and 'apps always on "
+                        "top' look like")
+                    todo("agentos doctor --fix   (or `agentos install-session` again)")
+            elif _sess.SWAY_CONF.is_file():
+                ok("compositor config matches this version of AgentOS")
+        except Exception:
+            pass
 
         if effective == runmode.DE and os.environ.get("AGENTOS_SESSION") != "1":
             warn("server reports DE mode but wasn't started by the session launcher — "
@@ -354,6 +397,159 @@ def doctor(fix: bool = False):
     print()
     if not fix:
         print("  \033[90mrun `agentos doctor --fix` to auto-repair the fixable items above\033[0m\n")
+
+
+
+def _doctor_session_handover(compmod, effective, runmode, ok, warn, bad):
+    """The three facts that decide whether launching an app actually works.
+
+    Every one of these was broken at some point in a way no unit test could see,
+    because they are properties of a LIVE compositor: the desktop has to be
+    findable, it has to be able to step back, and a command has to survive sway's
+    own parser on the way to the shell.
+    """
+    if effective != runmode.DE:
+        return
+    C = compmod.Compositor()
+    port = compmod.shell_port()
+
+    shell = ""
+    try:
+        shell = C.find_shell(port)
+    except Exception as e:
+        bad(f"could not look for the desktop window: {e}")
+    if shell:
+        ok(f"the desktop window is identifiable (con_id {shell}) — raise/lower can work")
+    else:
+        bad(f"the desktop window was NOT found on port {port}. Launching an app cannot "
+            f"lower it, so the app will open behind a screen-filling window and look "
+            f"like nothing happened")
+
+    # can the desktop actually step back? do it and put it straight back.
+    if shell:
+        try:
+            was = compmod.SHELL_RAISED[0]
+            C.raise_shell(False)
+            floating = next((w["floating"] for w in C.windows(include_shell=True)
+                             if w["id"] == shell), None)
+            if floating:
+                warn("the desktop is still floating after being lowered — apps will be "
+                     "painted underneath it")
+            else:
+                ok("the desktop steps back on demand (apps can come to the front)")
+            if was:
+                C.raise_shell(True)
+        except Exception as e:
+            bad(f"lowering the desktop failed: {e}")
+
+    # does a command survive sway's parser? `,` and `;` are separators to it, and
+    # real .desktop Exec lines are full of them.
+    try:
+        C.exec("sh -c 'exit 0'  # agentos doctor, ignore")
+        ok("the compositor accepts launch commands verbatim (.desktop Exec lines are safe)")
+    except Exception as e:
+        bad(f"the compositor rejected a launch command: {e}")
+
+
+def _apps_cli(args):
+    """Native applications from a terminal.
+
+    The same catalogue and the same consent ladder as the desktop's
+    Applications -> Get apps. It exists because a headless Pi reached over SSH is
+    a first-class way to run AgentOS, and "install this program" is the most
+    ordinary thing anyone does with a machine.
+    """
+    from . import appstore
+    b = appstore.backends()
+    if not appstore.available():
+        print("No package manager found (looked for flatpak, apt, dnf, pacman).")
+        sys.exit(1)
+
+    if args.action == "list" and not args.name:
+        print("available here: " + ", ".join(k for k, v in b.items() if v and k != "needs_root"))
+        print("\n  agentos apps search <query>")
+        print("  agentos apps install <package> [--backend flatpak|apt|dnf|pacman]")
+        print("  agentos apps remove  <package>")
+        return
+
+    if args.action in ("list", "search"):
+        res = asyncio.run(appstore.search(args.name, 40))
+        if res.get("message"):
+            print(res["message"])
+        for r in res["results"]:
+            mark = "installed" if r["installed"] else ""
+            print(f"  {r['name'][:34]:36} {r['backend']:8} {mark:9} {r['summary'][:60]}")
+        if not res["results"]:
+            print("  nothing matched")
+        return
+
+    if not args.name:
+        print(f"which package? e.g. agentos apps {args.action} gimp")
+        sys.exit(2)
+    # Say what will run before running it. This is someone's machine.
+    print(f"{args.action}: {args.name}"
+          + (f" (via {args.backend})" if args.backend else ""))
+    res = asyncio.run(appstore.act(args.action, args.name, args.backend))
+    if res.get("command"):
+        print(f"  $ {res['command']}")
+    print(("✓ " if res.get("ok") else "✗ ") + (res.get("message") or ""))
+    sys.exit(0 if res.get("ok") else 1)
+
+
+def _remote_desktop_cli(args):
+    """Turn the browser remote desktop on or off without a desktop to click in.
+
+    This is the switch you want over SSH: enable it, then open the machine's
+    AgentOS address on your phone and go to /remote-desktop. The VNC server it
+    starts is bound to 127.0.0.1 — AgentOS relays it over the connection your
+    passphrase already protects.
+    """
+    import urllib.error
+    import urllib.request
+    from . import config as cfgmod
+    from . import remotedesktop as rd
+
+    port = cfgmod.load_config().get("port", 8321)
+    base = f"http://127.0.0.1:{port}"
+    have = rd.available()
+
+    def call(path, data=None):
+        req = urllib.request.Request(base + path, method="POST" if data else "GET",
+                                     data=json.dumps(data).encode() if data else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return {"error": json.loads(e.read() or b"{}").get("error", str(e))}
+        except Exception as e:                                    # noqa: BLE001
+            return {"error": f"{e} — is AgentOS running? (agentos serve)"}
+
+    if args.on or args.off:
+        if args.on and not (have["wayvnc"] and have["novnc"]):
+            missing = [n for n in ("wayvnc", "novnc") if not have[n]]
+            print(f"! {' and '.join(missing)} not installed — the packages that make this work.")
+            print(f"    sudo apt install {' '.join(missing)}")
+            sys.exit(1)
+        res = call("/api/screen/control", {"action": "start" if args.on else "stop"})
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        print("✓ remote desktop " + ("on" if args.on else "off"))
+
+    st = call("/api/screen/control")
+    if st.get("error"):
+        print(f"  ({st['error']})")
+        return
+    print(f"  wayvnc installed : {st.get('installed')}")
+    print(f"  noVNC client     : {st.get('novnc')}")
+    print(f"  running          : {st.get('running')}")
+    if st.get("running"):
+        from . import remote as remotemod
+        print("  open on your phone:")
+        for a in (remotemod.lan_addresses(port) or [f"http://127.0.0.1:{port}"]):
+            print(f"    {a.rstrip('/')}/remote-desktop")
+        print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
 
 
 def _remote_cli(args):
@@ -447,6 +643,19 @@ def main():
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
     p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
 
+    # Every graphical capability needs a way in from a terminal too — a headless
+    # Pi reached over SSH is a first-class way to run AgentOS, not an edge case.
+    p_apps = sub.add_parser("apps", help="find, install and remove native applications")
+    p_apps.add_argument("action", nargs="?", default="list",
+                        choices=["list", "search", "install", "remove"])
+    p_apps.add_argument("name", nargs="?", default="", help="query, or the package to act on")
+    p_apps.add_argument("--backend", default="", help="flatpak, apt, dnf or pacman")
+
+    p_rd = sub.add_parser("remote-desktop",
+                          help="the browser remote desktop — use the real screen from a phone")
+    p_rd.add_argument("--on", action="store_true", help="start it")
+    p_rd.add_argument("--off", action="store_true", help="stop it")
+
     p_mode = sub.add_parser("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
     p_mode.add_argument("action", nargs="?", default="show", choices=["show", "mode", "run"])
     p_mode.add_argument("value", nargs="?", default="",
@@ -496,6 +705,10 @@ def main():
                             force=args.force)
     elif args.cmd == "remote":
         _remote_cli(args)
+    elif args.cmd == "apps":
+        _apps_cli(args)
+    elif args.cmd == "remote-desktop":
+        _remote_desktop_cli(args)
     elif args.cmd == "session":
         from . import config as cfgmod
         from . import runmode

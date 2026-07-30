@@ -75,7 +75,11 @@ function renderTaskMgr(body,w){
     if(wl){wl.innerHTML='';
       WM.wins.forEach(o=>{
         const row=document.createElement('div');row.className='item';
-        row.innerHTML=`${appIcon(o.id,26)}<div class="grow">${esc(o.app.title)}<div class="sub">${o.min?'minimized':o.max?'maximized':'windowed'}</div></div>`;
+        // "sleeping" is worth saying out loud: it is why a background app's numbers
+        // are not moving, and it is the reason ten open apps still feel like one.
+        const state=o.min?'minimized':o.max?'maximized':'windowed';
+        row.innerHTML=`${appIcon(o.id,26)}<div class="grow">${esc(o.app.title)}<div class="sub">${state}${
+          o._awake===false?' · <b>sleeping</b> — no background work':''}</div></div>`;
         const b=document.createElement('button');b.className='endbtn';b.textContent='End task';
         b.onclick=()=>{closeWin(o)};
         row.appendChild(b);wl.appendChild(row);
@@ -83,7 +87,7 @@ function renderTaskMgr(body,w){
       if(!WM.wins.size)wl.innerHTML='<p class="mut">no open windows</p>';
     }
   };
-  clearInterval(w.timer);
-  poll();w.timer=setInterval(poll,2000);
+  stopWinTicks(w);
+  winTick(w,poll,2000,{key:'poll'});   // stops when the window is minimised or on another desktop
 }
 

@@ -39,6 +39,99 @@ the launcher and popovers become sheets. See [Phone, tablet, desktop](desktop.md
 
 ---
 
+## What travels, and what doesn't
+
+This is the one thing worth understanding before you use it from a phone, because
+it explains a result that otherwise looks like a bug.
+
+There are **two different things** on the host machine:
+
+| | Where it lives | Does it reach your phone? |
+|---|---|---|
+| The AgentOS **shell** — windows, dock, deck, apps, chat | an HTML page served over HTTP | **Yes.** This is what remote access sends |
+| **Native apps** — LibreOffice, a browser, a terminal | windows the compositor paints on the host's physical display | **No.** They were never in the page |
+
+So launching a system app from your phone really does start it — **on the machine
+at home**, on that machine's monitor. Your phone gets the taskbar entry, because
+the compositor tells the server and the server tells the page. It does not get the
+pixels, because those pixels are on a screen in another room.
+
+AgentOS says so now rather than looking broken: a launch from a remote client
+answers with *"opened on <host>"* and an explanation, not a bare tick.
+
+**What you can still do from anywhere:** every window verb goes through the
+compositor, so native windows can be focused, moved between desktops, minimised,
+maximised and closed from the taskbar and the Window menu, remotely, exactly as
+if you were sitting there.
+
+**To see them: the Host Screen app.** It fetches a frame of the machine's real
+display (`grim`, which the session already ships for screenshots) and refreshes
+it. That is a picture, not a video, and you cannot click on it — but it answers
+"did it open, and what is it showing", which is usually the question.
+
+### Actually using a native app: Remote Desktop
+
+Seeing is not using. To click and type inside a native app you need pixels streamed *and* input
+sent back. AgentOS does that **through its own authenticated connection**, which is what makes it
+safe and what makes it work from a phone with nothing installed on the phone:
+
+```
+phone browser ──HTTP──> AgentOS ──loopback──> wayvnc ──> the real screen
+               passphrase +      127.0.0.1:5900
+               signed session
+```
+
+Turn it on at the machine (**Host Screen → Take control → Start**, or the **Remote Desktop** app),
+then open `/remote-desktop` on the phone — you are already signed in. The client is
+[noVNC](https://novnc.com) (MPL-2.0), a distribution package AgentOS serves rather than bundles;
+install it from **System Settings → Components** if it is missing.
+
+The VNC port **never leaves `127.0.0.1`**, exactly as before. That is the whole point: wayvnc has no
+password of its own, so instead of exposing it, AgentOS is the thing you authenticate to — the same
+passphrase, PBKDF2, signed cookie and backoff as the rest of this page. Nothing new is opened to the
+network; the client just moved into the browser.
+
+The page is built for a thumb: a toolbar for the keys a phone keyboard has no room for (Esc, Tab,
+latching Ctrl/Alt/Super, arrows, Ctrl+Alt+Del), *Fit* versus *1:1 and pan*, and safe-area insets so
+it works added to the home screen.
+
+### A native VNC client instead: Take control
+
+Seeing is not using. To click and type inside a native app you need pixels
+streamed *and* input sent back — remote-desktop work, which
+[`wayvnc`](https://github.com/any1/wayvnc) (ISC) does properly for wlroots. So
+AgentOS starts it rather than reinventing it: **Host Screen → Take control**
+offers *Install wayvnc…* if it is missing, then Start/Stop, and shows the address.
+
+**It binds `127.0.0.1` only, always.** wayvnc ships with security type "None" — no
+password — so putting it on the network would hand the whole machine to anyone
+who can reach port 5900, undoing every other lock here. AgentOS will not do that
+on your behalf. Reach it the way you reach anything else on that machine:
+
+```bash
+ssh -L 5900:127.0.0.1:5900 you@your-machine     # then point a VNC client at localhost:5900
+```
+
+or over the VPN you already use (Tailscale/WireGuard). The panel shows the exact
+tunnel command with a copy button. If you want it exposed directly, configure
+wayvnc's own authentication and run it yourself — that is a deliberate choice,
+not a checkbox here.
+
+It stops when you stop it, and when AgentOS shuts down — an orphaned VNC server
+is an unauthenticated door left open.
+
+| | Host Screen | Remote Desktop | A native VNC client |
+|---|---|---|---|
+| See the host display | a refreshing still | yes, live | yes, live |
+| Click and type in native apps | no | **yes** | yes |
+| Works from a phone | yes | **yes, in the browser** | only with a VNC app |
+| Needs installing on the machine | no | wayvnc + novnc, one click each | wayvnc |
+| Needs installing on the phone | no | **nothing** | a VNC client |
+| How it is protected | AgentOS's passphrase | **AgentOS's passphrase** | your SSH tunnel or VPN |
+| VNC port exposed | n/a | no — loopback only | no — loopback only |
+
+---
+
 ## What the lock actually does
 
 | | |

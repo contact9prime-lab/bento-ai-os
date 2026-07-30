@@ -69,6 +69,7 @@ function createWin(app){
   setMenubarApp(app.title);
   focusWin(w);
   zoomWin(el,app.id,1);
+  if(typeof glassProbe==='function')glassProbe();   // more windows on screen — can this machine still draw them?
   return w;
 }
 function focusWin(w){
@@ -82,6 +83,8 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  // raising a window can bury (or uncover) another one — re-check who is visible
+  applyWindowActivity();
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildPager==='function')buildPager();
   if(typeof buildDock==='function')buildDock();
@@ -108,10 +111,12 @@ function minimizeWin(w){
   // hand focus to the topmost remaining window
   let top=null;WM.wins.forEach(o=>{if(!o.min&&o!==w&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();if(typeof deckAuto==='function')deckAuto();if(typeof buildDock==='function')buildDock()}
+  applyWindowActivity();       // nothing to see — stop this window's periodic work
 }
 function restoreWin(w){
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
+  applyWindowActivity();       // and back to work, refreshing on the way in
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }
@@ -205,11 +210,12 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
-  if(top)focusWin(top);else{setMenubarApp('');updateDockHide()}
+  if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
 }

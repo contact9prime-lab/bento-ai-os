@@ -24,10 +24,13 @@ little-endian, both directions. Events arrive with the high bit of the type set.
 from __future__ import annotations
 
 import asyncio
+import base64
+import contextlib
 import json
 import os
 import socket
 import struct
+import time
 
 MAGIC = b"i3-ipc"
 _HEADER = struct.Struct("<6sII")
@@ -98,6 +101,12 @@ _SHELL_PORT = [0]
 # True while the desktop has been deliberately brought to the front (Ctrl+Space,
 # the Alt-Tab overlay). Read by anchor_shell, which must not undo it.
 SHELL_RAISED = [False]
+# True when the desktop is drawn by the native session host as a layer-shell
+# surface instead of a Chromium window (see agentos/shellhost.py). Then there is
+# no shell WINDOW: stacking is correct by construction, the chrome bands are
+# reserved as exclusive zones, and every anchor/raise/lower below has nothing to
+# do. The page tells us, because only the host injects the bridge that lets it.
+SUI_HOST = [False]
 
 
 def shell_port() -> int:
@@ -216,10 +225,15 @@ class Compositor:
         port = shell_port()
         wins: list[dict] = []
 
-        def walk(node: dict, workspace: str):
+        def walk(node: dict, workspace: str, floating: bool = False):
             if node.get("type") == "workspace":
                 workspace = node.get("name") or workspace
-            for child in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+            # Which ARRAY the child is in is the only thing sway tells us about
+            # floating. It emits no "floating" key on window nodes at all (i3
+            # does, which is where that read came from) — so the old check was
+            # False for every window on every real session.
+            for child, floats in ([(c, floating) for c in (node.get("nodes") or [])]
+                                  + [(c, True) for c in (node.get("floating_nodes") or [])]):
                 # A view (real window) has no child containers of its own.
                 if not child.get("nodes") and not child.get("floating_nodes") and (
                         child.get("pid") or child.get("app_id") or
@@ -237,7 +251,8 @@ class Compositor:
                         "title": title,
                         "workspace": workspace,
                         "focused": bool(child.get("focused")),
-                        "floating": "on" in str(child.get("floating", "")),
+                        # i3's own key first (it does send one), else the array
+                        "floating": "on" in str(child.get("floating", "")) or floats,
                         "fullscreen": bool(child.get("fullscreen_mode")),
                         "minimized": workspace.startswith("__i3_scratch"),
                     }
@@ -245,13 +260,22 @@ class Compositor:
                         row["shell"] = True
                     wins.append(row)
                 else:
-                    walk(child, workspace)
+                    walk(child, workspace, floats)
 
         walk(tree or {}, "")
         return wins
 
     def exec(self, cmd: str) -> None:
-        """Have the COMPOSITOR spawn a process.
+        """Have the COMPOSITOR spawn a process, byte for byte.
+
+        The command is base64'd and decoded by the shell on the far side, because
+        sway parses the rest of an `exec` line with its OWN tokenizer first: `,`
+        and `;` are command separators, and quotes and angle brackets are eaten
+        or rejected outright. Real `.desktop` Exec lines contain all of those —
+        `Exec=chromium --app=data:text/html,<title>x</title>` came back as
+        "Unknown/invalid command '<title>x</title>'" and the app never started.
+        Base64's alphabet is inert to that parser, so what the app receives is
+        exactly what the .desktop file said.
 
         This is how a GUI app gets launched correctly in the AgentOS session:
         the child inherits the compositor's own environment — WAYLAND_DISPLAY,
@@ -259,7 +283,8 @@ class Compositor:
         server started by systemd at login has. Spawning from the server instead
         produces a process that dies the moment it tries to open a window, which
         looks exactly like "it says launching but nothing happens"."""
-        self.command(f"exec {cmd}")
+        blob = base64.b64encode(cmd.encode()).decode()
+        self.command(f"exec sh -c 'echo {blob} | base64 -d | sh'")
 
     def find_by_pid(self, pid: int) -> str:
         """con_id of the window belonging to a process (its whole tree), or ''."""
@@ -294,10 +319,15 @@ class Compositor:
         def walk(node):
             if found[0]:
                 return
-            pid = node.get("pid")
-            if pid and (node.get("app_id") or node.get("window_properties")):
-                cmd = _cmdline(pid)
-                if f"127.0.0.1:{port}" in cmd or "agentos/boot.html" in cmd:
+            props = node.get("window_properties") or {}
+            if node.get("pid") and (node.get("app_id") or props):
+                # the SAME test windows() uses, so the taskbar and the raise/lower
+                # logic can never disagree about which window is the desktop.
+                # It falls back to app_id/class when /proc is unreadable, which is
+                # what kept raise_shell silently doing nothing on those machines.
+                app = node.get("app_id") or props.get("class") or ""
+                title = node.get("name") or props.get("title") or ""
+                if _is_shell_node(node, app, title, port):
                     found[0] = str(node.get("id"))
                     return
             for kid in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
@@ -307,6 +337,10 @@ class Compositor:
         return found[0]
 
     def anchor_shell(self, port: int) -> bool:
+        # Under the session host there is nothing to anchor: the desktop is a
+        # BACKGROUND-layer surface, which is below every window by definition.
+        if SUI_HOST[0]:
+            return True
         # Never fight a deliberate summon. anchor_shell runs on every window
         # event, and it does `floating disable` — which used to drop the shell
         # straight back behind the apps the instant Ctrl+Space raised it.
@@ -324,6 +358,14 @@ class Compositor:
         return True
 
     def focus(self, win_id: str) -> None:
+        # Handing the screen to an app has to LOWER the desktop first. While the
+        # shell is raised it is a floating window the size of the whole output,
+        # and sway paints floating above tiled — so focusing an app without
+        # lowering gives the keyboard to a window nobody can see. That is what
+        # made session mode feel like a browser page that had eaten the screen:
+        # the app really was running, behind the desktop.
+        if SHELL_RAISED[0]:
+            self.raise_shell(False)
         # A minimised window lives in the scratchpad; focusing it has to bring it
         # back first, or the click on its taskbar tile does nothing at all.
         cid = int(win_id)
@@ -332,6 +374,47 @@ class Compositor:
         except CompositorError:
             pass                                  # not minimised — the normal case
         self.command(f"[con_id={cid}] focus")
+
+    def launch_and_focus(self, cmd: str, timeout: float = 15.0,
+                         poll: float = 0.15) -> dict:
+        """Spawn an app through the compositor and hand it the screen.
+
+        `exec` alone was never enough. It returns the instant sway forks, so the
+        desktop said "launched" while the shell was still the full-screen window
+        in front — and a GUI app that takes two seconds to map (anything
+        LibreOffice-sized) appeared behind it, or never appeared at all if it
+        died on startup. Both looked identical to the user: nothing happened.
+
+        So: lower the desktop out of the way, watch the tree for a window that
+        was not there before, and focus it. If nothing maps inside `timeout`,
+        put the desktop back and say so — an app that failed to start must not
+        leave the user staring at an empty screen wondering.
+        """
+        before = {w["id"] for w in self.windows()}
+        self.raise_shell(False)                     # the app is about to own the screen
+        self.exec(cmd)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            time.sleep(poll)
+            try:
+                fresh = [w for w in self.windows() if w["id"] not in before]
+            except CompositorError:
+                continue
+            if fresh:
+                win = fresh[0]
+                with contextlib.suppress(CompositorError):
+                    self.command(f"[con_id={int(win['id'])}] focus")
+                return {"ok": True, "window": win["id"], "title": win.get("title", "")}
+        # Nothing mapped in time — give the desktop back rather than stranding the
+        # user on a blank screen. If the app was merely slow and turns up later,
+        # it still ends in front: sway focuses a newly mapped window, the server's
+        # event pump clears SHELL_RAISED on that focus, and the following window
+        # event re-anchors the shell underneath it.
+        with contextlib.suppress(CompositorError):
+            self.raise_shell(True)
+        return {"ok": False, "window": "",
+                "reason": "no window appeared — the app may have failed to start "
+                          "(see the Logs app), or it is still loading"}
 
     def focus_shell(self, port: int = 0) -> bool:
         """Put the keyboard back on the AgentOS desktop.
@@ -362,6 +445,9 @@ class Compositor:
         that outranks floating, so summoning fullscreens the shell and releasing
         puts it straight back to being the layer everything else sits on.
         """
+        # The session host changes its own layer, atomically, from the page.
+        if SUI_HOST[0]:
+            return True
         cid = self.find_shell(port or shell_port())
         if not cid:
             return False
@@ -397,11 +483,27 @@ class Compositor:
         self.command(f"[con_id={cid}] focus")
 
     def work_area(self, top: int = 34) -> tuple[int, int, int, int]:
-        """The screen minus the AgentOS menu bar — where a maximized window goes.
+        """The usable screen — where a maximized window goes.
 
         Maximize and full screen are different things and people expect both: a
-        maximized window fills the desk but leaves the menu bar reachable; a full
-        screen one covers everything."""
+        maximized window fills the desk but leaves the menu bar and dock
+        reachable; a full screen one covers everything.
+
+        The compositor already knows the answer when the session host is running:
+        the AgentOS menu bar and dock are declared as layer-shell exclusive
+        zones, and sway subtracts those from the WORKSPACE rect. Using it means
+        maximize lands exactly between our own chrome, for whatever height the
+        current theme and device happen to give it — instead of the fixed 34px
+        guess, which was wrong for every theme that resized the menu bar and knew
+        nothing about the dock at all.
+
+        `top` stays as the fallback for the Chromium session, where there are no
+        exclusive zones to read.
+        """
+        ws = [w for w in (self._request(GET_WORKSPACES) or []) if w.get("focused")]
+        rect = (ws[0].get("rect") if ws else None) or {}
+        if rect.get("width") and rect.get("height"):
+            return int(rect["x"]), int(rect["y"]), int(rect["width"]), int(rect["height"])
         outs = [o for o in (self._request(GET_OUTPUTS) or []) if o.get("active")]
         focused = next((o for o in outs if o.get("focused")), None) or (outs[0] if outs else None)
         r = (focused or {}).get("rect") or {"x": 0, "y": 0, "width": 1920, "height": 1080}
@@ -422,6 +524,44 @@ class Compositor:
         nw, nh = int(w * 0.62), int(h * 0.68)
         self.command(f"[con_id={cid}] resize set width {nw} px height {nh} px")
         self.command(f"[con_id={cid}] move absolute position {x + (w - nw) // 2} {y + (h - nh) // 3}")
+
+    #: Snap zones, as fractions of the usable area: (x, y, w, h).
+    SNAP_ZONES = {
+        "left":   (0.0, 0.0, 0.5, 1.0),
+        "right":  (0.5, 0.0, 0.5, 1.0),
+        "top":    (0.0, 0.0, 1.0, 0.5),
+        "bottom": (0.0, 0.5, 1.0, 0.5),
+        "tl":     (0.0, 0.0, 0.5, 0.5),
+        "tr":     (0.5, 0.0, 0.5, 0.5),
+        "bl":     (0.0, 0.5, 0.5, 0.5),
+        "br":     (0.5, 0.5, 0.5, 0.5),
+        "center": (0.18, 0.12, 0.64, 0.76),
+        "full":   (0.0, 0.0, 1.0, 1.0),
+    }
+
+    def snap(self, win_id: str, zone: str) -> None:
+        """Put a native window in half or a quarter of the screen.
+
+        AgentOS's own windows have snapped to screen edges since the beginning;
+        native ones could only be moved and resized by hand, which made them feel
+        like second-class windows on their own desktop. The geometry comes from
+        work_area(), so a snapped window lands between the menu bar and the dock
+        rather than underneath them.
+        """
+        frac = self.SNAP_ZONES.get(zone)
+        if not frac:
+            raise CompositorError(
+                f"unknown snap zone '{zone}' (try: {', '.join(self.SNAP_ZONES)})")
+        x, y, w, h = self.work_area()
+        fx, fy, fw, fh = frac
+        nx, ny = int(x + w * fx), int(y + h * fy)
+        nw, nh = int(w * fw), int(h * fh)
+        cid = int(win_id)
+        # One chained command: sent separately, sway acks the float before the
+        # resize lands and the window flashes at its old size on the way.
+        self.command(f"[con_id={cid}] floating enable, "
+                     f"resize set width {nw} px height {nh} px, "
+                     f"move absolute position {nx} {ny}")
 
     def set_fullscreen(self, win_id: str, on: bool | None = None) -> None:
         arg = "toggle" if on is None else ("enable" if on else "disable")

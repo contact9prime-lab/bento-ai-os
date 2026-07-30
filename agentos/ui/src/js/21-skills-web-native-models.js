@@ -124,7 +124,11 @@ function renderBrowser(body,w){
 
 /* ================= native applications launcher ================= */
 async function renderNativeApps(body,w){
-  body.innerHTML=`<div class="apptop"><input id="na-q" placeholder="Search installed apps…" style="flex:1"><span class="mut" id="na-n"></span></div>
+  body.innerHTML=`<div class="apptop">
+      <input id="na-q" placeholder="Search installed apps…" style="flex:1">
+      <button class="endbtn" id="na-get">＋ Get apps…</button>
+      <span class="mut" id="na-n"></span></div>
+    <div id="na-store" style="display:none"></div>
     <div id="na-grid" style="flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;align-content:start"></div>`;
   let apps=[];try{apps=(await (await fetch('/api/native/apps')).json()).apps||[]}catch(e){}
   const grid=$('#na-grid');
@@ -138,11 +142,133 @@ async function renderNativeApps(body,w){
   };
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
+  $('#na-get').onclick=()=>naStore();
 }
+
+/* ---- getting a NEW app ----------------------------------------------------
+   A desktop you cannot install software on is a demo. This asks the machine's
+   own package manager (appstream / flatpak / apt) — AgentOS ships and mirrors
+   nothing — and shows exactly which command will run before it runs. */
+async function naStore(open){
+  const box=$('#na-store');if(!box)return;
+  const showing=box.style.display!=='none';
+  if(open===undefined&&showing){box.style.display='none';return}
+  box.style.display='';
+  box.innerHTML=`<div class="provbox" style="margin:12px 12px 0">
+      <div class="ptitle">Get applications</div>
+      <p class="mut" style="margin-top:6px">Installs with this machine's own package
+        manager. Nothing is downloaded by AgentOS, and you see the command first.</p>
+      <div class="row" style="margin-top:8px">
+        <input id="nas-q" placeholder="e.g. gimp, inkscape, vlc, libreoffice" style="flex:1">
+        <button class="pact" style="flex:0 0 90px" id="nas-go">Search</button></div>
+      <div id="nas-res" style="margin-top:10px"></div>
+      <p class="mut" id="nas-back" style="margin-top:8px"></p>
+    </div>`;
+  const go=async()=>{
+    const q=$('#nas-q').value.trim();
+    const res=$('#nas-res');
+    if(q.length<2){res.innerHTML='<p class="mut">type at least two characters</p>';return}
+    res.innerHTML='<p class="mut">searching the catalogue…</p>';
+    let d={};
+    try{d=await (await fetch('/api/native/store?q='+encodeURIComponent(q))).json()}
+    catch(e){res.innerHTML='<p class="mut">search failed</p>';return}
+    const b=d.backends||{};
+    $('#nas-back').textContent='available here: '+
+      (['appstream','flatpak','apt','dnf','pacman'].filter(k=>b[k]).join(', ')||'no package manager');
+    const rows=d.results||[];
+    if(!rows.length){res.innerHTML=`<p class="mut">${esc(d.message||'nothing matched')}</p>`;return}
+    res.innerHTML=rows.map(r=>`<div class="item">
+        <div class="grow"><b>${esc(r.name)}</b>
+          <span class="mut" style="font-size:11px">· ${esc(r.backend)}${r.installed?' · installed':''}</span>
+          <div class="sub">${esc((r.summary||'').slice(0,140))}</div></div>
+        ${r.installed
+          ? `<button class="endbtn" data-act="remove" data-id="${esc(r.id)}" data-b="${esc(r.backend)}">Remove</button>`
+          : `<button class="pact" style="flex:0 0 84px" data-act="install" data-id="${esc(r.id)}" data-b="${esc(r.backend)}">Install</button>`}
+      </div>`).join('');
+    res.querySelectorAll('[data-act]').forEach(btn=>btn.onclick=()=>naStoreAct(btn,go));
+  };
+  $('#nas-go').onclick=go;
+  $('#nas-q').addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+  $('#nas-q').focus();
+}
+async function naStoreAct(btn,refresh){
+  const act=btn.dataset.act, id=btn.dataset.id, backend=btn.dataset.b;
+  const verb=act==='install'?'Install':'Remove';
+  // flatpak --user needs no password; everything else changes the whole machine,
+  // so say so before asking for it.
+  const note=backend==='flatpak'
+    ? 'Installs into your home directory only — no password needed.'
+    : 'This changes software for every user on the machine, so it needs administrator access.';
+  if(!await osConfirm(`${verb} ${id}?`,note,{confirmText:verb,danger:act==='remove'}))return;
+  btn.disabled=true;btn.textContent=act==='install'?'installing…':'removing…';
+  let d={};
+  try{
+    d=await (await fetch('/api/native/store',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:act,id,backend})})).json();
+  }catch(e){d={ok:false,message:String(e)}}
+  btn.disabled=false;btn.textContent=verb;
+  if(d.ok){toast('✓ '+(d.message||id));refreshApp('apps');if(refresh)refresh();return}
+  if(d.needs_terminal&&d.command){
+    // No silent failure and no dead end: hand over the exact line.
+    await osConfirm('Administrator access needed',
+      (d.message||'')+'\n\n'+d.command,{confirmText:'Copy command'});
+    try{await navigator.clipboard.writeText(d.command);toast('command copied')}catch(e){}
+    return;
+  }
+  toast(d.message||'could not '+act);
+}
+/* Launching a host app is not instant — in session mode the server waits for the
+   window to actually map before answering, because "launched" used to be true
+   while nothing was on screen. So say "starting…" up front, and replace it with
+   the truth when the answer comes.
+
+   And when the browser is somewhere else, say WHERE it opened. A native app is a
+   window the compositor draws on the host's physical display; it is not part of
+   this page and never travels over HTTP. From a phone, launching one used to
+   look broken — a taskbar entry and no app — when in fact it had started
+   perfectly well, in another room. */
+function remoteClient(){return typeof PLATFORM!=='undefined'&&!!PLATFORM.remote_client}
+function hostName(){return (typeof PLATFORM!=='undefined'&&PLATFORM.hostname)||'the host'}
+function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
+
 async function launchNative(id,name){
-  const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-  const d=await r.json();
-  toast(d.ok?'↗ launched '+(name||id):'launch failed: '+(d.message||''));
+  const label=name||id;
+  toast('↗ starting '+label+'…');
+  // The launch now WAITS for the window to map instead of returning instantly and
+  // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —
+  // an app that takes four seconds should look like it is coming, not like the
+  // click missed.
+  const tiles=[...document.querySelectorAll(`[data-nat="${CSS.escape(id)}"]`)];
+  tiles.forEach(t=>t.classList.add('launching'));
+  try{
+    const r=await fetch('/api/native/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    if(d.ok){
+      if(typeof updateNativeWindows==='function')updateNativeWindows();
+      if(nativeRunsElsewhere())hostAppOpenedCard(label);
+      else toast('✓ '+label);
+    }else{
+      // a failure here means the app never opened a window — that is worth more
+      // than a toast the user cannot read twice
+      osAlert(label+' did not start', String(d.message||'No window appeared.'));
+    }
+    return d;
+  }catch(e){toast(label+': '+e.message)}
+  finally{tiles.forEach(t=>t.classList.remove('launching'))}
+}
+/* The card a remote client gets instead of a lie. */
+function hostAppOpenedCard(label){
+  if(typeof omniCard!=='function')return toast(label+' opened on '+hostName());
+  const c=omniCard(label+' — opened on '+hostName());
+  c.feed.innerHTML=`<p style="margin:0 0 8px;line-height:1.55">
+    It is running on that machine's screen. Native apps are drawn by the
+    compositor on the host display — they are not part of this page, so they
+    cannot appear here.</p>
+    <button class="pact hs-open">View the host screen</button>`;
+  // acting on the card dismisses it: on a phone the cards sit above the windows,
+  // so leaving it up would cover the very screen it just offered to show
+  c.feed.querySelector('.hs-open').onclick=()=>{c.close();openApp('hostscreen')};
 }
 
 /* ================= model manager ================= */

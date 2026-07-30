@@ -302,6 +302,7 @@ function handle(ev){
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
+    case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
     case 'automations': loadAutomations().then(()=>refreshApp('automations')); break;
     // the server never runs an automation itself — it says "run this" and the
@@ -322,13 +323,16 @@ function handle(ev){
       jarvisOff();
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
     case 'wm':{ // compositor event (AgentOS session) — replaces window polling
-      if(NATIVE_POLL){clearInterval(NATIVE_POLL);NATIVE_POLL=null}
+      stopNativePoll();
       clearTimeout(wmDebounce);
       wmDebounce=setTimeout(()=>{updateNativeWindows();
         if(ev.event==='output'||ev.event==='workspace')refreshApp('syssettings')},120);
       break;}
     case 'notification':{ // a native app's notification, via our own daemon
       toast((ev.app?ev.app+': ':'')+ev.summary); updateBell(); break;}
+    case 'native_apps':      // something was installed or removed on the machine
+      if(typeof loadNativeApps==='function')loadNativeApps();
+      refreshApp('apps'); break;
     case 'notification_center': updateBell(); break;
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);

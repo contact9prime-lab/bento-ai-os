@@ -1,0 +1,35 @@
+/* ================= glass quality =================
+   Loads last so it out-orders the themes, which inject their own <style>.
+   See 04d-glass.js for why this knob exists and what picks a level.
+
+   Specificity, not order, is what beats a theme: a theme's `.win{...!important}`
+   is one class, `body.glass-off .win{...!important}` is two — so these win
+   wherever they need to, including over an AI-designed theme nobody has written
+   yet. */
+
+/* ---- reduced: only the focused window is glass ----
+   The window you are working in keeps the full material. The ones behind it go
+   solid — and they must go SOLID, not merely un-blurred: a glass theme's window
+   is ~66% opaque and relies on the blur to turn what is behind it into a wash.
+   Take the blur away and leave the transparency and you get four windows of text
+   legible through each other, which is worse than either honest option.
+   Focused-is-glass / unfocused-is-solid is a real convention (macOS does the
+   same thing with vibrancy), and it makes the cost flat: one blurring surface,
+   however many windows are open. */
+body.glass-lite{--glass-blur:blur(12px) saturate(1.4)}
+body.glass-lite .win:not(.active){
+  background:var(--bg)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.glass-lite .win:not(.active) .ttl{backdrop-filter:none!important}
+body.glass-lite #expose{backdrop-filter:blur(4px)}
+
+/* ---- off: no blur anywhere ----
+   Tints go solid in the same move: an unblurred 50%-transparent panel over a
+   photographic wallpaper is not a cheaper design, it is an unreadable one. */
+body.glass-off{--glass-tint:var(--bg2);--glass:var(--bg2);--glass-blur:none}
+body.glass-off *,body.glass-off *::before,body.glass-off *::after{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.glass-off .win{background:var(--bg)!important}
+
+/* the picker in Themes → Effects */
+.gq-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.gq-row .endbtn.on{border-color:var(--acc);color:var(--txt)}

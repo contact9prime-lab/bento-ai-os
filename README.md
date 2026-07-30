@@ -47,6 +47,43 @@ dock spans the bottom edge, popovers become sheets. Turn on **Remote access** an
 your phone over your network, behind a passphrase; *Add to Home Screen* makes it a full-screen
 app. [Remote access →](docs/remote-access.md) · [Responsive layout →](docs/desktop.md#phone-tablet-desktop)
 
+### It can *be* the desktop, not just live on one
+
+![A native Wayland application above the AgentOS desktop, with the AgentOS menu bar reserved above it and the dock reserved below it](docs/screenshots/session-native-window.png)
+
+Log in and get AgentOS as your Linux session. The desktop is drawn as a **Wayland layer surface on
+the background layer**, so native application windows are above it in normal stacking order — not
+because anything gets raised or lowered, but because that is what "background" means. The menu bar
+and dock sit in bands **reserved with the compositor**, the same mechanism a GNOME or KDE panel
+uses, so a full-screen app stops at their edges instead of swallowing them.
+
+![Two native terminals snapped to the left and right halves of the AgentOS desktop](docs/screenshots/session-snapped.png)
+
+Full window management for native apps: snap to halves and quarters, tile, float, layouts,
+keyboard resize, workspaces, minimise, and an Alt-Tab switcher — with the AgentOS taskbar and menu
+bar tracking whichever app has focus. [The session UI →](docs/session-ui.md)
+
+### Install applications, from AgentOS
+
+![The Applications app searching the machine's package catalogue, with install buttons per result](docs/screenshots/app-store.png)
+
+A desktop you cannot install software on is a demo. *Applications → Get apps…* searches the
+machine's own catalogue — AppStream, Flatpak or apt — and shows you the exact command before it
+runs. Flatpak is preferred where it exists because a per-user install needs no password at all.
+AgentOS mirrors nothing and bundles nothing; it asks the package manager you already have.
+
+### Your real screen, on your phone, in the browser
+
+![The AgentOS Remote Desktop open in a phone browser, showing the machine's real screen with a native app on it and a toolbar of keys a phone keyboard lacks](docs/screenshots/phone-remote-desktop.png)
+
+**Remote access** sends you the AgentOS shell, which is HTML and travels perfectly — but a native
+app is pixels on the machine's own display and was never part of the page. **Remote Desktop**
+closes that: AgentOS relays the screen over its *own* authenticated connection, so you get the
+real desktop, clickable, with no VNC app to install on the phone.
+
+The shape is the point — the VNC server stays on `127.0.0.1` and never goes near the network; what
+protects it is the AgentOS passphrase you already use. [Remote access →](docs/remote-access.md)
+
 ### Automations & hot corners
 
 ![The Automations app with saved routines and the hot-corner map, and the step builder](docs/screenshots/automations.png)
@@ -155,6 +192,12 @@ uv run agentos app          # opens in its own window (chromium --app, or pywebv
 | `uv run agentos ask "…"` | one-shot agent run in the terminal |
 | `uv run agentos ask --full "…"` | …with no approval prompts (full autonomy) |
 | `uv run agentos ask --model ollama/qwen3.5:9b "…"` | …with a specific model |
+| `uv run agentos tui` | the whole OS in a terminal (**TUI**) — for a server or a headless Pi |
+| `sudo apt install …` then `agentos install-session` | add AgentOS to the login screen as your Linux desktop (**SUI**) — [details](docs/session-ui.md) |
+
+The same program has three faces, and every feature is built for all three: a **GUI** window on
+another desktop, a **TUI** for machines with no screen, and the **SUI** where AgentOS *is* the
+Linux session.
 
 ---
 
@@ -166,6 +209,12 @@ uv run agentos app          # opens in its own window (chromium --app, or pywebv
 
 Optional, unlock extra features when present:
 
+- **The Linux session (SUI)** — `sway` and friends for the compositor engine, plus `python3-gi`,
+  `gir1.2-gtklayershell-0.1` and `gir1.2-webkit2-4.1` for the native desktop surface. AgentOS
+  bundles none of them: the installer offers them, `agentos install-session` prints the exact line,
+  and System Settings → Components lists them with their licences. Without them the session still
+  runs, drawing the desktop in a Chromium window. [Details →](docs/session-ui.md)
+- **wayvnc + novnc** — Remote Desktop from a phone browser, relayed through AgentOS on loopback.
 - **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent & terminal to one directory (Linux).
 - **Node/npx** and/or **uvx** — to run **MCP servers** (Playwright, filesystem, git, …).
 - **git** — to install **skills** from repositories.

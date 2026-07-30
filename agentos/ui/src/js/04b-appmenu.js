@@ -118,9 +118,17 @@ function menuNative(w){
   return [[name,app],['Window',win],['Help',help]];
 }
 /* Bring the AgentOS desktop in front of the native windows (or send it back).
-   In session mode the shell is the tiled base layer and sway paints floating
-   windows above tiled ones, so this is what "come to the front" has to mean. */
+
+   In the session UI this is a one-call layer change on our own surface — the
+   desktop lives on the BACKGROUND layer, coming forward means OVERLAY, and
+   nothing else on the screen is touched.
+
+   The HTTP path below is for the older Chromium-rendered session, where the
+   desktop is a WINDOW and "in front" has to be faked by floating it at the size
+   of the output and lowering it again. That is the trade the layer-shell host
+   exists to remove; it stays for machines without WebKitGTK. */
 function raiseShell(on){
+  if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
   return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});

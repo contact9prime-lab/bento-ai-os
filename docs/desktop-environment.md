@@ -105,7 +105,7 @@ Test autologin in a VM before using it on a machine you depend on.
 | Lock & idle | swaylock, themed with your wallpaper; swayidle locks after `desktop.idle_lock_secs` (default 600), blanks outputs after `desktop.idle_screen_off_secs` (900), locks before sleep, and answers the ⏻ menu's Lock |
 | Keyboard & mouse | layout and variant, key repeat delay/rate, tap-to-click, natural scrolling, disable-while-typing, pointer speed — **System Settings → Keyboard & Mouse**, applied live and kept for the next login |
 | Night light | warms the screen between hours you choose (**Displays**), via the optional `wlsunset` component |
-| Launching native apps | through the compositor, so the app inherits the session's own environment. A server started by systemd at login has no `WAYLAND_DISPLAY` of its own; spawning from there produces a process that dies the moment it opens a window |
+| Launching native apps | through the compositor, so the app inherits the session's own environment. A server started by systemd at login has no `WAYLAND_DISPLAY` of its own; spawning from there produces a process that dies the moment it opens a window. The desktop then **steps back and waits for the app's window to map**, and focuses it — sway paints floating above tiled, so a launch that did not lower the shell left the app running behind a screen-filling desktop, which looked exactly like nothing happening. If no window appears, the desktop comes back and says so instead of leaving you on an empty screen |
 | Removable media | a USB stick or SD card mounts by itself, via the optional `udiskie` component |
 | Media keys | play/pause, next, previous drive whatever is playing (MPRIS), via the optional `playerctl` component |
 | Portals | screen sharing and native file dialogs, via `xdg-desktop-portal` + `-wlr`; sway exports the session environment to systemd and D-Bus so activated portals can actually open a window |
@@ -122,7 +122,37 @@ are not faked.
 
 Ctrl+Space reaches the desktop from anywhere. Native windows float above the
 shell — sway always paints floating above tiled — so summoning brings the whole
-desktop forward and releasing puts it back underneath.
+desktop forward and releasing puts it back underneath. Anything that hands the
+screen to an app — launching it, clicking its taskbar tile, Alt-Tab — lowers the
+desktop first, and the compositor's own focus events lower it too, so the two can
+never disagree about who is in front.
+
+### Seeing it from somewhere else
+
+The shell is HTML and travels; native windows are compositor pixels and do not.
+The **Host Screen** app closes that gap with a refreshing still of the real
+display, so a phone can at least see what launched. See
+[Remote access → What travels, and what doesn't](remote-access.md#what-travels-and-what-doesnt).
+
+### It stops behaving like a browser
+
+The session is drawn by Chromium, but in DE and kiosk mode it is the desktop, so
+the browser's own affordances are taken away:
+
+| | Why |
+|---|---|
+| **Ctrl+W** | closed the Chromium window — the whole desktop, not an app window. It is bound to "close the active window"; the guard catches the cases that binding stands aside for (no window focused, or inside the Terminal, where Ctrl+W is delete-word and xterm keeps it) |
+| **Ctrl+N / Ctrl+T / Ctrl+Shift+N** | opened a browser on top of the desktop |
+| **F5 / Ctrl+R** | reloaded the shell, dropping every open window. **Ctrl+Shift+R still does**, deliberately — it is the recovery move when the desktop itself is wedged |
+| **Right-click** | showed "Back / Reload / Inspect" anywhere the desktop had not put a menu. Text fields keep the platform menu, so you can still paste |
+| **Ctrl +/-/0, Ctrl+wheel** | browser zoom, which desynchronises every pixel the window manager measures |
+| **Alt+←/→**, dropped files | navigated away from the desktop entirely |
+| **Ctrl+P / Ctrl+S / Ctrl+O** | print, save-page-as and open-file dialogs |
+
+This is a backstop, not a keymap: it runs after every AgentOS and app handler and
+only acts on keys that would otherwise reach Chromium. **In hosted mode none of
+it applies** — there the browser is yours, and taking Ctrl+W out of your own tab
+would be hostile.
 
 Everything in that table is driven by capabilities: on a Mac, or hosted on
 GNOME, the same UI renders and the DE-only controls grey out with the reason.
@@ -170,6 +200,46 @@ bundled), `wl-clipboard` (GPL-3), `ddcutil` (GPL-2), `power-profiles-daemon`
 night light), `playerctl` (LGPL-3, media keys), `cups` + `system-config-printer`
 (printing), and the `xdg-desktop-portal` trio (screen sharing and native file
 dialogs). A greyed-out control whose fix is a component links straight to it.
+
+### Window controls on native apps
+
+Native windows are floating and carry a **sway title bar**: drag it to move,
+middle-click it to close, right-click it to minimise (to the scratchpad — still
+listed in the taskbar). **Super+drag** moves from anywhere in the window,
+**Super+right-drag** resizes. **Super+D** shows the desktop, **Super+H**
+minimises, **Super+F** / F11 full-screens, **Super+Q** closes. The taskbar tile
+and the menu bar's Window menu do the same things over compositor IPC, so they
+work from a phone too.
+
+An app's *own* minimise button cannot be made to work by anyone: sway does not
+implement `xdg_toplevel.set_minimized`, so the request never arrives. That is why
+minimise lives on our title bar, the taskbar and Super+H instead.
+
+> **If none of that seems to be true on your machine, your compositor config is
+> from an older AgentOS.** `~/.config/agentos/sway.conf` is generated, and until
+> recently only `install-session` ever wrote it — so window rules added after you
+> installed the session never reached the disk. AgentOS now compares the file
+> with what this build would generate, rewrites it and reloads sway live at
+> startup (the shell is started with `exec`, not `exec_always`, so reloading does
+> not restart your desktop). `agentos doctor` reports it; `agentos doctor --fix`
+> applies it. Your own overrides in the drop-in directory are never touched.
+
+## Checking it yourself
+
+`agentos doctor`, run inside the session, verifies the three things that decide
+whether launching an app actually works — all of them properties of a live
+compositor that no unit test can see:
+
+```
+✓ the desktop window is identifiable (con_id 6) — raise/lower can work
+✓ the desktop steps back on demand (apps can come to the front)
+✓ the compositor accepts launch commands verbatim (.desktop Exec lines are safe)
+```
+
+If the first fails, the desktop cannot be lowered and every app will open behind
+a screen-filling window — which looks exactly like nothing happening. If the
+third fails, `.desktop` Exec lines containing `,` `;` `<` `>` or quotes are being
+mangled by sway's own command parser before they reach the shell.
 
 ## Troubleshooting
 

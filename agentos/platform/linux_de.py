@@ -70,10 +70,22 @@ class LinuxDE(LinuxHosted):
                     cmd = f"gio launch '{path}'"
             if cmd:
                 try:
-                    comp.Compositor().exec(cmd)   # raises if sway refuses
-                    return True, "launched"
-                except Exception:
-                    pass          # sway said no — fall through to the plain spawn
+                    # launch_and_focus, not exec: the desktop has to get out of
+                    # the way and the app has to actually appear before we call
+                    # this a success. `exec` returned the instant sway forked,
+                    # which is how "launched" could be true while nothing was on
+                    # screen — see compositor.launch_and_focus.
+                    res = comp.Compositor().launch_and_focus(cmd)
+                    if res.get("ok"):
+                        return True, "launched"
+                    return False, res.get("reason") or "the app did not open a window"
+                except Exception as e:
+                    # Do NOT fall through to a plain spawn here. This process has
+                    # no WAYLAND_DISPLAY of its own (that is the entire reason the
+                    # compositor path exists), so the fallback would fork a child
+                    # that dies the instant it opens a window — and report success.
+                    # A visible error beats a silent guaranteed failure.
+                    return False, f"the compositor refused to launch it: {e}"
         return super().launch_app(app_id)
 
 
@@ -209,6 +221,9 @@ class LinuxDE(LinuxHosted):
 
     def fullscreen_window(self, win_id: str, on: bool | None = None) -> tuple[bool, str]:
         return self._win(lambda i: self._comp.set_fullscreen(i, on), win_id)
+
+    def snap_window(self, win_id: str, zone: str) -> tuple[bool, str]:
+        return self._win(lambda i: self._comp.snap(i, zone), win_id)
 
     def goto_desktop(self, n: int) -> tuple[bool, str]:
         try:

@@ -32,6 +32,24 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Copy and paste between AgentOS and native Wayland apps.",
         "detect": lambda: bool(shutil.which("wl-copy")),
     },
+    "wayvnc": {
+        "package": "wayvnc", "method": "apt", "licence": "ISC",
+        "title": "Interactive remote control",
+        "unlocks": "Use native apps from another device — a real VNC server for "
+                   "the AgentOS compositor, streaming the screen and sending your "
+                   "clicks and keys back. AgentOS starts it on loopback only, "
+                   "because wayvnc ships with no password.",
+        "detect": lambda: bool(shutil.which("wayvnc")),
+    },
+    "novnc": {
+        "package": "novnc", "method": "apt", "licence": "MPL-2.0",
+        "title": "Remote Desktop in a browser",
+        "unlocks": "Use the real screen — native apps included — from a phone or "
+                   "any browser, with no VNC app to install. AgentOS relays it "
+                   "over its own authenticated connection, so the VNC port stays "
+                   "on 127.0.0.1 and nothing new is exposed to the network.",
+        "detect": lambda: _novnc_present(),
+    },
     "ddcutil": {
         "package": "ddcutil", "method": "apt", "licence": "GPL-2.0+",
         "title": "External monitor brightness",
@@ -51,6 +69,18 @@ CATALOG: dict[str, dict] = {
         "title": "Power profiles",
         "unlocks": "Switch between power-saver, balanced and performance modes.",
         "detect": lambda: bool(shutil.which("powerprofilesctl")),
+    },
+    "session-ui": {
+        "package": ("python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1 "
+                    "gir1.2-webkit2-4.1"),
+        "method": "apt", "licence": "MIT (gtk-layer-shell), LGPL-2.1+ (GTK, WebKitGTK)",
+        "title": "Native desktop surface (session UI)",
+        "unlocks": "Draws the AgentOS desktop as a real Wayland layer-shell "
+                   "surface instead of a browser window, so application windows "
+                   "stack above it normally and the menu bar and dock cannot be "
+                   "covered. Without it the session falls back to a Chromium "
+                   "window, which works but has to fake the stacking order.",
+        "detect": lambda: _sui_available(),
     },
     "wmctrl": {
         "package": "wmctrl", "method": "apt", "licence": "GPL-2.0+",
@@ -145,6 +175,16 @@ def _plymouth_theme_installed() -> bool:
 def _plymouth_script() -> str:
     from pathlib import Path
     return str(Path(__file__).resolve().parent / "de_assets" / "plymouth" / "install.sh")
+
+
+def _novnc_present() -> bool:
+    from . import remotedesktop
+    return bool(remotedesktop.novnc_dir())
+
+
+def _sui_available() -> bool:
+    from . import shellhost
+    return shellhost.available()
 
 
 def _has_renderer() -> bool:

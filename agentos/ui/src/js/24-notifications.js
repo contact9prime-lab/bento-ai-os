@@ -112,13 +112,41 @@ function natIcon(w,px){
 function natName(w){const a=natApp(w.app);return (a&&a.name)||w.app||w.title||'window'}
 let NATIVE_POLL=null,wmDebounce=null,NATWINS=[];
 /* The compositor pushes window events, but focus moving BETWEEN two native
-   windows is easy to miss; a short poll keeps the menu bar honest. */
+   windows is easy to miss; a short poll keeps the menu bar honest.
+
+   It backs off while nothing changes. A fixed 1.2s poll is the one piece of
+   background work that survives everything else going to sleep, and on a Pi it
+   is a request, a compositor IPC round trip and a taskbar repaint every 1.2s
+   forever to learn that nothing happened. Any actual change — or any 'wm' event
+   — snaps it straight back to responsive. */
+const NAT_MIN=1200, NAT_MAX=8000;
+let NAT_EVERY=NAT_MIN, NAT_SIG=null;
+function startNativePoll(){
+  stopNativePoll();
+  const tick=async()=>{
+    if(NATIVE_POLL===null)return;               // stopped while we were away
+    if(!document.hidden)await updateNativeWindows();
+    if(NATIVE_POLL!==null)NATIVE_POLL=setTimeout(tick,NAT_EVERY);
+  };
+  NATIVE_POLL=setTimeout(tick,NAT_EVERY);
+}
+function stopNativePoll(){clearTimeout(NATIVE_POLL);NATIVE_POLL=null}
+function natPollNow(){NAT_EVERY=NAT_MIN}      // something happened — poll like you mean it
 async function updateNativeWindows(){
   const box=$('#tbnative');if(!box)return;
   let d;try{d=await (await fetch('/api/windows')).json()}catch(e){return}
-  if(!d.available){box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';NATWINS=[];return}
+  if(!d.available){
+    box.classList.remove('has');box.innerHTML='';box._reason=d.reason||'';NATWINS=[];
+    // No compositor on this machine — there is nothing for the fallback poll to
+    // find, so stop asking. If a session starts later its 'wm' events drive the
+    // taskbar directly, which is the path this poll was only ever standing in for.
+    stopNativePoll();
+    return;
+  }
   NATWINS=d.windows||[];
-  paintNativeTiles();
+  const sig=NATWINS.map(x=>[x.id,x.focused,x.minimized,x.title].join('')).join('');
+  if(sig===NAT_SIG)NAT_EVERY=Math.min(NAT_MAX,Math.round(NAT_EVERY*1.5));
+  else{NAT_SIG=sig;NAT_EVERY=NAT_MIN;paintNativeTiles()}   // repaint only when something actually moved
 }
 function paintNativeTiles(){
   const box=$('#tbnative');if(!box)return;
@@ -189,6 +217,7 @@ const NAT_OPTIMISTIC={
   fullscreen:(w,x)=>({fullscreen:x&&x.fullscreen!==undefined?!!x.fullscreen:!w.fullscreen}),
 };
 function natWin(action,id,extra){
+  natPollNow();                              // you just moved a window — watch closely again
   const w=NATWINS.find(x=>String(x.id)===String(id));
   if(w&&NAT_OPTIMISTIC[action]){
     const patch=NAT_OPTIMISTIC[action](w,extra);
@@ -211,6 +240,10 @@ async function showDesktop(){
 }
 /* Everything you can do to a native window, in one menu — the same verbs an
    AgentOS window offers, so there is no second-class kind of window here. */
+//: the snap zones offered in the Window menu, in reading order
+const NAT_SNAP=[['left','left half'],['right','right half'],
+                ['tl','top left'],['tr','top right'],['bl','bottom left'],['br','bottom right'],
+                ['center','centred'],['full','the whole desk']];
 function natWinItems(w){
   const arrange=cap('windows.arrange').available;
   const items=[
@@ -224,6 +257,11 @@ function natWinItems(w){
   ];
   if(arrange){
     items.push(null,{label:w.floating?'Tile':'Float',fn:()=>natWin('floating',w.id,{floating:!w.floating})});
+    // Snapping a native window to half or a quarter of the screen. AgentOS's own
+    // windows have done this from the start; without it, native windows were the
+    // only ones on the desktop you could not put side by side.
+    NAT_SNAP.forEach(([zone,label])=>items.push(
+      {label:'Snap '+label,fn:()=>natWin('snap',w.id,{zone})}));
     for(let n=1;n<=4;n++)items.push({label:'Move to desktop '+n,fn:()=>natWin('move',w.id,{workspace:String(n)})});
   }
   items.push(null,{label:'Show the desktop',fn:showDesktop},

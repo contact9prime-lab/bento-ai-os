@@ -7,6 +7,7 @@ smoke test against real sway is `agentos doctor` + the nested-session check.
 """
 
 import asyncio
+import copy
 import json
 import socket
 import struct
@@ -35,8 +36,10 @@ TREE = {
                 ], "floating_nodes": []},
             ],
             "floating_nodes": [
+                # No "floating" key: sway does not send one. Being in
+                # floating_nodes IS the fact, and that is what windows() reads.
                 {"id": 14, "pid": 5002, "app_id": "pavucontrol", "name": "Volume Control",
-                 "focused": False, "floating": "user_on", "fullscreen_mode": 0,
+                 "focused": False, "fullscreen_mode": 0,
                  "nodes": [], "floating_nodes": []},
             ],
         }, {
@@ -72,6 +75,11 @@ class FakeSway:
         self.path = str(sock_path)
         self.commands: list[str] = []
         self.fail_commands = fail_commands
+        # a mutable copy, so a test can make the tree change under the client —
+        # which is the whole point when the behaviour under test is "wait for a
+        # window that was not there before"
+        self.tree = copy.deepcopy(TREE)
+        self.spawn_on_exec: dict | None = None
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.path)
         self._srv.listen(8)
@@ -103,13 +111,18 @@ class FakeSway:
                     payload += conn.recv(length - len(payload))
 
                 if mtype == comp.RUN_COMMAND:
-                    self.commands.append(payload.decode())
+                    cmd = payload.decode()
+                    self.commands.append(cmd)
+                    if self.spawn_on_exec and cmd.startswith("exec "):
+                        self.tree["nodes"][0]["nodes"][0]["floating_nodes"].append(
+                            self.spawn_on_exec)
+                        self.spawn_on_exec = None
                     body = json.dumps(
                         [{"success": False, "error": "nope"}] if self.fail_commands
                         else [{"success": True}]).encode()
                     conn.sendall(HEADER.pack(magic, len(body), mtype) + body)
                 elif mtype == comp.GET_TREE:
-                    body = json.dumps(TREE).encode()
+                    body = json.dumps(self.tree).encode()
                     conn.sendall(HEADER.pack(magic, len(body), mtype) + body)
                 elif mtype == comp.GET_WORKSPACES:
                     body = json.dumps(WORKSPACES).encode()
@@ -293,8 +306,13 @@ def test_alt_tab_cycles_natives_then_returns_to_shell(sway, monkeypatch):
     sway.commands.clear()
     ok, what = de.cycle_focus("prev")
     assert ok and what == "shell"
-    assert sway.commands == ['[app_id="^agentos$"] focus'], (
-        "with no shell found by command line, the app_id criteria must still work")
+    # /proc has no pid 4242, so the command-line probe cannot identify the shell.
+    # find_shell now falls back to app_id (the same test windows() uses) and
+    # resolves it to a con_id, instead of leaving focus_shell to guess with an
+    # app_id criteria string. Same intent, one layer earlier — and raise/lower
+    # get the fallback too, which is what they were missing.
+    assert sway.commands == ["[con_id=11] focus"], (
+        "with no shell on the command line, app_id must still identify the desktop")
 
 
 def test_cycle_focus_reports_compositor_failure(tmp_path, monkeypatch):
@@ -429,3 +447,87 @@ def test_anchoring_never_undoes_a_deliberate_summon(client, sway, monkeypatch):
     sway.commands.clear()
     client.anchor_shell(8321)
     assert any("floating disable" in c for c in sway.commands)
+
+
+# ---------------------------------------------------------------------------
+# Handing the screen to an app.
+#
+# The session-mode bug these pin down: the AgentOS shell is a full-output
+# FLOATING window whenever it has been summoned, and sway paints floating above
+# tiled — so launching or focusing an app without lowering the desktop first put
+# that app behind a screen-filling browser window. It was running. You just
+# could not see it, which read as "nothing happened, this is only a web page".
+# ---------------------------------------------------------------------------
+
+NEW_WIN = {"id": 99, "pid": 7777, "app_id": "libreoffice", "name": "Untitled 1",
+           "focused": False, "fullscreen_mode": 0, "nodes": [], "floating_nodes": []}
+
+
+def test_focusing_an_app_lowers_the_desktop_first(client, sway):
+    comp.SHELL_RAISED[0] = True
+    try:
+        client.focus("13")
+    finally:
+        comp.SHELL_RAISED[0] = False
+    lower = next(i for i, c in enumerate(sway.commands) if "floating disable" in c)
+    focus = next(i for i, c in enumerate(sway.commands) if c.endswith("] focus"))
+    assert lower < focus, "the desktop must step back before the app takes focus"
+    assert comp.SHELL_RAISED[0] is False
+
+
+def test_focusing_does_not_touch_the_desktop_when_it_is_already_down(client, sway):
+    comp.SHELL_RAISED[0] = False
+    client.focus("13")
+    assert not any("floating disable" in c for c in sway.commands)
+
+
+def test_launch_waits_for_the_window_and_focuses_it(client, sway):
+    sway.spawn_on_exec = NEW_WIN
+    res = client.launch_and_focus("libreoffice --writer", timeout=3, poll=0.05)
+    assert res["ok"] is True
+    assert res["window"] == "99" and res["title"] == "Untitled 1"
+    import base64 as _b64
+    blob = _b64.b64encode(b"libreoffice --writer").decode()
+    assert any(blob in c for c in sway.commands), "the command must survive verbatim"
+    # the new window is focused, and the desktop was lowered before it appeared
+    assert "[con_id=99] focus" in sway.commands
+    assert any("floating disable" in c for c in sway.commands)
+
+
+def test_launch_reports_failure_when_no_window_ever_appears(client, sway):
+    sway.spawn_on_exec = None                    # the app dies on startup
+    res = client.launch_and_focus("brokenapp", timeout=0.4, poll=0.05)
+    assert res["ok"] is False
+    assert "no window appeared" in res["reason"]
+    # and the desktop comes back rather than leaving the user on a blank screen
+    assert any("floating enable" in c for c in sway.commands)
+
+
+def test_launch_ignores_windows_that_were_already_open(client, sway):
+    """A slow app must not be 'confirmed' by firefox already being there."""
+    res = client.launch_and_focus("slowapp", timeout=0.3, poll=0.05)
+    assert res["ok"] is False
+    assert "[con_id=13] focus" not in sway.commands
+
+
+def test_floating_comes_from_the_tree_shape_not_a_field():
+    """sway sends no `floating` key on window nodes — i3 does, and reading for it
+    made every window report floating=False on every real session. The array a
+    node sits in is the only fact there is."""
+    assert "floating" not in TREE["nodes"][0]["nodes"][0]["floating_nodes"][0]
+
+
+def test_exec_survives_sways_own_command_parser(client, sway):
+    """sway parses the rest of an `exec` line itself: `,` and `;` separate
+    commands and `<`/`>`/quotes are eaten or rejected. Real .desktop Exec lines
+    are full of them — `--app=data:text/html,<title>x</title>` came back as
+    "Unknown/invalid command '<title>x</title>'" and the app never started.
+    Base64 makes the payload inert to that parser."""
+    import base64 as _b64
+    nasty = 'foot -T "T" sh -c "echo hi, there; echo <x>"'
+    client.exec(nasty)
+    sent = sway.commands[-1]
+    assert nasty not in sent, "the raw command must not reach sway's parser"
+    assert _b64.b64encode(nasty.encode()).decode() in sent
+    for ch in (",", ";", "<", ">", '"'):
+        assert ch not in sent.split("echo ")[1].split(" |")[0], f"{ch!r} reached the parser"

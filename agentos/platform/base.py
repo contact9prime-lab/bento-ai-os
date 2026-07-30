@@ -183,6 +183,9 @@ class Platform:
     def fullscreen_window(self, win_id: str, on: bool | None = None) -> tuple[bool, str]:
         return False, "Window control isn't available here."
 
+    def snap_window(self, win_id: str, zone: str) -> tuple[bool, str]:
+        return False, "Window control isn't available here."
+
     def show_desktop(self) -> tuple[bool, str]:
         return False, "Window control isn't available here."
 

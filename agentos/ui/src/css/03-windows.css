@@ -1,6 +1,14 @@
 /* ================= windows (desktop chrome) ================= */
+/* No backdrop-filter here, deliberately. `--bg` is an opaque colour in every
+   theme, so a blur on this rule blurred a backdrop that the window's own
+   background then painted over completely — invisible, and the single most
+   expensive thing in the shell: five open windows dropped a 60fps desktop to
+   8fps, because every stacked translucent surface makes the compositor re-blur
+   everything beneath it. Themes that genuinely want glass windows (Liquid Glass,
+   Spatial) set a translucent background AND their own backdrop-filter, which is
+   the only place the cost buys anything. */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
-  background:var(--bg);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  background:var(--bg);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
   box-shadow:var(--el-4);
   resize:both;overflow:hidden}

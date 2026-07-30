@@ -51,7 +51,7 @@ document.addEventListener('click',e=>{
 updateTray();setInterval(updateTray,15000);
 // Polling is the fallback; the first compositor 'wm' event switches the
 // taskbar to event-driven updates (see the WebSocket handler).
-updateNativeWindows();NATIVE_POLL=setInterval(updateNativeWindows,1200);
+updateNativeWindows();startNativePoll();
 tickClock();setInterval(tickClock,5000);
 loadWallpaper();
 loadThemes();
@@ -60,6 +60,9 @@ loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
 APPS_READY=true;
+// If this page is the Linux session's desktop, tell the compositor how much
+// room our chrome needs so no application window can cover it.
+if(typeof suiInit==='function')suiInit();
 if(EXPERIENCE==='jarvis')buildJarvisShell();   // APPS now defined — populate the shell if a theme selected it early
 connect();
 /* the splash leaves when the desktop is actually ready (config + platform +

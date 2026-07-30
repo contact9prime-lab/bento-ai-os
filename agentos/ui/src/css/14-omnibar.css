@@ -303,3 +303,11 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-native .deck-gname .mut{font-size:var(--fs-2xs);opacity:.6;font-weight:600}
 .deck-nat img.na{width:46px;height:46px;object-fit:contain}
 .deck-nat .nafallback{width:46px;height:46px}
+/* a native app being started: the wait is real (the server holds the answer
+   until the window maps), so the tile says so rather than looking inert */
+.deck-tile.launching{opacity:.55;pointer-events:none}
+.deck-tile.launching::after{content:'';position:absolute;left:50%;top:14px;
+  width:18px;height:18px;margin-left:-9px;border-radius:50%;
+  border:2px solid color-mix(in srgb,var(--acc) 70%,transparent);border-top-color:transparent;
+  animation:rot .8s linear infinite}
+.deck-tile{position:relative}

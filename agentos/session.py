@@ -286,13 +286,23 @@ bindsym --border --release button2 kill
 # outputs on and tell the server to wake the shell (re-anchor, focus, repaint).
 exec_always "{IDLE_SCRIPT}"
 
-# Layering: the AgentOS shell is the ONLY tiled window, so it fills the screen
-# as the base layer; every native app floats ABOVE it. (The old fullscreen
-# approach was wrong — sway keeps fullscreen on top, so launched apps appeared
-# to do nothing while sitting invisible underneath the shell.)
+# Layering.
+#
+# With the native session host the desktop is NOT a window at all: it is a
+# wlr-layer-shell surface on the BACKGROUND layer, so every application window
+# is above it in normal stacking order and none of these rules are needed for
+# that. The menu bar and dock bands are reserved as exclusive zones by the host,
+# which is why a tiled or maximised app stops at their edges.
+#
+# The rules below are for the Chromium fallback, where the desktop IS a window:
+# it becomes the single tiled window (edge to edge) and apps float above it.
+# They are harmless under the session host, because no window matches them.
 for_window [title=".*"] floating enable
 for_window [app_id="^{APP_ID}$"] floating disable, fullscreen disable
 for_window [class="^{APP_ID}$"] floating disable, fullscreen disable
+# Never let an app cover the desktop's own chrome by being tiled over it. The
+# session host reserves those bands properly; this is the fallback's version.
+for_window [app_id="^agentos-strut$"] floating disable
 
 # Window switching, answered by the server (which tracks focus over compositor
 # IPC) so it works no matter which window has the keyboard. Alt+Tab and
@@ -328,8 +338,44 @@ bindsym Mod4+d exec curl -sf -m 2 -X POST http://127.0.0.1:{port}/api/windows/sh
 bindsym Mod4+f exec curl -sf -m 2 -X POST http://127.0.0.1:{port}/api/windows/fullscreen -H "Content-Type: application/json" -d "{{\"id\":\"focused\"}}"
 bindsym F11 fullscreen toggle
 bindsym Mod4+q kill
+
+# Tiling, the way every Wayland desktop does it. AgentOS presents native windows
+# as draggable windows because that is what people expect from a desktop, but a
+# desktop that CANNOT tile is not a real one — so the snap keys are here, and
+# they operate on the usable area (the compositor already excludes the menu bar
+# and dock bands, so a snapped window lands exactly between them).
+bindsym Mod4+Left  exec swaymsg '[con_id=__focused__] floating disable' && swaymsg move left
+bindsym Mod4+Right exec swaymsg '[con_id=__focused__] floating disable' && swaymsg move right
 bindsym Mod4+Up fullscreen enable
 bindsym Mod4+Down fullscreen disable
+bindsym Mod4+t floating toggle
+bindsym Mod4+space floating toggle
+bindsym Mod4+s layout stacking
+bindsym Mod4+e layout toggle split
+bindsym Mod4+w layout tabbed
+bindsym Mod4+r mode "resize"
+mode "resize" {{
+  bindsym Left resize shrink width 40px
+  bindsym Right resize grow width 40px
+  bindsym Up resize shrink height 40px
+  bindsym Down resize grow height 40px
+  bindsym Return mode "default"
+  bindsym Escape mode "default"
+}}
+# Workspaces 1-6 also exist as compositor workspaces, so AgentOS desktops and
+# native windows agree about which space they are on (see goto_desktop).
+bindsym Mod4+1 workspace 1
+bindsym Mod4+2 workspace 2
+bindsym Mod4+3 workspace 3
+bindsym Mod4+4 workspace 4
+bindsym Mod4+5 workspace 5
+bindsym Mod4+6 workspace 6
+bindsym Mod4+Shift+1 move container to workspace 1
+bindsym Mod4+Shift+2 move container to workspace 2
+bindsym Mod4+Shift+3 move container to workspace 3
+bindsym Mod4+Shift+4 move container to workspace 4
+bindsym Mod4+Shift+5 move container to workspace 5
+bindsym Mod4+Shift+6 move container to workspace 6
 
 # The one escape keybinding: end the session if the shell is ever unreachable.
 # (Ctrl+Alt+F3 for a raw TTY is handled by the kernel, not by us.)
@@ -393,6 +439,8 @@ def shell_script_text(port: int) -> str:
     renderer_loop = "\n".join(
         f'  command -v {b} >/dev/null 2>&1 && {{ RENDERER=$(command -v {b}); break; }}'
         for b in RENDERERS)
+    shellhost = Path(__file__).resolve().parent / "shellhost.py"
+    py_cands = " ".join(("python3", "python3.12", "python3.11", "python3.13", "python3.10"))
     return f"""\
 #!/bin/sh
 # AgentOS shell launcher — runs INSIDE sway (started from sway.conf), so the
@@ -423,7 +471,48 @@ if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
   "{sys.executable}" -m agentos serve --no-browser --port "$PORT" >> "$LOG" 2>&1 &
 fi
 
-# 2) the renderer: first chromium-family browser found.
+# 2) the renderer.
+#
+# FIRST CHOICE: the native session host. It draws the desktop as a
+# wlr-layer-shell surface on the BACKGROUND layer, which is what makes AgentOS a
+# desktop rather than a window pretending to be one — application windows are
+# above it in normal stacking order, and the menu bar and dock bands are
+# reserved with the compositor so nothing can cover them. Needs PyGObject +
+# gtk-layer-shell + WebKitGTK, which are distribution packages; `agentos doctor`
+# prints the one line that installs them.
+#
+# The interpreter is probed rather than assumed: the AgentOS server runs in its
+# own virtualenv, which usually cannot see the system PyGObject, so the python
+# that can draw the desktop is often not the python running the server.
+SHELLHOST="{shellhost}"
+HOSTPY=""
+if [ -f "$SHELLHOST" ] && [ -z "$AGENTOS_NO_LAYER_SHELL" ]; then
+  for py in {py_cands}; do
+    command -v "$py" >/dev/null 2>&1 || continue
+    if "$py" -c 'import gi
+gi.require_version("Gtk","3.0"); gi.require_version("GtkLayerShell","0.1")
+ok=0
+for v in ("4.1","4.0"):
+    try: gi.require_version("WebKit2", v); ok=1; break
+    except ValueError: pass
+raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then
+      HOSTPY=$(command -v "$py"); break
+    fi
+  done
+fi
+if [ -n "$HOSTPY" ]; then
+  echo "renderer: session host (layer-shell) via $HOSTPY" >> "$LOG"
+  BOOT=""
+  [ -f "$HOME/.agentos/boot.html" ] && BOOT="--boot $HOME/.agentos/boot.html"
+  # Struts start at the menu-bar height only; the page measures its own chrome
+  # once it loads and tells the host the real numbers (see 00c-sui.js).
+  exec "$HOSTPY" "$SHELLHOST" --port "$PORT" --top 30 --bottom 0 $BOOT >> "$LOG" 2>&1
+fi
+echo "session host unavailable — falling back to a Chromium window" >> "$LOG"
+
+# FALLBACK: the first chromium-family browser found. The desktop is then an
+# ordinary window, and "the desktop is behind the apps" has to be arranged by
+# the compositor rules below instead of being true by construction.
 RENDERER=""
 while true; do
 {renderer_loop}
@@ -444,13 +533,19 @@ START_URL="http://127.0.0.1:$PORT"
 [ -f "$HOME/.agentos/boot.html" ] && START_URL="file://$HOME/.agentos/boot.html"
 # --ozone-platform-hint=auto: native Wayland when it works, XWayland when it
 # doesn't (NVIDIA setups) — both render inside our compositor either way.
+# The bubble/infobar flags matter more here than in a browser: a "Restore pages?"
+# bar or a translate prompt across the top of the shell is a strip of Chromium
+# painted across your operating system. Unknown flags are ignored, so this stays
+# safe across Chromium versions.
 # NOT --kiosk: chrome's kiosk mode forces a fullscreen surface, which sway
 # keeps above everything — hiding every native app. The shell is a plain app
 # window; sway tiles it alone, which IS edge-to-edge, with floats above it.
 # --class names the XWayland window, --wayland-app-id the Wayland one.
 exec "$RENDERER" --app="$START_URL" \\
   --user-data-dir="$prof" --class={APP_ID} --wayland-app-id={APP_ID} \\
-  --ozone-platform-hint=auto --no-first-run --no-default-browser-check >> "$LOG" 2>&1
+  --ozone-platform-hint=auto --no-first-run --no-default-browser-check \\
+  --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-infobars \\
+  --disable-features=Translate,MediaRouter >> "$LOG" 2>&1
 """
 
 
@@ -523,7 +618,8 @@ prof="$HOME/.agentos/appwindow"; mkdir -p "$prof"
 for b in {' '.join(RENDERERS)}; do
   if command -v "$b" >/dev/null 2>&1; then
     exec "$b" --app="http://127.0.0.1:$PORT" --kiosk --user-data-dir="$prof" \\
-         --no-first-run --no-default-browser-check --class={APP_ID}
+         --no-first-run --no-default-browser-check --class={APP_ID} \\
+         --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-infobars
   fi
 done
 command -v xmessage >/dev/null 2>&1 && xmessage "AgentOS session: no chromium-based browser found."
@@ -763,6 +859,65 @@ def apply_wallpaper_live(wallpaper: str | None) -> bool:
 # install / remove
 # =============================================================================
 
+def current_config_text() -> str:
+    """The sway config this build WOULD generate right now, from live settings."""
+    try:
+        cfg = cfgmod.load_config()
+    except Exception:
+        cfg = {}
+    desk = cfg.get("desktop", {}) or {}
+    wallpaper = cfgmod.AGENTOS_HOME / "wallpaper.png"
+    return sway_config_text(
+        _port(),
+        idle_lock=int(desk.get("idle_lock_secs", 600)),
+        idle_off=int(desk.get("idle_screen_off_secs", 900)),
+        wallpaper=str(wallpaper) if wallpaper.exists() else "")
+
+
+def config_is_stale() -> bool:
+    """Is the installed compositor config older than this build's?
+
+    It matters more than it looks. SWAY_CONF is GENERATED, written once by
+    `install-session`, and never touched again by an upgrade — so a machine that
+    installed the session months ago kept running that month's window rules
+    forever. Every fix since (title bars on native windows, Super-drag to move,
+    Super+D for the desktop, the layering that stops apps opening underneath the
+    shell) was in the template and not on the disk. From the user's chair that
+    reads as "AgentOS has no window controls and every app is stuck on top",
+    which is exactly what it was.
+
+    User customisation is safe: overrides belong in the drop-in directory, which
+    this never touches.
+    """
+    try:
+        return SWAY_CONF.is_file() and SWAY_CONF.read_text() != current_config_text()
+    except Exception:
+        return False
+
+
+def refresh_config(reload_now: bool = True) -> tuple[bool, str]:
+    """Rewrite the generated config if this build's differs, and apply it live.
+
+    `swaymsg reload` re-reads the file and re-runs exec_always. The shell itself
+    is started with plain `exec`, so reloading does NOT restart the desktop —
+    the new rules simply take effect, and windows opened from then on get them.
+    """
+    if not SWAY_CONF.is_file():
+        return False, "no session config installed"
+    want = current_config_text()
+    if SWAY_CONF.read_text() == want:
+        return False, "already current"
+    SWAY_CONF.write_text(want)
+    if not reload_now:
+        return True, "config refreshed — log out and back in to apply"
+    try:
+        from . import compositor as comp
+        comp.Compositor().command("reload")
+        return True, "compositor config refreshed and reloaded"
+    except Exception as e:
+        return True, f"config refreshed; reload it by hand (swaymsg reload): {e}"
+
+
 def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
     """Write every user-owned file. Root is not needed for any of this."""
     port = port or _port()
@@ -971,6 +1126,26 @@ def install(wayland: bool = True, autologin: bool = False, force: bool = False):
               "  Install it first:  sudo apt install sway\n"
               "  (or install the agentos-desktop package, which depends on it)")
         return
+
+    # How the desktop will be drawn, said before anything is written. The two
+    # answers are genuinely different desktops, and the difference is worth one
+    # apt line — but it is the user's line to run, not ours to run quietly.
+    if wayland:
+        from . import shellhost
+        py, wk = shellhost.python_with_gi()
+        if py:
+            print(f"✓ desktop surface  native Wayland layer-shell (WebKit2GTK {wk})")
+            print("                   app windows stack above the desktop; the menu bar and")
+            print("                   dock are reserved with the compositor")
+        else:
+            print("! desktop surface  Chromium window (fallback)")
+            print("  The desktop can be a real Wayland surface instead, which is what makes")
+            print("  application windows stack above it normally rather than trading places")
+            print("  with it. That needs three distribution packages — AgentOS does not")
+            print("  bundle them:\n")
+            print(f"    {shellhost.install_hint()}\n")
+            print("  Install them and run this again, or carry on: the Chromium fallback")
+            print("  works, it just has to fake the stacking order.\n")
 
     port = _port()
     for p in stage(wayland=wayland, port=port):
