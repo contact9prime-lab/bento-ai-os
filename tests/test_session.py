@@ -22,6 +22,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "SESSION_SCRIPT", tmp_path / "bin" / "agentos-session-wayland")
     monkeypatch.setattr(session, "SHELL_SCRIPT", tmp_path / "bin" / "agentos-shell")
     monkeypatch.setattr(session, "IDLE_SCRIPT", tmp_path / "bin" / "agentos-idle")
+    monkeypatch.setattr(session, "POWER_SCRIPT", tmp_path / "bin" / "agentos-power")
     monkeypatch.setattr(session, "X11_SESSION_SCRIPT", tmp_path / "bin" / "agentos-session")
     monkeypatch.setattr(session, "SWAY_CONF", tmp_path / "cfg" / "sway.conf")
     monkeypatch.setattr(session, "SWAY_DROPIN_DIR", tmp_path / "cfg" / "sway.d")
@@ -40,6 +41,19 @@ def test_stage_wayland_writes_only_user_files(home):
     assert session.SESSION_SCRIPT.exists() and os.access(session.SESSION_SCRIPT, os.X_OK)
     assert session.SHELL_SCRIPT.exists() and os.access(session.SHELL_SCRIPT, os.X_OK)
     assert session.WL_STAGE.exists()
+    # Ctrl+Alt+Delete has to be claimed by the compositor. Unbound, the kernel
+    # answers it and ctrl-alt-del.target is an alias for reboot.target — an
+    # instant reboot with nothing saved and nothing asked.
+    assert session.POWER_SCRIPT.exists() and os.access(session.POWER_SCRIPT, os.X_OK)
+    conf = session.SWAY_CONF.read_text()
+    assert "bindsym Ctrl+Alt+Delete" in conf
+    assert "bindsym Ctrl+Alt+BackSpace" in conf, "the emergency hatch must survive too"
+    # and it must offer a CHOICE, never act on its own
+    power = session.POWER_SCRIPT.read_text()
+    assert '"action":"power"' in power
+    assert "swaynag" in power, "if the shell is not answering, the compositor must ask"
+    for destructive in ("poweroff", "reboot", "shutdown"):
+        assert f"exec {destructive}" not in power
 
 
 def test_generated_scripts_use_the_configured_port(home):

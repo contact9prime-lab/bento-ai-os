@@ -508,6 +508,7 @@ async def api_shell_action(body: dict):
 # Actions that are meaningless unless the AgentOS desktop is in front. Stopping
 # the agent is deliberately NOT here: it must never steal focus mid-task.
 SHELL_ACTIONS_NEEDING_FOCUS = frozenset({
+    "power",
     "omnibar.focus", "omnibar.focus2", "palette", "expose", "expose.f3",
     "windows.arrange", "chat.open", "chat.new", "settings", "help", "deck",
     "copilot", "terminal", "voice", "desktop.prev", "desktop.next",
