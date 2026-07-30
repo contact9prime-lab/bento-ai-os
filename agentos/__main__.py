@@ -130,7 +130,7 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
-def doctor(fix: bool = False):
+def doctor(fix: bool = False, session: bool = False):
     """Environment sanity: the checks that catch every 'it hangs' class of incident.
     With fix=True, auto-remediate what is safe to fix and print sudo steps for the rest."""
     import json as _json
@@ -156,6 +156,15 @@ def doctor(fix: bool = False):
     cfg = cfgmod.load_config()
     port = cfg.get("port", 8321)
     print("AgentOS doctor" + ("  (--fix: auto-repair on)" if fix else "") + "\n")
+
+    # --session answers one question — what can draw the desktop here — and it is
+    # the only thing worth printing when that is what you are asking. Every probe
+    # runs in a subprocess, because the failures it looks for are aborts and
+    # segfaults inside GTK and WebKit.
+    if session:
+        from . import sessiondoctor
+        sessiondoctor.report(ok, warn, bad, todo)
+        return
 
     # 1. who owns the port?
     try:
@@ -630,6 +639,9 @@ def main():
     sub.add_parser("app", help="open AgentOS as a desktop app window")
     p_doctor = sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
     p_doctor.add_argument("--fix", action="store_true", help="auto-repair what's safe; print sudo steps for the rest")
+    p_doctor.add_argument("--session", action="store_true",
+                          help="probe what can actually draw the desktop on this machine "
+                               "(why the session came up, or did not)")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
     sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
@@ -678,7 +690,7 @@ def main():
 
     args = parser.parse_args()
     if args.cmd == "doctor":
-        doctor(fix=getattr(args, "fix", False))
+        doctor(fix=getattr(args, "fix", False), session=getattr(args, "session", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
     elif args.cmd == "app":

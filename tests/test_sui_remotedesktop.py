@@ -251,3 +251,46 @@ def test_the_fallback_is_announced_on_screen():
     """A log nobody knows about is not telling the user."""
     from agentos import session
     assert "swaynag" in session.shell_script_text(8321).split("SHELLHOST=", 1)[1]
+
+
+# --- the session diagnostic -------------------------------------------------
+# `agentos doctor --session`. Built because the previous answer to "my screen is
+# black" was "read a renderer's stderr and tell me what you see", which is the
+# wrong way round.
+
+def test_probes_run_in_subprocesses():
+    """The failures being diagnosed are aborts and segfaults inside GTK and
+    WebKit. A probe that crashes the doctor cannot report that it crashed."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "subprocess.run" in src
+    assert "_signal_name" in src, "a signal death is a RESULT and must be named"
+
+
+def test_loading_is_not_treated_as_drawing():
+    """Measured: WebKit reports FINISHED, having really loaded and run the page,
+    then segfaults seconds later while compositing it. A probe that exits on
+    FINISHED passes on a machine that black-screens."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "state['loaded']" in src
+    assert "kept drawing" in src
+    assert "requestAnimationFrame" in src, "a still page can sit quietly on a broken stack"
+
+
+def test_the_probe_loads_the_real_desktop_when_it_can():
+    """A 20-byte page renders happily on a stack that dies on the real shell."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "__PROBE_URL__" in src and "_webkit_probe" in src
+    assert "backdrop-filter" in src, "the synthetic fallback must cost what the shell costs"
+
+
+def test_it_probes_the_combination_the_session_actually_uses():
+    """WebKit can render in a window and still fail on a layer surface."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "PROBE_WEBKIT_LAYER" in src
+    assert "GtkLayerShell.set_exclusive_zone" in src
+
+
+def test_doctor_exposes_it():
+    cli = (SRC / "__main__.py").read_text()
+    assert '"--session"' in cli
+    assert "sessiondoctor.report" in cli
