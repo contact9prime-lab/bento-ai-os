@@ -1009,7 +1009,12 @@ def _audit_cli(args):
 
 def main():
     _use_system_certs()
-    parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
+    # Name it after however it was invoked. `bento` and `agentos` are the same
+    # program, and help text that answers with a different name than the one you
+    # typed is the kind of small lie that makes people doubt the rest.
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]) or "bento",
+        description="Bento Box AI — your machine, with a brain.")
     sub = parser.add_subparsers(dest="cmd")
 
     p_serve = sub.add_parser("serve", help="start the AgentOS server + UI (default)")

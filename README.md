@@ -1,12 +1,11 @@
-# ▲ AgentOS — a local-first agentic operating system
+# Bento Box AI — a local-first agentic operating system
 
-**Your machine, with a brain.** AgentOS is a self-hosted **AI desktop environment** that runs in
-your browser: a full desktop — windows, apps, files, terminal — driven by an **autonomous AI
-agent** that takes **real actions** on your computer. Use local models via
-[Ollama](https://ollama.com) for total privacy, or cloud models (Anthropic Claude, OpenAI,
-OpenRouter, or any OpenAI-compatible endpoint) — always with your approval. The agent can browse,
-build its own apps, schedule jobs, remember what it learns, extend its own source code, and reach
-you on Telegram.
+**Your machine, with a brain.** Bento Box AI is a self-hosted **AI desktop environment**: a full
+desktop — windows, apps, files, terminal — driven by an **autonomous AI agent** that takes **real
+actions** on your computer. Use local models via [Ollama](https://ollama.com) for total privacy, or
+cloud models (Anthropic Claude, OpenAI, OpenRouter, or any OpenAI-compatible endpoint) — always with
+your approval. The agent can browse, build its own apps, schedule jobs, remember what it learns,
+extend its own source code, and reach you on Telegram.
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
@@ -14,11 +13,27 @@ you on Telegram.
 
 Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-time service.
 
-![AgentOS desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
+![The Bento Box AI desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
 
-**Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the
-desktop and every app, the agent and its tools, building apps, integrations, the API reference, and
+**Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the desktop
+and every app, the agent and its tools, building apps, integrations, the API reference, and
 troubleshooting.
+
+---
+
+## Three faces, one program
+
+Bento runs in three places, and **every feature is built for all three**. This is the first
+question asked of any change, not the last.
+
+| | What it is | Start it with |
+|---|---|---|
+| **GUI** | a window (or tab) on macOS, Windows or Linux. Nothing extra to install | `bento` |
+| **TUI** | the whole OS in a terminal — for a server, or a headless Pi over SSH | `bento tui` |
+| **SUI** | Bento **is** your Linux session: it owns the machine | `bento installer` |
+
+> The command is `bento`. `agentos` still works and always will — it is in people's shell history,
+> systemd units and scripts, and a rename we chose should not cost them that.
 
 ---
 
@@ -34,55 +49,58 @@ troubleshooting.
 ![The five built-in design-language themes: Bento, Liquid Glass, Spatial, Claymorphism, Minimalism](docs/screenshots/themes.png)
 
 **Bento · Liquid Glass · Spatial · Claymorphism · Minimalism.** Each re-cuts the whole shell —
-surfaces, radii, elevation, blur, type — and brings its own wallpaper. The wallpapers ship with
-AgentOS as SVG: a few KB each, sharp from a phone to a 4K panel.
-[More →](docs/desktop.md#themes)
+surfaces, radii, elevation, blur, type — and brings its own wallpaper. The wallpapers ship as SVG:
+a few KB each, sharp from a phone to a 4K panel. [More →](docs/desktop.md#themes)
+
+Glass is the most expensive thing a desktop can draw, and the cost compounds with every window you
+open. **Themes → Effects** measures your machine and turns it down only if it has to — five windows
+in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
 
 ### One desktop, every screen
 
-![AgentOS on a phone: the lock screen, the desktop laid out for a phone, and an app as a full-bleed sheet](docs/screenshots/mobile.png)
+![Bento Box AI on a phone: the lock screen, the desktop laid out for a phone, and an app as a full-bleed sheet](docs/screenshots/mobile.png)
 
-Phone, tablet, workstation — the same desktop, adapting. Windows become full-bleed sheets, the
-dock spans the bottom edge, popovers become sheets. Turn on **Remote access** and reach it from
-your phone over your network, behind a passphrase; *Add to Home Screen* makes it a full-screen
-app. [Remote access →](docs/remote-access.md) · [Responsive layout →](docs/desktop.md#phone-tablet-desktop)
+Phone, tablet, workstation — the same desktop, adapting. Windows become full-bleed sheets, the dock
+spans the bottom edge, popovers become sheets. Turn on **Remote access** and reach it from your phone
+over your network, behind a passphrase; *Add to Home Screen* makes it a full-screen app.
+[Remote access →](docs/remote-access.md) · [Responsive layout →](docs/desktop.md#phone-tablet-desktop)
 
 ### It can *be* the desktop, not just live on one
 
-![A native Wayland application above the AgentOS desktop, with the AgentOS menu bar reserved above it and the dock reserved below it](docs/screenshots/session-native-window.png)
+![A native Wayland application above the Bento desktop, with the menu bar reserved above it and the dock reserved below it](docs/screenshots/session-native-window.png)
 
-Log in and get AgentOS as your Linux session. The desktop is drawn as a **Wayland layer surface on
-the background layer**, so native application windows are above it in normal stacking order — not
-because anything gets raised or lowered, but because that is what "background" means. The menu bar
-and dock sit in bands **reserved with the compositor**, the same mechanism a GNOME or KDE panel
-uses, so a full-screen app stops at their edges instead of swallowing them.
+Log in and get Bento as your Linux session. The desktop is drawn as a **Wayland layer surface on the
+background layer**, so native application windows are above it in normal stacking order — not because
+anything gets raised or lowered, but because that is what "background" means. The menu bar and dock
+sit in bands **reserved with the compositor**, the same mechanism a GNOME or KDE panel uses, so a
+full-screen app stops at their edges instead of swallowing them.
 
-![Two native terminals snapped to the left and right halves of the AgentOS desktop](docs/screenshots/session-snapped.png)
+![Two native terminals snapped to the left and right halves of the Bento desktop](docs/screenshots/session-snapped.png)
 
-Full window management for native apps: snap to halves and quarters, tile, float, layouts,
-keyboard resize, workspaces, minimise, and an Alt-Tab switcher — with the AgentOS taskbar and menu
-bar tracking whichever app has focus. [The session UI →](docs/session-ui.md)
+Full window management for native apps: snap to halves and quarters, tile, float, layouts, keyboard
+resize, workspaces, minimise, and an Alt-Tab switcher — with the taskbar and menu bar tracking
+whichever app has focus. [The session UI →](docs/session-ui.md)
 
-### Install applications, from AgentOS
+### Install applications, from inside Bento
 
 ![The Applications app searching the machine's package catalogue, with install buttons per result](docs/screenshots/app-store.png)
 
-A desktop you cannot install software on is a demo. *Applications → Get apps…* searches the
-machine's own catalogue — AppStream, Flatpak or apt — and shows you the exact command before it
-runs. Flatpak is preferred where it exists because a per-user install needs no password at all.
-AgentOS mirrors nothing and bundles nothing; it asks the package manager you already have.
+A desktop you cannot install software on is a demo. *Applications → Get apps…* searches the machine's
+own catalogue — AppStream, Flatpak or apt — and shows you the exact command before it runs. Flatpak
+is preferred where it exists because a per-user install needs no password at all. Bento mirrors
+nothing and bundles nothing; it asks the package manager you already have.
 
 ### Your real screen, on your phone, in the browser
 
-![The AgentOS Remote Desktop open in a phone browser, showing the machine's real screen with a native app on it and a toolbar of keys a phone keyboard lacks](docs/screenshots/phone-remote-desktop.png)
+![Bento's Remote Desktop open in a phone browser, showing the machine's real screen with a native app on it and a toolbar of keys a phone keyboard lacks](docs/screenshots/phone-remote-desktop.png)
 
-**Remote access** sends you the AgentOS shell, which is HTML and travels perfectly — but a native
-app is pixels on the machine's own display and was never part of the page. **Remote Desktop**
-closes that: AgentOS relays the screen over its *own* authenticated connection, so you get the
-real desktop, clickable, with no VNC app to install on the phone.
+**Remote access** sends you the Bento shell, which is HTML and travels perfectly — but a native app
+is pixels on the machine's own display and was never part of the page. **Remote Desktop** closes
+that: Bento relays the screen over its *own* authenticated connection, so you get the real desktop,
+clickable, with no VNC app to install on the phone.
 
 The shape is the point — the VNC server stays on `127.0.0.1` and never goes near the network; what
-protects it is the AgentOS passphrase you already use. [Remote access →](docs/remote-access.md)
+protects it is the passphrase you already use. [Remote access →](docs/remote-access.md)
 
 ### Automations & hot corners
 
@@ -94,22 +112,21 @@ asking for it by name. [More →](docs/desktop.md#automations)
 
 ---
 
-## Why AgentOS
+## Why Bento Box AI
 
 - **A real desktop, not a chat box** — draggable windows, taskbar, virtual desktops, widgets,
   themes, a command palette, and 25+ built-in apps.
 - **An agent with hands** — shell commands, file management, web research, desktop notifications,
   scheduled jobs, HTML reports, and app-building, all from plain language.
-- **Local-first and private** — everything can run on your hardware with Ollama; nothing leaves
-  your machine unless you add a cloud key. Binds to localhost only, until you deliberately turn on
-  passphrase-protected [remote access](docs/remote-access.md) to reach it from your phone.
-- **The whole lifecycle under one roof** — **Train · Test · Operate · Build · Ship · Manage**,
-  live on one screen (Mission Control): fine-tune your own models on your GPU (the Train app,
-  LoRA included), test-gate every self-modification, run scheduled jobs, build apps, and ship
-  them to GitHub with first-class git tools.
-- **Self-extending** — the agent builds new UI apps for itself (App Studio), installs skills and
-  MCP tool servers, and can even modify AgentOS's own source code (with auto-snapshots and a
-  test suite that must pass before a restart).
+- **Local-first and private** — everything can run on your hardware with Ollama; nothing leaves your
+  machine unless you add a cloud key. Binds to localhost only, until you deliberately turn on
+  passphrase-protected [remote access](docs/remote-access.md).
+- **The whole lifecycle under one roof** — **Train · Test · Operate · Build · Ship · Manage**, live
+  on one screen (Mission Control): fine-tune your own models on your GPU, test-gate every
+  self-modification, run scheduled jobs, build apps, and ship them to GitHub.
+- **Self-extending** — the agent builds new UI apps for itself (App Studio), installs skills and MCP
+  tool servers, and can modify Bento's own source code (with auto-snapshots and a test suite that
+  must pass before a restart).
 - **Memory that compounds** — two-tier memory, a live knowledge graph, and a persistent "soul",
   learned automatically after every conversation.
 - **Safe by design** — autonomy levels, approval prompts, allow/deny policies, a bubblewrap folder
@@ -120,9 +137,8 @@ asking for it by name. [More →](docs/desktop.md#automations)
 ## Quickstart
 
 ```bash
-cd agentic-os
 uv sync                 # install dependencies (or: pip install -e .)
-uv run agentos          # start the server and open the desktop in your browser
+uv run bento            # start the server and open the desktop in your browser
 ```
 
 If **Ollama** is running, your local models are picked up automatically. Add cloud API keys under
@@ -134,49 +150,69 @@ If **Ollama** is running, your local models are picked up automatically. Add clo
 
 ---
 
+## Run it as your Linux desktop (SUI)
+
+```bash
+uv run bento installer      # detects your distro, installs what's missing, adds it to the login screen
+```
+
+Then log out and pick **Bento Box AI** at the login screen. Your existing desktop is untouched —
+switching back is logging out and picking Ubuntu again.
+
+The installer detects the distribution, names every package it wants and why, and asks before
+installing anything. Two groups: the compositor engine (sway and friends, MIT), and the native
+desktop surface (`python3-gi`, `python3-gi-cairo`, gtk-layer-shell, WebKitGTK) that lets the desktop
+be a real Wayland surface rather than a browser window.
+
+**Bento ships and redistributes none of them.** gtk-layer-shell is MIT, but GTK, PyGObject and
+WebKitGTK are LGPL, and what this project *depends* on stays permissive — so they are asked for, with
+the licences in view. Without them the session still runs, drawing the desktop in a Chromium window.
+[Licensing →](docs/licensing.md) · [The session UI →](docs/session-ui.md)
+
+If anything about the desktop misbehaves, one command tells you why:
+
+```bash
+uv run bento doctor --session   # probes what can actually draw on THIS machine, and says so
+```
+
+It checks the interpreter, GTK's display, the compositor's layer-shell support, and whether WebKit
+can render *and keep rendering* — in a window and on a layer surface — then gives a verdict. Probes
+run in subprocesses, because the failures it looks for are aborts and segfaults, and a probe that
+crashes the doctor cannot report that it crashed.
+
+---
+
 ## Install as a Debian/Ubuntu package (.deb)
 
 A self-contained `.deb` (bundles the app **and** a Python venv with all dependencies — no network
-needed at install) can be built and installed:
+needed at install):
 
 ```bash
 ./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
-sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + app launcher + service
+sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + launcher + service
 systemctl --user enable --now agentos                      # start at login (per user)
-agentos app                                                # or launch "AgentOS" from your menu
+bento app                                                  # or launch it from your menu
 ```
 
-`apt`/`dpkg` handles updates and removal (`sudo apt remove agentos`). The package targets the build
-machine's Python (currently 3.13 / Ubuntu 25.10) — rebuild on the target's Python for other versions.
-It **Recommends** `bubblewrap` (sandbox) and `xdg-utils` (host-open), and **Suggests** `ollama`,
-`nodejs`, and `git` for the optional features.
+`apt`/`dpkg` handles updates and removal. It **Recommends** `bubblewrap` (sandbox) and `xdg-utils`,
+and **Suggests** `ollama`, `nodejs`, and `git`. The desktop package additionally **Suggests** the
+session-UI stack and `wayvnc`/`novnc` — suggested rather than depended on, because apt installs
+Recommends by default and that would be bundling with a softer name.
 
 ## Install as a real app (auto-start on boot) — from source
 
 ```bash
-uv run agentos install      # app launcher + a background service that starts at login/boot
+uv run bento install      # app launcher + a background service that starts at login/boot
 ```
 
-Works on every OS — the right native mechanism is used automatically:
-
-- **Linux** — a `.desktop` launcher + a **systemd user service** (with linger, so it starts at
-  boot even before you log in).
-- **macOS** — an `AgentOS.app` in `~/Applications` (Launchpad/Spotlight) + **LaunchAgents** that
-  start the server and open the window at login.
-- **Windows** — a Start Menu shortcut + **Startup entries**.
-
-Manage it like any service (Linux shown; macOS uses `launchctl`):
+The right native mechanism is used automatically: a `.desktop` launcher plus a **systemd user
+service** on Linux (with linger, so it starts at boot), an app bundle plus **LaunchAgents** on
+macOS, a Start Menu shortcut plus **Startup entries** on Windows.
 
 ```bash
 systemctl --user status agentos      # is it running?
-systemctl --user restart agentos     # restart (e.g. after config/source changes)
-uv run agentos uninstall             # remove launcher + service (your data in ~/.agentos stays)
-```
-
-Open it as a chromeless desktop window any time:
-
-```bash
-uv run agentos app          # opens in its own window (chromium --app, or pywebview fallback)
+uv run bento uninstall               # remove launcher + service (your data stays)
+uv run bento app                     # open as a chromeless desktop window any time
 ```
 
 ---
@@ -185,37 +221,31 @@ uv run agentos app          # opens in its own window (chromium --app, or pywebv
 
 | Command | What it does |
 |---|---|
-| `uv run agentos` | start the server **and** open the desktop in your browser |
-| `uv run agentos serve --no-browser --port 8321` | headless server (used by the boot service) |
-| `uv run agentos app` | open the desktop as a native-feel window |
-| `uv run agentos install` / `uninstall` | install/remove the launcher + boot service |
-| `uv run agentos ask "…"` | one-shot agent run in the terminal |
-| `uv run agentos ask --full "…"` | …with no approval prompts (full autonomy) |
-| `uv run agentos ask --model ollama/qwen3.5:9b "…"` | …with a specific model |
-| `uv run agentos tui` | the whole OS in a terminal (**TUI**) — for a server or a headless Pi |
-| `uv run agentos installer` | detect this distro, install what's missing, add AgentOS to the login screen (**SUI**) — [details](docs/session-ui.md) |
-
-The same program has three faces, and every feature is built for all three: a **GUI** window on
-another desktop, a **TUI** for machines with no screen, and the **SUI** where AgentOS *is* the
-Linux session.
+| `uv run bento` | start the server **and** open the desktop in your browser |
+| `uv run bento serve --no-browser --port 8321` | headless server (used by the boot service) |
+| `uv run bento app` | open the desktop as a native-feel window |
+| `uv run bento tui` | the whole OS in a terminal (**TUI**) |
+| `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
+| `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
+| `uv run bento apps search \| install \| remove` | native applications, from a terminal |
+| `uv run bento remote --on --passphrase '…'` | reach this desktop from your phone |
+| `uv run bento remote-desktop --on` | the browser remote desktop (real screen, native apps) |
+| `uv run bento ask "…"` | one-shot agent run in the terminal (`--full`, `--model …`) |
 
 ---
 
 ## Requirements
 
 - **Python ≥ 3.10** and [**uv**](https://docs.astral.sh/uv/) (or pip).
-- **A model provider** — either [Ollama](https://ollama.com) running locally (recommended: a
-  tool-capable model such as `qwen3.5:9b`), or a cloud API key.
+- **A model provider** — either [Ollama](https://ollama.com) locally (recommended: a tool-capable
+  model such as `qwen3.5:9b`), or a cloud API key.
 
-Optional, unlock extra features when present:
+Optional, unlock extra features when present — `bento installer` offers each with its licence:
 
-- **The Linux session (SUI)** — `sway` and friends for the compositor engine, plus `python3-gi`,
-  `gir1.2-gtklayershell-0.1` and `gir1.2-webkit2-4.1` for the native desktop surface. AgentOS
-  bundles none of them: the installer offers them, `agentos install-session` prints the exact line,
-  and System Settings → Components lists them with their licences. Without them the session still
-  runs, drawing the desktop in a Chromium window. [Details →](docs/session-ui.md)
-- **wayvnc + novnc** — Remote Desktop from a phone browser, relayed through AgentOS on loopback.
-- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent & terminal to one directory (Linux).
+- **The Linux session (SUI)** — `sway` and friends, plus `python3-gi`, `python3-gi-cairo`,
+  `gir1.2-gtklayershell-0.1` and `gir1.2-webkit2-4.1`. [Details →](docs/session-ui.md)
+- **wayvnc + novnc** — Remote Desktop from a phone browser, relayed on loopback.
+- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent and terminal to one folder.
 - **Node/npx** and/or **uvx** — to run **MCP servers** (Playwright, filesystem, git, …).
 - **git** — to install **skills** from repositories.
 
@@ -223,44 +253,44 @@ Optional, unlock extra features when present:
 
 ## The desktop
 
-AgentOS presents a real desktop environment, not a chat box:
-
 - **Windows** — every app opens in a draggable, resizable window with minimize/maximize/close and
   z-ordering. A **taskbar** tracks open windows; a **Start menu** launches everything.
-- **Virtual desktops** — a taskbar pager (`1 2 +`); `Ctrl+1..6` to switch, right-click a pager
-  number to move the active window there. Widgets are per-desktop, so each is its own space.
-- **Widgets** — pin any app as a frameless live tile on the desktop; drag, resize, and it restores
-  on startup. Widgets are full apps, so they can poll, call the API, run tools, and react to clicks.
-- **Command palette** — `Ctrl+Space` (or `Ctrl+K`) for Quicksilver-style fuzzy launch of any app or
-  action, or "Ask Aria …" to send straight to the agent. `Ctrl+Alt+T` opens a terminal.
+- **Windows that sleep** — a window you cannot see stops doing periodic work and refreshes the
+  moment it comes back. Six apps open and all minimised went from 25 requests per 10s to 2.
+- **Virtual desktops** — a taskbar pager; `Ctrl+1..6` to switch, right-click to move a window there.
+  Widgets are per-desktop, so each is its own space.
+- **Widgets** — pin any app as a frameless live tile; drag, resize, and it restores on startup.
+- **Command palette** — `Ctrl+Space` (or `Ctrl+K`) for fuzzy launch of any app or action, or
+  "Ask Aria …" to send straight to the agent. `Ctrl+Alt+T` opens a terminal.
 - **Look & feel** — AI-generated wallpapers with a local gallery, a thinking animation while the
-  agent works, and optional voice (speak replies + mic dictation). Paste images straight from the
-  clipboard into chat for vision-capable models.
+  agent works, and optional voice. Paste images straight into chat for vision-capable models.
 
 ### Built-in apps
 
 | App | What it is |
 |---|---|
 | **Agent Chat** | talk to the agent; streaming, tool cards, approvals, voice, image paste |
+| **Applications** | every installed desktop app — launch them, or install new ones |
+| **Remote Desktop** | the machine's real screen, clickable, from here or from a phone |
+| **Host Screen** | a refreshing still of the real display, including native app windows |
 | **Web** | opens URLs in your **real system browser** (full sites, logins, extensions) |
 | **Files** | browse the workspace; click a file to open it in your host browser/app |
 | **Terminal** | a real host shell (xterm.js over a PTY), jailed to the sandbox folder |
 | **App Studio** | describe an app in plain language and the agent **builds it live** |
-| **Task Manager** | live CPU/memory/disk, processes, open windows |
+| **Task Manager** | live CPU/memory/disk, processes, open windows (and which are sleeping) |
 | **Knowledge Graph** | what the agent knows, as a live force-directed graph |
 | **Soul** | the agent's persistent identity/personality (injected every turn) |
-| ◈ **Memory** | user & session memory with auto-learn + semantic recall; pin, edit, promote, delete |
+| **Memory** | user & session memory with auto-learn + semantic recall |
 | **Profile** | everything the agent knows about you, in one place |
-| **Team** | subagents & visual workflows (mix models per step) + data-plane observability |
-| **Docs** | this manual, inside the OS (also tab 8 in the TUI) |
+| **Team** | subagents & visual workflows (mix models per step) + observability |
+| **Docs** | this manual, inside the OS |
+| **Automations** | named routines, hot corners, and the step builder |
 | **Skills** | reusable procedures; install from a git repo or a raw `.md` URL |
-| **MCP Servers** | connect external tool servers from a catalog (Playwright, git, …) |
+| **MCP Servers** | connect external tool servers from a catalog |
 | **Telegram** | control the agent from your phone; per-chat allow-list |
 | **Policies** | always-allow / always-deny rules for tools & commands |
 | **Logs** | everything the system did (turns, tools, MCP, telegram, jobs) |
-| **Token Analytics** | token usage over time, by model |
 | **Scheduler** | recurring background **jobs** |
-| **Personalize** | AI wallpapers + gallery (Gemini / OpenAI / free fallback) |
 | **Snapshots** | restore points for the whole OS (config, data, and source) |
 | **Settings** | providers, model, autonomy, voice, sandbox, agent name |
 
@@ -269,123 +299,101 @@ AgentOS presents a real desktop environment, not a chat box:
 ## What the agent can do
 
 The agent (default name **Aria**) has a large toolset and can drive the whole OS from chat or
-Telegram. Highlights:
+Telegram:
 
 - **Act on the machine** — run shell commands, read/write files, fetch the web, open apps/files on
   the host, desktop notifications.
-- **Deliver results** — `save_report` writes a styled HTML report into `~/AgentOS/reports/` (shows
-  in Files, opens in your browser) and can ship a summary to Telegram. The agent is told to
-  **finish the job** — turn research into an actual deliverable, not stop after a search.
-- **Build the OS** — `create_app` makes new UI apps that get a desktop icon; `pin_widget` puts them
-  on the desktop; `configure_agentos` changes settings; `add_mcp_server` connects new tool channels.
-- **Grow** — two-tier memory (`remember`/`recall`/`forget`, user- and session-scoped), a knowledge
-  graph (`kg_add`/`kg_query`), `update_soul` — plus **auto-learn**: a background pass after every
-  chat turn extracts memories and graph facts on its own, so nothing depends on the model
-  remembering to call `remember`.
-- **Automate** — `schedule_task` creates headless **jobs** that run on a schedule and deliver to a
-  report and/or Telegram. The agent picks the right shape: one-off → do it now; recurring → a job;
-  interactive → a UI app.
-- **Extend itself** — `read_source` / `develop_agentos` let it modify AgentOS's **own source code**
-  (e.g. add a WhatsApp integration); it auto-snapshots first and syntax-checks before writing.
+- **Deliver results** — `save_report` writes a styled HTML report that shows in Files and opens in
+  your browser, and can ship a summary to Telegram. The agent is told to **finish the job** — turn
+  research into an actual deliverable, not stop after a search.
+- **Build the OS** — `create_app` makes new UI apps with a desktop icon; `pin_widget` puts them on
+  the desktop; `add_mcp_server` connects new tool channels.
+- **Grow** — two-tier memory, a knowledge graph, `update_soul` — plus **auto-learn**: a background
+  pass after every turn extracts memories and facts on its own.
+- **Automate** — `schedule_task` creates headless **jobs** that deliver to a report and/or Telegram.
+- **Extend itself** — `read_source` / `develop_agentos` let it modify Bento's **own source code**;
+  it auto-snapshots first and syntax-checks before writing.
 
-Ask in plain language: *"add the github MCP channel", "save a skill for our release process", "build
-me a habit tracker and pin it to desktop 2", "every morning report social-media trends to my
-Telegram", "change my wallpaper to a snowy forest".*
+Ask in plain language: *"add the github MCP channel", "build me a habit tracker and pin it to desktop
+2", "every morning report social-media trends to my Telegram", "install inkscape".*
 
 ---
 
 ## Models & providers
 
-Configure under **Settings**:
-
 - **Ollama** (local) — auto-discovered; nothing leaves your machine.
-- **Anthropic**, **OpenAI**, **OpenRouter** (one key → hundreds of models), or any **OpenAI-
-  compatible** endpoint (LM Studio, vLLM, Groq, …).
-- **Image generation** — Google Gemini or OpenAI image models when a key is set, with a free
-  fallback service otherwise.
+- **Anthropic**, **OpenAI**, **OpenRouter**, or any **OpenAI-compatible** endpoint (LM Studio, vLLM,
+  Groq, …).
+- **Image generation** — Google Gemini or OpenAI image models when a key is set, free fallback
+  otherwise.
 
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `GOOGLE_API_KEY` env vars are
-picked up automatically. Switch models mid-flight from the chat window's model dropdown.
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` and `GOOGLE_API_KEY` are picked up
+automatically. Switch models mid-flight from the chat window's dropdown.
 
 ---
 
 ## Safety
 
-- **Autonomy levels** — Paranoid / Balanced auto-run read-only actions and ask before anything
-  that modifies the system; Full runs everything. Destructive commands (`rm -rf /`, `mkfs`,
-  `shutdown`, …) are **hard-blocked** at every level.
-- **Policies** — add always-allow / always-deny rules (with `*` wildcards) matched against
-  `<tool> <command>`. "Always allow" is one click on any approval prompt.
+- **Autonomy levels** — Paranoid / Balanced auto-run read-only actions and ask before anything that
+  modifies the system; Full runs everything. Destructive commands are **hard-blocked** at every level.
+- **Policies** — always-allow / always-deny rules (with `*` wildcards) matched against
+  `<tool> <command>`.
 - **Folder sandbox** — with bubblewrap, the agent's shell/file tools and the Terminal are jailed to
-  one folder (default `~/AgentOS`): the rest of the filesystem is read-only and other home files are
-  hidden. Toggle it in Settings.
-- **Snapshots** — take a restore point before risky changes; the agent auto-snapshots before editing
-  its own code. Restoring rolls back config, data, and source, then restarts.
-- **Private by default** — binds to `127.0.0.1`. The host-open endpoint only opens `http(s)` URLs or
-  files **inside the workspace**.
+  one folder; the rest of the filesystem is read-only.
+- **Snapshots** — restore points; the agent auto-snapshots before editing its own code.
+- **Private by default** — binds to `127.0.0.1`. Remote access is off until you turn it on with a
+  passphrase, and installing software is refused from anywhere but the machine itself.
 
 ---
 
-## Telegram
+## Telegram · MCP · Programmable
 
-1. Message **@BotFather** → `/newbot` → copy the token.
-2. Paste it in the **Telegram** app and enable the bridge.
-3. Send **any** message to your bot — the first private chat becomes the owner; others are listed and
-   can be enabled/disabled per chat.
+**Telegram** — message @BotFather, paste the token in the Telegram app, and the first private chat
+becomes the owner. The agent has all its tools there; risky actions send inline Allow/Deny buttons.
 
-The agent has all its tools over Telegram, so you can build apps, change themes, run jobs, etc. from
-your phone. Risky actions send inline **Allow / Deny** buttons and wait for your tap. `/clear` resets
-the session, `/status` pings.
+**MCP servers** — add external tool servers from the catalog (Playwright, filesystem, fetch, git,
+GitHub, Postgres, Slack, search, …) or a custom `stdio`/`http` server. Their tools appear to the
+agent as `mcp_<server>_<tool>`, and to built apps via `POST /api/tool`.
 
----
-
-## MCP servers (tool "channels")
-
-Add external tool servers from the **MCP Servers** catalog (Playwright browser automation,
-filesystem, fetch, git, GitHub, Postgres, Slack, Brave/DuckDuckGo search, and more) or a custom
-`stdio`/`http` server — AgentOS speaks the **Model Context Protocol**. Their tools appear to the
-agent as `mcp_<server>_<tool>`, and to built apps via `POST /api/tool`. You can also just ask the
-agent: *"add the playwright channel."*
-
----
-
-## Programmable
-
-- **CLI** — `agentos ask "…"` for one-shot runs.
-- **REST** — e.g. `POST /api/chat {text}`, `GET /api/system`, `GET /api/files`, `POST /api/tool
-  {name,args}`, `GET /api/analytics/tokens`, plus endpoints for apps, widgets, skills, snapshots,
-  wallpapers, MCP, and Telegram.
-- **WebSocket** — `/ws` (streaming chat + approvals + build events), `/ws/terminal` (host PTY).
-- **Apps** you build run in a same-origin iframe and can call all of the above.
+**Programmable** — `bento ask "…"` for one-shot runs; a REST API (`POST /api/chat`, `GET /api/system`,
+`POST /api/tool`, …); WebSockets at `/ws` (streaming chat + approvals) and `/ws/terminal` (host PTY).
+Apps you build run in a same-origin iframe and can call all of it.
 
 ---
 
 ## Architecture
 
 ```
-agentos/
-├── __main__.py    # CLI entry: serve · app · install · uninstall · ask
+agentos/                 # the Python package keeps its original name; see "On the name" below
+├── __main__.py    # CLI entry: serve · app · installer · doctor · apps · remote-desktop · ask
 ├── agent.py       # the kernel: plan → act (tools) → observe loop, approval gates, personas
 ├── providers.py   # unified streaming chat: Ollama / Anthropic / OpenAI / OpenRouter / custom
-├── tools.py       # the hands: shell, files, web, apps, reports, memory, KG, soul, skills,
-│                  #   widgets, wallpaper, MCP dispatch, self-modification, sandbox jail
-├── mcp_client.py  # Model Context Protocol client (stdio + http servers)
-├── telegram.py    # Telegram bridge: chat registry, approval keyboard, headless turns
-├── memory.py      # SQLite: conversations, memories, tasks, logs, KG, skills, apps, chats
-├── scheduler.py   # background job runner
-├── host.py        # host integration: native apps, volume/battery/network, settings panels
-├── desktop.py     # native window + installers (Linux systemd / macOS LaunchAgents / Windows)
-├── server.py      # FastAPI: desktop UI, REST API, WebSocket streams, host-open, file serving
+├── tools.py       # the hands: shell, files, web, apps, reports, memory, KG, soul, skills, MCP
+├── shellhost.py   # the SUI: the desktop as a wlr-layer-shell surface (GTK + WebKitGTK)
+├── sessiondoctor.py # what can actually draw the desktop on this machine
+├── compositor.py  # sway/wlroots IPC: windows, workspaces, outputs, live events
+├── appstore.py    # installing native applications via appstream / flatpak / apt
+├── remotedesktop.py # the browser remote desktop, relayed over the authenticated connection
+├── installer.py   # OS-aware setup: detect the distro, install what is missing, ask first
+├── memory.py      # SQLite: conversations, memories, tasks, logs, KG, skills, apps
+├── server.py      # FastAPI: desktop UI, REST API, WebSocket streams, file serving
 └── ui/
-    ├── index.html # the entire desktop environment — zero build step, single file
-    └── assets/    # vendored xterm.js (terminal)
+    ├── src/       # the desktop's source — edit here
+    └── index.html # generated by `python -m agentos.ui.build` (do not edit)
 ```
 
-**State lives in `~/.agentos/`:** `config.json`, `agentos.db` (SQLite), `soul.md`, `wallpapers/`,
-`snapshots/`. The agent's working directory / sandbox root is `~/AgentOS/` (reports land in
-`~/AgentOS/reports/`).
+**State lives in `~/.agentos/`:** `config.json`, the SQLite database, `soul.md`, `wallpapers/`,
+`snapshots/`. The agent's working directory is `~/AgentOS/`.
+
+### On the name
+
+The product is **Bento Box AI**. The Python package, the data directory and the systemd unit are
+still `agentos` — deliberately. Renaming those breaks every existing install's service, config and
+scripts, and buys the user nothing they can see. They will move when there is a migration worth
+running, not before. The name and mark are ours in the way Ubuntu's are Canonical's: fork the code
+freely under MIT, ship it under your own name. [Licensing and trademarks →](docs/licensing.md)
 
 ---
 
-*AgentOS is an open, local-first alternative to cloud AI assistants: an agentic OS, AI desktop,
+*Bento Box AI is an open, local-first alternative to cloud AI assistants: an agentic OS, AI desktop,
 and automation platform you run yourself — on Linux, macOS, or Windows.*

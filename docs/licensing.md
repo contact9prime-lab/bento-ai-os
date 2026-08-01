@@ -71,13 +71,23 @@ That last point was a real gap: the installer used to overwrite the default them
 without recording what it had been, so restoring meant already knowing your
 distro's theme name. Removing someone's branding must always be undoable.
 
-## If you fork or rebrand AgentOS
+## If you fork or rebrand Bento Box AI
 
 MIT lets you. Two things to keep straight:
 
 1. Keep the MIT notice and copyright — that is the licence's one real condition.
-2. The AgentOS name and mark are ours in the same way Ubuntu's are Canonical's.
-   Fork the code freely; ship it under your own name.
+2. The **Bento Box AI** name and mark are ours in the same way Ubuntu's are
+   Canonical's. Fork the code freely; ship it under your own name.
+
+### A note on the two names
+
+The product is **Bento Box AI**. The Python package, the `~/.agentos` data
+directory, the systemd unit and the session identifiers are still `agentos`, and
+that is deliberate rather than unfinished: renaming them breaks every existing
+install's service, config and scripts, and buys the user nothing they can see.
+The command answers to both `bento` and `agentos`, permanently — a rename we
+chose should not cost somebody their shell history. The internal names move when
+there is a migration worth running, not before.
 
 ## Attribution
 
