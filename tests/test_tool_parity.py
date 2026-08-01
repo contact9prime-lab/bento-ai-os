@@ -18,7 +18,7 @@ os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home
 
 from agentos import config as cfgmod                                # noqa: E402
 from agentos import server as servermod                             # noqa: E402
-from agentos.agent import _image_result                             # noqa: E402
+from agentos.agent import _media_result as _image_result                             # noqa: E402
 from agentos.hostctl import HostCtlError                            # noqa: E402
 from agentos.memory import Store                                    # noqa: E402
 from agentos.tools import (ALWAYS_ASK, BUILTIN_THEMES,              # noqa: E402

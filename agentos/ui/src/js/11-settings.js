@@ -34,6 +34,8 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers'],
   ['agent','◈','Agent'],
+  ['executors','⇥','Executors'],
+  ['channels','◇','Channels'],
   ['locale','◐','Locale'],
   ['keys','⌘','Shortcuts'],
   ['voice','◉','Voice'],
@@ -101,6 +103,24 @@ function setTab(body,all){
         {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
       pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
+  }
+  if(want('executors')){
+    P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
+    P.push(pGroup('Forward everything',[
+      pRow('This machine answers with',pSelect('s-engine',[
+          ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
+          ['claude-code','Claude Code'],
+          ['hermes','Hermes']],cfg.engine||'aria'),
+        {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
+         f:'forward everything engine forwarder proxy relay'}),
+    ],{f:'forwarding engine'}));
+    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
+  }
+  if(want('channels')){
+    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
+    setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('agent')){
     P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
@@ -234,6 +254,19 @@ async function saveSettings(){
   const ght=(val('s-gh-token')||'').trim();
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
+  if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  // Executors: the tool list is checkboxes rather than a field, so it is read
+  // from the DOM directly. Only present when the Executors tab is on screen.
+  if(document.getElementById('s-exec-on')!==null){
+    patch.executors={claude_code:{
+      enabled:on('s-exec-on'),
+      workspace:(val('s-exec-ws')||'').trim(),
+      model:(val('s-exec-model')||'').trim(),
+      budget_usd:Number(val('s-exec-budget')||2),
+      tools:[...document.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool),
+      allow_source:on('s-exec-src'),
+    }};
+  }
   if(!Object.keys(patch).length){toast('nothing to save on this page');return}
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   toast('settings saved');loadModels();loadConfig();
@@ -338,4 +371,199 @@ async function locUseDetected(){
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({locale:{country:'',timezone:'',language:'',city:'',units:'',clock:''}})});
   await loadConfig();tickClock();locRender();toast('using the machine\'s own locale');
+}
+
+/* ---- Executors: agents already on this machine that AgentOS can delegate to ----
+   Availability is a live probe rather than config, so this panel is rendered
+   after the tab paints. Every control here widens or narrows the envelope a
+   delegated run gets, and the sentence under the switch always states the
+   envelope in full — picking "Claude Code" in Chat should never be a blind grant. */
+async function renderExecutors(){
+  const box=document.getElementById('exec-list');if(!box)return;
+  var d=null;
+  try{d=await (await fetch('/api/executors')).json()}catch(e){}
+  const ex=d&&(d.executors||[]).find(e=>e.id==='claude_code');
+  if(!ex){box.innerHTML='<h3>Claude Code</h3><p class="mut">could not read executors</p>';return}
+  if(!ex.available){
+    /* "Not installed" used to end here, which is a dead end wearing an honest
+       sentence. The exact command is shown before anything runs, and the button
+       runs that command — nothing is installed without agreeing to it. */
+    box.innerHTML=`<h3>Claude Code</h3><p class="mut">${esc(ex.reason||'not available')}</p>
+      ${ex.install_cmd?`
+        <div class="ghint">${esc(ex.install_note||'')}</div>
+        ${pRow('Install it',`<button class="endbtn" id="exec-inst"
+             onclick="execInstall()">Install Claude Code</button>`,
+          {desc:`Runs: <code>${esc(ex.install_cmd)}</code> — into your own account, no sudo.`,
+           f:'install claude code executor'})}
+        <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
+      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
+    return;
+  }
+  const c=ex.config||{}, tools=c.tools||[];
+  const tool=(name,desc)=>`<label class="exec-tool"><input type="checkbox" data-tool="${name}" ${tools.indexOf(name)>=0?'checked':''}> <b>${name}</b> <span class="mut">${esc(desc)}</span></label>`;
+  /* How a delegated run is paid for. "Delegate this turn" reads as free when it
+     is a subscription and as nothing at all when it is a metered key, and those
+     are very different things to click — so it is stated before the switch. */
+  const b=ex.billing||{};
+  const bill=b.detail?`<div class="ghint bill ${esc(b.mode||'')}">${
+    {subscription:'◆',api:'$',none:'!'}[b.mode]||'·'} ${esc(b.detail)}${
+    (b.stripped||[]).length?` <span class="mut">(${esc(b.stripped.join(', '))} is set in the environment but is not passed to it)</span>`:''}</div>`:'';
+  box.innerHTML=`<h3>Claude Code <span class="mut">${esc(ex.version||'')}</span></h3>
+    <div class="ghint">${esc(ex.what||'')}</div>${bill}
+    ${pRow('Use as an engine',pSwitch('s-exec-on',ex.enabled),
+      {desc:'Adds “Claude Code” to the model picker in Chat. Each turn you send there is delegated to it.',f:'enable claude code executor'})}
+    ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in — run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal. Delegated runs will use that subscription.</div>`:''}
+    ${pRow('Folder',pText('s-exec-ws',c.workspace),
+      {desc:'The only directory it can read or write. Everything else on the machine is out of reach.',f:'executor workspace folder'})}
+    ${pRow('Let it work on AgentOS itself',pSwitch('s-exec-src',c.allow_source),
+      {desc:`Also gives it <code>${esc(ex.source_root||'')}</code> — the source of this OS — so it can fix AgentOS's own tools and windows. It is told that the UI is built from <code>ui/src</code> and that the suite must pass. Off unless you turn it on: the OS rewriting itself is its own decision.`,
+       f:'executor agentos source develop self edit'})}
+    ${pRow('Model',pText('s-exec-model',c.model,'its own default'),
+      {desc:'Leave empty to let Claude Code choose. It uses its own credentials — not your AgentOS provider keys.',f:'executor model'})}
+    ${pRow(b.mode==='subscription'?'Work limit':'Spend limit',
+      pText('s-exec-budget',c.budget_usd,'','number'),
+      {desc:b.mode==='subscription'
+        ? 'You are on a Claude subscription, so runs are not billed per token — this is a runaway guard, not a bill. Claude Code stops when its <em>notional</em> cost reaches it; ask it to carry on and it resumes where it stopped.'
+        : 'A hard ceiling in US dollars per run, enforced by Claude Code itself.',
+       f:'executor budget cost limit work'})}
+    ${pRow('Allowed tools',`<div class="exec-tools">
+        ${tool('Read','read files')}${tool('Glob','find files')}${tool('Grep','search text')}
+        ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
+        ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
+      </div>`,{stack:true,desc:'Decided here, once, before a run starts — this build of Claude Code has no per-call approval hook, so anything left unticked simply cannot be used.',f:'executor allowed tools permissions'})}
+    <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
+  const refresh=()=>{
+    const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);
+    const writes=t.some(x=>x==='Write'||x==='Edit'||x==='Bash');
+    const e=document.getElementById('exec-envelope');
+    if(e)e.textContent=`Claude Code in ${document.getElementById('s-exec-ws').value} with `
+      +(t.join(', ')||'no tools')+(writes?' (can change files and run commands)':' (read-only)')
+      +`, up to $${Number(document.getElementById('s-exec-budget').value||0).toFixed(2)}`;
+  };
+  box.querySelectorAll('[data-tool],#s-exec-ws,#s-exec-budget').forEach(i=>{
+    i.onchange=refresh;i.oninput=refresh;
+  });
+}
+
+/* Installing is a visible act: the command was shown, the output streams here,
+   and the panel re-probes when it finishes rather than claiming success. */
+async function execInstall(){
+  const btn=document.getElementById('exec-inst'), log=document.getElementById('exec-instlog');
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  if(log){log.hidden=false;log.textContent='starting…\n'}
+  try{
+    const r=await fetch('/api/executors/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'claude_code'})});
+    const d=await r.json();
+    if(log){log.textContent+=(d.message||'')+'\n'}
+    toast(d.ok?'✓ '+(d.message||'installed'):(d.message||'could not install'));
+    if(d.ok)renderExecutors();
+  }catch(e){ toast('could not reach the server') }
+  finally{ if(btn){btn.disabled=false;btn.textContent='Install Claude Code'} }
+}
+/* Progress lines from the installer, broadcast so every open surface sees them. */
+function execInstallLine(ev){
+  const log=document.getElementById('exec-instlog');
+  if(!log)return;
+  log.hidden=false;
+  if(ev.line){log.textContent+=ev.line+'\n';log.scrollTop=log.scrollHeight}
+}
+
+/* ---- channels: every way in, who may use it, and how far it is trusted ----
+   Each card saves on its own (PUT /api/channels/<id>) rather than through the
+   page-wide Save, because a channel is a self-contained decision and because the
+   server answers with why it refused — "still needs Bot token", "that one shares
+   a gate with This window" — which is worth showing next to the control that
+   caused it rather than as one page-level error. */
+var CHAN_POSTURES=[];
+async function renderChannels(){
+  const box=document.getElementById('chan-list');if(!box)return;
+  var d=null;
+  try{d=await (await fetch('/api/channels')).json()}catch(e){}
+  if(!d||!d.channels){box.innerHTML='<p class="mut">could not read channels</p>';return}
+  CHAN_POSTURES=d.postures||[];
+  var html=`<h3 class="chsec">Channels that reach this agent</h3>`
+    +d.channels.map(chanCard).join('');
+  /* Hermes already runs a messaging gateway with bridges AgentOS deliberately
+     does not rebuild. These are discovered from it, so the list is whatever is
+     really paired right now — and they are delivery routes OUT, which the
+     heading has to say or "WhatsApp: on" reads as "Aria is on WhatsApp". */
+  const carried=d.carried||[];
+  if(carried.length){
+    html+=`<h3 class="chsec">Carried by Hermes <span class="mut">— AgentOS can send to these; a reply there is answered by Hermes, not by ${esc(agentName())}</span></h3>`
+      +carried.map(chanCard).join('');
+  }
+  box.innerHTML=html;
+}
+function chanCard(c){
+  if(c.carrier==='hermes')return chanCarriedCard(c);
+  const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';
+  const fields=(c.fields||[]).map(f=>pRow(f.label,
+      f.secret?pSecret(`ch-${c.id}-${f.key}`,!!(c.set||{})[f.key],'••••',f.placeholder)
+              :pText(`ch-${c.id}-${f.key}`,(c.values||{})[f.key],f.placeholder),
+      {desc:f.help,f:c.id+' '+f.label})).join('');
+  /* Postures are per IO gate. Channels that share a gate say whose posture they
+     follow instead of showing a select that would never be consulted. */
+  const posture=c.own_gate
+    ? pRow('Permissions',pSelect(`ch-${c.id}-posture`,
+        CHAN_POSTURES.map(p=>[p.id,p.label]),c.posture),
+        {desc:(CHAN_POSTURES.find(p=>p.id===c.posture)||{}).help||'',
+         f:c.id+' permissions posture autonomy'})
+    : pRow('Permissions',`<span class="mut">follows ${esc(c.posture_from||'another channel')}</span>`,
+        {desc:`Arrives through the same gate, so the same rules apply: ${esc(c.posture_label)}.`,
+         f:c.id+' permissions'});
+  const onoff=c.builtin
+    ? pRow('Available',`<span class="mut">always on</span>`,
+        {desc:'This is how you reach the machine — it has no off switch here.',f:c.id+' always on'})
+    : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  return `<div class="pgroup chan" data-f="channel ${esc(c.id)} ${esc(c.title)}">
+    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span></h3>
+    <div class="ghint">${esc(c.what)}</div>
+    ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
+      {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
+    ${onoff}${posture}${fields}
+    ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
+    ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
+    <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
+      <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
+  </div>`;
+}
+/* A Hermes-carried channel has nothing to save here: pairing happens in Hermes,
+   and inventing an on/off switch beside it would be a control that lies. The
+   card reports what the probe found and points at where it is really changed. */
+function chanCarriedCard(c){
+  const dot={on:'ok',off:'mut',unavailable:'warn'}[c.status]||'mut';
+  const tg=(c.targets||[]).length
+    ? `<div class="chtargets">${c.targets.map(t=>
+        `<code title="${esc(t.id)}">${esc(t.name||t.id)}</code>`).join('')}</div>`
+    : '';
+  return `<div class="pgroup chan carried" data-f="channel hermes ${esc(c.title)}">
+    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span>
+      <span class="chvia">via Hermes</span></h3>
+    ${tg}
+    ${c.status==='unavailable'
+      ? `<div class="ghint mut">${esc(c.detail)}</div>`
+      : `<div class="ghint mut">${esc(c.note)}</div>`}
+  </div>`;
+}
+async function chanSave(id){
+  const msg=document.getElementById('ch-'+id+'-msg');
+  const body={};
+  const on=document.getElementById('ch-'+id+'-on'); if(on)body.enabled=on.checked;
+  const po=document.getElementById('ch-'+id+'-posture'); if(po)body.posture=po.value;
+  // only fields the user actually typed into: a saved secret shows as a chip
+  // with no input, and sending '' for it would read as "clear this"
+  document.querySelectorAll(`[id^="ch-${id}-"]`).forEach(el=>{
+    const k=el.id.slice(('ch-'+id+'-').length);
+    if(['on','posture','msg'].indexOf(k)>=0)return;
+    if(el.tagName==='INPUT')body[k]=el.value;
+  });
+  if(msg){msg.textContent='saving…';msg.className='mut'}
+  try{
+    const r=await fetch('/api/channels/'+encodeURIComponent(id),
+      {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
+    if(j.ok)renderChannels();
+  }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
 }

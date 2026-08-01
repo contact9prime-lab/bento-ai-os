@@ -56,7 +56,7 @@ function jarvisAsk(text){
   jarvisSetPhase('thinking',agentName()+' is working…');
   $('#j-reply').textContent='';
   JARVIS.busy=true;jarvisReply='';
-  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:($('#modelsel')&&$('#modelsel').value)||undefined}));
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:''}));
   setRunning(true);
 }
 function jarvisSpeakAndListen(text){

@@ -181,6 +181,23 @@ CATALOG: dict[str, dict] = {
                    "on 127.0.0.1 and nothing new is exposed to the network.",
         "detect": lambda: _novnc_present(),
     },
+    "ffmpeg": {
+        "packages": _same("ffmpeg"),
+        "method": "system",
+        # Upstream FFmpeg's core is LGPL-2.1+, but every distro's `ffmpeg` binary
+        # is built with GPL components (x264 and friends) and ships as GPL. State
+        # the thing the user would actually install, not the more comfortable
+        # upstream answer.
+        "licence": "GPL-2.0+ (distro build; upstream core LGPL-2.1+)",
+        "group": "optional", "for_session": False,
+        "title": "Media processing (ffmpeg)",
+        "unlocks": "Measuring, thumbnailing, trimming, joining and re-framing video "
+                   "and audio on this machine. Without it AgentOS can still receive, "
+                   "keep and play media that a service generated — it just cannot "
+                   "look inside it or cut it locally. On RHEL/Fedora this package "
+                   "comes from RPM Fusion, which has to be enabled first.",
+        "detect": lambda: bool(shutil.which("ffmpeg")),
+    },
     "ddcutil": {
         "packages": _same("ddcutil"),
         "method": "system", "licence": "GPL-2.0+",
@@ -243,6 +260,24 @@ CATALOG: dict[str, dict] = {
         "unlocks": "Discovering and printing to network and USB printers.",
         "detect": lambda: bool(shutil.which("lpstat")),
     },
+    # Without one of these there is no local model at all, and AgentOS falls back
+    # to asking for a cloud API key — which is a worse first run for someone who
+    # installed a private, self-hosted OS. Offered, never assumed: it is a real
+    # system change and the licence is stated like everything else here.
+    "ollama": {
+        "packages": {}, "method": "script", "licence": "MIT",
+        "group": "recommended", "for_session": False,
+        "title": "Ollama (local models)",
+        "unlocks": "Running models on this machine — private, free, no API key. "
+                   "AgentOS uses it for chat, embeddings and app building. "
+                   "Installs the official Ollama service (llama.cpp underneath).",
+        "argv": lambda: ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+        "detect": lambda: bool(shutil.which("ollama")),
+    },
+    # No separate llama.cpp entry on purpose: it is what Ollama runs underneath,
+    # and it is packaged only on Arch — an entry absent on three of the four
+    # families we claim to support is the silent gap
+    # test_every_component_has_a_name_for_every_supported_family exists to catch.
     "plymouth-theme": {
         "packages": {}, "method": "script", "licence": "MIT (AgentOS)",
         "group": "optional", "for_session": True,
@@ -303,6 +338,10 @@ def install_argv(comp: dict) -> list[str]:
     argv, not a string, so nothing is ever assembled by shell concatenation.
     """
     if comp["method"] == "script":
+        # An entry may bring its own installer; the boot splash is the one that
+        # ships a script inside AgentOS.
+        if comp.get("argv"):
+            return list(comp["argv"]())
         return ["sh", _plymouth_script()]
     if comp["method"] == "snap" and shutil.which("snap"):
         pkg = packages_for(comp) or (comp.get("packages") or {}).get("debian", "")

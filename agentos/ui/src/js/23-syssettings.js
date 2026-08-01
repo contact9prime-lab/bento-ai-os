@@ -270,8 +270,13 @@ async function sysComponents(el){
    itself, so nothing signed in remotely (and no agent, and no app) can widen
    its own access. */
 let REMOTE={};
+/* Where this machine can be reached from — a live probe of Tailscale and any
+   tunnel provider, not config. Kept beside REMOTE because the addresses are
+   only meaningful once remote access is on. */
+let TUNNEL={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
+  try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
   const on=!!REMOTE.enabled, set=!!REMOTE.configured;
   el.innerHTML=`
     <div class="provbox">
@@ -301,10 +306,47 @@ async function sysRemote(el){
 
     ${on?`<div class="provbox">
       <div class="ptitle">Reach it from your phone</div>
-      ${(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
+      ${(TUNNEL.reachable||[]).length?`<div class="rm-addr">${TUNNEL.reachable.map(a=>`
+          <div class="rm-row"><code>${esc(a.url)}</code>
+            <span class="rm-via ${a.via==='Tailscale'?'far':''}">${esc(a.via)} · ${esc(a.who)}</span>
+            <button class="endbtn" onclick="rmCopy('${esc(a.url)}')">Copy</button></div>`).join('')}</div>`
+        :(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
           <div class="rm-row"><code>${esc(a)}</code>
             <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
         :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
+    ${/* The LAN list alone made a machine that was already reachable from
+          anywhere look like it only worked in the same room. If there is a
+          tunnel provider, say what it would add and what it still needs. */''}
+    ${/* If nothing here reaches beyond this Wi-Fi, that is the thing to say — and
+          then offer the fix, rather than leaving "remote access" quietly meaning
+          "same room only". This is the OS handling it instead of the user
+          discovering that a tunnel is a thing that exists. */''}
+    ${!(TUNNEL.reachable||[]).some(a=>a.via!=='This network')?`
+      <div class="rm-offer">
+        <b>Only reachable on this network.</b>
+        To open AgentOS from anywhere — a phone on mobile data, a laptop elsewhere —
+        this machine needs an address of its own. AgentOS can set one up.
+      </div>`:''}
+    ${(TUNNEL.providers||[]).filter(p=>p.available||p.install).map(p=>`
+      <p class="mut" style="margin-top:8px;line-height:1.6">
+        <b>${esc(p.title)}</b> — ${esc(p.what||'')}
+        ${p.available?(p.needs?`<br><span style="color:var(--warn)">${esc(p.needs)}</span>${
+            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${esc(p.needs_url)}')">Open</button>`:''}`
+          :'<br>ready to publish a proper https:// address.')
+         :`<br>${esc(p.reason||'')}${p.install_cmd?`
+            <br><span class="mut">${esc(p.install_note||'')}</span>
+            <br><code class="rm-cmd">${esc(p.install_cmd)}</code>
+            <br><button class="endbtn" id="tun-inst-${esc(p.id)}"
+                 onclick="tunInstall('${esc(p.id)}')">Install ${esc(p.title)}</button>`
+           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${esc(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
+    ${(TUNNEL.published&&TUNNEL.url)?`<div class="rm-offer live">
+        <b>Published${TUNNEL.kind==='public'?' to the internet':''}:</b>
+        <code>${esc(TUNNEL.url)}</code>
+        <button class="endbtn" onclick="rmCopy('${esc(TUNNEL.url)}')">Copy</button>
+        <button class="endbtn" onclick="tunStop()">Stop</button></div>`
+      :(TUNNEL.providers||[]).some(p=>p.available&&!p.needs)?`
+        <p class="mut" style="margin-top:8px">
+          <button class="endbtn" onclick="tunStart()">Publish an address for anywhere</button></p>`:''}
       <p class="mut" style="margin-top:10px;line-height:1.6">
         Open that on your phone, sign in with the passphrase, then
         <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
@@ -345,3 +387,46 @@ async function rmToggle(on){
   refreshApp('syssettings');
 }
 function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}
+
+/* ---- tunnels: the OS setting up its own way in ----
+   Installing is a visible act with the command shown first, and publishing to
+   the public internet is confirmed rather than assumed — "reachable from
+   anywhere" and "reachable by anyone" are different promises. */
+async function tunInstall(id){
+  const btn=document.getElementById('tun-inst-'+id);
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  try{
+    const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'install',provider:id})});
+    const d=await r.json();
+    toast(d.ok?'✓ '+(d.message||'installed'):(d.message||'could not install'));
+    if(d.ok)refreshApp('syssettings');
+  }catch(e){toast('could not reach the server')}
+  finally{if(btn){btn.disabled=false;btn.textContent='Install'}}
+}
+async function tunStart(){
+  const cf=(TUNNEL.providers||[]).find(p=>p.id==='cloudflared'&&p.available);
+  const ts=(TUNNEL.providers||[]).find(p=>p.id==='tailscale'&&p.available&&!p.needs);
+  const provider=ts?'tailscale':(cf?'cloudflared':'');
+  if(!provider){toast('no tunnel provider is ready');return}
+  const publicly=provider==='cloudflared';
+  if(publicly&&!await osConfirm('Publish to the public internet?',
+      'Anyone with the link reaches your sign-in page. They still need your passphrase, '
+      +'but the address itself is public. Stop it any time from here.',
+      {danger:true,confirmText:'Publish'}))return;
+  toast('setting up…');
+  try{
+    const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'start',provider,public:publicly})});
+    const d=await r.json();
+    toast(d.ok?'✓ '+(d.url||d.message):(d.message||'could not publish'));
+    refreshApp('syssettings');
+  }catch(e){toast('could not reach the server')}
+}
+async function tunStop(){
+  const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'stop'})});
+  const d=await r.json();
+  toast(d.message||(d.ok?'stopped':'nothing to stop'));
+  refreshApp('syssettings');
+}

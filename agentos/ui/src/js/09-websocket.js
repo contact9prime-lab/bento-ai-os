@@ -1,4 +1,11 @@
 /* ================= websocket ================= */
+/* Who is answering the turn currently streaming. `var`, not `let`: the bundle is
+   one concatenated script and a top-level `let` here would be in the temporal
+   dead zone for anything earlier in filename order that reaches it. */
+var CUR_ENGINE={engine:'',model:''};
+/* The last model each engine reported. The chip reads it so the top bar can say
+   what the machine is running on, not just who it forwards to. */
+var FWD_MODEL={};
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
@@ -165,7 +172,24 @@ function handle(ev){
       // never steal the Chat window's current conversation
       if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
       currentConv=ev.id; loadConvs(); break;}
+    case 'executor_install':
+      if(typeof execInstallLine==='function')execInstallLine(d);
+      break;
+    case 'engine_info':{
+      // A forwarded run reporting who it is and what it woke up on. Relabel the
+      // bubble in place so the answer is never credited to the built-in agent.
+      if(ev.engine&&ev.model)FWD_MODEL[ev.engine]=ev.model;
+      if(typeof paintForwardChip==='function')paintForwardChip();
+      if(_cur){
+        CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
+        const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
+        if(who)who.innerHTML=engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model);
+      }
+      break;}
     case 'turn_start':{
+      // a new turn: until an engine says otherwise, this is the built-in agent
+      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'||ev.model==='hermes'?ev.model:'',
+                          model:(ev.model==='claude-code'||ev.model==='hermes')?'':(ev.model||'')};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
       updateSpin();
@@ -288,6 +312,8 @@ function handle(ev){
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'telegram_chats': refreshApp('telegram'); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
+    case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
     case 'fabric_event': fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); break;
     case 'setup': location.reload(); break;
@@ -356,7 +382,9 @@ function startAssistant(){
   removeWorking();
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg assistant';
-  m.innerHTML='<div class="who">▲ '+esc(agentName())+'</div>';
+  // Labelled for whoever is answering THIS turn — engine_info relabels it the
+  // moment a forwarded run says which model it woke up on.
+  m.innerHTML='<div class="who">'+engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model)+'</div>';
   curBody=document.createElement('div');curBody.className='body';
   m.appendChild(curBody);feed.appendChild(m);curThink=null;
 }

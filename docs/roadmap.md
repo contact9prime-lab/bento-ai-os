@@ -35,9 +35,11 @@ system — apps, automations, memory, and a knowledge graph that compound the lo
    graphs, dashboards, and a desktop the agent itself restyles (`create_theme`,
    `create_app`, `pin_widget`).
 2. **Flat memory.** Markdown-file memory with no structure, no scoping, no lifecycle.
-   AgentOS has two-tier scoped memory (user/session), automatic extraction after every turn,
-   semantic recall, contradiction supersede, session rollup, and a deduplicated knowledge
-   graph — visible and editable in the UI (◈ Memory, Graph, Profile).
+   AgentOS scopes memory on two axes — user/session *and* which space (project) it belongs
+   to — with automatic extraction after every turn, semantic recall, contradiction
+   supersede, session rollup, and a deduplicated knowledge graph whose assertions carry
+   the scope while entities stay shared. All visible and editable in the UI (◈ Memory,
+   Graph, Profile, Spaces, Timeline).
 3. **Trust came last.** The OpenClaw wave normalized agents on personal machines — and also
    normalized exposed gateways, unvetted community skills, and prompt-injection horror
    stories. AgentOS ships autonomy levels, approval gates, allow/deny policies, a bubblewrap
@@ -57,8 +59,11 @@ system — apps, automations, memory, and a knowledge graph that compound the lo
 - Contradiction handling: corrections supersede, retractions delete (pinned are immune)
 - Session rollup: idle conversations distill into durable memory
 - KG entity dedup; Profile app ("what do you know about me?")
+- **Two axes, not one**: scope (user/session) × space (this project / everywhere). See
+  pillar J — memory and facts are filed where they are true, and a space always sees
+  the global scope alongside its own
+- Timeline of milestones — what was run, made, learned and changed (pillar J)
 - ▢ Memory provenance — click a memory → the conversation that taught it
-- ▢ Memory timeline — "what did you learn about me this week?"
 - ▢ Portable brain — export/import the whole memory+KG+soul as one encrypted `.brain` file.
   *Your agent's mind is yours; take it to another machine (or another model) in one file.*
 
@@ -117,6 +122,70 @@ Today the scheduler is time-based only. The step-change is **event-driven autono
   born-enrolled, rotation/revocation), remote nodes
 - ▢ Memory proposals from remote children (parent's dedup pipeline decides); scheduler jobs
   targeting a subagent so heavy recurring work runs off-box
+
+### J. Spaces, media & the enterprise hub  *(foundation shipped — the rest is sequenced below)*
+
+Two use cases drove this pillar, and the foundation both were blocked on is now in:
+a creator running a social/content operation, and an operator running several agents
+at once. Neither could work while the knowledge graph was global-only and everything
+a media MCP returned was thrown away.
+
+**Shipped (the foundation):**
+- **Spaces** — a first-class container for a thing you are working on. Conversations,
+  memory, KG assertions, assets, runs, scheduled jobs and audit entries each belong to
+  one, or to the global scope. The rule everywhere is `space ∪ global`: a space sees its
+  own rows *and* what is true everywhere, so switching project never loses your name.
+  Per-surface active space (the desk and the phone do not fight), authoritative on the
+  conversation (reopening a thread never moves it)
+- **Scoped knowledge graph** — assertions carry the scope, entities do not: a person is
+  the same person in every space. `kg_query` became a join instead of loading the whole
+  graph into Python, which is what made scoping affordable
+- **Space-aware extraction** — the post-turn memory pass classifies global vs space with
+  one testable rule ("would this still be true after the project ends?"), and session
+  rollup lands in the space rather than in your global memory
+- **Timeline** — a materialised index of milestones (runs finished, assets produced,
+  memory learned, apps changed), not a second copy of the message log
+- **MCP media bridge** — non-text content a server returns is stored instead of
+  discarded. Images, video, audio and blobs become assets with provenance; images are
+  attached for vision, video and audio travel as asset ids because no provider path can
+  carry them and pretending otherwise would be a silent no-op
+- **Asset store** — content-addressed under `~/.agentos/assets`, zero new dependencies,
+  a raw-body streaming upload, a Gallery with real `<video>`/`<audio>`, and honest
+  degradation when ffmpeg is absent (offered via `components.py`, never shipped — it
+  is GPL)
+- **The access ledger** — every PDP decision writes one structured row: who, what
+  resource, which surface, which rule, what outcome. `logs` stays the operator's diary;
+  this is the queryable record an enterprise actually needs. `media.*` and `space.*` are
+  grantable actions, and memory/KG resources are space-qualified so "this subagent may
+  write memory in one space only" is one grant
+
+**Next, one at a time:**
+- ▢ **Creator suite** — local rendering (trim/concat/caption/reframe) behind the offered
+  ffmpeg component, a storyboard the agent fills with `storyboard_add_shot`, and a
+  **Media & creative** category in the MCP catalogue (Higgsfield, Canva, Replicate, fal;
+  ElevenLabs moves into it). Publishing goes **through MCP servers** — no bespoke
+  TikTok/Instagram API clients to own and no platform review to chase — with
+  `publish.post` as a risky, grantable action per carrier and target
+- ▢ **Multi-agent for an operator** — `delegate(wait=false)` with a durable run registry,
+  concurrency caps and token budgets per subagent and per space, scheduler jobs that
+  target a subagent, artifacts and a run-scoped blackboard for handoff, and an
+  org-chart surface in the GUI *and* the TUI. Recursive delegation stays denied; a
+  separate `agent.handoff` action with a framework-enforced depth cap is the way in
+- ▢ **A persistent approval queue** — today an unattended run either has full autonomy or
+  is auto-denied after a 300s in-memory wait. A parked decision should survive a restart
+  and be answerable in the morning from a phone, over SSH, or at the desk
+- ▢ **The gateway hub** — `agentos/openclaw.py` beside `hermes.py` behind one `Gateway`
+  interface (install, status, config, lifecycle, live target probe). AgentOS owns a
+  *named subset* of `~/.openclaw/openclaw.json`, applied through `openclaw config set`
+  and picked up by the gateway's hot reload — never by writing the JSON5 file, which
+  would destroy comments and bake `${VAR}` substitutions into literals. Secrets stay
+  with the gateway, exactly as `hermes.py` refuses to touch `.env`
+- ▢ **Carriers become channels, and AgentOS becomes the hub** — today a message arriving
+  at Hermes is answered by Hermes' own agent, which is why every carried channel is
+  stamped `direction: out`. Pointing a gateway's agent endpoint at AgentOS makes the
+  conversation land *here*, with this memory, this policy and this ledger. That is the
+  step that turns the gateways into transport and AgentOS into the permission and
+  audit hub in front of them — and it is opt-in, because it changes who answers
 
 ### F. Everywhere — surfaces
 - Web desktop, desktop app, Telegram, CLI, TUI
@@ -182,8 +251,9 @@ look like one OS, not twenty utilities.*
 
 | Horizon | Ship |
 |---|---|
-| **Now** *(done)* | Memory v2: two-tier + auto-learn + semantic recall + rollup + supersede + KG dedup + Profile · **fabric F0**: subagents + visual workflows + control/data-plane split + heartbeats + observability + heterogeneous models ([design/subagents.md](design/subagents.md)) |
-| **Next (2–6 wks)** | Automations app with event triggers · morning briefing · **UI kit + density pass (Chat, Settings, Memory first)** · **fabric F1: task-envelope wire protocol + mTLS PKI + worker mode** · secrets vault · privacy ledger · WhatsApp bridge · registry v0 (git index + signed bundles + publish flow) |
+| **Now** *(done)* | Memory v2: two-tier + auto-learn + semantic recall + rollup + supersede + KG dedup + Profile · **fabric F0**: subagents + visual workflows + control/data-plane split + heartbeats + observability + heterogeneous models ([design/subagents.md](design/subagents.md)) · **spaces foundation** (pillar J): spaces + scoped KG + timeline + MCP media bridge + asset store + Gallery + the access ledger |
+| **Next — one at a time** | **J1 creator suite** (ffmpeg component + storyboard + Media MCP category + publish via MCP) · **J2 multi-agent for an operator** (async delegate, run registry, budgets, scheduler→subagent, handoff, org chart in GUI *and* TUI) · **J3 approval queue** (durable, answerable in the morning) · **J4 gateway hub** (`openclaw.py` + one `Gateway` interface + reconciled config) · **J5 carriers as channels** (inbound handoff into AgentOS — opt-in, it changes who answers) |
+| **Then (2–6 wks)** | Automations app with event triggers · morning briefing · **UI kit + density pass (Chat, Settings, Memory first)** · **fabric F1: task-envelope wire protocol + mTLS PKI + worker mode** · secrets vault · privacy ledger · registry v0 (git index + signed bundles + publish flow) |
 | **Later** | Fabric F2–F3 (docker workers → remote nodes) · **voice provider layer (ElevenLabs/OpenAI/local TTS + realtime STT)** · mobile PWA · app gardener · self-improvement loop · desktop modes · portable brain · per-app UI modules |
 
 **North-star metrics** — depth over chats: apps + automations per active user; % of turns

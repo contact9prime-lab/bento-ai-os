@@ -161,6 +161,10 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-chip:hover:not(:disabled){border-color:var(--acc)}
 .wiz-chip.rec{border-color:color-mix(in srgb,var(--acc) 55%,var(--line))}
 .wiz-chip em{font-style:normal;font-size:var(--fs-2xs);color:var(--acc);margin-left:7px;letter-spacing:.04em}
+.wiz-chip:disabled{opacity:.55;cursor:default}
+/* Said beside the chip when the machine could not tell us where it is — the
+   wizard asks instead of offering a location nobody detected. */
+.wiz-note{font-style:normal;font-size:var(--fs-sm);color:var(--dim);align-self:center}
 .wiz-chip:disabled{opacity:.45;cursor:default}
 .wiz-chip.on{opacity:1;border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--bg3))}
 .wiz-swatch span{display:inline-block;width:34px;height:20px;border-radius:5px;margin-right:8px;vertical-align:middle;
@@ -236,3 +240,13 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .hs-note{font-size:var(--fs-xs);line-height:1.6}
 .hs-note code{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line);
   border-radius:4px;padding:1px 5px}
+
+/* First-run offer to install something the machine needs. Sits with the choices
+   it unblocks, not in a settings panel the user has not met yet. */
+.wiz-offer{display:flex;flex-direction:column;gap:6px;margin:0 0 14px;padding:12px 14px;
+  border-radius:10px;text-align:left;line-height:1.5;
+  border:1px solid color-mix(in srgb,var(--acc) 35%,var(--line));
+  background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.wiz-offer b{font-size:var(--fs-md)}
+.wiz-offer span{font-size:var(--fs-sm);color:var(--dim)}
+.wiz-offer button{align-self:flex-start;margin-top:2px}

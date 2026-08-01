@@ -1,4 +1,5 @@
 :root{
+  color-scheme:dark;   /* native widgets (select popups, scrollbars) follow the mode */
   /* ---- color (theme-controlled — names are the theme API, do not rename) ---- */
   --bg:#0b0d10; --bg2:#111419; --bg3:#171b22; --bg4:#1e242e;
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
@@ -39,6 +40,7 @@
   --ease-in-out:cubic-bezier(.65,0,.35,1);       /* moves between two on-screen states */
 }
 :root[data-theme=light]{
+  color-scheme:light;
   --glass-tint:color-mix(in srgb,#fff 62%,transparent);
   --glass-edge:inset 0 .5px 0 rgba(255,255,255,.85);
   --hairline:rgba(0,0,0,.08);
@@ -58,6 +60,10 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:var
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:inherit;color:var(--txt);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+/* the open dropdown is drawn by the browser, so paint its rows from the same
+   tokens as the closed control — otherwise a light --txt lands on the native
+   menu's own background and the options read as blank */
+select option,select optgroup{background-color:var(--bg3);color:var(--txt)}
 input[type=range]{accent-color:var(--acc);padding:0;border:none;background:none}
 input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}

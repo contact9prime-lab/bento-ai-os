@@ -78,13 +78,20 @@ async function studioLoadModels(){
   try{
     const d=await (await fetch('/api/models')).json();
     const list=(d.models||[]);
+    /* Executors belong here too. A one-shot model has a single turn to emit an
+       entire app; an executor writes it as a file and keeps working until it is
+       finished, which is the difference between a sketch and something you could
+       demo. Listed first for anything ambitious. */
+    // only executors build here: Hermes answers, but has no file workspace to build in
+    const engines=(d.engines||[]).filter(e=>e.available&&e.kind==='executor');
     sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
+      engines.map(e=>`<option value="${esc(e.id)}">${esc(e.name||e.id)} · builds as a file, keeps going until done</option>`).join('')+
       list.map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
     // A model you picked is YOUR choice: if the list doesn't have it this second
     // (provider slow, key toggled, Ollama restarting) keep it selected and say so
     // instead of silently dropping you back to Auto — that reset is exactly how a
     // chosen cloud model turned back into a local one.
-    if(cur!=='auto'&&!list.some(m=>m.id===cur))
+    if(cur!=='auto'&&!list.some(m=>m.id===cur)&&!engines.some(e=>e.id===cur))
       sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)} · unavailable right now</option>`);
     sel.value=cur;
   }catch(e){

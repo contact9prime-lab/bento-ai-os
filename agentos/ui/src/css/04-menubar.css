@@ -78,3 +78,13 @@
 #natctl button:hover{background:var(--acc);color:#04211c}
 #natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
 .tbnat.mini{opacity:.45}
+
+/* ---- forwarding chip: the machine is answering as another agent, and says so ---- */
+#fwdchip{display:flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
+  color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
+#fwdchip[hidden]{display:none}
+#fwdchip:hover{filter:brightness(1.08)}
+#fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
+  border-left:1px solid rgba(0,0,0,.28)}

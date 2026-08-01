@@ -1831,8 +1831,45 @@ async def api_models_delete(name: str):
 
 @app.get("/api/models")
 async def api_models():
-    return {"models": await providers.available_models(state["cfg"]),
-            "default": state["cfg"].get("default_model", "")}
+    """Everything that can answer a turn: provider models AND enabled engines.
+
+    Engines belong here rather than behind a second probe, so the chat picker,
+    the Models app and anything else that lists what can answer all agree — an
+    executor you switched on in Settings shows up everywhere at once, and one
+    that is switched off disappears everywhere at once.
+    """
+    from . import executors as execmod
+    cfg = state["cfg"]
+    engines = []
+
+    ex_conf = (cfg.get("executors") or {}).get("claude_code") or {}
+    if ex_conf.get("enabled"):
+        info = execmod.available()
+        env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+        engines.append({
+            "id": "claude-code", "name": "Claude Code", "kind": "executor",
+            "available": bool(info.get("available")),
+            # an enabled-but-missing executor says why rather than sitting in the
+            # picker as a choice that fails on the first turn
+            "reason": info.get("reason", ""),
+            "detail": info.get("version", ""),
+            "envelope": env.describe(),
+        })
+
+    try:
+        from . import hermes as hermesmod
+        h = await hermesmod.status(cfg)
+        if h.get("installed") and h.get("engine_enabled") is not False:
+            engines.append({"id": "hermes", "name": "Hermes", "kind": "agent",
+                            "available": True, "reason": "", "detail": "", "envelope": ""})
+    except Exception:
+        pass
+
+    return {"models": await providers.available_models(cfg),
+            "default": cfg.get("default_model", ""),
+            "engines": engines,
+            # which engine this machine forwards to ("" = it answers itself)
+            "engine": execmod.resolve_engine(cfg)}
 
 
 @app.get("/api/config")
@@ -1851,6 +1888,120 @@ async def api_get_config():
     return cfg
 
 
+@app.get("/api/tunnel")
+async def api_tunnel():
+    """How to reach this machine from elsewhere, and what could publish it."""
+    from . import tunnel as tunmod
+    try:
+        return await asyncio.wait_for(tunmod.status(state["cfg"]), timeout=40)
+    except Exception as exc:
+        return {"published": False, "url": "", "reachable": [], "providers": [],
+                "gate": "", "error": str(exc)[:200]}
+
+
+@app.post("/api/tunnel")
+async def api_tunnel_set(body: dict):
+    """Publish this machine, or take it offline again."""
+    from . import tunnel as tunmod
+    action = str((body or {}).get("action") or "")
+    if action == "stop":
+        ok, message = await tunmod.stop(state["cfg"])
+        return JSONResponse({"ok": ok, "message": message},
+                            status_code=200 if ok else 400)
+    if action == "install":
+        ok, message = await tunmod.install(str(body.get("provider") or ""))
+        return JSONResponse({"ok": ok, "message": message},
+                            status_code=200 if ok else 400)
+    if action != "start":
+        return JSONResponse({"ok": False, "error": "action must be start|stop|install"},
+                            status_code=400)
+    ok, message, url = await tunmod.start(
+        state["cfg"], str(body.get("provider") or "tailscale"),
+        public=bool(body.get("public")))
+    return JSONResponse({"ok": ok, "message": message, "url": url},
+                        status_code=200 if ok else 400)
+
+
+@app.post("/api/executors/install")
+async def api_executor_install(body: dict):
+    """Install Claude Code, with progress. The command was shown before this ran."""
+    from . import executors as execmod
+    if str((body or {}).get("id") or "claude_code") != "claude_code":
+        return JSONResponse({"ok": False, "error": "unknown executor"}, status_code=400)
+
+    async def note(line: str):
+        await state["broadcast"]({"type": "executor_install", "line": line})
+
+    ok, message = await execmod.install(note)
+    await state["broadcast"]({"type": "executor_install", "done": True,
+                              "ok": ok, "message": message})
+    return JSONResponse({"ok": ok, "message": message},
+                        status_code=200 if ok else 400)
+
+
+@app.get("/api/channels")
+async def api_channels():
+    """Every way to reach this machine from elsewhere, and what each one still needs."""
+    from . import channels as chmod
+    # Hermes-carried channels are a live probe of another program, so a slow or
+    # wedged CLI must not take the whole panel down with it — the native channels
+    # are the ones that actually reach this agent.
+    carried = []
+    try:
+        carried = await asyncio.wait_for(chmod.carried_state(state["cfg"]), timeout=30)
+    except Exception:
+        carried = []
+    return {"channels": chmod.state(state["cfg"], state.get("store")),
+            "carried": carried,
+            "postures": [{"id": p, "label": chmod.POSTURE_LABELS[p],
+                          "help": chmod.POSTURE_HELP[p]} for p in chmod.POSTURE_LABELS]}
+
+
+@app.put("/api/channels/{channel_id}")
+async def api_channel_save(channel_id: str, body: dict):
+    from . import channels as chmod
+    ok, message = chmod.save(state["cfg"], channel_id, body or {})
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "channels"})
+    if not ok:
+        return JSONResponse({"ok": False, "error": message}, status_code=400)
+    return {"ok": True, "message": message,
+            "channels": chmod.state(state["cfg"], state.get("store"))}
+
+
+@app.get("/api/executors")
+async def api_executors():
+    """Which other agents on this machine AgentOS can hand a task to.
+
+    Reports the reason and the fix when there is none, rather than leaving a dead
+    control — the same contract /api/platform keeps for capabilities.
+    """
+    from . import executors as execmod
+    conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
+    info = execmod.available()
+    workspace = conf.get("workspace") or str(cfgmod.AGENTOS_HOME / "workspace")
+    env = execmod.Envelope(
+        workspace=workspace,
+        tools=tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
+        model=conf.get("model", ""),
+        budget_usd=float(conf.get("budget_usd") or execmod.default_budget()),
+        allow_source=bool(conf.get("allow_source")),
+    ).sanitized()
+    return {"executors": [{
+        "id": "claude_code", "title": "Claude Code",
+        "what": "Files, shell, code and research inside a directory you choose. "
+                "It has no screen or keyboard — AgentOS keeps the desktop.",
+        "enabled": bool(conf.get("enabled")),
+        "config": {"workspace": env.workspace, "tools": list(env.tools),
+                   "model": env.model, "budget_usd": env.budget_usd,
+                   "allow_source": env.allow_source},
+        "source_root": execmod.source_root(),
+        "envelope": env.describe(),
+        "billing": execmod.billing(),
+        **info,
+    }]}
+
+
 @app.put("/api/config")
 async def api_put_config(patch: dict):
     cfg = state["cfg"]
@@ -1866,6 +2017,39 @@ async def api_put_config(patch: dict):
         for k in localeinfo.FIELDS:
             if k in patch["locale"]:
                 lo[k] = str(patch["locale"][k] or "")[:64]
+    if "engine" in patch:
+        from . import executors as execmod
+        want = str(patch["engine"] or "aria")
+        # An engine this machine cannot actually reach would silently break every
+        # surface at once, so refuse it here rather than at the first turn.
+        if want in ("claude-code",) and not execmod.available().get("available"):
+            return JSONResponse({"error": "Claude Code is not installed on this machine"},
+                                status_code=400)
+        cfg["engine"] = want if want in execmod.ENGINES else "aria"
+    if isinstance(patch.get("executors"), dict):
+        from . import executors as execmod
+        ex = cfg.setdefault("executors", {}).setdefault("claude_code", {})
+        got = patch["executors"].get("claude_code") or {}
+        if "enabled" in got:
+            ex["enabled"] = bool(got["enabled"])
+        if "workspace" in got:
+            ex["workspace"] = str(got["workspace"] or "")[:400]
+        if "model" in got:
+            ex["model"] = str(got["model"] or "")[:80]
+        if got.get("budget_usd") is not None:
+            # not `or 2.0` — 0 is falsy, and turning "spend nothing" into the
+            # default budget is a widening the user never asked for
+            ex["budget_usd"] = max(0.05, min(float(got["budget_usd"]),
+                                             execmod.MAX_BUDGET_USD))
+        if isinstance(got.get("tools"), list):
+            # Only tools we know how to hand over. An unrecognised name would be
+            # passed to the CLI verbatim and widen the envelope to whatever it
+            # made of it — which is exactly the thing the envelope exists to stop.
+            ex["tools"] = [t for t in got["tools"] if t in execmod.KNOWN_TOOLS]
+        if "allow_source" in got:
+            # Letting the OS rewrite itself is its own decision, never implied by
+            # merely turning an executor on.
+            ex["allow_source"] = bool(got["allow_source"])
     if isinstance(patch.get("shortcuts"), dict):
         # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
         # for the compositor bindings written by /api/shortcuts/apply
@@ -4215,10 +4399,270 @@ async def api_put_soul(body: dict):
     return {"ok": True}
 
 
-@app.get("/api/memories")
-async def api_memories(scope: str = "", conversation_id: str = "", q: str = ""):
+# ---------------------------------------------------------------------------
+# Spaces — the things the user is working on
+# ---------------------------------------------------------------------------
+
+def _space_of(request: Request, body: dict | None = None, query: str = "") -> str:
+    """Which space this request is about.
+
+    Explicit beats implicit, in this order: an ?space= parameter, a body field,
+    the X-AgentOS-Space header, then nothing. A script has no "current" space, so
+    the surface default is deliberately NOT consulted here — that belongs to the
+    chat path, which knows its surface (see spaces.active_for)."""
+    if query:
+        return query
+    if body and body.get("space_id"):
+        return str(body["space_id"])
+    return request.headers.get("X-AgentOS-Space", "") or ""
+
+
+@app.get("/api/spaces")
+async def api_spaces():
+    from . import spaces as spacemod
+    return spacemod.public(state["store"], state["cfg"])
+
+
+@app.post("/api/spaces")
+async def api_create_space(body: dict):
     store = state["store"]
-    mems = store.search_memories(q, limit=500, scope=scope, conversation_id=conversation_id)
+    sid = store.create_space(
+        (body.get("name") or "").strip()[:80],
+        description=(body.get("description") or "")[:500],
+        icon=(body.get("icon") or "")[:8],
+        colour=(body.get("colour") or "")[:24],
+        workspace=(body.get("workspace") or "")[:400])
+    if not sid:
+        return JSONResponse({"error": "a space needs a name"}, status_code=400)
+    store.log("system", f"space created: {body.get('name')}", {"space_id": sid}, space_id=sid)
+    await state["broadcast"]({"type": "spaces_update"})
+    return {"ok": True, "id": sid, "space": store.get_space(sid)}
+
+
+@app.put("/api/spaces/{sid}")
+async def api_update_space(sid: str, body: dict):
+    store = state["store"]
+    if not store.get_space(sid):
+        return JSONResponse({"error": "no such space"}, status_code=404)
+    store.update_space(sid, **{k: v for k, v in body.items()
+                               if k in ("name", "icon", "colour", "description",
+                                        "workspace", "archived")})
+    await state["broadcast"]({"type": "spaces_update"})
+    return {"ok": True, "space": store.get_space(sid)}
+
+
+@app.get("/api/spaces/{sid}/stats")
+async def api_space_stats(sid: str):
+    """What is in a space. The delete dialog shows this first — 'delete everything'
+    should never be a guess about what everything is."""
+    store = state["store"]
+    if not store.get_space(sid):
+        return JSONResponse({"error": "no such space"}, status_code=404)
+    return {"stats": store.space_stats(sid)}
+
+
+@app.delete("/api/spaces/{sid}")
+async def api_delete_space(sid: str, contents: str = "archive"):
+    store = state["store"]
+    if not store.get_space(sid):
+        return JSONResponse({"error": "no such space"}, status_code=404)
+    if contents not in store.SPACE_CONTENTS:
+        return JSONResponse(
+            {"error": f"contents must be one of {', '.join(store.SPACE_CONTENTS)} — "
+                      f"deleting a space has to say what happens to what is in it"},
+            status_code=400)
+    counts = store.delete_space(sid, contents=contents)
+    # any surface still pointing at it falls back to global rather than filtering
+    # on an id that no longer exists (which would hide everything)
+    active = (state["cfg"].get("spaces") or {}).get("active") or {}
+    for surface, val in list(active.items()):
+        if val == sid:
+            active[surface] = ""
+    cfgmod.save_config(state["cfg"])
+    store.log("system", f"space {sid} deleted ({contents})", {"counts": counts})
+    await state["broadcast"]({"type": "spaces_update"})
+    return {"ok": True, "disposition": contents, "counts": counts}
+
+
+@app.post("/api/spaces/activate")
+async def api_activate_space(body: dict):
+    """Point one surface at a space. Per-surface on purpose: switching project at
+    the desk must not silently move what your phone does next."""
+    from . import spaces as spacemod
+    sid = str(body.get("space_id") or "")
+    if sid and not state["store"].get_space(sid):
+        return JSONResponse({"error": "no such space"}, status_code=404)
+    surface = str(body.get("surface") or "gui")
+    spacemod.set_active(state["cfg"], surface, sid)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "spaces_update", "surface": surface, "space_id": sid})
+    return {"ok": True, "surface": surface, "space_id": sid,
+            "name": spacemod.label(state["store"], sid)}
+
+
+@app.get("/api/timeline")
+async def api_timeline(space: str = "", kind: str = "", since: float = 0.0,
+                       limit: int = 200):
+    return {"events": state["store"].timeline(space=space, kind=kind, since=since,
+                                              limit=min(int(limit), 1000))}
+
+
+# ---------------------------------------------------------------------------
+# Assets — everything the agent made or was handed
+# ---------------------------------------------------------------------------
+
+@app.get("/api/assets")
+async def api_assets(kind: str = "", q: str = "", space: str = "",
+                     conversation_id: str = "", run_id: str = "",
+                     limit: int = 100, offset: int = 0):
+    from . import assets as assetmod
+    rows = state["store"].asset_list(kind=kind, q=q, space=space,
+                                     conversation_id=conversation_id, run_id=run_id,
+                                     limit=min(int(limit), 500), offset=int(offset))
+    return {"assets": [assetmod.public(r) for r in rows],
+            "capability": assetmod.capability()}
+
+
+@app.get("/api/assets/{aid}")
+async def api_asset(aid: str):
+    from . import assets as assetmod
+    row = state["store"].asset_get(aid)
+    if not row:
+        return JSONResponse({"error": "no such asset"}, status_code=404)
+    out = assetmod.public(row)
+    out["missing"] = assetmod.path_of(row) is None
+    return out
+
+
+@app.get("/api/assets/{aid}/file")
+async def api_asset_file(aid: str):
+    """Serve the bytes. The path comes from the row, never from the caller — an
+    asset is addressed by id, so there is no path here to traverse."""
+    from . import assets as assetmod
+    row = state["store"].asset_get(aid)
+    if not row:
+        return JSONResponse({"error": "no such asset"}, status_code=404)
+    path = assetmod.path_of(row)
+    if not path:
+        return JSONResponse(
+            {"error": "the file behind this asset is missing from disk"}, status_code=410)
+    return FileResponse(path, media_type=row.get("mime") or "application/octet-stream",
+                        headers={"Cache-Control": "max-age=31536000, immutable"})
+
+
+@app.get("/api/assets/{aid}/thumb")
+async def api_asset_thumb(aid: str):
+    from . import assets as assetmod
+    row = state["store"].asset_get(aid)
+    if not row or not row.get("thumb"):
+        return JSONResponse({"error": "no thumbnail"}, status_code=404)
+    p = Path(row["thumb"])
+    if not p.is_file():
+        return JSONResponse({"error": "no thumbnail"}, status_code=404)
+    return FileResponse(p, media_type="image/jpeg",
+                        headers={"Cache-Control": "max-age=31536000, immutable"})
+
+
+@app.post("/api/assets")
+async def api_asset_create(request: Request, body: dict):
+    """Small inline uploads: a pasted or dropped image as a data URL. Large files
+    go to the raw PUT below — base64 in JSON inflates by a third and buffers the
+    whole thing in memory twice."""
+    from . import assets as assetmod
+    data_url = body.get("data_url") or ""
+    if not data_url.startswith("data:"):
+        return JSONResponse({"error": "data_url is required"}, status_code=400)
+    row = await assetmod.put_data_url(
+        state["store"], data_url, title=(body.get("title") or "")[:200],
+        name=(body.get("name") or ""), source="upload",
+        space_id=_space_of(request, body), conversation_id=body.get("conversation_id") or "")
+    if not row:
+        return JSONResponse(
+            {"error": f"could not store it — empty, malformed, or over the "
+                      f"{assetmod.MAX_INLINE_BYTES // (1024*1024)} MB inline limit"},
+            status_code=400)
+    await state["broadcast"]({"type": "assets_update"})
+    return {"ok": True, "asset": assetmod.public(row)}
+
+
+@app.put("/api/assets/raw")
+async def api_asset_raw(request: Request, name: str = "", title: str = "",
+                        conversation_id: str = ""):
+    """Stream a large upload straight to disk.
+
+    A raw body rather than multipart: multipart would mean adding
+    python-multipart, and streaming a 200 MB video through base64 in JSON would
+    mean holding ~500 MB of string. The client side is one line —
+    fetch(url, {method:'PUT', body: file}).
+    """
+    from . import assets as assetmod
+    try:
+        row = await assetmod.put_stream(
+            state["store"], request.stream(), name=name[:200],
+            mime=request.headers.get("content-type", "").split(";")[0],
+            title=title[:200], source="upload",
+            space_id=_space_of(request), conversation_id=conversation_id)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
+    except Exception as e:
+        return JSONResponse({"error": f"upload failed: {type(e).__name__}: {e}"},
+                            status_code=400)
+    if not row:
+        return JSONResponse({"error": "nothing was uploaded"}, status_code=400)
+    await state["broadcast"]({"type": "assets_update"})
+    return {"ok": True, "asset": assetmod.public(row)}
+
+
+@app.delete("/api/assets/{aid}")
+async def api_asset_delete(aid: str):
+    from . import assets as assetmod
+    if not assetmod.delete(state["store"], aid):
+        return JSONResponse({"error": "no such asset"}, status_code=404)
+    await state["broadcast"]({"type": "assets_update"})
+    return {"ok": True}
+
+
+@app.get("/api/media/capability")
+async def api_media_capability():
+    """What this machine can do with media, and the component that would fix what
+    it cannot. The Gallery renders the sentence rather than greying a control out
+    with no explanation."""
+    from . import assets as assetmod
+    from . import components as compmod
+    cap = assetmod.capability()
+    if not cap["ffmpeg"]:
+        entry = compmod.CATALOG.get("ffmpeg") or {}
+        cap["title"] = entry.get("title", "")
+        cap["licence"] = entry.get("licence", "")
+        cap["unlocks"] = entry.get("unlocks", "")
+    return cap
+
+
+# ---------------------------------------------------------------------------
+# The access ledger
+# ---------------------------------------------------------------------------
+
+@app.get("/api/audit")
+async def api_audit(limit: int = 300, effect: str = "", action: str = "",
+                    principal_kind: str = "", surface: str = "", space: str = "",
+                    since: float = 0.0, q: str = ""):
+    return {"entries": state["store"].audit_list(
+        limit=min(int(limit), 2000), effect=effect, action=action,
+        principal_kind=principal_kind, surface=surface, space=space,
+        since=since, q=q)}
+
+
+@app.get("/api/audit/summary")
+async def api_audit_summary(since: float = 0.0):
+    return state["store"].audit_summary(since=since)
+
+
+@app.get("/api/memories")
+async def api_memories(scope: str = "", conversation_id: str = "", q: str = "",
+                       space: str = ""):
+    store = state["store"]
+    mems = store.search_memories(q, limit=500, scope=scope,
+                                 conversation_id=conversation_id, space=space)
     titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
     for m in mems:
         m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
@@ -4890,14 +5334,31 @@ async def api_chat(body: dict, request: Request):
         return cfg.get("autonomy") == "full"
 
     # apps call from inside the desktop (GUI); everything else is the headless API gate
-    agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid,
-                  principal=principal,
-                  surface="gui" if principal.kind == "app" else "api")
-    knowledge.turn_started()
-    try:
-        result = await agent.run(history)
-    finally:
-        knowledge.turn_ended()
+    from . import executors as execmod
+    engine = execmod.resolve_engine(cfg)
+    # An APP asking for a turn is machinery, not a person: it expects AgentOS's
+    # tools and its own data store, neither of which an executor has. Forwarding
+    # it would break the app, so a forwarder still answers apps itself.
+    if engine != "aria" and principal.kind != "app":
+        knowledge.turn_started()
+        try:
+            content, _run = await execmod.forward(
+                engine, text, cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+        finally:
+            knowledge.turn_ended()
+        result = {"content": content, "steps": [{"type": "executor", "name": engine}],
+                  "tokens": {"input": 0, "output": 0}}
+    else:
+        from . import spaces as spacemod
+        _surface = "gui" if principal.kind == "app" else "api"
+        agent = Agent(cfg, toolbox, model, emit, approver, conversation_id=cid,
+                      principal=principal, surface=_surface,
+                      space_id=spacemod.active_for(cfg, _surface, store, cid))
+        knowledge.turn_started()
+        try:
+            result = await agent.run(history)
+        finally:
+            knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
     knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
@@ -5231,6 +5692,13 @@ async def run_chat(cid: str, data: dict):
     started = False
     header = ""
     model = data.get("model") or cfg.get("default_model", "")
+    # A machine set to forward answers every turn with the other agent, whichever
+    # surface it arrived from — chat, omnibar, copilot panel. An explicit engine
+    # in the request still wins, so one chat can opt out of the machine setting.
+    from . import executors as execmod
+    engine = execmod.resolve_engine(cfg, data.get("model") or "")
+    if engine != "aria":
+        model = engine
     result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
     try:
         images = _chat_images(data)
@@ -5245,7 +5713,85 @@ async def run_chat(cid: str, data: dict):
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
         # streaming its steps like a normal turn, and still shows up in Observability
         mention = fabricmod.parse_mention(store, text)
-        if model == "hermes":
+        if model == "claude-code":
+            # Engine = Claude Code: delegate the turn to the coding agent already
+            # installed on this machine. It keeps AgentOS's turn lifecycle — working
+            # indicator, global turn slot, Stop, persistence — because its stream is
+            # translated into the same events a local turn emits. AgentOS still owns
+            # the desktop; the executor only gets the envelope configured in
+            # Settings → Executors, decided before the run rather than per call.
+            from . import executors as execmod
+            avail = execmod.available()
+            if not avail.get("available"):
+                raise RuntimeError(avail.get("reason") or "Claude Code is not available")
+            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+            env.session_id = state.get("exec_sessions", {}).get(cid, "")
+            # The same per-surface context the built-in agent gets as extra_system.
+            # Without it a delegated copilot turn arrived as a bare sentence with
+            # no idea which app it was about — the executor is sanitizing it.
+            env.context = execmod.context_for(str(data.get("context") or ""))
+            # A copilot turn names its app in the origin. If it is a user app,
+            # check it out to a real file first: an executor that only understands
+            # files could otherwise never touch an app that lives in a DB row, and
+            # explaining that was honest but useless.
+            # AgentOS has two kinds of app and they are opposites: a USER app is a
+            # row in the database (check it out to a file the executor can edit),
+            # a BUILT-IN app is the OS's own source. Telling someone asking about
+            # the Settings window that "apps live in the database, use App Studio"
+            # was both false and a dead end, so the kind is resolved here.
+            checkout = None
+            origin = str(data.get("origin") or "")
+            if origin.startswith("copilot:"):
+                app_id = origin.split(":", 1)[1]
+                try:
+                    checkout = execmod.checkout_app(store, app_id, env.workspace)
+                except Exception:
+                    checkout = None
+                if checkout:
+                    env.context += execmod.app_checkout_note(checkout, env.tools)
+                elif app_id:
+                    env.context += execmod.builtin_app_note(app_id, env.allow_source)
+            run = execmod.Run()
+            turns[cid] = {"agent": None, "task": asyncio.current_task(),
+                          "model": "claude-code", "executor": run}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": "claude-code"})
+            await evsend({"type": "status", "message": "Claude Code is working…"})
+            collected: list[str] = []
+
+            async def _relay(ev: dict):
+                if ev.get("type") == "text_delta":
+                    collected.append(ev.get("text", ""))
+                await evsend(ev)
+
+            try:
+                await execmod.run_task(text, env, _relay, run)
+            finally:
+                execmod.stop(run)          # a cancelled turn must not leave it running
+            if run.session_id:
+                # Keep the executor's own session so the next turn in this chat is a
+                # continuation rather than a stranger with no memory of the last one.
+                state.setdefault("exec_sessions", {})[cid] = run.session_id
+            if checkout:
+                # Write the edit back as a new app version, and SAY so — a change
+                # that appears without a word is indistinguishable from a bug.
+                saved, why = execmod.commit_app(store, checkout)
+                if saved:
+                    await evsend({"type": "status", "message": why})
+                    await state["broadcast"]({"type": "apps"})
+                elif why:
+                    await evsend({"type": "status", "message": why})
+            header = ""
+            result = {"content": "".join(collected),
+                      "steps": [{"type": "executor", "name": "claude-code",
+                                 "cost_usd": run.cost_usd, "turns": run.turns,
+                                 "denials": run.denials, "envelope": env.describe()}],
+                      # who actually answered, so a reloaded conversation still
+                      # attributes it correctly rather than crediting the built-in agent
+                      "engine": "claude-code", "engine_model": run.model,
+                      "tokens": {"input": 0, "output": 0}}
+        elif model == "hermes":
             # Engine = Hermes: the user picked Hermes as the chat backend. Route the
             # turn to the Hermes CLI, keeping AgentOS's turn lifecycle (working
             # indicator, global turn slot, cancellation, persistence). Hermes replies
@@ -5256,11 +5802,15 @@ async def run_chat(cid: str, data: dict):
             started = True
             await evsend({"type": "turn_start", "model": "hermes"})
             await evsend({"type": "status", "message": "Hermes is working…"})
+            await evsend({"type": "engine_info", "engine": "hermes", "model": "", "tools": []})
             reply = await hermesmod.ask(text)
-            header = "🜁 Hermes\n\n"
-            await evsend({"type": "text_delta", "text": header + reply})
-            result = {"content": header + reply, "steps": [], "tokens": {"input": 0, "output": 0}}
-            header = ""  # already embedded in content — don't double-prefix on persist
+            # The bubble is labelled "Hermes" now, so prefixing the text with the
+            # name too would say it twice.
+            await evsend({"type": "text_delta", "text": reply})
+            result = {"content": reply, "steps": [],
+                      "engine": "hermes", "engine_model": "",
+                      "tokens": {"input": 0, "output": 0}}
+            header = ""
         elif mention:
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
@@ -5287,8 +5837,10 @@ async def run_chat(cid: str, data: dict):
             # embedded-panel preamble). Sanitized and capped — it is UI-supplied.
             extra = str(data.get("context") or "")[:4096]
             extra = "".join(ch for ch in extra if ch == "\n" or ch == "\t" or ord(ch) >= 32)
+            from . import spaces as spacemod
             agent = Agent(cfg, toolbox, model, evsend, approver, conversation_id=cid,
-                          surface=surface, extra_system=extra)
+                          surface=surface, extra_system=extra,
+                          space_id=spacemod.active_for(cfg, surface, store, cid))
             # anything the user queued while this turn was being set up (the slot is
             # claimed before the task starts) is handed over here, once
             for queued in state["queues"].get(cid) or []:
@@ -5318,7 +5870,12 @@ async def run_chat(cid: str, data: dict):
             knowledge.turn_ended()
         try:
             store.add_message(cid, "assistant", header + result["content"],
-                              {"steps": result["steps"]})
+                              {"steps": result["steps"],
+                               # a reloaded conversation must still say who answered
+                               **({"engine": result["engine"]} if result.get("engine") else {}),
+                               **({"engine_model": result["engine_model"]}
+                                  if result.get("engine_model") else {}),
+                               **({"model": model} if model and not result.get("engine") else {})})
             store.touch_conversation(cid)
             tk = result.get("tokens") or {}
             store.log("turn", text[:200], {"conversation_id": cid, "model": model,
@@ -5717,7 +6274,12 @@ async def run_build(data: dict):
         # bigger output budget than chat (a whole app must fit in one tool call), and
         # the thinking channel is OFF — a local thinking model can burn its entire
         # budget reasoning and never emit the app
-        bcfg = {**cfg, "max_steps": 10,
+        # 10 steps was a ceiling set for one-shot local builds, and it is the reason
+        # an ambitious brief came back as a sketch: spec → ground → build → fix
+        # leaves nothing for actually finishing. A capable model gets room to
+        # iterate; small local ones keep the tighter bound they need.
+        _cap = 10 if (model or "").startswith("ollama/") else int(cfg.get("build_max_steps", 26))
+        bcfg = {**cfg, "max_steps": _cap,
                 "max_output_tokens": int(cfg.get("build_max_output_tokens", 32768)),
                 "ollama_think": False}
         build_timeout = int(cfg.get("build_timeout", 600))
@@ -5806,6 +6368,76 @@ async def run_build(data: dict):
             return (new[0] if new else None), res
 
         await bcast({"type": "build_start"})
+
+        # Claude Code builds the app as a FILE, over as many steps as it needs.
+        # The built-in builder gets one turn to emit an entire app in one fenced
+        # block, which is why an ambitious brief comes back as a sketch: there is
+        # no room to write it, read it back and fix it. An executor works the way
+        # a person does, so this is the path for anything bigger than a widget.
+        if model == "claude-code":
+            from . import executors as execmod
+            avail = execmod.available()
+            if not avail.get("available"):
+                await terminal({"type": "build_error",
+                                "message": avail.get("reason", "Claude Code is not available")})
+                return
+            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+            if not any(t in env.tools for t in ("Write", "Edit")):
+                await terminal({"type": "build_error",
+                                "message": ("Claude Code cannot build an app without Write or "
+                                            "Edit — tick them in Settings → Executors")})
+                return
+            # A build is long work; a chat-sized ceiling stops it mid-app, which is
+            # the one failure that produces nothing usable at all.
+            env.budget_usd = max(env.budget_usd, execmod.BUILD_MIN_BUDGET_USD)
+            # Refining keeps the SAME name, because create_app updates in place by
+            # name — a new name would silently leave a duplicate app behind.
+            app_name = (existing or {}).get("name") or (prompt[:40] or "New app")
+            co = execmod.prepare_build(env.workspace, app_name,
+                                       (existing or {}).get("html", ""))
+            env.context = execmod.context_for("")
+            run = execmod.Run()
+            build["executor"] = run
+            await bcast({"type": "build_text",
+                         "text": f"\n(building with Claude Code in {co['dir']} — "
+                                 f"up to ${env.budget_usd:.2f})\n"})
+
+            async def erelay(ev: dict):
+                if ev.get("type") == "text_delta":
+                    await bcast({"type": "build_text", "text": ev.get("text", "")})
+                elif ev.get("type") == "tool_start":
+                    await bcast({"type": "build_tool", **ev})
+                elif ev.get("type") == "tool_end":
+                    await bcast({"type": "build_tool_end", **ev})
+                elif ev.get("type") == "error":
+                    await bcast({"type": "build_error_note", **ev})
+
+            try:
+                await execmod.run_task(
+                    execmod.build_task(prompt, co, persona_for("claude-code")),
+                    env, erelay, run)
+            finally:
+                execmod.stop(run)
+                build["executor"] = None
+            html, problem = execmod.read_build(co)
+            if problem:
+                await terminal({"type": "build_error", "message": problem})
+                return
+            out = await toolbox.create_app(app_name, (existing or {}).get("icon", ""),
+                                           (existing or {}).get("description") or prompt[:160],
+                                           html)
+            if str(out).startswith("[error]"):
+                await terminal({"type": "build_error", "message": str(out)})
+                return
+            apps = store.list_apps()
+            newest = apps[0] if apps else None
+            store.add_message(cid, "assistant",
+                              f"Built with Claude Code (${run.cost_usd:.2f}).",
+                              {"engine": "claude-code", "engine_model": run.model})
+            await bcast({"type": "apps"})
+            await terminal({"type": "build_done",
+                            "app": newest, "model": "claude-code"})
+            return
 
         # Auto model selection: prefer a tool-call-reliable model (cloud first, then strong
         # local families); fall back to the configured default, then anything available.
@@ -5997,9 +6629,19 @@ async def ws_endpoint(ws: WebSocket):
                     if not (origin == "user" or origin == "omni"
                             or origin.startswith("copilot:")):
                         origin = "user"
-                    cid = state["store"].create_conversation(title, origin=origin)
+                    # A new conversation is born into the surface's active space and
+                    # stays there. Reopening it next month must not silently move it
+                    # to whatever project was clicked last — see spaces.py.
+                    from . import spaces as spacemod
+                    from .policy import SURFACES as _SURFACES
+                    _surface = (data.get("surface")
+                                if data.get("surface") in _SURFACES else "gui")
+                    _space = str(data.get("space_id") or "") or spacemod.active_for(
+                        state["cfg"], _surface)
+                    cid = state["store"].create_conversation(title, origin=origin,
+                                                             space_id=_space)
                     await send({"type": "conversation", "id": cid, "title": title,
-                                "origin": origin})
+                                "origin": origin, "space_id": _space})
                 turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":

@@ -310,8 +310,25 @@ async function renderModels(body){
     sub:`${all.length} configured · ${(d.models||[]).length} local · ${(d.running||[]).length} loaded`,
     search:{id:'mdl-q',placeholder:'Search models & catalog…'},
   });
+  // Engines are the other thing that can answer a turn, so they belong in the
+  // Model Manager next to the models — same list the chat picker builds from.
+  // An engine that is enabled but unreachable says why instead of looking ready.
+  const engines=(d2.engines||[]);
+  const fwd=d2.engine&&d2.engine!=='aria'?d2.engine:'';
+  const engineList=engines.map(e=>`<div class="item" data-f="${esc(e.id+' '+e.name+' engine executor')}">
+      <div class="grow"><b>${esc(e.name)}</b>
+        ${e.available?'<span class="badge" style="color:var(--acc2)">engine</span>'
+                     :'<span class="badge" style="color:var(--err)">unavailable</span>'}
+        ${fwd===e.id?'<span class="badge ok">✓ this machine forwards to it</span>':''}
+        <div class="sub">${esc(e.available?(e.envelope||e.detail||'ready'):e.reason)}</div></div>
+      <button class="endbtn" style="border-color:var(--line);color:var(--dim)"
+        onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')">Configure</button>
+    </div>`).join('');
+
   pb.innerHTML=`
     ${gpu?`<div class="sect">GPU</div><div class="tmgrid" style="grid-template-columns:1fr">${gpu}</div>`:'<p class="mut">No NVIDIA GPU detected (models run on CPU).</p>'}
+    <div data-fgroup><div class="sect">Engines — other agents on this machine that can answer instead of a model</div>
+    ${engineList||emptyBox('No engines enabled','Turn one on in Settings → Executors to hand work to another agent already installed here.','','settings')}</div>
     <div data-fgroup><div class="sect">Configured models — chat, builds and scheduled tasks use the default</div>
     ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.','','models','Help me set up a model that fits this machine.')}
     <p class="mut" style="margin:6px 0 0">Cloud providers (Anthropic, OpenAI, OpenRouter…) appear here once their API key is set in <a href="#" onclick="openApp('settings');return false" style="color:var(--acc2)">Settings</a>. Tool-capable models (qwen, claude, gpt) make builds far more reliable.</p></div>

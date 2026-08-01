@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at REAL,
     updated_at REAL,
     rolled_up INTEGER DEFAULT 0, -- session memories already distilled into user memory
-    origin TEXT DEFAULT 'user'   -- who started it: user | schedule | trigger | briefing | suggestion
+    origin TEXT DEFAULT 'user',  -- who started it: user | schedule | trigger | briefing | suggestion
+    space_id TEXT DEFAULT ''     -- the space this conversation belongs to ('' = global)
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS memories (
     pinned INTEGER DEFAULT 0,    -- pinned memories are always injected first
     source TEXT DEFAULT '',      -- 'agent' | 'auto' | 'ui'
     embedding TEXT,              -- JSON float vector for semantic recall (NULL = not embedded yet)
+    space_id TEXT DEFAULT '',    -- '' = true everywhere; else true inside one space
     updated_at REAL,             -- bumped when edited or re-confirmed; drives recency ranking
     created_at REAL
 );
@@ -40,6 +42,8 @@ CREATE TABLE IF NOT EXISTS logs (
     kind TEXT,                   -- turn | tool | approval | task | telegram | mcp | error | system
     message TEXT,
     meta TEXT,
+    conversation_id TEXT DEFAULT '',  -- was buried in meta JSON, so unfilterable
+    space_id TEXT DEFAULT '',
     created_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_logs_time ON logs(created_at);
@@ -49,13 +53,23 @@ CREATE TABLE IF NOT EXISTS kg_nodes (
     type TEXT,
     created_at REAL
 );
+-- The graph is scoped on its EDGES, never on its nodes. A node is an entity and
+-- an entity is the same entity everywhere: the person "Ana" does not become a
+-- different person because you switched to the launch space. An edge is an
+-- ASSERTION, and assertions are what belong to a project — "Ana reviews the
+-- launch copy" is true here and nowhere else.
+--
+-- This also keeps the migration non-destructive: kg_nodes.name is UNIQUE, and
+-- making it unique-per-space would mean rebuilding the table.
 CREATE TABLE IF NOT EXISTS kg_edges (
     id TEXT PRIMARY KEY,
     src TEXT,
     dst TEXT,
     relation TEXT,
+    space_id TEXT DEFAULT '',
     created_at REAL
 );
+-- (its indexes are created in _migrate, after space_id is guaranteed to exist)
 CREATE TABLE IF NOT EXISTS user_apps (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE,
@@ -155,6 +169,8 @@ CREATE TABLE IF NOT EXISTS fabric_runs (
     tokens_in INTEGER DEFAULT 0,
     tokens_out INTEGER DEFAULT 0,
     steps INTEGER DEFAULT 0,
+    space_id TEXT DEFAULT '',
+    conversation_id TEXT DEFAULT '',
     started_at REAL,
     finished_at REAL
 );
@@ -210,7 +226,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     "trigger" TEXT DEFAULT '',   -- for 'trigger': notification | file_change | login | idle
     trigger_config TEXT DEFAULT '{}',  -- JSON: {match} | {path,glob} | {minutes}
     cooldown_secs INTEGER DEFAULT 300, -- a trigger fires at most once per cooldown
-    last_fired REAL
+    last_fired REAL,
+    space_id TEXT DEFAULT ''     -- the space a scheduled turn runs inside
 );
 CREATE TABLE IF NOT EXISTS proactive_items (
     id TEXT PRIMARY KEY,
@@ -220,6 +237,105 @@ CREATE TABLE IF NOT EXISTS proactive_items (
     dismissed_at REAL,           -- NULL = still live
     created_at REAL
 );
+-- A space is a thing the user is working on: a launch, a client, a channel, a
+-- side project. Conversations, assets, memories, KG assertions, runs and tasks
+-- all belong to one — or to the GLOBAL scope, which is spelled '' everywhere.
+--
+-- '' is deliberately not NULL. Every read is `space_id IN ('', :active)`, and
+-- three-valued logic in that clause is how this would rot: `space_id != 'x'` is
+-- false for NULL, so one forgotten COALESCE silently hides every pre-existing
+-- row. Rows written before spaces existed are global, which is the correct
+-- reading of "we did not know about projects when this was recorded".
+CREATE TABLE IF NOT EXISTS spaces (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,
+    icon TEXT DEFAULT '',
+    colour TEXT DEFAULT '',
+    description TEXT DEFAULT '',  -- shown to the extraction model: what this space IS
+    workspace TEXT DEFAULT '',    -- optional filesystem dir this space maps to
+    archived INTEGER DEFAULT 0,
+    created_at REAL,
+    updated_at REAL
+);
+-- The timeline is a materialised index of MILESTONES, not of messages. A
+-- timeline containing every message is the message list, and the sources it
+-- draws from (logs, fabric_runs, assets, app_versions) share no key and no
+-- index — a five-way UNION view could never be ordered cheaply.
+CREATE TABLE IF NOT EXISTS timeline_events (
+    id TEXT PRIMARY KEY,
+    space_id TEXT DEFAULT '',
+    ts REAL,
+    kind TEXT,                   -- run | asset | memory | app_version | conversation | task | space
+    ref_table TEXT DEFAULT '',   -- where the full record lives
+    ref_id TEXT DEFAULT '',
+    title TEXT DEFAULT '',
+    meta TEXT DEFAULT '{}',
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_timeline_space ON timeline_events(space_id, ts);
+CREATE INDEX IF NOT EXISTS idx_timeline_kind ON timeline_events(kind, ts);
+-- Everything the agent made or was given: generated images, video an MCP server
+-- returned, uploads, rendered cuts, reports. Content-addressed, so storing the
+-- same bytes twice costs one row and one file.
+CREATE TABLE IF NOT EXISTS assets (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT,                 -- content address; the file name on disk
+    path TEXT,                   -- absolute, always under the assets root
+    kind TEXT,                   -- image | video | audio | doc | data | other
+    mime TEXT DEFAULT '',
+    bytes INTEGER DEFAULT 0,
+    width INTEGER DEFAULT 0,
+    height INTEGER DEFAULT 0,
+    duration REAL DEFAULT 0,     -- seconds; 0 = unknown (nothing probed it)
+    title TEXT DEFAULT '',
+    prompt TEXT DEFAULT '',      -- what was asked for, when this was generated
+    source TEXT DEFAULT '',      -- mcp:<server>/<tool> | tool:<name> | upload | url
+    origin_url TEXT DEFAULT '',
+    conversation_id TEXT DEFAULT '',
+    run_id TEXT DEFAULT '',      -- fabric_runs.id when a subagent made it
+    space_id TEXT DEFAULT '',
+    thumb TEXT DEFAULT '',       -- '' = nothing could make one; the UI says why
+    meta TEXT DEFAULT '{}',
+    created_at REAL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_sha ON assets(sha256);
+CREATE INDEX IF NOT EXISTS idx_assets_time ON assets(created_at);
+CREATE INDEX IF NOT EXISTS idx_assets_space ON assets(space_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_assets_conv ON assets(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_assets_run ON assets(run_id);
+-- The access ledger. `logs` is the operator's diary — free text, one `kind`
+-- column, meta as a JSON blob you have to grep. That is fine for "what happened"
+-- and useless for "who was allowed to do what, on which way in, and why".
+--
+-- Every PDP decision writes exactly one row here, structured in the same
+-- vocabulary grants are written in, so a question like "everything a subagent
+-- was denied over Telegram last week" is an index scan rather than a grep
+-- through JSON. Rows are never updated after the outcome is stamped.
+CREATE TABLE IF NOT EXISTS audit (
+    id TEXT PRIMARY KEY,
+    ts REAL,
+    principal_kind TEXT DEFAULT '',   -- user | app | subagent | workflow | system
+    principal_id TEXT DEFAULT '',
+    surface TEXT DEFAULT '',          -- the IO gate: gui | tui | telegram | api | task
+    space_id TEXT DEFAULT '',
+    conversation_id TEXT DEFAULT '',
+    run_id TEXT DEFAULT '',
+    action TEXT DEFAULT '',           -- tool.use | mcp.use | fs.write | media.generate | …
+    resource TEXT DEFAULT '',         -- mcp:github/create_issue | fs:/home/… | media:image
+    effect TEXT DEFAULT '',           -- allow | deny | ask
+    rule TEXT DEFAULT '',             -- grant id | hard-block | builtin-deny | io-gate | default
+    risk TEXT DEFAULT '',             -- safe | risky | blocked
+    reason TEXT DEFAULT '',
+    outcome TEXT DEFAULT '',          -- '' (decision only) | ok | error | denied | timeout
+    detail TEXT DEFAULT '',           -- error text, or a short result note
+    duration_ms INTEGER DEFAULT 0,
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts);
+CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit(principal_kind, principal_id, ts);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit(action, ts);
+CREATE INDEX IF NOT EXISTS idx_audit_effect ON audit(effect, ts);
+CREATE INDEX IF NOT EXISTS idx_audit_space ON audit(space_id, ts);
 """
 
 
@@ -271,6 +387,36 @@ class Store:
         gcols = {r["name"] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
         if "surfaces" not in gcols:  # IO gates: pre-surface grants apply everywhere
             self.db.execute("ALTER TABLE grants ADD COLUMN surfaces TEXT DEFAULT '*'")
+        # Spaces. Purely additive: every existing row defaults to '' (global), so an
+        # untouched install reads back exactly as it did before — every memory and
+        # every fact stays visible from every space. Nothing is moved, nothing is
+        # hidden, and no index is rebuilt.
+        for table, columns in (
+            ("memories", (("space_id", "TEXT DEFAULT ''"),)),
+            ("kg_edges", (("space_id", "TEXT DEFAULT ''"),)),
+            ("conversations", (("space_id", "TEXT DEFAULT ''"),)),
+            ("logs", (("space_id", "TEXT DEFAULT ''"),
+                      ("conversation_id", "TEXT DEFAULT ''"))),
+            ("fabric_runs", (("space_id", "TEXT DEFAULT ''"),
+                             ("conversation_id", "TEXT DEFAULT ''"))),
+            ("tasks", (("space_id", "TEXT DEFAULT ''"),)),
+        ):
+            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
+            for col, ddl in columns:
+                if col not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+        # Indexes that only exist once the columns above do (executescript ran the
+        # CREATE INDEX statements before these ALTERs on a pre-spaces database).
+        for ddl in (
+            "CREATE INDEX IF NOT EXISTS idx_memories_space ON memories(space_id, scope)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_src ON kg_edges(src)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_dst ON kg_edges(dst)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_space ON kg_edges(space_id)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_space ON logs(space_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_conv ON logs(conversation_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_fabric_runs_space ON fabric_runs(space_id, started_at)",
+        ):
+            self.db.execute(ddl)
 
     def factory_reset(self):
         """Wipe every table (profile, memory, apps, logs, fabric, …) but keep the schema.
@@ -283,12 +429,14 @@ class Store:
 
     # -- conversations ------------------------------------------------------
 
-    def create_conversation(self, title: str = "New chat", origin: str = "user") -> str:
+    def create_conversation(self, title: str = "New chat", origin: str = "user",
+                            space_id: str = "") -> str:
         cid = uuid.uuid4().hex[:12]
         now = time.time()
         self.db.execute(
-            "INSERT INTO conversations (id, title, created_at, updated_at, origin) VALUES (?,?,?,?,?)",
-            (cid, title, now, now, origin or "user"),
+            "INSERT INTO conversations (id, title, created_at, updated_at, origin, space_id) "
+            "VALUES (?,?,?,?,?,?)",
+            (cid, title, now, now, origin or "user", space_id or ""),
         )
         self.db.commit()
         return cid
@@ -305,10 +453,27 @@ class Store:
                             (time.time(), cid))
         self.db.commit()
 
-    def list_conversations(self, limit: int = 100) -> list[dict]:
+    def get_conversation(self, cid: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM conversations WHERE id=?", (cid,)).fetchone()
+        return dict(row) if row else None
+
+    def set_conversation_space(self, cid: str, space_id: str):
+        """Move a conversation into a space. Its session memories move with it —
+        they were learned in that thread, so leaving them behind would split one
+        conversation's knowledge across two scopes."""
+        self.db.execute("UPDATE conversations SET space_id=? WHERE id=?", (space_id or "", cid))
+        self.db.execute(
+            "UPDATE memories SET space_id=? WHERE scope='session' AND conversation_id=?",
+            (space_id or "", cid))
+        self.db.commit()
+
+    def list_conversations(self, limit: int = 100, space: str = "") -> list[dict]:
+        sql, params = "SELECT * FROM conversations WHERE 1=1", []
+        clause, sp = self._space_clause(space)
+        sql += clause
+        params += sp
         rows = self.db.execute(
-            "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+            sql + " ORDER BY updated_at DESC LIMIT ?", (*params, limit)).fetchall()
         return [dict(r) for r in rows]
 
     def delete_conversation(self, cid: str):
@@ -343,7 +508,7 @@ class Store:
 
     def add_memory(self, content: str, scope: str = "user",
                    conversation_id: str | None = None, source: str = "agent",
-                   pinned: int = 0) -> str:
+                   pinned: int = 0, space_id: str = "") -> str:
         content = (content or "").strip()
         if not content:
             return ""
@@ -351,12 +516,16 @@ class Store:
             scope = "user"
         if scope != "session":
             conversation_id = None
-        # exact-duplicate guard (case-insensitive, same scope/conversation);
-        # re-seeing a fact counts as confirmation, so refresh its recency
+        space_id = space_id or ""
+        # exact-duplicate guard (case-insensitive, same scope/conversation/space);
+        # re-seeing a fact counts as confirmation, so refresh its recency.
+        # The same sentence can be true globally AND inside a space with a
+        # different meaning ("the deadline is Friday"), so the space is part of
+        # the identity rather than something to collapse.
         row = self.db.execute(
             "SELECT id FROM memories WHERE lower(content)=lower(?) AND scope=? "
-            "AND (conversation_id IS ? OR conversation_id=?)",
-            (content, scope, conversation_id, conversation_id or "")).fetchone()
+            "AND (conversation_id IS ? OR conversation_id=?) AND COALESCE(space_id,'')=?",
+            (content, scope, conversation_id, conversation_id or "", space_id)).fetchone()
         if row:
             self.db.execute("UPDATE memories SET updated_at=? WHERE id=?", (time.time(), row["id"]))
             self.db.commit()
@@ -364,15 +533,21 @@ class Store:
         mid = uuid.uuid4().hex[:12]
         now = time.time()
         self.db.execute(
-            "INSERT INTO memories (id, content, scope, conversation_id, pinned, source, updated_at, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (mid, content, scope, conversation_id, pinned, source, now, now),
+            "INSERT INTO memories (id, content, scope, conversation_id, pinned, source, "
+            "space_id, updated_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (mid, content, scope, conversation_id, pinned, source, space_id, now, now),
         )
         self.db.commit()
         return mid
 
+    #: ask for global-only memories (the Profile app's "regardless of project" view)
+    GLOBAL_ONLY = "__global__"
+
     def search_memories(self, query: str = "", limit: int = 20, scope: str = "",
-                        conversation_id: str = "") -> list[dict]:
+                        conversation_id: str = "", space: str = "") -> list[dict]:
+        """Search memory. `space` widens nothing and hides nothing global: passing a
+        space means "what is true here", which is this space's memories UNION the
+        ones true everywhere. Pass Store.GLOBAL_ONLY for global alone."""
         where, params = [], []
         if scope:
             where.append("scope=?")
@@ -380,6 +555,11 @@ class Store:
         if conversation_id:
             where.append("conversation_id=?")
             params.append(conversation_id)
+        if space == self.GLOBAL_ONLY:
+            where.append("COALESCE(space_id,'')=''")
+        elif space:
+            where.append("COALESCE(space_id,'') IN ('', ?)")
+            params.append(space)
         if query:
             words = [w for w in query.split() if w]
             where.append("(" + " OR ".join("content LIKE ?" for _ in words) + ")")
@@ -400,10 +580,16 @@ class Store:
         return dict(row) if row else None
 
     def update_memory(self, mid: str, content: str | None = None,
-                      pinned: int | None = None, scope: str | None = None):
+                      pinned: int | None = None, scope: str | None = None,
+                      space_id: str | None = None):
         """Edit a memory in place. scope='user' also clears conversation_id (promote).
-        A content change resets the embedding so semantic recall re-indexes it."""
+        space_id='' promotes it out of its space to true-everywhere, which is the
+        other half of the same gesture. A content change resets the embedding so
+        semantic recall re-indexes it."""
         sets, params = [], []
+        if space_id is not None:
+            sets.append("space_id=?")
+            params.append(space_id)
         if content is not None:
             sets.append("content=?")
             params.append(content.strip())
@@ -456,18 +642,36 @@ class Store:
 
     # -- logs ----------------------------------------------------------------
 
-    def log(self, kind: str, message: str, meta: dict | None = None):
+    def log(self, kind: str, message: str, meta: dict | None = None,
+            conversation_id: str = "", space_id: str = ""):
+        meta = meta or {}
+        # Callers have always passed the conversation inside meta. It is a real
+        # column now, so accept it from either place rather than making every
+        # call site change at once.
+        conversation_id = conversation_id or str(meta.get("conversation_id") or "")
+        space_id = space_id or str(meta.get("space_id") or "")
         self.db.execute(
-            "INSERT INTO logs (id, kind, message, meta, created_at) VALUES (?,?,?,?,?)",
-            (uuid.uuid4().hex[:12], kind, message[:2000], json.dumps(meta or {})[:4000], time.time()),
+            "INSERT INTO logs (id, kind, message, meta, conversation_id, space_id, created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (uuid.uuid4().hex[:12], kind, message[:2000], json.dumps(meta)[:4000],
+             conversation_id, space_id, time.time()),
         )
         self.db.commit()
 
-    def list_logs(self, kind: str = "", limit: int = 300, q: str = "") -> list[dict]:
+    def list_logs(self, kind: str = "", limit: int = 300, q: str = "",
+                  space: str = "", conversation_id: str = "") -> list[dict]:
         sql, params = "SELECT * FROM logs WHERE 1=1", []
         if kind:
             sql += " AND kind=?"
             params.append(kind)
+        if conversation_id:
+            sql += " AND conversation_id=?"
+            params.append(conversation_id)
+        if space == self.GLOBAL_ONLY:
+            sql += " AND COALESCE(space_id,'')=''"
+        elif space:
+            sql += " AND COALESCE(space_id,'') IN ('', ?)"
+            params.append(space)
         if q:
             sql += " AND (message LIKE ? OR meta LIKE ?)"
             params += [f"%{q}%", f"%{q}%"]
@@ -478,6 +682,87 @@ class Store:
     def clear_logs(self):
         self.db.execute("DELETE FROM logs")
         self.db.commit()
+
+    # -- the access ledger ----------------------------------------------------
+
+    def audit_add(self, principal_kind: str = "", principal_id: str = "", surface: str = "",
+                  action: str = "", resource: str = "", effect: str = "", rule: str = "",
+                  risk: str = "", reason: str = "", space_id: str = "",
+                  conversation_id: str = "", run_id: str = "", outcome: str = "",
+                  detail: str = "", duration_ms: int = 0) -> str:
+        """Record one access decision. Never raises: an audit write that fails must
+        not take a turn down with it, but it must also never fail silently, so the
+        failure goes to the operator log instead."""
+        aid = uuid.uuid4().hex[:12]
+        now = time.time()
+        try:
+            self.db.execute(
+                "INSERT INTO audit (id, ts, principal_kind, principal_id, surface, space_id, "
+                "conversation_id, run_id, action, resource, effect, rule, risk, reason, "
+                "outcome, detail, duration_ms, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (aid, now, principal_kind, principal_id, surface, space_id or "",
+                 conversation_id or "", run_id or "", action, resource[:500], effect, rule,
+                 risk, reason[:500], outcome, detail[:1000], int(duration_ms), now))
+            self.db.commit()
+        except Exception as e:  # pragma: no cover - defensive
+            try:
+                self.db.execute(
+                    "INSERT INTO logs (id, kind, message, meta, created_at) VALUES (?,?,?,?,?)",
+                    (uuid.uuid4().hex[:12], "error", f"audit write failed: {e}", "{}", now))
+                self.db.commit()
+            except Exception:
+                pass
+            return ""
+        return aid
+
+    def audit_finish(self, aid: str, outcome: str, detail: str = "", duration_ms: int = 0):
+        """Stamp the result onto a decision already recorded. The decision itself is
+        never rewritten — only the outcome columns, which were empty until now."""
+        if not aid:
+            return
+        self.db.execute(
+            "UPDATE audit SET outcome=?, detail=?, duration_ms=? WHERE id=?",
+            (outcome, (detail or "")[:1000], int(duration_ms), aid))
+        self.db.commit()
+
+    def audit_list(self, limit: int = 300, effect: str = "", action: str = "",
+                   principal_kind: str = "", surface: str = "", space: str = "",
+                   since: float = 0.0, q: str = "") -> list[dict]:
+        sql, params = "SELECT * FROM audit WHERE 1=1", []
+        for col, val in (("effect", effect), ("action", action),
+                         ("principal_kind", principal_kind), ("surface", surface)):
+            if val:
+                sql += f" AND {col}=?"
+                params.append(val)
+        if since:
+            sql += " AND ts>=?"
+            params.append(since)
+        if space == self.GLOBAL_ONLY:
+            sql += " AND COALESCE(space_id,'')=''"
+        elif space:
+            sql += " AND COALESCE(space_id,'') IN ('', ?)"
+            params.append(space)
+        if q:
+            sql += " AND (resource LIKE ? OR reason LIKE ? OR detail LIKE ?)"
+            params += [f"%{q}%"] * 3
+        rows = self.db.execute(sql + " ORDER BY ts DESC LIMIT ?", (*params, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def audit_summary(self, since: float = 0.0) -> dict:
+        """Counts for the Audit app's header: what was allowed, denied and asked,
+        and which resources were refused most. Cheap enough to poll."""
+        where, params = ("WHERE ts>=?", [since]) if since else ("", [])
+        effects = {r["effect"]: r["n"] for r in self.db.execute(
+            f"SELECT effect, COUNT(*) n FROM audit {where} GROUP BY effect", params).fetchall()}
+        top_denied = [dict(r) for r in self.db.execute(
+            f"SELECT resource, action, COUNT(*) n FROM audit "
+            f"{where + (' AND' if where else 'WHERE')} effect='deny' "
+            f"GROUP BY resource, action ORDER BY n DESC LIMIT 10", params).fetchall()]
+        by_surface = {r["surface"] or "unknown": r["n"] for r in self.db.execute(
+            f"SELECT surface, COUNT(*) n FROM audit {where} GROUP BY surface", params).fetchall()}
+        return {"effects": effects, "top_denied": top_denied, "by_surface": by_surface,
+                "total": sum(effects.values())}
 
     # -- knowledge graph ------------------------------------------------------
 
@@ -495,38 +780,76 @@ class Store:
         return nid
 
     def kg_add(self, subject: str, relation: str, obj: str,
-               subject_type: str = "", object_type: str = "") -> str:
+               subject_type: str = "", object_type: str = "", space_id: str = "") -> str:
         src = self._kg_node(subject, subject_type)
         dst = self._kg_node(obj, object_type)
+        space_id = space_id or ""
         row = self.db.execute(
-            "SELECT id FROM kg_edges WHERE src=? AND dst=? AND relation=? COLLATE NOCASE",
-            (src, dst, relation.strip())).fetchone()
+            "SELECT id FROM kg_edges WHERE src=? AND dst=? AND relation=? COLLATE NOCASE "
+            "AND COALESCE(space_id,'')=?",
+            (src, dst, relation.strip(), space_id)).fetchone()
         if row:
             return row["id"]
         eid = uuid.uuid4().hex[:12]
-        self.db.execute("INSERT INTO kg_edges (id, src, dst, relation, created_at) VALUES (?,?,?,?,?)",
-                        (eid, src, dst, relation.strip(), time.time()))
+        self.db.execute(
+            "INSERT INTO kg_edges (id, src, dst, relation, space_id, created_at) VALUES (?,?,?,?,?,?)",
+            (eid, src, dst, relation.strip(), space_id, time.time()))
         self.db.commit()
         return eid
 
-    def kg_graph(self) -> dict:
-        nodes = [dict(r) for r in self.db.execute("SELECT * FROM kg_nodes").fetchall()]
-        edges = [dict(r) for r in self.db.execute("SELECT * FROM kg_edges").fetchall()]
+    def _space_clause(self, space: str, col: str = "space_id") -> tuple[str, list]:
+        """The one visibility rule, in one place: a space sees its own rows and the
+        global ones. Returns ('', []) when no space was asked for."""
+        if space == self.GLOBAL_ONLY:
+            return f" AND COALESCE({col},'')=''", []
+        if space:
+            return f" AND COALESCE({col},'') IN ('', ?)", [space]
+        return "", []
+
+    def kg_graph(self, space: str = "") -> dict:
+        """The graph as seen from `space`. Edges carry the scope; a node is present
+        when a visible edge touches it, so entities are never duplicated per space.
+        Orphan nodes (no edges at all) are always included — they are usually a
+        just-added entity waiting for its first assertion."""
+        clause, params = self._space_clause(space, "e.space_id")
+        edges = [dict(r) for r in self.db.execute(
+            f"SELECT e.* FROM kg_edges e WHERE 1=1{clause}", params).fetchall()]
+        if not space:
+            nodes = [dict(r) for r in self.db.execute("SELECT * FROM kg_nodes").fetchall()]
+            return {"nodes": nodes, "edges": edges}
+        touched = {e["src"] for e in edges} | {e["dst"] for e in edges}
+        nodes = []
+        for r in self.db.execute("SELECT * FROM kg_nodes").fetchall():
+            n = dict(r)
+            attached = self.db.execute(
+                "SELECT 1 FROM kg_edges WHERE src=? OR dst=? LIMIT 1", (n["id"], n["id"])).fetchone()
+            if n["id"] in touched or not attached:
+                nodes.append(n)
         return {"nodes": nodes, "edges": edges}
 
-    def kg_query(self, query: str, limit: int = 40) -> list[str]:
-        """Return 'subject —relation→ object' lines whose endpoints or relation match the query words."""
-        g = self.kg_graph()
-        byid = {n["id"]: n for n in g["nodes"]}
-        words = [w.lower() for w in query.split() if w]
-        out = []
-        for e in g["edges"]:
-            s = byid.get(e["src"], {}).get("name", "?")
-            o = byid.get(e["dst"], {}).get("name", "?")
-            line = f"{s} —{e['relation']}→ {o}"
-            if not words or any(w in line.lower() for w in words):
-                out.append(line)
-        return out[:limit]
+    def kg_query(self, query: str, limit: int = 40, space: str = "") -> list[str]:
+        """Return 'subject —relation→ object' lines whose endpoints or relation match
+        the query words.
+
+        This used to load the entire graph into Python and substring-match every
+        rendered line, which is O(graph) for every recall on every turn. It is a
+        join now, which is what made scoping cheap enough to add at all.
+        """
+        clause, params = self._space_clause(space, "e.space_id")
+        words = [w for w in (query or "").split() if w]
+        if words:
+            ors, wp = [], []
+            for w in words:
+                ors.append("(s.name LIKE ? OR d.name LIKE ? OR e.relation LIKE ?)")
+                wp += [f"%{w}%"] * 3
+            clause += " AND (" + " OR ".join(ors) + ")"
+            params = params + wp
+        rows = self.db.execute(
+            "SELECT s.name AS s, e.relation AS r, d.name AS o FROM kg_edges e "
+            "JOIN kg_nodes s ON s.id = e.src JOIN kg_nodes d ON d.id = e.dst "
+            f"WHERE 1=1{clause} ORDER BY e.created_at DESC LIMIT ?",
+            (*params, limit)).fetchall()
+        return [f"{r['s']} —{r['r']}→ {r['o']}" for r in rows]
 
     def kg_merge_nodes(self, keep_name: str, merge_names: list[str]) -> int:
         """Merge duplicate entities: repoint every edge from the merged nodes onto the kept
@@ -559,10 +882,220 @@ class Store:
         self.db.execute("DELETE FROM kg_nodes WHERE id=?", (nid,))
         self.db.commit()
 
-    def kg_clear(self):
-        self.db.execute("DELETE FROM kg_edges")
-        self.db.execute("DELETE FROM kg_nodes")
+    def kg_clear(self, space: str = ""):
+        """Clear the graph. Clearing one space drops only its assertions and then
+        the entities nothing points at any more — global facts survive."""
+        if space:
+            self.db.execute("DELETE FROM kg_edges WHERE COALESCE(space_id,'')=?", (space,))
+            self.db.execute(
+                "DELETE FROM kg_nodes WHERE id NOT IN "
+                "(SELECT src FROM kg_edges UNION SELECT dst FROM kg_edges)")
+        else:
+            self.db.execute("DELETE FROM kg_edges")
+            self.db.execute("DELETE FROM kg_nodes")
         self.db.commit()
+
+    # -- spaces ---------------------------------------------------------------
+
+    def create_space(self, name: str, description: str = "", icon: str = "",
+                     colour: str = "", workspace: str = "") -> str:
+        name = (name or "").strip()
+        if not name:
+            return ""
+        row = self.db.execute("SELECT id FROM spaces WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+        if row:
+            return row["id"]
+        sid = uuid.uuid4().hex[:12]
+        now = time.time()
+        self.db.execute(
+            "INSERT INTO spaces (id, name, icon, colour, description, workspace, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (sid, name, icon, colour, description, workspace, now, now))
+        self.db.commit()
+        self.timeline_add("space", title=f"Space '{name}' created", space_id=sid,
+                          ref_table="spaces", ref_id=sid)
+        return sid
+
+    def list_spaces(self, include_archived: bool = False) -> list[dict]:
+        sql = "SELECT * FROM spaces"
+        if not include_archived:
+            sql += " WHERE COALESCE(archived,0)=0"
+        return [dict(r) for r in self.db.execute(sql + " ORDER BY updated_at DESC").fetchall()]
+
+    def get_space(self, sid_or_name: str) -> dict | None:
+        if not sid_or_name:
+            return None
+        row = self.db.execute(
+            "SELECT * FROM spaces WHERE id=? OR name=? COLLATE NOCASE",
+            (sid_or_name, sid_or_name)).fetchone()
+        return dict(row) if row else None
+
+    def update_space(self, sid: str, **fields) -> None:
+        allowed = ("name", "icon", "colour", "description", "workspace", "archived")
+        sets, params = [], []
+        for k, v in fields.items():
+            if k in allowed and v is not None:
+                sets.append(f"{k}=?")
+                params.append(v)
+        if not sets:
+            return
+        sets.append("updated_at=?")
+        params.append(time.time())
+        self.db.execute(f"UPDATE spaces SET {', '.join(sets)} WHERE id=?", (*params, sid))
+        self.db.commit()
+
+    #: what to do with a space's contents when it is deleted
+    SPACE_CONTENTS = ("archive", "global", "delete")
+    #: every table that carries a space_id, so no disposition can silently miss one
+    _SPACED = ("memories", "kg_edges", "conversations", "logs", "fabric_runs",
+               "tasks", "assets", "timeline_events", "audit")
+
+    def delete_space(self, sid: str, contents: str = "archive") -> dict:
+        """Deleting a space must never silently orphan what is in it, so the caller
+        has to say what happens to the contents:
+          archive — nothing moves, the space just stops being offered (default)
+          global  — its memories, facts and assets become true everywhere
+          delete  — everything scoped to it goes too
+        Returns a per-table count of what was touched, so the UI can say it out loud.
+        """
+        if contents not in self.SPACE_CONTENTS:
+            contents = "archive"
+        counts: dict[str, int] = {}
+        if contents == "archive":
+            self.update_space(sid, archived=1)
+            return {"archived": 1}
+        for table in self._SPACED:
+            n = self.db.execute(
+                f"SELECT COUNT(*) c FROM {table} WHERE COALESCE(space_id,'')=?", (sid,)).fetchone()["c"]
+            if not n:
+                continue
+            counts[table] = n
+            if contents == "global":
+                self.db.execute(f"UPDATE {table} SET space_id='' WHERE COALESCE(space_id,'')=?", (sid,))
+            else:
+                self.db.execute(f"DELETE FROM {table} WHERE COALESCE(space_id,'')=?", (sid,))
+        if contents == "delete":
+            # entities left pointing at nothing after their assertions went
+            self.db.execute(
+                "DELETE FROM kg_nodes WHERE id NOT IN "
+                "(SELECT src FROM kg_edges UNION SELECT dst FROM kg_edges)")
+        self.db.execute("DELETE FROM spaces WHERE id=?", (sid,))
+        self.db.commit()
+        return counts
+
+    def space_stats(self, sid: str) -> dict:
+        """What is actually in a space — shown before deleting it, so 'delete' is
+        never a guess."""
+        out = {}
+        for table in self._SPACED:
+            out[table] = self.db.execute(
+                f"SELECT COUNT(*) c FROM {table} WHERE COALESCE(space_id,'')=?",
+                (sid,)).fetchone()["c"]
+        return out
+
+    # -- timeline -------------------------------------------------------------
+
+    def timeline_add(self, kind: str, title: str, space_id: str = "", ref_table: str = "",
+                     ref_id: str = "", meta: dict | None = None, ts: float | None = None) -> str:
+        tid = uuid.uuid4().hex[:12]
+        now = time.time()
+        self.db.execute(
+            "INSERT INTO timeline_events (id, space_id, ts, kind, ref_table, ref_id, title, "
+            "meta, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (tid, space_id or "", ts if ts is not None else now, kind, ref_table, ref_id,
+             (title or "")[:400], json.dumps(meta or {})[:2000], now))
+        self.db.commit()
+        return tid
+
+    def timeline(self, space: str = "", kind: str = "", since: float = 0.0,
+                 limit: int = 200) -> list[dict]:
+        sql, params = "SELECT * FROM timeline_events WHERE 1=1", []
+        clause, sp = self._space_clause(space)
+        sql += clause
+        params += sp
+        if kind:
+            sql += " AND kind=?"
+            params.append(kind)
+        if since:
+            sql += " AND ts>=?"
+            params.append(since)
+        rows = self.db.execute(sql + " ORDER BY ts DESC LIMIT ?", (*params, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    # -- assets ---------------------------------------------------------------
+
+    def asset_add(self, sha256: str, path: str, kind: str, mime: str = "", size: int = 0,
+                  title: str = "", prompt: str = "", source: str = "", origin_url: str = "",
+                  conversation_id: str = "", run_id: str = "", space_id: str = "",
+                  thumb: str = "", width: int = 0, height: int = 0, duration: float = 0.0,
+                  meta: dict | None = None) -> str:
+        """Record an asset. Content-addressed: the same bytes seen twice return the
+        existing row rather than a second one, so a re-download costs nothing."""
+        row = self.db.execute("SELECT * FROM assets WHERE sha256=?", (sha256,)).fetchone()
+        if row:
+            return row["id"]
+        aid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO assets (id, sha256, path, kind, mime, bytes, width, height, duration, "
+            "title, prompt, source, origin_url, conversation_id, run_id, space_id, thumb, meta, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (aid, sha256, path, kind, mime, int(size), int(width), int(height), float(duration),
+             title[:200], prompt[:1000], source, origin_url[:500], conversation_id, run_id,
+             space_id or "", thumb, json.dumps(meta or {})[:2000], time.time()))
+        self.db.commit()
+        self.timeline_add("asset", title or f"{kind} from {source or 'unknown'}",
+                          space_id=space_id, ref_table="assets", ref_id=aid,
+                          meta={"kind": kind, "mime": mime})
+        return aid
+
+    def asset_get(self, aid: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM assets WHERE id=?", (aid,)).fetchone()
+        return dict(row) if row else None
+
+    def asset_by_sha(self, sha256: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM assets WHERE sha256=?", (sha256,)).fetchone()
+        return dict(row) if row else None
+
+    def asset_list(self, kind: str = "", q: str = "", space: str = "",
+                   conversation_id: str = "", run_id: str = "",
+                   limit: int = 100, offset: int = 0) -> list[dict]:
+        sql, params = "SELECT * FROM assets WHERE 1=1", []
+        clause, sp = self._space_clause(space)
+        sql += clause
+        params += sp
+        for col, val in (("kind", kind), ("conversation_id", conversation_id), ("run_id", run_id)):
+            if val:
+                sql += f" AND {col}=?"
+                params.append(val)
+        if q:
+            sql += " AND (title LIKE ? OR prompt LIKE ? OR source LIKE ?)"
+            params += [f"%{q}%"] * 3
+        rows = self.db.execute(sql + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                               (*params, limit, offset)).fetchall()
+        return [dict(r) for r in rows]
+
+    def asset_update(self, aid: str, **fields) -> None:
+        allowed = ("title", "thumb", "width", "height", "duration", "space_id", "meta")
+        sets, params = [], []
+        for k, v in fields.items():
+            if k in allowed and v is not None:
+                sets.append(f"{k}=?")
+                params.append(json.dumps(v) if k == "meta" and isinstance(v, dict) else v)
+        if not sets:
+            return
+        self.db.execute(f"UPDATE assets SET {', '.join(sets)} WHERE id=?", (*params, aid))
+        self.db.commit()
+
+    def asset_delete(self, aid: str) -> dict | None:
+        """Drop the row and hand the caller what it needs to unlink the files. The
+        Store does not touch the filesystem — assets.py owns that."""
+        row = self.asset_get(aid)
+        if not row:
+            return None
+        self.db.execute("DELETE FROM assets WHERE id=?", (aid,))
+        self.db.execute("DELETE FROM timeline_events WHERE ref_table='assets' AND ref_id=?", (aid,))
+        self.db.commit()
+        return row
 
     # -- user apps (AI-built UI tools) ------------------------------------------
 
@@ -1077,12 +1610,14 @@ class Store:
         self.db.commit()
 
     def fabric_run_start(self, kind: str, ref: str, input_text: str,
-                         parent_run: str = "", model: str = "") -> str:
+                         parent_run: str = "", model: str = "", space_id: str = "",
+                         conversation_id: str = "") -> str:
         rid = uuid.uuid4().hex[:12]
         self.db.execute(
-            "INSERT INTO fabric_runs (id, kind, ref, parent_run, status, input, model, started_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (rid, kind, ref, parent_run, "running", input_text[:4000], model, time.time()))
+            "INSERT INTO fabric_runs (id, kind, ref, parent_run, status, input, model, "
+            "space_id, conversation_id, started_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (rid, kind, ref, parent_run, "running", input_text[:4000], model,
+             space_id or "", conversation_id or "", time.time()))
         self.db.commit()
         return rid
 
@@ -1092,6 +1627,14 @@ class Store:
             "UPDATE fabric_runs SET status=?, output=?, fault=?, tokens_in=?, tokens_out=?, "
             "steps=?, finished_at=? WHERE id=?",
             (status, output[:8000], fault[:2000], tokens_in, tokens_out, steps, time.time(), rid))
+        # A finished run is a milestone: it is what "what did my agents do while I
+        # was away?" is actually asking about.
+        row = self.db.execute(
+            "SELECT kind, ref, space_id FROM fabric_runs WHERE id=?", (rid,)).fetchone()
+        if row:
+            self.timeline_add("run", f"{row['ref']} ({row['kind']}) — {status}",
+                              space_id=row["space_id"] or "", ref_table="fabric_runs",
+                              ref_id=rid, meta={"status": status, "steps": steps})
         self.db.commit()
 
     def fabric_runs(self, limit: int = 100, parent_run: str = "") -> list[dict]:

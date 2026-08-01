@@ -4,6 +4,10 @@
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>
+  <!-- Which project you are working in. Inline inside the existing band: in SUI the
+       menu bar is a layer-shell exclusive zone whose height the page measures and
+       reports to the host, so nothing here may change the band's height. -->
+  <span id="mbspace"></span>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
   <div id="tray">
@@ -11,6 +15,10 @@
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
+    <!-- Forwarding is never silent: when this machine answers as another agent,
+         it says so in the menu bar on every surface, and clicking opens the
+         setting that turns it off. -->
+    <button id="fwdchip" hidden onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
