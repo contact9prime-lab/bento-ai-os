@@ -317,7 +317,7 @@ function buildJarvisShell(){
 async function jarvisShellRefresh(){
   if(EXPERIENCE!=='jarvis')return;
   const cl=$('#js-clock');if(cl)cl.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  const mo=$('#js-model');if(mo&&$('#modelsel'))mo.textContent=(($('#modelsel').value||'').split('/').pop()||'–').slice(0,14);
+  const mo=$('#js-model');if(mo)mo.textContent=((((typeof cfg!=='undefined'&&cfg&&(cfg.engine!=='aria'&&cfg.engine||cfg.default_model))||'')+'').split('/').pop()||'–').slice(0,14);
   try{const m=await (await fetch('/api/mcp')).json();const c=$('#js-mcp');if(c)c.textContent=(m.servers||[]).filter(s=>s.status==='connected').length}catch(e){}
   try{const d=await (await fetch('/api/logs?limit=8')).json();const s=$('#js-stream');
     if(s)s.innerHTML=(d.logs||[]).slice(0,8).map(l=>`<div class="ln"><span class="t">${new Date(l.created_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span><span>${esc((l.kind+' · '+l.message).slice(0,60))}</span></div>`).join('');

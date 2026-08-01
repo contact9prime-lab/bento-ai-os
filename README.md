@@ -193,7 +193,7 @@ uv run agentos app          # opens in its own window (chromium --app, or pywebv
 | `uv run agentos ask --full "…"` | …with no approval prompts (full autonomy) |
 | `uv run agentos ask --model ollama/qwen3.5:9b "…"` | …with a specific model |
 | `uv run agentos tui` | the whole OS in a terminal (**TUI**) — for a server or a headless Pi |
-| `sudo apt install …` then `agentos install-session` | add AgentOS to the login screen as your Linux desktop (**SUI**) — [details](docs/session-ui.md) |
+| `uv run agentos installer` | detect this distro, install what's missing, add AgentOS to the login screen (**SUI**) — [details](docs/session-ui.md) |
 
 The same program has three faces, and every feature is built for all three: a **GUI** window on
 another desktop, a **TUI** for machines with no screen, and the **SUI** where AgentOS *is* the

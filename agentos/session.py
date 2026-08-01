@@ -92,6 +92,60 @@ def _sudo_ok() -> bool:
     return _run(["sudo", "-n", "true"])[0]
 
 
+def _can_prompt() -> bool:
+    """Is there a person at a terminal who could type a password?"""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def _run_root(argv: list[str], why: str) -> tuple[bool, str]:
+    """Run argv as root, ASKING for a password when there is someone to ask.
+
+    The privilege ladder was missing its most obvious rung. `_sudo_ok()` tests
+    `sudo -n true` — passwordless sudo — and everything fell straight from there
+    to "here is a command, go run it yourself". On the overwhelmingly common
+    machine, where sudo works fine but wants a password, `agentos
+    install-session` therefore printed a command instead of asking a question,
+    for a step the user had just explicitly requested.
+
+    Two details make the interactive rung actually work:
+
+      * NO output capture. `_run` captures stdout and stderr, which swallows
+        sudo's "[sudo] password for you:" prompt and leaves the terminal
+        apparently hung while it waits for typing nobody was invited to do.
+        Root commands that may prompt must inherit the terminal.
+      * `why` is printed first. Being asked for a root password by something
+        that has not said what it wants it for is how people learn to type
+        passwords into anything that asks.
+    """
+    import subprocess
+
+    if _sudo_ok():                                   # 1) passwordless
+        return _run(["sudo", "-n"] + argv)
+
+    if _can_prompt() and shutil.which("sudo"):       # 2) ask, at the terminal
+        print(f"  {why}")
+        try:
+            r = subprocess.run(["sudo"] + argv, timeout=180)
+            if r.returncode == 0:
+                return True, ""
+            return False, f"sudo exited {r.returncode}"
+        except KeyboardInterrupt:
+            print()
+            return False, "cancelled"
+        except Exception as e:
+            return False, str(e)
+
+    if shutil.which("pkexec") and os.environ.get("DISPLAY", os.environ.get("WAYLAND_DISPLAY")):
+        # 3) graphical polkit prompt — for when this runs with no terminal but
+        #    a desktop is present (the GUI calling in).
+        return _run(["pkexec"] + argv)
+
+    return False, "no way to obtain root without a terminal"        # 4) caller prints it
+
+
 def _port() -> int:
     try:
         return int(cfgmod.load_config().get("port", 8321))
@@ -438,7 +492,24 @@ bindsym Ctrl+Alt+BackSpace exec swaymsg exit
 # Shell launcher: starts the AgentOS server (inheriting $SWAYSOCK, which is how
 # the server knows it IS the desktop), then the renderer. When it exits, the
 # session ends — never strand the user on an empty compositor.
-exec sh -c '"{SHELL_SCRIPT}" ; swaymsg exit'
+#
+# But "the renderer exited" means two different things, and treating them the
+# same is what made a one-line crash unrecoverable. A renderer that ran for an
+# hour and then quit is a logout: end the session. A renderer that died in the
+# first few seconds never drew anything, so ending the session hands the display
+# manager a session that never registered — which is a BLACK SCREEN with no
+# greeter and no way back except the power button. That is the worst outcome
+# available, and it was the default.
+#
+# So a fast failure stops and says why, on screen, with the log path and a way
+# out. swaynag draws its own layer surface, so it is visible precisely when the
+# desktop is not.
+#
+# ON ONE LINE, DELIBERATELY. sway's config parser is line-based: it does not
+# continue a quoted string across a newline, it tries to run each following line
+# as a config command, and the whole file then fails to load. `sway --validate
+# -c <file>` catches it in a second — run it after touching this line.
+exec sh -c 'started=$(date +%s); "{SHELL_SCRIPT}"; rc=$?; ran=$(( $(date +%s) - started )); if [ "$ran" -lt 10 ] && command -v swaynag >/dev/null 2>&1; then msg=$(printf "AgentOS desktop failed to start (exit %s after %ss).\\n%s\\nFull log: %s\\nCtrl+Alt+F3 gives you a text console." "$rc" "$ran" "$(tail -n 1 "$HOME/.agentos/session.log" 2>/dev/null | cut -c1-200)" "$HOME/.agentos/session.log"); swaynag -t error -m "$msg" -Z "End session" "swaymsg exit"; fi; swaymsg exit'
 
 include {SWAY_DROPIN_DIR}/*.conf
 """
@@ -538,6 +609,13 @@ fi
 # The interpreter is probed rather than assumed: the AgentOS server runs in its
 # own virtualenv, which usually cannot see the system PyGObject, so the python
 # that can draw the desktop is often not the python running the server.
+#
+# The probe includes gi.require_foreign("cairo") — PyGObject's cairo bridge is a
+# separate package (Debian: python3-gi-cairo) that python3-gi does not pull in.
+# A python that has Gtk, GtkLayerShell and WebKit2 but not the bridge passes a
+# naive probe and then dies building the first strut, which ends the session at
+# login with a black screen. Probing for everything the host actually calls is
+# what turns that into a fall back to the Chromium renderer.
 SHELLHOST="{shellhost}"
 HOSTPY=""
 if [ -f "$SHELLHOST" ] && [ -z "$AGENTOS_NO_LAYER_SHELL" ]; then
@@ -545,6 +623,7 @@ if [ -f "$SHELLHOST" ] && [ -z "$AGENTOS_NO_LAYER_SHELL" ]; then
     command -v "$py" >/dev/null 2>&1 || continue
     if "$py" -c 'import gi
 gi.require_version("Gtk","3.0"); gi.require_version("GtkLayerShell","0.1")
+gi.require_foreign("cairo")
 ok=0
 for v in ("4.1","4.0"):
     try: gi.require_version("WebKit2", v); ok=1; break
@@ -1093,15 +1172,24 @@ def stage(wayland: bool = True, port: int | None = None) -> list[Path]:
 
 
 def _install_entry(staged: Path, target: Path) -> bool:
-    """Copy the staged session entry to its root-owned home, or print how."""
-    if _sudo_ok():
-        _run(["sudo", "mkdir", "-p", str(target.parent)])
-        ok, out = _run(["sudo", "cp", str(staged), str(target)])
-        if ok:
-            print(f"✓ session entry   {target}")
-            return True
-        print(f"! could not copy the session file: {out}")
+    """Copy the staged session entry to its root-owned home, asking if needed.
+
+    /usr/share/wayland-sessions is root-owned, and this one file is the entire
+    reason the login screen can offer AgentOS. Asking for a password here is not
+    an imposition — it is the step the user typed the command to get.
+    """
+    why = (f"Adding AgentOS to the login screen needs root, because the list of "
+           f"sessions lives in {target.parent}.")
+    ok, out = _run_root(["mkdir", "-p", str(target.parent)], why)
+    if ok:
+        ok, out = _run_root(["cp", str(staged), str(target)], why)
+    if ok:
+        print(f"✓ session entry   {target}")
+        return True
+
     print(f"✓ session entry   staged at {staged}")
+    if out and out not in ("cancelled", "no way to obtain root without a terminal"):
+        print(f"! could not copy the session file: {out}")
     print("\nOne step needs root. Run this, then log out and pick 'AgentOS' at the login screen:\n")
     print(f"  sudo mkdir -p '{target.parent}' && sudo cp '{staged}' '{target}'")
     return False
@@ -1248,9 +1336,17 @@ def install(wayland: bool = True, autologin: bool = False, force: bool = False):
               "for autostart, or AGENTOS_KIOSK=1 `agentos app` for a fullscreen window.")
         return
     if wayland and not shutil.which("sway"):
-        print("! sway is not installed — the AgentOS Wayland session needs it.\n"
-              "  Install it first:  sudo apt install sway\n"
-              "  (or install the agentos-desktop package, which depends on it)")
+        # The command must be THIS machine's, not apt's. Printing an apt line to
+        # a Fedora user is how the old version turned a missing package into a
+        # dead end; osdetect knows which package manager is actually here.
+        from . import components
+        cmd = components.install_command(components.CATALOG["compositor"])
+        print("! sway is not installed — the AgentOS Wayland session needs it.")
+        if cmd:
+            print(f"  Install it first:  sudo {cmd}")
+        else:
+            print(f"  {components.unavailable_reason(components.CATALOG['compositor'])}")
+        print("  Or run `agentos installer`, which checks everything the session needs.")
         return
 
     # How the desktop will be drawn, said before anything is written. The two

@@ -130,6 +130,214 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
+def forward_cmd(engine: str | None):
+    """Read or set the machine-wide engine.
+
+    The TUI face of Settings → Executors → Forward everything. Over SSH there is
+    no menu bar to carry the forwarding chip, so this prints the state plainly and
+    names what is deliberately not forwarded — a headless box quietly answering as
+    a different agent is exactly the surprise this wording exists to prevent.
+    """
+    from . import config as cfgmod
+    from . import executors as execmod
+
+    cfg = cfgmod.load_config()
+    if not engine:
+        cur = execmod.resolve_engine(cfg)
+        if cur == "aria":
+            print(f"answering with {cfg.get('agent_name', 'Aria')} (the built-in agent)")
+        else:
+            print(f"forwarding every request to {cur}")
+            print("  (apps and App Studio still use the built-in agent — they need its tools)")
+        return
+
+    want = "aria" if engine == "off" else engine
+    if want == "claude-code":
+        info = execmod.available()
+        if not info.get("available"):
+            print(info.get("reason", "Claude Code is not available"))
+            return
+    cfg["engine"] = want
+    cfgmod.save_config(cfg)
+    if want == "aria":
+        print(f"answering with {cfg.get('agent_name', 'Aria')} again")
+    else:
+        print(f"forwarding every request to {want}")
+        print("  chat · prompt bar · copilot · Telegram · API · scheduled turns")
+        print("  not forwarded: apps and App Studio (they depend on the built-in tools)")
+    print("  a running server picks this up on its next turn")
+
+
+def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool = False):
+    """Show or change how this machine is reached from elsewhere.
+
+    The TUI face matters more here than anywhere: a headless box is exactly the
+    one you cannot walk over to in order to read its address off the screen.
+    """
+    import asyncio as _aio
+    from . import config as cfgmod
+    from . import tunnel as tunmod
+
+    cfg = cfgmod.load_config()
+    if install:
+        ok, message = _aio.run(tunmod.install(provider or "cloudflared"))
+        print(("  " if ok else "  refused: ") + message)
+        return
+    if off:
+        ok, message = _aio.run(tunmod.stop(cfg))
+        print(("  " if ok else "  refused: ") + message)
+        return
+    if on:
+        ok, message, url = _aio.run(tunmod.start(cfg, provider or "tailscale", public))
+        print(("  " if ok else "  refused: ") + message)
+        if url:
+            print(f"  {url}")
+        return
+
+    st = _aio.run(tunmod.status(cfg))
+    if st.get("gate"):
+        print(f"  not publishable yet: {st['gate']}")
+        print()
+    reach = st.get("reachable") or []
+    if reach:
+        print("  reachable now:")
+        for r in reach:
+            print(f"    {r['url']:<46} {r['via']} — {r['who']}")
+    else:
+        print("  reachable only from this machine (remote access is off)")
+    print()
+    for p in st.get("providers") or []:
+        mark = "●" if p["available"] else "○"
+        print(f"  {mark} {p['title']}: {p.get('reason') or p.get('needs') or 'ready'}")
+        if p.get("install_cmd"):
+            print(f"      install it:  agentos tunnel --install --provider {p['id']}")
+    print()
+    print("  agentos tunnel --on [--public] [--provider tailscale] | --off")
+
+
+def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
+    """Show or change the ways in.
+
+    The TUI face of Settings → Channels. This is the face that matters most on a
+    headless machine: the box you can only reach over SSH is exactly the one where
+    "who can talk to this, and how far do I trust it" needs answering, and there
+    is no settings window there to answer it in.
+    """
+    from . import config as cfgmod
+    from . import channels as chmod
+
+    cfg = cfgmod.load_config()
+    if not channel:
+        for c in chmod.state(cfg):
+            mark = {"on": "●", "off": "○", "needs": "!"}.get(c["status"], "·")
+            trust = c["posture_label"] + ("" if c["own_gate"]
+                                          else f" (follows {c['posture_from']})")
+            print(f"  {mark} {c['title']:<16} {c['detail']:<34} {trust}")
+            print(f"      {c['reach']}")
+        # Hermes carries platforms AgentOS deliberately does not rebuild. Shown
+        # separately because they are delivery routes out, not ways in.
+        import asyncio as _aio
+        try:
+            carried = _aio.run(chmod.carried_state(cfg))
+        except Exception:
+            carried = []
+        live = [c for c in carried if c["status"] == "on"]
+        if live:
+            print()
+            print("  carried by Hermes (AgentOS sends to these; a reply there is "
+                  "answered by Hermes):")
+            for c in live:
+                print(f"    ● {c['title']:<14} {c['detail']}")
+        elif carried:
+            print()
+            print(f"  carried by Hermes: {carried[0]['detail']}")
+        print()
+        print("  agentos channels <id> --on|--off --posture "
+              f"{'|'.join(chmod.POSTURE_LABELS)}")
+        return
+
+    if channel not in chmod.BY_ID:
+        print(f"no such channel: {channel}")
+        print("  known: " + ", ".join(chmod.BY_ID))
+        return
+
+    patch: dict = {}
+    if on:
+        patch["enabled"] = True
+    if off:
+        patch["enabled"] = False
+    if posture:
+        patch["posture"] = posture
+    if not patch:
+        c = next(x for x in chmod.state(cfg) if x["id"] == channel)
+        print(f"  {c['title']} — {c['detail']}")
+        print(f"  who: {c['reach']}")
+        print(f"  trust: {c['posture_label']}"
+              + ("" if c["own_gate"] else f" (follows {c['posture_from']})"))
+        if c.get("note"):
+            print(f"  note: {c['note']}")
+        return
+
+    ok, message = chmod.save(cfg, channel, patch)
+    cfgmod.save_config(cfg)          # a partial change still persists what took
+    print(("  " if ok else "  refused: ") + message)
+    if ok:
+        print("  a running server picks this up on its next turn")
+
+
+def delegate(prompt: str, workdir: str | None, tools: str | None,
+             model: str | None, budget: float | None):
+    """Hand a task to an executor from the terminal.
+
+    The TUI face of Settings → Executors: over SSH there is no model picker, so
+    the envelope is stated as flags instead — and printed before the run starts,
+    because delegating work to another agent should never be silent about what
+    that agent was allowed to touch.
+    """
+    import asyncio
+
+    from . import config as cfgmod
+    from . import executors as execmod
+
+    info = execmod.available()
+    if not info.get("available"):
+        print(info.get("reason", "no executor available"))
+        if info.get("install"):
+            print(f"  {info['install']}")
+        return
+
+    cfg = cfgmod.load_config()
+    conf = (cfg.get("executors") or {}).get("claude_code") or {}
+    env = execmod.Envelope(
+        workspace=workdir or conf.get("workspace") or str(cfgmod.AGENTOS_HOME / "workspace"),
+        tools=tuple(t.strip() for t in tools.split(",") if t.strip()) if tools
+              else tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
+        model=model or conf.get("model", ""),
+        budget_usd=budget if budget is not None
+                   else float(conf.get("budget_usd", execmod.DEFAULT_BUDGET_USD)),
+    ).sanitized()
+    print(f"→ {env.describe()}\n")
+
+    run = execmod.Run()
+
+    async def emit(ev: dict):
+        kind = ev.get("type")
+        if kind == "text_delta":
+            print(ev.get("text", ""), end="", flush=True)
+        elif kind == "tool_start":
+            print(f"\n  · {ev.get('name')}", flush=True)
+        elif kind == "error":
+            print(f"\n  ! {ev.get('message')}", flush=True)
+
+    try:
+        asyncio.run(execmod.run_task(prompt, env, emit, run))
+    except KeyboardInterrupt:
+        execmod.stop(run)
+        print("\nstopped.")
+        return
+    print(f"\n\n— {run.turns} turn(s), ${run.cost_usd:.4f}")
+
+
 def doctor(fix: bool = False, session: bool = False):
     """Environment sanity: the checks that catch every 'it hangs' class of incident.
     With fix=True, auto-remediate what is safe to fix and print sudo steps for the rest."""
@@ -621,6 +829,184 @@ def _remote_cli(args):
         print("  restart AgentOS for a bind change to take effect.")
 
 
+# ---------------------------------------------------------------------------
+# Spaces, timeline, assets, audit — the terminal face
+#
+# These talk to the Store directly rather than to the HTTP API, so they work on a
+# machine where the server is not running (which is when you most want to read an
+# audit log). Nothing here writes to the desktop's live config except `space`,
+# which sets the TUI surface's own default — never the GUI's.
+# ---------------------------------------------------------------------------
+
+def _open_store():
+    from . import config as cfgmod
+    from .memory import Store
+    return cfgmod.load_config(), Store(cfgmod.DB_PATH)
+
+
+def _since_secs(text: str) -> float:
+    """'24h' / '7d' / '90m' -> seconds. Anything unparseable means 'all time',
+    said out loud by the caller rather than silently becoming a default window."""
+    text = (text or "").strip().lower()
+    if not text or text == "all":
+        return 0.0
+    unit, num = text[-1], text[:-1]
+    mult = {"m": 60, "h": 3600, "d": 86400, "w": 604800}.get(unit)
+    if not mult:
+        return 0.0
+    try:
+        return float(num) * mult
+    except ValueError:
+        return 0.0
+
+
+def _space_cli(args):
+    from . import config as cfgmod
+    from . import spaces as spacemod
+    cfg, store = _open_store()
+
+    if args.new:
+        sid = store.create_space(args.new, description=args.about)
+        if not sid:
+            print("a space needs a name")
+            return
+        spacemod.set_active(cfg, "tui", sid)
+        cfgmod.save_config(cfg)
+        print(f"✓ created '{args.new}' and this terminal is now working in it")
+        return
+
+    if args.none:
+        spacemod.set_active(cfg, "tui", "")
+        cfgmod.save_config(cfg)
+        print("✓ this terminal works everywhere (the shared scope)")
+        return
+
+    if args.name:
+        row = store.get_space(args.name)
+        if not row:
+            names = ", ".join(s["name"] for s in store.list_spaces()) or "(none)"
+            print(f"no space called '{args.name}'. Known spaces: {names}")
+            print("  create one with:  agentos space --new '<name>' --about '<one line>'")
+            sys.exit(2)
+        spacemod.set_active(cfg, "tui", row["id"])
+        cfgmod.save_config(cfg)
+        print(f"✓ this terminal is working in '{row['name']}'")
+        return
+
+    active = (cfg.get("spaces") or {}).get("active", {}).get("tui", "")
+    rows = store.list_spaces()
+    print(f"this terminal works in: {spacemod.label(store, active)}")
+    print("  (a space sees its own memory and facts PLUS everything true everywhere)\n")
+    if not rows:
+        print("  no spaces yet — everything is shared.")
+        print("  agentos space --new 'Q3 launch' --about 'the launch, its people and copy'")
+        return
+    for s in rows:
+        mark = "*" if s["id"] == active else " "
+        print(f" {mark} {s['name'][:24]:<24} {(s.get('description') or '')[:52]}")
+    print("\n  agentos space '<name>'   ·   agentos space --none")
+
+
+def _timeline_cli(args):
+    _, store = _open_store()
+    cfg, _ = _open_store()
+    active = (cfg.get("spaces") or {}).get("active", {}).get("tui", "")
+    since = _since_secs(args.since)
+    rows = store.timeline(space=active, kind=args.kind,
+                          since=(time.time() - since) if since else 0.0,
+                          limit=args.limit)
+    if not rows:
+        print(f"nothing on the timeline for the last {args.since}.")
+        return
+    day = ""
+    for e in rows:
+        d = time.strftime("%A %d %B", time.localtime(e["ts"]))
+        if d != day:
+            day = d
+            print(f"\n{d}")
+        print(f"  {time.strftime('%H:%M', time.localtime(e['ts']))}  "
+              f"[{e['kind']}] {e['title']}")
+
+
+def _assets_cli(args):
+    import subprocess
+
+    from . import assets as assetmod
+    cfg, store = _open_store()
+    active = (cfg.get("spaces") or {}).get("active", {}).get("tui", "")
+
+    if args.action in ("path", "open", "rm"):
+        if not args.id:
+            print(f"agentos assets {args.action} <id>")
+            sys.exit(2)
+        row = store.asset_get(args.id)
+        if not row:
+            print(f"no asset with id {args.id}")
+            sys.exit(2)
+        if args.action == "rm":
+            assetmod.delete(store, args.id)
+            print(f"✓ deleted {args.id}")
+            return
+        path = assetmod.path_of(row)
+        if not path:
+            print(f"the file behind {args.id} is missing from disk")
+            sys.exit(1)
+        if args.action == "path":
+            print(path)
+            return
+        # A terminal cannot show a picture. Where there is a display, hand it to
+        # the desktop; where there is not, say so and print the path — which is
+        # the useful thing over SSH anyway.
+        if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            subprocess.Popen(["xdg-open", str(path)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"opened {path} on this machine's display")
+        else:
+            print(f"no display on this session, so nothing can be shown here.\n{path}")
+        return
+
+    rows = store.asset_list(kind=args.kind, space=active, limit=200)
+    cap = assetmod.capability()
+    if not rows:
+        print("no assets yet." if not args.kind else f"no {args.kind} assets.")
+    for r in rows:
+        size = f"{(r.get('bytes') or 0)//1024} KB"
+        extra = f" {r['duration']:.0f}s" if r.get("duration") else ""
+        print(f"{r['id']}  {r['kind']:<6} {size:>9}{extra:<6}  "
+              f"{(r.get('title') or '')[:38]:<38} {r.get('source') or ''}")
+    if not cap["ffmpeg"]:
+        print(f"\n{cap['why']}")
+        print(f"  the '{cap['component']}' component would fix it "
+              f"(offered in Settings → Components, licence in view)")
+
+
+def _audit_cli(args):
+    _, store = _open_store()
+    since = _since_secs(args.since)
+    ts = (time.time() - since) if since else 0.0
+    summary = store.audit_summary(since=ts)
+    eff = summary.get("effects") or {}
+    print(f"access ledger — last {args.since}: "
+          f"{eff.get('allow', 0)} allowed · {eff.get('deny', 0)} denied · "
+          f"{eff.get('ask', 0)} asked")
+    top = summary.get("top_denied") or []
+    if top:
+        print("\nmost refused:")
+        for t in top[:5]:
+            print(f"  {t['n']}×  {t['action']:<14} {t['resource'][:56]}")
+    rows = store.audit_list(limit=args.limit, effect=args.effect,
+                            principal_kind=args.who, surface=args.surface, since=ts)
+    if not rows:
+        print("\n(no matching decisions)")
+        return
+    print()
+    for a in rows:
+        who = f"{a['principal_kind']}:{a['principal_id']}" if a["principal_id"] else a["principal_kind"]
+        print(f"{time.strftime('%d %b %H:%M:%S', time.localtime(a['ts']))}  "
+              f"{a['effect']:<5} {a['action']:<14} {a['resource'][:44]:<44} "
+              f"{who} via {a['surface'] or '?'} · {a['rule']}")
+
+
 def main():
     _use_system_certs()
     parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
@@ -635,6 +1021,17 @@ def main():
     p_ask.add_argument("prompt", nargs="+")
     p_ask.add_argument("--model", default=None, help="e.g. ollama/qwen3.5:9b")
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
+
+    p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
+    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "hermes", "off"],
+                       help="omit to show the current setting; 'off' is the same as 'aria'")
+
+    p_del = sub.add_parser("delegate", help="hand a task to an executor (Claude Code) and stream it here")
+    p_del.add_argument("prompt", nargs="+")
+    p_del.add_argument("--dir", default=None, help="the only folder it may touch (default: the configured workspace)")
+    p_del.add_argument("--tools", default=None, help="comma-separated, e.g. Read,Grep,Edit (default: the configured envelope)")
+    p_del.add_argument("--model", default=None, help="model for the executor; omit to use its own default")
+    p_del.add_argument("--budget", type=float, default=None, help="hard spend ceiling in USD")
 
     sub.add_parser("app", help="open AgentOS as a desktop app window")
     p_doctor = sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
@@ -652,6 +1049,18 @@ def main():
     sub.add_parser("uninstall", help="remove launcher + boot service")
     p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
+    # The installer is the one entry point that has to work BEFORE anything is
+    # set up — on a machine where the session packages are missing and the
+    # server has never run. That is why it is a plain terminal UI rather than a
+    # screen in `agentos tui`, which needs Textual and a live server.
+    p_inst = sub.add_parser("installer",
+                            help="terminal installer — detect this OS and install what "
+                                 "AgentOS needs (re-runnable; shows what is missing)")
+    p_inst.add_argument("--session", action="store_true",
+                        help="only what the login session needs")
+    p_inst.add_argument("--yes", action="store_true",
+                        help="install everything offered without asking (still prints "
+                             "every package and licence first)")
     p_sess = sub.add_parser("install-session",
                             help="add AgentOS as a login session (Linux only) — pick it at the login screen, "
                                  "or --autologin to boot straight into it")
@@ -664,6 +1073,49 @@ def main():
     p_sess.add_argument("--force", action="store_true",
                         help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
+    p_chan = sub.add_parser("channels", help="show or change the ways in (this window, terminal, remote, API, Telegram…) and how far each is trusted")
+    p_chan.add_argument("channel", nargs="?", default="", help="channel id (omit to list them all)")
+    p_chan.add_argument("--on", action="store_true", help="switch this channel on")
+    p_chan.add_argument("--off", action="store_true", help="switch this channel off")
+    p_chan.add_argument("--posture", default="",
+                        help="how far to trust it: inherit | read_only | ask | full")
+
+    p_tun = sub.add_parser("tunnel", help="show how to reach this machine from elsewhere (Tailscale / tunnel), or publish it")
+    p_tun.add_argument("--on", action="store_true", help="publish AgentOS")
+    p_tun.add_argument("--off", action="store_true", help="stop publishing")
+    p_tun.add_argument("--public", action="store_true",
+                       help="publish to the whole internet, not just your own devices")
+    p_tun.add_argument("--provider", default="tailscale", help="tailscale | cloudflared")
+    p_tun.add_argument("--install", action="store_true",
+                       help="install the provider (cloudflared) into ~/.local/bin")
+
+    # Spaces, the gallery inventory and the access ledger from a terminal. Each of
+    # these is a real capability, so each needs a way in with no pointer — a
+    # headless server is exactly where you audit what ran overnight.
+    p_space = sub.add_parser("space", help="show or switch the space this terminal works in")
+    p_space.add_argument("name", nargs="?", default="", help="space to work in (omit to list)")
+    p_space.add_argument("--none", action="store_true", help="work everywhere (the shared scope)")
+    p_space.add_argument("--new", default="", help="create a space with this name")
+    p_space.add_argument("--about", default="", help="one line describing a new space")
+
+    p_tl = sub.add_parser("timeline", help="what happened — runs, assets, memory, apps")
+    p_tl.add_argument("--since", default="7d", help="e.g. 24h, 7d, 30d (default 7d)")
+    p_tl.add_argument("--kind", default="", help="run | asset | memory | app_version | conversation | task")
+    p_tl.add_argument("--limit", type=int, default=40)
+
+    p_assets = sub.add_parser("assets", help="list, open or remove things the agent made")
+    p_assets.add_argument("action", nargs="?", default="list",
+                          choices=["list", "path", "open", "rm"])
+    p_assets.add_argument("id", nargs="?", default="", help="asset id, for path/open/rm")
+    p_assets.add_argument("--kind", default="", help="image | video | audio | doc")
+
+    p_audit = sub.add_parser("audit", help="the access ledger — who was allowed to do what")
+    p_audit.add_argument("--since", default="24h", help="e.g. 1h, 24h, 7d (default 24h)")
+    p_audit.add_argument("--effect", default="", choices=["", "allow", "deny", "ask"])
+    p_audit.add_argument("--who", default="", help="user | app | subagent | workflow | system")
+    p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
+    p_audit.add_argument("--limit", type=int, default=50)
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -693,6 +1145,14 @@ def main():
         doctor(fix=getattr(args, "fix", False), session=getattr(args, "session", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
+    elif args.cmd == "forward":
+        forward_cmd(args.engine)
+    elif args.cmd == "tunnel":
+        tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
+    elif args.cmd == "channels":
+        channels_cmd(args.channel, args.on, args.off, args.posture)
+    elif args.cmd == "delegate":
+        delegate(" ".join(args.prompt), args.dir, args.tools, args.model, args.budget)
     elif args.cmd == "app":
         from . import desktop
         desktop.app_mode()
@@ -714,6 +1174,9 @@ def main():
                 _a.run(clitui.run_tui())
             except KeyboardInterrupt:
                 pass
+    elif args.cmd == "installer":
+        from . import installer
+        raise SystemExit(installer.run(session_only=args.session, assume_yes=args.yes))
     elif args.cmd == "install":
         from . import desktop
         desktop.install(autostart=not args.no_service, open_at_login=not args.no_login)
@@ -730,6 +1193,14 @@ def main():
         else:
             session.install(wayland=not args.x11, autologin=args.autologin,
                             force=args.force)
+    elif args.cmd == "space":
+        _space_cli(args)
+    elif args.cmd == "timeline":
+        _timeline_cli(args)
+    elif args.cmd == "assets":
+        _assets_cli(args)
+    elif args.cmd == "audit":
+        _audit_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

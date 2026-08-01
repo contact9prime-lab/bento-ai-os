@@ -24,11 +24,13 @@ from . import providers
 
 EXTRACT_PROMPT = """You are the memory subsystem of AgentOS. Analyze one exchange between the user and the assistant and extract knowledge worth keeping. Be selective — most exchanges contain little or nothing worth storing. Never invent facts that are not in the text.
 
+{space_header}
 Return ONLY a JSON object (no markdown, no commentary) with this exact shape:
 {{
-  "user_memories": ["durable facts about the user or their machine that will still matter in future conversations: name, role, projects, preferences, tools, recurring goals"],
+  "user_memories": ["durable facts about the user or their machine that will still matter in future conversations NO MATTER what they are working on: name, role, preferences, tools, recurring goals"],
+  "space_memories": ["facts about the CURRENT SPACE named above: its goals, its stack, the people in it, decisions taken inside it. True there, not necessarily anywhere else"],
   "session_memories": ["context that matters only within THIS ongoing conversation: what the user is currently trying to do, decisions made, constraints agreed, state of the task"],
-  "facts": [{{"subject": "...", "relation": "...", "object": "...", "subject_type": "person|project|tool|org|place|concept|", "object_type": "..."}}],
+  "facts": [{{"subject": "...", "relation": "...", "object": "...", "subject_type": "person|project|tool|org|place|concept|", "object_type": "...", "scope": "global|space"}}],
   "updates": [{{"old": "<one of the existing memories below that this exchange corrected>", "new": "<the corrected version>"}}],
   "retractions": ["<one of the existing memories below that this exchange showed to be wrong or withdrawn>"]
 }}
@@ -39,6 +41,8 @@ Rules:
 - "updates"/"retractions" must quote an existing memory VERBATIM in "old"/the retraction — only when the user explicitly corrected or withdrew it.
 - Each memory is one short self-contained sentence.
 - Facts are (subject, relation, object) triples about named entities and how they connect, e.g. ("Piyush", "works at", "Accacia").
+- GLOBAL vs SPACE, the one test that decides it: if the fact would STILL BE TRUE after this project ends, it is a user_memory and its triples are "global". If it stops being true when the project does, it is a space_memory and its triples are "space". "Piyush works at Accacia" is global. "This project deploys on Fridays" is space.
+- When there is no current space, put everything durable in "user_memories" and leave "space_memories" empty.
 
 Existing user memories (do NOT duplicate):
 {existing}
@@ -241,9 +245,28 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
         return
     try:
         await wait_model_idle(model)  # never make a live conversation queue behind us
-        existing = store.search_memories("", limit=40, scope="user")
+        # The space this conversation lives in decides where what we learn is
+        # filed. It comes from the conversation, not from whatever the user last
+        # clicked — see spaces.py.
+        space_id = ""
+        try:
+            space_id = (store.get_conversation(cid) or {}).get("space_id") or ""
+        except Exception:
+            pass
+        if space_id:
+            from . import spaces as spacemod
+            info = spacemod.describe(store, space_id)
+            desc = f" — {info['description']}" if info.get("description") else ""
+            space_header = (f"Current space: {info['name']}{desc}\n"
+                            f"(There is also a GLOBAL scope for what is true about the user "
+                            f"no matter what they are working on.)\n")
+        else:
+            space_header = ("Current space: none — the user is not working inside a "
+                            "particular project right now.\n")
+        existing = store.search_memories("", limit=40, scope="user", space=space_id)
         existing_txt = "\n".join(f"- {m['content']}" for m in existing) or "(none yet)"
         prompt = EXTRACT_PROMPT.format(
+            space_header=space_header,
             existing=existing_txt,
             user_text=(user_text or "")[:4000],
             assistant_text=(assistant_text or "")[:4000],
@@ -252,7 +275,7 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
         data = _parse_json(raw)
         if not data:
             return
-        added = {"user": 0, "session": 0, "facts": 0, "updated": 0, "retracted": 0}
+        added = {"user": 0, "space": 0, "session": 0, "facts": 0, "updated": 0, "retracted": 0}
         # corrections first, so a superseded fact can't block its replacement as a "duplicate"
         for u in (data.get("updates") or [])[:5]:
             old, new = (u.get("old") or "").strip(), (u.get("new") or "").strip()
@@ -267,24 +290,37 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
                 added["retracted"] += 1
         for content in (data.get("user_memories") or [])[:5]:
             if isinstance(content, str) and content.strip():
+                # global on purpose, even inside a space: this bucket is defined as
+                # "still true after the project ends"
                 if store.add_memory(content, scope="user", source="auto"):
                     added["user"] += 1
+        for content in (data.get("space_memories") or [])[:5]:
+            if isinstance(content, str) and content.strip() and space_id:
+                if store.add_memory(content, scope="user", source="auto", space_id=space_id):
+                    added["space"] += 1
         for content in (data.get("session_memories") or [])[:5]:
             if isinstance(content, str) and content.strip():
-                if store.add_memory(content, scope="session", conversation_id=cid, source="auto"):
+                if store.add_memory(content, scope="session", conversation_id=cid,
+                                    source="auto", space_id=space_id):
                     added["session"] += 1
         for f in (data.get("facts") or [])[:10]:
             try:
                 s, r, o = (f.get("subject") or "").strip(), (f.get("relation") or "").strip(), \
                           (f.get("object") or "").strip()
                 if s and r and o:
-                    store.kg_add(s, r, o, f.get("subject_type") or "", f.get("object_type") or "")
+                    # an assertion is filed where it is true; "global" (or no space
+                    # at all) puts it in the graph everything can see
+                    fact_space = space_id if str(f.get("scope") or "").lower() == "space" else ""
+                    store.kg_add(s, r, o, f.get("subject_type") or "",
+                                 f.get("object_type") or "", space_id=fact_space)
                     added["facts"] += 1
             except Exception:
                 continue
         if any(added.values()):
             store.log("memory", "auto-extracted: " + ", ".join(
-                f"{v} {k}" for k, v in added.items() if v), {"conversation_id": cid, "model": model})
+                f"{v} {k}" for k, v in added.items() if v),
+                {"conversation_id": cid, "model": model, "space_id": space_id},
+                conversation_id=cid, space_id=space_id)
             if broadcast:
                 await broadcast({"type": "knowledge_update", **added})
         try:
@@ -334,14 +370,23 @@ async def rollup_idle_sessions(cfg: dict, store, broadcast=None) -> int:
         except Exception:
             continue  # model unavailable — retry next cycle
         added = 0
+        # What a conversation inside a project taught us is, by default, about
+        # that project — so it rolls up INTO the space rather than into the
+        # user's global memory. Promoting it further is a judgement the Memory
+        # app makes with a human present, not one a nightly job should make
+        # silently for three clients at once.
+        space_id = conv.get("space_id") or ""
         for c in (data.get("user_memories") or [])[:3]:
-            if isinstance(c, str) and c.strip() and store.add_memory(c, scope="user", source="auto"):
+            if isinstance(c, str) and c.strip() and store.add_memory(
+                    c, scope="user", source="auto", space_id=space_id):
                 added += 1
         store.mark_rolled_up(conv["id"])
         total += added
         if added:
             store.log("memory", f"session rollup: {added} durable memories from "
-                                f"'{(conv.get('title') or '')[:60]}'", {"conversation_id": conv["id"]})
+                                f"'{(conv.get('title') or '')[:60]}'",
+                      {"conversation_id": conv["id"], "space_id": space_id},
+                      conversation_id=conv["id"], space_id=space_id)
     if total and broadcast:
         await broadcast({"type": "knowledge_update", "rollup": total})
     return total

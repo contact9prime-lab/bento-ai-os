@@ -90,6 +90,99 @@ def test_sway_conf_is_an_invisible_engine_with_an_escape_hatch(home):
     assert str(session.SWAY_DROPIN_DIR) in conf          # user overrides survive regeneration
 
 
+def test_root_step_asks_for_a_password_instead_of_giving_up(home, monkeypatch, capsys):
+    """The commonest machine has sudo that works and wants a password.
+
+    The ladder tested `sudo -n true` and, on failure, went straight to printing
+    a command for the user to run — so on a normal laptop `install-session`
+    refused to do the one step it had just been asked to do. There must be a
+    rung between "passwordless" and "do it yourself": ask.
+    """
+    calls = []
+
+    monkeypatch.setattr(session, "_sudo_ok", lambda: False)      # password required
+    monkeypatch.setattr(session, "_can_prompt", lambda: True)    # a terminal exists
+    monkeypatch.setattr(session.shutil, "which", lambda n: f"/usr/bin/{n}")
+
+    class OK:
+        returncode = 0
+
+    def fake_run(argv, **kw):
+        calls.append((argv, kw))
+        return OK()
+
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    staged = session.cfgmod.AGENTOS_HOME / "entry.desktop"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("[Desktop Entry]\n")
+    assert session._install_entry(staged, session.Path("/usr/share/wayland-sessions/x.desktop"))
+
+    assert calls, "it must actually try, not just print instructions"
+    argv = calls[0][0]
+    assert argv[0] == "sudo" and "-n" not in argv, "the asking rung must not pass -n"
+    for _, kw in calls:
+        assert not kw.get("capture_output"), (
+            "capturing output swallows sudo's password prompt — the terminal "
+            "then looks hung while it waits for typing nobody was invited to do")
+    assert "needs root" in capsys.readouterr().out, "it must say why before asking"
+
+
+def test_every_sway_conf_directive_is_one_line(home):
+    """sway's config parser is line-based, and it fails LOUDLY but late.
+
+    A quoted command written across several lines does not continue: sway tries
+    to run each following line as a config directive, they are all "unknown
+    command", and the whole file fails to load — so the session that was
+    supposed to be made more robust does not come up at all. This caught exactly
+    that in the renderer-crash guard below, which is why the guard is one long
+    line rather than the readable block it wants to be.
+
+    The cheap structural check is that quotes balance on every directive line.
+    """
+    session.stage(wayland=True)
+    for n, line in enumerate(session.SWAY_CONF.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        assert stripped.count("'") % 2 == 0, (
+            f"sway.conf line {n} leaves a single-quote open, so the directive "
+            f"runs past the end of the line and sway will reject the file: {line!r}")
+
+
+def test_a_renderer_that_dies_at_startup_says_so_instead_of_going_black(home):
+    """The difference between a bug and a hard reboot.
+
+    Ending the session when the renderer exits is right for a logout and wrong
+    for a crash: a session that never registered leaves the display manager
+    showing a black screen with no greeter, and the only way out is the power
+    button. A fast exit must therefore surface the reason on screen first.
+    """
+    session.stage(wayland=True)
+    conf = session.SWAY_CONF.read_text()
+    launcher = [l for l in conf.splitlines()
+                if l.startswith("exec sh -c") and str(session.SHELL_SCRIPT) in l]
+    assert launcher, "the shell launcher line went missing"
+    line = launcher[0]
+    assert "swaynag" in line, "a startup crash must be reported on screen"
+    assert "session.log" in line, "the nag must point at the log that explains it"
+    assert "swaymsg exit" in line, "a normal renderer exit must still end the session"
+
+
+def test_the_shell_probe_checks_the_cairo_bridge(home):
+    """Probe for everything the host actually calls, not just what it imports.
+
+    PyGObject's cairo bridge (python3-gi-cairo) is a separate package that
+    python3-gi does not pull in. A python with Gtk, GtkLayerShell and WebKit2
+    but no bridge passed the old probe, was chosen to draw the desktop, and died
+    on its first strut — taking the compositor and the login with it. Probing
+    for the bridge turns that into a fall back to the Chromium renderer.
+    """
+    session.stage(wayland=True)
+    assert 'require_foreign("cairo")' in session.SHELL_SCRIPT.read_text()
+
+
 def test_wayland_entry_points_at_the_session_script(home):
     session.stage(wayland=True)
     entry = session.WL_STAGE.read_text()

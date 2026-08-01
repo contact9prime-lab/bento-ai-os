@@ -1,0 +1,70 @@
+
+/* ---- Executors: the tool checkboxes are the envelope, so they read as a list
+   of grants rather than a row of anonymous boxes ---- */
+.exec-tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 14px;width:100%}
+.exec-tool{display:flex;align-items:baseline;gap:7px;font-size:var(--fs-sm);cursor:pointer}
+.exec-tool input{width:auto;flex:0 0 auto}
+.exec-tool b{font-weight:650}
+/* `.prow.stack .pc input{width:100%}` (14-omnibar.css) exists for text fields in
+   a stacked row, and it also caught these checkboxes: each stretched to fill its
+   whole grid cell, shoving the label away and forcing every column past its
+   minmax so the grid ran off the right edge and the last tools were cut off.
+   Beaten on specificity rather than !important, and the labels get min-width:0
+   so a long description wraps instead of widening its column. */
+.prow.stack .pc .exec-tool input[type=checkbox]{width:auto;max-width:none;flex:0 0 auto}
+.exec-tool{min-width:0}
+.exec-tool span{min-width:0}
+
+/* ---- Channels: one card per way in. The status sits in the heading because
+   "is this on, and what is it waiting for" is the question people open this
+   panel to answer — it should be readable without opening anything. ---- */
+.pgroup.chan > h3{display:flex;align-items:baseline;gap:10px;text-transform:none;
+  font-size:var(--fs-base);font-weight:700;letter-spacing:0;color:var(--txt)}
+.chdot{font-size:var(--fs-xs);font-weight:600;letter-spacing:0;text-transform:none;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim2)}
+.chdot.ok{color:var(--ok,#4ade80);border-color:color-mix(in srgb,var(--ok,#4ade80) 40%,transparent);
+  background:color-mix(in srgb,var(--ok,#4ade80) 12%,transparent)}
+.chdot.warn{color:var(--warn,#fbbf24);border-color:color-mix(in srgb,var(--warn,#fbbf24) 40%,transparent);
+  background:color-mix(in srgb,var(--warn,#fbbf24) 12%,transparent)}
+.pgroup.chan .ghint.mut{color:var(--dim2);padding-bottom:2px}
+/* Which account pays for a delegated run — stated before the switch that starts one */
+.ghint.bill{padding-top:8px;font-weight:500}
+.ghint.bill.subscription{color:var(--ok,#4ade80)}
+.ghint.bill.api,.ghint.bill.none{color:var(--warn,#fbbf24)}
+.chsec{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--dim2);margin:22px 0 10px}
+.chsec:first-child{margin-top:0}
+.chsec .mut{text-transform:none;letter-spacing:0;font-weight:500}
+/* Carried channels are read-outs of another program's state, not controls —
+   they sit quieter than the channels you can actually configure here. */
+.pgroup.chan.carried{background:transparent;border-style:dashed}
+.chvia{font-size:var(--fs-xs);font-weight:500;color:var(--dim2);letter-spacing:0;
+  text-transform:none;margin-left:auto;flex:none}
+.chtargets{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 2px}
+.chtargets code{font-size:var(--fs-xs);color:var(--dim);background:var(--bg3,rgba(127,127,127,.12));
+  border:1px solid var(--line);border-radius:6px;padding:2px 7px;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Where an address reaches from, beside the address itself. "Tailscale · your
+   devices, from anywhere" is the whole answer to "can I use this from the
+   train", and it was previously nowhere in the UI. */
+.rm-via{font-size:var(--fs-xs);color:var(--dim2);margin-left:auto;padding-right:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%}
+.rm-via.far{color:var(--ok,#4ade80)}
+
+/* Installer output. Shown, not hidden behind a spinner — an install that fails
+   silently is the thing people cannot debug. */
+.exec-log{margin:10px 16px 14px;padding:10px 12px;max-height:180px;overflow:auto;
+  background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
+  border-radius:8px;font-size:var(--fs-xs);white-space:pre-wrap;color:var(--dim)}
+
+/* The offer to become reachable from anywhere, and the address once it is. */
+.rm-offer{margin-top:12px;padding:10px 12px;border-radius:8px;line-height:1.6;
+  border:1px solid color-mix(in srgb,var(--warn,#fbbf24) 35%,var(--line));
+  background:color-mix(in srgb,var(--warn,#fbbf24) 8%,transparent);font-size:var(--fs-sm)}
+.rm-offer.live{border-color:color-mix(in srgb,var(--ok,#4ade80) 40%,var(--line));
+  background:color-mix(in srgb,var(--ok,#4ade80) 10%,transparent);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rm-cmd{display:inline-block;margin-top:4px;padding:3px 7px;border-radius:6px;
+  background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
+  font-size:var(--fs-xs);word-break:break-all;max-width:100%}

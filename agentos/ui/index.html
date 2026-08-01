@@ -16,6 +16,7 @@
 <title>AgentOS</title>
 <style>
 :root{
+  color-scheme:dark;   /* native widgets (select popups, scrollbars) follow the mode */
   /* ---- color (theme-controlled — names are the theme API, do not rename) ---- */
   --bg:#0b0d10; --bg2:#111419; --bg3:#171b22; --bg4:#1e242e;
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
@@ -56,6 +57,7 @@
   --ease-in-out:cubic-bezier(.65,0,.35,1);       /* moves between two on-screen states */
 }
 :root[data-theme=light]{
+  color-scheme:light;
   --glass-tint:color-mix(in srgb,#fff 62%,transparent);
   --glass-edge:inset 0 .5px 0 rgba(255,255,255,.85);
   --hairline:rgba(0,0,0,.08);
@@ -75,6 +77,10 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:var
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:inherit;color:var(--txt);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+/* the open dropdown is drawn by the browser, so paint its rows from the same
+   tokens as the closed control — otherwise a light --txt lands on the native
+   menu's own background and the options read as blank */
+select option,select optgroup{background-color:var(--bg3);color:var(--txt)}
 input[type=range]{accent-color:var(--acc);padding:0;border:none;background:none}
 input[type=checkbox],input[type=radio]{accent-color:var(--acc)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
@@ -333,6 +339,16 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #natctl button:hover{background:var(--acc);color:#04211c}
 #natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
 .tbnat.mini{opacity:.45}
+
+/* ---- forwarding chip: the machine is answering as another agent, and says so ---- */
+#fwdchip{display:flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
+  color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
+#fwdchip[hidden]{display:none}
+#fwdchip:hover{filter:brightness(1.08)}
+#fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
+  border-left:1px solid rgba(0,0,0,.28)}
 /* ================= dock (floating, centered) ================= */
 #taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;height:auto;max-width:min(94vw,1100px);
   display:flex;align-items:flex-end;gap:4px;padding:7px 10px;border-radius:var(--r-xl);
@@ -614,6 +630,80 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #send:disabled{opacity:.35;cursor:default}
 #send.stop{background:var(--err);color:#fff;font-size:var(--fs-sm)}
 
+
+/* The model that produced a reply, next to who produced it — so "what is this
+   running on" is answered by looking, not by asking. */
+.msg .who .whomdl{margin-left:7px;padding-left:7px;border-left:1px solid var(--hairline);
+  color:var(--dim2);font-weight:500;letter-spacing:.01em}
+
+/* What this machine answers with. A read-out, not a control — the choice lives
+   in Settings so one machine has one answer, including for background work. */
+.modelchip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:600;color:var(--dim);background:transparent;
+  border:1px solid var(--line);cursor:pointer;max-width:230px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.modelchip:hover{color:var(--txt);border-color:var(--acc)}
+.modelchip.engine{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+/* ===== gallery, spaces, timeline, audit =====
+   Named 09a- deliberately: CSS parts are concatenated in filename order and
+   16-glass.css must stay last, so anything numbered 17+ would land after it and
+   could re-enable the blur the base .win rule must never have. */
+
+/* ---- gallery ---- */
+.galgrid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));padding:2px}
+.galtile{display:flex;flex-direction:column;gap:6px;padding:6px;border-radius:10px;
+  background:var(--surface2,rgba(255,255,255,.04));border:1px solid transparent;
+  cursor:pointer;text-align:left;width:100%}
+.galtile:hover{border-color:var(--accent,#6ea8fe)}
+.galtile.on{border-color:var(--accent,#6ea8fe);box-shadow:0 0 0 1px var(--accent,#6ea8fe) inset}
+.galart{position:relative;display:flex;align-items:center;justify-content:center;
+  aspect-ratio:16/10;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.25)}
+.galart img{width:100%;height:100%;object-fit:cover;display:block}
+.galmark{font-size:26px;opacity:.5}
+.galbadge{position:absolute;right:5px;bottom:5px;font-size:10px;line-height:1;
+  padding:3px 5px;border-radius:5px;background:rgba(0,0,0,.6);color:#fff}
+.galcap{display:flex;flex-direction:column;gap:2px;min-width:0}
+.galname{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.galmeta{font-size:10px;opacity:.6}
+.galnote{margin-top:12px;padding:10px 12px;border-radius:9px;font-size:12px;
+  background:rgba(255,190,80,.10);border:1px solid rgba(255,190,80,.25)}
+
+/* The detail pane holds a playing <video>. Every translucent surface above a
+   moving picture makes the compositor re-blur it EVERY FRAME, so this pane opts
+   out of glass explicitly — the cost is per-frame, not per-window. */
+.galdetail{margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;
+  padding:12px;border-radius:11px;background:var(--surface2,rgba(255,255,255,.05));
+  backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+.galplayer{flex:1 1 320px;max-width:100%;max-height:340px;border-radius:9px;
+  background:#000;display:block}
+.galinfo{flex:1 1 220px;min-width:0}
+.galrow{display:flex;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px solid rgba(128,128,128,.14)}
+.galrow span:first-child{flex:0 0 96px;opacity:.6}
+.galrow span:last-child{flex:1;min-width:0;overflow-wrap:anywhere}
+
+/* ---- the space chip in the menu bar ----
+   Inline and height-neutral on purpose: in SUI the band is a layer-shell
+   exclusive zone whose height the page measures and reports to the host. A chip
+   that grew the bar would silently change the reserved strut. */
+.spchip{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;
+  font-size:11px;line-height:1;border-radius:6px;border:1px solid rgba(128,128,128,.28);
+  background:transparent;cursor:pointer;max-width:180px;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.spchip:hover{border-color:var(--accent,#6ea8fe)}
+.spdot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+
+/* ---- timeline ---- */
+.tlmark{flex:0 0 18px;text-align:center;opacity:.55;font-size:13px}
+
+/* ---- audit ---- */
+.audpill{flex:0 0 auto;font-size:10px;line-height:1;padding:4px 7px;border-radius:5px;
+  text-transform:uppercase;letter-spacing:.04em;align-self:flex-start;margin-top:2px}
+.audok{background:rgba(80,200,120,.16);color:#4cc47c}
+.audden{background:rgba(240,90,90,.16);color:#ef6a6a}
+.audask{background:rgba(255,190,80,.16);color:#e2a33f}
+.val.audok{color:#4cc47c}
+.val.audden{color:#ef6a6a}
+.val.audask{color:#e2a33f}
 /* ================= settings / memory / tasks ================= */
 label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;font-weight:600}
 .row{display:flex;gap:10px}
@@ -777,6 +867,10 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-chip:hover:not(:disabled){border-color:var(--acc)}
 .wiz-chip.rec{border-color:color-mix(in srgb,var(--acc) 55%,var(--line))}
 .wiz-chip em{font-style:normal;font-size:var(--fs-2xs);color:var(--acc);margin-left:7px;letter-spacing:.04em}
+.wiz-chip:disabled{opacity:.55;cursor:default}
+/* Said beside the chip when the machine could not tell us where it is — the
+   wizard asks instead of offering a location nobody detected. */
+.wiz-note{font-style:normal;font-size:var(--fs-sm);color:var(--dim);align-self:center}
 .wiz-chip:disabled{opacity:.45;cursor:default}
 .wiz-chip.on{opacity:1;border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--bg3))}
 .wiz-swatch span{display:inline-block;width:34px;height:20px;border-radius:5px;margin-right:8px;vertical-align:middle;
@@ -852,6 +946,16 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .hs-note{font-size:var(--fs-xs);line-height:1.6}
 .hs-note code{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line);
   border-radius:4px;padding:1px 5px}
+
+/* First-run offer to install something the machine needs. Sits with the choices
+   it unblocks, not in a settings panel the user has not met yet. */
+.wiz-offer{display:flex;flex-direction:column;gap:6px;margin:0 0 14px;padding:12px 14px;
+  border-radius:10px;text-align:left;line-height:1.5;
+  border:1px solid color-mix(in srgb,var(--acc) 35%,var(--line));
+  background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.wiz-offer b{font-size:var(--fs-md)}
+.wiz-offer span{font-size:var(--fs-sm);color:var(--dim)}
+.wiz-offer button{align-self:flex-start;margin-top:2px}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -879,6 +983,76 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 #j-mic:hover{border-color:var(--acc)}
 #jarvis-ov.listening #j-mic{background:var(--err);border-color:var(--err);animation:jpulse 1.2s infinite}
 
+
+/* ---- Executors: the tool checkboxes are the envelope, so they read as a list
+   of grants rather than a row of anonymous boxes ---- */
+.exec-tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 14px;width:100%}
+.exec-tool{display:flex;align-items:baseline;gap:7px;font-size:var(--fs-sm);cursor:pointer}
+.exec-tool input{width:auto;flex:0 0 auto}
+.exec-tool b{font-weight:650}
+/* `.prow.stack .pc input{width:100%}` (14-omnibar.css) exists for text fields in
+   a stacked row, and it also caught these checkboxes: each stretched to fill its
+   whole grid cell, shoving the label away and forcing every column past its
+   minmax so the grid ran off the right edge and the last tools were cut off.
+   Beaten on specificity rather than !important, and the labels get min-width:0
+   so a long description wraps instead of widening its column. */
+.prow.stack .pc .exec-tool input[type=checkbox]{width:auto;max-width:none;flex:0 0 auto}
+.exec-tool{min-width:0}
+.exec-tool span{min-width:0}
+
+/* ---- Channels: one card per way in. The status sits in the heading because
+   "is this on, and what is it waiting for" is the question people open this
+   panel to answer — it should be readable without opening anything. ---- */
+.pgroup.chan > h3{display:flex;align-items:baseline;gap:10px;text-transform:none;
+  font-size:var(--fs-base);font-weight:700;letter-spacing:0;color:var(--txt)}
+.chdot{font-size:var(--fs-xs);font-weight:600;letter-spacing:0;text-transform:none;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim2)}
+.chdot.ok{color:var(--ok,#4ade80);border-color:color-mix(in srgb,var(--ok,#4ade80) 40%,transparent);
+  background:color-mix(in srgb,var(--ok,#4ade80) 12%,transparent)}
+.chdot.warn{color:var(--warn,#fbbf24);border-color:color-mix(in srgb,var(--warn,#fbbf24) 40%,transparent);
+  background:color-mix(in srgb,var(--warn,#fbbf24) 12%,transparent)}
+.pgroup.chan .ghint.mut{color:var(--dim2);padding-bottom:2px}
+/* Which account pays for a delegated run — stated before the switch that starts one */
+.ghint.bill{padding-top:8px;font-weight:500}
+.ghint.bill.subscription{color:var(--ok,#4ade80)}
+.ghint.bill.api,.ghint.bill.none{color:var(--warn,#fbbf24)}
+.chsec{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--dim2);margin:22px 0 10px}
+.chsec:first-child{margin-top:0}
+.chsec .mut{text-transform:none;letter-spacing:0;font-weight:500}
+/* Carried channels are read-outs of another program's state, not controls —
+   they sit quieter than the channels you can actually configure here. */
+.pgroup.chan.carried{background:transparent;border-style:dashed}
+.chvia{font-size:var(--fs-xs);font-weight:500;color:var(--dim2);letter-spacing:0;
+  text-transform:none;margin-left:auto;flex:none}
+.chtargets{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 2px}
+.chtargets code{font-size:var(--fs-xs);color:var(--dim);background:var(--bg3,rgba(127,127,127,.12));
+  border:1px solid var(--line);border-radius:6px;padding:2px 7px;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Where an address reaches from, beside the address itself. "Tailscale · your
+   devices, from anywhere" is the whole answer to "can I use this from the
+   train", and it was previously nowhere in the UI. */
+.rm-via{font-size:var(--fs-xs);color:var(--dim2);margin-left:auto;padding-right:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%}
+.rm-via.far{color:var(--ok,#4ade80)}
+
+/* Installer output. Shown, not hidden behind a spinner — an install that fails
+   silently is the thing people cannot debug. */
+.exec-log{margin:10px 16px 14px;padding:10px 12px;max-height:180px;overflow:auto;
+  background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
+  border-radius:8px;font-size:var(--fs-xs);white-space:pre-wrap;color:var(--dim)}
+
+/* The offer to become reachable from anywhere, and the address once it is. */
+.rm-offer{margin-top:12px;padding:10px 12px;border-radius:8px;line-height:1.6;
+  border:1px solid color-mix(in srgb,var(--warn,#fbbf24) 35%,var(--line));
+  background:color-mix(in srgb,var(--warn,#fbbf24) 8%,transparent);font-size:var(--fs-sm)}
+.rm-offer.live{border-color:color-mix(in srgb,var(--ok,#4ade80) 40%,var(--line));
+  background:color-mix(in srgb,var(--ok,#4ade80) 10%,transparent);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rm-cmd{display:inline-block;margin-top:4px;padding:3px 7px;border-radius:6px;
+  background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
+  font-size:var(--fs-xs);word-break:break-all;max-width:100%}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -1640,6 +1814,10 @@ body.glass-off .win{background:var(--bg)!important}
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>
+  <!-- Which project you are working in. Inline inside the existing band: in SUI the
+       menu bar is a layer-shell exclusive zone whose height the page measures and
+       reports to the host, so nothing here may change the band's height. -->
+  <span id="mbspace"></span>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
   <div id="tray">
@@ -1647,6 +1825,10 @@ body.glass-off .win{background:var(--bg)!important}
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
+    <!-- Forwarding is never silent: when this machine answers as another agent,
+         it says so in the menu bar on every surface, and clicking opens the
+         setting that turns it off. -->
+    <button id="fwdchip" hidden onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
@@ -1791,7 +1973,7 @@ function jarvisAsk(text){
   jarvisSetPhase('thinking',agentName()+' is working…');
   $('#j-reply').textContent='';
   JARVIS.busy=true;jarvisReply='';
-  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:($('#modelsel')&&$('#modelsel').value)||undefined}));
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:''}));
   setRunning(true);
 }
 function jarvisSpeakAndListen(text){
@@ -2132,6 +2314,10 @@ const ICONS={
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
+  spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
+  timeline:['#38BDF8','#1D4ED8','<path d="M6.4 4.4v15.2"/><circle cx="6.4" cy="8" r="1.8"/><circle cx="6.4" cy="16" r="1.8"/><path d="M10 8h9.6M10 16h6.4"/>'],
+  gallery:['#F59E0B','#B45309','<rect x="3.6" y="5.2" width="16.8" height="13.6" rx="2"/><circle cx="8.6" cy="10" r="1.6"/><path d="M3.9 16.4l4.5-4.2 3.4 3.1 3-2.7 5.1 4.5"/>'],
+  audit:['#94A3B8','#334155','<path d="M12 4.2v15.4M6.8 19.6h10.4"/><path d="M4 9.4h6.2l-3.1 5.2Z"/><path d="M13.8 9.4H20l-3.1 5.2Z"/><path d="M4.6 8.6 12 6.4l7.4 2.2"/>'],
   soul:['#818CF8','#4F46E5','<circle cx="12" cy="12" r="7.8"/><path d="M12 4.2a3.9 3.9 0 0 1 0 7.8 3.9 3.9 0 0 0 0 7.8"/><circle cx="12" cy="8.1" r=".95" fill="#fff" stroke="none"/><circle cx="12" cy="15.9" r=".95" fill="#fff" stroke="none"/>'],
   mcp:['#FBBF24','#D97706','<path d="M9.2 4.4v3.4M14.8 4.4v3.4"/><path d="M7 7.8h10v3.2a5 5 0 0 1-10 0Z"/><path d="M12 16v3.6"/>'],
   telegram:['#3EB6F1','#1D6FD2','<path d="M20.3 4.6 4.2 11.4l4.8 1.8 1.9 4.9 2.8-3.5 4.3 2Z"/><path d="M9 13.2l10.4-8"/>'],
@@ -2567,7 +2753,7 @@ function buildJarvisShell(){
 async function jarvisShellRefresh(){
   if(EXPERIENCE!=='jarvis')return;
   const cl=$('#js-clock');if(cl)cl.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  const mo=$('#js-model');if(mo&&$('#modelsel'))mo.textContent=(($('#modelsel').value||'').split('/').pop()||'–').slice(0,14);
+  const mo=$('#js-model');if(mo)mo.textContent=((((typeof cfg!=='undefined'&&cfg&&(cfg.engine!=='aria'&&cfg.engine||cfg.default_model))||'')+'').split('/').pop()||'–').slice(0,14);
   try{const m=await (await fetch('/api/mcp')).json();const c=$('#js-mcp');if(c)c.textContent=(m.servers||[]).filter(s=>s.status==='connected').length}catch(e){}
   try{const d=await (await fetch('/api/logs?limit=8')).json();const s=$('#js-stream');
     if(s)s.innerHTML=(d.logs||[]).slice(0,8).map(l=>`<div class="ln"><span class="t">${new Date(l.created_at*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span><span>${esc((l.kind+' · '+l.message).slice(0,60))}</span></div>`).join('');
@@ -3777,6 +3963,10 @@ const APPS={
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
   memory:{id:'memory',title:'Memory',icon:'◈',w:640,h:540,desc:'User & session memory — what the agent remembers',render:renderMemory},
   profile:{id:'profile',title:'Profile',icon:'',w:700,h:620,desc:'Everything the agent knows about you, in one place',render:renderProfile},
+  spaces:{id:'spaces',title:'Spaces',icon:'▣',w:640,h:540,desc:'The things you are working on',render:renderSpaces},
+  timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
+  gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
+  audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
   fabric:{id:'fabric',title:'Team',icon:'',w:860,h:660,desc:'Subagents, visual workflows & data-plane observability',render:renderFabric},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
@@ -4285,10 +4475,10 @@ function tickClock(){
    server, so it stays instant. */
 const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
-  ['Create',['store','studio','themes','personalize']],
-  ['Intelligence',['models','memory','kg','soul','profile']],
+  ['Create',['store','studio','themes','personalize','gallery']],
+  ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','policies','permissions','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','syssettings','settings','policies','permissions','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];
 let DECK=null;
@@ -4777,6 +4967,13 @@ function micToggle(){
 function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
 
 /* ================= websocket ================= */
+/* Who is answering the turn currently streaming. `var`, not `let`: the bundle is
+   one concatenated script and a top-level `let` here would be in the temporal
+   dead zone for anything earlier in filename order that reaches it. */
+var CUR_ENGINE={engine:'',model:''};
+/* The last model each engine reported. The chip reads it so the top bar can say
+   what the machine is running on, not just who it forwards to. */
+var FWD_MODEL={};
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
@@ -4943,7 +5140,24 @@ function handle(ev){
       // never steal the Chat window's current conversation
       if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
       currentConv=ev.id; loadConvs(); break;}
+    case 'executor_install':
+      if(typeof execInstallLine==='function')execInstallLine(d);
+      break;
+    case 'engine_info':{
+      // A forwarded run reporting who it is and what it woke up on. Relabel the
+      // bubble in place so the answer is never credited to the built-in agent.
+      if(ev.engine&&ev.model)FWD_MODEL[ev.engine]=ev.model;
+      if(typeof paintForwardChip==='function')paintForwardChip();
+      if(_cur){
+        CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
+        const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
+        if(who)who.innerHTML=engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model);
+      }
+      break;}
     case 'turn_start':{
+      // a new turn: until an engine says otherwise, this is the built-in agent
+      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'||ev.model==='hermes'?ev.model:'',
+                          model:(ev.model==='claude-code'||ev.model==='hermes')?'':(ev.model||'')};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
       updateSpin();
@@ -5066,6 +5280,8 @@ function handle(ev){
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'telegram_chats': refreshApp('telegram'); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
+    case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
     case 'fabric_event': fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); break;
     case 'setup': location.reload(); break;
@@ -5134,7 +5350,9 @@ function startAssistant(){
   removeWorking();
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg assistant';
-  m.innerHTML='<div class="who">▲ '+esc(agentName())+'</div>';
+  // Labelled for whoever is answering THIS turn — engine_info relabels it the
+  // moment a forwarded run says which model it woke up on.
+  m.innerHTML='<div class="who">'+engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model)+'</div>';
   curBody=document.createElement('div');curBody.className='body';
   m.appendChild(curBody);feed.appendChild(m);curThink=null;
 }
@@ -5170,7 +5388,8 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        <select id="modelsel" title="Model"></select>
+        <button id="modelchip" class="modelchip" title="Change this in Settings"
+          onclick="openModelSettings()">…</button>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
           <option value="balanced">Balanced</option>
@@ -5207,11 +5426,12 @@ function renderChat(body){
   const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
   tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
-  $('#modelsel').onchange=()=>{const v=$('#modelsel').value;
-    // 'hermes' is a per-turn engine choice, not a model — never persist it as the
-    // global default (background tasks call the provider with default_model)
-    if(v==='hermes'){toast('this chat now uses the Hermes engine');return}
-    fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_model:v})});};
+  /* The model/engine is chosen in Settings and nowhere else. A per-chat picker
+     meant the same machine answered as different agents depending on which
+     window you happened to be in, and background work (tasks, Telegram, the API)
+     could never see that choice at all — so "what is this machine running on"
+     had no single answer. The chip states it and opens the one place to change
+     it. Kept as a var so the old onchange path has nothing to bind to. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
   loadModels();loadConfig();loadConvs();
   if(currentConv)openConv(currentConv);else showWelcome();
@@ -5307,7 +5527,7 @@ function send(){
   // agent triages it at its next step boundary — folded into the live run, or kept
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
-  ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:$('#modelsel').value}));
+  ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
   input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
@@ -5376,7 +5596,7 @@ async function openConv(cid){
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{m.innerHTML='<div class="who">▲ '+esc(agentName())+'</div>';
+    else{m.innerHTML='<div class="who">'+msgWho(msg.meta)+'</div>';
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
           const argStr=s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args);
@@ -5439,29 +5659,39 @@ function showWelcome(){
   feed.appendChild(w);
 }
 async function loadModels(){
+  /* Nothing to choose here any more — this reports what Settings decided, so the
+     answer to "what is this running on" is the same in every window and for
+     background work too. */
   try{
-    const r=await fetch('/api/models');const d=await r.json();
-    const sel=$('#modelsel');if(!sel)return;
-    const prev=sel.value;
-    sel.innerHTML='';
-    // Engine choice: the built-in agent (Aria, model-backed) or Hermes as the backend
-    let hermesOn=false;
-    try{const h=await (await fetch('/api/hermes/status')).json();hermesOn=h.installed&&h.engine_enabled!==false}catch(e){}
-    if(d.models.length){
-      const g=document.createElement('optgroup');g.label='Aria (built-in agent) — model';
-      d.models.forEach(m=>{const o=document.createElement('option');o.value=m.id;
-        o.textContent=m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':'');g.appendChild(o)});
-      sel.appendChild(g);
-    }else if(!hermesOn){sel.innerHTML='<option value="">no models — check Settings</option>';return}
-    if(hermesOn){
-      const g=document.createElement('optgroup');g.label='Other engine';
-      const o=document.createElement('option');o.value='hermes';o.textContent='🜁 Hermes agent';
-      g.appendChild(o);sel.appendChild(g);
-    }
-    // keep the prior choice if still present, else the config default, else first model
-    const has=v=>[...sel.options].some(o=>o.value===v);
-    sel.value=has(prev)?prev:(d.default&&has(d.default)?d.default:(d.models[0]?d.models[0].id:'hermes'));
+    const d=await (await fetch('/api/models')).json();
+    MODELS_STATE=d;
+    paintModelChip();
   }catch(e){}
+}
+var MODELS_STATE={};
+function paintModelChip(){
+  const chip=$('#modelchip');if(!chip)return;
+  const d=MODELS_STATE||{};
+  const engine=(cfg&&cfg.engine)||d.engine||'aria';
+  if(engine&&engine!=='aria'){
+    const e=(d.engines||[]).find(x=>x.id===engine)||{};
+    chip.innerHTML=`${{'claude-code':'◈','hermes':'🜁'}[engine]||'⇥'} ${esc(e.name||engine)}`;
+    chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
+    chip.classList.add('engine');
+    return;
+  }
+  const id=(cfg&&cfg.default_model)||d.default||'';
+  const m=(d.models||[]).find(x=>x.id===id);
+  chip.textContent=m?(m.name+(m.provider==='ollama'?' · local':'')):(id||'no model');
+  chip.title=(id||'no model set')+'\nChange it in Settings → AI providers';
+  chip.classList.remove('engine');
+}
+/* One place to change it, and the chip goes there rather than describing where. */
+function openModelSettings(){
+  const engine=(cfg&&cfg.engine)||'aria';
+  SETTAB=engine!=='aria'?'executors':'ai';
+  try{localStorage.setItem('settab',SETTAB)}catch(e){}
+  openApp('settings');
 }
 async function loadConfig(){
   const r=await fetch('/api/config');cfg=await r.json();
@@ -5469,8 +5699,51 @@ async function loadConfig(){
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
   if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
+  paintForwardChip();
+  paintModelChip();
+}
+/* A machine set to forward is answering as somebody else. That is a big enough
+   change of behaviour that it belongs in the chrome, not buried in Settings —
+   otherwise a reply that isn't from your own agent looks like your own agent. */
+function paintForwardChip(){
+  const chip=$('#fwdchip');if(!chip)return;
+  const engine=(cfg&&cfg.engine)||'aria';
+  const on=engine!=='aria';
+  chip.hidden=!on;
+  if(!on)return;
+  const name=engine==='claude-code'?'Claude Code':(engine==='hermes'?'Hermes':engine);
+  // The model rides on the chip too, so "what is this running on" is answered by
+  // looking up rather than by asking. It is filled in the first time a forwarded
+  // turn reports it — before that the engine name alone is all we honestly know.
+  const model=(FWD_MODEL[engine]||'').replace(/^claude-/,'');
+  chip.innerHTML='⇥ '+esc(name)+(model?'<span class="fwdmdl">'+esc(model)+'</span>':'');
+  chip.title='This machine is forwarding every request to '+name
+    +(model?' · running on '+FWD_MODEL[engine]:'')
+    +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+    +'. Click to change it.';
 }
 
+
+/* ---- who actually answered -------------------------------------------------
+   A reply is labelled with the agent that produced it, not with the built-in
+   one by default. When the machine forwards, Claude Code or Hermes writes the
+   text — calling that "Aria" is the kind of quiet mislabelling that makes a
+   forwarding machine confusing, and the model is shown alongside so the answer
+   to "what is this running on" is on screen rather than something you ask. */
+function engineLabel(engine,model){
+  const mark={'claude-code':'◈','hermes':'🜁'}[engine]||'▲';
+  const name={'claude-code':'Claude Code','hermes':'Hermes'}[engine]||agentName();
+  const m=(model||'').trim();
+  return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
+}
+/* The label for a stored message: its own recorded engine/model, falling back to
+   the executor step for turns saved before that was recorded. */
+function msgWho(meta){
+  const engine=(meta&&meta.engine)
+    ||((meta&&meta.steps||[]).find(s=>s&&s.type==='executor')||{}).name||'';
+  const model=(meta&&(meta.engine_model||meta.model))||'';
+  return engineLabel(engine,model);
+}
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -5507,6 +5780,8 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers'],
   ['agent','◈','Agent'],
+  ['executors','⇥','Executors'],
+  ['channels','◇','Channels'],
   ['locale','◐','Locale'],
   ['keys','⌘','Shortcuts'],
   ['voice','◉','Voice'],
@@ -5574,6 +5849,24 @@ function setTab(body,all){
         {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
       pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
+  }
+  if(want('executors')){
+    P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
+    P.push(pGroup('Forward everything',[
+      pRow('This machine answers with',pSelect('s-engine',[
+          ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
+          ['claude-code','Claude Code'],
+          ['hermes','Hermes']],cfg.engine||'aria'),
+        {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
+         f:'forward everything engine forwarder proxy relay'}),
+    ],{f:'forwarding engine'}));
+    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
+  }
+  if(want('channels')){
+    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
+    setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('agent')){
     P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
@@ -5707,6 +6000,19 @@ async function saveSettings(){
   const ght=(val('s-gh-token')||'').trim();
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
+  if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  // Executors: the tool list is checkboxes rather than a field, so it is read
+  // from the DOM directly. Only present when the Executors tab is on screen.
+  if(document.getElementById('s-exec-on')!==null){
+    patch.executors={claude_code:{
+      enabled:on('s-exec-on'),
+      workspace:(val('s-exec-ws')||'').trim(),
+      model:(val('s-exec-model')||'').trim(),
+      budget_usd:Number(val('s-exec-budget')||2),
+      tools:[...document.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool),
+      allow_source:on('s-exec-src'),
+    }};
+  }
   if(!Object.keys(patch).length){toast('nothing to save on this page');return}
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   toast('settings saved');loadModels();loadConfig();
@@ -5812,6 +6118,201 @@ async function locUseDetected(){
     body:JSON.stringify({locale:{country:'',timezone:'',language:'',city:'',units:'',clock:''}})});
   await loadConfig();tickClock();locRender();toast('using the machine\'s own locale');
 }
+
+/* ---- Executors: agents already on this machine that AgentOS can delegate to ----
+   Availability is a live probe rather than config, so this panel is rendered
+   after the tab paints. Every control here widens or narrows the envelope a
+   delegated run gets, and the sentence under the switch always states the
+   envelope in full — picking "Claude Code" in Chat should never be a blind grant. */
+async function renderExecutors(){
+  const box=document.getElementById('exec-list');if(!box)return;
+  var d=null;
+  try{d=await (await fetch('/api/executors')).json()}catch(e){}
+  const ex=d&&(d.executors||[]).find(e=>e.id==='claude_code');
+  if(!ex){box.innerHTML='<h3>Claude Code</h3><p class="mut">could not read executors</p>';return}
+  if(!ex.available){
+    /* "Not installed" used to end here, which is a dead end wearing an honest
+       sentence. The exact command is shown before anything runs, and the button
+       runs that command — nothing is installed without agreeing to it. */
+    box.innerHTML=`<h3>Claude Code</h3><p class="mut">${esc(ex.reason||'not available')}</p>
+      ${ex.install_cmd?`
+        <div class="ghint">${esc(ex.install_note||'')}</div>
+        ${pRow('Install it',`<button class="endbtn" id="exec-inst"
+             onclick="execInstall()">Install Claude Code</button>`,
+          {desc:`Runs: <code>${esc(ex.install_cmd)}</code> — into your own account, no sudo.`,
+           f:'install claude code executor'})}
+        <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
+      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
+    return;
+  }
+  const c=ex.config||{}, tools=c.tools||[];
+  const tool=(name,desc)=>`<label class="exec-tool"><input type="checkbox" data-tool="${name}" ${tools.indexOf(name)>=0?'checked':''}> <b>${name}</b> <span class="mut">${esc(desc)}</span></label>`;
+  /* How a delegated run is paid for. "Delegate this turn" reads as free when it
+     is a subscription and as nothing at all when it is a metered key, and those
+     are very different things to click — so it is stated before the switch. */
+  const b=ex.billing||{};
+  const bill=b.detail?`<div class="ghint bill ${esc(b.mode||'')}">${
+    {subscription:'◆',api:'$',none:'!'}[b.mode]||'·'} ${esc(b.detail)}${
+    (b.stripped||[]).length?` <span class="mut">(${esc(b.stripped.join(', '))} is set in the environment but is not passed to it)</span>`:''}</div>`:'';
+  box.innerHTML=`<h3>Claude Code <span class="mut">${esc(ex.version||'')}</span></h3>
+    <div class="ghint">${esc(ex.what||'')}</div>${bill}
+    ${pRow('Use as an engine',pSwitch('s-exec-on',ex.enabled),
+      {desc:'Adds “Claude Code” to the model picker in Chat. Each turn you send there is delegated to it.',f:'enable claude code executor'})}
+    ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in — run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal. Delegated runs will use that subscription.</div>`:''}
+    ${pRow('Folder',pText('s-exec-ws',c.workspace),
+      {desc:'The only directory it can read or write. Everything else on the machine is out of reach.',f:'executor workspace folder'})}
+    ${pRow('Let it work on AgentOS itself',pSwitch('s-exec-src',c.allow_source),
+      {desc:`Also gives it <code>${esc(ex.source_root||'')}</code> — the source of this OS — so it can fix AgentOS's own tools and windows. It is told that the UI is built from <code>ui/src</code> and that the suite must pass. Off unless you turn it on: the OS rewriting itself is its own decision.`,
+       f:'executor agentos source develop self edit'})}
+    ${pRow('Model',pText('s-exec-model',c.model,'its own default'),
+      {desc:'Leave empty to let Claude Code choose. It uses its own credentials — not your AgentOS provider keys.',f:'executor model'})}
+    ${pRow(b.mode==='subscription'?'Work limit':'Spend limit',
+      pText('s-exec-budget',c.budget_usd,'','number'),
+      {desc:b.mode==='subscription'
+        ? 'You are on a Claude subscription, so runs are not billed per token — this is a runaway guard, not a bill. Claude Code stops when its <em>notional</em> cost reaches it; ask it to carry on and it resumes where it stopped.'
+        : 'A hard ceiling in US dollars per run, enforced by Claude Code itself.',
+       f:'executor budget cost limit work'})}
+    ${pRow('Allowed tools',`<div class="exec-tools">
+        ${tool('Read','read files')}${tool('Glob','find files')}${tool('Grep','search text')}
+        ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
+        ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
+      </div>`,{stack:true,desc:'Decided here, once, before a run starts — this build of Claude Code has no per-call approval hook, so anything left unticked simply cannot be used.',f:'executor allowed tools permissions'})}
+    <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
+  const refresh=()=>{
+    const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);
+    const writes=t.some(x=>x==='Write'||x==='Edit'||x==='Bash');
+    const e=document.getElementById('exec-envelope');
+    if(e)e.textContent=`Claude Code in ${document.getElementById('s-exec-ws').value} with `
+      +(t.join(', ')||'no tools')+(writes?' (can change files and run commands)':' (read-only)')
+      +`, up to $${Number(document.getElementById('s-exec-budget').value||0).toFixed(2)}`;
+  };
+  box.querySelectorAll('[data-tool],#s-exec-ws,#s-exec-budget').forEach(i=>{
+    i.onchange=refresh;i.oninput=refresh;
+  });
+}
+
+/* Installing is a visible act: the command was shown, the output streams here,
+   and the panel re-probes when it finishes rather than claiming success. */
+async function execInstall(){
+  const btn=document.getElementById('exec-inst'), log=document.getElementById('exec-instlog');
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  if(log){log.hidden=false;log.textContent='starting…\n'}
+  try{
+    const r=await fetch('/api/executors/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'claude_code'})});
+    const d=await r.json();
+    if(log){log.textContent+=(d.message||'')+'\n'}
+    toast(d.ok?'✓ '+(d.message||'installed'):(d.message||'could not install'));
+    if(d.ok)renderExecutors();
+  }catch(e){ toast('could not reach the server') }
+  finally{ if(btn){btn.disabled=false;btn.textContent='Install Claude Code'} }
+}
+/* Progress lines from the installer, broadcast so every open surface sees them. */
+function execInstallLine(ev){
+  const log=document.getElementById('exec-instlog');
+  if(!log)return;
+  log.hidden=false;
+  if(ev.line){log.textContent+=ev.line+'\n';log.scrollTop=log.scrollHeight}
+}
+
+/* ---- channels: every way in, who may use it, and how far it is trusted ----
+   Each card saves on its own (PUT /api/channels/<id>) rather than through the
+   page-wide Save, because a channel is a self-contained decision and because the
+   server answers with why it refused — "still needs Bot token", "that one shares
+   a gate with This window" — which is worth showing next to the control that
+   caused it rather than as one page-level error. */
+var CHAN_POSTURES=[];
+async function renderChannels(){
+  const box=document.getElementById('chan-list');if(!box)return;
+  var d=null;
+  try{d=await (await fetch('/api/channels')).json()}catch(e){}
+  if(!d||!d.channels){box.innerHTML='<p class="mut">could not read channels</p>';return}
+  CHAN_POSTURES=d.postures||[];
+  var html=`<h3 class="chsec">Channels that reach this agent</h3>`
+    +d.channels.map(chanCard).join('');
+  /* Hermes already runs a messaging gateway with bridges AgentOS deliberately
+     does not rebuild. These are discovered from it, so the list is whatever is
+     really paired right now — and they are delivery routes OUT, which the
+     heading has to say or "WhatsApp: on" reads as "Aria is on WhatsApp". */
+  const carried=d.carried||[];
+  if(carried.length){
+    html+=`<h3 class="chsec">Carried by Hermes <span class="mut">— AgentOS can send to these; a reply there is answered by Hermes, not by ${esc(agentName())}</span></h3>`
+      +carried.map(chanCard).join('');
+  }
+  box.innerHTML=html;
+}
+function chanCard(c){
+  if(c.carrier==='hermes')return chanCarriedCard(c);
+  const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';
+  const fields=(c.fields||[]).map(f=>pRow(f.label,
+      f.secret?pSecret(`ch-${c.id}-${f.key}`,!!(c.set||{})[f.key],'••••',f.placeholder)
+              :pText(`ch-${c.id}-${f.key}`,(c.values||{})[f.key],f.placeholder),
+      {desc:f.help,f:c.id+' '+f.label})).join('');
+  /* Postures are per IO gate. Channels that share a gate say whose posture they
+     follow instead of showing a select that would never be consulted. */
+  const posture=c.own_gate
+    ? pRow('Permissions',pSelect(`ch-${c.id}-posture`,
+        CHAN_POSTURES.map(p=>[p.id,p.label]),c.posture),
+        {desc:(CHAN_POSTURES.find(p=>p.id===c.posture)||{}).help||'',
+         f:c.id+' permissions posture autonomy'})
+    : pRow('Permissions',`<span class="mut">follows ${esc(c.posture_from||'another channel')}</span>`,
+        {desc:`Arrives through the same gate, so the same rules apply: ${esc(c.posture_label)}.`,
+         f:c.id+' permissions'});
+  const onoff=c.builtin
+    ? pRow('Available',`<span class="mut">always on</span>`,
+        {desc:'This is how you reach the machine — it has no off switch here.',f:c.id+' always on'})
+    : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  return `<div class="pgroup chan" data-f="channel ${esc(c.id)} ${esc(c.title)}">
+    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span></h3>
+    <div class="ghint">${esc(c.what)}</div>
+    ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
+      {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
+    ${onoff}${posture}${fields}
+    ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
+    ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
+    <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
+      <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
+  </div>`;
+}
+/* A Hermes-carried channel has nothing to save here: pairing happens in Hermes,
+   and inventing an on/off switch beside it would be a control that lies. The
+   card reports what the probe found and points at where it is really changed. */
+function chanCarriedCard(c){
+  const dot={on:'ok',off:'mut',unavailable:'warn'}[c.status]||'mut';
+  const tg=(c.targets||[]).length
+    ? `<div class="chtargets">${c.targets.map(t=>
+        `<code title="${esc(t.id)}">${esc(t.name||t.id)}</code>`).join('')}</div>`
+    : '';
+  return `<div class="pgroup chan carried" data-f="channel hermes ${esc(c.title)}">
+    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span>
+      <span class="chvia">via Hermes</span></h3>
+    ${tg}
+    ${c.status==='unavailable'
+      ? `<div class="ghint mut">${esc(c.detail)}</div>`
+      : `<div class="ghint mut">${esc(c.note)}</div>`}
+  </div>`;
+}
+async function chanSave(id){
+  const msg=document.getElementById('ch-'+id+'-msg');
+  const body={};
+  const on=document.getElementById('ch-'+id+'-on'); if(on)body.enabled=on.checked;
+  const po=document.getElementById('ch-'+id+'-posture'); if(po)body.posture=po.value;
+  // only fields the user actually typed into: a saved secret shows as a chip
+  // with no input, and sending '' for it would read as "clear this"
+  document.querySelectorAll(`[id^="ch-${id}-"]`).forEach(el=>{
+    const k=el.id.slice(('ch-'+id+'-').length);
+    if(['on','posture','msg'].indexOf(k)>=0)return;
+    if(el.tagName==='INPUT')body[k]=el.value;
+  });
+  if(msg){msg.textContent='saving…';msg.className='mut'}
+  try{
+    const r=await fetch('/api/channels/'+encodeURIComponent(id),
+      {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
+    if(j.ok)renderChannels();
+  }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -5907,6 +6408,179 @@ async function renderProfile(body){
     </div></div>`;
 }
 
+/* ================= spaces & timeline =================
+   A space is a thing the user is working on. Everything it groups — conversations,
+   memory, facts, assets, runs — is visible from inside it ALONGSIDE what is true
+   everywhere; never instead of it. That is why the global scope is labelled
+   "Everywhere" rather than "None": it is a real scope, not a missing value.
+
+   `var`, not `let` — see the note at the top of 25a-gallery.js. */
+var SPACES={list:[],active:{},loaded:false};
+var tlKind='';
+var tlSince=168;
+
+function activeSpace(){return (SPACES.active||{}).gui||''}
+function spaceById(id){return (SPACES.list||[]).find(s=>s.id===id)||null}
+function spaceName(id){const s=spaceById(id);return s?s.name:'Everywhere'}
+
+async function loadSpaces(force){
+  if(SPACES.loaded&&!force)return SPACES;
+  try{
+    const d=await fetch('/api/spaces').then(r=>r.json());
+    SPACES.list=d.spaces||[];SPACES.active=d.active||{};SPACES.loaded=true;
+  }catch(e){}
+  return SPACES;
+}
+
+/* ---- the menu-bar chip ---------------------------------------------------
+   In SUI the menu bar is a layer-shell exclusive zone whose height the page
+   MEASURES and reports to the host (00-sui.js). The chip is an inline element
+   inside the existing band for exactly that reason: it must not change the
+   band's height, and nothing here may hardcode one. */
+function spaceChipHTML(){
+  const id=activeSpace(),s=spaceById(id);
+  const dot=s&&s.colour?`<span class="spdot" style="background:${esc(s.colour)}"></span>`:'';
+  return `<button class="spchip" onclick="spaceMenu(event)" title="Which project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
+    ${dot}${esc(s?((s.icon?s.icon+' ':'')+s.name):'Everywhere')}</button>`;
+}
+
+async function paintSpaceChip(){
+  const el=$('#mbspace');
+  if(!el)return;
+  await loadSpaces();
+  // Only worth a chip once there is a choice to make — until the user has a
+  // space, "Everywhere" is the only scope and the control would be decoration.
+  el.innerHTML=(SPACES.list||[]).length?spaceChipHTML():'';
+}
+
+async function spaceMenu(ev){
+  ev.stopPropagation();
+  await loadSpaces(true);
+  const cur=activeSpace();
+  const tick=id=>(id===cur?'● ':'   ');
+  const items=[{label:tick('')+'Everywhere',fn:()=>switchSpace('')}]
+    .concat(SPACES.list.map(s=>({
+      label:tick(s.id)+esc((s.icon?s.icon+' ':'')+s.name),
+      fn:()=>switchSpace(s.id)})))
+    .concat([null,
+      {label:'New space…',fn:newSpace},
+      {label:'Manage spaces',fn:()=>openApp('spaces')},
+      {label:'Timeline',fn:()=>openApp('timeline')}]);
+  showCtxItems(ev,items);
+}
+
+async function switchSpace(id){
+  const r=await fetch('/api/spaces/activate',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({space_id:id,surface:'gui'})});
+  if(!r.ok){toast('could not switch space');return}
+  const d=await r.json();
+  SPACES.active=Object.assign({},SPACES.active,{gui:id});
+  toast(id?('working in '+d.name):'working everywhere');
+  // everything that reads scoped data redraws; a new chat starts in the new space
+  ['memory','profile','kg','gallery','timeline','logs','audit','spaces'].forEach(a=>refreshApp(a));
+  paintSpaceChip();
+}
+
+async function newSpace(){
+  const name=await osPrompt('Name the space',{placeholder:'e.g. Q3 launch',confirmText:'Create'});
+  if(name===null||!name.trim())return;
+  const description=await osPrompt('What is this space about?',
+    {placeholder:'One line — the memory subsystem reads this to decide what belongs here',
+     confirmText:'Create'});
+  const r=await fetch('/api/spaces',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:name.trim(),description:(description||'').trim()})});
+  if(!r.ok){toast('could not create the space');return}
+  const d=await r.json();
+  await loadSpaces(true);
+  await switchSpace(d.id);
+  refreshApp('spaces');
+}
+
+/* ---- the Spaces app ----------------------------------------------------- */
+async function renderSpaces(body){
+  await loadSpaces(true);
+  const cur=activeSpace();
+  const card=s=>`<div class="item">
+    <div class="grow"><b>${s.icon?esc(s.icon)+' ':''}${esc(s.name)}</b>
+      ${s.id===cur?'<span class="badge" style="margin-left:6px">active</span>':''}
+      <div class="sub">${esc(s.description||'no description — the agent uses this to decide what belongs here')}</div></div>
+    <button onclick="switchSpace('${s.id}')" ${s.id===cur?'disabled':''}>Work here</button>
+    <button title="stop offering this space; nothing is deleted" onclick="spaceDispose('${s.id}','archive')">Archive</button>
+    <button title="move everything in it to the shared scope" onclick="spaceDispose('${s.id}','global')">Make shared</button>
+    <button title="delete the space and everything scoped to it" onclick="spaceDispose('${s.id}','delete')">✕</button></div>`;
+  const pb=panelShell(body,{title:'Spaces',sub:'the things you are working on',
+    actions:`<button class="pact" onclick="newSpace()">New space</button>`});
+  pb.innerHTML=`
+    <div class="item"><div class="grow"><b>Everywhere</b>
+      ${cur===''?'<span class="badge" style="margin-left:6px">active</span>':''}
+      <div class="sub">Shared context: what is true about you no matter what you are working on. Always visible from inside every space.</div></div>
+      <button onclick="switchSpace('')" ${cur===''?'disabled':''}>Work here</button></div>
+    ${SPACES.list.map(card).join('')}
+    ${SPACES.list.length?'':emptyBox('No spaces yet','Everything is shared. Make a space when a project starts accumulating its own people, decisions and files — its memory then stops competing with the rest.','','spaces','Create a space for the project I am starting and explain what will go in it.')}`;
+}
+
+/* Three dispositions, each its own button, each confirmed with what is actually
+   in the space. A space must never be removed without saying what happens to
+   its contents — silently orphaning a project's memory is unrecoverable. */
+async function spaceDispose(id,contents){
+  const s=spaceById(id);if(!s)return;
+  const st=await fetch('/api/spaces/'+id+'/stats').then(r=>r.json()).catch(()=>({stats:{}}));
+  const held=Object.entries(st.stats||{}).filter(([k,v])=>v>0)
+    .map(([k,v])=>v+' '+k.replace(/_/g,' ')).join(', ')||'nothing';
+  const WORDS={
+    archive:['Archive "'+s.name+'"?','It holds '+held+'. Nothing is deleted or moved — the space just stops being offered, and you can bring it back.','Archive',false],
+    global:['Move "'+s.name+'" into the shared scope?','Its '+held+' become true everywhere, mixed in with the rest. The space itself is removed. This cannot be undone.','Make shared',false],
+    delete:['Delete "'+s.name+'" and everything in it?','This permanently removes '+held+'. This cannot be undone.','Delete everything',true],
+  };
+  const [title,message,confirmText,danger]=WORDS[contents]||WORDS.archive;
+  if(!await osConfirm(title,message,{confirmText,danger}))return;
+  const r=await fetch('/api/spaces/'+id+'?contents='+contents,{method:'DELETE'});
+  if(!r.ok){toast('could not update the space');return}
+  const d=await r.json().catch(()=>({}));
+  if(activeSpace()===id&&contents!=='archive')await switchSpace('');
+  await loadSpaces(true);
+  toast(contents==='archive'?'archived — nothing was deleted'
+       :contents==='global'?'moved to the shared scope':'deleted');
+  refreshApp('spaces');
+}
+
+/* ---- the Timeline app ---------------------------------------------------
+   Milestones, not messages. A timeline containing every message IS the message
+   list, and there is already one of those. */
+async function renderTimeline(body,w){
+  const qs=new URLSearchParams();
+  if(activeSpace())qs.set('space',activeSpace());
+  if(tlKind)qs.set('kind',tlKind);
+  if(tlSince)qs.set('since',String(Math.floor(Date.now()/1000-tlSince*3600)));
+  const d=await fetch('/api/timeline?'+qs).then(r=>r.json()).catch(()=>({events:[]}));
+  const KINDS=['','run','asset','memory','app_version','conversation','task','space'];
+  const MARK={run:'▸',asset:'◧',memory:'◈',app_version:'⌾',conversation:'❯',task:'⏱',space:'▣'};
+  const RANGE=[[24,'Today'],[168,'Week'],[720,'Month'],[0,'All']];
+  const pb=panelShell(body,{
+    title:'Timeline',
+    sub:activeSpace()?esc(spaceName(activeSpace())):'everywhere',
+    actions:`<span class="seg">${RANGE.map(([h,l])=>
+        `<button class="${tlSince===h?'on':''}" onclick="tlRange(${h})">${l}</button>`).join('')}</span>
+      <select onchange="tlSetKind(this.value)" style="flex:0 0 auto">
+        ${KINDS.map(k=>`<option value="${k}" ${k===tlKind?'selected':''}>${k?k.replace(/_/g,' '):'everything'}</option>`).join('')}
+      </select>`,
+  });
+  const ev=d.events||[];
+  let day='',out='';
+  ev.forEach(e=>{
+    const dt=new Date(e.ts*1000),dd=dt.toLocaleDateString();
+    if(dd!==day){day=dd;out+=`<div class="ptitle" style="margin-top:12px">${esc(dd)}</div>`}
+    out+=`<div class="item"><span class="tlmark">${MARK[e.kind]||'•'}</span>
+      <div class="grow">${esc(e.title||e.kind)}
+        <div class="sub">${dt.toLocaleTimeString()} · ${esc(e.kind.replace(/_/g,' '))}</div></div></div>`;
+  });
+  pb.innerHTML=out||emptyBox('Nothing yet in this period',
+    'The timeline records milestones — runs that finished, assets produced, memory learned, apps changed — not every message.');
+  if(w)winTick(w,()=>refreshApp('timeline'),15000,{key:'timeline',now:false});
+}
+function tlSetKind(k){tlKind=k;refreshApp('timeline')}
+function tlRange(h){tlSince=h;refreshApp('timeline')}
 /* ================= fabric app — subagents, workflows, observability ================= */
 let fabTab='team';
 async function renderFabric(body){
@@ -6283,7 +6957,16 @@ function wizRender(){
     stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
-    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'No local Ollama models found — use a cloud key, or install Ollama later.'}</p>
+    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. AgentOS can set that up, or you can bring a cloud key.'}</p>
+    ${/* "install Ollama later" was the end of the road here: the first screen that
+          needs a brain told you what was missing and then left you to it. Offer
+          it, with the licence and the exact command, on the screen where it
+          matters. */''}
+    ${local?'':`<div class="wiz-offer" id="wz-ollama">
+      <b>Run models on this machine</b>
+      <span>Private, free, no API key. AgentOS installs Ollama (MIT, llama.cpp underneath).</span>
+      <button class="endbtn" onclick="wizInstallOllama()">Install it for me</button>
+    </div>`}
     <div class="wiz-picks">${local}
       <label class="wiz-pick"><input type="radio" name="wz-model" value="cloud" ${WIZ.default_model&&!WIZ.default_model.startsWith('ollama/')?'checked':''}><b>Cloud model</b><span>Anthropic, OpenAI or OpenRouter (API key)</span></label>
     </div>
@@ -6345,11 +7028,26 @@ function wizChips(step){
   let defs=null;
   if(step==='locale'){
     const el=document.createElement('div');el.className='wiz-chips';
+    /* Three states, because this used to have one. The chip was drawn before the
+       fetch resolved and read "? · ? detected" — offering a location nobody had
+       detected as the RECOMMENDED answer, on the first screen a new user sees.
+       While it is still reading, say so; if it could not read, hand the question
+       over rather than pretending to an answer. */
     const draw=()=>{
       const lo=(WIZ.locale&&WIZ.locale.locale)||{};
-      el.innerHTML=`<button class="wiz-chip rec" data-a="ok">${esc((lo.country_name||lo.country||'?')+' · '+(lo.timezone||'?'))}<em>detected</em></button>
-        <button class="wiz-chip" data-a="edit">Somewhere else…</button>`;
-      el.querySelector('[data-a=ok]').onclick=b=>wizPicked(el,el.querySelector('[data-a=ok]'));
+      const place=lo.country_name||lo.country||'';
+      const known=!!(place||lo.timezone);
+      if(WIZ.locale===undefined){
+        el.innerHTML=`<button class="wiz-chip" disabled>reading this machine…</button>`;
+        return;
+      }
+      el.innerHTML=(known
+        ? `<button class="wiz-chip rec" data-a="ok">${esc([place,lo.timezone].filter(Boolean).join(' · '))}<em>detected</em></button>
+           <button class="wiz-chip" data-a="edit">Somewhere else…</button>`
+        : `<button class="wiz-chip rec" data-a="edit">Tell me where you are</button>
+           <em class="wiz-note">I could not read a location off this machine.</em>`);
+      const ok=el.querySelector('[data-a=ok]');
+      if(ok)ok.onclick=b=>wizPicked(el,ok);
       el.querySelector('[data-a=edit]').onclick=async()=>{
         const c=await osPrompt('Which country are you in?',{value:lo.country||'',placeholder:'IN, US, GB…',confirmText:'Set'});
         if(c===null)return;
@@ -6362,7 +7060,12 @@ function wizChips(step){
         draw();
       };
     };
-    fetch('/api/locale').then(r=>r.json()).then(d=>{WIZ.locale=d;draw()}).catch(()=>draw());
+    // undefined means "still asking"; null means the question was answered with
+    // nothing, and the two must not look the same to someone waiting on it
+    WIZ.locale=undefined;
+    fetch('/api/locale').then(r=>r.json())
+      .then(d=>{WIZ.locale=d||null;draw()})
+      .catch(()=>{WIZ.locale=null;draw()});
     draw();
     return el;
   }
@@ -6431,6 +7134,31 @@ async function factoryReset(){
   location.reload();
 }
 
+
+
+/* First-run offer to install a local model runtime. The command and licence are
+   shown before anything runs, and the step re-reads itself after so a freshly
+   installed runtime appears as a real choice rather than requiring a restart. */
+async function wizInstallOllama(){
+  const box=document.getElementById('wz-ollama');if(!box)return;
+  const btn=box.querySelector('button');
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  box.insertAdjacentHTML('beforeend','<span class="mut" id="wz-ollama-note">this downloads a few hundred MB…</span>');
+  try{
+    const r=await fetch('/api/components/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'ollama'})});
+    const d=await r.json();
+    const note=document.getElementById('wz-ollama-note');
+    if(d.ok){
+      if(note)note.textContent='installed — pull a model with: ollama pull llama3.2';
+      try{WIZ.info=await (await fetch('/api/setup')).json()}catch(e){}
+      wizRender();
+    }else if(note){
+      note.textContent=(d.message||'could not install')+(d.command?` — run: ${d.command}`:'');
+    }
+  }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
+  finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
+}
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
@@ -7644,6 +8372,85 @@ async function delPolicy(i){
   refreshApp('policies');
 }
 
+/* ================= audit — the access ledger =================
+   Logs answer "what happened". This answers "who was allowed to do what, arriving
+   on which way in, and under which rule" — the question you cannot grep a JSON
+   blob for. Every PDP decision writes one row, in the same vocabulary grants are
+   written in, so a filter here and a grant in the Permissions app describe the
+   same thing.
+
+   `var`, not `let` — see the note at the top of 25a-gallery.js. */
+var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
+
+async function renderAudit(body,w){
+  const qs=new URLSearchParams();
+  Object.entries(audFilter).forEach(([k,v])=>{
+    if(!v)return;
+    if(k==='since')qs.set('since',String(Math.floor(Date.now()/1000-v*3600)));
+    else qs.set(k,v);
+  });
+  if(activeSpace&&activeSpace())qs.set('space',activeSpace());
+  const since=audFilter.since?Math.floor(Date.now()/1000-audFilter.since*3600):0;
+  const [d,sum]=await Promise.all([
+    fetch('/api/audit?limit=400&'+qs).then(r=>r.json()).catch(()=>({entries:[]})),
+    fetch('/api/audit/summary?since='+since).then(r=>r.json()).catch(()=>({effects:{}}))]);
+  const e=sum.effects||{};
+  const RANGE=[[1,'1h'],[24,'24h'],[168,'7d'],[720,'30d'],[0,'All']];
+  const pb=panelShell(body,{
+    title:'Audit',
+    sub:'every capability decision, as it was decided',
+    search:{id:'aud-q',placeholder:'Search resource, reason or detail…'},
+    actions:`<span class="seg">${RANGE.map(([h,l])=>
+        `<button class="${audFilter.since===h?'on':''}" onclick="audRange(${h})">${l}</button>`).join('')}</span>
+      <select onchange="audSet('effect',this.value)" style="flex:0 0 auto">
+        <option value="">every outcome</option>
+        <option value="allow" ${audFilter.effect==='allow'?'selected':''}>allowed</option>
+        <option value="deny" ${audFilter.effect==='deny'?'selected':''}>denied</option>
+        <option value="ask" ${audFilter.effect==='ask'?'selected':''}>asked</option>
+      </select>
+      <select onchange="audSet('principal_kind',this.value)" style="flex:0 0 auto">
+        <option value="">anyone</option>
+        ${['user','app','subagent','workflow','system'].map(k=>
+          `<option value="${k}" ${audFilter.principal_kind===k?'selected':''}>${k}</option>`).join('')}
+      </select>
+      <select onchange="audSet('surface',this.value)" style="flex:0 0 auto">
+        <option value="">any way in</option>
+        ${['gui','tui','telegram','api','task'].map(k=>
+          `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
+      </select>`,
+  });
+  const q=$('#aud-q');
+  if(q){q.value=audFilter.q;q.oninput=audSearch}
+  const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
+  const rows=(d.entries||[]).map(a=>{
+    const cls=a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
+    const who=a.principal_id?`${a.principal_kind}:${a.principal_id}`:a.principal_kind;
+    const out=a.outcome&&a.outcome!=='ok'?`<span class="badge">${esc(a.outcome)}</span>`:'';
+    return `<div class="item">
+      <span class="audpill ${cls}">${esc(a.effect||'?')}</span>
+      <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
+        <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · rule ${esc(a.rule||'default')}
+          ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}
+          ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
+  }).join('');
+  const denied=(sum.top_denied||[]).slice(0,5);
+  pb.innerHTML=`
+    <div class="tmgrid" style="margin-bottom:10px">
+      ${stat(sum.total,'decisions')}${stat(e.allow,'allowed','audok')}
+      ${stat(e.deny,'denied','audden')}${stat(e.ask,'asked','audask')}
+    </div>
+    ${denied.length?`<div class="ptitle">Most refused</div>`+denied.map(t=>
+      `<div class="item"><div class="grow"><code>${esc(t.action)}</code> ${esc(t.resource)}</div>
+       <span class="badge">${t.n}×</span></div>`).join(''):''}
+    <div class="ptitle" style="margin-top:12px">Decisions</div>
+    ${rows||emptyBox('Nothing in this period','Every tool call, MCP call, file write and model choice is recorded here as it is decided.')}`;
+  if(w)winTick(w,()=>refreshApp('audit'),10000,{key:'audit',now:false});
+}
+function audSet(k,v){audFilter[k]=v;refreshApp('audit')}
+function audRange(h){audFilter.since=h;refreshApp('audit')}
+var _audT=null;
+function audSearch(ev){clearTimeout(_audT);const v=ev.target.value;
+  _audT=setTimeout(()=>{audFilter.q=v;refreshApp('audit')},220)}
 /* ================= permissions app: the policy console ================= */
 let PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[]};
 const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
@@ -8247,8 +9054,25 @@ async function renderModels(body){
     sub:`${all.length} configured · ${(d.models||[]).length} local · ${(d.running||[]).length} loaded`,
     search:{id:'mdl-q',placeholder:'Search models & catalog…'},
   });
+  // Engines are the other thing that can answer a turn, so they belong in the
+  // Model Manager next to the models — same list the chat picker builds from.
+  // An engine that is enabled but unreachable says why instead of looking ready.
+  const engines=(d2.engines||[]);
+  const fwd=d2.engine&&d2.engine!=='aria'?d2.engine:'';
+  const engineList=engines.map(e=>`<div class="item" data-f="${esc(e.id+' '+e.name+' engine executor')}">
+      <div class="grow"><b>${esc(e.name)}</b>
+        ${e.available?'<span class="badge" style="color:var(--acc2)">engine</span>'
+                     :'<span class="badge" style="color:var(--err)">unavailable</span>'}
+        ${fwd===e.id?'<span class="badge ok">✓ this machine forwards to it</span>':''}
+        <div class="sub">${esc(e.available?(e.envelope||e.detail||'ready'):e.reason)}</div></div>
+      <button class="endbtn" style="border-color:var(--line);color:var(--dim)"
+        onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')">Configure</button>
+    </div>`).join('');
+
   pb.innerHTML=`
     ${gpu?`<div class="sect">GPU</div><div class="tmgrid" style="grid-template-columns:1fr">${gpu}</div>`:'<p class="mut">No NVIDIA GPU detected (models run on CPU).</p>'}
+    <div data-fgroup><div class="sect">Engines — other agents on this machine that can answer instead of a model</div>
+    ${engineList||emptyBox('No engines enabled','Turn one on in Settings → Executors to hand work to another agent already installed here.','','settings')}</div>
     <div data-fgroup><div class="sect">Configured models — chat, builds and scheduled tasks use the default</div>
     ${configured||emptyBox('No models configured','Start Ollama for local models, or add a cloud API key in Settings.','','models','Help me set up a model that fits this machine.')}
     <p class="mut" style="margin:6px 0 0">Cloud providers (Anthropic, OpenAI, OpenRouter…) appear here once their API key is set in <a href="#" onclick="openApp('settings');return false" style="color:var(--acc2)">Settings</a>. Tool-capable models (qwen, claude, gpt) make builds far more reliable.</p></div>
@@ -8304,7 +9128,11 @@ async function installComponent(id){
   let comp=null;
   try{const d=await (await fetch('/api/components')).json();comp=(d.components||[]).find(c=>c.id===id)}catch(e){}
   if(!comp)return toast('unknown component: '+id);
-  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}`,{confirmText:'Install'}))return;
+  if(!comp.available)return osAlert(`${comp.title} is not available here`,comp.reason||'This machine has no way to install it.');
+  /* `manager` is the package manager resolved for THIS distro, not the word
+     "apt" printed at everyone. Showing the real command is the whole point of
+     the consent dialog — it is what will run. */
+  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.manager||comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}\n\n${comp.command}`,{confirmText:'Install'}))return;
   toast('installing '+comp.title+'…');
   const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   const d=await r.json();
@@ -8669,17 +9497,41 @@ async function pinMode(mode){
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
   toast('desktop.mode = '+mode+' (takes effect on next server start)');refreshApp('syssettings');
 }
+/* Components, grouped by how much the machine needs them, and honest about the
+   distro it is actually running on. The server resolves package names per
+   distro family, so `c.package` and `c.command` here are what would really run
+   — not a Debian command shown to a Fedora user. When there is no route to a
+   component at all, `c.available` is false and `c.reason` says why: a sentence
+   beats a button that cannot work. */
+const COMPGROUPS=[['required','Required','Without these there is no AgentOS session.'],
+                  ['recommended','Recommended','A desktop that behaves like one.'],
+                  ['optional','Optional','']];
 async function sysComponents(el){
   const d=await (await fetch('/api/components')).json();
-  el.innerHTML=(d.components||[]).map(c=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
+  const rows=d.components||[], os=d.os||{};
+  const head=`<div class="provbox"><div class="ptitle">This machine</div>
+    <p class="mut" style="margin-top:6px">${esc(os.describe||'unknown system')}</p>
+    ${os.why?`<p class="mut" style="margin-top:4px">${esc(os.why)}</p>`:''}</div>`;
+  const card=c=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(c.title)} <span class="mut" style="font-weight:400">· ${esc(c.licence)}</span></div>
         <div class="mut" style="font-size:11.5px;margin-top:2px">${esc(c.unlocks)}</div>
+        ${c.available&&!c.installed?`<div class="mut" style="font-size:11px;margin-top:3px;font-family:monospace">${esc(c.command)}</div>`:''}
       </div>
-      ${c.installed?'<span class="mut">✓ installed</span>':`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`}
-    </div>`).join('');
+      ${c.installed?'<span class="mut">✓ installed</span>'
+        :c.available?`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`
+        :`<span class="mut" style="max-width:200px;text-align:right;font-size:11.5px">${esc(c.reason||'unavailable here')}</span>`}
+    </div>`;
+  el.innerHTML=head+COMPGROUPS.map(([g,label,note])=>{
+    const mine=rows.filter(c=>c.group===g); if(!mine.length)return '';
+    const miss=mine.filter(c=>!c.installed&&c.available).length;
+    return `<div class="ptitle" style="margin-top:10px">${label}
+        <span class="mut" style="font-weight:400">${miss?`· ${miss} missing`:'· all present'}</span></div>
+      ${note?`<p class="mut" style="font-size:11.5px;margin:2px 0 6px">${note}</p>`:''}
+      ${mine.map(card).join('')}`;
+  }).join('');
   el.innerHTML+=`<p class="mut" style="margin-top:4px">These aren't bundled with AgentOS — some carry other licences
-    (shown above), so each one installs only when you say yes to it.</p>`;
+    (shown above), so each one installs only when you say yes to it. From a terminal: <code>agentos installer</code>.</p>`;
 }
 
 
@@ -8689,8 +9541,13 @@ async function sysComponents(el){
    itself, so nothing signed in remotely (and no agent, and no app) can widen
    its own access. */
 let REMOTE={};
+/* Where this machine can be reached from — a live probe of Tailscale and any
+   tunnel provider, not config. Kept beside REMOTE because the addresses are
+   only meaningful once remote access is on. */
+let TUNNEL={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
+  try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
   const on=!!REMOTE.enabled, set=!!REMOTE.configured;
   el.innerHTML=`
     <div class="provbox">
@@ -8720,10 +9577,47 @@ async function sysRemote(el){
 
     ${on?`<div class="provbox">
       <div class="ptitle">Reach it from your phone</div>
-      ${(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
+      ${(TUNNEL.reachable||[]).length?`<div class="rm-addr">${TUNNEL.reachable.map(a=>`
+          <div class="rm-row"><code>${esc(a.url)}</code>
+            <span class="rm-via ${a.via==='Tailscale'?'far':''}">${esc(a.via)} · ${esc(a.who)}</span>
+            <button class="endbtn" onclick="rmCopy('${esc(a.url)}')">Copy</button></div>`).join('')}</div>`
+        :(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
           <div class="rm-row"><code>${esc(a)}</code>
             <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
         :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
+    ${/* The LAN list alone made a machine that was already reachable from
+          anywhere look like it only worked in the same room. If there is a
+          tunnel provider, say what it would add and what it still needs. */''}
+    ${/* If nothing here reaches beyond this Wi-Fi, that is the thing to say — and
+          then offer the fix, rather than leaving "remote access" quietly meaning
+          "same room only". This is the OS handling it instead of the user
+          discovering that a tunnel is a thing that exists. */''}
+    ${!(TUNNEL.reachable||[]).some(a=>a.via!=='This network')?`
+      <div class="rm-offer">
+        <b>Only reachable on this network.</b>
+        To open AgentOS from anywhere — a phone on mobile data, a laptop elsewhere —
+        this machine needs an address of its own. AgentOS can set one up.
+      </div>`:''}
+    ${(TUNNEL.providers||[]).filter(p=>p.available||p.install).map(p=>`
+      <p class="mut" style="margin-top:8px;line-height:1.6">
+        <b>${esc(p.title)}</b> — ${esc(p.what||'')}
+        ${p.available?(p.needs?`<br><span style="color:var(--warn)">${esc(p.needs)}</span>${
+            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${esc(p.needs_url)}')">Open</button>`:''}`
+          :'<br>ready to publish a proper https:// address.')
+         :`<br>${esc(p.reason||'')}${p.install_cmd?`
+            <br><span class="mut">${esc(p.install_note||'')}</span>
+            <br><code class="rm-cmd">${esc(p.install_cmd)}</code>
+            <br><button class="endbtn" id="tun-inst-${esc(p.id)}"
+                 onclick="tunInstall('${esc(p.id)}')">Install ${esc(p.title)}</button>`
+           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${esc(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
+    ${(TUNNEL.published&&TUNNEL.url)?`<div class="rm-offer live">
+        <b>Published${TUNNEL.kind==='public'?' to the internet':''}:</b>
+        <code>${esc(TUNNEL.url)}</code>
+        <button class="endbtn" onclick="rmCopy('${esc(TUNNEL.url)}')">Copy</button>
+        <button class="endbtn" onclick="tunStop()">Stop</button></div>`
+      :(TUNNEL.providers||[]).some(p=>p.available&&!p.needs)?`
+        <p class="mut" style="margin-top:8px">
+          <button class="endbtn" onclick="tunStart()">Publish an address for anywhere</button></p>`:''}
       <p class="mut" style="margin-top:10px;line-height:1.6">
         Open that on your phone, sign in with the passphrase, then
         <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
@@ -8764,6 +9658,49 @@ async function rmToggle(on){
   refreshApp('syssettings');
 }
 function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}
+
+/* ---- tunnels: the OS setting up its own way in ----
+   Installing is a visible act with the command shown first, and publishing to
+   the public internet is confirmed rather than assumed — "reachable from
+   anywhere" and "reachable by anyone" are different promises. */
+async function tunInstall(id){
+  const btn=document.getElementById('tun-inst-'+id);
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  try{
+    const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'install',provider:id})});
+    const d=await r.json();
+    toast(d.ok?'✓ '+(d.message||'installed'):(d.message||'could not install'));
+    if(d.ok)refreshApp('syssettings');
+  }catch(e){toast('could not reach the server')}
+  finally{if(btn){btn.disabled=false;btn.textContent='Install'}}
+}
+async function tunStart(){
+  const cf=(TUNNEL.providers||[]).find(p=>p.id==='cloudflared'&&p.available);
+  const ts=(TUNNEL.providers||[]).find(p=>p.id==='tailscale'&&p.available&&!p.needs);
+  const provider=ts?'tailscale':(cf?'cloudflared':'');
+  if(!provider){toast('no tunnel provider is ready');return}
+  const publicly=provider==='cloudflared';
+  if(publicly&&!await osConfirm('Publish to the public internet?',
+      'Anyone with the link reaches your sign-in page. They still need your passphrase, '
+      +'but the address itself is public. Stop it any time from here.',
+      {danger:true,confirmText:'Publish'}))return;
+  toast('setting up…');
+  try{
+    const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'start',provider,public:publicly})});
+    const d=await r.json();
+    toast(d.ok?'✓ '+(d.url||d.message):(d.message||'could not publish'));
+    refreshApp('syssettings');
+  }catch(e){toast('could not reach the server')}
+}
+async function tunStop(){
+  const r=await fetch('/api/tunnel',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'stop'})});
+  const d=await r.json();
+  toast(d.message||(d.ok?'stopped':'nothing to stop'));
+  refreshApp('syssettings');
+}
 /* ================= notification center ================= */
 const NOTIF={unread:0,dnd:false};
 function svgBell(px){px=px||14;return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 9.5a6 6 0 0 1 12 0c0 5 1.7 6 1.7 6H4.3S6 14.5 6 9.5"/><path d="M10.3 19.5a2 2 0 0 0 3.4 0"/></svg>`}
@@ -9558,6 +10495,131 @@ async function storeImportStage(body){
 }
 let IMPORT_PREREQS={mcp:[],skills:[]};
 
+/* ================= gallery — everything the agent made or was handed =================
+   Note the `var`, not `let`: the bundle is one concatenated script and anything
+   earlier in filename order that calls into this file would hit the temporal dead
+   zone. Function declarations hoist across the whole bundle; module state does not. */
+var galKind='';
+var galQ='';
+var galSel=null;
+var galCap=null;
+
+async function renderGallery(body,w){
+  const qs=new URLSearchParams();
+  if(galKind)qs.set('kind',galKind);
+  if(galQ)qs.set('q',galQ);
+  if(typeof activeSpace==='function'&&activeSpace())qs.set('space',activeSpace());
+  const d=await fetch('/api/assets?'+qs).then(r=>r.json()).catch(()=>({assets:[]}));
+  galCap=d.capability||{};
+  const items=d.assets||[];
+  const KINDS=['','image','video','audio','doc'];
+  const LABEL={'':'All','image':'Images','video':'Video','audio':'Audio','doc':'Docs'};
+  const pb=panelShell(body,{
+    title:'Gallery',
+    sub:items.length?`${items.length} item${items.length===1?'':'s'}`:'',
+    search:{id:'gal-q',placeholder:'Search title, prompt or source…'},
+    actions:`<span class="seg" id="gal-kinds">${KINDS.map(k=>
+        `<button class="${k===galKind?'on':''}" onclick="galSetKind('${k}')">${LABEL[k]}</button>`).join('')}</span>
+      <button class="pghost" onclick="galPick()">Upload</button>`,
+  });
+  const q=$('#gal-q');
+  if(q){q.value=galQ;q.oninput=galSearch}
+  pb.innerHTML=(items.length?`<div class="galgrid">${items.map(galTile).join('')}</div>`
+      :emptyBox('Nothing here yet',
+        'Images, video and audio land here when the agent generates them, when a connected MCP server returns them, or when you upload a file.',
+        '','gallery','Generate an image of something and put it in my gallery.'))
+    +galCapNote()
+    +(galSel?galDetail(items.find(a=>a.id===galSel)):'');
+  // a poll, not a bare setInterval: it stops when the window is minimised, on
+  // another desktop, or covered
+  if(w)winTick(w,()=>refreshApp('gallery'),8000,{key:'gallery',now:false});
+}
+
+function galTile(a){
+  const badge=a.kind==='video'?'▶':a.kind==='audio'?'♪':a.kind==='doc'?'▤':'';
+  // no thumbnail is a real answer, not a broken tile: images fall back to the
+  // original scaled by CSS, everything else to its kind mark
+  const art=a.thumb_url
+    ? `<img loading="lazy" src="${a.thumb_url}" alt="">`
+    : (a.kind==='image'?`<img loading="lazy" src="${a.url}" alt="">`
+       :`<span class="galmark">${badge||'●'}</span>`);
+  const meta=[a.duration?galDur(a.duration):'',a.width?a.width+'×'+a.height:'',
+              Math.round((a.bytes||0)/1024)+' KB'].filter(Boolean).join(' · ');
+  return `<button class="galtile ${galSel===a.id?'on':''}" onclick="galOpen('${a.id}')" title="${esc(a.title||'')}">
+    <span class="galart">${art}${badge?`<span class="galbadge">${badge}</span>`:''}</span>
+    <span class="galcap"><span class="galname">${esc(a.title||a.kind)}</span><span class="galmeta">${esc(meta)}</span></span>
+  </button>`;
+}
+
+function galDur(s){s=Math.round(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+
+function galCapNote(){
+  if(!galCap||galCap.ffmpeg)return '';
+  // an honest sentence naming the component that would fix it — never a dead control
+  return `<div class="galnote"><b>Previews and measurements are limited.</b> ${esc(galCap.why||'')}
+    ${galCap.component?`<button class="pghost" style="margin-left:8px" onclick="openApp('syssettings')">Install ${esc(galCap.component)}${galCap.licence?' ('+esc(galCap.licence)+')':''}</button>`:''}
+    <div class="mut" style="margin-top:4px">Media a service generated still arrives, is kept, and plays.</div></div>`;
+}
+
+function galDetail(a){
+  if(!a)return '';
+  const player=a.kind==='video'?`<video class="galplayer" src="${a.url}" controls preload="metadata"></video>`
+    :a.kind==='audio'?`<audio class="galplayer" src="${a.url}" controls preload="metadata"></audio>`
+    :a.kind==='image'?`<img class="galplayer" src="${a.url}" alt="">`
+    :`<div class="mut" style="padding:18px">No inline preview for ${esc(a.mime||a.kind)}.</div>`;
+  const row=(k,v)=>v?`<div class="galrow"><span>${k}</span><span>${esc(String(v))}</span></div>`:'';
+  const when=a.created_at?new Date(a.created_at*1000).toLocaleString():'';
+  return `<div class="galdetail">
+    ${player}
+    <div class="galinfo">
+      <div class="ptitle" style="margin:0 0 6px">${esc(a.title||a.kind)}</div>
+      ${row('Kind',a.kind+(a.mime?' · '+a.mime:''))}
+      ${row('Size',Math.round((a.bytes||0)/1024)+' KB')}
+      ${row('Dimensions',a.width?a.width+'×'+a.height:'')}
+      ${row('Duration',a.duration?galDur(a.duration):'')}
+      ${row('Made by',a.source)}
+      ${row('From prompt',a.prompt)}
+      ${row('When',when)}
+      <div class="row" style="margin-top:10px">
+        <button class="endbtn" onclick="window.open('${a.url}','_blank')">Open</button>
+        <a class="endbtn" href="${a.url}" download style="text-decoration:none;text-align:center">Download</a>
+        <button class="endbtn" onclick="galDelete('${a.id}')">Delete</button>
+      </div>
+    </div></div>`;
+}
+
+function galSetKind(k){galKind=k;galSel=null;refreshApp('gallery')}
+function galOpen(id){galSel=(galSel===id?null:id);refreshApp('gallery')}
+var _galT=null;
+function galSearch(e){clearTimeout(_galT);const v=e.target.value;_galT=setTimeout(()=>{galQ=v;refreshApp('gallery')},220)}
+async function galDelete(id){
+  if(!await osConfirm('Delete this asset?','Its file is removed from disk too.',
+                      {confirmText:'Delete',danger:true}))return;
+  await fetch('/api/assets/'+id,{method:'DELETE'});
+  galSel=null;toast('deleted');refreshApp('gallery');
+}
+
+/* Upload: a raw-body PUT, not multipart. A 200 MB video should never be
+   base64-inflated into a JSON body, and multipart would mean a new dependency. */
+function galPick(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.multiple=true;
+  inp.onchange=async()=>{
+    for(const f of inp.files){
+      try{
+        const sp=(typeof activeSpace==='function'&&activeSpace())?activeSpace():'';
+        const r=await fetch('/api/assets/raw?name='+encodeURIComponent(f.name),{
+          method:'PUT',
+          headers:Object.assign({'Content-Type':f.type||'application/octet-stream'},
+                                sp?{'X-AgentOS-Space':sp}:{}),
+          body:f});
+        if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.error||('upload failed: '+f.name))}
+      }catch(err){toast('upload failed: '+f.name)}
+    }
+    refreshApp('gallery');
+  };
+  inp.click();
+}
 /* ================= app studio (agentic builder) ================= */
 let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},surface:'desktop',model:localStorage.getItem('studioModel')||'auto'};
 async function renderStudio(body,w){
@@ -9638,13 +10700,20 @@ async function studioLoadModels(){
   try{
     const d=await (await fetch('/api/models')).json();
     const list=(d.models||[]);
+    /* Executors belong here too. A one-shot model has a single turn to emit an
+       entire app; an executor writes it as a file and keeps working until it is
+       finished, which is the difference between a sketch and something you could
+       demo. Listed first for anything ambitious. */
+    // only executors build here: Hermes answers, but has no file workspace to build in
+    const engines=(d.engines||[]).filter(e=>e.available&&e.kind==='executor');
     sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
+      engines.map(e=>`<option value="${esc(e.id)}">${esc(e.name||e.id)} · builds as a file, keeps going until done</option>`).join('')+
       list.map(m=>`<option value="${esc(m.id)}">${esc(m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':''))}</option>`).join('');
     // A model you picked is YOUR choice: if the list doesn't have it this second
     // (provider slow, key toggled, Ollama restarting) keep it selected and say so
     // instead of silently dropping you back to Auto — that reset is exactly how a
     // chosen cloud model turned back into a local one.
-    if(cur!=='auto'&&!list.some(m=>m.id===cur))
+    if(cur!=='auto'&&!list.some(m=>m.id===cur)&&!engines.some(e=>e.id===cur))
       sel.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}">${esc(cur)} · unavailable right now</option>`);
     sel.value=cur;
   }catch(e){
@@ -10892,6 +11961,7 @@ buildDesktop();
 buildPager();
 buildDock();
 deckLoad();buildDeck();
+paintSpaceChip();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);

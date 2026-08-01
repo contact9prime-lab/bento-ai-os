@@ -125,14 +125,24 @@ class ControlPlane:
                            parent_run: str = "", model_override: str = "",
                            approver=None, kind: str = "delegate",
                            conversation_id: str = "", ui_emit=None,
-                           agent_slot: dict | None = None) -> dict:
+                           agent_slot: dict | None = None, space_id: str = "") -> dict:
         """ui_emit: optional passthrough for the agent's live events (text/tool/error) —
         set when a subagent runs inside a chat so the user watches it work inline.
         agent_slot: optional dict that receives {"agent": <Agent>} so the caller's
-        stop button can abort the data plane directly."""
+        stop button can abort the data plane directly.
+        space_id: the space the delegating turn was in. A specialist working on a
+        launch must see the launch's memory, not three clients' at once."""
         model = self.resolve_model(defn, model_override)
+        # a child that was not told its space inherits the delegating conversation's
+        if not space_id and conversation_id:
+            try:
+                space_id = (self.store.get_conversation(conversation_id) or {}).get("space_id") or ""
+            except Exception:
+                space_id = ""
         run_id = self.store.fabric_run_start(kind, defn["name"], task,
-                                             parent_run=parent_run, model=model)
+                                             parent_run=parent_run, model=model,
+                                             space_id=space_id,
+                                             conversation_id=conversation_id)
         await self._emit(run_id, "status", {"status": "running", "ref": defn["name"],
                                             "model": model, "parent_run": parent_run})
         eff_autonomy = min_autonomy(self.cfg.get("autonomy", "balanced"),
@@ -174,7 +184,7 @@ class ControlPlane:
                 tools.append(t)
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
-                      conversation_id=conversation_id,
+                      conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("subagent", defn["name"]))
         if agent_slot is not None:
             agent_slot["agent"] = agent

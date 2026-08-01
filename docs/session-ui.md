@@ -53,19 +53,37 @@ bar and dock. Both stay visible and clickable.
 ## Turning it on
 
 ```bash
-sudo apt install sway swaybg swayidle swaylock grim slurp        # the compositor engine
-sudo apt install python3-gi gir1.2-gtk-3.0 \
-                 gir1.2-gtklayershell-0.1 gir1.2-webkit2-4.1     # the desktop surface
-agentos install-session                                          # add it to the login screen
+agentos installer          # detects your distro, lists what's missing, installs what you pick
 ```
+
+It groups what it finds — *required* (no session without it), *recommended*,
+*optional* — shows each package's licence and the exact command before asking,
+and offers to add AgentOS to the login screen at the end. It is re-runnable:
+on a finished machine it is a list of ticks, on a broken one it names the
+missing piece. Nothing installs without a keystroke agreeing to that specific
+set, and with no terminal to ask on it installs nothing at all (`--yes` is the
+deliberate unattended path).
 
 Then log out and pick **AgentOS** at the login screen. Your existing desktop is
 untouched — switching back is logging out and picking Ubuntu again.
 
+By hand, if you prefer — on Debian/Ubuntu:
+
+```bash
+sudo apt install sway swaybg swayidle swaylock grim slurp        # the compositor engine
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+                 gir1.2-gtklayershell-0.1 gir1.2-webkit2-4.1     # the desktop surface
+agentos install-session                                          # add it to the login screen
+```
+
+The package names differ on Fedora, Arch and openSUSE, which is exactly why
+`agentos installer` exists — it resolves them for the distro you are on rather
+than printing Debian's names at everyone. `python3-gi-cairo` is not optional and
+is not pulled in by `python3-gi`: without that bridge the desktop surface dies
+building its first strut, and the session ends in a black screen at login.
+
 `agentos install-session` tells you which of the two desktops you are going to
-get before it writes anything, and prints that second apt line if it is missing.
-`agentos doctor` says the same at any time. The one-command installer offers both
-groups (and checks you are online first, because all of it downloads).
+get before it writes anything. `agentos doctor` says the same at any time.
 
 **Why these are separate installs.** AgentOS ships and redistributes none of them.
 gtk-layer-shell is MIT, but GTK, PyGObject and WebKitGTK are LGPL, and the rule

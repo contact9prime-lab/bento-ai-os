@@ -187,9 +187,11 @@ class Scheduler:
     # ---- execution ----------------------------------------------------------
 
     async def run_prompt(self, prompt: str, origin: str = "schedule",
-                         title: str = "") -> tuple[str, str]:
+                         title: str = "", space_id: str = "") -> tuple[str, str]:
         """The background-chat path: one headless agent turn, persisted as a
         conversation tagged with its origin so OS-initiated turns are countable.
+        A job that belongs to a project runs inside it, so what it learns and
+        produces is filed there rather than in the user's global memory.
         Returns (conversation_id, result_text)."""
         async def emit(_ev):  # headless: step events are dropped
             pass
@@ -203,17 +205,31 @@ class Scheduler:
         tokens = {"input": 0, "output": 0}
         steps = 0
         try:
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver, surface="task")
-            result = await agent.run([{"role": "user", "content": prompt}])
-            result_text = result["content"] or "(no output)"
-            tokens = result.get("tokens") or tokens
-            steps = len(result.get("steps") or [])
+            from . import config as _cfgmod
+            from . import executors as execmod
+            engine = execmod.resolve_engine(self.cfg)
+            if engine != "aria":
+                # Scheduled and proactive turns are work this machine was asked to
+                # do, so a forwarder forwards them too — otherwise "forward
+                # everything" would quietly exclude everything that runs unattended.
+                result_text, _run = await execmod.forward(
+                    engine, prompt, self.cfg, str(_cfgmod.AGENTOS_HOME / "workspace"))
+                result_text = result_text or "(no output)"
+                steps = 1
+            else:
+                agent = Agent(self.cfg, self.toolbox, model, emit, approver,
+                              surface="task", space_id=space_id)
+                result = await agent.run([{"role": "user", "content": prompt}])
+                result_text = result["content"] or "(no output)"
+                tokens = result.get("tokens") or tokens
+                steps = len(result.get("steps") or [])
         except Exception as e:
             result_text = f"[error] {type(e).__name__}: {e}"
 
         # log the run as a conversation so it shows up in the UI — tagged with its
         # origin, which is what "% of turns initiated by the OS" counts
-        cid = self.store.create_conversation(title or f"⏱ {prompt[:40]}", origin=origin)
+        cid = self.store.create_conversation(title or f"⏱ {prompt[:40]}", origin=origin,
+                                             space_id=space_id)
         self.store.add_message(cid, "user", f"[{origin}] {prompt}")
         self.store.add_message(cid, "assistant", result_text)
         try:
@@ -233,7 +249,8 @@ class Scheduler:
                   f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "
                   f"user. Don't stop after only gathering data.]\n\n{task['prompt']}")
         cid, result_text = await self.run_prompt(prompt, origin=origin,
-                                                 title=title or f"⏱ {task['prompt'][:40]}")
+                                                 title=title or f"⏱ {task['prompt'][:40]}",
+                                                 space_id=task.get("space_id") or "")
 
         now = time.time()
         updates = {"last_run": now, "last_result": result_text[:4000]}

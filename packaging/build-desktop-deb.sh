@@ -88,7 +88,7 @@ Priority: optional
 Architecture: all
 Depends: agentos (>= $VER), sway, xwayland, swaylock, swayidle, swaybg, grim, slurp, xdg-desktop-portal-wlr, pipewire, wireplumber
 Recommends: seatd, network-manager, bluez, upower, power-profiles-daemon
-Suggests: python3-gi, gir1.2-gtk-3.0, gir1.2-gtklayershell-0.1, gir1.2-webkit2-4.1 | gir1.2-webkit-6.0, wl-clipboard, ddcutil, chromium, wayvnc, novnc
+Suggests: python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-gtklayershell-0.1, gir1.2-webkit2-4.1 | gir1.2-webkit-6.0, wl-clipboard, ddcutil, chromium, wayvnc, novnc
 Installed-Size: 32
 Maintainer: AgentOS <contact@localhost>
 Description: AgentOS as your desktop environment (Wayland session)

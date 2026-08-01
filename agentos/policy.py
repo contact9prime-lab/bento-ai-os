@@ -56,6 +56,7 @@ class Decision:
     grant_offer: dict | None = field(default=None)  # ready-to-write grant for "allow & remember"
     action: str = ""    # stamped by decide() so enforcement sites can log verbosely
     resource: str = ""
+    audit_id: str = ""  # the ledger row for this decision; stamp its outcome when the call returns
 
 
 # Non-user principals may never do these, regardless of grants (same spirit as
@@ -72,6 +73,20 @@ BUILTIN_DENY = {
 _FS_READ = {"read_file", "list_dir"}
 _MEM = {"remember": ("memory.write", ""), "forget": ("memory.write", ""),
         "recall": ("memory.read", ""), "kg_add": ("kg.write", ""), "kg_query": ("kg.read", "")}
+# Media is its own vocabulary rather than another `tool.use` string, because the
+# three things it can do have genuinely different consequences: reading an asset
+# is free, writing one fills a disk, and generating one spends money at somebody
+# else's API. A single action could not express "may look at the gallery, may not
+# bill my Higgsfield account".
+_MEDIA = {"list_assets": ("media.read", "media:*"),
+          "get_asset": ("media.read", ""),
+          "save_asset": ("media.write", ""),
+          "delete_asset": ("media.write", ""),
+          "generate_image": ("media.generate", "media:image")}
+_SPACE = {"list_spaces": ("space.read", "space:*"),
+          "create_space": ("space.write", ""),
+          "switch_space": ("space.write", ""),
+          "timeline": ("space.read", "")}
 
 
 def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
@@ -94,8 +109,24 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
         return "net.fetch", f"net:{args.get('url', '') or '*'}"
     if name in _MEM:
         action = _MEM[name][0]
-        scope = args.get("scope", "user") if action.startswith("memory") else "*"
-        return action, (f"memory:{scope}" if action.startswith("memory") else "kg:*")
+        # Space-qualified so a grant can say "this subagent may write memory in the
+        # marketing space and nowhere else" — the whole reason spaces are modelled
+        # at the policy layer and not only in the UI.
+        space = args.get("space_id") or args.get("space") or ""
+        suffix = f"@{space}" if space else ""
+        if action.startswith("memory"):
+            return action, f"memory:{args.get('scope', 'user')}{suffix}"
+        return action, f"kg:{space or '*'}"
+    if name in _MEDIA:
+        action, res = _MEDIA[name]
+        if not res:
+            res = f"media:{args.get('asset_id') or args.get('kind') or '*'}"
+        return action, res
+    if name in _SPACE:
+        action, res = _SPACE[name]
+        if not res:
+            res = f"space:{args.get('name') or args.get('space_id') or '*'}"
+        return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
     if name == "delegate":
@@ -115,6 +146,22 @@ def _match(pattern: str, value: str) -> bool:
 # The IO gates: every capability call arrives via one of these surfaces. Grants may be
 # scoped to a subset (grants.surfaces csv); '*' means all surfaces (the default).
 SURFACES = ("gui", "tui", "telegram", "api", "task")
+
+
+# How much a channel is trusted, independent of who is asking. This is a property
+# of the WAY IN, not of the principal: the same person is more exposed over
+# WhatsApp than sitting at the machine, and a channel with nobody watching cannot
+# answer an approval prompt at all.
+POSTURES = ("inherit", "read_only", "ask", "full")
+
+
+def channel_posture(cfg: dict, surface: str) -> str:
+    """The posture configured for the gate a call arrived on ('inherit' if none)."""
+    if not surface:
+        return "inherit"
+    conf = (cfg.get("channels") or {}).get(surface) or {}
+    p = str(conf.get("posture") or "inherit")
+    return p if p in POSTURES else "inherit"
 
 
 def surface_allows(grant_surfaces: str, surface: str) -> bool:
@@ -161,7 +208,39 @@ class PDP:
                context: dict | None = None) -> Decision:
         dec = self._decide(principal, action, resource, context)
         dec.action, dec.resource = action, resource
+        dec.audit_id = self._record(principal, action, resource, context or {}, dec)
         return dec
+
+    def _record(self, principal: Principal, action: str, resource: str,
+                ctx: dict, dec: Decision) -> str:
+        """Write the access ledger entry for this decision.
+
+        Every capability call in the OS funnels through decide(), which makes this
+        the one place where "who was allowed to do what, arriving on which
+        surface, and under which rule" can be recorded without asking a dozen
+        call sites to remember to. The operator log (`logs`) keeps its free-text
+        diary; this is the structured record you can actually query.
+
+        Never raises and never blocks a decision: a ledger that can take a turn
+        down would be a worse problem than the one it solves. `Store.audit_add`
+        already swallows and re-reports its own failures.
+        """
+        if ctx.get("audit") is False:  # internal probes ("could I?"), not accesses
+            return ""
+        store = getattr(self, "store", None)
+        if store is None or not hasattr(store, "audit_add"):
+            return ""
+        try:
+            return store.audit_add(
+                principal_kind=principal.kind, principal_id=principal.id,
+                surface=ctx.get("surface", ""), action=action, resource=resource,
+                effect=dec.effect, rule=dec.rule, risk=ctx.get("risk", ""),
+                reason=dec.reason or ctx.get("reason", ""),
+                space_id=ctx.get("space_id", ""),
+                conversation_id=ctx.get("conversation_id", ""),
+                run_id=ctx.get("run_id", ""))
+        except Exception:
+            return ""
 
     def _decide(self, principal: Principal, action: str, resource: str,
                 context: dict | None = None) -> Decision:
@@ -175,8 +254,17 @@ class PDP:
             if _match(a, action) and _match(r, resource):
                 return Decision("deny", f"{principal.label} may never do this "
                                         "(built-in protection of the OS itself)", rule="builtin-deny")
-        # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         surface = ctx.get("surface", "")
+        # 2b. the channel ceiling. A read-only channel refuses rather than asks,
+        # and it is checked BEFORE grants on purpose: "read-only over Telegram"
+        # has to mean it even when a grant says allow-everywhere. Narrowing a way
+        # in should not be silently undone by a permission granted at the desk.
+        if channel_posture(self.cfg, surface) == "read_only" and risk != "safe":
+            return Decision("deny",
+                            f"the {surface} channel is set to read-only, so it may look "
+                            f"but not change anything (Settings → Channels)",
+                            rule="channel-read-only")
+        # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource)
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
         for g in gated:
@@ -200,13 +288,18 @@ class PDP:
 
     def decide_tool(self, principal: Principal, name: str, args: dict,
                     risk_level: str, reason: str = "", autonomy: str = "",
-                    surface: str = "") -> Decision:
+                    surface: str = "", space_id: str = "",
+                    conversation_id: str = "", run_id: str = "") -> Decision:
         """The main entry for tool calls: maps the call to (action, resource) and decides.
-        `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task)."""
+        `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task);
+        the space/conversation/run are carried so the ledger entry says WHERE it happened,
+        not just what was asked for."""
         action, resource = action_of(name, args, mcp=self.mcp)
         return self.decide(principal, action, resource,
                            {"risk": risk_level, "reason": reason, "autonomy": autonomy,
-                            "tool": name, "args": args, "surface": surface})
+                            "tool": name, "args": args, "surface": surface,
+                            "space_id": space_id, "conversation_id": conversation_id,
+                            "run_id": run_id})
 
     def _default(self, principal: Principal, action: str, resource: str, ctx: dict) -> Decision:
         risk = ctx.get("risk", "safe")
@@ -227,6 +320,14 @@ class PDP:
                                              "not been granted.", rule="default", grant_offer=offer)
         # user / subagent / workflow / system: today's autonomy semantics
         autonomy = ctx.get("autonomy") or self.cfg.get("autonomy", "balanced")
+        # A channel may set its own autonomy — deliberately in both directions.
+        # "Act freely at the desk, ask over Telegram" and its reverse are both
+        # things people mean; the machine default applies where nothing is set.
+        posture = channel_posture(self.cfg, ctx.get("surface", ""))
+        if posture == "ask":
+            autonomy = "balanced"
+        elif posture == "full":
+            autonomy = "full"
         if risk == "risky" and autonomy != "full":
             return Decision("ask", reason, rule="default",
                             grant_offer=offer if principal.kind != "user" else None)

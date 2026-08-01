@@ -13,7 +13,7 @@ from . import config as cfgmod
 from . import localeinfo
 from . import providers
 from .policy import MAIN, Principal
-from .tools import ALWAYS_ASK, Toolbox
+from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 
 SYSTEM_PROMPT = """You are {name}, the resident agent of AgentOS — an agentic operating system running locally on the user's Linux machine.
 You don't just answer — you *do things*, using your tools: run shell commands, read/write files,
@@ -170,21 +170,37 @@ async def _machine_state(toolbox: Toolbox) -> str:
 
 # ---- Image tool-results (vision) --------------------------------------------------
 
-def _image_result(output: str) -> tuple[str, str]:
-    """A tool result carrying {"__image__": <path>} splits into (text fallback, path).
-    The text goes into the tool message (what non-vision models see); the image is
-    attached as a user image part — the same shape user-uploaded chat images use, so
-    every provider path (Ollama/OpenAI/Anthropic) already renders it."""
-    if '"__image__"' not in output:
+def _media_result(output: str) -> tuple[str, str]:
+    """A tool result carrying media splits into (text fallback, image path).
+
+    Two envelopes arrive here. `{"__image__": <path>}` is the original shape from
+    take_screenshot; `{"text", "__media__": [...], "__image__"?}` is what the MCP
+    bridge returns when a server hands back pictures, video or audio.
+
+    The text goes into the tool message (what every model sees). Only an IMAGE
+    path is returned for attachment, because that is the only kind any provider
+    path can actually carry — video and audio travel as asset ids inside the
+    text, which the agent can act on. Attaching them would be a silent no-op
+    dressed up as vision.
+    """
+    if '"__image__"' not in output and '"__media__"' not in output:
         return output, ""
     try:
         d = json.loads(output)
-        path = d.get("__image__") or ""
-        if path:
-            return d.get("text") or f"image saved to {path}", path
     except Exception:
-        pass
-    return output, ""
+        return output, ""
+    if not isinstance(d, dict):
+        return output, ""
+    path = d.get("__image__") or ""
+    text = d.get("text") or ""
+    if not text:
+        media = d.get("__media__") or []
+        if media:
+            text = "; ".join(f"{m.get('kind', 'file')} saved as asset {m.get('asset_id', '?')}"
+                             for m in media if isinstance(m, dict))
+        elif path:
+            text = f"image saved to {path}"
+    return (text or output), path
 
 
 def _image_data_url(path: str, limit: int = 8_000_000) -> str:
@@ -235,7 +251,7 @@ class Agent:
                  approver: Callable[[str, dict, str], Awaitable[bool]],
                  extra_system: str = "", tool_filter: list | None = None,
                  conversation_id: str = "", principal: Principal = MAIN,
-                 surface: str = "gui"):
+                 surface: str = "gui", space_id: str = ""):
         """
         emit(event)                        -- streams events to the UI
         approver(name, args, reason, offer=None) -> ok
@@ -248,6 +264,9 @@ class Agent:
                                               subagents/apps get their own identity for the permission gate)
         surface                            -- WHICH IO gate the turn arrived on (gui | tui | telegram |
                                               api | task) — surface-scoped grants only apply on their gates
+        space_id                           -- WHICH space this turn happens in ('' = global). Decides what
+                                              memory and which facts are in scope, and where anything the
+                                              turn produces is filed
         """
         self.cfg = cfg
         self.toolbox = toolbox
@@ -259,6 +278,7 @@ class Agent:
         self.conversation_id = conversation_id
         self.principal = principal
         self.surface = surface
+        self.space_id = space_id or ""
         self.aborted = False
         # messages the user sent while this turn was already running: triaged at the
         # next step boundary (see _drain_inbox). The server owns the queue these come
@@ -472,7 +492,10 @@ class Agent:
         mc = self.cfg.get("memory") or {}
         mem_text = ""
         n_user = int(mc.get("inject_user", 15))
-        user_mems = store.search_memories("", limit=500, scope="user")
+        # Scoped to the space this turn happens in: what is true here, plus what is
+        # true everywhere. Injecting three clients' constraints into one answer is
+        # exactly what spaces exist to stop.
+        user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
         if len(user_mems) > n_user:
             # over budget: pinned always make the cut; the rest of the slots go to the
             # memories most relevant to the user's message (semantic), else most recent
@@ -489,6 +512,19 @@ class Agent:
                 except Exception:
                     pass
             user_mems = pinned + picked
+        if self.space_id:
+            # The agent has to know which space it is in, or it cannot decide where
+            # to file what it learns, and "save this" becomes ambiguous.
+            try:
+                from . import spaces as spacemod
+                info = spacemod.describe(store, self.space_id)
+                desc = f" — {info['description']}" if info.get("description") else ""
+                mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
+                             "What you remember and produce belongs to this space unless it "
+                             "would still be true after this project ends. Memory and facts "
+                             "below are this space's plus what is true everywhere.\n")
+            except Exception:
+                pass
         if user_mems:
             mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
                 f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
@@ -501,7 +537,7 @@ class Agent:
                     f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
         n_facts = int(mc.get("inject_facts", 12))
         if n_facts > 0:
-            facts = store.kg_query("", limit=10**6)
+            facts = store.kg_query("", limit=10**6, space=self.space_id)
             if facts:
                 mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
                              + "\n".join(f"- {f}" for f in facts[-n_facts:])
@@ -716,11 +752,28 @@ class Agent:
                     # session scope flows through: saves attach to this conversation and
                     # delegated subagents inherit its session memory
                     args = {**args, "conversation_id": self.conversation_id}
+                if name.startswith("mcp_"):
+                    # Where this call is happening, so anything the server hands
+                    # back (an image, a clip) is filed against this conversation
+                    # and this space instead of landing context-free in the
+                    # gallery. Underscore-prefixed keys are stripped before the
+                    # tool itself is called — the existing convention in
+                    # Toolbox.execute.
+                    args = {**args, "_ctx": {"conversation_id": self.conversation_id,
+                                             "space_id": self.space_id}}
+                elif name in SPACE_SCOPED_TOOLS and self.space_id and "space_id" not in args:
+                    # The space is the turn's, not the model's to choose. It is
+                    # injected rather than declared in the schema so a model
+                    # cannot reach into another project by inventing an id — and
+                    # `everywhere: true` stays the one honest way out, which the
+                    # gate can see and a grant can refuse.
+                    args = {**args, "space_id": self.space_id}
                 level, reason = self.toolbox.risk_of(name, args)
                 if self.toolbox.pdp:
                     dec = self.toolbox.pdp.decide_tool(
                         self.principal, name, args, level, reason=reason,
-                        autonomy=self.cfg.get("autonomy", ""), surface=self.surface)
+                        autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
+                        space_id=self.space_id, conversation_id=self.conversation_id)
                 else:  # no policy engine wired (tests / embedding): legacy autonomy gate
                     from .policy import Decision
                     if level == "blocked":
@@ -735,6 +788,7 @@ class Agent:
                     dec.effect = "ask"
 
                 approved = None
+                _started = time.time()
                 if dec.effect == "deny":
                     output = f"[denied] {dec.reason or reason}"
                 elif dec.effect == "ask":
@@ -768,11 +822,23 @@ class Agent:
                         {"principal": self.principal.label, "surface": self.surface,
                          "rule": "io-gate"})
 
-                output, image_path = _image_result(output)
+                output, image_path = _media_result(output)
                 ok = not output.startswith(("[error]", "[denied]", "[exit code"))
+                # Close the ledger entry the PDP opened: the decision said what was
+                # permitted, this says what actually happened. An approval that was
+                # granted and then failed, and one that was never asked for, must not
+                # look the same afterwards.
+                if getattr(dec, "audit_id", ""):
+                    self.toolbox.store.audit_finish(
+                        dec.audit_id,
+                        outcome=("ok" if ok else ("denied" if output.startswith("[denied]") else "error")),
+                        detail="" if ok else output[:400],
+                        duration_ms=int((time.time() - _started) * 1000))
                 self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
                                                       "principal": self.principal.label,
-                                                      "decision": dec.rule})
+                                                      "decision": dec.rule},
+                                       conversation_id=self.conversation_id,
+                                       space_id=self.space_id)
                 await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
                                  "output": output[:4000], "ok": ok,
                                  **({"image": image_path} if image_path else {})})

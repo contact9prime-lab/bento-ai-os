@@ -13,6 +13,7 @@ buildDesktop();
 buildPager();
 buildDock();
 deckLoad();buildDeck();
+paintSpaceChip();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);

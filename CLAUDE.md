@@ -78,6 +78,38 @@ complete session on a headless compositor (sway + server + layer-shell host) and
 
 ---
 
+## Spaces: one visibility rule, written once
+
+A space is a thing the user is working on. Memory, KG assertions, conversations, assets,
+runs, tasks, logs and audit rows all carry `space_id`, and `''` is the global scope.
+
+**The rule is `space_id IN ('', :active)` — a space sees its own rows AND the global
+ones** — and it lives in `memory.Store._space_clause`. Do not re-implement it inline.
+
+Three things that have to stay true:
+
+- **`''`, never NULL.** Three-valued logic in that clause is how this rots: one forgotten
+  COALESCE and every pre-existing row disappears from every view.
+- **The graph is scoped on its EDGES.** An entity is the same entity everywhere; an
+  assertion belongs to a project. `kg_nodes.name` is UNIQUE and must stay that way.
+- **The conversation decides the turn's space**, not whatever the user last clicked. The
+  per-surface `cfg["spaces"]["active"][surface]` only seeds *new* conversations.
+
+`space_id` is injected into tool args by the agent loop (`SPACE_SCOPED_TOOLS`), never
+declared in a tool schema — a model must not be able to reach into another project by
+naming one. `everywhere: true` is the one declared way out, so the gate can see it.
+
+## Everything a principal does goes in the ledger
+
+`PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and
+it is why every capability call in the OS must keep funnelling through the PDP rather than
+checking autonomy inline. `logs` remains the free-text operator diary; `audit` is the
+structured record (principal, surface, action, resource, effect, rule, outcome).
+
+New capabilities get their own **action**, not another `tool.use` string — `media.read`,
+`media.generate` and `space.write` exist because "may look at the gallery but may not bill
+my image provider" has to be expressible as one grant.
+
 ## Licensing: permissive only, and ask rather than ship
 
 What AgentOS **depends on**, it is effectively distributing, and that set must be
