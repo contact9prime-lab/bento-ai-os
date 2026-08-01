@@ -6,10 +6,10 @@
    server, so it stays instant. */
 const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
-  ['Create',['store','studio','themes','personalize']],
-  ['Intelligence',['models','memory','kg','soul','profile']],
+  ['Create',['store','studio','themes','personalize','gallery']],
+  ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','policies','permissions','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','syssettings','settings','policies','permissions','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];
 let DECK=null;

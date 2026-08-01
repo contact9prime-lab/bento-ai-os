@@ -97,6 +97,22 @@ DEFAULTS = {
                            "repeat_delay": 300, "repeat_rate": 30},
               "touchpad": {"tap": True, "natural_scroll": True, "dwt": True, "accel": 0.0}},
     "displays": {},
+    # Executors: other agents already installed on this machine that AgentOS can
+    # hand a task to. The envelope is the whole safety story — this build of the
+    # Claude Code CLI has no per-call permission hook, so what a run may touch is
+    # decided here, once, rather than approved call by call. Off until asked for,
+    # and read-only when first switched on.
+    # budget_usd is 0 = "decide it from how the CLI is billed" (executors.py).
+    # A hardcoded 2.0 here meant a Claude subscription — where nothing is billed
+    # per token — still cut work off at a notional $2, which stopped real builds
+    # half-finished while controlling no spending at all.
+    "executors": {"claude_code": {"enabled": False, "workspace": "", "model": "",
+                                  "tools": ["Read", "Glob", "Grep", "WebSearch"],
+                                  "budget_usd": 0}},
+    # Which agent answers. "aria" is the built-in one; anything else turns this
+    # machine into a forwarder — every turn a person starts goes to that agent
+    # instead, on every surface (chat, omnibar, copilot, Telegram, API, tasks).
+    "engine": "aria",
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
@@ -181,6 +197,12 @@ DEFAULTS = {
         "bot_token": "",       # from @BotFather
         "owner_chat_id": 0,    # paired automatically on the first /start message
     },
+    # Channels: every way a conversation reaches this machine — this window, the
+    # session, a terminal, a remote browser, the API, the schedule, Telegram.
+    # Keyed by channel id (see agentos/channels.py); each may carry a `posture`,
+    # which is the trust ceiling for the IO gate it arrives on. Empty means every
+    # channel simply inherits the machine's autonomy, which is the old behaviour.
+    "channels": {},
     # Remote access: reach this desktop from your phone or another machine.
     #
     # OFF, and it stays off until a human turns it on in Settings → Remote access

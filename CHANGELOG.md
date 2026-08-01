@@ -1,5 +1,207 @@
 # Changelog
 
+### Channels: every way in, and how far each is trusted (2026-08-01)
+
+- **A channel is a way in, not a messenger.** Settings → Channels lists all of them
+  together — this window, the session desktop, a terminal over SSH, a remote browser,
+  the HTTP API, the schedule, Telegram, WhatsApp — because they are the same thing:
+  a conversation arriving at the same agent, with the same memory and the same tools.
+  What differs is who can speak through it and how far it is trusted, so those are the
+  two things each card states. The GUI, TUI and SUI appear in the list as channels
+  rather than as special cases, which is the point of modelling it this way.
+- **Per-channel permissions, enforced by the machinery that was already there.**
+  AgentOS has had surface-scoped IO gates and per-grant surface scoping for a while;
+  this release gives them a front door. A channel's posture — inherit, look-don't-touch,
+  ask-me-first, act-without-asking — sets the ceiling for its gate. "Act freely at the
+  desk, ask over Telegram" and its reverse are both things people mean, so both
+  directions are allowed.
+- **Read-only refuses rather than queues, and outranks a grant.** A channel nobody is
+  watching cannot answer an approval prompt, so on a read-only channel a risky step is
+  denied outright. The check runs *before* grants on purpose: a ceiling that an
+  allow-everywhere grant could punch through would not be a ceiling, and narrowing a way
+  in should not be silently undone by consent given at the desk. Both are tested.
+- **No dead controls.** The session desktop and a remote browser arrive through the same
+  gate as this window, so a posture of their own would never be read — they say whose
+  they follow instead of offering a select that does nothing, and the API refuses to set
+  one with that explanation. Built-in channels have no off switch, because switching off
+  the window you are reading this in is a lockout, not a setting. WhatsApp accepts its
+  credentials and says plainly that the transport is not built yet.
+- **Saved secrets are never handed back**, and a blank secret means "leave it alone"
+  rather than "erase it" — otherwise saving an unrelated change on the same card would
+  quietly wipe the token.
+- **WhatsApp, Slack and Signal are carried by Hermes, not rebuilt here.** Hermes already
+  runs a messaging gateway with those bridges, so a second Meta Cloud API integration
+  beside a working one would be a worse copy of something already installed. These
+  channels are *discovered* from `hermes send --list --json` rather than declared: a
+  static list would have claimed Signal works on this machine because it appears in
+  Hermes' config, when its gateway has in fact been failing to reach signal-cli every
+  five minutes. Carried channels state their direction — AgentOS delivers out through
+  them, and a reply arriving there is answered by Hermes' own agent, not by Aria in your
+  AgentOS conversation. Without that sentence, "WhatsApp: on" reads as a promise the
+  machine does not keep.
+- **Delegated runs go to the Claude Code you already pay for, and now cannot drift.**
+  The executor shells out to the local CLI, which bills against the Claude subscription
+  it is signed in to — but the CLI prefers `ANTHROPIC_API_KEY` when it finds one, so a
+  key sitting in a shell profile from years ago would silently turn every delegated turn
+  into a metered API call. The child process no longer sees those variables at all, and
+  the Executors panel states which account pays before the switch that starts a run.
+- **Fixed: the allowed-tools list ran off the right edge**, so `Edit` and `Bash` could
+  not be seen or ticked. A stacked-row rule meant for text fields was also stretching
+  each checkbox to fill its grid cell, which pushed the labels away and forced every
+  column past its minimum. Measured against the panel edge after the fix, not eyeballed.
+- **Reaching this machine from anywhere, and the address that was already there.**
+  `remote.py` answers "may someone else use this"; it could never answer "and how do
+  they get here", which on a laptop behind NAT is the harder half. New `tunnel.py`
+  reports every address that works *right now* and what could publish a better one.
+  The first finding was that this machine was **already reachable from anywhere** over a
+  connected tailnet — AgentOS just never showed it, listing only LAN addresses, so a
+  desktop usable from a phone on mobile data looked like it only worked in the same
+  room. Each address now says where it reaches from: "Tailscale · your devices, from
+  anywhere" versus "This network · devices on this Wi-Fi".
+- **The passphrase gate covers tunnels too, and that is the point.** A tunnel proxies to
+  127.0.0.1, so without an explicit check it would sail straight past the rule that
+  AgentOS must not be reachable off-loopback without a passphrase — a hole around our own
+  front door. Publishing is refused until remote access is configured, and publishing to
+  the whole internet (`funnel`) is a separate, clearly-labelled choice from publishing to
+  your own devices (`serve`).
+- **`tailscale serve` is refused with the fix instead of hanging.** It blocks
+  indefinitely trying to provision an HTTPS certificate when the tailnet has none — 45
+  seconds of nothing, here. The precondition is now detected up front and reported as
+  the one-time switch that fixes it, alongside the note that the existing Tailscale
+  address works meanwhile. `agentos tunnel` is the TUI face, which matters most on the
+  headless box you cannot walk over to and read an address off.
+- **Fixed: a delegated turn had no idea what it was looking at.** The built-in agent
+  receives the copilot/omnibar context as `extra_system`; the executor was handed the
+  bare sentence and nothing else, so "make the button in the top right bigger" arrived
+  with no app, no state and no screen. It now travels via `--append-system-prompt`, and
+  every forwarded surface gets it — a forwarded Telegram or scheduled turn otherwise
+  arrived believing it owned the desktop.
+- **Claude Code can now actually edit an AgentOS app.** Explaining that apps are
+  database rows was honest but useless — the answer was always "ask somebody else". A
+  copilot turn now checks the app OUT to a real file inside the workspace the executor
+  already has, it is edited there, and AgentOS writes it back as a new version. Safe
+  because it goes through `save_app`, which records a version on every change and keeps
+  the last 30, so a bad edit is one Restore away. An emptied, deleted or absurdly large
+  file is refused rather than saved, and a read-only envelope says it cannot edit
+  instead of failing. Verified end to end against a real app: read → edit → version 2
+  in the database, the rest of the app untouched, version 1 still restorable.
+- **Fixed: an executor granted Write and Edit silently could not write.** The
+  permission mode was a hardcoded `dontAsk`, chosen so a headless run would not block on
+  a prompt nobody can answer. Tested against a real edit it turned out to *deny*: the
+  run read the file, tried one Edit, was refused, and reported "the tool call was
+  denied". The mode now follows the envelope — nothing to approve stays `dontAsk`,
+  Write/Edit gets `acceptEdits`, Bash gets `bypassPermissions` — because the envelope is
+  the approval. Only reachable when someone ticked those tools, and still bounded by
+  `--tools` and `--add-dir`. Found by running it, not by reasoning about it.
+- **It can also work on AgentOS itself.** An opt-in switch adds this OS's own source to
+  the run, so the executor can fix AgentOS's tools and windows, and it is told the two
+  load-bearing rules — the UI is built from `ui/src`, and a change that breaks the suite
+  is not finished. Off by default and stated in the envelope sentence: the OS rewriting
+  itself is its own decision, not a side effect of enabling an executor.
+- **"Not installed" is no longer a dead end.** Claude Code missing now offers the exact
+  install command with its output streamed into the panel, and installed-but-signed-out
+  says to run `claude` once — a different problem with a different fix.
+- **The OS offers to set remote access up rather than waiting to be asked.** When
+  nothing reaches past the local Wi-Fi, Remote access says so and offers the fix in
+  place, with the exact install command in view and a button that runs it — installed
+  and verified through that endpoint here. Publishing to the public internet is
+  confirmed separately, because "reachable from anywhere" and "reachable by anyone" are
+  different promises.
+- **A public address, set up for you.** Cloudflare quick tunnels give this machine an
+  `https://…trycloudflare.com` name with no account, no DNS to configure and nothing
+  opened on the router, since the connection is made outbound. Offered with its exact
+  install command like everything else optional. The passphrase gate is checked before
+  the provider, so no provider can route around it.
+- **Fixed: it blamed the database for a built-in app.** Asked to fix the theme dropdown
+  in Settings, the executor answered that "AgentOS apps live in the database, use App
+  Studio" — false, and a dead end, since App Studio cannot edit Settings either. AgentOS
+  has two kinds of app and they are opposites: a *user* app is a database row, a
+  *built-in* app (Settings, Files, Chat) is the OS's own source. The blanket claim is
+  gone from the preamble; the kind is now resolved where it is actually known, and a
+  built-in app without source access names the switch that would grant it rather than
+  sending anyone to a tool that cannot help. With the switch on, Claude Code found the
+  real cause of that dropdown — no `color-scheme` declared, so the browser painted the
+  native popup light while light text inherited in — fixed it in `ui/src`, rebuilt the
+  bundle and left the suite green.
+- **Fixed: real work stopped half-finished at a limit that was protecting nothing.**
+  A build died mid-`python -m venv` reporting "stopped at the $2.40 spend ceiling". On a
+  Claude subscription **nothing is billed per token** — the CLI reports a *notional*
+  cost — so that ceiling controlled no spending at all and only truncated the work. The
+  default now follows how the CLI is signed in: a tight guard on an API key, a much
+  larger runaway backstop on a subscription. `budget_usd: 0` means "decide it from the
+  billing mode", the message no longer talks about money when no money was spent, and it
+  says the session resumes so nobody starts over. Settings labels it "Work limit" rather
+  than "Spend limit" on a subscription.
+- **App Studio can build with Claude Code, and builds got room to finish.** An executor
+  now appears in the build picker and builds the app as a FILE — write it, read it back,
+  fix it, keep going — instead of the built-in builder's single turn to emit an entire
+  app in one fenced block, which is why an ambitious brief came back as a sketch. Builds
+  also get a bigger step ceiling (10 was set for one-shot local models and left nothing
+  for finishing) and a build floor on the limit. Refining keeps the app's own name, so it
+  updates in place rather than leaving a duplicate.
+- **The engine and model are chosen in Settings, and nowhere else.** The per-chat picker
+  meant the same machine answered as different agents depending on which window you were
+  in, and background work — tasks, Telegram, the API — could never see that choice at
+  all, so "what is this machine running on" had no single answer. Chat now shows a chip
+  that states it and opens the one place to change it.
+- **A machine with no local runtime is offered one, at first run.** Setup used to detect
+  no Ollama models and fall straight through to "give me a cloud API key" — a poor first
+  run for someone installing a private, self-hosted OS, and it never said running models
+  locally was even possible. Ollama is now a catalogue entry (MIT, llama.cpp underneath)
+  offered by the GUI wizard, the CLI wizard and Settings → Components, with the exact
+  command in view. No separate llama.cpp entry: it is packaged on Arch alone, and an
+  entry absent on three of the four families we support is the silent gap the catalogue
+  guard test exists to catch.
+- **The context is translated, not forwarded verbatim.** The copilot preamble ends by
+  naming `control_desktop`, `read_file` and `write_file`, which only the built-in agent
+  has; handed to a filesystem agent it is worse than no context, because it sends it
+  reaching for tools that do not exist. That line is dropped and replaced with what is
+  actually true of an executor: no screen, no AgentOS tools, one directory — and the
+  fact that decides whether the request is even possible, that **an AgentOS app is a
+  single HTML document in the database, not a file on disk**. Verified live: asked to
+  edit an app, Claude Code now names the app, explains it cannot reach it, and points at
+  App Studio, instead of searching the filesystem and improvising.
+- **Fixed: onboarding offered "? · ? detected" as the recommended location.** The chip
+  was drawn before the locale fetch resolved, and if that fetch failed it stayed that
+  way — the very first screen a new user sees, recommending a place nobody had detected.
+  It now has three states: reading, detected, and could-not-read, and the last one asks
+  where you are instead of pretending to an answer. Detection itself was never broken.
+- **All three faces.** `agentos channels` prints the same table and
+  `agentos channels <id> --posture …` sets it, because a headless box reached only over
+  SSH is exactly where "who can talk to this, and how far do I trust it" most needs
+  answering and has no settings window to answer it in.
+
+### Executors, and this machine as a forwarder (2026-07-31)
+
+- **AgentOS can hand work to another agent already on this machine.** Claude Code is
+  the first executor: it appears as an engine in the chat model picker, and a delegated
+  turn stays a normal AgentOS turn — working indicator, Ctrl+. to stop, persistence,
+  sidebar, live tool chips — because its `stream-json` events are translated into the
+  same events the built-in agent emits. Its session is kept per chat, so a follow-up
+  continues rather than starting over. AgentOS keeps the desktop; an executor has no
+  screen or keyboard.
+- **Forward everything.** One setting turns the machine into a front end: every turn a
+  *person* starts is answered by Claude Code or Hermes instead — chat, the prompt bar,
+  copilot panels, Telegram, the headless API, and scheduled turns. Apps and App Studio
+  are deliberately excluded and the UI says so, because an app calls the agent expecting
+  AgentOS's tools and its own data store, and App Studio already has an explicit
+  build-model choice. Verified end to end: a chat turn with no model in the payload, and
+  a `POST /api/chat`, both reached Claude Code; the same call from an app did not.
+- **Forwarding is never silent.** A machine answering as somebody else says so in the
+  menu bar on every surface, with what is and isn't forwarded in the tooltip, and the
+  chip opens the setting that turns it off. Over SSH, `agentos forward` prints the same
+  thing.
+- **The envelope is the safety story.** This build of the Claude Code CLI has no
+  per-call permission hook, so tools are not approved one at a time — each run is bounded
+  before it starts (folder, tools, model, spend), the bound is stated in one sentence
+  wherever it can be granted, and the server clamps it: granting `Sudo` and $9999 comes
+  back as the known tools at the $50 cap. Off by default, read-only when first enabled.
+- **Failures say why, once.** An early run reported "the executor failed" twice with no
+  reason; it had hit the spend ceiling — the one fact that made it fixable — and the
+  non-zero exit was the same failure counted again. A test also caught a real widening:
+  `budget_usd or DEFAULT` turned "spend nothing" into $2, because 0 is falsy.
+- `agentos delegate` and `agentos forward` give the same capabilities a terminal.
+
 ## Unreleased — the ever-present agent (2026-07-26, second drop)
 
 ### You can keep talking while it works (2026-07-29)

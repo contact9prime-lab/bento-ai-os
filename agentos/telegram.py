@@ -33,6 +33,9 @@ class TelegramBridge:
         self.bot_username = ""
         self._busy = False
         self._pending: dict[str, asyncio.Future] = {}   # approval id -> future
+        # When forwarding, keep the executor's own session per conversation so a
+        # follow-up over Telegram continues rather than starting from nothing.
+        self._exec_sessions: dict[str, str] = {}
 
     def _t(self) -> dict:
         return self.cfg.get("telegram") or {}
@@ -164,14 +167,34 @@ class TelegramBridge:
                          + (res["content"] or res["fault"] or "(no output)"))
                 result = {"steps": res["steps"]}
             else:
-                agent = Agent(self.cfg, self.toolbox, model, emit, approver, conversation_id=cid,
-                              surface="telegram")
-                _k.turn_started()
-                try:
-                    result = await agent.run(history)
-                finally:
-                    _k.turn_ended()
-                reply = result["content"] or "(done — no text output)"
+                from . import executors as execmod
+                engine = execmod.resolve_engine(self.cfg)
+                if engine != "aria":
+                    # A machine set to forward forwards what arrives from OUTSIDE
+                    # too — a Telegram message is exactly the case the setting is
+                    # for. There is no event stream here, so take the text back.
+                    from . import config as _cfgmod
+                    _k.turn_started()
+                    try:
+                        reply, _run = await execmod.forward(
+                            engine, text, self.cfg,
+                            str(_cfgmod.AGENTOS_HOME / "workspace"),
+                            session_id=self._exec_sessions.get(cid, ""))
+                        if _run and _run.session_id:
+                            self._exec_sessions[cid] = _run.session_id
+                    finally:
+                        _k.turn_ended()
+                    reply = reply or "(done — no text output)"
+                    result = {"steps": [{"type": "executor", "name": engine}]}
+                else:
+                    agent = Agent(self.cfg, self.toolbox, model, emit, approver,
+                                  conversation_id=cid, surface="telegram")
+                    _k.turn_started()
+                    try:
+                        result = await agent.run(history)
+                    finally:
+                        _k.turn_ended()
+                    reply = result["content"] or "(done — no text output)"
             self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
             self.store.touch_conversation(cid)
             await self.send(reply, chat_id)

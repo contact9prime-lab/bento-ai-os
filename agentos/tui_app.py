@@ -8,6 +8,7 @@ the system live, switch models, launch installed apps, view tasks and logs, and 
 
 import asyncio
 import json
+import time
 
 import httpx
 from textual import work
@@ -81,6 +82,8 @@ class AgentTUI(App):
         Binding("7", "tab('config')", "Config"),
         Binding("8", "tab('docs')", "Docs"),
         Binding("9", "tab('team')", "Team"),
+        Binding("0", "tab('spaces')", "Spaces"),
+        Binding("a", "tab('audit')", "Audit"),
     ]
 
     def __init__(self, port: int, cfg: dict):
@@ -120,6 +123,17 @@ class AgentTUI(App):
             with TabPane("👥 Team", id="team"):
                 with VerticalScroll(id="team-box"):
                     yield Static("", id="team-body")
+            # Spaces and the timeline are a chronological list and a short menu —
+            # both native to a terminal, so this is a face where the TUI is not a
+            # lesser version of the GUI. The Gallery is the opposite case and is
+            # deliberately an inventory here, not a viewer: a terminal cannot show
+            # a video, and pretending otherwise would be the dead-control failure.
+            with TabPane("▣ Spaces", id="spaces"):
+                with VerticalScroll(id="spaces-box"):
+                    yield Static("", id="spaces-body")
+            with TabPane("⚖ Audit", id="audit"):
+                with VerticalScroll(id="audit-box"):
+                    yield Static("", id="audit-body")
             with TabPane("⚙ Config", id="config"):
                 with VerticalScroll(id="cfg-box"):
                     yield Label("Agent name")
@@ -159,10 +173,14 @@ class AgentTUI(App):
         self.refresh_logs()
         self.refresh_docs()
         self.refresh_team()
+        self.refresh_spaces()
+        self.refresh_audit()
         self.load_cfg_form()
         self.set_interval(2.0, self.refresh_system)
         self.set_interval(6.0, self.refresh_logs)
         self.set_interval(8.0, self.refresh_team)
+        self.set_interval(10.0, self.refresh_spaces)
+        self.set_interval(10.0, self.refresh_audit)
 
     @work(group="cfgload")
     async def load_cfg_form(self):
@@ -334,6 +352,87 @@ class AgentTUI(App):
             lines.append(f"  [red]fault[/red] {f['ref']}: {str(f.get('fault',''))[:70]}")
         try:
             self.query_one("#team-body", Static).update("\n".join(lines))
+        except Exception:
+            pass
+
+    # ---- spaces, timeline and the gallery inventory ----
+    @work(exclusive=True, group="spaces")
+    async def refresh_spaces(self):
+        sp = await self.api_get("/api/spaces")
+        active = (sp.get("active") or {}).get("tui", "")
+        spaces = sp.get("spaces") or []
+        by_id = {s["id"]: s for s in spaces}
+        here = by_id.get(active, {}).get("name", "Everywhere")
+        lines = [f"[b]Working in:[/b] [cyan]{here}[/cyan]"
+                 "   [grey58]agentos space <name>  ·  agentos space --none[/]\n",
+                 "[b]Spaces[/b] — a space sees its own memory AND what is true everywhere\n"]
+        if not spaces:
+            lines.append("  [grey58](none yet — everything is shared. "
+                         "Make one when a project starts accumulating its own context.)[/]")
+        for s in spaces:
+            mark = "[cyan]●[/cyan]" if s["id"] == active else " "
+            lines.append(f"  {mark} [b]{s['name'][:22]:<22}[/b] {(s.get('description') or '')[:60]}")
+
+        qs = f"?space={active}" if active else ""
+        tl = await self.api_get("/api/timeline" + qs + ("&" if qs else "?") + "limit=15")
+        lines.append("\n[b]Timeline[/b] — milestones, not messages\n")
+        events = tl.get("events") or []
+        if not events:
+            lines.append("  [grey58](nothing recorded yet)[/]")
+        for e in events:
+            when = time.strftime("%d %b %H:%M", time.localtime(e.get("ts", 0)))
+            lines.append(f"  [grey58]{when}[/]  [{e.get('kind','')}] {str(e.get('title',''))[:64]}")
+
+        assets = await self.api_get("/api/assets" + qs + ("&" if qs else "?") + "limit=10")
+        cap = assets.get("capability") or {}
+        lines.append("\n[b]Gallery[/b] — a terminal cannot show a picture, so this is the "
+                     "inventory; [b cyan]agentos assets[/b cyan] opens or exports one\n")
+        for a in (assets.get("assets") or []):
+            size = f"{(a.get('bytes') or 0)//1024} KB"
+            extra = (f" · {a['duration']:.0f}s" if a.get("duration") else "")
+            lines.append(f"  [grey58]{a['id']}[/]  {a.get('kind',''):<6} {size:>8}{extra}  "
+                         f"{str(a.get('title',''))[:40]}")
+        if not (assets.get("assets") or []):
+            lines.append("  [grey58](empty)[/]")
+        if not cap.get("ffmpeg", True):
+            lines.append(f"\n  [yellow]{cap.get('why','')}[/yellow]")
+            lines.append(f"  [grey58]install the '{cap.get('component','ffmpeg')}' component to "
+                         f"measure and thumbnail media here[/]")
+        try:
+            self.query_one("#spaces-body", Static).update("\n".join(lines))
+        except Exception:
+            pass
+
+    # ---- audit: the access ledger ----
+    @work(exclusive=True, group="audit")
+    async def refresh_audit(self):
+        since = time.time() - 24 * 3600
+        d = await self.api_get(f"/api/audit?limit=60&since={since:.0f}")
+        s = await self.api_get(f"/api/audit/summary?since={since:.0f}")
+        eff = s.get("effects") or {}
+        lines = ["[b]Access ledger[/b] — last 24h: "
+                 f"[green]{eff.get('allow',0)} allowed[/green] · "
+                 f"[red]{eff.get('deny',0)} denied[/red] · "
+                 f"[yellow]{eff.get('ask',0)} asked[/yellow]\n"]
+        top = s.get("top_denied") or []
+        if top:
+            lines.append("[b]Most refused[/b]")
+            for t in top[:5]:
+                lines.append(f"  [red]{t['n']}×[/red] {t['action']} {str(t['resource'])[:56]}")
+            lines.append("")
+        lines.append("[b]Decisions[/b]")
+        for a in (d.get("entries") or []):
+            colour = {"allow": "green", "deny": "red", "ask": "yellow"}.get(a.get("effect"), "white")
+            who = f"{a['principal_kind']}:{a['principal_id']}" if a.get("principal_id") else a.get("principal_kind", "")
+            when = time.strftime("%H:%M:%S", time.localtime(a.get("ts", 0)))
+            lines.append(f"  [grey58]{when}[/] [{colour}]{a.get('effect',''):<5}[/{colour}] "
+                         f"{a.get('action',''):<14} {str(a.get('resource',''))[:44]}")
+            lines.append(f"          [grey58]{who} via {a.get('surface') or 'unknown'} "
+                         f"· rule {a.get('rule','')}[/]")
+        if not (d.get("entries") or []):
+            lines.append("  [grey58](nothing in the last 24 hours)[/]")
+        try:
+            self.query_one("#audit-body", Static).update("\n".join(lines))
         except Exception:
             pass
 

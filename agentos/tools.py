@@ -195,6 +195,27 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more chars]"
 
 
+def _truncate_envelope(out: str, limit: int = MAX_OUTPUT) -> str:
+    """Truncate a tool result without shredding a media envelope.
+
+    An MCP result carrying assets is JSON. Cutting it at a byte count would
+    produce invalid JSON, and the agent would lose the asset ids entirely — the
+    one part of the result that must survive. So the envelope's *text* is
+    truncated in place and the structure is left whole.
+    """
+    if len(out) <= limit:
+        return out
+    if '"__media__"' in out or '"__image__"' in out:
+        try:
+            d = json.loads(out)
+            if isinstance(d, dict):
+                d["text"] = _truncate(d.get("text") or "", limit)
+                return json.dumps(d)
+        except Exception:
+            pass
+    return _truncate(out, limit)
+
+
 def _automation_step_label(s: dict) -> str:
     """One step as a short phrase — what list_automations shows the model."""
     k = s.get("kind")
@@ -384,14 +405,21 @@ class Toolbox:
         return "[error] no desktop notification mechanism available"
 
     async def remember(self, content: str, scope: str = "user",
-                       conversation_id: str = "") -> str:
+                       conversation_id: str = "", space_id: str = "",
+                       everywhere: bool = False) -> str:
+        """Save a durable fact. It lands in the current space unless `everywhere`
+        is set — which is how the agent says "this is true about the user, not
+        about this project"."""
         if scope == "session" and not conversation_id:
             scope = "user"  # headless contexts have no session to attach to
+        target_space = "" if everywhere else (space_id or "")
         mid = self.store.add_memory(content, scope=scope,
-                                    conversation_id=conversation_id or None, source="agent")
+                                    conversation_id=conversation_id or None, source="agent",
+                                    space_id=target_space)
         if self.broadcast:
             await self.broadcast({"type": "knowledge_update"})
-        return f"remembered ({scope} memory, id {mid})"
+        where = "everywhere" if not target_space else "this space"
+        return f"remembered ({scope} memory, {where}, id {mid})"
 
     async def search_files(self, query: str, limit: int = 8) -> str:
         """Semantic search over the user's workspace files and generated docs."""
@@ -406,14 +434,16 @@ class Toolbox:
         return "\n".join(f"{r['path']}  (score {r['score']}, {r['kind']})\n  …{r['snippet'][:160]}"
                          for r in res)
 
-    async def recall(self, query: str = "") -> str:
-        mems = self.store.search_memories(query, limit=15)
+    async def recall(self, query: str = "", space_id: str = "") -> str:
+        mems = self.store.search_memories(query, limit=15, space=space_id)
         if query:
-            # semantic recall finds what keyword LIKE misses ("job" → "works at Accacia")
+            # semantic recall finds what keyword LIKE misses ("job" → "works at Accacia").
+            # The scoping happened in search_memories above; semantic_rank only orders
+            # the list it is handed, which is the right layer for it.
             try:
                 from . import knowledge
                 ranked = await knowledge.semantic_rank(
-                    self.cfg, self.store.search_memories("", limit=500), query)
+                    self.cfg, self.store.search_memories("", limit=500, space=space_id), query)
                 if ranked:
                     seen = {m["id"] for m in mems}
                     mems += [m for m in ranked[:10] if m["id"] not in seen]
@@ -646,15 +676,164 @@ class Toolbox:
         return f"wallpaper set from {source}"
 
     async def kg_add(self, subject: str, relation: str, object: str,
-                     subject_type: str = "", object_type: str = "") -> str:
-        eid = self.store.kg_add(subject, relation, object, subject_type, object_type)
-        return f"added to knowledge graph: {subject} —{relation}→ {object} (edge {eid})"
+                     subject_type: str = "", object_type: str = "",
+                     space_id: str = "", everywhere: bool = False) -> str:
+        """Record an assertion. It belongs to the current space unless `everywhere`
+        marks it as true regardless of what the user is working on. Entities are
+        shared across spaces — only the assertion is scoped."""
+        target_space = "" if everywhere else (space_id or "")
+        eid = self.store.kg_add(subject, relation, object, subject_type, object_type,
+                                space_id=target_space)
+        where = "everywhere" if not target_space else "in this space"
+        return f"added to knowledge graph {where}: {subject} —{relation}→ {object} (edge {eid})"
 
-    async def kg_query(self, query: str = "") -> str:
-        lines = self.store.kg_query(query)
+    async def kg_query(self, query: str = "", space_id: str = "") -> str:
+        lines = self.store.kg_query(query, space=space_id)
         if not lines:
             return "(knowledge graph has no matching facts)"
         return "\n".join(lines)
+
+    # -- assets & spaces ----------------------------------------------------
+
+    async def list_assets(self, kind: str = "", query: str = "", limit: int = 20,
+                          space_id: str = "") -> str:
+        """What is in the gallery. Asset ids are what every other media tool takes."""
+        rows = self.store.asset_list(kind=kind, q=query, space=space_id, limit=int(limit))
+        if not rows:
+            return "(no assets yet)" if not (kind or query) else "(no assets match)"
+        out = []
+        for r in rows:
+            bits = [f"[{r['id']}] {r['kind']}", r.get("title") or ""]
+            if r.get("duration"):
+                bits.append(f"{r['duration']:.1f}s")
+            if r.get("width"):
+                bits.append(f"{r['width']}x{r['height']}")
+            bits.append(f"{(r.get('bytes') or 0) // 1024} KB")
+            if r.get("source"):
+                bits.append(f"from {r['source']}")
+            out.append(" · ".join(b for b in bits if b))
+        return "\n".join(out)
+
+    async def get_asset(self, asset_id: str) -> str:
+        """Details of one asset. For images this also SHOWS it to vision-capable
+        models, using the same result shape take_screenshot uses."""
+        from . import assets as assetmod
+        row = self.store.asset_get(asset_id)
+        if not row:
+            return f"[error] no asset with id {asset_id}"
+        info = assetmod.public(row)
+        text = (f"{info['kind']} · {info['mime']} · {info['bytes'] // 1024} KB"
+                + (f" · {info['width']}x{info['height']}" if info["width"] else "")
+                + (f" · {info['duration']:.1f}s" if info["duration"] else "")
+                + (f"\ntitle: {info['title']}" if info["title"] else "")
+                + (f"\nprompt: {info['prompt']}" if info["prompt"] else "")
+                + (f"\nsource: {info['source']}" if info["source"] else ""))
+        path = assetmod.path_of(row)
+        if row["kind"] == "image" and path:
+            return json.dumps({"__image__": str(path), "text": text})
+        if not path:
+            return text + "\n[the file behind this asset is missing from disk]"
+        return text
+
+    async def save_asset(self, source: str, title: str = "", space_id: str = "",
+                         conversation_id: str = "") -> str:
+        """Put a file or a URL into the gallery so it can be used, shown and kept.
+        `source` is a local path or an http(s) URL."""
+        from . import assets as assetmod
+        src = (source or "").strip()
+        if not src:
+            return "[error] source is required (a local path or an http(s) URL)"
+        try:
+            if src.startswith(("http://", "https://")):
+                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                    r = await client.get(src)
+                    r.raise_for_status()
+                    data, mime = r.content, r.headers.get("content-type", "").split(";")[0]
+                name = os.path.basename(src.split("?")[0]) or ""
+                row = await assetmod.put_bytes(
+                    self.store, data, name=name, mime=mime, title=title, source="url",
+                    origin_url=src, space_id=space_id, conversation_id=conversation_id)
+            else:
+                p = Path(os.path.expanduser(src))
+                deny = self._sandbox_deny(p)
+                if deny:
+                    return deny
+                if not p.is_file():
+                    return f"[error] file not found: {p}"
+                row = await assetmod.put_bytes(
+                    self.store, p.read_bytes(), name=p.name, title=title or p.name,
+                    source="tool:save_asset", space_id=space_id,
+                    conversation_id=conversation_id)
+        except Exception as e:
+            return f"[error] could not save asset: {type(e).__name__}: {e}"
+        if not row:
+            return "[error] nothing to save (empty file, or larger than the inline limit)"
+        if self.broadcast:
+            await self.broadcast({"type": "assets_update"})
+        return f"saved as asset {row['id']} ({row['kind']}, {(row.get('bytes') or 0)//1024} KB)"
+
+    async def delete_asset(self, asset_id: str) -> str:
+        from . import assets as assetmod
+        if not assetmod.delete(self.store, asset_id):
+            return f"[error] no asset with id {asset_id}"
+        if self.broadcast:
+            await self.broadcast({"type": "assets_update"})
+        return f"deleted asset {asset_id}"
+
+    async def generate_image(self, prompt: str, width: int = 1280, height: int = 720,
+                             title: str = "", space_id: str = "",
+                             conversation_id: str = "") -> str:
+        """Draw a picture and keep it in the gallery.
+
+        The provider fan-out (google → openai → free pollinations, with fallback)
+        has existed since the first release but could only ever produce a
+        wallpaper. This is the same engine, writing into the asset store, so what
+        it makes can be used for anything.
+        """
+        data, label = await self._generate_image(prompt, int(width), int(height))
+        if not data:
+            return f"[error] {label}"
+        from . import assets as assetmod
+        row = await assetmod.put_bytes(
+            self.store, data, name="generated.png", mime="image/png",
+            title=title or prompt[:80], prompt=prompt, source=f"tool:generate_image ({label})",
+            space_id=space_id, conversation_id=conversation_id)
+        if not row:
+            return "[error] the image was generated but could not be stored"
+        if self.broadcast:
+            await self.broadcast({"type": "assets_update"})
+        return (f"generated asset {row['id']} with {label} "
+                f"({row.get('width') or width}x{row.get('height') or height})")
+
+    async def list_spaces(self) -> str:
+        """The things the user is working on."""
+        rows = self.store.list_spaces()
+        if not rows:
+            return ("(no spaces yet — everything is global. Create one with "
+                    "create_space when the user starts a distinct project.)")
+        return "\n".join(
+            f"- {r['name']}" + (f" — {r['description']}" if r.get("description") else "")
+            for r in rows)
+
+    async def create_space(self, name: str, description: str = "", icon: str = "") -> str:
+        sid = self.store.create_space(name, description=description, icon=icon)
+        if not sid:
+            return "[error] a space needs a name"
+        if self.broadcast:
+            await self.broadcast({"type": "spaces_update"})
+        return (f"created space '{name}' (id {sid}). Memory and facts saved while it is "
+                f"active belong to it; things true about the user regardless stay global.")
+
+    async def timeline(self, since_hours: float = 168, kind: str = "",
+                       limit: int = 40, space_id: str = "") -> str:
+        """What has happened — milestones, not messages."""
+        since = time.time() - float(since_hours) * 3600 if since_hours else 0.0
+        rows = self.store.timeline(space=space_id, kind=kind, since=since, limit=int(limit))
+        if not rows:
+            return "(nothing on the timeline for that period)"
+        return "\n".join(
+            f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(r['ts']))}  [{r['kind']}] {r['title']}"
+            for r in rows)
 
     async def update_soul(self, content: str) -> str:
         from . import config as cfgmod
@@ -2177,9 +2356,14 @@ class Toolbox:
             target = self.mcp.resolve(name)
             if not target:
                 return f"[error] unknown MCP tool: {name}"
-            out = await self.mcp.call(target[0], target[1], args)
-            self.store.log("mcp", f"{target[0]}/{target[1]}", {"args": args, "ok": not out.startswith("[error]")})
-            return _truncate(out)
+            ctx = args.get("_ctx") or {}
+            call_args = {k: v for k, v in args.items() if not k.startswith("_")}
+            out = await self.mcp.call(target[0], target[1], call_args, context=ctx)
+            self.store.log("mcp", f"{target[0]}/{target[1]}",
+                           {"args": call_args, "ok": not out.startswith("[error]")},
+                           conversation_id=str(ctx.get("conversation_id") or ""),
+                           space_id=str(ctx.get("space_id") or ""))
+            return _truncate_envelope(out)
         fn = getattr(self, name, None)
         if fn is None or name not in {t["name"] for t in TOOL_SCHEMAS}:
             return f"[error] unknown tool: {name}"
@@ -3158,3 +3342,128 @@ PROACTIVITY_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(PROACTIVITY_TOOL_SCHEMAS)
+
+# Media & spaces. `space_id` is deliberately NOT declared in any of these schemas:
+# the agent loop injects the turn's own space (see SPACE_SCOPED_TOOLS below), so a
+# model cannot reach into another project by naming one. `everywhere` is the single
+# declared way to write outside the current space, which keeps that choice visible
+# to the permission gate instead of hidden inside an id.
+MEDIA_TOOL_SCHEMAS = [
+    {
+        "name": "list_assets",
+        "description": "List what is in the gallery — images, video, audio and documents the "
+                       "agent generated, received from an MCP server, or was given. Returns "
+                       "asset ids, which every other media tool takes.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["", "image", "video", "audio", "doc", "data"],
+                         "description": "filter by kind; omit for everything"},
+                "query": {"type": "string", "description": "match against title, prompt or source"},
+                "limit": {"type": "integer", "description": "default 20"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_asset",
+        "description": "Details of one asset by id. For an image this also SHOWS it to you if "
+                       "the model can see pictures — use it before describing or editing one.",
+        "parameters": {
+            "type": "object",
+            "properties": {"asset_id": {"type": "string"}},
+            "required": ["asset_id"],
+        },
+    },
+    {
+        "name": "save_asset",
+        "description": "Put a local file or an http(s) URL into the gallery so it persists and "
+                       "can be shown, referenced and used later.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string", "description": "a local path or an http(s) URL"},
+                "title": {"type": "string", "description": "what to call it"},
+            },
+            "required": ["source"],
+        },
+    },
+    {
+        "name": "delete_asset",
+        "description": "Remove an asset and its file.",
+        "parameters": {
+            "type": "object",
+            "properties": {"asset_id": {"type": "string"}},
+            "required": ["asset_id"],
+        },
+    },
+    {
+        "name": "generate_image",
+        "description": "Draw a picture from a description and keep it in the gallery. Returns "
+                       "an asset id. Use this for any image the user wants to KEEP or use; "
+                       "generate_wallpaper is only for setting the desktop background.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "what to draw, in detail"},
+                "width": {"type": "integer", "description": "default 1280"},
+                "height": {"type": "integer", "description": "default 720"},
+                "title": {"type": "string", "description": "what to call it in the gallery"},
+            },
+            "required": ["prompt"],
+        },
+    },
+]
+TOOL_SCHEMAS.extend(MEDIA_TOOL_SCHEMAS)
+
+SPACE_TOOL_SCHEMAS = [
+    {
+        "name": "list_spaces",
+        "description": "The things the user is working on. A space groups a project's "
+                       "conversations, memory, facts and assets so they do not bleed into "
+                       "each other.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "create_space",
+        "description": "Create a space for a distinct piece of work (a launch, a client, a "
+                       "channel). Do this when the user starts something that will accumulate "
+                       "its own context — not for every passing task.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "description": {"type": "string",
+                                "description": "what this space IS — the memory subsystem reads "
+                                               "this to decide what belongs in it"},
+                "icon": {"type": "string", "description": "optional single emoji"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "timeline",
+        "description": "What has happened recently — runs, assets produced, memory learned, "
+                       "apps changed. Milestones, not the message log. Use it to answer "
+                       "'what did we do this week?'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "since_hours": {"type": "number", "description": "default 168 (a week)"},
+                "kind": {"type": "string",
+                         "enum": ["", "run", "asset", "memory", "app_version", "conversation",
+                                  "task", "space"]},
+                "limit": {"type": "integer", "description": "default 40"},
+            },
+            "required": [],
+        },
+    },
+]
+TOOL_SCHEMAS.extend(SPACE_TOOL_SCHEMAS)
+
+#: Tools whose reads and writes belong to the turn's space. The agent loop injects
+#: `space_id` for these; nothing else in the OS decides scope on the model's behalf.
+SPACE_SCOPED_TOOLS = frozenset({
+    "remember", "recall", "kg_add", "kg_query",
+    "list_assets", "save_asset", "generate_image", "timeline",
+})

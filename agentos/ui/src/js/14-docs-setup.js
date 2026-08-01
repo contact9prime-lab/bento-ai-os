@@ -96,7 +96,16 @@ function wizRender(){
     stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
-    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'No local Ollama models found — use a cloud key, or install Ollama later.'}</p>
+    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. AgentOS can set that up, or you can bring a cloud key.'}</p>
+    ${/* "install Ollama later" was the end of the road here: the first screen that
+          needs a brain told you what was missing and then left you to it. Offer
+          it, with the licence and the exact command, on the screen where it
+          matters. */''}
+    ${local?'':`<div class="wiz-offer" id="wz-ollama">
+      <b>Run models on this machine</b>
+      <span>Private, free, no API key. AgentOS installs Ollama (MIT, llama.cpp underneath).</span>
+      <button class="endbtn" onclick="wizInstallOllama()">Install it for me</button>
+    </div>`}
     <div class="wiz-picks">${local}
       <label class="wiz-pick"><input type="radio" name="wz-model" value="cloud" ${WIZ.default_model&&!WIZ.default_model.startsWith('ollama/')?'checked':''}><b>Cloud model</b><span>Anthropic, OpenAI or OpenRouter (API key)</span></label>
     </div>
@@ -158,11 +167,26 @@ function wizChips(step){
   let defs=null;
   if(step==='locale'){
     const el=document.createElement('div');el.className='wiz-chips';
+    /* Three states, because this used to have one. The chip was drawn before the
+       fetch resolved and read "? · ? detected" — offering a location nobody had
+       detected as the RECOMMENDED answer, on the first screen a new user sees.
+       While it is still reading, say so; if it could not read, hand the question
+       over rather than pretending to an answer. */
     const draw=()=>{
       const lo=(WIZ.locale&&WIZ.locale.locale)||{};
-      el.innerHTML=`<button class="wiz-chip rec" data-a="ok">${esc((lo.country_name||lo.country||'?')+' · '+(lo.timezone||'?'))}<em>detected</em></button>
-        <button class="wiz-chip" data-a="edit">Somewhere else…</button>`;
-      el.querySelector('[data-a=ok]').onclick=b=>wizPicked(el,el.querySelector('[data-a=ok]'));
+      const place=lo.country_name||lo.country||'';
+      const known=!!(place||lo.timezone);
+      if(WIZ.locale===undefined){
+        el.innerHTML=`<button class="wiz-chip" disabled>reading this machine…</button>`;
+        return;
+      }
+      el.innerHTML=(known
+        ? `<button class="wiz-chip rec" data-a="ok">${esc([place,lo.timezone].filter(Boolean).join(' · '))}<em>detected</em></button>
+           <button class="wiz-chip" data-a="edit">Somewhere else…</button>`
+        : `<button class="wiz-chip rec" data-a="edit">Tell me where you are</button>
+           <em class="wiz-note">I could not read a location off this machine.</em>`);
+      const ok=el.querySelector('[data-a=ok]');
+      if(ok)ok.onclick=b=>wizPicked(el,ok);
       el.querySelector('[data-a=edit]').onclick=async()=>{
         const c=await osPrompt('Which country are you in?',{value:lo.country||'',placeholder:'IN, US, GB…',confirmText:'Set'});
         if(c===null)return;
@@ -175,7 +199,12 @@ function wizChips(step){
         draw();
       };
     };
-    fetch('/api/locale').then(r=>r.json()).then(d=>{WIZ.locale=d;draw()}).catch(()=>draw());
+    // undefined means "still asking"; null means the question was answered with
+    // nothing, and the two must not look the same to someone waiting on it
+    WIZ.locale=undefined;
+    fetch('/api/locale').then(r=>r.json())
+      .then(d=>{WIZ.locale=d||null;draw()})
+      .catch(()=>{WIZ.locale=null;draw()});
     draw();
     return el;
   }
@@ -244,3 +273,28 @@ async function factoryReset(){
   location.reload();
 }
 
+
+
+/* First-run offer to install a local model runtime. The command and licence are
+   shown before anything runs, and the step re-reads itself after so a freshly
+   installed runtime appears as a real choice rather than requiring a restart. */
+async function wizInstallOllama(){
+  const box=document.getElementById('wz-ollama');if(!box)return;
+  const btn=box.querySelector('button');
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  box.insertAdjacentHTML('beforeend','<span class="mut" id="wz-ollama-note">this downloads a few hundred MB…</span>');
+  try{
+    const r=await fetch('/api/components/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'ollama'})});
+    const d=await r.json();
+    const note=document.getElementById('wz-ollama-note');
+    if(d.ok){
+      if(note)note.textContent='installed — pull a model with: ollama pull llama3.2';
+      try{WIZ.info=await (await fetch('/api/setup')).json()}catch(e){}
+      wizRender();
+    }else if(note){
+      note.textContent=(d.message||'could not install')+(d.command?` — run: ${d.command}`:'');
+    }
+  }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
+  finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
+}

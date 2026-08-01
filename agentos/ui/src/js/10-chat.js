@@ -9,7 +9,8 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        <select id="modelsel" title="Model"></select>
+        <button id="modelchip" class="modelchip" title="Change this in Settings"
+          onclick="openModelSettings()">…</button>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
           <option value="balanced">Balanced</option>
@@ -46,11 +47,12 @@ function renderChat(body){
   const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
   tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
-  $('#modelsel').onchange=()=>{const v=$('#modelsel').value;
-    // 'hermes' is a per-turn engine choice, not a model — never persist it as the
-    // global default (background tasks call the provider with default_model)
-    if(v==='hermes'){toast('this chat now uses the Hermes engine');return}
-    fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_model:v})});};
+  /* The model/engine is chosen in Settings and nowhere else. A per-chat picker
+     meant the same machine answered as different agents depending on which
+     window you happened to be in, and background work (tasks, Telegram, the API)
+     could never see that choice at all — so "what is this machine running on"
+     had no single answer. The chip states it and opens the one place to change
+     it. Kept as a var so the old onchange path has nothing to bind to. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
   loadModels();loadConfig();loadConvs();
   if(currentConv)openConv(currentConv);else showWelcome();
@@ -146,7 +148,7 @@ function send(){
   // agent triages it at its next step boundary — folded into the live run, or kept
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
-  ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:$('#modelsel').value}));
+  ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
   input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
@@ -215,7 +217,7 @@ async function openConv(cid){
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{m.innerHTML='<div class="who">▲ '+esc(agentName())+'</div>';
+    else{m.innerHTML='<div class="who">'+msgWho(msg.meta)+'</div>';
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
           const argStr=s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args);
@@ -278,29 +280,39 @@ function showWelcome(){
   feed.appendChild(w);
 }
 async function loadModels(){
+  /* Nothing to choose here any more — this reports what Settings decided, so the
+     answer to "what is this running on" is the same in every window and for
+     background work too. */
   try{
-    const r=await fetch('/api/models');const d=await r.json();
-    const sel=$('#modelsel');if(!sel)return;
-    const prev=sel.value;
-    sel.innerHTML='';
-    // Engine choice: the built-in agent (Aria, model-backed) or Hermes as the backend
-    let hermesOn=false;
-    try{const h=await (await fetch('/api/hermes/status')).json();hermesOn=h.installed&&h.engine_enabled!==false}catch(e){}
-    if(d.models.length){
-      const g=document.createElement('optgroup');g.label='Aria (built-in agent) — model';
-      d.models.forEach(m=>{const o=document.createElement('option');o.value=m.id;
-        o.textContent=m.name+' · '+m.provider+(m.provider==='ollama'?' (local)':'');g.appendChild(o)});
-      sel.appendChild(g);
-    }else if(!hermesOn){sel.innerHTML='<option value="">no models — check Settings</option>';return}
-    if(hermesOn){
-      const g=document.createElement('optgroup');g.label='Other engine';
-      const o=document.createElement('option');o.value='hermes';o.textContent='🜁 Hermes agent';
-      g.appendChild(o);sel.appendChild(g);
-    }
-    // keep the prior choice if still present, else the config default, else first model
-    const has=v=>[...sel.options].some(o=>o.value===v);
-    sel.value=has(prev)?prev:(d.default&&has(d.default)?d.default:(d.models[0]?d.models[0].id:'hermes'));
+    const d=await (await fetch('/api/models')).json();
+    MODELS_STATE=d;
+    paintModelChip();
   }catch(e){}
+}
+var MODELS_STATE={};
+function paintModelChip(){
+  const chip=$('#modelchip');if(!chip)return;
+  const d=MODELS_STATE||{};
+  const engine=(cfg&&cfg.engine)||d.engine||'aria';
+  if(engine&&engine!=='aria'){
+    const e=(d.engines||[]).find(x=>x.id===engine)||{};
+    chip.innerHTML=`${{'claude-code':'◈','hermes':'🜁'}[engine]||'⇥'} ${esc(e.name||engine)}`;
+    chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
+    chip.classList.add('engine');
+    return;
+  }
+  const id=(cfg&&cfg.default_model)||d.default||'';
+  const m=(d.models||[]).find(x=>x.id===id);
+  chip.textContent=m?(m.name+(m.provider==='ollama'?' · local':'')):(id||'no model');
+  chip.title=(id||'no model set')+'\nChange it in Settings → AI providers';
+  chip.classList.remove('engine');
+}
+/* One place to change it, and the chip goes there rather than describing where. */
+function openModelSettings(){
+  const engine=(cfg&&cfg.engine)||'aria';
+  SETTAB=engine!=='aria'?'executors':'ai';
+  try{localStorage.setItem('settab',SETTAB)}catch(e){}
+  openApp('settings');
 }
 async function loadConfig(){
   const r=await fetch('/api/config');cfg=await r.json();
@@ -308,5 +320,48 @@ async function loadConfig(){
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
   if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
+  paintForwardChip();
+  paintModelChip();
+}
+/* A machine set to forward is answering as somebody else. That is a big enough
+   change of behaviour that it belongs in the chrome, not buried in Settings —
+   otherwise a reply that isn't from your own agent looks like your own agent. */
+function paintForwardChip(){
+  const chip=$('#fwdchip');if(!chip)return;
+  const engine=(cfg&&cfg.engine)||'aria';
+  const on=engine!=='aria';
+  chip.hidden=!on;
+  if(!on)return;
+  const name=engine==='claude-code'?'Claude Code':(engine==='hermes'?'Hermes':engine);
+  // The model rides on the chip too, so "what is this running on" is answered by
+  // looking up rather than by asking. It is filled in the first time a forwarded
+  // turn reports it — before that the engine name alone is all we honestly know.
+  const model=(FWD_MODEL[engine]||'').replace(/^claude-/,'');
+  chip.innerHTML='⇥ '+esc(name)+(model?'<span class="fwdmdl">'+esc(model)+'</span>':'');
+  chip.title='This machine is forwarding every request to '+name
+    +(model?' · running on '+FWD_MODEL[engine]:'')
+    +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+    +'. Click to change it.';
 }
 
+
+/* ---- who actually answered -------------------------------------------------
+   A reply is labelled with the agent that produced it, not with the built-in
+   one by default. When the machine forwards, Claude Code or Hermes writes the
+   text — calling that "Aria" is the kind of quiet mislabelling that makes a
+   forwarding machine confusing, and the model is shown alongside so the answer
+   to "what is this running on" is on screen rather than something you ask. */
+function engineLabel(engine,model){
+  const mark={'claude-code':'◈','hermes':'🜁'}[engine]||'▲';
+  const name={'claude-code':'Claude Code','hermes':'Hermes'}[engine]||agentName();
+  const m=(model||'').trim();
+  return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
+}
+/* The label for a stored message: its own recorded engine/model, falling back to
+   the executor step for turns saved before that was recorded. */
+function msgWho(meta){
+  const engine=(meta&&meta.engine)
+    ||((meta&&meta.steps||[]).find(s=>s&&s.type==='executor')||{}).name||'';
+  const model=(meta&&(meta.engine_model||meta.model))||'';
+  return engineLabel(engine,model);
+}

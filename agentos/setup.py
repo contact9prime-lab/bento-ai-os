@@ -61,6 +61,14 @@ def factory_reset(cfg: dict, store) -> None:
     """Back to day one: wipe all data, reset config to defaults, delete the soul.
     The next load shows the wizard (setup_complete=false is written explicitly)."""
     store.factory_reset()
+    # The tables are only half of it: every generated image, clip and upload lives
+    # as a file under ~/.agentos/assets. Leaving those behind would make "start
+    # fresh" a lie about the most personal data on the machine.
+    try:
+        from . import assets as assetmod
+        assetmod.purge_all()
+    except Exception:
+        pass
     cfgmod.SOUL_PATH.unlink(missing_ok=True)
     # rebuild defaults in place so every live reference (toolbox, scheduler, …) sees them
     import copy
@@ -84,6 +92,39 @@ def _ask(prompt: str, default: str = "") -> str:
     return val or default
 
 
+def _offer_local_runtime() -> bool:
+    """Offer to install a local model runtime during first-run setup.
+
+    Returns True if something was installed. Nothing happens without a yes, and
+    the exact command is printed first — the same contract components.py keeps
+    everywhere else.
+    """
+    from . import components
+
+    entry = next((c for c in components.catalog() if c["id"] == "ollama"), None)
+    if not entry or entry["installed"]:
+        return False
+    print("\n  No local model runtime found on this machine.")
+    print("  Without one, AgentOS needs a cloud API key to think at all.")
+    print(f"  {entry['title']} — {entry['unlocks']}")
+    if not entry["available"]:
+        print(f"  Cannot install it here: {entry['reason']}")
+        return False
+    print(f"  It would run:  {entry['command']}")
+    if not _ask("  Install it now? (y/n)", "y").lower().startswith("y"):
+        print("  (skipped — you can add it later in Settings → Components)")
+        return False
+    print("  installing… (this downloads a few hundred MB)")
+    res = asyncio.run(components.install("ollama"))
+    ok = bool(res.get("ok"))
+    print(f"  {'✓' if ok else '×'} {res.get('message', '')}")
+    if res.get("needs_terminal") and res.get("command"):
+        print(f"  Run this yourself, then re-run setup:  {res['command']}")
+    if ok:
+        print("  Pull a model when you are ready:  ollama pull llama3.2")
+    return bool(ok)
+
+
 def run_cli_wizard() -> None:
     from . import localeinfo
     from . import providers
@@ -94,6 +135,15 @@ def run_cli_wizard() -> None:
 
     local = asyncio.run(providers.ollama_models(cfg["providers"]["ollama"]["base_url"]))
     model, prov_choices = "", {}
+
+    # No local runtime at all used to fall straight through to "give me a cloud API
+    # key", which is a poor first run for someone installing a private, self-hosted
+    # OS — and it never said that running models locally was even an option.
+    if not local:
+        offer = _offer_local_runtime()
+        if offer:
+            local = asyncio.run(providers.ollama_models(
+                cfg["providers"]["ollama"]["base_url"]))
     if local:
         print("\n  2/5  Pick your agent's brain (local Ollama models found):")
         for i, m in enumerate(local, 1):

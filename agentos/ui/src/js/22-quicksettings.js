@@ -15,7 +15,11 @@ async function installComponent(id){
   let comp=null;
   try{const d=await (await fetch('/api/components')).json();comp=(d.components||[]).find(c=>c.id===id)}catch(e){}
   if(!comp)return toast('unknown component: '+id);
-  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}`,{confirmText:'Install'}))return;
+  if(!comp.available)return osAlert(`${comp.title} is not available here`,comp.reason||'This machine has no way to install it.');
+  /* `manager` is the package manager resolved for THIS distro, not the word
+     "apt" printed at everyone. Showing the real command is the whole point of
+     the consent dialog — it is what will run. */
+  if(!await osConfirm(`Install ${comp.title}?`,`Package: ${comp.package} (${comp.manager||comp.method}) · Licence: ${comp.licence}. ${comp.unlocks}\n\n${comp.command}`,{confirmText:'Install'}))return;
   toast('installing '+comp.title+'…');
   const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   const d=await r.json();

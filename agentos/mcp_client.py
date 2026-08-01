@@ -9,6 +9,7 @@ Tools are exposed to the agent as `mcp_<server>_<tool>`.
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -227,7 +228,44 @@ class MCPManager:
                 return t["_mcp"]
         return None
 
-    async def call(self, server: str, tool: str, args: dict) -> str:
+    @staticmethod
+    def _payload(block) -> tuple[str, str]:
+        """(base64 data, mime) out of an MCP content block, or ('', '').
+
+        Handles the three shapes servers actually send: ImageContent/AudioContent
+        (`.data` + `.mimeType`), EmbeddedResource (`.resource.blob`), and a bare
+        BlobResourceContents. Text resources are left to the text path.
+        """
+        data = getattr(block, "data", None)
+        if isinstance(data, str) and data:
+            return data, getattr(block, "mimeType", "") or ""
+        resource = getattr(block, "resource", None)
+        if resource is not None:
+            blob = getattr(resource, "blob", None)
+            if isinstance(blob, str) and blob:
+                return blob, getattr(resource, "mimeType", "") or ""
+        return "", ""
+
+    async def call(self, server: str, tool: str, args: dict,
+                   context: dict | None = None) -> str:
+        """Call an MCP tool and keep everything it returns.
+
+        This used to throw away every non-text block, rendering an image, a video
+        or a voice clip as the literal string "[image]" — which made every media
+        MCP (Higgsfield, Canva, ElevenLabs, anything that draws or speaks)
+        useless: the agent would report success and hold nothing.
+
+        Non-text blocks are now written into the asset store and reported in a
+        JSON envelope:
+
+            {"text": "...", "__media__": [{"asset_id", "kind", "mime", "title"}],
+             "__image__": "<path>"}
+
+        `__image__` is the shape agent.py has always understood for vision, and it
+        is populated only for images, because no provider path accepts video or
+        audio bytes — those travel as asset ids the agent can act on, which is
+        true, rather than as an attachment that would silently not arrive.
+        """
         srv = self.servers.get(server)
         if not srv or srv.status != "connected" or not srv.session:
             return f"[error] MCP server '{server}' is not connected"
@@ -237,16 +275,59 @@ class MCPManager:
             return f"[error] MCP call {server}/{tool} timed out after {CALL_TIMEOUT}s"
         except Exception as e:
             return f"[error] MCP call failed: {type(e).__name__}: {e}"
-        parts = []
+
+        ctx = context or {}
+        parts: list[str] = []
+        media: list[dict] = []
+        first_image_path = ""
         for c in res.content or []:
-            if getattr(c, "type", "") == "text":
+            ctype = getattr(c, "type", "")
+            if ctype == "text":
                 parts.append(c.text)
-            else:
-                parts.append(f"[{getattr(c, 'type', 'content')}]")
-        text = "\n".join(parts) or "(no content)"
+                continue
+            b64, mime = self._payload(c)
+            if not b64:
+                # a block with no payload at all — say what it was rather than
+                # implying content arrived
+                parts.append(f"[{ctype or 'content'} with no data]")
+                continue
+            if not self.store:
+                parts.append(f"[{ctype or 'content'}: {mime or 'unknown type'}, "
+                             f"not stored — no asset store on this instance]")
+                continue
+            try:
+                from . import assets as assetmod
+                row = await assetmod.put_base64(
+                    self.store, b64, mime=mime,
+                    name=f"{tool}{assetmod.ext_for(mime)}",
+                    title=f"{tool} · {server}",
+                    prompt=str(args.get("prompt") or "")[:1000],
+                    source=f"mcp:{server}/{tool}",
+                    conversation_id=str(ctx.get("conversation_id") or ""),
+                    run_id=str(ctx.get("run_id") or ""),
+                    space_id=str(ctx.get("space_id") or ""))
+            except Exception as e:  # storing must never lose the whole tool result
+                parts.append(f"[{ctype or 'content'} received but could not be stored: {e}]")
+                continue
+            if not row:
+                parts.append(f"[{ctype or 'content'} received but was empty or too large to store]")
+                continue
+            media.append({"asset_id": row["id"], "kind": row["kind"], "mime": row["mime"],
+                          "title": row.get("title", ""), "bytes": row.get("bytes", 0)})
+            if row["kind"] == "image" and not first_image_path:
+                first_image_path = row.get("path") or ""
+            parts.append(f"[{row['kind']} saved as asset {row['id']}"
+                         f"{' · ' + row['mime'] if row.get('mime') else ''}]")
+
+        text = "\n".join(p for p in parts if p) or "(no content)"
         if getattr(res, "isError", False):
             return f"[error] {text}"
-        return text
+        if not media:
+            return text
+        envelope = {"text": text, "__media__": media}
+        if first_image_path:
+            envelope["__image__"] = first_image_path
+        return json.dumps(envelope)
 
     def status(self) -> list[dict]:
         out = []

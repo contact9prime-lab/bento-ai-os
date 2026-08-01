@@ -159,3 +159,17 @@
 #send:disabled{opacity:.35;cursor:default}
 #send.stop{background:var(--err);color:#fff;font-size:var(--fs-sm)}
 
+
+/* The model that produced a reply, next to who produced it — so "what is this
+   running on" is answered by looking, not by asking. */
+.msg .who .whomdl{margin-left:7px;padding-left:7px;border-left:1px solid var(--hairline);
+  color:var(--dim2);font-weight:500;letter-spacing:.01em}
+
+/* What this machine answers with. A read-out, not a control — the choice lives
+   in Settings so one machine has one answer, including for background work. */
+.modelchip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:600;color:var(--dim);background:transparent;
+  border:1px solid var(--line);cursor:pointer;max-width:230px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.modelchip:hover{color:var(--txt);border-color:var(--acc)}
+.modelchip.engine{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
