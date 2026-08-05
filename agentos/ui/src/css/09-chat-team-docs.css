@@ -98,6 +98,11 @@
 .tool .tstat.run{color:var(--acc2);animation:pulse 1.2s infinite}
 .tool .tstat.ok{color:var(--ok)}
 .tool .tstat.fail{color:var(--err)}
+/* content this machine did not write: marked where it enters the conversation */
+.tool.untrusted{border-color:color-mix(in srgb,var(--warn,#e0a030) 55%,var(--line))}
+.tool .tuntrust{font-size:var(--fs-xs);padding:2px 8px;border-radius:var(--r-xl);
+  background:color-mix(in srgb,var(--warn,#e0a030) 18%,transparent);
+  color:var(--warn,#e0a030);white-space:nowrap;cursor:help}
 .tool .out{display:none;border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:var(--fs-sm);white-space:pre-wrap;max-height:280px;overflow-y:auto;color:var(--dim);background:var(--bg)}
 .tool.open .out{display:block}
 @keyframes pulse{50%{opacity:.4}}

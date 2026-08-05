@@ -155,6 +155,39 @@ SURFACES = ("gui", "tui", "telegram", "api", "task")
 POSTURES = ("inherit", "read_only", "ask", "full")
 
 
+# Where the content in this turn came from. The grants system answers "who is
+# asking"; this answers "on whose say-so" — and they are different questions.
+# A web page, an MCP server's reply or a document the agent was handed can all
+# contain text shaped like an instruction, and the model has no reliable way to
+# tell that apart from the user's own words. So the rule is not "detect the
+# attack" (undecidable) but "a risky action whose turn has swallowed untrusted
+# content is not something a machine gets to decide alone".
+#
+#   off    — no escalation (the old behaviour; explicit, not accidental)
+#   ask    — a risky action after untrusted content asks, even at full autonomy
+#   strict — it is refused outright
+TAINT_MODES = ("off", "ask", "strict")
+
+
+def taint_mode(cfg: dict) -> str:
+    m = str(((cfg.get("security") or {}).get("taint")) or "ask")
+    return m if m in TAINT_MODES else "ask"
+
+
+def taint_summary(taint) -> str:
+    """One readable phrase naming where the untrusted content came from."""
+    srcs, seen = [], set()
+    for t in taint or []:
+        s = (t.get("source") if isinstance(t, dict) else str(t)) or "?"
+        if s not in seen:
+            seen.add(s)
+            srcs.append(s)
+    if not srcs:
+        return "content from outside this machine"
+    head = ", ".join(srcs[:3])
+    return head + (f" (+{len(srcs) - 3} more)" if len(srcs) > 3 else "")
+
+
 def channel_posture(cfg: dict, surface: str) -> str:
     """The posture configured for the gate a call arrived on ('inherit' if none)."""
     if not surface:
@@ -264,6 +297,29 @@ class PDP:
                             f"the {surface} channel is set to read-only, so it may look "
                             f"but not change anything (Settings → Channels)",
                             rule="channel-read-only")
+        # 2c. the taint ceiling. Like the channel ceiling above it, this is checked
+        # BEFORE grants, and for the same reason: "allow fetch_url everywhere" is
+        # consent for the agent to fetch pages, not consent for a fetched page to
+        # spend the grant on something else. A safe action is never escalated —
+        # reading stays free, and only the steps that change something outside the
+        # conversation are held back for a human.
+        taint = ctx.get("taint") or []
+        mode = taint_mode(self.cfg)
+        if taint and risk != "safe" and mode != "off":
+            where = taint_summary(taint)
+            if mode == "strict":
+                return Decision("deny",
+                                f"this turn has read untrusted content ({where}) and "
+                                f"security.taint is set to strict, so it may not take "
+                                f"actions that change anything",
+                                rule="taint")
+            return Decision("ask",
+                            f"{ctx.get('reason') or 'This changes something.'} This turn has "
+                            f"also read untrusted content ({where}) — content from outside "
+                            f"this machine can be written to look like an instruction, so "
+                            f"this step is being shown to you rather than assumed.",
+                            rule="taint")   # deliberately no grant_offer: "remember this"
+                                            # would hand the next web page the same key
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource)
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
@@ -289,17 +345,23 @@ class PDP:
     def decide_tool(self, principal: Principal, name: str, args: dict,
                     risk_level: str, reason: str = "", autonomy: str = "",
                     surface: str = "", space_id: str = "",
-                    conversation_id: str = "", run_id: str = "") -> Decision:
+                    conversation_id: str = "", run_id: str = "",
+                    taint: list | None = None, audit: bool = True) -> Decision:
         """The main entry for tool calls: maps the call to (action, resource) and decides.
         `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task);
         the space/conversation/run are carried so the ledger entry says WHERE it happened,
-        not just what was asked for."""
+        not just what was asked for. `taint` is what untrusted content this turn has
+        already read (see the taint ceiling in `_decide`)."""
         action, resource = action_of(name, args, mcp=self.mcp)
         return self.decide(principal, action, resource,
                            {"risk": risk_level, "reason": reason, "autonomy": autonomy,
                             "tool": name, "args": args, "surface": surface,
                             "space_id": space_id, "conversation_id": conversation_id,
-                            "run_id": run_id})
+                            "run_id": run_id, "taint": taint or [],
+                            # audit=False marks a "could this principal?" probe —
+                            # filtering a tool list is one question, not ninety
+                            # accesses, and the ledger is for what was done
+                            "audit": audit})
 
     def _default(self, principal: Principal, action: str, resource: str, ctx: dict) -> Decision:
         risk = ctx.get("risk", "safe")

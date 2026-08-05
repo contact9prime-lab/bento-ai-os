@@ -1,6 +1,10 @@
 
 <div id="menubar">
-  <div id="mb-brand"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+  <!-- The brand mark is the OS's front door: clicking it opens the omnibar, the
+       same thing Ctrl+Space does. Every desktop has a corner you can hit to start
+       something, and this was a dead label. -->
+  <div id="mb-brand" role="button" tabindex="0" title="Search and run anything (Ctrl+Space)"
+       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>

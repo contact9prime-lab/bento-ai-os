@@ -136,9 +136,13 @@ class TelegramBridge:
             pass
         try:
             cid = self._conversation(chat)
-            history = [{"role": m["role"], "content": m["content"]}
-                       for m in self.store.get_messages(cid)
-                       if m["role"] in ("user", "assistant") and (m["content"] or "").strip()][-30:]
+            # The same rebuild as the desktop: a thread answered from the phone
+            # must see what the thread saw at the desk, tool traces included. A
+            # bespoke last-30 window here is how one conversation ends up with
+            # two different memories of itself.
+            from . import history as _history
+            history, _hinfo = await _history.build(
+                self.store, cid, self.cfg, self.cfg.get("default_model", ""))
             self.store.add_message(cid, "user", text)
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             history.append({"role": "user", "content":
@@ -197,6 +201,9 @@ class TelegramBridge:
                     reply = result["content"] or "(done — no text output)"
             self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
             self.store.touch_conversation(cid)
+            from . import usage as _usage
+            _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
+                          surface="telegram", conversation_id=cid)
             await self.send(reply, chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge

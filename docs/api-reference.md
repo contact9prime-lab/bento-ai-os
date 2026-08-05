@@ -96,7 +96,10 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 |---|---|---|
 | GET/POST | `/api/tasks`, PUT/DELETE `/{id}` | scheduled jobs |
 | GET/DELETE | `/api/logs` | activity logs |
-| GET | `/api/analytics/tokens` | token usage totals, by model and by day |
+| GET | `/api/analytics/tokens` | token totals from turn logs, by model and by day (last 1000 turns) |
+| GET | `/api/usage` | the cost ledger: `?days=&group=model\|day\|surface\|kind\|conversation\|space` → tokens **and** money, with unpriced turns reported separately |
+| GET | `/api/evals` | behavioural eval cases + the last run |
+| POST | `/api/evals/run` | run the evals: `{ models?, cases?, tags?, network? }` → report (one run at a time) |
 
 ### Models & appearance
 | Method | Path | Purpose |

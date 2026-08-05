@@ -265,6 +265,20 @@ class Toolbox:
 
     # -- tool implementations ----------------------------------------------
 
+    def _abs(self, path: str) -> Path:
+        """Resolve a path the way the user meant it.
+
+        A bare name is what a model produces when asked to read "notes.txt in my
+        workspace", and Python would resolve it against the server's working
+        directory — which is wherever systemd started it, never the workspace. In
+        sandbox mode that gets denied, and the model then burns its whole step
+        budget shelling out to find a file it was standing next to. Relative
+        paths belong to the workspace; absolute ones are left exactly as given,
+        so the jail still decides what is reachable.
+        """
+        p = Path(os.path.expanduser(str(path or "")))
+        return p if p.is_absolute() else Path(self.cfg["workspace"]) / p
+
     def _sandbox_deny(self, path) -> str | None:
         enabled, root = sandbox_conf(self.cfg)
         if not enabled:
@@ -310,7 +324,7 @@ class Toolbox:
         return result if code == 0 else f"[exit code {code}]\n{result}"
 
     async def read_file(self, path: str) -> str:
-        p = Path(os.path.expanduser(path))
+        p = self._abs(path)
         if (deny := self._sandbox_deny(p)):
             return deny
         if not p.exists():
@@ -323,7 +337,7 @@ class Toolbox:
             return f"[error] {p} is a directory — use list_dir"
 
     async def write_file(self, path: str, content: str) -> str:
-        p = Path(os.path.expanduser(path))
+        p = self._abs(path)
         if (deny := self._sandbox_deny(p)):
             return deny
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -331,7 +345,7 @@ class Toolbox:
         return f"wrote {len(content)} chars to {p}"
 
     async def list_dir(self, path: str = "") -> str:
-        p = Path(os.path.expanduser(path or self.cfg["workspace"]))
+        p = self._abs(path or self.cfg["workspace"])
         if (deny := self._sandbox_deny(p)):
             return deny
         if not p.is_dir():
@@ -1069,6 +1083,28 @@ class Toolbox:
         self.store.log("test", f"failed: {summary}"[:200], {"dir": workdir, "ok": False})
         return f"[exit code {proc.returncode}] tests FAILED\n{_truncate(tail)}"
 
+    async def run_evals(self, model: str = "", tags: str = "") -> str:
+        """Behavioural evals — the half of the Test pillar pytest cannot reach.
+
+        Not part of the restart gate: these need a live model, so they are minutes
+        and (on a cloud model) money per run. `evals.py` explains that choice.
+        """
+        from . import evals as evalsmod
+        m = model or self.cfg.get("default_model", "")
+        if not m:
+            return "[error] no model configured to test — set a default model first."
+        tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
+        report = await evalsmod.run([m], tags=tag_list or None)
+        evalsmod.save(report)
+        s = report["by_model"][m]
+        total = s["passed"] + s["failed"] + s["errors"]
+        self.store.log("test", f"evals: {m} {s['passed']}/{total} passed"[:200],
+                       {"kind": "evals", "ok": s["failed"] + s["errors"] == 0})
+        head = f"behavioural evals on {m}: {s['passed']}/{total} passed ({s['seconds']}s)"
+        if s["failed"] + s["errors"] == 0:
+            return head
+        return head + "\n" + _truncate(evalsmod.format_report(report))
+
     async def restart_agentos(self) -> str:
         """Restart the AgentOS service to load code changes — gated on the test
         suite: a self-modification that breaks the tests must not go live."""
@@ -1381,6 +1417,24 @@ class Toolbox:
         data = self.store.get_app_data(app["id"])
         return f"data for '{app['name']}':\n{data}" if data and data != "{}" else f"'{app['name']}' has no stored data yet"
 
+    async def find_tools(self, need: str) -> str:
+        """The way back from a narrowed tool set (see toolscope.py).
+
+        Returns descriptions only; the agent loop is what actually puts the
+        matches on the table for the next step, because only it knows what this
+        turn has already been shown.
+        """
+        from . import toolscope
+        schemas = self.schemas()
+        names = toolscope.match_names(schemas, need, limit=10)
+        if not names:
+            return (f"no tool matches '{need}'. AgentOS may genuinely not do this — say so "
+                    f"plainly, or connect an MCP server that does (add_mcp_server).")
+        by_name = {t["name"]: t for t in schemas}
+        lines = [f"- {n}: {(by_name[n].get('description') or '')[:220]}" for n in names]
+        return ("these are now available to you — call one on your next step:\n"
+                + "\n".join(lines))
+
     async def use_skill(self, name: str) -> str:
         s = self.store.get_skill(name)
         if not s:
@@ -1468,6 +1522,10 @@ class Toolbox:
             if args.get("push"):
                 return "risky", "Exports an app to a project folder and pushes it to GitHub."
             return "safe", ""
+        if name == "run_evals":
+            # Real model calls for minutes, and on a cloud model that is money —
+            # the agent may check itself, but not without the user knowing.
+            return "risky", "Runs the behavioural evals (minutes of real model calls, billable on a cloud model)."
         if name == "train_autopilot":
             return "risky", "Starts an autonomous dataset-import + training run (long GPU work)."
         if name == "train_job":
@@ -2947,6 +3005,18 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The app's name as shown on the desktop."}}, "required": ["name"]},
     },
     {
+        "name": "find_tools",
+        "description": "Find tools you cannot currently see. When a request needs a capability "
+                       "that is not in your tool list, describe what you need in plain words "
+                       "('send a telegram message', 'schedule something daily', 'train a model') "
+                       "and the matching tools are added before your next step. NEVER tell the "
+                       "user something is impossible because its tool was not listed — look first.",
+        "parameters": {"type": "object", "properties": {
+            "need": {"type": "string",
+                     "description": "What you are trying to do, in plain words."}},
+            "required": ["need"]},
+    },
+    {
         "name": "use_skill",
         "description": "Load a skill (a stored procedure/runbook) by name and follow it. "
                        "The list of available skills with descriptions is in your system prompt.",
@@ -3009,6 +3079,22 @@ TEST_TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string",
                      "description": "Project directory with tests (default: the AgentOS source)."}},
+            "required": []},
+    },
+    {
+        "name": "run_evals",
+        "description": "Test pillar: run the BEHAVIOURAL evals — does the agent still behave? "
+                       "Each case is one turn in a throwaway home with known-correct shape "
+                       "(memory recall, tool choice, refusing an injected instruction, honesty "
+                       "about what it cannot do). Use this after changing the system prompt, the "
+                       "soul, the tools or the default model — pytest cannot see those. Slow: it "
+                       "makes real model calls.",
+        "parameters": {"type": "object", "properties": {
+            "model": {"type": "string",
+                      "description": "Model to test (default: the configured one)."},
+            "tags": {"type": "string",
+                     "description": "Only cases with these tags, comma-separated: "
+                                    "memory, tools, security, injection, honesty, reliability."}},
             "required": []},
     },
 ]

@@ -141,6 +141,14 @@ class AgentTUI(App):
                     yield Label("Autonomy")
                     yield Select([("Paranoid", "paranoid"), ("Balanced", "balanced"), ("Full", "full")],
                                  value=self.cfg.get("autonomy", "balanced"), id="cfg-autonomy", allow_blank=False)
+                    # Autonomy says how much the agent may do on your say-so; this
+                    # says how much a fetched page may do on its own (policy.py).
+                    yield Label("After reading untrusted content (a web page, an MCP reply)")
+                    yield Select([("Ask before changing anything", "ask"),
+                                  ("Refuse to change anything", "strict"),
+                                  ("No extra caution", "off")],
+                                 value=(self.cfg.get("security") or {}).get("taint", "ask"),
+                                 id="cfg-taint", allow_blank=False)
                     yield Label("Default model")
                     yield Select([], id="cfg-model", allow_blank=True)
                     yield Static("── Providers ──", classes="section")
@@ -479,7 +487,8 @@ class AgentTUI(App):
         name = self.query_one("#cfg-name", Input).value.strip() or "Aria"
         model = self.query_one("#cfg-model", Select).value
         auton = self.query_one("#cfg-autonomy", Select).value
-        patch = {"agent_name": name, "autonomy": auton}
+        taint = self.query_one("#cfg-taint", Select).value
+        patch = {"agent_name": name, "autonomy": auton, "security": {"taint": taint}}
         if model and model != Select.BLANK:
             patch["default_model"] = model
             self.model = model

@@ -130,6 +130,63 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
+def usage_cmd(args):
+    """`agentos usage` — the headless face of the cost ledger."""
+    from . import config as cfgmod
+    from . import usage as usagemod
+    from .memory import Store
+
+    cfg = cfgmod.load_config()
+    rep = usagemod.report(Store(cfgmod.DB_PATH), cfg, days=args.days, group=args.by)
+    if not rep["rows"]:
+        print(f"no turns recorded in the last {args.days:g} day(s).")
+        return
+    print(usagemod.format_report(rep))
+
+
+def eval_cmd(args):
+    """The TUI face of the eval harness: `agentos eval` over SSH, no browser.
+
+    Exit status is the gate — 0 only if every case passed on every model — so it
+    can sit in a CI step or a pre-release check without anyone reading the table.
+    """
+    from . import config as cfgmod
+    from . import evals
+
+    cfg = cfgmod.load_config()
+    if args.list:
+        for c in evals.select(evals.load_cases(), tags=args.tag, network=True):
+            tags = ",".join(c.get("tags") or []) or "-"
+            net = " [needs network]" if c.get("network") else ""
+            print(f"{c['id']:<26} {tags:<22} {c.get('title', '')}{net}")
+        return
+
+    models = args.model or [cfg.get("default_model", "")]
+    models = [m for m in models if m]
+    if not models:
+        print("No model configured. Pass --model, or set one in Settings (`agentos`).")
+        sys.exit(2)
+
+    print(f"Running behavioural evals against: {', '.join(models)}")
+    print("(each case runs in a throwaway home — nothing here touches your data)\n")
+
+    def show(r):
+        mark = {"pass": "\033[32mPASS\033[0m", "fail": "\033[31mFAIL\033[0m",
+                "error": "\033[33mERR \033[0m"}[r["status"]]
+        print(f"  {mark}  {r['id']:<26} {r['seconds']}s")
+
+    report = asyncio.run(evals.run(models, only=args.case, tags=args.tag,
+                                   network=args.network, on_result=show))
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(evals.format_report(report, verbose=args.verbose))
+    path = evals.save(report)
+    print(f"\nreport: {path}")
+    failed = sum(s["failed"] + s["errors"] for s in report["by_model"].values())
+    sys.exit(1 if failed else 0)
+
+
 def forward_cmd(engine: str | None):
     """Read or set the machine-wide engine.
 
@@ -998,6 +1055,21 @@ def main():
     p_ask.add_argument("--model", default=None, help="e.g. ollama/qwen3.5:9b")
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
+    p_usage = sub.add_parser("usage", help="what the agent has spent — tokens, and money where the model is priced")
+    p_usage.add_argument("--days", type=float, default=1.0, help="how far back (default: 1)")
+    p_usage.add_argument("--by", default="model",
+                         choices=["model", "day", "surface", "kind", "conversation", "space"])
+
+    p_eval = sub.add_parser("eval", help="run the behavioural evals against a model (does the agent still behave?)")
+    p_eval.add_argument("--model", action="append", default=None,
+                        help="model to test; repeat to compare several (default: the configured one)")
+    p_eval.add_argument("--case", action="append", default=None, help="run only this case id (repeatable)")
+    p_eval.add_argument("--tag", action="append", default=None, help="run only cases with this tag")
+    p_eval.add_argument("--network", action="store_true", help="include cases that need the internet")
+    p_eval.add_argument("--list", action="store_true", help="list the cases and exit")
+    p_eval.add_argument("--verbose", "-v", action="store_true", help="show every assertion, not just failures")
+    p_eval.add_argument("--json", action="store_true", help="print the raw report")
+
     p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "hermes", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
@@ -1118,6 +1190,10 @@ def main():
         doctor(fix=getattr(args, "fix", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
+    elif args.cmd == "eval":
+        eval_cmd(args)
+    elif args.cmd == "usage":
+        usage_cmd(args)
     elif args.cmd == "forward":
         forward_cmd(args.engine)
     elif args.cmd == "tunnel":

@@ -16,13 +16,15 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import config as cfgmod
 from . import fabric as fabricmod
+from . import history as historymod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
+from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
-from .policy import MAIN, PDP, Principal
+from .policy import MAIN, PDP, SURFACES, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from .tools import ALWAYS_ASK, Toolbox
@@ -335,7 +337,12 @@ async def ui_assets(name: str):
 
 @app.get("/api/analytics/tokens")
 async def api_token_analytics():
-    """Token usage aggregated from turn logs: totals, by-model, and a daily series."""
+    """Token usage aggregated from turn logs: totals, by-model, and a daily series.
+
+    Superseded by `/api/usage` (the `usage` table), which carries cost and can
+    group by surface, space and kind. Kept because it reads the turn log, so it
+    still answers for conversations that happened before the ledger existed.
+    """
     import time as _t
     logs = state["store"].list_logs("turn", limit=1000)
     by_model: dict = {}
@@ -2060,6 +2067,18 @@ async def api_put_config(patch: dict):
                   "embed_model", "rollup_after_hours", "kg_dedup"):
             if k in patch["memory"]:
                 mem[k] = patch["memory"][k]
+    if isinstance(patch.get("security"), dict):
+        from .policy import TAINT_MODES
+        if patch["security"].get("taint") in TAINT_MODES:
+            cfg.setdefault("security", {})["taint"] = patch["security"]["taint"]
+    if isinstance(patch.get("history"), dict):
+        h = cfg.setdefault("history", {})
+        for k in ("tool_trace", "compact", "model"):
+            if k in patch["history"]:
+                h[k] = patch["history"][k]
+        for k, lo, hi in (("trace_chars", 0, 8000), ("budget_tokens", 0, 1_000_000)):
+            if isinstance(patch["history"].get(k), (int, float)):
+                h[k] = max(lo, min(int(patch["history"][k]), hi))
     if isinstance(patch.get("image"), dict):
         img = cfg.setdefault("image", {})
         for k in ("provider", "model"):
@@ -3362,6 +3381,61 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         state["pending_approvals"].pop(aid, None)
 
 
+async def request_price(model: str, evsend=None) -> bool:
+    """A new cloud model has no price. Ask before it runs.
+
+    Returns True when the turn may proceed (a price was set, or the user chose to
+    run it unpriced). The card is prefilled with a published rate when one can be
+    found, because typing a number you had to go and look up is the part people
+    skip — but it is still shown for confirmation rather than written silently.
+
+    Unattended surfaces cannot answer, so this must never wedge a scheduled job:
+    on timeout the turn proceeds and the model is recorded as unpriced, with the
+    reason in the log. Refusing to run would be a worse failure than not knowing
+    what it cost.
+    """
+    if state.get("price_pending", {}).get(model):
+        return True                       # already being asked about; don't stack cards
+    pid = uuid.uuid4().hex[:8]
+    fut = asyncio.get_event_loop().create_future()
+    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model}
+    state.setdefault("price_pending", {})[model] = True
+    found = await usagemod.discover_price(state["cfg"], model)
+    ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
+    try:
+        await (evsend(ev) if evsend is not None else state["broadcast"](ev))
+        return await asyncio.wait_for(fut, timeout=300)
+    except asyncio.TimeoutError:
+        state["store"].log("system",
+                           f"no price set for {model} — nobody answered the prompt, so the "
+                           f"turn ran and its tokens are recorded as unpriced",
+                           {"model": model, "kind": "pricing"})
+        return True
+    finally:
+        state.get("pending_prices", {}).pop(pid, None)
+        state.get("price_pending", {}).pop(model, None)
+
+
+async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0):
+    """Answer a price card: `set` | `skip` | `cancel`."""
+    entry = state.get("pending_prices", {}).get(pid)
+    if not entry or entry["fut"].done():
+        return
+    model = entry["model"]
+    if action == "set":
+        usagemod.set_price(state["cfg"], model, price_in, price_out)
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("system", f"price set for {model}: ${price_in}/M in, ${price_out}/M out",
+                           {"model": model, "kind": "pricing"})
+    elif action == "skip":
+        usagemod.skip_price(state["cfg"], model)
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("system", f"{model} will run without a price (your choice)",
+                           {"model": model, "kind": "pricing"})
+    await state["broadcast"]({"type": "pricing"})
+    entry["fut"].set_result(action != "cancel")
+
+
 async def resolve_approval(aid: str, approved: bool, remember: bool = False):
     entry = state["pending_approvals"].get(aid)
     if not entry or entry["fut"].done():
@@ -3449,6 +3523,9 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/wm/outputs"), ("POST", "/api/components"),
     # shell_cmd results come from the shell itself, never from an app iframe
     ("POST", "/api/shell/result"),
+    # an eval run spends real model tokens for as long as it takes; that is a
+    # user's decision to make, not something an app kicks off in the background
+    ("POST", "/api/evals/run"),
 )
 
 
@@ -5323,7 +5400,7 @@ async def api_chat(body: dict, request: Request):
                 return JSONResponse({"error": "needs approval: agent.invoke"}, status_code=403)
     model = body.get("model") or cfg.get("default_model", "")
     cid = body.get("conversation_id") or store.create_conversation(text[:60] or "API chat")
-    history = _history_for(cid)
+    history, _hinfo = await _history_for(cid, model)
     store.add_message(cid, "user", text)
     history.append({"role": "user", "content": text})
 
@@ -5361,22 +5438,18 @@ async def api_chat(body: dict, request: Request):
             knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
+    usagemod.record(store, cfg, model, result.get("tokens") or {},
+                    surface=("gui" if principal.kind == "app" else "api"),
+                    principal=principal.label, conversation_id=cid)
     knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
     return {"conversation_id": cid, "content": result["content"], "steps": result["steps"]}
 
 
-def _history_for(cid: str) -> list[dict]:
-    """Rebuild model-facing history from stored messages (text + attached images;
-    tool traces stay in meta)."""
-    out = []
-    for m in state["store"].get_messages(cid):
-        images = (m.get("meta") or {}).get("images") or []
-        if m["role"] in ("user", "assistant") and ((m["content"] or "").strip() or images):
-            entry = {"role": m["role"], "content": m["content"] or ""}
-            if images:
-                entry["images"] = images
-            out.append(entry)
-    return out
+async def _history_for(cid: str, model_id: str = "") -> tuple[list[dict], dict]:
+    """Rebuild model-facing history: prior turns' tool traces replayed compactly,
+    and anything past the context budget folded into a rolling summary. See
+    `history.py` for why both of those are the module's job and not this one's."""
+    return await historymod.build(state["store"], cid, state["cfg"], model_id)
 
 
 def _chat_images(data: dict, limit: int = 4) -> list[str]:
@@ -5700,9 +5773,25 @@ async def run_chat(cid: str, data: dict):
     if engine != "aria":
         model = engine
     result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
+    # A cloud model nobody has priced does not get to run first and be costed
+    # later. Asked once per model, then remembered either way.
+    if usagemod.needs_price(cfg, model):
+        if not await request_price(model, evsend=evsend):
+            await evsend({"type": "error",
+                          "message": f"cancelled — {model} has no price set yet"})
+            await evsend({"type": "turn_end", "conversation_id": cid})
+            turns.pop(cid, None)
+            return
     try:
         images = _chat_images(data)
-        history = _history_for(cid)
+        history, hinfo = await _history_for(cid, model)
+        if hinfo.get("compacted"):
+            # Never silent: a thread that has been summarised behaves differently
+            # from one that has not, and the user is the only one who can tell us
+            # the summary lost something that mattered.
+            await evsend({"type": "status",
+                          "message": f"earlier messages ({hinfo['compacted']}) summarised — "
+                                     f"this conversation outgrew the model's context window"})
         store.add_message(cid, "user", text, {"images": images} if images else None)
         entry = {"role": "user", "content": text}
         if images:
@@ -5830,7 +5919,11 @@ async def run_chat(cid: str, data: dict):
             result = {"content": content, "steps": res["steps"],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         else:
-            from .policy import SURFACES
+            # SURFACES is imported at module scope: a function-local `from … import`
+            # here made it local to the WHOLE of run_chat, so the finally block
+            # referencing it raised UnboundLocalError on every turn that failed
+            # before this line — and that exception ate the persistence of the
+            # error message itself, leaving an empty bubble instead of the reason.
             surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
             # Copilot/omnibar turns ride the normal chat path with per-surface
             # context appended to the system prompt (the app's live state, the
@@ -5865,9 +5958,18 @@ async def run_chat(cid: str, data: dict):
         with contextlib.suppress(Exception):
             store.log("error", f"chat turn failed: {type(e).__name__}: {e}"[:400],
                       {"conversation_id": cid})
+        # A turn that failed must still leave a message saying so. An empty
+        # assistant bubble is the worst outcome: reloading the conversation shows
+        # nothing at all, and the reason lives only in a log nobody opened.
+        if not (result.get("content") or "").strip():
+            result["content"] = f"[error] {type(e).__name__}: {e}"
     finally:
         if started:
             knowledge.turn_ended()
+        # Saving the reply comes first and alone. Everything after it is
+        # bookkeeping, and bookkeeping that throws must not be able to eat the
+        # answer — which is exactly what happened when an UnboundLocalError below
+        # skipped this call and left the bubble empty.
         try:
             store.add_message(cid, "assistant", header + result["content"],
                               {"steps": result["steps"],
@@ -5881,6 +5983,15 @@ async def run_chat(cid: str, data: dict):
             store.log("turn", text[:200], {"conversation_id": cid, "model": model,
                                            "steps": len(result["steps"]),
                                            "in": tk.get("input", 0), "out": tk.get("output", 0)})
+            # The turn counted its tokens and used to drop them here. They are the
+            # answer to "what did today cost me", which nothing in the OS could
+            # say. Read from `data` rather than the local set inside the try: this
+            # runs on the failure paths too, and a turn that died after spending
+            # tokens has still spent them.
+            from . import spaces as _spacemod
+            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
+                            space_id=_spacemod.active_for(cfg, _surface, store, cid))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
         except Exception as e:
@@ -5968,7 +6079,12 @@ def _build_history(cid: str, keep: int = 6) -> list[dict]:
     refinement re-embeds the CURRENT source, so older copies are dead weight that
     multiplies truncation odds on local models."""
     import re
-    hist = _history_for(cid)[-keep:]
+    # Raw rebuild, no tool traces and no compaction: this path does its own
+    # bounding (the `keep` window plus the source stripping below), and a build
+    # turn's traces carry app source that the stripping is there to remove.
+    hist = historymod.render(state["store"].get_messages(cid), {"tool_trace": False})[-keep:]
+    for m in hist:
+        m.pop("_id", None)
     for m in hist[:-1]:
         c = m.get("content") or ""
         if "```html" in c:
@@ -6039,6 +6155,105 @@ def _other_models(avail: list, current: str) -> list:
     return [m["id"] for m in avail if m["id"] != current and "embed" not in m["id"].lower()]
 
 
+@app.get("/api/pricing")
+async def api_pricing():
+    """Every model this machine knows a price for, and where the price came from."""
+    cfg = state["cfg"]
+    user = cfg.get("pricing") or {}
+    return {"user": user, "skipped": cfg.get("pricing_skip") or [],
+            "defaults": [{"pattern": p, "in": r[0], "out": r[1]}
+                         for p, r in usagemod.DEFAULT_PRICING],
+            "default_model": cfg.get("default_model", ""),
+            "default_model_state": usagemod.price_state(cfg, cfg.get("default_model", ""))}
+
+
+@app.post("/api/pricing/lookup")
+async def api_pricing_lookup(body: dict | None = None):
+    """Try to find a published price for a model. Never writes anything."""
+    return await usagemod.discover_price(state["cfg"], str((body or {}).get("model") or ""))
+
+
+@app.put("/api/pricing")
+async def api_pricing_set(body: dict | None = None):
+    """Set or clear a model's price. `{model, in, out}` or `{model, skip: true}`."""
+    body = body or {}
+    model = str(body.get("model") or "").strip()
+    if not model:
+        return JSONResponse({"error": "model is required"}, status_code=400)
+    if body.get("skip"):
+        usagemod.skip_price(state["cfg"], model)
+    elif body.get("clear"):
+        (state["cfg"].get("pricing") or {}).pop(model, None)
+    else:
+        try:
+            usagemod.set_price(state["cfg"], model, float(body.get("in", 0)),
+                               float(body.get("out", 0)))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "in/out must be numbers (USD per million tokens)"},
+                                status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "pricing"})
+    return {"ok": True, "state": usagemod.price_state(state["cfg"], model)}
+
+
+@app.get("/api/usage")
+async def api_usage(days: float = 1.0, group: str = "model", space: str = ""):
+    """What has been spent. `group`: model | day | surface | kind | conversation | space."""
+    return usagemod.report(state["store"], state["cfg"], days=days, group=group, space=space)
+
+
+@app.get("/api/evals")
+async def api_evals():
+    """The cases and the last run. The GUI face of `agentos eval`."""
+    from . import evals as evalsmod
+    cases = [{k: v for k, v in c.items() if not k.startswith("_")}
+             for c in evalsmod.load_cases()]
+    return {"cases": cases, "last": evalsmod.last_report(),
+            "default_model": state["cfg"].get("default_model", "")}
+
+
+@app.post("/api/evals/run")
+async def api_evals_run(body: dict | None = None):
+    """Run the suite and return the report.
+
+    Deliberately synchronous and un-streamed: a run is a minute or two of real
+    model calls, and the one thing that must not happen is two of them at once
+    fighting over the same local GPU. The lock says so rather than queueing
+    silently."""
+    from . import evals as evalsmod
+    body = body or {}
+    if state.get("evals_running"):
+        return JSONResponse({"error": "an eval run is already going — one at a time, "
+                                      "so they do not fight over the model"}, status_code=409)
+    models = [m for m in (body.get("models") or []) if isinstance(m, str)] \
+        or [state["cfg"].get("default_model", "")]
+    models = [m for m in models if m]
+    if not models:
+        return JSONResponse({"error": "no model configured to test"}, status_code=400)
+    bcast = state.get("broadcast")
+
+    async def progress(r):
+        if bcast:
+            await bcast({"type": "eval_result",
+                         "result": {"id": r["id"], "status": r["status"],
+                                    "model": r["model"], "seconds": r["seconds"]}})
+
+    state["evals_running"] = True
+    try:
+        report = await evalsmod.run(
+            models, only=body.get("cases") or None, tags=body.get("tags") or None,
+            network=bool(body.get("network")), on_result=progress)
+        evalsmod.save(report)
+        state["store"].log("test", "evals: " + ", ".join(
+            f"{m} {s['passed']}/{s['passed'] + s['failed'] + s['errors']} passed"
+            for m, s in report["by_model"].items()), {"kind": "evals"})
+        if bcast:
+            await bcast({"type": "evals_done"})
+        return report
+    finally:
+        state["evals_running"] = False
+
+
 @app.get("/api/lifecycle")
 async def api_lifecycle():
     """Mission Control: one snapshot of all six lifecycle pillars —
@@ -6069,8 +6284,18 @@ async def api_lifecycle():
             last_test = dict(row) if row else None
         except Exception:
             last_test = None
+    # Two different questions, and the pillar was only ever answering one of them:
+    # pytest says the OS works, evals say the AGENT still behaves. Neither
+    # substitutes for the other, so both are reported with their own last result.
+    from . import evals as evalsmod
+    ev = evalsmod.last_report()
     out["test"] = {"suite": "tests/ (pytest)", "last": last_test,
-                   "gate": "self-modification restarts run the suite first"}
+                   "gate": "self-modification restarts run the suite first",
+                   "evals": {
+                       "cases": len(evalsmod.load_cases()),
+                       "last": ({"created_at": ev["created_at"], "by_model": ev["by_model"]}
+                                if ev else None),
+                       "gate": "run on request (needs a live model) — `agentos eval`"}}
 
     try:
         tasks = store.list_tasks()
@@ -6130,9 +6355,14 @@ async def api_lifecycle():
         grants = 0
     snaps_dir = cfgmod.AGENTOS_HOME / "snapshots"
     snaps = len(list(snaps_dir.iterdir())) if snaps_dir.is_dir() else 0
+    try:
+        spend = usagemod.report(store, cfg, days=1.0)
+    except Exception:
+        spend = {"cost_usd": 0, "tokens_in": 0, "tokens_out": 0, "unpriced_turns": 0, "note": ""}
     out["manage"] = {"autonomy": cfg.get("autonomy", ""), "model": cfg.get("default_model", ""),
                      "grants": grants, "snapshots": snaps,
-                     "sandbox": bool((cfg.get("sandbox") or {}).get("enabled"))}
+                     "sandbox": bool((cfg.get("sandbox") or {}).get("enabled")),
+                     "spend_24h": spend}
     return out
 
 
@@ -6403,14 +6633,24 @@ async def run_build(data: dict):
                                  f"up to ${env.budget_usd:.2f})\n"})
 
             async def erelay(ev: dict):
-                if ev.get("type") == "text_delta":
+                t = ev.get("type")
+                if t == "text_delta":
                     await bcast({"type": "build_text", "text": ev.get("text", "")})
-                elif ev.get("type") == "tool_start":
+                elif t == "tool_start":
                     await bcast({"type": "build_tool", **ev})
-                elif ev.get("type") == "tool_end":
+                elif t == "tool_end":
                     await bcast({"type": "build_tool_end", **ev})
-                elif ev.get("type") == "error":
+                elif t == "error":
                     await bcast({"type": "build_error_note", **ev})
+                elif t == "thinking_delta":
+                    # A delegated build can think for a minute before its first
+                    # tool call. Dropping this left "working… 45s" as the only
+                    # sign of life, which reads exactly like a hang.
+                    await bcast({"type": "build_thinking", "text": ev.get("text", "")})
+                elif t == "engine_info":
+                    # Say who is actually building and on what — the Studio was
+                    # showing a generic spinner for someone else's agent.
+                    await bcast({"type": "build_engine", **ev})
 
             try:
                 await execmod.run_task(
@@ -6659,6 +6899,9 @@ async def ws_endpoint(ws: WebSocket):
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
                                        remember=bool(data.get("remember")))
+            elif t == "price":
+                await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
+                                    float(data.get("in") or 0), float(data.get("out") or 0))
             elif t == "queue_remove":
                 cid = data.get("conversation_id")
                 if cid and _queue_drop(cid, str(data.get("id") or "")):

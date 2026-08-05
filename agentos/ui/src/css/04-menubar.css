@@ -2,7 +2,9 @@
 #menubar{position:fixed;left:0;right:0;top:0;height:var(--mbh);display:flex;align-items:center;gap:10px;padding:0 12px;
   background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
   border-bottom:1px solid var(--hairline);z-index:9000;font-size:var(--fs-sm);color:var(--txt)}
-#mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-sm);padding:2px 8px;border-radius:var(--r-sm);cursor:default}
+#mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-sm);padding:2px 8px;border-radius:var(--r-sm);cursor:pointer;user-select:none}
+#mb-brand:hover{background:var(--bg3)}
+#mb-brand:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 #mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
 #mb-spacer{flex:1}
 #pager{display:flex;gap:4px;align-items:center}

@@ -32,11 +32,34 @@ See [training.md](training.md) for the full guide, including the loop that matte
 
 ## Test
 
+Two different questions live here, and for a long time only one of them was answered.
+
+**Does the OS work?**
+
 - **The OS tests itself.** `tests/` holds the pytest suite; the agent's `run_tests` tool runs
   it (or any project's suite in your workspace).
 - **The self-modification gate:** `develop_agentos(..., restart=true)` and `restart_agentos`
   refuse to restart if the suite fails — a self-modification that breaks the tests cannot go
   live. (Snapshots remain the recovery hatch.)
+
+**Does the agent still behave?** — pytest cannot see this, and it is what changes when you
+edit the soul, the system prompt, the tool set or the default model.
+
+- **Behavioural evals** (`agentos eval`, the Evals app, or the `run_evals` tool). Each case is
+  one turn with a known right shape — recall a memory instead of guessing, read the file it
+  was asked about, refuse an instruction injected into a document, say a file is missing
+  rather than inventing its contents, never actually run the deletion. Assertions are
+  deterministic (which tools were called, with what arguments, and what the answer says); no
+  LLM judge, because a harness that disagrees with itself is one people learn to ignore.
+- Every case runs in a **throwaway home** with its own database, workspace and sandbox root,
+  so cases may seed memories and files and nothing survives the run.
+- Most of the shipped cases encode a bug this project has already paid for once. Add your own
+  in `~/.agentos/evals/*.json`; a matching `id` replaces a built-in rather than running twice.
+- Compare models directly: `agentos eval --model ollama/qwen3.5:9b --model google/gemini-3.5-flash-lite`.
+  Exit status is 0 only if everything passed, so it drops into CI unread.
+- **Deliberately not part of the restart gate.** Evals need a live model — minutes on a local
+  one, money on a cloud one. Blocking every self-modification on that would stop the agent
+  improving itself, so this is a thing you run, and Mission Control shows when it last ran.
 - **Built apps are validated before install:** the App Studio pipeline structurally validates
   every generated app (truncation, unclosed tags, script leaks) and runs a repair pass;
   anything it can't fix ships as an explicit warning, never a silent success.
