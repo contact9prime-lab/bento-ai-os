@@ -311,3 +311,9 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   border:2px solid color-mix(in srgb,var(--acc) 70%,transparent);border-top-color:transparent;
   animation:rot .8s linear infinite}
 .deck-tile{position:relative}
+
+/* A delegated build's thinking: one self-replacing line, not a growing wall.
+   Without it the Studio showed "working… 45s" and nothing else, which reads
+   exactly like a hang. */
+.bthink{color:var(--dim2);font-style:italic;font-size:var(--fs-sm);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}

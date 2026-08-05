@@ -1588,6 +1588,12 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   border:2px solid color-mix(in srgb,var(--acc) 70%,transparent);border-top-color:transparent;
   animation:rot .8s linear infinite}
 .deck-tile{position:relative}
+
+/* A delegated build's thinking: one self-replacing line, not a growing wall.
+   Without it the Studio showed "working… 45s" and nothing else, which reads
+   exactly like a hang. */
+.bthink{color:var(--dim2);font-style:italic;font-size:var(--fs-sm);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -10922,7 +10928,21 @@ function studioBuildEnded(){
 function studioBuildEvent(ev){
   switch(ev.type){
     case 'build_start': break;
-    case 'build_thinking': break;   // keep the log clean; thinking drives the jarvis pulse
+    // Thinking is shown, but as ONE self-replacing line rather than a growing
+    // wall: a delegated build can reason for a minute before its first tool
+    // call, and "working… 45s" with nothing else reads exactly like a hang.
+    // (It also still drives the jarvis pulse — see 09-websocket.js.)
+    case 'build_thinking':{
+      if(!STUDIO.log||!ev.text)break;
+      let el=STUDIO.log.querySelector('.bthink');
+      if(!el){el=studioLog('','bthink')}
+      el._t=((el._t||'')+ev.text).slice(-400);
+      el.textContent='… '+el._t.replace(/\s+/g,' ').trim();
+      if(STUDIO._status&&STUDIO._status.isConnected)STUDIO.log.appendChild(STUDIO._status);
+      STUDIO.log.scrollTop=STUDIO.log.scrollHeight;break;}
+    case 'build_engine':
+      studioLog(`<span class="mut">▲ ${esc(ev.engine||'executor')}${ev.model?' · '+esc(ev.model):''}`
+        +`${(ev.tools||[]).length?' · '+ev.tools.length+' tools':''}</span>`);break;
     case 'build_text':
       if(STUDIO._cur){STUDIO._cur._t=(STUDIO._cur._t||'')+ev.text;STUDIO._cur.innerHTML='<b>▲ '+esc(agentName())+':</b> '+esc(STUDIO._cur._t)}
       break;

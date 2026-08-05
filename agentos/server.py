@@ -24,7 +24,7 @@ from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
-from .policy import MAIN, PDP, Principal
+from .policy import MAIN, PDP, SURFACES, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from .tools import ALWAYS_ASK, Toolbox
@@ -5919,7 +5919,11 @@ async def run_chat(cid: str, data: dict):
             result = {"content": content, "steps": res["steps"],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         else:
-            from .policy import SURFACES
+            # SURFACES is imported at module scope: a function-local `from … import`
+            # here made it local to the WHOLE of run_chat, so the finally block
+            # referencing it raised UnboundLocalError on every turn that failed
+            # before this line — and that exception ate the persistence of the
+            # error message itself, leaving an empty bubble instead of the reason.
             surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
             # Copilot/omnibar turns ride the normal chat path with per-surface
             # context appended to the system prompt (the app's live state, the
@@ -5954,9 +5958,18 @@ async def run_chat(cid: str, data: dict):
         with contextlib.suppress(Exception):
             store.log("error", f"chat turn failed: {type(e).__name__}: {e}"[:400],
                       {"conversation_id": cid})
+        # A turn that failed must still leave a message saying so. An empty
+        # assistant bubble is the worst outcome: reloading the conversation shows
+        # nothing at all, and the reason lives only in a log nobody opened.
+        if not (result.get("content") or "").strip():
+            result["content"] = f"[error] {type(e).__name__}: {e}"
     finally:
         if started:
             knowledge.turn_ended()
+        # Saving the reply comes first and alone. Everything after it is
+        # bookkeeping, and bookkeeping that throws must not be able to eat the
+        # answer — which is exactly what happened when an UnboundLocalError below
+        # skipped this call and left the bubble empty.
         try:
             store.add_message(cid, "assistant", header + result["content"],
                               {"steps": result["steps"],
@@ -6620,14 +6633,24 @@ async def run_build(data: dict):
                                  f"up to ${env.budget_usd:.2f})\n"})
 
             async def erelay(ev: dict):
-                if ev.get("type") == "text_delta":
+                t = ev.get("type")
+                if t == "text_delta":
                     await bcast({"type": "build_text", "text": ev.get("text", "")})
-                elif ev.get("type") == "tool_start":
+                elif t == "tool_start":
                     await bcast({"type": "build_tool", **ev})
-                elif ev.get("type") == "tool_end":
+                elif t == "tool_end":
                     await bcast({"type": "build_tool_end", **ev})
-                elif ev.get("type") == "error":
+                elif t == "error":
                     await bcast({"type": "build_error_note", **ev})
+                elif t == "thinking_delta":
+                    # A delegated build can think for a minute before its first
+                    # tool call. Dropping this left "working… 45s" as the only
+                    # sign of life, which reads exactly like a hang.
+                    await bcast({"type": "build_thinking", "text": ev.get("text", "")})
+                elif t == "engine_info":
+                    # Say who is actually building and on what — the Studio was
+                    # showing a generic spinner for someone else's agent.
+                    await bcast({"type": "build_engine", **ev})
 
             try:
                 await execmod.run_task(
