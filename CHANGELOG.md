@@ -1,5 +1,79 @@
 # Changelog
 
+### The agent, measured: what it remembers, what it trusts, what it costs (2026-08-04)
+
+Four things the OS was doing without measuring, telling you, or bounding.
+
+- **A conversation now remembers what it did, not just what it said.** Tool calls and their
+  results lived in `messages.meta` — right for the chat window, wrong for the next turn: the
+  model that read a file on Monday had no record of it on Tuesday beyond whatever it happened
+  to write in prose. "Now do the same for the other one" then re-ran everything, or worse got
+  answered from a file it could no longer see. Earlier turns' tool activity is replayed as a
+  compact fenced digest, not as reconstructed `role:"tool"` messages — those need call ids
+  that must match a live turn, and Gemini needs its own signature replayed against each one.
+  Rebuilding that from storage would be a forgery some providers reject.
+- **And a long thread stops dying.** History was unbounded, so the desktop's permanent
+  conversation grew until the prompt filled the context window and every turn failed with
+  "hit its token limit" — a thread that worked yesterday simply stopped, with no way back but
+  deleting it. Turns that no longer fit are now distilled into a rolling summary, generated
+  once and stored on the conversation, and **you are told in the conversation when it
+  happens**: a summarised thread behaves differently from a whole one, and you are the only
+  one who can say the summary lost something that mattered. Telegram used its own hand-rolled
+  last-30-messages window; it uses the same rebuild now, because one conversation should not
+  have two different memories of itself depending on which surface you answer from.
+- **A fetched page can no longer spend a permission.** Grants answer *who is asking*; nothing
+  answered *on whose say-so*. Output from `fetch_url`, `hermes_ask` and any `mcp_*` tool is
+  fenced before the model sees it, and a turn that has read untrusted content holds its risky
+  steps for a human — **at full autonomy too**, because full autonomy is trust placed in your
+  instructions, not a stranger's. The ceiling sits *before* grants, exactly like the read-only
+  channel ceiling: "allow fetch_url everywhere" is consent for the agent to fetch pages, not
+  consent for a page to spend the grant on something else. For the same reason that approval
+  card offers no "allow & remember" — remembering it would hand the next page the same key.
+  Safe steps are never escalated, so reading and research stay as quick as they were. This
+  does not stop a model being fooled; it stops a fooled model being *able* to act. Off,
+  `ask` or `strict` in Settings → Agent, the TUI, or `security.taint`.
+- **The Test pillar was only testing half of what it claimed.** `tests/` proves the OS works.
+  Nothing proved the *agent* works — and every quality fix in this changelog's history (the
+  empty turn, the announce-and-stop, the invented API key, the loop guard) was found by a
+  person noticing it in a live conversation, with nothing to stop it coming back. `agentos
+  eval` runs behavioural cases: one turn each, in a throwaway home with its own database,
+  workspace and sandbox root, asserting deterministically which tools were called with what
+  arguments and what the answer says. No LLM judge — a harness that disagrees with itself is
+  one people learn to ignore. Also in the Evals app, the `run_evals` tool, and Mission
+  Control. Deliberately **not** in the restart gate: evals need a live model, and blocking
+  every self-modification on minutes of inference would stop the agent improving itself.
+- It earned its keep immediately. It found that **`read_file("notes.txt")` was denied by the
+  sandbox** — relative paths resolved against the server's working directory, which under
+  systemd is nowhere near your workspace, so a model asked to read a file by name burned its
+  whole step budget shelling out to find one it was standing next to. Relative paths now
+  belong to the workspace. It also caught three of its own assertions being wrong, including
+  one that scored a model *refusing* a destructive request as a failure.
+- **What a turn costs is now recorded — in money, not just tokens.** Token totals already
+  existed, re-derived by `/api/analytics/tokens` from the JSON meta of the last 1000 turn-log
+  rows. That shape cannot carry a price, silently truncates history at 1000 rows, and has no
+  answer for "which surface is expensive" or "what has this space cost". Spend gets its own
+  table: `agentos usage` (and `/api/usage`, and Mission Control) reports by model, day,
+  surface, kind, space or conversation. Tokens are a fact and money is an estimate, so they
+  are kept apart — an unpriced model records no cost rather than a confident `$0.00`, prices
+  live in `config.pricing` where you can correct them, and local models are priced at zero
+  *explicitly*, because "free" and "unknown" are different answers. The old endpoint stays;
+  it still answers for conversations that happened before the ledger existed.
+- **Tool scoping: built, measured, and shipped OFF.** The 90 built-in tools are ~11,600 tokens
+  of schema on every call — 47% of a 24,576-token local window before the system prompt or a
+  word of your conversation. Narrowing that per step is the obvious fix, so it exists, with a
+  core set that is never hidden, request-matched additions, per-turn pinning, and `find_tools`
+  as the way back. Then `agentos eval` was pointed at it: on `ollama/qwen3.5:9b`, 11 cases ×
+  2 rounds, **21/22 passed with all 90 tools and 19/22 with 30** — faster per step, slightly
+  worse at the job, twice running. Small sample, and the individual failures look like
+  ordinary 9B variance, but nothing in it justifies turning this on for everyone. So the
+  default is `all`, the measurement is written down in `toolscope.py`, and anyone with a
+  tighter window can enable it and check on their own model. Building the harness first is
+  what made it possible to find that out instead of shipping a plausible regression.
+- Two smaller things found along the way: filtering the tool catalogue for a subagent was
+  writing **one access-ledger row per tool per turn** — ninety rows for one question nobody
+  asked; it is a `could I?` probe now and the ledger keeps recording what was *done*. And a
+  usage-ledger write can no longer take a turn down with it.
+
 ### Channels: every way in, and how far each is trusted (2026-08-01)
 
 - **A channel is a way in, not a messenger.** Settings → Channels lists all of them

@@ -445,13 +445,28 @@ def source_note(root: str) -> str:
     )
 
 
+def claude_exe() -> str:
+    """Absolute path to the Claude Code CLI, found the way a GUI-launched process
+    has to look for it.
+
+    `shutil.which("claude")` alone is wrong here and was reporting "not installed"
+    on a machine where it plainly was. The server is started by systemd (or a
+    macOS LaunchAgent), which does NOT source a login shell — so `~/.local/bin`,
+    where Claude Code installs itself, is simply absent from PATH. The user's own
+    terminal finds it; the service does not. `mcp_client._extended_path()` already
+    exists for exactly this failure and is what npx/uvx resolution uses.
+    """
+    from .mcp_client import _extended_path
+    return shutil.which("claude", path=_extended_path()) or ""
+
+
 def available() -> dict:
     """Is there an executor to delegate to on this machine?
 
     Reports the reason when there isn't, so the UI can explain rather than just
     greying a control out.
     """
-    exe = shutil.which("claude")
+    exe = claude_exe()
     if not exe:
         # "Not installed" on its own is a dead end. Say what to run, and offer to
         # run it — the same shape components.py uses for everything optional:
@@ -489,7 +504,7 @@ async def install(note=None) -> tuple[bool, str]:
     Never silent and never elevated: it installs into the user's own account,
     exactly the command shown in the UI beforehand.
     """
-    if shutil.which("claude"):
+    if claude_exe():
         return True, "Claude Code is already installed"
     env = child_env()
     try:
@@ -514,7 +529,7 @@ async def install(note=None) -> tuple[bool, str]:
     code = await proc.wait()
     if code != 0:
         return False, ("the installer failed:\n" + "\n".join(tail[-8:]))[:600]
-    if not shutil.which("claude"):
+    if not claude_exe():
         return False, ("the installer finished but `claude` is not on PATH yet — "
                        "open a new terminal, or add ~/.local/bin to your PATH")
     return True, "Claude Code installed — run `claude` once to sign in"
@@ -558,7 +573,7 @@ def build_command(task: str, env: Envelope) -> list[str]:
     headless run from blocking forever on a prompt nobody can answer — the run is
     already limited to what we allowed, so there is nothing left to ask about.
     """
-    exe = shutil.which("claude") or "claude"
+    exe = claude_exe() or "claude"
     cmd = [exe, "--print", task,
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
@@ -595,6 +610,12 @@ def child_env() -> dict:
     """The environment a delegated run gets: this one, minus the API credentials."""
     env = {k: v for k, v in os.environ.items() if k not in API_BILLING_VARS}
     env["CLAUDE_CODE_ENTRYPOINT"] = "agentos"
+    # The CLI shells out to its own helpers (node, ripgrep, git). Under systemd
+    # this process's PATH lacks ~/.local/bin, so hand the child the same extended
+    # PATH we used to find the CLI itself — resolving the executable and then
+    # starving it of its tools would be a subtler version of the same bug.
+    from .mcp_client import _extended_path
+    env["PATH"] = _extended_path()
     return env
 
 

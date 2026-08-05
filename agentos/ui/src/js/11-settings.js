@@ -131,6 +131,19 @@ function setTab(body,all){
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
         {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
     ],{f:'agent identity name workspace'}));
+    P.push(pGroup('Content from outside',[
+      pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
+        ['ask','Ask before anything that changes something'],
+        ['strict','Refuse to change anything for the rest of the turn'],
+        ['off','No extra caution']],(cfg.security&&cfg.security.taint)||'ask'),
+        {desc:'Fetched pages and third-party servers can contain text written to look like an instruction to your agent. This decides what happens for the rest of a turn that has read some — including at Full autonomy, which is trust in <em>your</em> instructions, not a stranger\'s.',
+         f:'taint injection untrusted prompt security web page mcp'}),
+      pRow('Conversation history',pSelect('s-hist-compact',[
+        ['on','Summarise older turns when the thread outgrows the model'],
+        ['off','Drop them instead']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
+        {desc:'Long threads stop fitting the model\'s context window. Either way you are told in the conversation when it happens.',
+         f:'history compaction summary context window long thread'}),
+    ],{f:'security untrusted injection history'}));
     P.push(pGroup('Sandbox',[
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
@@ -240,6 +253,8 @@ async function saveSettings(){
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
   if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
+  if(val('s-taint')!==undefined)patch.security={taint:val('s-taint')};
+  if(val('s-hist-compact')!==undefined)patch.history={compact:val('s-hist-compact')!=='off'};
   const providers={};
   const add=(k,v)=>{if(v)providers[k]=v};
   add('ollama',val('s-ollama-url')!==undefined?{base_url:val('s-ollama-url')}:undefined);

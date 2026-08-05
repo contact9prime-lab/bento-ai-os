@@ -235,6 +235,15 @@ function handle(ev){
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
         card.querySelector('.out').textContent=ev.output||'(no output)';
+        // Content this machine did not write is marked where it lands, not only in
+        // the approval card it later causes — you should be able to see which step
+        // brought the outside world into the conversation.
+        if(ev.untrusted){card.classList.add('untrusted');
+          const h=card.querySelector('.head');
+          if(h&&!h.querySelector('.tuntrust')){const b=document.createElement('span');
+            b.className='tuntrust';b.textContent='from outside';
+            b.title='Fetched from outside this machine. It is data to the agent, never instructions — and while this turn holds it, anything that changes something asks you first.';
+            h.appendChild(b);}}
         if(!ev.ok)card.classList.add('open');}
       // the model is about to think about this result — often the slowest gap in a
       // turn; keep a live indicator so it never looks frozen (and repaints on macOS)
@@ -338,6 +347,8 @@ function handle(ev){
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
+    case 'eval_result': case 'evals_done':
+      EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
     case 'models': refreshApp('models'); loadModels(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);

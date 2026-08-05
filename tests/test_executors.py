@@ -8,6 +8,7 @@ is a capability the user never granted.
 
 import asyncio
 import json
+import shutil
 from unittest import mock
 
 import pytest
@@ -147,7 +148,7 @@ def test_a_successful_run_raises_no_error():
 
 def test_a_missing_executor_explains_itself_and_offers_the_fix():
     """The honesty rule: never a dead control."""
-    with mock.patch.object(ex.shutil, "which", lambda n: None):
+    with mock.patch.object(ex, "claude_exe", lambda: ""):
         info = ex.available()
     assert info["available"] is False
     assert info["reason"].strip()
@@ -177,7 +178,7 @@ async def test_a_run_streams_translated_events_and_records_the_cost(tmp_path):
     async def emit(ev):
         seen.append(ev)
 
-    with mock.patch.object(ex.shutil, "which", lambda n: str(stub)):
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         run = await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
 
     kinds = [e["type"] for e in seen]
@@ -200,7 +201,7 @@ async def test_non_json_chatter_on_stdout_is_ignored(tmp_path):
     stub.chmod(0o755)
 
     seen: list[dict] = []
-    with mock.patch.object(ex.shutil, "which", lambda n: str(stub)):
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")),
                           lambda ev: asyncio.sleep(0, result=seen.append(ev)))
     assert [e["type"] for e in seen] == ["text_delta"]
@@ -244,7 +245,7 @@ async def test_one_failure_is_reported_once_not_twice(tmp_path):
     async def emit(ev):
         seen.append(ev)
 
-    with mock.patch.object(ex.shutil, "which", lambda n: str(stub)):
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
 
     assert len([e for e in seen if e["type"] == "error"]) == 1
@@ -311,7 +312,7 @@ async def test_forwarding_collects_the_text_for_surfaces_with_no_stream(tmp_path
     stub.write_text(f"#!/bin/sh\necho '{json.dumps(ev)}'\n")
     stub.chmod(0o755)
 
-    with mock.patch.object(ex.shutil, "which", lambda n: str(stub)):
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         text, run = await ex.forward("claude-code", "task", {}, str(tmp_path / "ws"))
     assert text == "done" and run is not None
 
@@ -545,3 +546,39 @@ def test_hitting_the_ceiling_on_a_subscription_does_not_talk_about_money(monkeyp
     why = ex._why({"subtype": "error_max_budget"}, run)
     assert "Nothing was billed" in why
     assert "carry on" in why, "the session resumes — do not imply the work is lost"
+
+
+def test_claude_is_found_when_path_is_the_one_systemd_gives(monkeypatch, tmp_path):
+    """The bug this fixes: `available()` reported "not installed" on a machine
+    where Claude Code plainly was installed.
+
+    The server is started by systemd, which does not source a login shell, so
+    ~/.local/bin — where Claude Code installs itself — is absent from PATH. The
+    user's terminal finds it; the service does not.
+    """
+    from agentos import executors
+
+    fake_home = tmp_path / "home"
+    (fake_home / ".local" / "bin").mkdir(parents=True)
+    exe = fake_home / ".local" / "bin" / "claude"
+    exe.write_text("#!/bin/sh\necho 9.9.9\n")
+    exe.chmod(0o755)
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("PATH", "/usr/local/bin:/usr/bin:/bin")   # what the service gets
+    monkeypatch.setattr("os.path.expanduser",
+                        lambda p: p.replace("~", str(fake_home), 1) if p.startswith("~") else p)
+
+    assert shutil.which("claude") is None, "the fixture must reproduce the failure"
+    assert executors.claude_exe() == str(exe), "it is right there in ~/.local/bin"
+
+
+def test_the_child_gets_a_path_it_can_work_with(monkeypatch):
+    """Resolving the executable and then starving it of node/git/ripgrep would be
+    the same bug one level down."""
+    from agentos import executors
+
+    monkeypatch.setenv("PATH", "/usr/bin")
+    env = executors.child_env()
+    assert "/usr/bin" in env["PATH"]
+    assert env["PATH"] != "/usr/bin", "the child's PATH must be the extended one"

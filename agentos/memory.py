@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS conversations (
     updated_at REAL,
     rolled_up INTEGER DEFAULT 0, -- session memories already distilled into user memory
     origin TEXT DEFAULT 'user',  -- who started it: user | schedule | trigger | briefing | suggestion
-    space_id TEXT DEFAULT ''     -- the space this conversation belongs to ('' = global)
+    space_id TEXT DEFAULT '',    -- the space this conversation belongs to ('' = global)
+    summary TEXT DEFAULT '',     -- rolling summary of the turns that no longer fit (history.py)
+    summary_upto TEXT DEFAULT '',-- id of the last message the summary covers
+    summary_msgs INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -336,6 +339,25 @@ CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit(principal_kind, principa
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit(action, ts);
 CREATE INDEX IF NOT EXISTS idx_audit_effect ON audit(effect, ts);
 CREATE INDEX IF NOT EXISTS idx_audit_space ON audit(space_id, ts);
+-- What each turn cost. Tokens are always known; money only when the model is
+-- priced (see usage.py) — an unpriced row is honest about being unpriced rather
+-- than reporting a confident zero.
+CREATE TABLE IF NOT EXISTS usage (
+    id TEXT PRIMARY KEY,
+    ts REAL,
+    model TEXT DEFAULT '',
+    surface TEXT DEFAULT '',          -- gui | tui | telegram | api | task | copilot | omni
+    principal TEXT DEFAULT 'user',
+    conversation_id TEXT DEFAULT '',
+    space_id TEXT DEFAULT '',
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    cost_usd REAL,                    -- NULL = this model has no price configured
+    kind TEXT DEFAULT 'chat'          -- chat | build | subagent | extract | eval
+);
+CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
+CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model, ts);
+CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 """
 
 
@@ -371,6 +393,12 @@ class Store:
             self.db.execute("ALTER TABLE conversations ADD COLUMN rolled_up INTEGER DEFAULT 0")
         if "origin" not in ccols:  # who initiated it — the OS-initiative metric reads this
             self.db.execute("ALTER TABLE conversations ADD COLUMN origin TEXT DEFAULT 'user'")
+        # the rolling summary of what no longer fits the context window (history.py)
+        for col, ddl in (("summary", "TEXT DEFAULT ''"),
+                         ("summary_upto", "TEXT DEFAULT ''"),   # last message id it covers
+                         ("summary_msgs", "INTEGER DEFAULT 0")):
+            if col not in ccols:
+                self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
         tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
         for col, ddl in (('"trigger"', "TEXT DEFAULT ''"),
                          ("trigger_config", "TEXT DEFAULT '{}'"),
@@ -456,6 +484,16 @@ class Store:
     def get_conversation(self, cid: str) -> dict | None:
         row = self.db.execute("SELECT * FROM conversations WHERE id=?", (cid,)).fetchone()
         return dict(row) if row else None
+
+    def set_summary(self, cid: str, summary: str, upto: str, added: int = 0):
+        """Persist the rolling summary of turns that fell out of the context
+        budget. `summary_msgs` accumulates because it counts how much of the
+        thread the summary now stands for, not how much the last pass ate."""
+        self.db.execute(
+            "UPDATE conversations SET summary=?, summary_upto=?, "
+            "summary_msgs=COALESCE(summary_msgs,0)+? WHERE id=?",
+            (summary or "", upto or "", int(added or 0), cid))
+        self.db.commit()
 
     def set_conversation_space(self, cid: str, space_id: str):
         """Move a conversation into a space. Its session memories move with it —
@@ -684,6 +722,53 @@ class Store:
         self.db.commit()
 
     # -- the access ledger ----------------------------------------------------
+
+    def usage_add(self, model: str, tokens_in: int, tokens_out: int,
+                  cost_usd: float | None = None, surface: str = "", principal: str = "user",
+                  conversation_id: str = "", space_id: str = "", kind: str = "chat") -> str:
+        """Record what one turn spent. Never raises — a bookkeeping failure must
+        not cost the user the answer they were waiting for."""
+        uid = uuid.uuid4().hex[:12]
+        try:
+            self.db.execute(
+                "INSERT INTO usage (id, ts, model, surface, principal, conversation_id, "
+                "space_id, tokens_in, tokens_out, cost_usd, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (uid, time.time(), model or "", surface or "", principal or "user",
+                 conversation_id or "", space_id or "", int(tokens_in or 0),
+                 int(tokens_out or 0), cost_usd, kind or "chat"))
+            self.db.commit()
+        except Exception:  # pragma: no cover - defensive
+            return ""
+        return uid
+
+    def usage_summary(self, since: float = 0, group: str = "model",
+                      space: str = "", limit: int = 50) -> list[dict]:
+        """Spend grouped by model, day, surface, kind or conversation.
+
+        `priced` and `unpriced` are reported separately on purpose: a total that
+        silently treats an unpriced local model as $0.00 reads as "this cost
+        nothing", which is true for Ollama and false for anything else.
+        """
+        col = {"model": "model", "surface": "surface", "kind": "kind",
+               "conversation": "conversation_id", "space": "space_id",
+               "day": "CAST(ts/86400 AS INTEGER)"}.get(group, "model")
+        sql = (f"SELECT {col} AS bucket, COUNT(*) n, SUM(tokens_in) tin, SUM(tokens_out) tout, "
+               "SUM(COALESCE(cost_usd,0)) cost, SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) "
+               "unpriced FROM usage WHERE ts > ?")
+        params: list = [since]
+        clause, sp = self._space_clause(space)
+        sql += clause
+        params += sp
+        rows = self.db.execute(sql + f" GROUP BY {col} ORDER BY cost DESC, tin DESC LIMIT ?",
+                               (*params, limit)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["priced"] = d["n"] - d["unpriced"]
+            if group == "day":
+                d["bucket"] = time.strftime("%Y-%m-%d", time.gmtime(float(d["bucket"] or 0) * 86400))
+            out.append(d)
+        return out
 
     def audit_add(self, principal_kind: str = "", principal_id: str = "", surface: str = "",
                   action: str = "", resource: str = "", effect: str = "", rule: str = "",

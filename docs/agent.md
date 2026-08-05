@@ -19,6 +19,23 @@ The agent also chooses the right *shape* for a request:
 - a recurring need → a scheduled **job**,
 - something interactive you'll click → a built **app**.
 
+### What it remembers of the conversation itself
+
+A turn is replayed the whole thread, and two things about that are easy to get wrong.
+
+**Tool traces travel.** What the agent *did* on an earlier turn — which file it read, what
+came back, what failed — is replayed compactly alongside what it said. Without that, "now do
+the same for the other one" either re-runs everything or gets answered from a file the model
+can no longer see.
+
+**Long threads are compacted, not killed.** The desktop's persistent thread grows forever;
+once it outgrows the model's window, the oldest turns are distilled into a rolling summary
+that is generated once and stored on the conversation. You are told in the conversation when
+it happens — a thread that has been summarised behaves differently from one that has not, and
+you are the only one who can say the summary lost something. Tune it under `history` in
+config (`budget_tokens`, `tool_trace`, `trace_chars`, `compact`, `model`), or turn compaction
+off in Settings → Agent, in which case old turns are dropped and you are told that instead.
+
 ---
 
 ## Talking while it works
@@ -103,6 +120,42 @@ Plus every tool from any connected **MCP server**, which appears as `mcp_<server
 
 You can drive all of these from plain chat: *"add the github channel," "pull qwen2.5:14b," "set volume
 to 30," "save a skill for our release process," "build me a habit tracker."*
+
+### How many of them the model sees at once
+
+There are ~90 built-in tools and their JSON schemas are ~11,600 tokens. Sent on every call,
+against a model configured at `ollama_num_ctx: 24576`, that is 47% of the context window gone
+before the system prompt or a word of your conversation.
+
+That is the argument for narrowing the list, and AgentOS can do it — but **it ships off**,
+because the argument lost to the measurement. `agentos eval` on this machine's local model,
+same cases, only the setting different:
+
+| `tools.scope` | passed | median case |
+|---|---|---|
+| `all` (default) | 21/22 | 9.9s |
+| `always` | 19/22 | 8.0s |
+
+Narrowing made each step cheaper and the agent slightly worse, twice running. Small sample,
+but nothing in it justifies turning this on for everyone. Set `tools.scope: "auto"` to narrow
+only when the schemas would eat a real share of the window (the decision reads the configured
+window, never the model's name — a 128k local model is treated as the large model it is), and
+check it against your own model with the harness.
+
+When narrowing is on, the model always sees a core set (files, shell, memory, reports),
+anything the request itself points at, and anything this turn has already used. It is *told*
+what it cannot see, and `find_tools("send a telegram message")` puts the matches on the table
+for its next step — tool sets are rebuilt each step, so a miss costs one step, not the turn.
+
+| setting | meaning |
+|---|---|
+| `tools.scope` | `all` (default, never narrow) · `auto` (narrow on a tight window) · `always` |
+| `tools.budget` | how many tools to offer when narrowing (default 30) |
+| `tools.window_share` | narrow once schemas exceed this share of the window (default 0.20) |
+| `tools.cloud_context` | assumed window when the provider does not tell us (default 128000) |
+
+`find_tools` is offered either way: a model that cannot spot the right tool in a list of
+ninety can now ask for it in plain words instead of telling you the OS cannot do it.
 
 ---
 
