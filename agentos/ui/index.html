@@ -1862,6 +1862,78 @@ body.glass-off .win{background:var(--bg)!important}
 /* the picker in Themes → Effects */
 .gq-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .gq-row .endbtn.on{border-color:var(--acc);color:var(--txt)}
+/* ================= jobs: the give-it-a-job screens =================
+   Shared by the wizard's last beat and the standing Jobs app, so the two cannot
+   drift. No backdrop-filter anywhere here (see 03-windows.css): these sit inside
+   a window or an already-blurred wizard stage, and a second blur is pure cost. */
+
+.job-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:var(--sp-3);margin:var(--sp-3) 0}
+.job-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;
+  padding:var(--sp-4);border:1px solid var(--hairline);border-radius:var(--r-lg);
+  background:var(--bg2);color:var(--txt);
+  transition:border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out)}
+.job-card:hover{border-color:var(--hairline-strong);transform:translateY(-2px);background:var(--bg3)}
+.job-card.on{border-color:var(--acc);background:var(--bg3);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.job-mark{font-size:var(--fs-xl);line-height:1}
+.job-card b{font-size:var(--fs-base);font-weight:650}
+.job-blurb{font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
+.job-eg{font-size:var(--fs-xs);color:var(--dim2);line-height:1.45;font-style:italic}
+
+.job-form{display:flex;flex-direction:column;gap:var(--sp-4);margin-top:var(--sp-2)}
+.job-q{display:flex;flex-direction:column;gap:6px}
+.job-q>span{font-size:var(--fs-sm);font-weight:600;color:var(--txt)}
+.job-q em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.job-q input[type=text],.job-q input:not([type]){width:100%}
+.job-q input{width:100%}
+.job-mins{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dim)}
+.job-mins input{width:90px}
+
+.job-ways{display:flex;flex-direction:column;gap:6px}
+.job-way{display:grid;grid-template-columns:auto 1fr;gap:2px var(--sp-2);align-items:baseline;
+  padding:10px var(--sp-3);border:1px solid var(--hairline);border-radius:var(--r-md);
+  background:var(--bg2);cursor:pointer}
+.job-way input{grid-row:span 2;align-self:center}
+.job-way b{font-size:var(--fs-sm);font-weight:600}
+.job-way em{grid-column:2;font-size:var(--fs-xs);color:var(--dim);font-style:normal}
+.job-way:hover{border-color:var(--hairline-strong)}
+.job-way:has(input:checked){border-color:var(--acc);background:var(--bg3)}
+/* A way out this machine cannot do is dimmed and disabled, never hidden — the
+   detail line is the sentence that says what would fix it. */
+.job-way.off{opacity:.5;cursor:not-allowed}
+.job-way.off:hover{border-color:var(--hairline)}
+
+.job-consent{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  border-left:2px solid var(--acc);padding:2px 0 2px var(--sp-3)}
+.job-consent b{display:block;color:var(--txt);font-size:var(--fs-xs);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:4px}
+.job-consent ul{list-style:none;margin:0;padding:0}
+.job-consent li{padding:1px 0}
+.job-consent code{font-family:var(--mono);font-size:var(--fs-xs);color:var(--txt)}
+.job-warn{color:var(--warn)}
+.job-consent:has(.job-warn){border-left-color:var(--warn)}
+
+.job-go{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.job-done b{font-size:var(--fs-lg);color:var(--ok)}
+.job-done .sub{font-size:var(--fs-sm);color:var(--dim);padding:2px 0}
+.job-done .job-go{margin-top:var(--sp-3)}
+
+.job-row{display:flex;align-items:center;gap:var(--sp-2)}
+.job-app h3{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim2);font-weight:700}
+
+/* The wizard's stage is sized for one sentence and a row of chips. Three cards
+   side by side need more, so the stage widens for exactly this beat rather than
+   the cards wrapping into a column nobody can compare. */
+.wiz-stage:has(.wiz-jobs){width:min(900px,94vw)}
+.wiz-stage:has(.wiz-jobs) .wiz-convo{max-height:76vh}
+.wiz-jobs{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4)}
+.wiz-jobs-head b{display:block;font-size:var(--fs-lg);font-weight:650}
+.wiz-jobs-head span{display:block;font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  margin-top:4px}
+@media (max-width:640px){.job-cards{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -2374,6 +2446,7 @@ const ICONS={
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
@@ -4047,6 +4120,7 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  jobs:{id:'jobs',title:'Jobs',icon:'◷',w:720,h:640,desc:'What this machine does for you without being asked',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
@@ -4564,7 +4638,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
-  ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','policies','permissions','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];
@@ -8170,12 +8244,17 @@ async function wizFinish(){
   const fin=document.createElement('div');fin.className='wiz-finish';
   fin.innerHTML=`${(WIZ.report.applied||[]).map(l=>`<div class="sub">· ${esc(l)}</div>`).join('')}
     ${WIZ.report.autostart?`<div class="sub">· ${esc(WIZ.report.autostart)}</div>`:''}
-    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}
-    <button class="wiz-next" onclick="wizEnter()">Enter AgentOS →</button>`;
+    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}`;
   c.appendChild(fin);
   Motion.run(fin,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],{duration:260,easing:EASE.out});
   c.scrollTop=c.scrollHeight;
   loadConfig();loadModels();
+  // The last beat is not "Enter" — it is "give me a job". A machine you have only
+  // configured is a machine you have no reason to open tomorrow; one that is already
+  // doing something for you is a habit. jobStep owns the Enter button from here, and
+  // offers "Not now" beside it, because a first-run flow you cannot get past is one
+  // people learn to click through without reading.
+  jobStep(c,wizEnter);
 }
 function wizEnter(){
   const ov=$('#setup-wiz');
@@ -8213,6 +8292,237 @@ async function wizInstallOllama(){
     }
   }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
   finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
+}
+/* ================= jobs: give this machine something to do =================
+   Two surfaces over one API (/api/jobs): the last beat of the first-run wizard,
+   and a standing app you can come back to. They share `jobCards`/`jobForm` on
+   purpose — the screen that gets somebody their first job and the screen that
+   gets them their fourth should not drift apart, because the second one is the
+   habit and the first one is only the introduction.
+
+   Everything user-facing here obeys the honesty rule: a delivery this machine
+   cannot do is shown greyed with the sentence that would fix it, never hidden,
+   and the folder a job will read is printed before the job exists.
+
+   `var`, not `let` — this file is concatenated into one script and 14-docs-setup
+   calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
+var JOBS={recipes:[],deliveries:[],installed:[],pick:'',busy:false};
+
+async function jobsLoad(){
+  try{const d=await (await fetch('/api/jobs')).json();
+    JOBS.recipes=d.recipes||[];JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];
+  }catch(e){JOBS.recipes=[];}
+  return JOBS;
+}
+
+/* the three cards. `sel` is the id currently expanded, '' for none. */
+function jobCards(sel){
+  return `<div class="job-cards">${JOBS.recipes.map(r=>`
+    <button class="job-card${r.id===sel?' on':''}" data-job="${esc(r.id)}">
+      <span class="job-mark">${esc(r.icon||'◇')}</span>
+      <b>${esc(r.title)}</b>
+      <span class="job-blurb">${esc(r.blurb)}</span>
+      <span class="job-eg">${esc(r.example)}</span>
+    </button>`).join('')}</div>`;
+}
+
+/* the two or three questions a recipe asks, plus the delivery picker */
+function jobForm(r){
+  const field=n=>{
+    if(n.key==='deliver')return jobDeliver(n);
+    const id='jf-'+n.key;
+    if(n.kind==='folder')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" value="${esc(n.default||'')}" spellcheck="false" autocomplete="off">
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='time')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" type="time" value="${esc(n.default||'08:00')}"></label>`;
+    if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" value="${esc(n.default||'')}" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+  };
+  return `<div class="job-form">${r.needs.map(field).join('')}
+    <div class="job-consent" id="jf-consent"></div>
+    <div class="job-go"><button class="wiz-next" id="jf-save">Set it up</button></div></div>`;
+}
+
+/* Delivery: every option, always — a way out that is not configured is shown
+   with the sentence that would fix it rather than left out. Absent reads as
+   "this OS cannot do that"; greyed reads as "not yet, and here is how". */
+function jobDeliver(n){
+  return `<div class="job-q"><span>${esc(n.label)}</span>
+    <div class="job-ways">${JOBS.deliveries.map(d=>`
+      <label class="job-way${d.ready?'':' off'}">
+        <input type="radio" name="jf-deliver" value="${esc(d.id)}" ${d.ready?'':'disabled'}
+          ${d.id==='report'?'checked':''}>
+        <b>${esc(d.label)}</b><em>${esc(d.detail)}</em>
+      </label>`).join('')}</div></div>`;
+}
+
+function jobAnswers(r){
+  const a={};
+  r.needs.forEach(n=>{
+    if(n.key==='deliver'){a.deliver=(document.querySelector('input[name=jf-deliver]:checked')||{}).value||'report';return}
+    const el=document.getElementById('jf-'+n.key);
+    if(el)a[n.key]=el.value.trim();
+  });
+  return a;
+}
+
+/* Ask the server what saving this would grant, and print it. Debounced by the
+   caller; a failure is silent because it is an aid, not the decision — the save
+   itself refuses with the same message if the answers are bad. */
+async function jobConsent(r){
+  const box=document.getElementById('jf-consent');if(!box)return;
+  try{
+    const d=await (await fetch('/api/jobs/preview',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
+    if(d.error){box.innerHTML=`<span class="job-warn">${esc(d.error)}</span>`;return}
+    const reads=(d.reads||[]).map(p=>`<li>reads <code>${esc(p)}</code> — and nothing else</li>`).join('');
+    const when=(d.triggers||[]).map(t=>{
+      const c=t.config||{};
+      if(t.kind==='cron'&&c.type==='daily')return `<li>runs every day at ${esc(c.at)}</li>`;
+      if(t.kind==='cron'&&c.type==='interval')return `<li>runs every ${esc(c.minutes)} minutes</li>`;
+      if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
+      return '';
+    }).join('');
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}
+      <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
+      <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
+  }catch(e){}
+}
+
+/* Wire a rendered form: live consent, and the save. `after(res)` is what the
+   surface does with the finished job — the wizard shows a "run it now" beat,
+   the app refreshes its list. */
+function jobWire(root,r,after){
+  root.querySelectorAll('.job-form input').forEach(el=>{
+    let t=null;
+    const go=()=>{clearTimeout(t);t=setTimeout(()=>jobConsent(r),260)};
+    el.oninput=go;el.onchange=go;
+  });
+  jobConsent(r);
+  const btn=root.querySelector('#jf-save');
+  btn.onclick=async()=>{
+    if(JOBS.busy)return;JOBS.busy=true;btn.disabled=true;const was=btn.textContent;btn.textContent='Setting it up…';
+    try{
+      const res=await (await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
+      if(res.error){
+        const c=document.getElementById('jf-consent');
+        if(c)c.innerHTML=`<span class="job-warn">${esc(res.error)}</span>`;
+        return;
+      }
+      await jobsLoad();
+      after(res);
+    }finally{JOBS.busy=false;btn.disabled=false;btn.textContent=was}
+  };
+}
+
+/* ---------- the wizard's last beat ---------- */
+/* Called by wizFinish once the setup report is on screen. The offer is real but
+   never compulsory: "Not now" is a first-class button, because a first-run flow
+   that will not let you past it is a first-run flow people learn to click through
+   without reading. */
+async function jobStep(container,onDone){
+  await jobsLoad();
+  if(!JOBS.recipes.length){onDone();return}
+  const box=document.createElement('div');box.className='wiz-jobs';
+  const name=(typeof WIZ!=='undefined'&&WIZ.agent_name)||'your agent';
+  box.innerHTML=`<div class="wiz-jobs-head">
+      <b>One last thing — give me a job.</b>
+      <span>Pick one and I'll do it from now on, without being asked. You can change or stop it any time.</span>
+    </div>
+    ${jobCards('')}
+    <div class="job-slot"></div>
+    <button class="wiz-back" id="jf-skip">Not now — take me in →</button>`;
+  container.appendChild(box);
+  Motion.run(box,[{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],
+    {duration:280,easing:EASE.out});
+  container.scrollTop=container.scrollHeight;
+  box.querySelector('#jf-skip').onclick=onDone;
+  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    JOBS.pick=r.id;
+    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=box.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
+      {duration:220,easing:EASE.out});
+    jobWire(slot,r,res=>jobDone(slot,res,onDone,name));
+    container.scrollTop=container.scrollHeight;
+  });
+}
+
+/* The payoff screen. "Run it now" is the important button: a schedule nobody has
+   seen fire is a promise, and a new user has no reason to believe one. */
+function jobDone(slot,res,onDone,name){
+  const reads=(res.reads||[]).map(p=>`<div class="sub">· reads ${esc(p)}</div>`).join('');
+  slot.innerHTML=`<div class="job-done">
+    <b>✓ ${esc(res.flow.name)}</b>
+    <div class="sub">· runs ${esc(res.next||'when you say so')}</div>
+    <div class="sub">· delivers: ${esc((res.delivery||{}).label||'to Reports')}</div>
+    ${reads}
+    ${res.substituted?`<div class="sub job-warn">· ${esc(res.substituted)}</div>`:''}
+    <div class="job-go">
+      <button class="wiz-next" id="jf-run">Run it now, so I can see it work</button>
+      <button class="wiz-back" id="jf-enter">Take me in →</button></div></div>`;
+  Motion.run(slot.firstElementChild,[{opacity:0,transform:'scale(.98)'},{opacity:1,transform:'none'}],
+    {duration:260,easing:EASE.spring});
+  slot.querySelector('#jf-enter').onclick=onDone;
+  slot.querySelector('#jf-run').onclick=async()=>{
+    const b=slot.querySelector('#jf-run');b.disabled=true;b.textContent=`${name} is on it…`;
+    try{
+      const d=await (await fetch(`/api/jobs/${encodeURIComponent(res.flow.name)}/run`,
+        {method:'POST'})).json();
+      if(d.error){b.textContent=d.error;b.disabled=false;return}
+      onDone();
+      // the run is live: show it, rather than describing it
+      if(typeof fgWatch==='function')fgWatch(d.run_id); else openApp('fabric');
+    }catch(e){b.textContent='could not start it';b.disabled=false}
+  };
+}
+
+/* ---------- the standing app ---------- */
+async function renderJobs(body){
+  body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+  await jobsLoad();
+  const running=JOBS.installed.map(j=>`<div class="item job-row">
+      <div class="grow"><b>${esc(j.name)}</b><div class="sub">${esc(j.description)}</div>
+        <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'}</div></div>
+      <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
+      <button class="endbtn" onclick="openApp('fabric')">Edit</button>
+    </div>`).join('');
+  body.innerHTML=`<div class="pad job-app">
+    <h3>What this machine does for you</h3>
+    ${running||'<p class="mut">Nothing standing yet — pick something below and it starts today.</p>'}
+    <h3 style="margin-top:18px">Give it another job</h3>
+    ${jobCards(JOBS.pick)}
+    <div class="job-slot"></div></div>`;
+  body.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    JOBS.pick=r.id;
+    body.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=body.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    jobWire(slot,r,res=>{
+      JOBS.pick='';
+      toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
+      renderJobs(body);
+    });
+  });
+}
+
+async function jobRunNow(name){
+  try{
+    const d=await (await fetch(`/api/jobs/${encodeURIComponent(name)}/run`,{method:'POST'})).json();
+    if(d.error){toast(d.error);return}
+    toast(`▶ ${name} started`);
+    if(typeof fgWatch==='function')fgWatch(d.run_id);
+  }catch(e){toast('could not start it')}
 }
 /* ================= scheduler app ================= */
 async function renderTasks(body){

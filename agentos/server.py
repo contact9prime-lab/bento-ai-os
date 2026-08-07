@@ -19,6 +19,7 @@ from . import config as cfgmod
 from . import fabric as fabricmod
 from . import flows as flowsmod
 from . import history as historymod
+from . import jobs as jobsmod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
@@ -5466,6 +5467,69 @@ async def api_run_subagent(name: str, body: dict):
         return JSONResponse({"error": f"no subagent '{name}'"}, status_code=404)
     asyncio.create_task(state["fabric"].run_subagent(defn, (body or {}).get("task", "")))
     return {"ok": True, "started": True}
+
+
+# ---------------------------------------------------------------------------
+# Jobs: a recipe, three answers, and something that runs by itself
+#
+# Thin on purpose. Every route here ends in `jobs.py`, which ends in `flows.py` —
+# there is no job engine, no job scheduler and no job permission model, because a
+# job IS a flow and a second one of any of those would be a second set of bugs.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/jobs")
+async def api_jobs(request: Request):
+    """The catalogue, the ways out this machine actually has, and what is already
+    running. One request, because the first-run screen needs all three at once and a
+    wizard that renders in three waves is a wizard that flickers."""
+    cfg = state["cfg"]
+    return {"recipes": [r.as_dict() for r in jobsmod.RECIPES],
+            "deliveries": jobsmod.deliveries(cfg),
+            "installed": jobsmod.installed(state["store"])}
+
+
+@app.post("/api/jobs/preview")
+async def api_jobs_preview(body: dict):
+    """What installing this would grant, before a row is written."""
+    try:
+        return jobsmod.preview(state["cfg"], state["store"],
+                               (body or {}).get("recipe", ""), (body or {}).get("answers") or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/jobs")
+async def api_install_job(body: dict):
+    try:
+        res = jobsmod.install(state["cfg"], state["store"],
+                              (body or {}).get("recipe", ""), (body or {}).get("answers") or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    await state["broadcast"]({"type": "tasks"})
+    res["next"] = jobsmod.describe_next(state["store"], res["flow"]["name"])
+    return res
+
+
+@app.post("/api/jobs/{name}/run")
+async def api_run_job_now(name: str, request: Request):
+    """Run a job this second, so the first one proves itself while somebody is watching.
+
+    The whole point of the onboarding beat: a schedule you cannot see fire is a
+    promise, and a new user has no reason to believe one. Same PDP decision and same
+    run path as `/api/flows/{name}/run` — this is a convenience door, not a bypass.
+    """
+    flow = state["store"].get_flow(name)
+    if not flow:
+        return JSONResponse({"error": f"no job '{name}'"}, status_code=404)
+    dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{name}",
+                              {"surface": "gui", "risk": "safe"})
+    if dec.effect == "deny":
+        return JSONResponse({"error": dec.reason or "not permitted"}, status_code=403)
+    run_id = await _start_flow(flow, "", origin={"surface": "gui",
+                                                 "ref": _client_addr(request)})
+    return {"ok": True, "run_id": run_id, "flow": name}
 
 
 # ---------------------------------------------------------------------------

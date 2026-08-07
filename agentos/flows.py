@@ -105,6 +105,9 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
         "space_id": body.get("space_id") or "",
         "enabled": int(bool(body.get("enabled", 1))),
         "builtin": int(body.get("builtin") or 0),
+        # which jobs.py recipe this came out of, '' when it was written by hand. Carried
+        # rather than dropped, so re-saving a job from the editor does not orphan it.
+        "job": re.sub(r"[^a-z0-9-]", "", str(body.get("job") or "").lower())[:48],
         "triggers": [_validate_trigger(t) for t in (body.get("triggers") or [])],
         "new_agents": [a for a in (body.get("new_agents") or []) if isinstance(a, dict)],
     }

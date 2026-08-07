@@ -254,12 +254,17 @@ async function wizFinish(){
   const fin=document.createElement('div');fin.className='wiz-finish';
   fin.innerHTML=`${(WIZ.report.applied||[]).map(l=>`<div class="sub">· ${esc(l)}</div>`).join('')}
     ${WIZ.report.autostart?`<div class="sub">· ${esc(WIZ.report.autostart)}</div>`:''}
-    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}
-    <button class="wiz-next" onclick="wizEnter()">Enter AgentOS →</button>`;
+    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}`;
   c.appendChild(fin);
   Motion.run(fin,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],{duration:260,easing:EASE.out});
   c.scrollTop=c.scrollHeight;
   loadConfig();loadModels();
+  // The last beat is not "Enter" — it is "give me a job". A machine you have only
+  // configured is a machine you have no reason to open tomorrow; one that is already
+  // doing something for you is a habit. jobStep owns the Enter button from here, and
+  // offers "Not now" beside it, because a first-run flow you cannot get past is one
+  // people learn to click through without reading.
+  jobStep(c,wizEnter);
 }
 function wizEnter(){
   const ov=$('#setup-wiz');

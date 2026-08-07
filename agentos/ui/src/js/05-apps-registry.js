@@ -36,6 +36,7 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  jobs:{id:'jobs',title:'Jobs',icon:'◷',w:720,h:640,desc:'What this machine does for you without being asked',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},

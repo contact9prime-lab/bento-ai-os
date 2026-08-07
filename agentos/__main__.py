@@ -967,6 +967,96 @@ def _flow_cli(args):
         return
 
 
+def _job_cli(args):
+    """`bento job` — give this machine something to do, from a terminal.
+
+    The TUI face of the first-run "give it a job" beat (CLAUDE.md: every feature in
+    all three). A headless Pi is exactly where a standing job earns its keep and
+    exactly where there is no wizard to run one, so the same catalogue and the same
+    `jobs.install` are reachable here.
+
+    Listing and adding go straight through the store, so they work with the server
+    down; only `run` needs the running server, because a run is a live thing it owns.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import jobs as jobsmod
+    cfg, store = _open_store()
+    act = args.action
+
+    if act == "list":
+        rows = jobsmod.installed(store)
+        if not rows:
+            print("nothing is running yet.\n")
+            print("  bento job recipes           what this machine can be asked to do")
+            return
+        for j in rows:
+            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}")
+            print(f"    {j['description']}")
+            print(f"    next: {j['next']}")
+        return
+
+    if act == "recipes":
+        for r in jobsmod.RECIPES:
+            print(f"\n{r.icon}  {r.id}")
+            print(f"    {r.title} — {r.blurb}")
+            print(f"    e.g. {r.example}")
+            for n in r.needs:
+                if n.key == "deliver":
+                    continue
+                print(f"    --{n.key:<8} {n.label}"
+                      + (f"  (default {n.default})" if n.default else ""))
+        ways = [d for d in jobsmod.deliveries(cfg)]
+        print("\n  --deliver  " + ", ".join(
+            f"{d['id']}{'' if d['ready'] else ' (not set up)'}" for d in ways))
+        print("\n  bento job add morning-brief --topics 'my industry' --at 08:00")
+        return
+
+    if act == "add":
+        if not args.name:
+            print("which recipe? (bento job recipes)")
+            sys.exit(2)
+        answers = {k: v for k, v in
+                   (("topics", args.topics), ("folder", args.folder), ("url", args.url),
+                    ("at", args.at), ("minutes", args.minutes), ("deliver", args.deliver))
+                   if v}
+        try:
+            res = jobsmod.install(cfg, store, args.name, answers)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ {res['flow']['name']} — runs {jobsmod.describe_next(store, res['flow']['name'])}")
+        for p in res.get("reads") or []:
+            print(f"  reads: {p}")
+        print(f"  delivers: {res['delivery']['label'].lower()}")
+        if res.get("substituted"):
+            print(f"  note: {res['substituted']}")
+        # The clock lives in the running server's scheduler; a job added while it is
+        # down is still a real row, it just starts ticking at the next start.
+        print(f"\n  bento job run {res['flow']['name']}     try it now")
+        return
+
+    if act == "run":
+        if not args.name:
+            print("which job? (bento job list)")
+            sys.exit(2)
+        url = f"http://127.0.0.1:{cfg.get('port', 8321)}/api/jobs/{args.name}/run"
+        req = urllib.request.Request(url, method="POST", data=b"{}",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                res = json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
+            sys.exit(1)
+        except OSError:
+            print("✗ AgentOS is not running here — start it with `bento serve`")
+            sys.exit(1)
+        print(f"▶ {args.name} started · run {res['run_id']}\n  bento flow show {res['run_id']}")
+        return
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1329,6 +1419,18 @@ def main():
     p_flow.add_argument("--always", action="store_true",
                         help="with `allow`: remember it as a grant, not just this once")
 
+    p_job = sub.add_parser("job", help="give this machine a standing job — the terminal "
+                                       "half of the first-run 'give it a job' screen")
+    p_job.add_argument("action", nargs="?", default="list",
+                       choices=["list", "recipes", "add", "run"])
+    p_job.add_argument("name", nargs="?", default="", help="recipe id for `add`, job name for `run`")
+    p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")
+    p_job.add_argument("--folder", default="", help="folder-watch: the one folder it may read")
+    p_job.add_argument("--url", default="", help="page-watch: the page to check")
+    p_job.add_argument("--at", default="", help="time of day, HH:MM")
+    p_job.add_argument("--minutes", default="", help="how often, in minutes")
+    p_job.add_argument("--deliver", default="", help="report | notify | telegram")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -1420,6 +1522,8 @@ def main():
         _audit_cli(args)
     elif args.cmd == "flow":
         _flow_cli(args)
+    elif args.cmd == "job":
+        _job_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

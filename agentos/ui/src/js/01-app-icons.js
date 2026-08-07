@@ -13,6 +13,7 @@ const ICONS={
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],

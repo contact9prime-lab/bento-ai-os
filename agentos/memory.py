@@ -536,7 +536,11 @@ class Store:
                            ("skills_locked", "INTEGER DEFAULT 1"))),
             # provenance for a flow the model drafted: which model, what it assumed, what
             # it had to drop, and which agents came with it (so Discard can clean up)
-            ("flows", (("draft", "TEXT DEFAULT '{}'"),)),
+            # `job` is the recipe a flow came out of (agentos/jobs.py), or '' for one
+            # written by hand. Kept on the row rather than guessed from the description,
+            # because "which of my jobs are still running?" has to survive somebody
+            # renaming one.
+            ("flows", (("draft", "TEXT DEFAULT '{}'"), ("job", "TEXT DEFAULT ''"))),
         ):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
             for col, ddl in columns:
@@ -1980,19 +1984,19 @@ class Store:
                 d.get("autonomy_cap", "balanced"), int(d.get("max_delegations", 12)),
                 int(d.get("max_steps", 24)), int(d.get("max_seconds", 1800)),
                 d.get("space_id", "") or "", int(d.get("enabled", 1)), int(d.get("builtin", 0)),
-                json.dumps(d.get("draft") or {}), now)
+                json.dumps(d.get("draft") or {}), str(d.get("job") or "")[:48], now)
         if row:
             self.db.execute(
                 "UPDATE flows SET name=?, description=?, mission=?, roster=?, model=?, "
                 "permissions=?, sinks=?, autonomy_cap=?, max_delegations=?, max_steps=?, "
-                "max_seconds=?, space_id=?, enabled=?, builtin=?, draft=?, updated_at=? WHERE id=?",
-                (*vals, fid))
+                "max_seconds=?, space_id=?, enabled=?, builtin=?, draft=?, job=?, "
+                "updated_at=? WHERE id=?", (*vals, fid))
         else:
             self.db.execute(
                 "INSERT INTO flows (name, description, mission, roster, model, permissions, "
                 "sinks, autonomy_cap, max_delegations, max_steps, max_seconds, space_id, "
-                "enabled, builtin, draft, updated_at, id, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*vals, fid, now))
+                "enabled, builtin, draft, job, updated_at, id, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*vals, fid, now))
         self.db.commit()
         return fid
 
