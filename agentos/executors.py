@@ -123,6 +123,13 @@ class Run:
     denials: list = field(default_factory=list)
     stopped: bool = False
     reported_error: bool = False   # the result event already said why; don't say it twice
+    # call_id -> (name, detail) for the calls seen so far. The CLI reports a tool
+    # RESULT with only the id, so without this the end of a call is anonymous —
+    # which is how a ten-minute build read as ten minutes of nothing.
+    calls: dict = field(default_factory=dict)
+    steps: int = 0                 # tool calls started, for a live "step N" line
+    last: str = ""                 # what it is doing right now, in words
+    dropped: int = 0               # stream events too large to read (see STREAM_LINE_LIMIT)
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -445,13 +452,28 @@ def source_note(root: str) -> str:
     )
 
 
+def claude_exe() -> str:
+    """Absolute path to the Claude Code CLI, found the way a GUI-launched process
+    has to look for it.
+
+    `shutil.which("claude")` alone is wrong here and was reporting "not installed"
+    on a machine where it plainly was. The server is started by systemd (or a
+    macOS LaunchAgent), which does NOT source a login shell — so `~/.local/bin`,
+    where Claude Code installs itself, is simply absent from PATH. The user's own
+    terminal finds it; the service does not. `mcp_client._extended_path()` already
+    exists for exactly this failure and is what npx/uvx resolution uses.
+    """
+    from .mcp_client import _extended_path
+    return shutil.which("claude", path=_extended_path()) or ""
+
+
 def available() -> dict:
     """Is there an executor to delegate to on this machine?
 
     Reports the reason when there isn't, so the UI can explain rather than just
     greying a control out.
     """
-    exe = shutil.which("claude")
+    exe = claude_exe()
     if not exe:
         # "Not installed" on its own is a dead end. Say what to run, and offer to
         # run it — the same shape components.py uses for everything optional:
@@ -489,7 +511,7 @@ async def install(note=None) -> tuple[bool, str]:
     Never silent and never elevated: it installs into the user's own account,
     exactly the command shown in the UI beforehand.
     """
-    if shutil.which("claude"):
+    if claude_exe():
         return True, "Claude Code is already installed"
     env = child_env()
     try:
@@ -514,7 +536,7 @@ async def install(note=None) -> tuple[bool, str]:
     code = await proc.wait()
     if code != 0:
         return False, ("the installer failed:\n" + "\n".join(tail[-8:]))[:600]
-    if not shutil.which("claude"):
+    if not claude_exe():
         return False, ("the installer finished but `claude` is not on PATH yet — "
                        "open a new terminal, or add ~/.local/bin to your PATH")
     return True, "Claude Code installed — run `claude` once to sign in"
@@ -558,7 +580,7 @@ def build_command(task: str, env: Envelope) -> list[str]:
     headless run from blocking forever on a prompt nobody can answer — the run is
     already limited to what we allowed, so there is nothing left to ask about.
     """
-    exe = shutil.which("claude") or "claude"
+    exe = claude_exe() or "claude"
     cmd = [exe, "--print", task,
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
@@ -595,6 +617,12 @@ def child_env() -> dict:
     """The environment a delegated run gets: this one, minus the API credentials."""
     env = {k: v for k, v in os.environ.items() if k not in API_BILLING_VARS}
     env["CLAUDE_CODE_ENTRYPOINT"] = "agentos"
+    # The CLI shells out to its own helpers (node, ripgrep, git). Under systemd
+    # this process's PATH lacks ~/.local/bin, so hand the child the same extended
+    # PATH we used to find the CLI itself — resolving the executable and then
+    # starving it of its tools would be a subtler version of the same bug.
+    from .mcp_client import _extended_path
+    env["PATH"] = _extended_path()
     return env
 
 
@@ -659,6 +687,55 @@ def _why(event: dict, run: Run) -> str:
     return f"the executor stopped: {subtype or 'no reason given'}"
 
 
+def tool_detail(name: str, args: dict) -> str:
+    """What a delegated tool call is actually doing, in a few words.
+
+    A tool NAME alone is not progress. "Bash" for four minutes and "Bash" for
+    four seconds look identical, and a build that reads `Read · Write · Bash ·
+    Bash · Bash` tells the watcher nothing about whether it is working or stuck.
+    The argument that identifies the call — the file, the command, the URL — is
+    already in the event; this is only about surfacing it.
+    """
+    args = args if isinstance(args, dict) else {}
+
+    def s(*keys) -> str:
+        for k in keys:
+            v = args.get(k)
+            if isinstance(v, str) and v.strip():
+                return " ".join(v.split())
+        return ""
+
+    if name in ("Read", "Write", "Edit", "NotebookEdit"):
+        p = s("file_path", "path", "notebook_path")
+        return Path(p).name if p else ""
+    if name == "Bash":
+        cmd = s("description") or s("command")
+        return cmd[:90] + ("…" if len(cmd) > 90 else "")
+    if name in ("Glob", "Grep"):
+        pat = s("pattern", "query")
+        where = s("path", "glob")
+        return f"{pat}{' in ' + Path(where).name if where else ''}"[:90]
+    if name in ("WebFetch", "WebSearch"):
+        return s("url", "query", "prompt")[:90]
+    if name == "Task":
+        return s("description", "prompt")[:90]
+    if name == "TodoWrite":
+        todos = args.get("todos")
+        if isinstance(todos, list) and todos:
+            active = [t for t in todos if isinstance(t, dict)
+                      and t.get("status") == "in_progress"]
+            done = sum(1 for t in todos if isinstance(t, dict) and t.get("status") == "completed")
+            head = str((active[0] if active else todos[0]).get("content") or "")
+            return f"{head[:70]} ({done}/{len(todos)} done)"
+        return ""
+    # An unknown tool still has SOMETHING identifying in its arguments; showing
+    # the first short string beats showing nothing.
+    for v in args.values():
+        if isinstance(v, str) and 0 < len(v.strip()) <= 90:
+            return " ".join(v.split())
+    return ""
+
+
 def translate(event: dict, run: Run) -> list[dict]:
     """Turn one Claude Code stream event into AgentOS turn events.
 
@@ -688,10 +765,15 @@ def translate(event: dict, run: Run) -> list[dict]:
             elif block.get("type") == "thinking" and block.get("thinking"):
                 out.append({"type": "thinking_delta", "text": block["thinking"]})
             elif block.get("type") == "tool_use":
+                name = block.get("name", "tool")
+                args = block.get("input") or {}
+                detail = tool_detail(name, args)
+                run.steps += 1
+                run.last = f"{name}{' · ' + detail if detail else ''}"
+                run.calls[block.get("id", "")] = (name, detail)
                 out.append({"type": "tool_start", "call_id": block.get("id", ""),
-                            "name": block.get("name", "tool"),
-                            "args": block.get("input") or {},
-                            "pending_approval": False})
+                            "name": name, "args": args, "detail": detail,
+                            "step": run.steps, "pending_approval": False})
 
     elif kind == "user":
         # The CLI reports tool results as a user turn carrying tool_result blocks.
@@ -701,8 +783,13 @@ def translate(event: dict, run: Run) -> list[dict]:
                 if isinstance(content, list):
                     content = "".join(c.get("text", "") for c in content
                                       if isinstance(c, dict))
+                # The result carries only the id, so the name is recovered from
+                # the call that opened it — an anonymous "✗ — failed" is the one
+                # error a watcher cannot act on.
+                name, detail = run.calls.pop(block.get("tool_use_id", ""), ("", ""))
                 out.append({"type": "tool_end", "call_id": block.get("tool_use_id", ""),
-                            "name": "", "output": str(content or "")[:4000],
+                            "name": name, "detail": detail,
+                            "output": str(content or "")[:4000],
                             "ok": not block.get("is_error")})
 
     elif kind == "result":
@@ -729,6 +816,22 @@ def translate(event: dict, run: Run) -> list[dict]:
     return out
 
 
+# How big one line of the CLI's stream may be.
+#
+# `stream-json` puts one whole event on one line, and an event carries whole tool
+# payloads: the app file it just wrote, the 44KB file it read back to check its
+# own work. asyncio's StreamReader defaults to a 64KiB line limit, and crossing
+# it does not truncate — `readline()` raises
+#
+#     ValueError: Separator is found, but chunk is longer than limit
+#
+# which killed the build *after* the executor had written a finished app to disk.
+# The size that made this happen is the size of a normal app, so the ceiling has
+# to be in app territory, not in log-line territory. It is a cap on one line, not
+# an allocation: the buffer only ever grows to what the CLI actually wrote.
+STREAM_LINE_LIMIT = 32 * 1024 * 1024
+
+
 async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Run:
     """Delegate a task and stream it back through `emit`.
 
@@ -747,12 +850,24 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=child_env(),
+        limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
 
     assert proc.stdout is not None
     while True:
-        line = await proc.stdout.readline()
+        try:
+            line = await proc.stdout.readline()
+        except ValueError:
+            # Past even that ceiling. `readline()` has already dropped the
+            # oversized line and left the stream usable, so lose the one event
+            # rather than the whole run — the work continues on the other side
+            # whatever we do here, and the file on disk is the deliverable.
+            run.dropped += 1
+            await emit({"type": "error",
+                        "message": "one progress update was too large to read and was "
+                                   "skipped — the build is still running"})
+            continue
         if not line:
             break
         text = line.decode(errors="replace").strip()

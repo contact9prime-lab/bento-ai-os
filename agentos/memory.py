@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS conversations (
     updated_at REAL,
     rolled_up INTEGER DEFAULT 0, -- session memories already distilled into user memory
     origin TEXT DEFAULT 'user',  -- who started it: user | schedule | trigger | briefing | suggestion
-    space_id TEXT DEFAULT ''     -- the space this conversation belongs to ('' = global)
+    space_id TEXT DEFAULT '',    -- the space this conversation belongs to ('' = global)
+    summary TEXT DEFAULT '',     -- rolling summary of the turns that no longer fit (history.py)
+    summary_upto TEXT DEFAULT '',-- id of the last message the summary covers
+    summary_msgs INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -182,6 +185,98 @@ CREATE TABLE IF NOT EXISTS fabric_events (
     payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_fabric_events_run ON fabric_events(run_id, ts);
+-- A FLOW is a standing mission with a master orchestrator in front of it. Unlike a
+-- `workflow` (a DAG somebody drew ahead of time) a flow says only what it wants, who
+-- it may ask, and what it may touch — the master picks the agents and the order while
+-- it runs. That is why there are no steps here: the graph is a trace, not a plan.
+CREATE TABLE IF NOT EXISTS flows (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,
+    description TEXT DEFAULT '',
+    mission TEXT,                      -- the brief the master orchestrator is given
+    roster TEXT DEFAULT '[]',          -- JSON [{"subagent":"researcher","why":"…"}]
+    model TEXT DEFAULT '',             -- the orchestrator's own model ('' = inherit)
+    permissions TEXT DEFAULT '{}',     -- JSON declaration — materialised as grants on save
+    sinks TEXT DEFAULT '[]',           -- JSON delivery sinks ([] = reply where it came from)
+    autonomy_cap TEXT DEFAULT 'balanced',
+    max_delegations INTEGER DEFAULT 12,
+    max_steps INTEGER DEFAULT 24,
+    max_seconds INTEGER DEFAULT 1800,  -- WORKING seconds: time spent waiting for you is free
+    space_id TEXT DEFAULT '',
+    enabled INTEGER DEFAULT 1,
+    builtin INTEGER DEFAULT 0,
+    created_at REAL,
+    updated_at REAL
+);
+-- What starts a flow. The declaration lives here; the CLOCK is still the `tasks`
+-- table — cron and OS-event triggers materialise a real task row (task_id below) so
+-- the scheduler's due-polling, claim-on-fire and cooldowns are reused rather than
+-- reimplemented. Message and webhook triggers have no time dimension and get no row.
+CREATE TABLE IF NOT EXISTS flow_triggers (
+    id TEXT PRIMARY KEY,
+    flow TEXT,                   -- flows.name
+    kind TEXT,                   -- cron | message | webhook | os_event
+    config TEXT DEFAULT '{}',    -- JSON, per kind
+    task_id TEXT DEFAULT '',     -- cron/os_event: the tasks row that actually fires it
+    secret TEXT DEFAULT '',      -- webhook only
+    enabled INTEGER DEFAULT 1,
+    cooldown_secs INTEGER DEFAULT 60,
+    last_fired REAL,
+    fires INTEGER DEFAULT 0,
+    dropped INTEGER DEFAULT 0,   -- fires refused by the cooldown — shown, never silent
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_flow_triggers_kind ON flow_triggers(kind, enabled);
+-- The blackboard: what a flow's agents actually produced, in full. `fabric_runs.output`
+-- is a truncated summary for the runs list; this is the artefact the next agent is
+-- handed. Handles ('a1', 'a2') are what the orchestrator says out loud, so they are
+-- short and per-run, never global — a model cannot name another run's work because the
+-- handle does not resolve outside the run whose tools it is holding.
+CREATE TABLE IF NOT EXISTS flow_artifacts (
+    id TEXT PRIMARY KEY,
+    run_id TEXT,                 -- the orchestrator run (fabric_runs.id, kind='flow')
+    handle TEXT,                 -- 'in1' | 'a1' | 'a2' … unique within run_id
+    kind TEXT DEFAULT 'output',  -- input | output | note | error
+    agent TEXT DEFAULT '',       -- subagent that produced it ('' = trigger input)
+    child_run TEXT DEFAULT '',   -- fabric_runs.id of the producing child
+    task TEXT DEFAULT '',        -- what that agent was asked for
+    content TEXT,                -- FULL text. Never truncated here.
+    preview TEXT DEFAULT '',     -- first ~240 chars; what the index shows
+    bytes INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'ok',
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    tainted INTEGER DEFAULT 0,   -- came from outside this machine (webhook, fetched page)
+    deps TEXT DEFAULT '[]',      -- JSON handles fed in — these ARE the graph's data edges
+    space_id TEXT DEFAULT '',
+    created_at REAL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_artifact_handle ON flow_artifacts(run_id, handle);
+-- Things the OS stopped because they would not stop themselves.
+--
+-- One table for apps, subagents and flows alike: what went rogue is a property of the
+-- PRINCIPAL, and putting a column on three tables would mean three places to forget.
+-- A row here is a held thing plus the evidence for holding it, so the user is answering
+-- "6 llm calls in 41s, here they are" rather than "something went wrong".
+--
+-- Release is a decision with three shapes and all of them are recorded: `once` lets it run
+-- again and stays watching, `forever` stops it being held for this again (an exemption the
+-- user made, which must be visible later), `deleted` means it is gone.
+CREATE TABLE IF NOT EXISTS quarantine (
+    id TEXT PRIMARY KEY,
+    principal_kind TEXT,          -- app | subagent | flow
+    principal_id TEXT,
+    label TEXT DEFAULT '',        -- the human name at the time it was held
+    reason TEXT,                  -- one sentence, shown to the user
+    kind TEXT DEFAULT 'rate',     -- rate | llm | tool  — what class of call tripped it
+    evidence TEXT DEFAULT '{}',   -- JSON: counts, window, the tools it was calling
+    created_at REAL,
+    released_at REAL,             -- NULL = still held
+    release_mode TEXT DEFAULT '', -- once | forever | deleted
+    released_by TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_quarantine_live
+    ON quarantine(principal_kind, principal_id, released_at);
 CREATE TABLE IF NOT EXISTS grants (
     id TEXT PRIMARY KEY,
     principal_kind TEXT,          -- app | subagent | workflow | user | system | '*'
@@ -336,6 +431,25 @@ CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit(principal_kind, principa
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit(action, ts);
 CREATE INDEX IF NOT EXISTS idx_audit_effect ON audit(effect, ts);
 CREATE INDEX IF NOT EXISTS idx_audit_space ON audit(space_id, ts);
+-- What each turn cost. Tokens are always known; money only when the model is
+-- priced (see usage.py) — an unpriced row is honest about being unpriced rather
+-- than reporting a confident zero.
+CREATE TABLE IF NOT EXISTS usage (
+    id TEXT PRIMARY KEY,
+    ts REAL,
+    model TEXT DEFAULT '',
+    surface TEXT DEFAULT '',          -- gui | tui | telegram | api | task | copilot | omni
+    principal TEXT DEFAULT 'user',
+    conversation_id TEXT DEFAULT '',
+    space_id TEXT DEFAULT '',
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    cost_usd REAL,                    -- NULL = this model has no price configured
+    kind TEXT DEFAULT 'chat'          -- chat | build | subagent | extract | eval
+);
+CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
+CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model, ts);
+CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 """
 
 
@@ -354,6 +468,7 @@ class Store:
         self._migrate()
         self.db.commit()
         self.grants_version = 0  # bumped on every grant write so the PDP cache invalidates
+        self.quarantine_version = 0  # ditto for holds — consulted on every capability call
 
     def _migrate(self):
         """Add columns introduced after the first release to existing databases."""
@@ -371,6 +486,12 @@ class Store:
             self.db.execute("ALTER TABLE conversations ADD COLUMN rolled_up INTEGER DEFAULT 0")
         if "origin" not in ccols:  # who initiated it — the OS-initiative metric reads this
             self.db.execute("ALTER TABLE conversations ADD COLUMN origin TEXT DEFAULT 'user'")
+        # the rolling summary of what no longer fits the context window (history.py)
+        for col, ddl in (("summary", "TEXT DEFAULT ''"),
+                         ("summary_upto", "TEXT DEFAULT ''"),   # last message id it covers
+                         ("summary_msgs", "INTEGER DEFAULT 0")):
+            if col not in ccols:
+                self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
         tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
         for col, ddl in (('"trigger"', "TEXT DEFAULT ''"),
                          ("trigger_config", "TEXT DEFAULT '{}'"),
@@ -379,7 +500,9 @@ class Store:
             if col.strip('"') not in tcols:
                 self.db.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
         acols = {r["name"] for r in self.db.execute("PRAGMA table_info(user_apps)").fetchall()}
-        for col, ddl in (("manifest", "TEXT DEFAULT ''"),            # JSON permission manifest
+        for col, ddl in (("suspended_at", "REAL"),                    # stopped for going rogue
+                         ("suspended_reason", "TEXT DEFAULT ''"),
+                         ("manifest", "TEXT DEFAULT ''"),            # JSON permission manifest
                          ("manifest_status", "TEXT DEFAULT 'none'"),   # none | proposed | approved
                          ("widget_size", "TEXT DEFAULT 'm'")):         # s | m | l — the app's widget mode
             if col not in acols:
@@ -400,6 +523,20 @@ class Store:
             ("fabric_runs", (("space_id", "TEXT DEFAULT ''"),
                              ("conversation_id", "TEXT DEFAULT ''"))),
             ("tasks", (("space_id", "TEXT DEFAULT ''"),)),
+            # Flows. `origin_*` is how a run knows where it came from, which is what
+            # lets a flow started from a Telegram message answer in THAT chat instead
+            # of the owner's. `grants.source_ref` is provenance: which definition wrote
+            # a grant, so re-saving a flow can revoke its own rows and nobody else's.
+            ("fabric_runs", (("origin_surface", "TEXT DEFAULT ''"),
+                             ("origin_ref", "TEXT DEFAULT ''"),
+                             ("flow", "TEXT DEFAULT ''"))),
+            ("tasks", (("flow", "TEXT DEFAULT ''"),)),
+            ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
+            ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
+                           ("skills_locked", "INTEGER DEFAULT 1"))),
+            # provenance for a flow the model drafted: which model, what it assumed, what
+            # it had to drop, and which agents came with it (so Discard can clean up)
+            ("flows", (("draft", "TEXT DEFAULT '{}'"),)),
         ):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
             for col, ddl in columns:
@@ -456,6 +593,16 @@ class Store:
     def get_conversation(self, cid: str) -> dict | None:
         row = self.db.execute("SELECT * FROM conversations WHERE id=?", (cid,)).fetchone()
         return dict(row) if row else None
+
+    def set_summary(self, cid: str, summary: str, upto: str, added: int = 0):
+        """Persist the rolling summary of turns that fell out of the context
+        budget. `summary_msgs` accumulates because it counts how much of the
+        thread the summary now stands for, not how much the last pass ate."""
+        self.db.execute(
+            "UPDATE conversations SET summary=?, summary_upto=?, "
+            "summary_msgs=COALESCE(summary_msgs,0)+? WHERE id=?",
+            (summary or "", upto or "", int(added or 0), cid))
+        self.db.commit()
 
     def set_conversation_space(self, cid: str, space_id: str):
         """Move a conversation into a space. Its session memories move with it —
@@ -684,6 +831,53 @@ class Store:
         self.db.commit()
 
     # -- the access ledger ----------------------------------------------------
+
+    def usage_add(self, model: str, tokens_in: int, tokens_out: int,
+                  cost_usd: float | None = None, surface: str = "", principal: str = "user",
+                  conversation_id: str = "", space_id: str = "", kind: str = "chat") -> str:
+        """Record what one turn spent. Never raises — a bookkeeping failure must
+        not cost the user the answer they were waiting for."""
+        uid = uuid.uuid4().hex[:12]
+        try:
+            self.db.execute(
+                "INSERT INTO usage (id, ts, model, surface, principal, conversation_id, "
+                "space_id, tokens_in, tokens_out, cost_usd, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (uid, time.time(), model or "", surface or "", principal or "user",
+                 conversation_id or "", space_id or "", int(tokens_in or 0),
+                 int(tokens_out or 0), cost_usd, kind or "chat"))
+            self.db.commit()
+        except Exception:  # pragma: no cover - defensive
+            return ""
+        return uid
+
+    def usage_summary(self, since: float = 0, group: str = "model",
+                      space: str = "", limit: int = 50) -> list[dict]:
+        """Spend grouped by model, day, surface, kind or conversation.
+
+        `priced` and `unpriced` are reported separately on purpose: a total that
+        silently treats an unpriced local model as $0.00 reads as "this cost
+        nothing", which is true for Ollama and false for anything else.
+        """
+        col = {"model": "model", "surface": "surface", "kind": "kind",
+               "conversation": "conversation_id", "space": "space_id",
+               "day": "CAST(ts/86400 AS INTEGER)"}.get(group, "model")
+        sql = (f"SELECT {col} AS bucket, COUNT(*) n, SUM(tokens_in) tin, SUM(tokens_out) tout, "
+               "SUM(COALESCE(cost_usd,0)) cost, SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) "
+               "unpriced FROM usage WHERE ts > ?")
+        params: list = [since]
+        clause, sp = self._space_clause(space)
+        sql += clause
+        params += sp
+        rows = self.db.execute(sql + f" GROUP BY {col} ORDER BY cost DESC, tin DESC LIMIT ?",
+                               (*params, limit)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["priced"] = d["n"] - d["unpriced"]
+            if group == "day":
+                d["bucket"] = time.strftime("%Y-%m-%d", time.gmtime(float(d["bucket"] or 0) * 86400))
+            out.append(d)
+        return out
 
     def audit_add(self, principal_kind: str = "", principal_id: str = "", surface: str = "",
                   action: str = "", resource: str = "", effect: str = "", rule: str = "",
@@ -1209,6 +1403,83 @@ class Store:
         row = self.db.execute("SELECT * FROM user_apps WHERE id=?", (aid,)).fetchone()
         return dict(row) if row else None
 
+    # -- quarantine: what the OS stopped, and why ----------------------------
+
+    def quarantine_add(self, principal_kind: str, principal_id: str, reason: str,
+                       label: str = "", kind: str = "rate", evidence: dict | None = None) -> str:
+        """Hold a principal. Returns '' if it is already held — a runaway calls many times
+        a second, and one incident must not become two hundred rows."""
+        if self.quarantined(principal_kind, principal_id):
+            return ""
+        qid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO quarantine (id, principal_kind, principal_id, label, reason, kind, "
+            "evidence, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (qid, principal_kind, principal_id, label[:120], reason[:400], kind,
+             json.dumps(evidence or {})[:2000], time.time()))
+        self.db.commit()
+        self.quarantine_version = getattr(self, "quarantine_version", 0) + 1
+        return qid
+
+    def quarantined(self, principal_kind: str, principal_id: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT * FROM quarantine WHERE principal_kind=? AND principal_id=? "
+            "AND released_at IS NULL ORDER BY created_at DESC LIMIT 1",
+            (principal_kind, principal_id)).fetchone()
+        return dict(row) if row else None
+
+    def quarantine_exempt(self, principal_kind: str, principal_id: str) -> bool:
+        """Did the user say 'allow this forever'? That decision outlives the incident, which
+        is the point of recording the mode rather than just deleting the row."""
+        row = self.db.execute(
+            "SELECT 1 FROM quarantine WHERE principal_kind=? AND principal_id=? "
+            "AND release_mode='forever' LIMIT 1", (principal_kind, principal_id)).fetchone()
+        return bool(row)
+
+    def quarantine_list(self, include_released: bool = False, limit: int = 100) -> list[dict]:
+        q = "SELECT * FROM quarantine"
+        if not include_released:
+            q += " WHERE released_at IS NULL"
+        rows = self.db.execute(q + " ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["evidence"] = json.loads(d.get("evidence") or "{}")
+            except Exception:
+                d["evidence"] = {}
+            out.append(d)
+        return out
+
+    def quarantine_release(self, qid: str, mode: str, by: str = "user") -> dict | None:
+        row = self.db.execute("SELECT * FROM quarantine WHERE id=?", (qid,)).fetchone()
+        if not row:
+            return None
+        self.db.execute(
+            "UPDATE quarantine SET released_at=?, release_mode=?, released_by=? WHERE id=?",
+            (time.time(), mode, by, qid))
+        self.db.commit()
+        self.quarantine_version = getattr(self, "quarantine_version", 0) + 1
+        return dict(row)
+
+    def suspend_app(self, aid: str, reason: str) -> bool:
+        """Stop an app without deleting it or touching what it was granted.
+
+        Suspension is a pause, not a punishment: the app, its data, its versions and its
+        permissions all survive, so resuming is one click and loses nothing. What stops is
+        its ability to call anything."""
+        cur = self.db.execute(
+            "UPDATE user_apps SET suspended_at=?, suspended_reason=? WHERE id=? "
+            "AND suspended_at IS NULL", (time.time(), reason[:400], aid))
+        self.db.commit()
+        return bool(cur.rowcount)
+
+    def resume_app(self, aid: str) -> bool:
+        cur = self.db.execute(
+            "UPDATE user_apps SET suspended_at=NULL, suspended_reason='' WHERE id=?", (aid,))
+        self.db.commit()
+        return bool(cur.rowcount)
+
     def delete_app(self, aid: str):
         self.db.execute("DELETE FROM user_apps WHERE id=?", (aid,))
         self.db.execute("DELETE FROM app_data WHERE app_id=?", (aid,))
@@ -1375,14 +1646,20 @@ class Store:
 
     def add_grant(self, principal_kind: str, principal_id: str, action: str, resource: str,
                   effect: str = "allow", source: str = "user", note: str = "",
-                  expires_at: float | None = None, surfaces: str = "*") -> str:
+                  expires_at: float | None = None, surfaces: str = "*",
+                  source_ref: str = "") -> str:
         """Write one consent rule. Identical live rules dedupe to the existing row.
-        `surfaces` scopes the rule to IO gates ('*' or csv of gui,tui,telegram,api,task)."""
+        `surfaces` scopes the rule to IO gates ('*' or csv of gui,tui,telegram,api,task).
+
+        `source_ref` names the definition that asked for this rule ('flow:nightly-digest').
+        It is part of the dedupe key on purpose: a grant a person wrote by hand and one a
+        flow definition implies can read identically, and collapsing them would mean the
+        next save of that flow silently revokes somebody's deliberate decision."""
         surfaces = (surfaces or "*").strip() or "*"
         row = self.db.execute(
             "SELECT id, surfaces FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
-            "AND resource=? AND effect=? AND revoked_at IS NULL",
-            (principal_kind, principal_id, action, resource, effect)).fetchone()
+            "AND resource=? AND effect=? AND COALESCE(source_ref,'')=? AND revoked_at IS NULL",
+            (principal_kind, principal_id, action, resource, effect, source_ref or "")).fetchone()
         if row:
             if (row["surfaces"] or "*") != surfaces:
                 self.db.execute("UPDATE grants SET surfaces=? WHERE id=?", (surfaces, row["id"]))
@@ -1392,9 +1669,10 @@ class Store:
         gid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO grants (id, principal_kind, principal_id, action, resource, effect, "
-            "source, note, surfaces, expires_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "source, note, surfaces, expires_at, created_at, source_ref) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (gid, principal_kind, principal_id, action, resource, effect,
-             source, note[:300], surfaces, expires_at, time.time()))
+             source, note[:300], surfaces, expires_at, time.time(), source_ref or ""))
         self.db.commit()
         self.grants_version += 1
         return gid
@@ -1538,15 +1816,18 @@ class Store:
                 json.dumps(d.get("tools") or []), json.dumps(d.get("skills") or []),
                 d.get("autonomy_cap", "balanced"), d.get("target", "local"),
                 int(d.get("max_steps", 12)), int(d.get("max_seconds", 300)),
-                int(d.get("builtin", 0)), now)
+                int(d.get("builtin", 0)), d.get("memory_scope", "inherit"),
+                int(d.get("skills_locked", 1)), now)
         if row:
             self.db.execute(
                 "UPDATE subagents SET name=?, soul=?, model=?, tools=?, skills=?, autonomy_cap=?, "
-                "target=?, max_steps=?, max_seconds=?, builtin=?, updated_at=? WHERE id=?", (*vals, sid))
+                "target=?, max_steps=?, max_seconds=?, builtin=?, memory_scope=?, skills_locked=?, "
+                "updated_at=? WHERE id=?", (*vals, sid))
         else:
             self.db.execute(
                 "INSERT INTO subagents (name, soul, model, tools, skills, autonomy_cap, target, "
-                "max_steps, max_seconds, builtin, updated_at, id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "max_steps, max_seconds, builtin, memory_scope, skills_locked, updated_at, id, "
+                "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (*vals, sid, now))
         self.db.commit()
         return sid
@@ -1611,13 +1892,16 @@ class Store:
 
     def fabric_run_start(self, kind: str, ref: str, input_text: str,
                          parent_run: str = "", model: str = "", space_id: str = "",
-                         conversation_id: str = "") -> str:
+                         conversation_id: str = "", flow: str = "",
+                         origin_surface: str = "", origin_ref: str = "") -> str:
         rid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO fabric_runs (id, kind, ref, parent_run, status, input, model, "
-            "space_id, conversation_id, started_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "space_id, conversation_id, started_at, flow, origin_surface, origin_ref) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (rid, kind, ref, parent_run, "running", input_text[:4000], model,
-             space_id or "", conversation_id or "", time.time()))
+             space_id or "", conversation_id or "", time.time(),
+             flow or "", origin_surface or "", origin_ref or ""))
         self.db.commit()
         return rid
 
@@ -1671,17 +1955,184 @@ class Store:
             out.append(d)
         return out
 
+    # -- flows: standing missions with a master orchestrator -----------------
+
+    _FLOW_JSON = ("roster", "permissions", "sinks", "draft")
+
+    @classmethod
+    def _flow_row(cls, r) -> dict:
+        d = dict(r)
+        for k in cls._FLOW_JSON:
+            try:
+                d[k] = json.loads(d.get(k) or ("{}" if k in ("permissions", "draft") else "[]"))
+            except Exception:
+                d[k] = {} if k in ("permissions", "draft") else []
+        return d
+
+    def save_flow(self, d: dict) -> str:
+        name = (d.get("name") or "").strip()
+        now = time.time()
+        row = self.db.execute("SELECT id FROM flows WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+        fid = row["id"] if row else uuid.uuid4().hex[:12]
+        vals = (name, d.get("description", ""), d.get("mission", ""),
+                json.dumps(d.get("roster") or []), d.get("model", ""),
+                json.dumps(d.get("permissions") or {}), json.dumps(d.get("sinks") or []),
+                d.get("autonomy_cap", "balanced"), int(d.get("max_delegations", 12)),
+                int(d.get("max_steps", 24)), int(d.get("max_seconds", 1800)),
+                d.get("space_id", "") or "", int(d.get("enabled", 1)), int(d.get("builtin", 0)),
+                json.dumps(d.get("draft") or {}), now)
+        if row:
+            self.db.execute(
+                "UPDATE flows SET name=?, description=?, mission=?, roster=?, model=?, "
+                "permissions=?, sinks=?, autonomy_cap=?, max_delegations=?, max_steps=?, "
+                "max_seconds=?, space_id=?, enabled=?, builtin=?, draft=?, updated_at=? WHERE id=?",
+                (*vals, fid))
+        else:
+            self.db.execute(
+                "INSERT INTO flows (name, description, mission, roster, model, permissions, "
+                "sinks, autonomy_cap, max_delegations, max_steps, max_seconds, space_id, "
+                "enabled, builtin, draft, updated_at, id, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*vals, fid, now))
+        self.db.commit()
+        return fid
+
+    def list_flows(self) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM flows ORDER BY name COLLATE NOCASE").fetchall()
+        return [self._flow_row(r) for r in rows]
+
+    def get_flow(self, name: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM flows WHERE name=? COLLATE NOCASE",
+                              ((name or "").strip(),)).fetchone()
+        return self._flow_row(row) if row else None
+
+    def delete_flow(self, fid: str):
+        self.db.execute("DELETE FROM flows WHERE id=?", (fid,))
+        self.db.commit()
+
+    # -- flow triggers ------------------------------------------------------
+
+    @staticmethod
+    def _trigger_row(r) -> dict:
+        d = dict(r)
+        try:
+            d["config"] = json.loads(d.get("config") or "{}")
+        except Exception:
+            d["config"] = {}
+        return d
+
+    def add_flow_trigger(self, flow: str, kind: str, config: dict | None = None,
+                         task_id: str = "", secret: str = "", cooldown_secs: int = 60,
+                         enabled: int = 1) -> str:
+        tid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO flow_triggers (id, flow, kind, config, task_id, secret, enabled, "
+            "cooldown_secs, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (tid, flow, kind, json.dumps(config or {}), task_id, secret, int(enabled),
+             int(cooldown_secs), time.time()))
+        self.db.commit()
+        return tid
+
+    def flow_triggers(self, flow: str = "", kind: str = "", enabled_only: bool = False) -> list[dict]:
+        q, params = "SELECT * FROM flow_triggers WHERE 1=1", []
+        if flow:
+            q += " AND flow=? COLLATE NOCASE"
+            params.append(flow)
+        if kind:
+            q += " AND kind=?"
+            params.append(kind)
+        if enabled_only:
+            q += " AND enabled=1"
+        rows = self.db.execute(q + " ORDER BY created_at", params).fetchall()
+        return [self._trigger_row(r) for r in rows]
+
+    def flow_trigger(self, tid: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM flow_triggers WHERE id=?", (tid,)).fetchone()
+        return self._trigger_row(row) if row else None
+
+    def update_flow_trigger(self, tid: str, **fields):
+        if not fields:
+            return
+        if isinstance(fields.get("config"), dict):
+            fields["config"] = json.dumps(fields["config"])
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE flow_triggers SET {cols} WHERE id=?", (*fields.values(), tid))
+        self.db.commit()
+
+    def flow_trigger_fired(self, tid: str, dropped: bool = False):
+        """One firing (or one refused by the cooldown). Dropped fires are counted, not
+        discarded — 'it never ran' and 'it ran less often than you think' look identical
+        otherwise, and only one of them is a bug in the cooldown."""
+        if dropped:
+            self.db.execute("UPDATE flow_triggers SET dropped=dropped+1 WHERE id=?", (tid,))
+        else:
+            self.db.execute("UPDATE flow_triggers SET fires=fires+1, last_fired=? WHERE id=?",
+                            (time.time(), tid))
+        self.db.commit()
+
+    def delete_flow_trigger(self, tid: str):
+        self.db.execute("DELETE FROM flow_triggers WHERE id=?", (tid,))
+        self.db.commit()
+
+    # -- the blackboard -----------------------------------------------------
+
+    def artifact_add(self, run_id: str, handle: str, content: str, kind: str = "output",
+                     agent: str = "", child_run: str = "", task: str = "", status: str = "ok",
+                     tokens_in: int = 0, tokens_out: int = 0, tainted: int = 0,
+                     deps: list | None = None, space_id: str = "") -> str:
+        content = content or ""
+        aid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO flow_artifacts (id, run_id, handle, kind, agent, child_run, task, "
+            "content, preview, bytes, status, tokens_in, tokens_out, tainted, deps, space_id, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (aid, run_id, handle, kind, agent, child_run, task[:400], content,
+             " ".join(content.split())[:240], len(content), status, tokens_in, tokens_out,
+             int(tainted), json.dumps(deps or []), space_id or "", time.time()))
+        self.db.commit()
+        return aid
+
+    def artifact_get(self, run_id: str, handle: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM flow_artifacts WHERE run_id=? AND handle=?",
+                              (run_id, handle)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["deps"] = json.loads(d.get("deps") or "[]")
+        return d
+
+    def artifact_index(self, run_id: str) -> list[dict]:
+        """Every column EXCEPT `content`. The index is what goes into a prompt, and a
+        query that *could* return 400 KB is how it eventually does."""
+        rows = self.db.execute(
+            "SELECT id, run_id, handle, kind, agent, child_run, task, preview, bytes, status, "
+            "tokens_in, tokens_out, tainted, deps, space_id, created_at "
+            "FROM flow_artifacts WHERE run_id=? ORDER BY created_at", (run_id,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["deps"] = json.loads(d.get("deps") or "[]")
+            out.append(d)
+        return out
+
+    def next_handle(self, run_id: str, prefix: str = "a") -> str:
+        row = self.db.execute(
+            "SELECT COUNT(*) n FROM flow_artifacts WHERE run_id=? AND handle LIKE ?",
+            (run_id, prefix + "%")).fetchone()
+        return f"{prefix}{(row['n'] if row else 0) + 1}"
+
     # -- scheduled tasks ----------------------------------------------------
 
     def add_task(self, prompt: str, schedule_type: str, interval_seconds: int | None,
                  at_time: str | None, next_run: float | None, trigger: str = "",
-                 trigger_config: str = "{}", cooldown_secs: int = 300) -> str:
+                 trigger_config: str = "{}", cooldown_secs: int = 300,
+                 flow: str = "", space_id: str = "") -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
-            'created_at, "trigger", trigger_config, cooldown_secs) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
             (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
-             trigger, trigger_config or "{}", int(cooldown_secs)),
+             trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or ""),
         )
         self.db.commit()
         return tid

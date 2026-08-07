@@ -235,6 +235,15 @@ function handle(ev){
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
         card.querySelector('.out').textContent=ev.output||'(no output)';
+        // Content this machine did not write is marked where it lands, not only in
+        // the approval card it later causes — you should be able to see which step
+        // brought the outside world into the conversation.
+        if(ev.untrusted){card.classList.add('untrusted');
+          const h=card.querySelector('.head');
+          if(h&&!h.querySelector('.tuntrust')){const b=document.createElement('span');
+            b.className='tuntrust';b.textContent='from outside';
+            b.title='Fetched from outside this machine. It is data to the agent, never instructions — and while this turn holds it, anything that changes something asks you first.';
+            h.appendChild(b);}}
         if(!ev.ok)card.classList.add('open');}
       // the model is about to think about this result — often the slowest gap in a
       // turn; keep a live indicator so it never looks frozen (and repaints on macOS)
@@ -314,8 +323,21 @@ function handle(ev){
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
-    case 'fabric_event': fabricLiveRefresh(); break;
+    case 'fabric_event':
+      // State first, painting second: the graph must stay correct even when the Team
+      // window is closed, so opening it shows the truth rather than a replay.
+      if(typeof fgApply==='function')fgApply(ev);
+      fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); break;
+    case 'quarantined':
+      // Loud on purpose: something the user installed just stopped working, and the worst
+      // version of this feature is one where they find out by the thing being broken.
+      toast('⚠ Quarantined “'+ev.label+'” — '+(ev.reason||'').slice(0,80));
+      refreshApp('permissions'); refreshApp('apps'); break;
+    case 'quarantine': refreshApp('permissions'); break;
+    case 'flow_done':
+      toast('▲ '+ev.flow+' · '+ev.status);
+      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
@@ -338,6 +360,8 @@ function handle(ev){
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
+    case 'eval_result': case 'evals_done':
+      EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
     case 'models': refreshApp('models'); loadModels(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);

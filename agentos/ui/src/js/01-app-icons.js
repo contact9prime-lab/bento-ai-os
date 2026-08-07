@@ -12,6 +12,7 @@ const ICONS={
   models:['#C084FC','#7C3AED','<rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2"/><path d="M10 4.2v3M14 4.2v3M10 16.8v3M14 16.8v3M4.2 10h3M4.2 14h3M16.8 10h3M16.8 14h3"/>'],
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
+  flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
@@ -38,6 +39,28 @@ const ICONS={
   about:['#5EEAD4','#0D9488','<path d="M12 4.8 19.4 18.2H4.6Z"/><circle cx="12" cy="9.6" r="1" fill="#fff" stroke="none"/>'],
   docs:['#D9A66C','#A16207','<path d="M12 6.6C10.6 5.5 8.7 4.9 6.6 4.9c-.9 0-1.8.1-2.6.4v13c.8-.3 1.7-.4 2.6-.4 2.1 0 4 .6 5.4 1.7 1.4-1.1 3.3-1.7 5.4-1.7.9 0 1.8.1 2.6.4v-13c-.8-.3-1.7-.4-2.6-.4-2.1 0-4 .6-5.4 1.7Z"/><path d="M12 6.6v13"/>'],
 };
+/* A built app may choose one of the SAME glyph tiles the OS uses for itself, by
+   storing `glyph:<key>` as its icon. That is the whole reason this is not an
+   emoji field: a user app picking "tasks" gets the real duotone tile, so a built
+   app sits on the desktop looking like it belongs there rather than like a
+   sticker. An empty icon still means "monogram", which stays the default. */
+function glyphTile(key,px,cls){
+  const ic=ICONS[key];if(!ic)return '';
+  return `<span class="aicon${cls?' '+cls:''}" style="width:${px}px;height:${px}px;background:linear-gradient(180deg,${ic[0]},${ic[1]})">`+
+    `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ic[2]}</svg></span>`;
+}
+/* One place that turns a stored icon value into a tile, for anything that holds
+   an app record rather than an app id (App Studio, the Store, import previews). */
+function iconTile(icon,label,seed,px,cls){
+  px=px||46;const v=String(icon||'').trim();
+  if(v.startsWith('glyph:')){const t=glyphTile(v.slice(6),px,cls);if(t)return t}
+  const st=`width:${px}px;height:${px}px`;
+  if(v)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
+    `<span class="em" style="font-size:${Math.round(px*.5)}px">${v}</span></span>`;
+  const ch=(String(label||seed||'?').trim().charAt(0)||'?').toUpperCase();
+  return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
+    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${ch}</span></span>`;
+}
 function appIcon(id,px,cls){
   px=px||46;
   const st=`width:${px}px;height:${px}px`;
@@ -45,12 +68,8 @@ function appIcon(id,px,cls){
   if(ic)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:linear-gradient(180deg,${ic[0]},${ic[1]})">`+
     `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ic[2]}</svg></span>`;
   const a=(APPS_READY&&APPS[id])||null;   // APPS is a const in TDZ until defined — gate on APPS_READY first
-  const emoji=((a&&a.icon)||'').trim();
-  if(emoji)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(id)}">`+
-    `<span class="em" style="font-size:${Math.round(px*.5)}px">${emoji}</span></span>`;
-  const ch=((a&&a.title)||id).replace(/^ua_/,'').trim().charAt(0).toUpperCase()||'?';
-  return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(id)}">`+
-    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${ch}</span></span>`;
+  // the monogram falls back to the id with its `ua_` prefix stripped, never "u"
+  return iconTile((a&&a.icon)||'',(a&&a.title)||String(id).replace(/^ua_/,''),id,px,cls);
 }
 function emojiIcon(emoji,px,cls){
   return `<span class="aicon${cls?' '+cls:''}" style="width:${px}px;height:${px}px;background:linear-gradient(180deg,#3f4653,#242a34)">`+

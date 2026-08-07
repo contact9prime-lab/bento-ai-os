@@ -81,6 +81,33 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 | GET | `/api/fabric/observability` | faults / performance / tokens per data plane, incl. the main agent; live heartbeats |
 | POST | `/api/plane/llm` | model plane: run a completion through the control plane's provider config (the surface L1+ workers call over mTLS) |
 
+### Flows (a master orchestrator as the control plane — [design](design/flows.md))
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/flows` | every flow with its triggers (webhook URLs included) and the grants its definition wrote |
+| POST | `/api/flows/draft` | compose from a sentence and create it **disabled**, so it appears as a card holding no permissions |
+| POST | `/api/flows/compose` | compose from a sentence, or revise one (`current`) — writes nothing |
+| POST | `/api/flows/{name}/enable` | `{"enabled": true\|false}` — enabling is what grants permissions and arms triggers |
+| POST | `/api/flows/{name}/discard` | throw a draft away, including agents it created that nothing else uses |
+| GET | `/api/flows/runs` | every flow execution, newest first, `?flow=` to filter — delegations, agents used, failed steps, duration |
+| POST | `/api/subagents/compose` | draft or revise one specialist from a sentence — writes nothing |
+| POST | `/api/flows/preview` | what saving this definition *would* grant — writes nothing |
+| POST | `/api/flows` | create/update: validates, saves, reconciles grants and triggers, returns a report |
+| DELETE | `/api/flows/{name}` | delete; its triggers stop and its definition-sourced grants are revoked |
+| POST | `/api/flows/{name}/run` | start it; returns `run_id` **synchronously** so the caller can subscribe to its events |
+| GET | `/api/flows/runs/{id}/board` | the blackboard index (no artefact contents) |
+| GET | `/api/flows/runs/{id}/artifacts/{handle}` | one artefact in full |
+| POST | `/api/hooks/{flow}/{trigger_id}` | inbound webhook. Per-trigger secret (`?k=` or `X-AgentOS-Hook-Secret`), cooldown enforced before the body is read, 64 KB cap, run is tainted. **Outside the remote-access gate** |
+| GET | `/api/fabric/approvals` | what is paused waiting for a person (this is what makes the TUI/CLI first-class) |
+| POST | `/api/fabric/approvals/{id}` | answer one: `{"approved": true, "remember": false}` |
+
+### Quarantine (what the OS stopped, and why)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/quarantine?history=` | what is held now — principal, reason, evidence — and past release decisions |
+| POST | `/api/quarantine/{id}/release` | `{"mode": "once"\|"forever"\|"deleted"}` — the choice and who made it are logged |
+| POST | `/api/apps/{id}/resume` | start a stopped app again (its rate history is forgotten, or it would trip immediately) |
+
 ### Docs & setup
 | Method | Path | Purpose |
 |---|---|---|
@@ -96,7 +123,10 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 |---|---|---|
 | GET/POST | `/api/tasks`, PUT/DELETE `/{id}` | scheduled jobs |
 | GET/DELETE | `/api/logs` | activity logs |
-| GET | `/api/analytics/tokens` | token usage totals, by model and by day |
+| GET | `/api/analytics/tokens` | token totals from turn logs, by model and by day (last 1000 turns) |
+| GET | `/api/usage` | the cost ledger: `?days=&group=model\|day\|surface\|kind\|conversation\|space` → tokens **and** money, with unpriced turns reported separately |
+| GET | `/api/evals` | behavioural eval cases + the last run |
+| POST | `/api/evals/run` | run the evals: `{ models?, cases?, tags?, network? }` → report (one run at a time) |
 
 ### Models & appearance
 | Method | Path | Purpose |

@@ -111,9 +111,50 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .stapp .stren{opacity:0;flex:none;font-size:var(--fs-xs);padding:2px 5px;border-radius:var(--r-sm);transition:opacity var(--d-fast) var(--ease-out)}
 .stapp:hover .stren{opacity:.7}
 .stapp .stren:hover{opacity:1;background:var(--bg3)}
+.stapp .aicon{flex:none}
 .stcompose{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex:none}
 .stcompose input{flex:1}
 .stcompose .stmodel{flex:0 0 auto;max-width:190px;font-size:var(--fs-sm);padding:5px 8px}
+/* identity strip: the app's name and icon, above the thing that builds it */
+.stident{display:flex;gap:8px;align-items:center;padding:8px 12px 0;flex:none}
+.stident .stic{flex:none;padding:0;border:none;background:none;cursor:pointer;line-height:0;
+  border-radius:var(--r-md);outline:1px solid transparent;transition:outline-color var(--d-fast) var(--ease-out)}
+.stident .stic:hover{outline-color:var(--acc)}
+.stident input{flex:0 1 260px;font-size:var(--fs-sm);padding:5px 9px}
+.stident .mut{font-size:var(--fs-2xs);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* icon picker */
+.stiov{position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;
+  background:rgba(5,7,10,.55);backdrop-filter:blur(4px)}
+.stibox{width:min(460px,92vw);max-height:82vh;overflow:auto;background:var(--glass,#171b22);
+  border:1px solid var(--line);border-radius:14px;padding:18px}
+.stigrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px}
+.stigrid button{padding:5px;border:1px solid transparent;border-radius:var(--r-md);background:none;
+  cursor:pointer;line-height:0;display:flex;align-items:center;justify-content:center}
+.stigrid button:hover{background:var(--bg3)}
+.stigrid button.on{border-color:var(--acc);background:var(--bg4)}
+/* builder log: tool lines, each with what it is on and how long it has been on it */
+.stlog .bsay{line-height:1.5}
+.stlog .bsay p{margin:5px 0}
+.stlog .bsay ul,.stlog .bsay ol{margin:5px 0 5px 18px}
+.stlog .bsay pre{max-width:100%;overflow-x:auto;font-size:var(--fs-2xs);padding:6px 8px;border-radius:var(--r-sm);background:var(--bg2)}
+.stlog .bsay h1,.stlog .bsay h2,.stlog .bsay h3,.stlog .bsay h4{font-size:var(--fs-sm);margin:8px 0 3px}
+.btool{display:flex;gap:8px;align-items:baseline;font-size:var(--fs-xs);padding:2px 0;
+  border-left:2px solid var(--acc);padding-left:8px}
+.btool.done{border-left-color:var(--dim2)}
+.btool.bad{border-left-color:var(--err)}
+.btool .bt-n{flex:none;font-weight:650;color:var(--dim)}
+.btool.bad .bt-n{color:var(--err)}
+.btool .bt-d{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dim2);font-family:var(--mono);font-size:var(--fs-2xs)}
+.btool .bt-t{flex:none;color:var(--dim2);font-variant-numeric:tabular-nums;font-size:var(--fs-2xs)}
+/* versions / permissions tabs under the builder log */
+.sttabs{display:flex;gap:2px;padding:4px 10px 0;flex:none;border-top:1px solid var(--line)}
+.sttabs button{background:none;border:none;cursor:pointer;color:var(--dim2);font-size:var(--fs-2xs);
+  font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:5px 8px;border-radius:var(--r-sm)}
+.sttabs button:hover{color:var(--txt)}
+.sttabs button.on{color:var(--acc);background:var(--bg3)}
+.sttabs .stpd{display:inline-block;width:6px;height:6px;border-radius:999px;
+  background:var(--warn,#e8b04b);vertical-align:middle;margin-left:2px}
 
 
 /* ===== first-run wizard (agent-led onboarding) ===== */

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import hmac
 import json
 import os
 import re
@@ -16,15 +17,19 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import config as cfgmod
 from . import fabric as fabricmod
+from . import flows as flowsmod
+from . import history as historymod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
+from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
-from .policy import MAIN, PDP, Principal
+from .policy import MAIN, PDP, SURFACES, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
+from . import tools
 from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
 
@@ -76,13 +81,20 @@ async def startup():
     toolbox.broadcast = broadcast
     control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
     toolbox.fabric = control
+    # The control plane knows nothing about Telegram or about the UI; how a result is
+    # delivered and how a paused run asks a person are injected, the same way broadcast is.
+    control.deliver = _flow_deliver
+    control.approvals = _flow_approval
+    scheduler.fabric = control
     pdp = PDP(cfg, store)
     pdp.mcp = mcp
+    pdp.on_rate_trip = _quarantine
     toolbox.pdp = pdp
     trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
     fabricmod.seed_builtins(cfg, store)
+    flowsmod.seed_builtin(store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
                  fabric=control, pdp=pdp, trainforge=trainforge,
@@ -335,7 +347,12 @@ async def ui_assets(name: str):
 
 @app.get("/api/analytics/tokens")
 async def api_token_analytics():
-    """Token usage aggregated from turn logs: totals, by-model, and a daily series."""
+    """Token usage aggregated from turn logs: totals, by-model, and a daily series.
+
+    Superseded by `/api/usage` (the `usage` table), which carries cost and can
+    group by surface, space and kind. Kept because it reads the turn log, so it
+    still answers for conversations that happened before the ledger existed.
+    """
     import time as _t
     logs = state["store"].list_logs("turn", limit=1000)
     by_model: dict = {}
@@ -2061,6 +2078,18 @@ async def api_put_config(patch: dict):
                   "embed_model", "rollup_after_hours", "kg_dedup"):
             if k in patch["memory"]:
                 mem[k] = patch["memory"][k]
+    if isinstance(patch.get("security"), dict):
+        from .policy import TAINT_MODES
+        if patch["security"].get("taint") in TAINT_MODES:
+            cfg.setdefault("security", {})["taint"] = patch["security"]["taint"]
+    if isinstance(patch.get("history"), dict):
+        h = cfg.setdefault("history", {})
+        for k in ("tool_trace", "compact", "model"):
+            if k in patch["history"]:
+                h[k] = patch["history"][k]
+        for k, lo, hi in (("trace_chars", 0, 8000), ("budget_tokens", 0, 1_000_000)):
+            if isinstance(patch["history"].get(k), (int, float)):
+                h[k] = max(lo, min(int(patch["history"][k]), hi))
     if isinstance(patch.get("image"), dict):
         img = cfg.setdefault("image", {})
         for k in ("provider", "model"):
@@ -2942,6 +2971,36 @@ def _propose_manifest(aid: str) -> dict | None:
     return man
 
 
+def _app_by_name(store, name: str) -> dict | None:
+    """The app with this exact name. `list_apps()` sorts by NAME, so reaching for
+    `[0]` to mean "the one just built" returns whichever app is alphabetically
+    first — right on an empty machine and wrong forever after."""
+    low = (name or "").strip().lower()
+    for a in store.list_apps():
+        if (a.get("name") or "").strip().lower() == low:
+            return a
+    return None
+
+
+def _finish_build_checks(aid: str) -> tuple[str, list[str]]:
+    """Everything a freshly built app owes the user before it is called done:
+    a permission manifest to consent to, and an honest list of what it still
+    ships with.
+
+    Both build paths call this. They did not always: an app built by the
+    executor skipped straight to "done", so it never asked for the permissions
+    it needed and never admitted a truncated body — the same app built by the
+    one-shot builder did both. Which engine built it is not something the user
+    should have to know to get a consent screen.
+    """
+    full = state["store"].get_app(aid) or {}
+    status = full.get("manifest_status") or "none"
+    if status == "none":
+        _propose_manifest(aid)
+        status = "proposed"
+    return status, _validate_app_html(full.get("html", ""))
+
+
 @app.post("/api/apps/{aid}/manifest/propose")
 async def api_app_manifest_propose(aid: str):
     """Draft a permission manifest from the app's source and activity, for user review."""
@@ -3342,25 +3401,238 @@ def _lint_app_html(html: str, toolbox=None) -> list[str]:
 # ---- Approval broker (global): any surface can ask the user and await Allow/Deny ----
 
 async def request_approval(name: str, args: dict, reason: str, offer: dict | None = None,
-                           evsend=None, ws=None) -> bool:
+                           evsend=None, ws=None, timeout: float = 300,
+                           run_id: str = "", flow: str = "") -> bool:
     """Raise an approval card and wait for the user's answer. `offer` is a ready-to-write
     grant: when the user picks "allow & remember", it is persisted before resolving True.
-    evsend routes the card to one chat's client; otherwise it broadcasts to every client."""
+    evsend routes the card to one chat's client; otherwise it broadcasts to every client.
+
+    The entry carries what was asked and by whom, so `/api/fabric/approvals` can list it —
+    a paused flow has to be answerable from the TUI and the CLI, not only from the window
+    that happened to be open when it asked."""
     aid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state["pending_approvals"][aid] = {"fut": fut, "offer": offer, "ws": ws}
+    state["pending_approvals"][aid] = {"fut": fut, "offer": offer, "ws": ws, "name": name,
+                                       "args": args, "reason": reason, "run_id": run_id,
+                                       "flow": flow, "asked_at": time.time()}
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
-          "reason": reason, "offer": offer}
+          "reason": reason, "offer": offer, "run_id": run_id, "flow": flow}
     if evsend is not None:
         await evsend(ev)
     else:
         await state["broadcast"](ev)
     try:
-        return await asyncio.wait_for(fut, timeout=300)
+        return await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
         return False
     finally:
         state["pending_approvals"].pop(aid, None)
+
+
+async def request_price(model: str, evsend=None) -> bool:
+    """A new cloud model has no price. Ask before it runs.
+
+    Returns True when the turn may proceed (a price was set, or the user chose to
+    run it unpriced). The card is prefilled with a published rate when one can be
+    found, because typing a number you had to go and look up is the part people
+    skip — but it is still shown for confirmation rather than written silently.
+
+    Unattended surfaces cannot answer, so this must never wedge a scheduled job:
+    on timeout the turn proceeds and the model is recorded as unpriced, with the
+    reason in the log. Refusing to run would be a worse failure than not knowing
+    what it cost.
+    """
+    if state.get("price_pending", {}).get(model):
+        return True                       # already being asked about; don't stack cards
+    pid = uuid.uuid4().hex[:8]
+    fut = asyncio.get_event_loop().create_future()
+    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model}
+    state.setdefault("price_pending", {})[model] = True
+    found = await usagemod.discover_price(state["cfg"], model)
+    ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
+    try:
+        await (evsend(ev) if evsend is not None else state["broadcast"](ev))
+        return await asyncio.wait_for(fut, timeout=300)
+    except asyncio.TimeoutError:
+        state["store"].log("system",
+                           f"no price set for {model} — nobody answered the prompt, so the "
+                           f"turn ran and its tokens are recorded as unpriced",
+                           {"model": model, "kind": "pricing"})
+        return True
+    finally:
+        state.get("pending_prices", {}).pop(pid, None)
+        state.get("price_pending", {}).pop(model, None)
+
+
+async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0):
+    """Answer a price card: `set` | `skip` | `cancel`."""
+    entry = state.get("pending_prices", {}).get(pid)
+    if not entry or entry["fut"].done():
+        return
+    model = entry["model"]
+    if action == "set":
+        usagemod.set_price(state["cfg"], model, price_in, price_out)
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("system", f"price set for {model}: ${price_in}/M in, ${price_out}/M out",
+                           {"model": model, "kind": "pricing"})
+    elif action == "skip":
+        usagemod.skip_price(state["cfg"], model)
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("system", f"{model} will run without a price (your choice)",
+                           {"model": model, "kind": "pricing"})
+    await state["broadcast"]({"type": "pricing"})
+    entry["fut"].set_result(action != "cancel")
+
+
+def _quarantine(principal: Principal, stats: dict):
+    """The PDP decided something is looping. Holding it is this layer's job.
+
+    Deliberately not silent. Something that just stops working is a bug report; something
+    that says it was quarantined, why, with the numbers, and offers three ways out is a
+    decision the user can agree or disagree with — and the ledger already holds every call
+    that led here."""
+    store = state["store"]
+    label = principal.id
+    if principal.kind == "app":
+        label = (store.get_app(principal.id) or {}).get("name") or principal.id
+    # The PDP has already written the hold — that is what makes it real. This adds the human
+    # name to it and does everything the gate has no business doing.
+    held = store.quarantined(principal.kind, principal.id)
+    if not held:
+        return
+    qid = held["id"]
+    if label and label != principal.id and not held.get("label"):
+        store.db.execute("UPDATE quarantine SET label=? WHERE id=?", (label[:120], qid))
+        store.db.commit()
+    if principal.kind == "app":
+        # Its token is deliberately LEFT ALONE. Revoking it does not silence the app — it
+        # makes the next call arrive unidentified, and an unidentified call used to be read
+        # as the user's own. The app keeps its name so the refusal lands on the right
+        # principal; `suspended_at` is what stops it.
+        store.suspend_app(principal.id, stats["reason"])
+    if held.get("announced"):
+        return
+    store.log("policy", f"quarantined {principal.kind} '{label}': {stats['reason']}",
+              {"principal": principal.label, "rule": "quarantined", "quarantine": qid, **stats})
+    store.log("error", f"{principal.kind} '{label}' was quarantined: {stats['reason']}",
+              {"principal": principal.label, "quarantine": qid})
+    with contextlib.suppress(Exception):
+        asyncio.create_task(_announce_quarantine(principal, label, stats["reason"], qid))
+
+
+async def _announce_quarantine(principal: Principal, label: str, reason: str, qid: str):
+    await state["broadcast"]({"type": "quarantined", "id": qid, "kind": principal.kind,
+                              "principal_id": principal.id, "label": label, "reason": reason})
+    await state["broadcast"]({"type": "apps"})
+    await state["broadcast"]({"type": "fabric_defs"})
+    with contextlib.suppress(Exception):
+        await state["toolbox"].notify(f"Quarantined “{label}”", reason[:180])
+
+
+@app.get("/api/quarantine")
+async def api_quarantine(history: bool = False):
+    return {"held": state["store"].quarantine_list(include_released=False),
+            "history": state["store"].quarantine_list(include_released=True, limit=40)
+            if history else []}
+
+
+@app.post("/api/quarantine/{qid}/release")
+async def api_quarantine_release(qid: str, body: dict):
+    """Let something out, and record which of the three things the user chose.
+
+    `once`    — runs again, still watched; it can be held again tomorrow.
+    `forever` — never held for this again. An exemption somebody made deliberately, so it
+                stays on the record rather than disappearing when the row is cleared.
+    `deleted` — it is gone.
+    """
+    mode = ((body or {}).get("mode") or "once").strip()
+    if mode not in ("once", "forever", "deleted"):
+        return JSONResponse({"error": "mode is once, forever or deleted"}, status_code=400)
+    row = state["store"].quarantine_release(qid, mode)
+    if not row:
+        return JSONResponse({"error": "no such quarantine record"}, status_code=404)
+    kind, pid = row["principal_kind"], row["principal_id"]
+    store = state["store"]
+    if mode == "deleted":
+        if kind == "app":
+            store.delete_app(pid)
+        elif kind == "subagent" and store.get_subagent(pid):
+            store.delete_subagent(store.get_subagent(pid)["id"])
+        elif kind == "flow":
+            flowsmod.delete(store, pid)
+    elif kind == "app":
+        store.resume_app(pid)
+    with contextlib.suppress(Exception):
+        state["pdp"]._rate.forget(f"{kind}:{pid}|llm")
+        state["pdp"]._rate.forget(f"{kind}:{pid}|tool")
+    store.log("policy",
+              f"{kind} '{row.get('label') or pid}' released from quarantine by the user: "
+              + {"once": "allowed to run again, still watched",
+                 "forever": "allowed forever — it will not be held for this again",
+                 "deleted": "deleted"}[mode],
+              {"principal": f"{kind}:{pid}", "quarantine": qid, "release_mode": mode})
+    await state["broadcast"]({"type": "quarantine"})
+    await state["broadcast"]({"type": "apps"})
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"ok": True, "mode": mode}
+
+
+async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
+                         offer: dict | None, origin: dict) -> bool:
+    """A paused flow, asking. It goes back where the run came from when that is a place
+    a person can answer — a run started from a phone should not raise a card on a screen
+    in another room — and otherwise to every open window, which in the session desktop
+    means the desktop itself."""
+    timeout = int((state["cfg"].get("fabric") or {}).get("approval_timeout", 900))
+    run = state["store"].fabric_run(run_id) or {}
+    chat_id = origin.get("chat_id") or (run.get("origin_ref") if
+                                        run.get("origin_surface") == "telegram" else "")
+    if origin.get("surface") == "telegram" and state.get("telegram") and chat_id:
+        return await state["telegram"].ask_approval(int(chat_id), name, args, reason,
+                                                    offer=offer, timeout=timeout)
+    return await request_approval(name, args, reason, offer=offer, timeout=timeout,
+                                  run_id=run_id, flow=run.get("flow") or "")
+
+
+async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
+    """Where a finished flow's answer goes. The default sink is `origin`: triggered from
+    Telegram, it answers in that chat. A flow that declares nothing gets that behaviour,
+    because being told the result where you asked for it is not a feature to opt into."""
+    sinks = flow.get("sinks") or [{"kind": "origin"}]
+    surface = origin.get("surface") or run.get("origin_surface") or ""
+    done = []
+    for sink in sinks:
+        kind = sink.get("kind")
+        if kind == "origin":
+            kind = {"telegram": "telegram", "webhook": "notify", "task": "notify",
+                    "tui": "notify"}.get(surface, "gui")
+            sink = {**sink, "chat_id": origin.get("chat_id") or run.get("origin_ref") or 0}
+        try:
+            head = f"▲ {flow['name']} · {run.get('status', '')}"
+            if kind == "telegram" and state.get("telegram"):
+                await state["telegram"].send(f"{head}\n\n{text}",
+                                             int(sink.get("chat_id") or 0) or None)
+            elif kind == "notify":
+                await state["toolbox"].notify(head, text[:200])
+            elif kind == "report":
+                await state["toolbox"].save_report(
+                    f"{flow['name']} — {time.strftime('%d %b %H:%M')}", text,
+                    to_telegram=bool(sink.get("to_telegram")))
+            elif kind == "conversation":
+                cid = sink.get("id") or run.get("conversation_id") or ""
+                if cid:
+                    state["store"].add_message(cid, "assistant", text)
+            else:      # 'gui': the desktop is the sink, and every window hears it
+                await state["broadcast"]({"type": "flow_done", "flow": flow["name"],
+                                          "run_id": run.get("id", ""),
+                                          "status": run.get("status", ""),
+                                          "preview": text[:400]})
+                kind = "gui"
+            done.append(kind)
+        except Exception as e:
+            state["store"].log("error", f"flow '{flow['name']}': delivery to {kind} failed: {e}",
+                               {"flow": flow["name"], "sink": kind})
+    return done
 
 
 async def resolve_approval(aid: str, approved: bool, remember: bool = False):
@@ -3450,6 +3722,9 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/wm/outputs"), ("POST", "/api/components"),
     # shell_cmd results come from the shell itself, never from an app iframe
     ("POST", "/api/shell/result"),
+    # an eval run spends real model tokens for as long as it takes; that is a
+    # user's decision to make, not something an app kicks off in the background
+    ("POST", "/api/evals/run"),
 )
 
 
@@ -3491,7 +3766,14 @@ async def app_privilege_guard(request: Request, call_next):
 # ---------------------------------------------------------------------------
 
 REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/assets/", "/manifest.webmanifest",
-                     "/favicon.ico", "/apple-touch-icon.png")
+                     "/favicon.ico", "/apple-touch-icon.png",
+                     # Flow webhooks. A service posting from the internet has no session
+                     # and cannot get one, so this is the one path deliberately reachable
+                     # without the remote-access gate. Its only defence is the per-trigger
+                     # secret compared in constant time, plus a cooldown enforced before
+                     # any work starts — both live in api_flow_hook, and the run it starts
+                     # is tainted so the payload cannot spend a permission unseen.
+                     "/api/hooks/")
 
 
 def _client_addr(request: Request) -> str:
@@ -3525,10 +3807,40 @@ async def remote_access_gate(request: Request, call_next):
 
 def _principal_of(request) -> Principal:
     """Map a request to its principal: an app runtime token (X-App-Token, minted when the
-    app page is served) makes it that app; anything else acts as the user."""
+    app page is served) makes it that app; a request with no token at all is the user."""
     tok = request.headers.get("x-app-token", "") if request is not None else ""
     entry = state["app_tokens"].get(tok) if tok else None
     return Principal("app", entry["app_id"]) if entry else MAIN
+
+
+def _stale_app_token(request) -> bool:
+    """A request that PRESENTS a token we do not know is a page from a previous server run,
+    a deleted app, or one whose identity was revoked. It is emphatically not the user.
+
+    Falling through to MAIN here is a privilege escalation: it takes something that was
+    running with an app's narrow permissions and hands it the user's. It surfaced when a
+    quarantined app's next call came back as the user's own — but a server restart alone is
+    enough to reach it, which is why the fix is here and not in the quarantine path.
+    """
+    if request is None:
+        return False
+    tok = request.headers.get("x-app-token", "")
+    return bool(tok) and tok not in state["app_tokens"]
+
+
+@app.post("/api/apps/{aid}/resume")
+async def api_resume_app(aid: str):
+    """Start a stopped app again. Its rate history is forgotten too — otherwise the very
+    next call would be measured against the burst that got it stopped and it would trip
+    again immediately, which reads as "Resume does not work"."""
+    if not state["store"].get_app(aid):
+        return JSONResponse({"error": "no such app"}, status_code=404)
+    state["store"].resume_app(aid)
+    with contextlib.suppress(Exception):
+        state["pdp"]._rate.forget(Principal("app", aid).label)
+    state["store"].log("policy", f"app {aid} started again by the user", {"app": aid})
+    await state["broadcast"]({"type": "apps"})
+    return {"ok": True}
 
 
 @app.post("/api/tool")
@@ -3539,7 +3851,20 @@ async def api_run_tool(body: dict, request: Request):
     name = body.get("name", "")
     args = body.get("args") or {}
     toolbox = state["toolbox"]
+    if _stale_app_token(request):
+        return JSONResponse({"error": "this app's session has ended — reload it. (If it was "
+                                      "quarantined, let it out in Permissions → Quarantine.)",
+                             "stale": True}, status_code=401)
     principal = _principal_of(request)
+    # A quarantined app is refused here, before the gate, so a page still looping in a
+    # background tab cannot keep the meter warm or fill the ledger with the same denial.
+    if principal.kind == "app":
+        app_row = state["store"].get_app(principal.id) or {}
+        if app_row.get("suspended_at"):
+            why = app_row.get("suspended_reason") or "it was calling too fast"
+            return JSONResponse({"error": f"this app is quarantined: {why}. Let it out in "
+                                          f"Permissions → Quarantine.",
+                                 "quarantined": True}, status_code=409)
     if name not in {t["name"] for t in toolbox.schemas()}:
         return JSONResponse({"error": f"unknown tool: {name}"}, status_code=400)
     level, reason = toolbox.risk_of(name, args)
@@ -3577,7 +3902,13 @@ async def api_run_tool(body: dict, request: Request):
         if not approved:
             return JSONResponse({"error": f"not approved: {dec.reason or reason}"},
                                 status_code=403)
-    out = await toolbox.execute(name, args)
+    # An app parses this in JS, so the model's context budget does not apply —
+    # clipping at MAX_OUTPUT would hand it a half-written JSON body.
+    tok = tools.output_limit.set(tools.APP_MAX_OUTPUT)
+    try:
+        out = await toolbox.execute(name, args)
+    finally:
+        tools.output_limit.reset(tok)
     state["store"].log("tool", f"app→{name}",
                        {"args": args, "via": "user_app", "principal": principal.label,
                         "app_id": principal.id if principal.kind == "app" else "",
@@ -3680,6 +4011,7 @@ async def api_policy_options():
             "actions": ["tool.use", "mcp.use", "skill.use", "model.use", "net.fetch",
                         "fs.read", "fs.write", "memory.read", "memory.write",
                         "kg.read", "kg.write", "agent.invoke",
+                        "flow.read", "flow.write",
                         "app.data.read", "app.data.write", "*"],
             "resources": {
                 "tool.use": [{"value": f"tool:{t}*", "label": t} for t in tools],
@@ -5136,6 +5468,323 @@ async def api_run_subagent(name: str, body: dict):
     return {"ok": True, "started": True}
 
 
+# ---------------------------------------------------------------------------
+# Flows: the master orchestrator's control plane
+# ---------------------------------------------------------------------------
+
+@app.get("/api/flows")
+async def api_flows(request: Request):
+    store = state["store"]
+    out = []
+    for f in store.list_flows():
+        trigs = store.flow_triggers(f["name"])
+        for t in trigs:
+            if t["kind"] == "webhook":
+                # Built from how this request actually arrived, not from the configured
+                # port: a server started on another port, reached over the LAN, or behind
+                # a tunnel would otherwise hand out a URL that quietly does not work.
+                t["url"] = flowsmod.hook_url(state["cfg"], f["name"], t,
+                                             base=str(request.base_url).rstrip("/"))
+        out.append({**f, "triggers": trigs,
+                    "grants": [g for g in store.list_grants()
+                               if (g.get("source_ref") or "") == flowsmod.source_ref(f["name"])],
+                    # a disabled flow holds no grants, so the card has to be able to say
+                    # what enabling it WOULD grant — that is the question being asked
+                    "would_grant": flowsmod.declared_grants({**f, "enabled": 1})})
+    return {"flows": out}
+
+
+@app.post("/api/flows/compose")
+async def api_compose_flow(body: dict):
+    """Draft a flow from a sentence. Writes nothing — the draft opens in the editor and the
+    user saves it, because a flow's definition is its permissions."""
+    req = ((body or {}).get("request") or "").strip()
+    if not req:
+        return JSONResponse({"error": "describe what you want to happen"}, status_code=400)
+    tools = [{"name": t["name"], "description": t.get("description", "")}
+             for t in state["toolbox"].schemas()]
+    draft = await flowsmod.compose(state["cfg"], state["store"], req, tools,
+                                   model=(body or {}).get("model", ""),
+                                   current=(body or {}).get("current"))
+    if draft.get("error"):
+        return JSONResponse(draft, status_code=502)
+    # What it would grant, by the same pure function the editor's preview uses — so "what
+    # does this cost me" is computed one way, not two. Validated with store=None on purpose:
+    # the roster may name agents that do not exist yet because this draft proposes creating
+    # them, and that is a question for Save, not for a preview.
+    draft["grants"] = []
+    if draft.get("roster"):
+        try:
+            # Triggers are validated separately: they do not affect what is granted, and a
+            # malformed one must not blank out the permissions preview — which is the part
+            # the user actually has to approve.
+            draft["grants"] = flowsmod.declared_grants(
+                flowsmod.validate({**draft, "triggers": []}, None))
+        except ValueError as e:
+            draft.setdefault("warnings", []).append(str(e))
+    kept = []
+    for t in (draft.get("triggers") or []):
+        try:
+            flowsmod._validate_trigger(t)
+            kept.append(t)
+        except ValueError as e:
+            draft.setdefault("warnings", []).append(f"dropped a trigger: {e}")
+    draft["triggers"] = kept
+    return {"draft": draft}
+
+
+@app.post("/api/flows/draft")
+async def api_draft_flow(body: dict):
+    """Compose a flow and put it in the list as a DISABLED card.
+
+    No modal: a draft you can read next to your other flows beats one you have to answer.
+    Disabled means it holds no permissions and no armed trigger, which is what makes
+    creating it without asking first a safe thing to do."""
+    req = ((body or {}).get("request") or "").strip()
+    if not req:
+        return JSONResponse({"error": "describe what you want to happen"}, status_code=400)
+    tools = [{"name": t["name"], "description": t.get("description", "")}
+             for t in state["toolbox"].schemas()]
+    draft = await flowsmod.compose(state["cfg"], state["store"], req, tools,
+                                   model=(body or {}).get("model", ""))
+    if draft.get("error"):
+        return JSONResponse(draft, status_code=502)
+    if not draft.get("roster"):
+        return JSONResponse({"error": f"{draft.get('model', 'the model')} did not pick any "
+                                      f"agents for this — try saying it differently, or "
+                                      f"build it by hand",
+                             "warnings": draft.get("warnings") or []}, status_code=422)
+    try:
+        flow, report = flowsmod.save_draft(state["store"], draft)
+    except ValueError as e:
+        return JSONResponse({"error": str(e), "warnings": draft.get("warnings") or []},
+                            status_code=422)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"flow": flow, "report": report,
+            "would_grant": flowsmod.declared_grants({**flow, "enabled": 1})}
+
+
+@app.get("/api/flows/runs")
+async def api_flow_executions(flow: str = "", limit: int = 80):
+    """Every execution, newest first, optionally one flow's. This is the answer to "what
+    has been running on this machine?" — which the runs list could not give, because it
+    mixes flows, workflows and one-off delegations together."""
+    store = state["store"]
+    rows = [r for r in store.fabric_runs(limit=400) if r.get("kind") == "flow"]
+    if flow:
+        rows = [r for r in rows if (r.get("flow") or r.get("ref")) == flow]
+    out = []
+    for r in rows[:limit]:
+        kids = store.fabric_runs(parent_run=r["id"])
+        out.append({**r,
+                    "delegations": len(kids),
+                    "agents": sorted({k["ref"] for k in kids}),
+                    "failed_steps": [k["ref"] for k in kids if k["status"] != "ok"],
+                    "seconds": round((r.get("finished_at") or time.time()) - r["started_at"], 1)})
+    return {"runs": out, "flows": sorted({(r.get("flow") or r.get("ref")) for r in rows}),
+            "live": [i for i in state["fabric"].live_instances() if i.get("flow")]}
+
+
+@app.post("/api/subagents/compose")
+async def api_compose_subagent(body: dict):
+    """Draft or revise one specialist. Writes nothing — the wizard opens with it filled in."""
+    req = ((body or {}).get("request") or "").strip()
+    if not req:
+        return JSONResponse({"error": "say what it should do"}, status_code=400)
+    tools = [{"name": t["name"], "description": t.get("description", "")}
+             for t in state["toolbox"].schemas()]
+    current = None
+    if (body or {}).get("name"):
+        current = state["store"].get_subagent(body["name"])
+    d = await flowsmod.compose_subagent(state["cfg"], state["store"], req, tools,
+                                        current=current, model=(body or {}).get("model", ""))
+    if d.get("error"):
+        return JSONResponse(d, status_code=502)
+    return {"draft": d}
+
+
+@app.post("/api/flows/{name}/enable")
+async def api_enable_flow(name: str, body: dict | None = None):
+    """Enabling is what grants. Until then a flow is words in a list."""
+    on = bool((body or {}).get("enabled", True))
+    try:
+        flow, report = flowsmod.set_enabled(state["store"], name, on)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    return {"flow": flow, "report": report}
+
+
+@app.post("/api/flows/{name}/discard")
+async def api_discard_flow(name: str):
+    res = flowsmod.discard(state["store"], name)
+    if not res.get("ok"):
+        return JSONResponse({"error": f"no flow '{name}'"}, status_code=404)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    return res
+
+
+@app.post("/api/flows/preview")
+async def api_flows_preview(body: dict):
+    """What saving this definition WOULD grant. `declared_grants` is pure, so the answer
+    can be shown before anything is written — a permission dialog that describes itself."""
+    try:
+        d = flowsmod.validate(body or {}, state["store"])
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"grants": flowsmod.declared_grants(d), "triggers": d["triggers"]}
+
+
+@app.post("/api/flows")
+async def api_save_flow(body: dict):
+    try:
+        flow, report = flowsmod.save(state["store"], body or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    return {"flow": flow, "report": report}
+
+
+@app.delete("/api/flows/{name}")
+async def api_delete_flow(name: str):
+    res = flowsmod.delete(state["store"], name)
+    if not res.get("ok"):
+        return JSONResponse({"error": f"no flow '{name}'"}, status_code=404)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    return res
+
+
+@app.post("/api/flows/{name}/run")
+async def api_run_flow(name: str, body: dict, request: Request):
+    """Start a flow and return its run id.
+
+    The run id comes back synchronously — unlike the older workflow route, which starts
+    the work and leaves the caller to guess which run was theirs. The whole control plane
+    is built on being able to name the run you just started.
+    """
+    flow = state["store"].get_flow(name)
+    if not flow:
+        return JSONResponse({"error": f"no flow '{name}'"}, status_code=404)
+    # A flow you have not enabled CAN be run by hand, and that is the point: it is how you
+    # find out what it would do before granting it anything. It is safe for the same reason
+    # the disabled state is safe — it holds no grants, so every gated step stops and asks
+    # you, and no trigger can start it while you are not looking. What "disabled" forbids
+    # is running by itself, not being tried.
+    surface = (body or {}).get("surface") or "gui"
+    # Who started it goes in the ledger. A flow is an agent invocation like any other,
+    # and "it just ran" is not an answer to "who asked for this?".
+    dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{name}",
+                              {"surface": surface, "risk": "safe"})
+    if dec.effect == "deny":
+        return JSONResponse({"error": dec.reason or "not permitted"}, status_code=403)
+    run_id = await _start_flow(flow, (body or {}).get("input", ""),
+                              origin={"surface": surface, "ref": _client_addr(request)},
+                              conversation_id=(body or {}).get("conversation_id", ""))
+    return {"ok": True, "run_id": run_id, "flow": name}
+
+
+async def _start_flow(flow: dict, input_text: str, origin: dict, **kw) -> str:
+    """Start a run in the background and hand back its id immediately.
+
+    The id has to exist before the run does, so the caller can subscribe/redirect without
+    polling for "the newest run and hopefully mine".
+    """
+    fut: asyncio.Future = asyncio.get_event_loop().create_future()
+
+    async def go():
+        try:
+            res = await state["fabric"].run_flow(flow, input_text, origin=origin,
+                                                 run_id_out=fut, **kw)
+            return res
+        except Exception as e:
+            if not fut.done():
+                fut.set_exception(e)
+            raise
+    asyncio.create_task(go())
+    return await fut
+
+
+@app.get("/api/flows/runs/{rid}/artifacts/{handle}")
+async def api_flow_artifact(rid: str, handle: str):
+    art = state["store"].artifact_get(rid, handle)
+    if not art:
+        return JSONResponse({"error": "no such handle on that board"}, status_code=404)
+    return {"artifact": art}
+
+
+@app.get("/api/flows/runs/{rid}/board")
+async def api_flow_board(rid: str):
+    return {"board": state["store"].artifact_index(rid)}
+
+
+@app.post("/api/hooks/{name}/{trigger_id}")
+async def api_flow_hook(name: str, trigger_id: str, request: Request):
+    """Start a flow from outside this machine.
+
+    Auth is the per-trigger secret and nothing else: this path sits outside the
+    remote-access gate so a service on the internet can reach it. Everything cheap
+    happens before anything expensive — unknown hook, bad secret and cooldown are all
+    answered before the body is read, so a caller in a retry loop cannot make the OS do
+    work by asking rudely. The body is content from outside this machine, so the run it
+    starts is tainted: risky steps are shown to a person rather than assumed.
+    """
+    store = state["store"]
+    trig = store.flow_trigger(trigger_id)
+    given = request.headers.get("x-agentos-hook-secret") or request.query_params.get("k") or ""
+    if not trig or trig["kind"] != "webhook" or not trig["enabled"] or \
+            (trig["flow"] or "").lower() != (name or "").lower():
+        return JSONResponse({"error": "unknown hook"}, status_code=404)
+    if not hmac.compare_digest(str(given), str(trig.get("secret") or "\0")):
+        store.log("error", f"webhook: bad secret for flow '{name}'",
+                  {"trigger": trigger_id, "from": _client_addr(request)})
+        return JSONResponse({"error": "bad secret"}, status_code=401)
+    now = time.time()
+    wait = (trig.get("cooldown_secs") or 0) - (now - (trig.get("last_fired") or 0))
+    if wait > 0:
+        store.flow_trigger_fired(trigger_id, dropped=True)
+        return JSONResponse({"error": "cooling down", "retry_after": int(wait) + 1},
+                            status_code=429)
+    flow = store.get_flow(trig["flow"])
+    if not flow or not flow.get("enabled"):
+        return JSONResponse({"error": "that flow is gone or disabled"}, status_code=409)
+    raw = (await request.body())[:64_000].decode("utf-8", "replace")
+    store.flow_trigger_fired(trigger_id)
+    run_id = await _start_flow(flow, raw,
+                               origin={"surface": "webhook", "ref": trigger_id},
+                               trigger_id=trigger_id, tainted=True)
+    return JSONResponse({"ok": True, "run_id": run_id, "flow": flow["name"]}, status_code=202)
+
+
+@app.get("/api/fabric/approvals")
+async def api_fabric_approvals():
+    """What is paused right now, waiting for a person.
+
+    This exists so the TUI and the CLI are first-class here rather than spectators: until
+    now only a websocket client could answer an approval, which meant a flow started from
+    a terminal could only be watched failing.
+    """
+    out = []
+    for aid, entry in (state.get("pending_approvals") or {}).items():
+        if entry["fut"].done():
+            continue
+        out.append({"id": aid, "name": entry.get("name", ""), "args": entry.get("args", {}),
+                    "reason": entry.get("reason", ""), "offer": entry.get("offer"),
+                    "run_id": entry.get("run_id", ""), "flow": entry.get("flow", ""),
+                    "asked_at": entry.get("asked_at", 0)})
+    return {"approvals": out}
+
+
+@app.post("/api/fabric/approvals/{aid}")
+async def api_fabric_approve(aid: str, body: dict):
+    await resolve_approval(aid, bool((body or {}).get("approved")),
+                           bool((body or {}).get("remember")))
+    return {"ok": True}
+
+
 @app.get("/api/fabric/runs")
 async def api_fabric_runs(limit: int = 60):
     runs = state["store"].fabric_runs(limit=limit)
@@ -5324,7 +5973,7 @@ async def api_chat(body: dict, request: Request):
                 return JSONResponse({"error": "needs approval: agent.invoke"}, status_code=403)
     model = body.get("model") or cfg.get("default_model", "")
     cid = body.get("conversation_id") or store.create_conversation(text[:60] or "API chat")
-    history = _history_for(cid)
+    history, _hinfo = await _history_for(cid, model)
     store.add_message(cid, "user", text)
     history.append({"role": "user", "content": text})
 
@@ -5362,22 +6011,18 @@ async def api_chat(body: dict, request: Request):
             knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
+    usagemod.record(store, cfg, model, result.get("tokens") or {},
+                    surface=("gui" if principal.kind == "app" else "api"),
+                    principal=principal.label, conversation_id=cid)
     knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
     return {"conversation_id": cid, "content": result["content"], "steps": result["steps"]}
 
 
-def _history_for(cid: str) -> list[dict]:
-    """Rebuild model-facing history from stored messages (text + attached images;
-    tool traces stay in meta)."""
-    out = []
-    for m in state["store"].get_messages(cid):
-        images = (m.get("meta") or {}).get("images") or []
-        if m["role"] in ("user", "assistant") and ((m["content"] or "").strip() or images):
-            entry = {"role": m["role"], "content": m["content"] or ""}
-            if images:
-                entry["images"] = images
-            out.append(entry)
-    return out
+async def _history_for(cid: str, model_id: str = "") -> tuple[list[dict], dict]:
+    """Rebuild model-facing history: prior turns' tool traces replayed compactly,
+    and anything past the context budget folded into a rolling summary. See
+    `history.py` for why both of those are the module's job and not this one's."""
+    return await historymod.build(state["store"], cid, state["cfg"], model_id)
 
 
 def _chat_images(data: dict, limit: int = 4) -> list[str]:
@@ -5701,9 +6346,25 @@ async def run_chat(cid: str, data: dict):
     if engine != "aria":
         model = engine
     result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
+    # A cloud model nobody has priced does not get to run first and be costed
+    # later. Asked once per model, then remembered either way.
+    if usagemod.needs_price(cfg, model):
+        if not await request_price(model, evsend=evsend):
+            await evsend({"type": "error",
+                          "message": f"cancelled — {model} has no price set yet"})
+            await evsend({"type": "turn_end", "conversation_id": cid})
+            turns.pop(cid, None)
+            return
     try:
         images = _chat_images(data)
-        history = _history_for(cid)
+        history, hinfo = await _history_for(cid, model)
+        if hinfo.get("compacted"):
+            # Never silent: a thread that has been summarised behaves differently
+            # from one that has not, and the user is the only one who can tell us
+            # the summary lost something that mattered.
+            await evsend({"type": "status",
+                          "message": f"earlier messages ({hinfo['compacted']}) summarised — "
+                                     f"this conversation outgrew the model's context window"})
         store.add_message(cid, "user", text, {"images": images} if images else None)
         entry = {"role": "user", "content": text}
         if images:
@@ -5714,6 +6375,14 @@ async def run_chat(cid: str, data: dict):
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
         # streaming its steps like a normal turn, and still shows up in Observability
         mention = fabricmod.parse_mention(store, text)
+        # A message trigger can start a flow from the chat too. `@name` is resolved first
+        # and always wins: an explicit address is not a pattern to be second-guessed.
+        flow_hit = None
+        if not mention:
+            try:
+                flow_hit = flowsmod.match_message(store, text, surface="gui")
+            except Exception:
+                flow_hit = None
         if model == "claude-code":
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
@@ -5812,6 +6481,28 @@ async def run_chat(cid: str, data: dict):
                       "engine": "hermes", "engine_model": "",
                       "tokens": {"input": 0, "output": 0}}
             header = ""
+        elif flow_hit:
+            trig, flow = flow_hit
+            model = state["fabric"].resolve_model({"name": flow["name"],
+                                                   "model": flow.get("model") or ""})
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": model})
+            await evsend({"type": "status",
+                          "message": f"flow '{flow['name']}' started — watch it in Workflows → Flows"})
+            res = await state["fabric"].run_flow(
+                flow, text, origin={"surface": "gui", "ref": trig["id"]},
+                conversation_id=cid, trigger_id=trig["id"], approver=approver,
+                ui_emit=evsend, agent_slot=turns[cid])
+            content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
+                                         else f"({res['status']})")
+            header = f"▲ {flow['name']} · {res['delegations']} delegations\n\n"
+            if not res["content"]:
+                await evsend({"type": "text_delta", "text": header + content})
+            usage = res.get("usage") or {}
+            result = {"content": content, "steps": [],
+                      "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         elif mention:
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
@@ -5831,7 +6522,11 @@ async def run_chat(cid: str, data: dict):
             result = {"content": content, "steps": res["steps"],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         else:
-            from .policy import SURFACES
+            # SURFACES is imported at module scope: a function-local `from … import`
+            # here made it local to the WHOLE of run_chat, so the finally block
+            # referencing it raised UnboundLocalError on every turn that failed
+            # before this line — and that exception ate the persistence of the
+            # error message itself, leaving an empty bubble instead of the reason.
             surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
             # Copilot/omnibar turns ride the normal chat path with per-surface
             # context appended to the system prompt (the app's live state, the
@@ -5866,9 +6561,18 @@ async def run_chat(cid: str, data: dict):
         with contextlib.suppress(Exception):
             store.log("error", f"chat turn failed: {type(e).__name__}: {e}"[:400],
                       {"conversation_id": cid})
+        # A turn that failed must still leave a message saying so. An empty
+        # assistant bubble is the worst outcome: reloading the conversation shows
+        # nothing at all, and the reason lives only in a log nobody opened.
+        if not (result.get("content") or "").strip():
+            result["content"] = f"[error] {type(e).__name__}: {e}"
     finally:
         if started:
             knowledge.turn_ended()
+        # Saving the reply comes first and alone. Everything after it is
+        # bookkeeping, and bookkeeping that throws must not be able to eat the
+        # answer — which is exactly what happened when an UnboundLocalError below
+        # skipped this call and left the bubble empty.
         try:
             store.add_message(cid, "assistant", header + result["content"],
                               {"steps": result["steps"],
@@ -5882,6 +6586,15 @@ async def run_chat(cid: str, data: dict):
             store.log("turn", text[:200], {"conversation_id": cid, "model": model,
                                            "steps": len(result["steps"]),
                                            "in": tk.get("input", 0), "out": tk.get("output", 0)})
+            # The turn counted its tokens and used to drop them here. They are the
+            # answer to "what did today cost me", which nothing in the OS could
+            # say. Read from `data` rather than the local set inside the try: this
+            # runs on the failure paths too, and a turn that died after spending
+            # tokens has still spent them.
+            from . import spaces as _spacemod
+            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
+                            space_id=_spacemod.active_for(cfg, _surface, store, cid))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
         except Exception as e:
@@ -5969,7 +6682,12 @@ def _build_history(cid: str, keep: int = 6) -> list[dict]:
     refinement re-embeds the CURRENT source, so older copies are dead weight that
     multiplies truncation odds on local models."""
     import re
-    hist = _history_for(cid)[-keep:]
+    # Raw rebuild, no tool traces and no compaction: this path does its own
+    # bounding (the `keep` window plus the source stripping below), and a build
+    # turn's traces carry app source that the stripping is there to remove.
+    hist = historymod.render(state["store"].get_messages(cid), {"tool_trace": False})[-keep:]
+    for m in hist:
+        m.pop("_id", None)
     for m in hist[:-1]:
         c = m.get("content") or ""
         if "```html" in c:
@@ -6040,6 +6758,105 @@ def _other_models(avail: list, current: str) -> list:
     return [m["id"] for m in avail if m["id"] != current and "embed" not in m["id"].lower()]
 
 
+@app.get("/api/pricing")
+async def api_pricing():
+    """Every model this machine knows a price for, and where the price came from."""
+    cfg = state["cfg"]
+    user = cfg.get("pricing") or {}
+    return {"user": user, "skipped": cfg.get("pricing_skip") or [],
+            "defaults": [{"pattern": p, "in": r[0], "out": r[1]}
+                         for p, r in usagemod.DEFAULT_PRICING],
+            "default_model": cfg.get("default_model", ""),
+            "default_model_state": usagemod.price_state(cfg, cfg.get("default_model", ""))}
+
+
+@app.post("/api/pricing/lookup")
+async def api_pricing_lookup(body: dict | None = None):
+    """Try to find a published price for a model. Never writes anything."""
+    return await usagemod.discover_price(state["cfg"], str((body or {}).get("model") or ""))
+
+
+@app.put("/api/pricing")
+async def api_pricing_set(body: dict | None = None):
+    """Set or clear a model's price. `{model, in, out}` or `{model, skip: true}`."""
+    body = body or {}
+    model = str(body.get("model") or "").strip()
+    if not model:
+        return JSONResponse({"error": "model is required"}, status_code=400)
+    if body.get("skip"):
+        usagemod.skip_price(state["cfg"], model)
+    elif body.get("clear"):
+        (state["cfg"].get("pricing") or {}).pop(model, None)
+    else:
+        try:
+            usagemod.set_price(state["cfg"], model, float(body.get("in", 0)),
+                               float(body.get("out", 0)))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "in/out must be numbers (USD per million tokens)"},
+                                status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "pricing"})
+    return {"ok": True, "state": usagemod.price_state(state["cfg"], model)}
+
+
+@app.get("/api/usage")
+async def api_usage(days: float = 1.0, group: str = "model", space: str = ""):
+    """What has been spent. `group`: model | day | surface | kind | conversation | space."""
+    return usagemod.report(state["store"], state["cfg"], days=days, group=group, space=space)
+
+
+@app.get("/api/evals")
+async def api_evals():
+    """The cases and the last run. The GUI face of `agentos eval`."""
+    from . import evals as evalsmod
+    cases = [{k: v for k, v in c.items() if not k.startswith("_")}
+             for c in evalsmod.load_cases()]
+    return {"cases": cases, "last": evalsmod.last_report(),
+            "default_model": state["cfg"].get("default_model", "")}
+
+
+@app.post("/api/evals/run")
+async def api_evals_run(body: dict | None = None):
+    """Run the suite and return the report.
+
+    Deliberately synchronous and un-streamed: a run is a minute or two of real
+    model calls, and the one thing that must not happen is two of them at once
+    fighting over the same local GPU. The lock says so rather than queueing
+    silently."""
+    from . import evals as evalsmod
+    body = body or {}
+    if state.get("evals_running"):
+        return JSONResponse({"error": "an eval run is already going — one at a time, "
+                                      "so they do not fight over the model"}, status_code=409)
+    models = [m for m in (body.get("models") or []) if isinstance(m, str)] \
+        or [state["cfg"].get("default_model", "")]
+    models = [m for m in models if m]
+    if not models:
+        return JSONResponse({"error": "no model configured to test"}, status_code=400)
+    bcast = state.get("broadcast")
+
+    async def progress(r):
+        if bcast:
+            await bcast({"type": "eval_result",
+                         "result": {"id": r["id"], "status": r["status"],
+                                    "model": r["model"], "seconds": r["seconds"]}})
+
+    state["evals_running"] = True
+    try:
+        report = await evalsmod.run(
+            models, only=body.get("cases") or None, tags=body.get("tags") or None,
+            network=bool(body.get("network")), on_result=progress)
+        evalsmod.save(report)
+        state["store"].log("test", "evals: " + ", ".join(
+            f"{m} {s['passed']}/{s['passed'] + s['failed'] + s['errors']} passed"
+            for m, s in report["by_model"].items()), {"kind": "evals"})
+        if bcast:
+            await bcast({"type": "evals_done"})
+        return report
+    finally:
+        state["evals_running"] = False
+
+
 @app.get("/api/lifecycle")
 async def api_lifecycle():
     """Mission Control: one snapshot of all six lifecycle pillars —
@@ -6070,8 +6887,18 @@ async def api_lifecycle():
             last_test = dict(row) if row else None
         except Exception:
             last_test = None
+    # Two different questions, and the pillar was only ever answering one of them:
+    # pytest says the OS works, evals say the AGENT still behaves. Neither
+    # substitutes for the other, so both are reported with their own last result.
+    from . import evals as evalsmod
+    ev = evalsmod.last_report()
     out["test"] = {"suite": "tests/ (pytest)", "last": last_test,
-                   "gate": "self-modification restarts run the suite first"}
+                   "gate": "self-modification restarts run the suite first",
+                   "evals": {
+                       "cases": len(evalsmod.load_cases()),
+                       "last": ({"created_at": ev["created_at"], "by_model": ev["by_model"]}
+                                if ev else None),
+                       "gate": "run on request (needs a live model) — `agentos eval`"}}
 
     try:
         tasks = store.list_tasks()
@@ -6131,9 +6958,14 @@ async def api_lifecycle():
         grants = 0
     snaps_dir = cfgmod.AGENTOS_HOME / "snapshots"
     snaps = len(list(snaps_dir.iterdir())) if snaps_dir.is_dir() else 0
+    try:
+        spend = usagemod.report(store, cfg, days=1.0)
+    except Exception:
+        spend = {"cost_usd": 0, "tokens_in": 0, "tokens_out": 0, "unpriced_turns": 0, "note": ""}
     out["manage"] = {"autonomy": cfg.get("autonomy", ""), "model": cfg.get("default_model", ""),
                      "grants": grants, "snapshots": snaps,
-                     "sandbox": bool((cfg.get("sandbox") or {}).get("enabled"))}
+                     "sandbox": bool((cfg.get("sandbox") or {}).get("enabled")),
+                     "spend_24h": spend}
     return out
 
 
@@ -6229,6 +7061,18 @@ async def run_build(data: dict):
     model = "" if req_model.lower() in ("", "auto") else req_model
     app_id = data.get("app_id") or ""
     existing = store.get_app(app_id) if app_id else None
+    # Identity is the USER's, not the model's. Left to itself the builder names an
+    # app after the sentence that asked for it ("build an application ...") and
+    # then makes a SECOND one next time the sentence differs. A name typed here is
+    # authoritative: applied to an existing app before the build so create_app
+    # updates in place, and forced onto a new one after it.
+    want_name = (data.get("name") or "").strip()[:60]
+    want_icon = data.get("icon") if isinstance(data.get("icon"), str) else None
+    if existing and (want_name or want_icon is not None):
+        err = store.rename_app(app_id, name=want_name, icon=want_icon)
+        if err:
+            await bcast({"type": "build_error_note", "message": err})
+        existing = store.get_app(app_id) or existing
     build.update(agent=None, cancel_requested=False, timed_out=False,
                  prompt=prompt[:200], app_id=app_id, started_at=time.time())
 
@@ -6268,6 +7112,10 @@ async def run_build(data: dict):
                    f"updated app — call create_app with the SAME name (preferred), or emit a single "
                    f"```html code block. Never drop existing features while applying the change.\n\n"
                    f"```html\n{src}\n```\n\nChange requested: {prompt}")
+        elif want_name:
+            ctx = (f"Build this app and name it EXACTLY \"{want_name}\" — that is the user's "
+                   f"chosen name, not a suggestion. Do not name it after their request.\n\n"
+                   f"{prompt}")
         store.add_message(cid, "user", prompt)
         history.append({"role": "user", "content": ctx})
 
@@ -6392,8 +7240,9 @@ async def run_build(data: dict):
             # the one failure that produces nothing usable at all.
             env.budget_usd = max(env.budget_usd, execmod.BUILD_MIN_BUDGET_USD)
             # Refining keeps the SAME name, because create_app updates in place by
-            # name — a new name would silently leave a duplicate app behind.
-            app_name = (existing or {}).get("name") or (prompt[:40] or "New app")
+            # name — a new name would silently leave a duplicate app behind. A name
+            # the user typed wins over one derived from their sentence.
+            app_name = (existing or {}).get("name") or want_name or (prompt[:40] or "New app")
             co = execmod.prepare_build(env.workspace, app_name,
                                        (existing or {}).get("html", ""))
             env.context = execmod.context_for("")
@@ -6404,40 +7253,102 @@ async def run_build(data: dict):
                                  f"up to ${env.budget_usd:.2f})\n"})
 
             async def erelay(ev: dict):
-                if ev.get("type") == "text_delta":
+                t = ev.get("type")
+                if t == "text_delta":
                     await bcast({"type": "build_text", "text": ev.get("text", "")})
-                elif ev.get("type") == "tool_start":
+                elif t == "tool_start":
                     await bcast({"type": "build_tool", **ev})
-                elif ev.get("type") == "tool_end":
+                elif t == "tool_end":
                     await bcast({"type": "build_tool_end", **ev})
-                elif ev.get("type") == "error":
+                elif t == "error":
                     await bcast({"type": "build_error_note", **ev})
+                elif t == "thinking_delta":
+                    # A delegated build can think for a minute before its first
+                    # tool call. Dropping this left "working… 45s" as the only
+                    # sign of life, which reads exactly like a hang.
+                    await bcast({"type": "build_thinking", "text": ev.get("text", "")})
+                elif t == "engine_info":
+                    # Say who is actually building and on what — the Studio was
+                    # showing a generic spinner for someone else's agent.
+                    await bcast({"type": "build_engine", **ev})
 
+            # A heartbeat, because the gaps are the problem. An executor can sit
+            # inside one Bash call for minutes with nothing to relay, and silence
+            # is indistinguishable from a hang — so say what it is on and how long
+            # it has been there, whether or not anything new arrived.
+            async def epulse():
+                t0 = time.time()
+                while True:
+                    await asyncio.sleep(10)
+                    secs = int(time.time() - t0)
+                    where = run.last or "thinking"
+                    await bcast({"type": "build_status",
+                                 "message": f"{where} · step {run.steps} · "
+                                            f"{secs // 60}m {secs % 60:02d}s"
+                                            + (f" · ${run.cost_usd:.2f}" if run.cost_usd else "")})
+
+            pulse = asyncio.create_task(epulse())
+            relay_failed = ""
             try:
                 await execmod.run_task(
                     execmod.build_task(prompt, co, persona_for("claude-code")),
                     env, erelay, run)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # The FILE is the deliverable — `build_task` says so to the
+                # executor. Losing the stream is not losing the app, and throwing
+                # away a finished app.html because the pipe misbehaved is the
+                # expensive failure: the work is done and paid for, sitting on
+                # disk. Note it, then go and look.
+                relay_failed = f"{type(e).__name__}: {e}"
+                store.log("error", f"executor stream failed: {relay_failed}"[:400])
             finally:
+                pulse.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await pulse
                 execmod.stop(run)
                 build["executor"] = None
             html, problem = execmod.read_build(co)
             if problem:
-                await terminal({"type": "build_error", "message": problem})
+                await terminal({"type": "build_error",
+                                "message": f"{relay_failed} — {problem}" if relay_failed else problem})
                 return
-            out = await toolbox.create_app(app_name, (existing or {}).get("icon", ""),
+            if relay_failed:
+                await bcast({"type": "build_error_note",
+                             "message": f"lost contact with the executor ({relay_failed}) — "
+                                        f"installing the app it had already written"})
+            out = await toolbox.create_app(app_name, want_icon or (existing or {}).get("icon", ""),
                                            (existing or {}).get("description") or prompt[:160],
                                            html)
             if str(out).startswith("[error]"):
                 await terminal({"type": "build_error", "message": str(out)})
                 return
-            apps = store.list_apps()
-            newest = apps[0] if apps else None
+            built = store.get_app(app_id) if existing else _app_by_name(store, app_name)
+            if not built:
+                await terminal({"type": "build_error",
+                                "message": "the app was built but could not be found afterwards"})
+                return
+            if want_icon is not None or (want_name and not existing):
+                store.rename_app(built["id"], name=want_name if not existing else "",
+                                 icon=want_icon)
             store.add_message(cid, "assistant",
                               f"Built with Claude Code (${run.cost_usd:.2f}).",
                               {"engine": "claude-code", "engine_model": run.model})
+            if not existing:
+                store.touch_conversation(cid, f"build: {built['name']}")
+            # The same close-out a one-shot build gets. It used to send `app` here
+            # and nothing else: the Studio keys on `app_id`, so a build that had
+            # actually succeeded printed "no app was produced", left the preview
+            # empty, and never asked for the app's permissions.
+            manifest_status, remaining = _finish_build_checks(built["id"])
             await bcast({"type": "apps"})
-            await terminal({"type": "build_done",
-                            "app": newest, "model": "claude-code"})
+            await terminal({"type": "build_done", "app_id": built["id"],
+                            "name": built["name"], "model": "claude-code",
+                            "summary": f"Built with Claude Code in {run.steps} steps "
+                                       f"(${run.cost_usd:.2f}).",
+                            "manifest_status": manifest_status,
+                            "warnings": remaining})
             return
 
         # Auto model selection: prefer a tool-call-reliable model (cloud first, then strong
@@ -6478,11 +7389,11 @@ async def run_build(data: dict):
                 await bcast({"type": "build_text",
                              "text": "\n(the model wrote the app instead of calling create_app — building it)\n"})
                 try:
-                    out = await toolbox.create_app(sname or (prompt[:40] or "New app"), "",
-                                                   sdesc or prompt[:160], shtml)
+                    salvage_name = sname or want_name or (prompt[:40] or "New app")
+                    out = await toolbox.create_app(salvage_name, "", sdesc or prompt[:160], shtml)
                     if not str(out).startswith("[error]"):
-                        apps = store.list_apps()
-                        newest = apps[0] if apps else None
+                        # by name, not `list_apps()[0]` — that list is sorted by name
+                        newest = _app_by_name(store, salvage_name)
                         if newest:
                             built = newest
                             store.log("system", f"build salvaged from text ({len(shtml)} chars)")
@@ -6527,21 +7438,24 @@ async def run_build(data: dict):
                     built, result = fixed, fix_res
 
         store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
+        if built and not existing and (want_name or want_icon is not None):
+            # the model named it after the request; the user already said what it
+            # is called. Re-read it, because the name is what everything shows.
+            err = store.rename_app(built["id"], name=want_name, icon=want_icon)
+            if err:
+                await bcast({"type": "build_error_note", "message": err})
+            built = store.get_app(built["id"]) or built
         if built and not existing:
             # the "new app" session becomes this app's session — refinements continue it
             store.touch_conversation(cid, f"build: {built['name']}")
         manifest_status = "none"
+        remaining: list[str] = []
         if built:  # builder didn't declare permissions? scan the source and propose them
-            full = store.get_app(built["id"]) or {}
-            manifest_status = full.get("manifest_status") or "none"
-            if manifest_status == "none":
-                _propose_manifest(built["id"])
-                manifest_status = "proposed"
-        await state["broadcast"]({"type": "apps"})
-        if built:
             # anything the repair pass could not fix ships as an explicit warning,
             # never as a silent "success"
-            remaining = _validate_app_html((store.get_app(built["id"]) or {}).get("html", ""))
+            manifest_status, remaining = _finish_build_checks(built["id"])
+        await state["broadcast"]({"type": "apps"})
+        if built:
             await terminal({"type": "build_done", "app_id": built["id"], "name": built["name"],
                             "summary": result["content"][:600],
                             "manifest_status": manifest_status,
@@ -6660,6 +7574,9 @@ async def ws_endpoint(ws: WebSocket):
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
                                        remember=bool(data.get("remember")))
+            elif t == "price":
+                await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
+                                    float(data.get("in") or 0), float(data.get("out") or 0))
             elif t == "queue_remove":
                 cid = data.get("conversation_id")
                 if cid and _queue_drop(cid, str(data.get("id") or "")):

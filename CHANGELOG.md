@@ -1,5 +1,285 @@
 # Changelog
 
+### Quarantine: the OS stops what will not stop itself (2026-08-07)
+
+A stock-ticker app was firing bursts of `fetch_url` on every refresh, and nothing in the OS
+had an opinion about it. Grants answer *may it?* and budgets answer *how long?* — neither
+answers *how often?*. A subagent is bounded by `max_steps` and a flow by its delegation
+budget, but an app runs in a browser tab and can loop for as long as the tab is open.
+
+- **A rate ceiling, checked before grants** — beside the channel and taint ceilings, for the
+  same reason: a grant of `fetch_url` is consent to fetch pages, not consent to fetch six
+  hundred a minute. Apps, subagents and flows are all metered; the user never is.
+- **Model calls and tool calls have separate budgets.** Six model calls a minute is money
+  leaving at a rate nobody asked for; six fetches is a page refreshing. The numbers are
+  calibrated against what this machine actually does — its busiest legitimate app burst was
+  25 fetches in 10s — so a real dashboard passes and a runaway misses by an order of
+  magnitude. There is a test that asserts exactly that, because the worst version of this
+  feature is one that breaks working apps.
+- **Quarantine is a state you can see.** Permissions → Quarantine lists what is held, why,
+  and the evidence: *"7 model calls in 60s, over its limit of 6 — it was calling
+  llm_generate in a loop"*. It arrives as a notification too — something that just stops
+  working is a bug report; something that says why is a decision you can disagree with.
+- **Three ways out, all recorded**: let it run once (still watched), allow forever (an
+  exemption, so the row is kept rather than cleared), or delete it. The choice and who made
+  it go in the log.
+- **A privilege escalation, found by testing this.** Silencing a rogue app by revoking its
+  runtime token doesn't silence it — `_principal_of` maps an unknown token to the user, so
+  the app's next call ran *as you*, with your permissions. A server restart alone was enough
+  to reach it. A presented-but-unknown app token is now refused outright, and quarantine
+  leaves identity alone: suspension is what stops an app, not amnesia about who it is.
+
+### The Team app is now Workflows, and half its tabs are gone (2026-08-07)
+
+Five tabs had accumulated, two of them answering the same question from different endpoints.
+
+- **Three tabs: Flows · Agents · Runs.** "Executions" and "Observability" were both "what
+  happened" — they are one **Runs** view now, with the per-agent totals as a fold-out strip
+  instead of a tab of their own.
+- **Flows is master/detail.** A one-line row per flow on the left, the selected one in full on
+  the right — chart, mission, what starts it, what it grants, Run. Adding a tenth flow now
+  costs a row instead of another screenful, and the live graph/board/log that used to sit
+  below the cards is gone: the Run Inspector already owns that, and having it twice meant two
+  places showing the same state.
+- **The static-DAG workflow tab is gone**, and its two built-ins are no longer seeded. The
+  engine, `/api/workflows` and the `run_workflow` tool all still work for anything already
+  using them. The reason is in the numbers: on this machine, across every run ever recorded —
+  9 delegations, 3 flows, **0 workflows**. Every new install was being furnished with two
+  examples nobody ran. 69 lines of unreachable UI deleted rather than hidden.
+- **Named for the word people arrive with.** The app is *Workflows*; the code underneath still
+  says `flows` everywhere (`flows` table, `/api/flows`, `flow.write`). That divergence is
+  deliberate and written down in CLAUDE.md — it is safe precisely because the older thing
+  actually called a workflow no longer appears in the UI, so the two meanings never share a
+  screen.
+
+### Flows: the master agent is the control plane (2026-08-06)
+
+The fabric could already run a team. What it could not do was decide anything: a workflow was
+a DAG somebody drew before it ran. A **flow** is a standing mission — what you want, who may
+work on it, what it may touch, and what starts it — and a master orchestrator picks the agents
+and the order while it runs. Full design: [docs/design/flows.md](docs/design/flows.md).
+
+- **The graph is a trace, not a plan.** Team → Flows draws the master, then each agent as it is
+  delegated to, with solid edges for delegations and dashed edges for the data handed forward.
+  Beside it: the board (every artefact, click to open) and the control-plane log — what worked,
+  what didn't, and what it cost. The client's state is built from the *same* events that replay
+  from the runs API, so a window that was closed while a flow ran opens showing the truth rather
+  than a replay of what it missed.
+- **A blackboard instead of string substitution.** Steps used to pass
+  `prompt.replace("{step}", output[:5000])`. Every output is now stored whole under a short
+  handle; the master sees an index and passes handles forward. Its four tools are built per run
+  and close over the run id — a global `delegate(run_id=…)` would take the run id as an
+  argument, and an argument is something a model can invent.
+- **Two deep, enforced by the gate.** The master runs as a new `flow` principal that may invoke
+  its roster and nothing else — `delegate` is not in `risk_of`'s table, so it arrives as "safe"
+  and the roster deny is load-bearing, not belt-and-braces. Its agents run as `subagent`, which
+  already may never delegate. No depth counter exists to forget to increment.
+- **Permissions are part of the definition.** What a flow's roster may do is declared with the
+  flow and materialised as real grants in the same table the Permissions app shows. Editing
+  reconciles only the rows that definition wrote: a grant you added by hand, or tapped
+  *Always* on, is never revoked by someone re-saving a flow. `add_grant` now keys on provenance
+  as well as the tuple, because the two can read identically.
+- **Four ways to start one.** Cron and OS events materialise a real scheduler row (so flows
+  appear in the Tasks app, the TUI and the CLI for free); a message pattern starts one from
+  Telegram or chat — an explicit `@subagent` still wins; and each flow can mint a webhook with
+  its own secret. A webhook body is content from outside this machine, so the run it starts is
+  tainted and the existing ceiling does the rest.
+- **It asks instead of failing.** An unattended run that hits something it was not granted now
+  pauses and asks — Telegram inline buttons when that is where it came from (Allow once /
+  Always / Deny), otherwise every open window, including the session desktop. Which forced a
+  real fix: `max_seconds` now means *working* seconds. A run waiting for you to tap Allow was
+  being killed at 300s having done 20s of work, so asking a human was a reliable way to end a
+  run. An unanswered question denies and the run carries on; only the budget stops it.
+- **It answers where you asked.** A flow triggered from a Telegram chat replies in that chat —
+  `telegram_send` grew a `chat_id`, which it always could have had.
+- **Two ways to make one.** The roster picker has a **＋ New agent** button that borrows the
+  subagent wizard — it opens over the flow editor, your half-filled flow survives, and the new
+  specialist lands on the roster. Agents can also arrive with a flow and are created in the
+  same save; an existing name is never overwritten.
+- **✦ Draft a flow** takes a sentence: Aria writes the mission, proposes the specialists it
+  needs, and scopes the permissions. The result lands **in the list as a disabled card**, not
+  a modal you have to answer — something you can read beside your other flows, compare, come
+  back to, or discard.
+- **Aria can build flows now — from chat or from Telegram.** `create_flow`, `enable_flow`,
+  `list_flows` and `run_flow` are ordinary tools, and Telegram is not a special admin channel:
+  it acts as *you*, so "make me a flow that…" works from a phone. Defining one is its own
+  capability, `flow.write`, because a flow definition **is** a set of standing permissions.
+  Two rules make that safe: apps, subagents, workflows and flows are refused `flow.write`
+  outright (anything that could write a flow could grant itself whatever it liked by writing
+  one that says so), and a tool-made flow is **always born disabled** with `enable_flow` in
+  ALWAYS_ASK — so the agent writes the definition and tells you what it would grant, and the
+  granting is still a tap you make, wherever you are.
+- **See the flow before it runs.** There are no steps to draw, so the chart draws what there
+  is: the master and everyone it *may* call, ghosted. It is on every flow card and in the
+  editor, and it redraws as you change the roster — so a flow is visible while you are still
+  writing it.
+- **Change it with AI, and see what changed.** The editor is two columns now: the form, and
+  on the right the chart, an ask-for-a-change box and what saving would grant. A revision
+  comes back as a **diff** — `tools: system_info → system_info, fetch_url` — with the model's
+  own note, and nothing is written until you press Save. The Run Inspector has the same box,
+  because watching a flow go wrong is the best moment to fix it; editing there is for the
+  next run and never touches the one in flight. The subagent wizard got the same pane: draft
+  a specialist from a sentence, or ask for a change to the one on screen.
+- A revision returns the *whole* definition and models fill untouched fields with `null` —
+  merged naively that silently reset a `max_delegations` somebody had tuned. Nulls are
+  dropped and the revision is layered over what you already had; the name is always kept, so
+  an edit can never fork into a second flow.
+- **Executions.** A tab listing every flow run — when, which flow, status, how many
+  delegations, which agents, which steps failed, duration, tokens, and what started it —
+  filterable by flow, and clicking one replays it in the Run Inspector. Observability still
+  mixes flows, workflows and one-off delegations; this is the flow-shaped view of it.
+- **Test run, and a Run Inspector to watch it in.** Triggering a flow by hand is nearly
+  always debugging, so the log comes to you instead of being somewhere to go and look: Run
+  opens a window with the live graph, the control-plane log, the board, and **step detail** —
+  what each agent was asked, every tool it called and whether it worked, and what it returned.
+  Clicking any node in any graph opens it too. A flow you have not enabled says **Test run**:
+  you can try it with you watching, which is what the disabled state is *for* rather than a
+  limitation of it.
+- That needed one more distinction in the gate, because a disabled flow has no `agent.invoke`
+  grant and its delegations were being denied outright — so a test run could never call
+  anyone. The roster branch now separates "not on the roster" (deny) from "on the roster but
+  the flow is not enabled" (**ask**, with a grant offer). It escalates down the same path as
+  any other ungranted capability, so unattended runs still end in a denial when nobody
+  answers, and answering once grants nothing: after a test run the flow is still disabled and
+  still holds zero permissions.
+- **"Could not reach the model" was a lie.** That catch-all fired for any exception — a 404, a
+  non-JSON body, a stale server — and sent you looking at Ollama when the real answer was that
+  the server was running older code than the page it had just served. Errors now say what
+  actually happened, and a 404/405 names the route and tells you to restart.
+- **A disabled flow now holds nothing**, which is what makes creating a draft you did not
+  explicitly approve safe: no permissions, no armed triggers, and Run refuses it. The card
+  says what enabling *would* grant, and **Enable is the act of granting**. This is not a
+  special draft state — it applies to any flow you turn off, and it closes a hole: until now
+  a disabled flow kept its standing permissions, which is precisely what turning something off
+  should stop. Enabling restores exactly what you wrote, webhook secret included, so callers
+  never have to be told a new URL. **Discard** takes the agents the draft brought with it,
+  unless another flow is using them.
+- Three things the composer needed to be usable rather than a demo: the prompt carries the
+  machine's real inventory and drops anything invented (saying so in `warnings` rather than
+  silently); a worked example, without which small models write a lovely mission and leave the
+  roster empty; and `{"type":"cron","at":"06:30"}` — the shape models actually write — is
+  lifted into the wrapper shape instead of failing the draft.
+- **`at: 730` no longer runs at nine o'clock.** `_next_daily` silently falls back to 09:00 on
+  anything it cannot split on a colon, so a mistyped or model-written time became a job that
+  ran at the wrong hour and never said why. Times are normalised (`730`, `7.30`, `7` → `07:30`)
+  and anything unreadable is refused where somebody can see it.
+
+### App Studio: a build you can watch, name, and consent to (2026-08-06)
+
+A build that ran for twelve minutes and produced a working app reported that it had produced
+nothing. Everything here comes out of that one screen.
+
+- **A successful executor build said it failed.** The Claude Code path finished by broadcasting
+  `{"app": …}`; the Studio branches on `app_id`. So the app was installed, versioned and sitting
+  in the sidebar while the log said *"no app was produced — try rephrasing"*, the preview stayed
+  empty, and the permission consent never ran. That path now closes out exactly like the one-shot
+  builder — same terminal event, same lint warnings, same manifest. It was also reaching for
+  `list_apps()[0]` to mean "the app just built", which sorts by **name**: correct on an empty
+  machine, wrong on every machine after that.
+- **Silence is not progress.** The log named tools without saying what they were on, so `Bash`
+  for four minutes and `Bash` for four seconds looked identical, and the gaps between calls
+  looked like a crash. Every call now shows the file, command or URL it is on, with its own
+  clock; failures turn red in place with the reason; and a heartbeat reports what the run is
+  doing between calls (`Bash · npm test · 2m 10s · $1.20`). Assistant text is one block per
+  message with markdown rendered, instead of one slab with the sentences fused at the full stop.
+- **The app's name and icon are the user's.** Left to itself the builder named an app after the
+  sentence that asked for it — *"build an application that runs every 5 m"* — and made a second
+  one next time the sentence differed. Name and icon are now fields above the prompt: applied to
+  an existing app before the build so `create_app` updates in place, and forced onto a new one
+  after. Renaming keeps the id, so data, versions, grants and pinned widgets follow. The icon
+  picker offers the OS's own glyph tiles (`glyph:<key>`), an emoji, or the monogram default.
+- **An app asks before it runs.** The consent screen was a link in a log line that had usually
+  scrolled away, and executor-built apps never got one at all. A finished build now reads what
+  the app actually calls and raises the consent screen as part of finishing. Versions and
+  permissions live in tabs under the builder log, next to the thing that asked for them.
+- **A 44KB app killed the build that wrote it.** `stream-json` puts one whole event on one
+  line, and an event carries whole tool payloads — the app file the executor just wrote, read
+  back to check its own work. asyncio's StreamReader defaults to a **64KiB line limit**, and
+  crossing it does not truncate: `readline()` raises *"Separator is found, but chunk is longer
+  than limit"*. So the size of a perfectly normal app was the thing that failed the build, with
+  a finished `app.html` sitting on disk. The ceiling is now in app territory (32MB, a cap on one
+  line and not an allocation), one line past even that costs the event rather than the run, and
+  — the part that matters — **a lost stream no longer discards a finished app**. The file is the
+  deliverable, `build_task` says so to the executor, and the build now goes and looks for it
+  before reporting failure.
+- **The AI runtime is documented.** `appLLM` / `appLLM.stream` / `appChat` / `appAgent` /
+  `appCopilot` have been in every built app for a while and were in no document, so apps got
+  built without the one capability that makes them more than a form.
+
+### The agent, measured: what it remembers, what it trusts, what it costs (2026-08-04)
+
+Four things the OS was doing without measuring, telling you, or bounding.
+
+- **A conversation now remembers what it did, not just what it said.** Tool calls and their
+  results lived in `messages.meta` — right for the chat window, wrong for the next turn: the
+  model that read a file on Monday had no record of it on Tuesday beyond whatever it happened
+  to write in prose. "Now do the same for the other one" then re-ran everything, or worse got
+  answered from a file it could no longer see. Earlier turns' tool activity is replayed as a
+  compact fenced digest, not as reconstructed `role:"tool"` messages — those need call ids
+  that must match a live turn, and Gemini needs its own signature replayed against each one.
+  Rebuilding that from storage would be a forgery some providers reject.
+- **And a long thread stops dying.** History was unbounded, so the desktop's permanent
+  conversation grew until the prompt filled the context window and every turn failed with
+  "hit its token limit" — a thread that worked yesterday simply stopped, with no way back but
+  deleting it. Turns that no longer fit are now distilled into a rolling summary, generated
+  once and stored on the conversation, and **you are told in the conversation when it
+  happens**: a summarised thread behaves differently from a whole one, and you are the only
+  one who can say the summary lost something that mattered. Telegram used its own hand-rolled
+  last-30-messages window; it uses the same rebuild now, because one conversation should not
+  have two different memories of itself depending on which surface you answer from.
+- **A fetched page can no longer spend a permission.** Grants answer *who is asking*; nothing
+  answered *on whose say-so*. Output from `fetch_url`, `hermes_ask` and any `mcp_*` tool is
+  fenced before the model sees it, and a turn that has read untrusted content holds its risky
+  steps for a human — **at full autonomy too**, because full autonomy is trust placed in your
+  instructions, not a stranger's. The ceiling sits *before* grants, exactly like the read-only
+  channel ceiling: "allow fetch_url everywhere" is consent for the agent to fetch pages, not
+  consent for a page to spend the grant on something else. For the same reason that approval
+  card offers no "allow & remember" — remembering it would hand the next page the same key.
+  Safe steps are never escalated, so reading and research stay as quick as they were. This
+  does not stop a model being fooled; it stops a fooled model being *able* to act. Off,
+  `ask` or `strict` in Settings → Agent, the TUI, or `security.taint`.
+- **The Test pillar was only testing half of what it claimed.** `tests/` proves the OS works.
+  Nothing proved the *agent* works — and every quality fix in this changelog's history (the
+  empty turn, the announce-and-stop, the invented API key, the loop guard) was found by a
+  person noticing it in a live conversation, with nothing to stop it coming back. `agentos
+  eval` runs behavioural cases: one turn each, in a throwaway home with its own database,
+  workspace and sandbox root, asserting deterministically which tools were called with what
+  arguments and what the answer says. No LLM judge — a harness that disagrees with itself is
+  one people learn to ignore. Also in the Evals app, the `run_evals` tool, and Mission
+  Control. Deliberately **not** in the restart gate: evals need a live model, and blocking
+  every self-modification on minutes of inference would stop the agent improving itself.
+- It earned its keep immediately. It found that **`read_file("notes.txt")` was denied by the
+  sandbox** — relative paths resolved against the server's working directory, which under
+  systemd is nowhere near your workspace, so a model asked to read a file by name burned its
+  whole step budget shelling out to find one it was standing next to. Relative paths now
+  belong to the workspace. It also caught three of its own assertions being wrong, including
+  one that scored a model *refusing* a destructive request as a failure.
+- **What a turn costs is now recorded — in money, not just tokens.** Token totals already
+  existed, re-derived by `/api/analytics/tokens` from the JSON meta of the last 1000 turn-log
+  rows. That shape cannot carry a price, silently truncates history at 1000 rows, and has no
+  answer for "which surface is expensive" or "what has this space cost". Spend gets its own
+  table: `agentos usage` (and `/api/usage`, and Mission Control) reports by model, day,
+  surface, kind, space or conversation. Tokens are a fact and money is an estimate, so they
+  are kept apart — an unpriced model records no cost rather than a confident `$0.00`, prices
+  live in `config.pricing` where you can correct them, and local models are priced at zero
+  *explicitly*, because "free" and "unknown" are different answers. The old endpoint stays;
+  it still answers for conversations that happened before the ledger existed.
+- **Tool scoping: built, measured, and shipped OFF.** The 90 built-in tools are ~11,600 tokens
+  of schema on every call — 47% of a 24,576-token local window before the system prompt or a
+  word of your conversation. Narrowing that per step is the obvious fix, so it exists, with a
+  core set that is never hidden, request-matched additions, per-turn pinning, and `find_tools`
+  as the way back. Then `agentos eval` was pointed at it: on `ollama/qwen3.5:9b`, 11 cases ×
+  2 rounds, **21/22 passed with all 90 tools and 19/22 with 30** — faster per step, slightly
+  worse at the job, twice running. Small sample, and the individual failures look like
+  ordinary 9B variance, but nothing in it justifies turning this on for everyone. So the
+  default is `all`, the measurement is written down in `toolscope.py`, and anyone with a
+  tighter window can enable it and check on their own model. Building the harness first is
+  what made it possible to find that out instead of shipping a plausible regression.
+- Two smaller things found along the way: filtering the tool catalogue for a subagent was
+  writing **one access-ledger row per tool per turn** — ninety rows for one question nobody
+  asked; it is a `could I?` probe now and the ledger keeps recording what was *done*. And a
+  usage-ledger write can no longer take a turn down with it.
+
 ### Channels: every way in, and how far each is trusted (2026-08-01)
 
 - **A channel is a way in, not a messenger.** Settings → Channels lists all of them

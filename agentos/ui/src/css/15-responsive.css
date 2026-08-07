@@ -98,9 +98,12 @@ body.dev-mobile .phead .ps{display:none}
    pointer nor the corners to spare, so the picker isn't offered here */
 body.dev-mobile .hc-box{display:none}
 /* app toolbars are built for a wide window — let them wrap instead of clipping */
-body.dev-mobile #topbar,body.dev-mobile .stcompose{flex-wrap:wrap}
+body.dev-mobile #topbar,body.dev-mobile .stcompose,body.dev-mobile .stident{flex-wrap:wrap}
 body.dev-mobile #topbar>select,body.dev-mobile #modelsel{flex:1 1 46%;min-width:0;max-width:none}
 body.dev-mobile .stcompose .stmodel{max-width:none;flex:1 1 100%}
+/* the name field takes the row; the hint that explains it is the first thing to go */
+body.dev-mobile .stident input{flex:1 1 auto}
+body.dev-mobile .stident #st-idnote{display:none}
 body.dev-mobile .psearch{max-width:none}
 /* a one-row textarea can't show a three-line placeholder — truncate it instead */
 body.dev-mobile #input::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

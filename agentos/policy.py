@@ -37,8 +37,8 @@ from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class Principal:
-    kind: str  # "user" | "app" | "subagent" | "workflow" | "system"
-    id: str = ""  # "" for the user; app id; subagent/workflow name
+    kind: str  # "user" | "app" | "subagent" | "workflow" | "flow" | "system"
+    id: str = ""  # "" for the user; app id; subagent/workflow/flow name
 
     @property
     def label(self) -> str:
@@ -63,10 +63,22 @@ class Decision:
 # BLOCKED_PATTERNS: the framework itself is not up for negotiation).
 _SELF_MOD = ["tool:configure_agentos*", "tool:update_soul*", "tool:develop_agentos*",
              "tool:restart_agentos*", "tool:snapshot_os*"]
+# Defining a flow writes grants, so anything that could define one could grant itself
+# whatever it liked by writing a flow that says so. Only the user's own agent may, and even
+# then the flow is created disabled — enabling is what grants, and that stays a human act.
+_NO_FLOW_WRITE = [("flow.write", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD],
-    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")],
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")],
+    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_FLOW_WRITE,
+    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _NO_FLOW_WRITE,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _NO_FLOW_WRITE,
+    # A flow's master orchestrator is the one principal in the OS that exists to invoke
+    # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
+    # is still barred from rewriting the OS, and delegation is not free: `_default` gives
+    # a flow NO default for agent.invoke, so only a grant written from its own definition
+    # (its roster) can satisfy one. The agents it starts run as `subagent`, which IS
+    # denied above — which is what makes the tree exactly two deep, enforced by the gate
+    # rather than by a counter somebody has to remember to increment.
+    "flow": [("tool.use", p) for p in _SELF_MOD] + _NO_FLOW_WRITE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -129,6 +141,15 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
         return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
+    # Writing a flow is its own capability, not another tool.use string: a flow definition
+    # IS a set of standing permissions, so "may define a flow" and "may fetch a URL" are not
+    # the same kind of question and must be grantable apart.
+    if name in ("create_flow", "enable_flow"):
+        return "flow.write", f"flow:{args.get('name', '') or '*'}"
+    if name == "list_flows":
+        return "flow.read", "flow:*"
+    if name == "run_flow":
+        return "agent.invoke", f"agent:flow/{args.get('flow', '') or '*'}"
     if name == "delegate":
         return "agent.invoke", f"agent:subagent/{args.get('subagent', '') or '*'}"
     if name == "run_workflow":
@@ -145,7 +166,9 @@ def _match(pattern: str, value: str) -> bool:
 
 # The IO gates: every capability call arrives via one of these surfaces. Grants may be
 # scoped to a subset (grants.surfaces csv); '*' means all surfaces (the default).
-SURFACES = ("gui", "tui", "telegram", "api", "task")
+# `webhook` is another service calling in over HTTP to start a flow — a gate with no
+# human behind it at all, which is exactly why it is nameable in a grant.
+SURFACES = ("gui", "tui", "telegram", "api", "task", "webhook")
 
 
 # How much a channel is trusted, independent of who is asking. This is a property
@@ -153,6 +176,123 @@ SURFACES = ("gui", "tui", "telegram", "api", "task")
 # WhatsApp than sitting at the machine, and a channel with nobody watching cannot
 # answer an approval prompt at all.
 POSTURES = ("inherit", "read_only", "ask", "full")
+
+
+# Where the content in this turn came from. The grants system answers "who is
+# asking"; this answers "on whose say-so" — and they are different questions.
+# A web page, an MCP server's reply or a document the agent was handed can all
+# contain text shaped like an instruction, and the model has no reliable way to
+# tell that apart from the user's own words. So the rule is not "detect the
+# attack" (undecidable) but "a risky action whose turn has swallowed untrusted
+# content is not something a machine gets to decide alone".
+#
+#   off    — no escalation (the old behaviour; explicit, not accidental)
+#   ask    — a risky action after untrusted content asks, even at full autonomy
+#   strict — it is refused outright
+TAINT_MODES = ("off", "ask", "strict")
+
+
+# How fast a principal may spend what it has been granted.
+#
+# Grants answer "may it?" and budgets answer "how long?" — neither answers "how often?".
+# A subagent is bounded by max_steps and a flow by its delegation budget, but a user app
+# runs in a browser tab and can loop for as long as the tab is open. A grant of fetch_url
+# is consent to fetch pages, not consent to fetch six hundred a minute, and the difference
+# between those two is the only thing standing between a bug in a refresh handler and a
+# machine hammering somebody else's API all night.
+#
+# Two thresholds, because the two failures look different. A dashboard fetching a dozen
+# tickers on refresh is a legitimate BURST; a runaway loop is SUSTAINED. Tripping the burst
+# limit refuses that one call and nothing else. Tripping it over and over is what gets an
+# app stopped.
+# Calls are metered in CLASSES, because "too many" means different numbers for different
+# things. Six model calls a minute from a dashboard is money leaving at a rate nobody asked
+# for; six fetches is a page refreshing. Counting them together would either quarantine
+# every working app or catch no runaway at all.
+LLM_TOOLS = {"llm_generate", "generate_image", "appLLM.stream", "app→appLLM.stream",
+             "generate_wallpaper", "create_theme", "create_app"}
+
+
+def call_class(tool: str) -> str:
+    t = (tool or "").split("→")[-1]
+    if t in LLM_TOOLS:
+        return "llm"
+    return "tool"
+
+
+# principal kind -> class -> (calls allowed, window seconds)
+# Grounded in what this machine actually does: its busiest legitimate app burst was 25
+# fetches in 10s on refresh, and no app has ever made more than a handful of model calls in
+# a minute. So the tool limit sits above real bursts and the llm limit sits just above real
+# use — a runaway loop passes both by an order of magnitude.
+RATE_DEFAULTS = {
+    "app":      {"llm": (6, 60), "tool": (60, 20)},
+    "subagent": {"llm": (20, 60), "tool": (120, 20)},
+    "flow":     {"llm": (20, 60), "tool": (120, 20)},
+}
+
+
+def rate_limits(cfg: dict, kind: str) -> dict | None:
+    conf = (cfg.get("security") or {}).get("rate_limits")
+    if conf is not None and not conf:
+        return None                       # explicitly disabled
+    table = {**RATE_DEFAULTS, **(conf or {})}
+    lim = table.get(kind)
+    return {k: tuple(v) for k, v in lim.items()} if lim else None
+
+
+class RateMeter:
+    """In-memory call history per principal. Never touches the database: this is consulted
+    on every single capability call, and a gate that costs a write is a gate somebody will
+    eventually be tempted to remove."""
+
+    def __init__(self):
+        self._calls: dict = {}   # label -> [timestamps]
+        self._trips: dict = {}   # label -> [timestamps of burst trips]
+
+    def record(self, label: str, now: float, keep: float):
+        q = self._calls.setdefault(label, [])
+        q.append(now)
+        if len(q) > 512:                  # bounded: a runaway must not also eat memory
+            del q[:-512]
+        cut = now - keep
+        while q and q[0] < cut:
+            q.pop(0)
+
+    def count(self, label: str, now: float, window: float) -> int:
+        cut = now - window
+        return sum(1 for t in self._calls.get(label, ()) if t >= cut)
+
+    def trip(self, label: str, now: float, window: float) -> int:
+        q = self._trips.setdefault(label, [])
+        q.append(now)
+        cut = now - window
+        while q and q[0] < cut:
+            q.pop(0)
+        return len(q)
+
+    def forget(self, label: str):
+        self._calls.pop(label, None)
+        self._trips.pop(label, None)
+
+
+def taint_mode(cfg: dict) -> str:
+    m = str(((cfg.get("security") or {}).get("taint")) or "ask")
+    return m if m in TAINT_MODES else "ask"
+
+
+def taint_summary(taint) -> str:
+    """One readable phrase naming where the untrusted content came from."""
+    srcs, seen = [], set()
+    for t in taint or []:
+        s = (t.get("source") if isinstance(t, dict) else str(t)) or "?"
+        if s not in seen:
+            seen.add(s)
+            srcs.append(s)
+    if not srcs:
+        return "content from outside this machine"
+    head = ", ".join(srcs[:3])
+    return head + (f" (+{len(srcs) - 3} more)" if len(srcs) > 3 else "")
 
 
 def channel_posture(cfg: dict, surface: str) -> str:
@@ -185,6 +325,14 @@ class PDP:
         self.mcp = None  # MCPManager, wired up in server startup (resolves mcp_* names)
         self._cache: list[dict] = []
         self._cache_version = -1
+        self._skills: dict = {}   # principal.label -> (expires_at, set(names)) — see _declared_skills
+        self._rate = RateMeter()
+        self._q_cache: dict = {}
+        self._q_version = -1
+        # on_rate_trip(principal, stats): wired in server startup. The PDP decides that
+        # something has gone rogue; what happens then — writing the hold, telling the user —
+        # belongs to the layer that owns apps and notifications, not to the gate.
+        self.on_rate_trip = None
 
     def _grants(self) -> list[dict]:
         if self._cache_version != getattr(self.store, "grants_version", 0):
@@ -192,6 +340,118 @@ class PDP:
             self._cache_version = self.store.grants_version
         now = time.time()
         return [g for g in self._cache if not g.get("expires_at") or g["expires_at"] > now]
+
+    def _declared_skills(self, principal: Principal) -> set:
+        """The skills a definition lists — an allow-list when non-empty, unrestricted when
+        not. Memoised for a few seconds because a skill load is rare and an edit in the
+        Workflows app should take effect without a restart."""
+        key = principal.label
+        hit = self._skills.get(key)
+        now = time.time()
+        if hit and hit[0] > now:
+            return hit[1]
+        names: set = set()
+        try:
+            if principal.kind == "subagent":
+                d = self.store.get_subagent(principal.id) or {}
+                if d.get("skills_locked", 1):
+                    names = {str(s) for s in (d.get("skills") or [])}
+            elif principal.kind == "flow":
+                d = self.store.get_flow(principal.id) or {}
+                names = {str(s) for s in ((d.get("permissions") or {}).get("skills") or [])}
+        except Exception:
+            names = set()
+        self._skills[key] = (now + 5, names)
+        return names
+
+    def _held(self, principal: Principal) -> dict | None:
+        """Is this principal in quarantine? Cached against the store's version counter,
+        because this is asked on every capability call."""
+        if principal.kind not in ("app", "subagent", "flow"):
+            return None
+        ver = getattr(self.store, "quarantine_version", 0)
+        if self._q_version != ver:
+            self._q_cache, self._q_version = {}, ver
+        key = principal.label
+        if key not in self._q_cache:
+            try:
+                self._q_cache[key] = self.store.quarantined(principal.kind, principal.id)
+            except Exception:
+                self._q_cache[key] = None
+        return self._q_cache[key]
+
+    def _rate_check(self, principal: Principal, ctx: dict) -> "Decision | None":
+        """None to carry on; a Decision to refuse.
+
+        Something already held is refused outright — that is what being held means. Anything
+        else is metered per class of call, and going over puts it in quarantine: this is the
+        one ceiling that decides, by itself, that something should stop.
+        """
+        if principal.kind not in ("app", "subagent", "flow"):
+            return None
+        held = self._held(principal)
+        if held:
+            why = held.get("reason") or "it was calling too fast"
+            return Decision("deny",
+                            f"{principal.label} is quarantined — {why}. Nothing it asks for "
+                            f"runs until you let it out.",
+                            rule="quarantined")
+        lim = rate_limits(self.cfg, principal.kind)
+        if not lim:
+            return None
+        try:
+            if self.store.quarantine_exempt(principal.kind, principal.id):
+                return None               # the user said "allow this forever"; honour it
+        except Exception:
+            pass
+        cls = call_class(ctx.get("tool") or "")
+        allowed, window = lim.get(cls) or lim.get("tool")
+        label = f"{principal.label}|{cls}"
+        now = time.time()
+        self._rate.record(label, now, window)
+        n = self._rate.count(label, now, window)
+        if n <= allowed:
+            return None
+        what = "model calls" if cls == "llm" else "tool calls"
+        reason = (f"{n} {what} in {int(window)}s, over its limit of {allowed} — "
+                  f"it was calling {ctx.get('tool') or 'tools'} in a loop")
+        stats = {"count": n, "window": window, "allowed": allowed, "class": cls,
+                 "tool": ctx.get("tool", ""), "reason": reason}
+        # The hold is written HERE, not in the callback. The gate deciding something is
+        # rogue and the thing actually being held must not be two facts that can disagree:
+        # if nobody had wired a callback, the call would be refused, the next one metered
+        # afresh, and it would let the loop through again a second later.
+        try:
+            self.store.quarantine_add(principal.kind, principal.id, reason,
+                                      kind=cls, evidence=stats)
+        except Exception:
+            pass
+        if self.on_rate_trip:
+            try:
+                self.on_rate_trip(principal, stats)   # telling the user is the caller's job
+            except Exception:
+                pass
+        self._q_version = -1              # the hold was just written; re-read it next call
+        return Decision("deny",
+                        f"{principal.label} was quarantined: {reason}.",
+                        rule="quarantined")
+
+    def _declared_roster(self, principal: Principal) -> set:
+        """The agents a flow's definition lists. Memoised briefly, like the skills."""
+        key = "roster:" + principal.label
+        hit = self._skills.get(key)
+        now = time.time()
+        if hit and hit[0] > now:
+            return hit[1]
+        names: set = set()
+        try:
+            d = self.store.get_flow(principal.id) or {}
+            names = {(r.get("subagent") if isinstance(r, dict) else str(r))
+                     for r in (d.get("roster") or [])}
+        except Exception:
+            names = set()
+        self._skills[key] = (now + 5, names)
+        return names
 
     def _matching(self, principal: Principal, action: str, resource: str) -> list[dict]:
         out = []
@@ -264,6 +524,36 @@ class PDP:
                             f"the {surface} channel is set to read-only, so it may look "
                             f"but not change anything (Settings → Channels)",
                             rule="channel-read-only")
+        # 2c. the taint ceiling. Like the channel ceiling above it, this is checked
+        # BEFORE grants, and for the same reason: "allow fetch_url everywhere" is
+        # consent for the agent to fetch pages, not consent for a fetched page to
+        # spend the grant on something else. A safe action is never escalated —
+        # reading stays free, and only the steps that change something outside the
+        # conversation are held back for a human.
+        taint = ctx.get("taint") or []
+        mode = taint_mode(self.cfg)
+        if taint and risk != "safe" and mode != "off":
+            where = taint_summary(taint)
+            if mode == "strict":
+                return Decision("deny",
+                                f"this turn has read untrusted content ({where}) and "
+                                f"security.taint is set to strict, so it may not take "
+                                f"actions that change anything",
+                                rule="taint")
+            return Decision("ask",
+                            f"{ctx.get('reason') or 'This changes something.'} This turn has "
+                            f"also read untrusted content ({where}) — content from outside "
+                            f"this machine can be written to look like an instruction, so "
+                            f"this step is being shown to you rather than assumed.",
+                            rule="taint")   # deliberately no grant_offer: "remember this"
+                                            # would hand the next web page the same key
+        # 2d. the rate ceiling. Before grants, for the same reason as the two above:
+        # "allow fetch_url" is consent to fetch pages, not consent to fetch them without
+        # end. This is the only ceiling that can decide, by itself, to stop something.
+        if ctx.get("audit") is not False:      # probes are not calls; do not meter them
+            rl = self._rate_check(principal, ctx)
+            if rl is not None:
+                return rl
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource)
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
@@ -289,17 +579,23 @@ class PDP:
     def decide_tool(self, principal: Principal, name: str, args: dict,
                     risk_level: str, reason: str = "", autonomy: str = "",
                     surface: str = "", space_id: str = "",
-                    conversation_id: str = "", run_id: str = "") -> Decision:
+                    conversation_id: str = "", run_id: str = "",
+                    taint: list | None = None, audit: bool = True) -> Decision:
         """The main entry for tool calls: maps the call to (action, resource) and decides.
         `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task);
         the space/conversation/run are carried so the ledger entry says WHERE it happened,
-        not just what was asked for."""
+        not just what was asked for. `taint` is what untrusted content this turn has
+        already read (see the taint ceiling in `_decide`)."""
         action, resource = action_of(name, args, mcp=self.mcp)
         return self.decide(principal, action, resource,
                            {"risk": risk_level, "reason": reason, "autonomy": autonomy,
                             "tool": name, "args": args, "surface": surface,
                             "space_id": space_id, "conversation_id": conversation_id,
-                            "run_id": run_id})
+                            "run_id": run_id, "taint": taint or [],
+                            # audit=False marks a "could this principal?" probe —
+                            # filtering a tool list is one question, not ninety
+                            # accesses, and the ledger is for what was done
+                            "audit": audit})
 
     def _default(self, principal: Principal, action: str, resource: str, ctx: dict) -> Decision:
         risk = ctx.get("risk", "safe")
@@ -309,6 +605,42 @@ class PDP:
             # models default open for everyone; restrict per principal with deny grants
             # (e.g. deny model.use model:anthropic/* for a subagent or app)
             return Decision("allow", rule="default")
+        if principal.kind == "flow" and action == "agent.invoke":
+            # No default for a flow's delegation: `delegate` is not in risk_of's table, so
+            # it arrives here as "safe" and would otherwise be allowed outright. The roster
+            # is the whole boundary, and two different refusals hide behind it:
+            #
+            #   not on the roster at all       -> deny. Nothing to discuss.
+            #   on the roster, not yet granted -> ASK. This is the flow you drafted and
+            #        have not enabled, being tried by hand with you watching. Denying it
+            #        would make a test run pointless — the master could never call anyone —
+            #        so it escalates instead, down the same "grant, then escalate" path
+            #        every other ungranted capability takes. Unattended, nobody answers and
+            #        it still ends in a denial, so this loosens nothing that runs alone.
+            want = resource.split("/", 1)[1] if "/" in resource else ""
+            if want and want in self._declared_roster(principal):
+                return Decision("ask",
+                                f"'{principal.id}' wants to delegate to '{want}'. It is on the "
+                                f"flow's roster, but the flow has not been enabled, so it has "
+                                f"not been granted this yet.",
+                                rule="roster-ungranted", grant_offer=offer)
+            return Decision("deny",
+                            f"'{principal.id}' may only delegate to the agents on its roster — "
+                            f"add one in Workflows → Flows and save, which writes the grant",
+                            rule="roster")
+        if action == "skill.use" and principal.kind in ("subagent", "flow"):
+            # An allow-list cannot be expressed as grants: deny is evaluated first and
+            # returns immediately, so a blanket `deny skill:*` alongside per-skill allows
+            # would refuse everything. It belongs here, where "what this definition lists"
+            # is the question being asked.
+            allow = self._declared_skills(principal)
+            if allow:  # empty/absent = unrestricted, which is the pre-existing behaviour
+                want = resource.split(":", 1)[1] if ":" in resource else "*"
+                if want not in allow:
+                    return Decision("deny",
+                                    f"'{principal.id}' may only load the skills its definition "
+                                    f"lists ({', '.join(sorted(allow))}) — add it in Team",
+                                    rule="skill-allowlist")
         if principal.kind == "app":
             # an app always owns its own data store
             if action.startswith("app.data") and resource == f"app:{principal.id}/data":

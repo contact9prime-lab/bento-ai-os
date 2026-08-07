@@ -116,6 +116,13 @@ DEFAULTS = {
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
+    # Autonomy answers "how much may the agent do without asking". This answers a
+    # different question: "how much may a WEB PAGE do", once its text is in the
+    # context window. A turn that has read untrusted content (a fetched page, an
+    # MCP server's reply) holds its risky steps for a human — at full autonomy too,
+    # because full autonomy is trust placed in the user's own instructions.
+    #   off | ask (default) | strict (refuse outright)
+    "security": {"taint": "ask"},
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight
@@ -191,6 +198,26 @@ DEFAULTS = {
         "embed_model": "",        # Ollama embedding model for semantic recall; empty = auto-detect
         "rollup_after_hours": 24, # distill idle conversations' session memory; 0 disables
         "kg_dedup": True,         # periodically merge duplicate knowledge-graph entities
+    },
+    # How many of the 90 tools are put in front of the model at once
+    # (agentos/toolscope.py). Default "all": narrowing was measured with
+    # `agentos eval` and scored slightly WORSE on this machine's local model, so
+    # it ships off. "auto" narrows only when the schemas would eat a real share
+    # of the context window — try it with the eval harness on your own model.
+    "tools": {
+        "scope": "all",           # all | auto | always
+        "budget": 30,             # tools offered per step when narrowing
+        "window_share": 0.20,     # narrow once schemas exceed this share of the window
+        "cloud_context": 128000,  # assumed window when the provider does not say
+    },
+    # How a conversation is replayed to the model each turn (agentos/history.py).
+    # A thread that outgrows the context window is compacted, not killed.
+    "history": {
+        "tool_trace": True,       # replay prior turns' tool calls + results, compactly
+        "trace_chars": 600,       # how much of each past tool result is kept
+        "compact": True,          # summarise turns that fall out of the budget
+        "budget_tokens": 0,       # 0 = derive from the model (num_ctx for local models)
+        "model": "",              # summariser; empty = the conversation's own model
     },
     "telegram": {
         "enabled": False,

@@ -126,6 +126,25 @@ class TelegramBridge:
                             f"autonomy {self.cfg.get('autonomy')}", chat_id)
             return
 
+        # A message trigger starts a flow. Checked before the busy lock on purpose: a flow
+        # runs in its own task with its own orchestrator, so it is not the conversation
+        # this chat is holding, and making it queue behind one would mean "the alert I set
+        # up did not fire because I was mid-sentence".
+        try:
+            from . import flows as flowsmod
+            hit = flowsmod.match_message(self.store, text, surface="telegram") \
+                if self.toolbox.fabric else None
+        except Exception:
+            hit = None
+        if hit:
+            trig, flow = hit
+            asyncio.create_task(self.toolbox.fabric.run_flow(
+                flow, text, origin={"surface": "telegram", "chat_id": chat_id,
+                                    "ref": trig["id"]},
+                conversation_id=self._conversation(chat), trigger_id=trig["id"]))
+            await self.send(f"▶ {flow['name']} started — I'll report back here.", chat_id)
+            return
+
         if self._busy:
             await self.send("⏳ Still working on your previous message…", chat_id)
             return
@@ -136,9 +155,13 @@ class TelegramBridge:
             pass
         try:
             cid = self._conversation(chat)
-            history = [{"role": m["role"], "content": m["content"]}
-                       for m in self.store.get_messages(cid)
-                       if m["role"] in ("user", "assistant") and (m["content"] or "").strip()][-30:]
+            # The same rebuild as the desktop: a thread answered from the phone
+            # must see what the thread saw at the desk, tool traces included. A
+            # bespoke last-30 window here is how one conversation ends up with
+            # two different memories of itself.
+            from . import history as _history
+            history, _hinfo = await _history.build(
+                self.store, cid, self.cfg, self.cfg.get("default_model", ""))
             self.store.add_message(cid, "user", text)
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             history.append({"role": "user", "content":
@@ -150,10 +173,9 @@ class TelegramBridge:
                 pass
 
             async def approver(name, args, reason, offer=None) -> bool:
-                # offer (grant-&-remember) is a web-UI affordance; Telegram answers yes/no
                 if self.cfg.get("autonomy") == "full":
                     return True
-                return await self._ask_approval(chat_id, name, args, reason)
+                return await self.ask_approval(chat_id, name, args, reason, offer=offer)
 
             model = self.cfg.get("default_model") or ""
             from . import fabric as fabricmod
@@ -197,6 +219,9 @@ class TelegramBridge:
                     reply = result["content"] or "(done — no text output)"
             self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
             self.store.touch_conversation(cid)
+            from . import usage as _usage
+            _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
+                          surface="telegram", conversation_id=cid)
             await self.send(reply, chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge
@@ -207,27 +232,55 @@ class TelegramBridge:
             self._busy = False
 
     async def _ask_approval(self, chat_id: int, name: str, args: dict, reason: str) -> bool:
-        """Send an inline Allow/Deny keyboard and wait for the user's tap."""
+        return await self.ask_approval(chat_id, name, args, reason)
+
+    async def ask_approval(self, chat_id: int, name: str, args: dict, reason: str,
+                           offer: dict | None = None, timeout: float = 300) -> bool:
+        """Send an inline keyboard and wait for the user's tap.
+
+        Three buttons rather than two when the decision carries a grant offer: an
+        unattended flow that has to be re-approved every night is one somebody will
+        eventually put on full autonomy to make it stop asking, which is worse than the
+        grant they actually meant. "Always" is written as a USER grant — never a
+        definition one, or the next save of that flow would silently revoke it.
+        """
         import uuid
         aid = uuid.uuid4().hex[:8]
         detail = args.get("command", "") if name == "run_command" else json.dumps(args)[:300]
         text = f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}"
-        kb = {"inline_keyboard": [[{"text": "✅ Allow", "callback_data": f"ap:{aid}:1"},
-                                   {"text": "⛔ Deny", "callback_data": f"ap:{aid}:0"}]]}
+        row = [{"text": "✅ Allow once", "callback_data": f"ap:{aid}:1"},
+               {"text": "⛔ Deny", "callback_data": f"ap:{aid}:0"}]
+        if offer:
+            row.insert(1, {"text": "♾ Always", "callback_data": f"ap:{aid}:2"})
         fut = asyncio.get_event_loop().create_future()
         self._pending[aid] = fut
         try:
-            await self._api("sendMessage", chat_id=chat_id, text=text, reply_markup=kb)
+            await self._api("sendMessage", chat_id=chat_id, text=text,
+                            reply_markup={"inline_keyboard": [row]})
         except Exception:
             self._pending.pop(aid, None)
             return False
         try:
-            return await asyncio.wait_for(fut, timeout=300)
+            val = await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            await self.send("⌛ Approval timed out — action not taken.", chat_id)
+            await self.send("⌛ Approval timed out — action not taken. The run continues "
+                            "without it.", chat_id)
             return False
         finally:
             self._pending.pop(aid, None)
+        if val == "2" and offer:
+            self.store.add_grant(offer["principal_kind"], offer["principal_id"],
+                                 offer["action"], offer["resource"], source="user",
+                                 note="allowed & remembered from a Telegram approval")
+            self.store.log("policy", f"grant remembered: {offer['action']} {offer['resource']}",
+                           {"principal": f"{offer['principal_kind']}:{offer['principal_id']}",
+                            "action": offer["action"], "resource": offer["resource"],
+                            "effect": "allow", "via": "telegram_approval"})
+            try:
+                await self.broadcast({"type": "grants"})
+            except Exception:
+                pass
+        return val in ("1", "2")
 
     async def _handle_callback(self, cq: dict):
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
@@ -242,13 +295,15 @@ class TelegramBridge:
         _, aid, val = data.split(":", 2)
         fut = self._pending.get(aid)
         if fut and not fut.done():
-            fut.set_result(val == "1")
+            fut.set_result(val)          # "0" deny | "1" allow once | "2" always
         # reflect the decision on the message
         msg = cq.get("message", {})
         if msg:
+            said = {"1": "✅ Allowed", "2": "♾ Allowed & remembered"}.get(val, "⛔ Denied")
             try:
-                await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
-                                text=(msg.get("text", "") + f"\n\n{'✅ Allowed' if val=='1' else '⛔ Denied'}"))
+                await self._api("editMessageText", chat_id=msg["chat"]["id"],
+                                message_id=msg["message_id"],
+                                text=(msg.get("text", "") + f"\n\n{said}"))
             except Exception:
                 pass
 

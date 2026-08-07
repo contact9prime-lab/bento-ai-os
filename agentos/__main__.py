@@ -130,6 +130,63 @@ def ask(prompt: str, model: str | None, full: bool):
     asyncio.run(main_async())
 
 
+def usage_cmd(args):
+    """`agentos usage` — the headless face of the cost ledger."""
+    from . import config as cfgmod
+    from . import usage as usagemod
+    from .memory import Store
+
+    cfg = cfgmod.load_config()
+    rep = usagemod.report(Store(cfgmod.DB_PATH), cfg, days=args.days, group=args.by)
+    if not rep["rows"]:
+        print(f"no turns recorded in the last {args.days:g} day(s).")
+        return
+    print(usagemod.format_report(rep))
+
+
+def eval_cmd(args):
+    """The TUI face of the eval harness: `agentos eval` over SSH, no browser.
+
+    Exit status is the gate — 0 only if every case passed on every model — so it
+    can sit in a CI step or a pre-release check without anyone reading the table.
+    """
+    from . import config as cfgmod
+    from . import evals
+
+    cfg = cfgmod.load_config()
+    if args.list:
+        for c in evals.select(evals.load_cases(), tags=args.tag, network=True):
+            tags = ",".join(c.get("tags") or []) or "-"
+            net = " [needs network]" if c.get("network") else ""
+            print(f"{c['id']:<26} {tags:<22} {c.get('title', '')}{net}")
+        return
+
+    models = args.model or [cfg.get("default_model", "")]
+    models = [m for m in models if m]
+    if not models:
+        print("No model configured. Pass --model, or set one in Settings (`agentos`).")
+        sys.exit(2)
+
+    print(f"Running behavioural evals against: {', '.join(models)}")
+    print("(each case runs in a throwaway home — nothing here touches your data)\n")
+
+    def show(r):
+        mark = {"pass": "\033[32mPASS\033[0m", "fail": "\033[31mFAIL\033[0m",
+                "error": "\033[33mERR \033[0m"}[r["status"]]
+        print(f"  {mark}  {r['id']:<26} {r['seconds']}s")
+
+    report = asyncio.run(evals.run(models, only=args.case, tags=args.tag,
+                                   network=args.network, on_result=show))
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(evals.format_report(report, verbose=args.verbose))
+    path = evals.save(report)
+    print(f"\nreport: {path}")
+    failed = sum(s["failed"] + s["errors"] for s in report["by_model"].values())
+    sys.exit(1 if failed else 0)
+
+
 def forward_cmd(engine: str | None):
     """Read or set the machine-wide engine.
 
@@ -784,6 +841,132 @@ def _remote_desktop_cli(args):
         print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
 
 
+def _flow_cli(args):
+    """`agentos flow` — the control plane from a terminal.
+
+    Runs, boards and approvals go over the local HTTP API, because a flow is a live thing
+    the running server owns; listing and hooks read the store directly so they still work
+    with the server down. Answering an approval from here is the point: until this
+    existed, a flow started from a terminal could only be watched failing.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import config as cfgmod
+    from . import flows as flowsmod
+    cfg, store = _open_store()
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def call(path, data=None, method=None):
+        req = urllib.request.Request(
+            base + path, method=method or ("POST" if data is not None else "GET"),
+            data=json.dumps(data).encode() if data is not None else None,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return {"error": json.loads(e.read() or b"{}").get("error", str(e))}
+        except Exception as e:                                    # noqa: BLE001
+            return {"error": f"{e} — is AgentOS running? (agentos serve)"}
+
+    act = args.action
+    if act == "list":
+        rows = store.list_flows()
+        if not rows:
+            print("no flows yet — make one in Workflows → Flows, or with the API")
+            return
+        for f in rows:
+            trigs = store.flow_triggers(f["name"])
+            last = [r for r in store.fabric_runs(limit=60)
+                    if (r.get("flow") or "") == f["name"]]
+            print(f"\n▲ {f['name']}{'' if f['enabled'] else '  (disabled)'}")
+            print(f"    {(f.get('mission') or '')[:90]}")
+            print(f"    roster: {', '.join(r['subagent'] for r in f['roster']) or '—'}")
+            print(f"    starts: {', '.join(t['kind'] for t in trigs) or 'only when you say so'}")
+            if last:
+                print(f"    last:   {last[0]['status']} · "
+                      f"{time.strftime('%d %b %H:%M', time.localtime(last[0]['started_at']))}")
+        return
+
+    if act == "hooks":
+        hooks = store.flow_triggers(args.name, kind="webhook")
+        if not hooks:
+            print(f"'{args.name}' has no webhook trigger — add one in Workflows → Flows")
+            return
+        for t in hooks:
+            url = flowsmod.hook_url(cfg, args.name, t)
+            print(f"\n  curl -X POST '{url}' -d '{{\"hello\":\"world\"}}'")
+            print("  (or send the secret as the X-AgentOS-Hook-Secret header)")
+            print(f"  fired {t['fires']}×, {t['dropped']} refused by the "
+                  f"{t['cooldown_secs']}s cooldown")
+        return
+
+    if act == "approvals":
+        res = call("/api/fabric/approvals")
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        rows = res.get("approvals") or []
+        if not rows:
+            print("nothing is waiting on you")
+            return
+        for a in rows:
+            print(f"\n  {a['id']}  {a['name']}  {json.dumps(a.get('args') or {})[:80]}")
+            print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
+        print("\n  agentos flow allow <id> [--always]   |   agentos flow deny <id>")
+        return
+
+    if act in ("allow", "deny"):
+        res = call(f"/api/fabric/approvals/{args.name}",
+                   {"approved": act == "allow", "remember": bool(args.always)})
+        print("✓ answered" if not res.get("error") else f"✗ {res['error']}")
+        return
+
+    if act == "show":
+        res = call(f"/api/fabric/runs/{args.name}")
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        run = res["run"]
+        print(f"▲ {run.get('flow') or run['ref']} · {run['status']} · model {run.get('model') or '—'}")
+        for s in res.get("steps") or []:
+            print(f"  ├─ {s['ref']:<14} {s['status']:<9} "
+                  f"{(s.get('tokens_in') or 0) + (s.get('tokens_out') or 0):>6} tok")
+        board = call(f"/api/flows/runs/{args.name}/board").get("board") or []
+        for a in board:
+            print(f"  {a['handle']:<4} {(a['agent'] or a['kind']):<12} {a['status']:<8} "
+                  f"{a['bytes']:>7}B  {(a['preview'] or '')[:60]}")
+        if run.get("output"):
+            print("\n" + run["output"][:2000])
+        return
+
+    if act == "run":
+        if not args.name:
+            print("which flow? (agentos flow list)")
+            sys.exit(2)
+        res = call(f"/api/flows/{args.name}/run",
+                   {"input": args.input, "surface": "tui"})
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        rid = res["run_id"]
+        print(f"▶ {args.name} started · run {rid}")
+        if not args.wait:
+            print(f"  agentos flow show {rid}")
+            return
+        while True:
+            time.sleep(2)
+            d = call(f"/api/fabric/runs/{rid}")
+            run = d.get("run") or {}
+            if run.get("status") and run["status"] != "running":
+                break
+            for a in (call(f"/api/flows/runs/{rid}/board").get("board") or [])[-1:]:
+                print(f"  · {a['handle']} {a['agent'] or a['kind']} {a['status']}")
+        print(f"\n{run.get('status')} · {run.get('output') or run.get('fault') or ''}"[:4000])
+        return
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1027,6 +1210,21 @@ def main():
     p_ask.add_argument("--model", default=None, help="e.g. ollama/qwen3.5:9b")
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
+    p_usage = sub.add_parser("usage", help="what the agent has spent — tokens, and money where the model is priced")
+    p_usage.add_argument("--days", type=float, default=1.0, help="how far back (default: 1)")
+    p_usage.add_argument("--by", default="model",
+                         choices=["model", "day", "surface", "kind", "conversation", "space"])
+
+    p_eval = sub.add_parser("eval", help="run the behavioural evals against a model (does the agent still behave?)")
+    p_eval.add_argument("--model", action="append", default=None,
+                        help="model to test; repeat to compare several (default: the configured one)")
+    p_eval.add_argument("--case", action="append", default=None, help="run only this case id (repeatable)")
+    p_eval.add_argument("--tag", action="append", default=None, help="run only cases with this tag")
+    p_eval.add_argument("--network", action="store_true", help="include cases that need the internet")
+    p_eval.add_argument("--list", action="store_true", help="list the cases and exit")
+    p_eval.add_argument("--verbose", "-v", action="store_true", help="show every assertion, not just failures")
+    p_eval.add_argument("--json", action="store_true", help="print the raw report")
+
     p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "hermes", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
@@ -1121,6 +1319,16 @@ def main():
     p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
     p_audit.add_argument("--limit", type=int, default=50)
 
+    p_flow = sub.add_parser("flow", help="flows — standing missions run by a master orchestrator")
+    p_flow.add_argument("action", nargs="?", default="list",
+                        choices=["list", "run", "show", "approvals", "allow", "deny", "hooks"])
+    p_flow.add_argument("name", nargs="?", default="",
+                        help="flow name, or a run id for `show`, or an approval id")
+    p_flow.add_argument("--input", default="", help="what to hand the flow")
+    p_flow.add_argument("--wait", action="store_true", help="stay attached until it finishes")
+    p_flow.add_argument("--always", action="store_true",
+                        help="with `allow`: remember it as a grant, not just this once")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -1150,6 +1358,10 @@ def main():
         doctor(fix=getattr(args, "fix", False), session=getattr(args, "session", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
+    elif args.cmd == "eval":
+        eval_cmd(args)
+    elif args.cmd == "usage":
+        usage_cmd(args)
     elif args.cmd == "forward":
         forward_cmd(args.engine)
     elif args.cmd == "tunnel":
@@ -1206,6 +1418,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "flow":
+        _flow_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":
