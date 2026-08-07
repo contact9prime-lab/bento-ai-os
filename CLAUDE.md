@@ -143,6 +143,60 @@ Definition-time permissions become real `grants` rows with `source='definition'`
 hand-written grant and a definition one can read identically and reconciliation must never
 revoke somebody's deliberate decision.
 
+## Jobs are flows, and that is the whole design
+
+`agentos/jobs.py` is a recipe catalogue and nothing else. It turns a recipe plus two or
+three answers into a flow definition and hands it to `flows.save`. There is no job
+engine, no job scheduler and no job permission model — a job that could do something a
+flow cannot would be a second set of bugs in each of those.
+
+It exists because the gap between "installed" and "useful" is where this OS is lost. The
+first-run wizard used to end on a door onto an empty desktop; it now ends on "give me a
+job", and the last button is "run it now, so I can see it work" — a schedule nobody has
+watched fire is a promise, and a new user has no reason to believe one.
+
+Three things must stay true:
+
+- **The consent screen and the save are one computation.** `/api/jobs/preview` runs
+  `flows.declared_grants` (pure) over the definition that will be saved. Describing the
+  permissions separately is how the sentence somebody agreed to stops matching the
+  permission they got.
+- **Delivery is probed, never declared.** `deliveries()` asks the machine what works
+  right now. A way out that is not set up is shown greyed with the sentence that would
+  fix it — hidden reads as "this OS cannot", offered teaches people it lies.
+- **`flows.job` is a column, not a heuristic.** Renaming a job in the editor must not
+  orphan it from the list of what this machine is doing for you.
+
+Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the same
+catalogue and the same install on a headless Pi, which is where a standing job earns its
+keep and where there is no wizard.
+
+## WhatsApp is a way IN; Hermes carries messages OUT
+
+Both exist, and the difference is the direction. `channels.HERMES_PLATFORMS` delivers to
+a paired target; a reply arriving there is answered by Hermes' own agent with Hermes'
+memory. `agentos/whatsapp.py` brings a conversation to THIS agent, like Telegram. Slack,
+Signal, Discord and the rest stay Hermes-only — WhatsApp is the one exception, because
+reaching your own agent from the app you already have open is the entire ask.
+
+Four things about WhatsApp that a port of the Telegram bridge gets wrong for free:
+
+- **It is a webhook, not a poll.** Meta calls this machine, so it needs a public HTTPS
+  address. A webhook channel that is "on" but unreachable receives nothing, forever, with
+  no error anywhere — `reachability()` exists so that state is stated, not discovered.
+- **Verify the signature over the RAW bytes**, before anything parses them. Re-serialising
+  the body changes key order and whitespace, so a check written against the parsed JSON
+  fails on every legitimate message and then gets deleted rather than fixed. No app
+  secret means refuse, not trust: it is a public URL.
+- **The 24-hour window is real.** Outside it Meta will not carry a free-form message at
+  all, so an unattended job cannot rely on WhatsApp. `wa_upsert_chat` moves `last_inbound`
+  only on an INBOUND message, because that is exactly what the rule measures.
+- **Reply buttons are three, at 20 characters.** Over the limit Meta truncates
+  server-side and the user approves something whose label was cut off.
+
+Meta retries and redelivers, so message ids are remembered — otherwise one sentence
+becomes several agent runs and the user pays for each.
+
 ## Quarantine: the ceiling that answers "how often?"
 
 Grants answer *may it?*, budgets answer *how long?* — neither answers *how often?*. A
@@ -219,6 +273,21 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
   fine; module *state* is not.
 
 ---
+
+## Window chrome: the rules that keep a stack readable
+
+- **A window opens where you left it.** Geometry is remembered per app and clamped into
+  the current screen. A maximised or snapped window never overwrites it — otherwise
+  maximising once loses the shape somebody chose.
+- **The cascade step must exceed the title bar height**, or a cascaded window buries the
+  name of the one underneath, which is the only thing a cascade is for. The wrap point is
+  a property of the screen; deriving it from the window being placed gives every app a
+  different one.
+- **Focus has to be visible at a glance.** `--el-5` against `--el-4` is not. Inactive
+  windows sit at `--el-2`; the active one takes the full shadow plus an accent ring, as a
+  second `box-shadow` layer so it costs no layout and does not clip at the radius.
+- **A panel must not repeat its own window title.** `panelShell` reads the title bar above
+  it and drops the label when they match — and keeps it where there is no title bar.
 
 ## Performance rules that are load-bearing
 
