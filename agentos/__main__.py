@@ -272,7 +272,8 @@ def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool =
     print("  agentos tunnel --on [--public] [--provider tailscale] | --off")
 
 
-def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
+def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
+                  sets: list | None = None):
     """Show or change the ways in.
 
     The TUI face of Settings → Channels. This is the face that matters most on a
@@ -325,6 +326,15 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
         patch["enabled"] = False
     if posture:
         patch["posture"] = posture
+    known = {f.key for f in chmod.BY_ID[channel].fields}
+    for pair in (sets or []):
+        key, _, val = str(pair).partition("=")
+        key = key.strip()
+        if key not in known:
+            print(f"  {chmod.BY_ID[channel].title} has no field '{key}'"
+                  + (f" — it takes: {', '.join(sorted(known))}" if known else ""))
+            return
+        patch[key] = val
     if not patch:
         c = next(x for x in chmod.state(cfg) if x["id"] == channel)
         print(f"  {c['title']} — {c['detail']}")
@@ -333,6 +343,11 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
               + ("" if c["own_gate"] else f" (follows {c['posture_from']})"))
         if c.get("note"):
             print(f"  note: {c['note']}")
+        for f in chmod.BY_ID[channel].fields:
+            print(f"    --set {f.key}={'…' if f.secret else '<value>'}"
+                  f"{'  (set)' if c['set'].get(f.key) else ''}  {f.label}")
+        if channel == "whatsapp":
+            _whatsapp_webhook_note(cfg)
         return
 
     ok, message = chmod.save(cfg, channel, patch)
@@ -340,6 +355,28 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
     print(("  " if ok else "  refused: ") + message)
     if ok:
         print("  a running server picks this up on its next turn")
+        if channel == "whatsapp":
+            _whatsapp_webhook_note(cfg)
+
+
+def _whatsapp_webhook_note(cfg: dict):
+    """The callback URL, or the sentence that says why there is not one yet.
+
+    A webhook channel that is "on" but unreachable receives nothing, forever, with
+    no error anywhere. Over SSH there is no settings page to notice that on, so the
+    terminal has to say it out loud.
+    """
+    import asyncio as _aio
+
+    from . import whatsapp as wamod
+    try:
+        reach = _aio.run(wamod.reachability(cfg))
+    except Exception:
+        reach = {"reachable": False, "why": "could not check how this machine is reachable"}
+    if reach.get("reachable"):
+        print(f"  webhook URL (paste into developers.facebook.com):\n    {reach['webhook']}")
+    else:
+        print(f"  not reachable yet: {reach.get('why', '')}")
 
 
 def delegate(prompt: str, workdir: str | None, tools: str | None,
@@ -1372,6 +1409,11 @@ def main():
     p_chan.add_argument("--off", action="store_true", help="switch this channel off")
     p_chan.add_argument("--posture", default="",
                         help="how far to trust it: inherit | read_only | ask | full")
+    # Telegram needs one value, WhatsApp needs four. Without this, configuring a
+    # channel is a GUI-only act — which is exactly backwards for a headless machine.
+    p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                        help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
+                             "(repeatable; `agentos channels <id>` lists the fields it needs)")
 
     p_tun = sub.add_parser("tunnel", help="show how to reach this machine from elsewhere (Tailscale / tunnel), or publish it")
     p_tun.add_argument("--on", action="store_true", help="publish AgentOS")
@@ -1469,7 +1511,7 @@ def main():
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd == "channels":
-        channels_cmd(args.channel, args.on, args.off, args.posture)
+        channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
     elif args.cmd == "delegate":
         delegate(" ".join(args.prompt), args.dir, args.tools, args.model, args.budget)
     elif args.cmd == "app":

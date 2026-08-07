@@ -112,6 +112,22 @@ CREATE TABLE IF NOT EXISTS telegram_chats (
     first_seen REAL,
     last_seen REAL
 );
+-- WhatsApp chats paired to this machine. Separate from telegram_chats rather than a
+-- shared "channel_chats" table because the keys are genuinely different kinds: a
+-- Telegram chat_id is an integer Telegram owns, a wa_id is an E.164 phone number.
+-- `last_inbound` is the one column with real behaviour behind it: Meta refuses
+-- free-form messages more than 24 hours after it, so this is what `window_open`
+-- reads before promising a delivery it cannot make.
+CREATE TABLE IF NOT EXISTS whatsapp_chats (
+    wa_id TEXT PRIMARY KEY,      -- E.164 without '+', as Meta sends it
+    name TEXT,                   -- WhatsApp profile name, as given
+    allowed INTEGER DEFAULT 0,
+    conversation_id TEXT,
+    msg_count INTEGER DEFAULT 0,
+    last_inbound REAL,           -- the 24-hour customer-service window starts here
+    first_seen REAL,
+    last_seen REAL
+);
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE,
@@ -1613,6 +1629,48 @@ class Store:
 
     def tg_delete_chat(self, chat_id: int):
         self.db.execute("DELETE FROM telegram_chats WHERE chat_id=?", (chat_id,))
+        self.db.commit()
+
+    # -- whatsapp chats -------------------------------------------------------
+
+    def wa_upsert_chat(self, wa_id: str, name: str) -> dict:
+        """Record an INBOUND message. `last_inbound` moves only here, because that is
+        exactly what Meta's 24-hour window measures — a message we sent does not
+        reopen it, and a row touched for any other reason must not pretend it did."""
+        now = time.time()
+        row = self.db.execute("SELECT 1 FROM whatsapp_chats WHERE wa_id=?", (wa_id,)).fetchone()
+        if row:
+            self.db.execute(
+                "UPDATE whatsapp_chats SET name=?, msg_count=msg_count+1, last_inbound=?, "
+                "last_seen=? WHERE wa_id=?", (name, now, now, wa_id))
+        else:
+            self.db.execute(
+                "INSERT INTO whatsapp_chats (wa_id, name, allowed, msg_count, last_inbound, "
+                "first_seen, last_seen) VALUES (?,?,0,1,?,?,?)", (wa_id, name, now, now, now))
+        self.db.commit()
+        return self.wa_get_chat(wa_id) or {}
+
+    def wa_get_chat(self, wa_id: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM whatsapp_chats WHERE wa_id=?",
+                              (wa_id or "",)).fetchone()
+        return dict(row) if row else None
+
+    def wa_list_chats(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM whatsapp_chats ORDER BY last_seen DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def wa_set_allowed(self, wa_id: str, allowed: int):
+        self.db.execute("UPDATE whatsapp_chats SET allowed=? WHERE wa_id=?", (allowed, wa_id))
+        self.db.commit()
+
+    def wa_set_conversation(self, wa_id: str, cid: str):
+        self.db.execute("UPDATE whatsapp_chats SET conversation_id=? WHERE wa_id=?",
+                        (cid, wa_id))
+        self.db.commit()
+
+    def wa_delete_chat(self, wa_id: str):
+        self.db.execute("DELETE FROM whatsapp_chats WHERE wa_id=?", (wa_id,))
         self.db.commit()
 
     # -- skills ---------------------------------------------------------------

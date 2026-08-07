@@ -144,6 +144,13 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 |---|---|---|
 | GET/PUT | `/api/telegram`, POST `/api/telegram/test` | Telegram bridge config & test |
 | PUT/DELETE | `/api/telegram/chats/{id}` | enable/disable/remove a chat |
+| GET/PUT | `/api/whatsapp`, POST `/api/whatsapp/test` | WhatsApp config, pairing, 24h-window state & test |
+| PUT/DELETE | `/api/whatsapp/chats/{wa_id}` | allow/block/remove a number |
+| GET/POST | `/api/whatsapp/webhook` | Meta's verify handshake and message deliveries (HMAC-verified; see docs/whatsapp.md) |
+| GET | `/api/jobs` | job recipes, the delivery routes this machine has, and what is already running |
+| POST | `/api/jobs/preview` | what installing a job WOULD grant — writes nothing |
+| POST | `/api/jobs` | install a job (a flow with its clock and grants) |
+| POST | `/api/jobs/{name}/run` | run one now |
 | GET/PUT | `/api/mcp` | MCP servers status & config |
 | GET | `/api/native/apps`, `/api/native/icon/{id}`, POST `/api/native/launch` | native app launcher |
 | GET/POST | `/api/control` | sound/battery/network state; set volume/mute/open settings |
@@ -165,7 +172,7 @@ itself. Risk level determines whether they need approval (see [Safety](agent.md#
 `notify`, `remember`, `recall`, `kg_add`, `kg_query`, `update_soul`, `read_app_data`, `save_report`,
 `create_app`, `pin_widget`, `configure_agentos`, `add_mcp_server`, `manage_models`, `use_skill`,
 `save_skill`, `delete_skill`, `schedule_task`, `launch_native_app`, `system_control`,
-`telegram_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
+`telegram_send`, `whatsapp_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
 `set_wallpaper` — plus every connected MCP tool as `mcp_<server>_<tool>`.
 
 Get the live list (including MCP tools) from `GET /api/tools`.

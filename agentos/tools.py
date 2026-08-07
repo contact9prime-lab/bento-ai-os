@@ -265,6 +265,7 @@ class Toolbox:
         self.scheduler = None  # wired up in server startup
         self.mcp = None        # MCPManager, wired up in server startup
         self.telegram = None   # TelegramBridge, wired up in server startup
+        self.whatsapp = None   # WhatsAppBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
         self.fabric = None     # ControlPlane, wired up in server startup
         self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
@@ -1541,6 +1542,18 @@ class Toolbox:
         if self.telegram is None:
             return "[error] Telegram bridge not running"
         return await self.telegram.send(message, int(chat_id) or None)
+
+    async def whatsapp_send(self, message: str, wa_id: str = "") -> str:
+        """`wa_id` blank means the paired owner.
+
+        This can legitimately refuse, and the refusal is a sentence rather than an
+        error code: outside Meta's 24-hour window WhatsApp does not permit a
+        free-form message at all, and the fix ("say anything to the number") is
+        something only the user can do.
+        """
+        if getattr(self, "whatsapp", None) is None:
+            return "[error] WhatsApp bridge not running"
+        return await self.whatsapp.send(message, (wa_id or "").strip() or None)
 
     async def schedule_task(self, prompt: str, schedule_type: str,
                             interval_minutes: int = 0, at_time: str = "",
@@ -3192,6 +3205,19 @@ TOOL_SCHEMAS = [
             "properties": {"flow": {"type": "string"},
                            "input": {"type": "string", "description": "what to hand this run (optional)"}},
             "required": ["flow"],
+        },
+    },
+    {
+        "name": "whatsapp_send",
+        "description": "Send a message to the user's paired WhatsApp chat. Reaches them on the app they "
+                       "already have open. NOTE: WhatsApp only permits free-form messages within 24 hours "
+                       "of the user's last message to it — outside that window this refuses and says so, "
+                       "so prefer telegram_send or save_report for unattended scheduled work.",
+        "parameters": {
+            "type": "object",
+            "properties": {"message": {"type": "string", "description": "The message text (plain text; keep it short enough to read on a phone)."},
+                           "wa_id": {"type": "string", "description": "Optional: a specific paired number. Omit for the owner's chat."}},
+            "required": ["message"],
         },
     },
     {

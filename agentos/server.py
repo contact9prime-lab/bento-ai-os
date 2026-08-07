@@ -13,12 +13,14 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               PlainTextResponse, Response)
 
 from . import config as cfgmod
 from . import fabric as fabricmod
 from . import flows as flowsmod
 from . import history as historymod
+from . import channels as channelsmod
 from . import jobs as jobsmod
 from . import knowledge
 from . import providers
@@ -30,6 +32,8 @@ from .memory import Store
 from .policy import MAIN, PDP, SURFACES, Principal
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
+from . import whatsapp as whatsappmod
+from .whatsapp import WhatsAppBridge
 from . import tools
 from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
@@ -79,6 +83,10 @@ async def startup():
     toolbox.mcp = mcp
     telegram = TelegramBridge(cfg, store, toolbox, broadcast)
     toolbox.telegram = telegram
+    # No run_forever: WhatsApp is a webhook, so there is nothing to poll. The bridge
+    # exists from startup so its state can be reported before it is configured.
+    whatsapp = WhatsAppBridge(cfg, store, toolbox, broadcast)
+    toolbox.whatsapp = whatsapp
     toolbox.broadcast = broadcast
     control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
     toolbox.fabric = control
@@ -97,7 +105,8 @@ async def startup():
     fabricmod.seed_builtins(cfg, store)
     flowsmod.seed_builtin(store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
-                 mcp=mcp, telegram=telegram, clients=clients, broadcast=broadcast,
+                 mcp=mcp, telegram=telegram, whatsapp=whatsapp,
+                 clients=clients, broadcast=broadcast,
                  fabric=control, pdp=pdp, trainforge=trainforge,
                  wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
@@ -2209,6 +2218,122 @@ async def api_telegram_test():
     return {"result": result}
 
 
+# ---- WhatsApp ---------------------------------------------------------------
+#
+# The webhook is the only route in this file, besides the flow hooks, that is meant
+# to be reachable from the open internet. Everything about it is therefore written
+# refusal-first: no signature, no body; wrong signature, no body; unknown verify
+# token, no challenge. Meta is told 200 in every case it should be, because a 500
+# here makes Meta retry the same delivery for hours.
+
+@app.get("/api/whatsapp")
+async def api_whatsapp(request: Request):
+    """State plus the one thing that is useless to withhold: the callback URL.
+
+    Reachability is probed rather than assumed — a webhook channel that is 'on' but
+    unreachable receives nothing, forever, with no error anywhere, and that is the
+    single most confusing state this integration can be in.
+    """
+    from . import whatsapp as wamod
+    info = state["whatsapp"].info()
+    reach = await wamod.reachability(state["cfg"])
+    # Fall back to how this request actually arrived, so a machine already behind a
+    # reverse proxy is not told to go and set up a tunnel it does not need.
+    base = str(request.base_url).rstrip("/")
+    if not reach["reachable"] and base.startswith("https://"):
+        reach = {"reachable": True, "base": base, "via": "this address",
+                 "webhook": wamod.webhook_url(state["cfg"], base), "why": ""}
+    return {**info, "reach": reach}
+
+
+@app.put("/api/whatsapp")
+async def api_put_whatsapp(body: dict):
+    """Settings, written through the channel registry so there is one writer.
+
+    A blank secret means "leave it alone", never "clear it" — a saved secret is shown
+    as set rather than echoed back, so an empty box is the normal state of a
+    configured channel and not an instruction to erase it.
+    """
+    patch = {k: v for k, v in (body or {}).items()
+             if k in ("phone_number_id", "access_token", "app_secret", "verify_token",
+                      "enabled", "posture")}
+    ok, msg = channelsmod.save(state["cfg"], "whatsapp", patch)
+    if body.get("unpair"):
+        state["cfg"].setdefault("whatsapp", {})["owner_wa_id"] = ""
+        state["cfg"].setdefault("channels", {}).setdefault("whatsapp", {})["owner_wa_id"] = ""
+    cfgmod.save_config(state["cfg"])
+    return {"ok": ok, "message": msg, **state["whatsapp"].info()}
+
+
+@app.put("/api/whatsapp/chats/{wa_id}")
+async def api_whatsapp_chat(wa_id: str, body: dict):
+    if "allowed" in body:
+        state["store"].wa_set_allowed(wa_id, 1 if body["allowed"] else 0)
+        state["store"].log("whatsapp",
+                           f"{wa_id} {'enabled' if body['allowed'] else 'blocked'}")
+    return {"ok": True}
+
+
+@app.delete("/api/whatsapp/chats/{wa_id}")
+async def api_whatsapp_chat_delete(wa_id: str):
+    state["store"].wa_delete_chat(wa_id)
+    return {"ok": True}
+
+
+@app.post("/api/whatsapp/test")
+async def api_whatsapp_test():
+    return {"result": await state["whatsapp"].send(
+        "▲ Test message from AgentOS — the bridge works.")}
+
+
+@app.get(whatsappmod.webhook_path())
+async def api_whatsapp_verify(request: Request):
+    """Meta's one-time handshake. Echo the challenge as plain text, or 403.
+
+    Compared with `compare_digest` inside the bridge: this value is chosen by the
+    user and checked against a value from the internet, which is the exact shape of
+    a timing oracle.
+    """
+    q = request.query_params
+    ch = state["whatsapp"].verify_challenge(q.get("hub.mode", ""),
+                                            q.get("hub.verify_token", ""),
+                                            q.get("hub.challenge", ""))
+    if ch is None:
+        return PlainTextResponse("no", status_code=403)
+    return PlainTextResponse(ch)
+
+
+@app.post(whatsappmod.webhook_path())
+async def api_whatsapp_webhook(request: Request):
+    """A delivery from Meta.
+
+    The signature is checked over the RAW body, before anything parses it. Reading
+    `await request.json()` and re-serialising would change the bytes, and the check
+    would then fail on every legitimate message — the classic way this ends up
+    deleted rather than fixed.
+
+    Handling is dispatched to a task and 200 is returned immediately: Meta's webhook
+    timeout is seconds, and an agent turn is not. Blocking here makes Meta retry the
+    same message, which is how one sentence becomes four agent runs.
+    """
+    from . import whatsapp as wamod
+    c = wamod.conf(state["cfg"])
+    if not c.get("enabled"):
+        return JSONResponse({"error": "whatsapp is off"}, status_code=404)
+    raw = await request.body()
+    if not wamod.verify_signature(c.get("app_secret") or "", raw,
+                                  request.headers.get("x-hub-signature-256", "")):
+        state["store"].log("whatsapp",
+                           f"refused an unsigned webhook delivery from {_client_addr(request)}")
+        return JSONResponse({"error": "bad signature"}, status_code=403)
+    try:
+        body = json.loads(raw or b"{}")
+    except Exception:
+        return {"ok": True}     # malformed: swallow it, or Meta retries it all day
+    asyncio.create_task(state["whatsapp"].handle(body))
+    return {"ok": True}
+
+
 # ---- Logs -------------------------------------------------------------------
 
 @app.get("/api/logs")
@@ -3605,7 +3730,8 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     for sink in sinks:
         kind = sink.get("kind")
         if kind == "origin":
-            kind = {"telegram": "telegram", "webhook": "notify", "task": "notify",
+            kind = {"telegram": "telegram", "whatsapp": "whatsapp",
+                    "webhook": "notify", "task": "notify",
                     "tui": "notify"}.get(surface, "gui")
             sink = {**sink, "chat_id": origin.get("chat_id") or run.get("origin_ref") or 0}
         try:
@@ -3613,6 +3739,15 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
             if kind == "telegram" and state.get("telegram"):
                 await state["telegram"].send(f"{head}\n\n{text}",
                                              int(sink.get("chat_id") or 0) or None)
+            elif kind == "whatsapp" and state.get("whatsapp"):
+                # This can legitimately refuse: outside Meta's 24-hour window there is
+                # no free-form message to send. The refusal is a sentence, and it is
+                # logged as the outcome rather than swallowed as a success.
+                res = await state["whatsapp"].send(f"{head}\n\n{text}",
+                                                   str(sink.get("chat_id") or "") or None)
+                if str(res).startswith("[error]"):
+                    state["store"].log("error", f"flow '{flow['name']}': {res}",
+                                       {"flow": flow["name"], "sink": "whatsapp"})
             elif kind == "notify":
                 await state["toolbox"].notify(head, text[:200])
             elif kind == "report":

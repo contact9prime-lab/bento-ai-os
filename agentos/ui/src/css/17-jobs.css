@@ -70,3 +70,19 @@
 .wiz-jobs-head span{display:block;font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
   margin-top:4px}
 @media (max-width:640px){.job-cards{grid-template-columns:1fr}}
+
+/* ---- WhatsApp's extras inside the channel card ---- */
+.wa-extra{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-3)}
+.wa-hook{display:flex;flex-direction:column;gap:6px;padding:var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2)}
+.wa-hook b{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim2)}
+.wa-hook code{font-family:var(--mono);font-size:var(--fs-xs);word-break:break-all;color:var(--txt)}
+.wa-hook em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.wa-hook.warnbox{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.wa-hook.warnbox b{color:var(--warn)}
+.wa-line{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.wa-line b{color:var(--txt)}
+.wa-line.ok{color:var(--ok)}
+.wa-line.warn{color:var(--warn)}
+.wa-row{display:flex;align-items:center;gap:var(--sp-2)}

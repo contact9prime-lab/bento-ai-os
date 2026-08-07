@@ -322,7 +322,7 @@ def test_the_first_run_screen_gets_everything_it_needs_in_one_request(client):
     supposed to be somebody's first impression."""
     d = client.get("/api/jobs").json()
     assert {r["id"] for r in d["recipes"]} == {r.id for r in jobs.RECIPES}
-    assert {w["id"] for w in d["deliveries"]} == {"report", "notify", "telegram"}
+    assert {w["id"] for w in d["deliveries"]} == {"report", "notify", "telegram", "whatsapp"}
     assert d["installed"] == []
 
 

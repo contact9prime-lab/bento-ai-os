@@ -509,6 +509,7 @@ async function renderChannels(){
       +carried.map(chanCard).join('');
   }
   box.innerHTML=html;
+  if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
 function chanCard(c){
   if(c.carrier==='hermes')return chanCarriedCard(c);
@@ -538,6 +539,9 @@ function chanCard(c){
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
     ${onoff}${posture}${fields}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
+    ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
+         whether the 24-hour window is open. Filled by waPanel() after render. */''}
+    ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>

@@ -195,8 +195,11 @@ def deliveries(cfg: dict) -> list[dict]:
     useful shown greyed with its reason than absent, because absent reads as
     "this OS cannot do that".
     """
+    from . import whatsapp as wamod
     tg = (cfg.get("telegram") or {})
     tg_ready = bool(tg.get("enabled") and tg.get("bot_token") and tg.get("owner_chat_id"))
+    wa = wamod.conf(cfg)
+    wa_ready = bool(wa.get("enabled") and wamod.configured(cfg) and wa.get("owner_wa_id"))
     return [
         {"id": "report", "label": "Leave it in Reports",
          "detail": "Saved as a page in Files → reports. Always works.",
@@ -208,6 +211,18 @@ def deliveries(cfg: dict) -> list[dict]:
          "detail": "Reaches you wherever you are." if tg_ready else
                    "Needs a bot token and one /start — Settings → Channels → Telegram.",
          "ready": tg_ready, "sink": "telegram", "tool": "telegram_send"},
+        # WhatsApp is offered for jobs with its one real limitation stated up front
+        # rather than discovered at 08:00 on a Tuesday: Meta will not carry a
+        # free-form message to a chat that has been silent for a day, so an
+        # unattended job genuinely cannot rely on it. Saying so is the difference
+        # between a constraint and a bug report.
+        {"id": "whatsapp", "label": "Message me on WhatsApp",
+         "detail": ("Only if you have messaged it in the last 24 hours — WhatsApp will "
+                    "not let it speak first. It saves a report as well, so nothing is "
+                    "lost when the window has closed.") if wa_ready else
+                   "Needs the Cloud API details and one message from your phone — "
+                   "Settings → Channels → WhatsApp.",
+         "ready": wa_ready, "sink": "whatsapp", "tool": "whatsapp_send"},
     ]
 
 
@@ -329,8 +344,10 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
     dev = delivery(cfg, answers.get("deliver") or "report")
     if dev["tool"] not in perms["tools"]:
         perms["tools"].append(dev["tool"])
-    if dev["id"] == "telegram" and "save_report" not in perms["tools"]:
-        # A page that will not fit in a message still has to land somewhere.
+    if dev["id"] in ("telegram", "whatsapp") and "save_report" not in perms["tools"]:
+        # A page that will not fit in a message still has to land somewhere — and on
+        # WhatsApp the message may be refused outright by the 24-hour window, so the
+        # report is not a nicety, it is the thing that stops the run from vanishing.
         perms["tools"].append("save_report")
 
     mission = recipe.mission.format(**fill)
@@ -352,6 +369,12 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
 
 
 def _deliver_line(dev: dict) -> str:
+    if dev["id"] == "whatsapp":
+        return ("`save_report` the finished page FIRST, then `whatsapp_send` a short "
+                "summary. In that order: WhatsApp refuses free-form messages to a chat "
+                "that has been quiet for 24 hours, and when it does the report is the "
+                "only thing left. If the send comes back refused, that is expected — "
+                "finish successfully and say the report is waiting.")
     if dev["id"] == "telegram":
         return ("send it to the user's Telegram with `telegram_send`. If it is longer than "
                 "a few paragraphs, `save_report` it and send a short summary with a "

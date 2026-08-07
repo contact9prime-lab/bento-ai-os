@@ -29,7 +29,7 @@ import time
 TRIGGER_KINDS = ("cron", "message", "webhook", "os_event")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
 CRON_TYPES = ("interval", "daily", "once")
-SINK_KINDS = ("origin", "telegram", "gui", "notify", "report", "conversation")
+SINK_KINDS = ("origin", "telegram", "whatsapp", "gui", "notify", "report", "conversation")
 MEMORY_SCOPES = ("none", "read", "read-space", "read-write")
 
 DEFINITION_SOURCE = "definition"
