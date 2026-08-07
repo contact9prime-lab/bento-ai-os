@@ -817,6 +817,132 @@ def _remote_desktop_cli(args):
         print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
 
 
+def _flow_cli(args):
+    """`agentos flow` — the control plane from a terminal.
+
+    Runs, boards and approvals go over the local HTTP API, because a flow is a live thing
+    the running server owns; listing and hooks read the store directly so they still work
+    with the server down. Answering an approval from here is the point: until this
+    existed, a flow started from a terminal could only be watched failing.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import config as cfgmod
+    from . import flows as flowsmod
+    cfg, store = _open_store()
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def call(path, data=None, method=None):
+        req = urllib.request.Request(
+            base + path, method=method or ("POST" if data is not None else "GET"),
+            data=json.dumps(data).encode() if data is not None else None,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return {"error": json.loads(e.read() or b"{}").get("error", str(e))}
+        except Exception as e:                                    # noqa: BLE001
+            return {"error": f"{e} — is AgentOS running? (agentos serve)"}
+
+    act = args.action
+    if act == "list":
+        rows = store.list_flows()
+        if not rows:
+            print("no flows yet — make one in Workflows → Flows, or with the API")
+            return
+        for f in rows:
+            trigs = store.flow_triggers(f["name"])
+            last = [r for r in store.fabric_runs(limit=60)
+                    if (r.get("flow") or "") == f["name"]]
+            print(f"\n▲ {f['name']}{'' if f['enabled'] else '  (disabled)'}")
+            print(f"    {(f.get('mission') or '')[:90]}")
+            print(f"    roster: {', '.join(r['subagent'] for r in f['roster']) or '—'}")
+            print(f"    starts: {', '.join(t['kind'] for t in trigs) or 'only when you say so'}")
+            if last:
+                print(f"    last:   {last[0]['status']} · "
+                      f"{time.strftime('%d %b %H:%M', time.localtime(last[0]['started_at']))}")
+        return
+
+    if act == "hooks":
+        hooks = store.flow_triggers(args.name, kind="webhook")
+        if not hooks:
+            print(f"'{args.name}' has no webhook trigger — add one in Workflows → Flows")
+            return
+        for t in hooks:
+            url = flowsmod.hook_url(cfg, args.name, t)
+            print(f"\n  curl -X POST '{url}' -d '{{\"hello\":\"world\"}}'")
+            print("  (or send the secret as the X-AgentOS-Hook-Secret header)")
+            print(f"  fired {t['fires']}×, {t['dropped']} refused by the "
+                  f"{t['cooldown_secs']}s cooldown")
+        return
+
+    if act == "approvals":
+        res = call("/api/fabric/approvals")
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        rows = res.get("approvals") or []
+        if not rows:
+            print("nothing is waiting on you")
+            return
+        for a in rows:
+            print(f"\n  {a['id']}  {a['name']}  {json.dumps(a.get('args') or {})[:80]}")
+            print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
+        print("\n  agentos flow allow <id> [--always]   |   agentos flow deny <id>")
+        return
+
+    if act in ("allow", "deny"):
+        res = call(f"/api/fabric/approvals/{args.name}",
+                   {"approved": act == "allow", "remember": bool(args.always)})
+        print("✓ answered" if not res.get("error") else f"✗ {res['error']}")
+        return
+
+    if act == "show":
+        res = call(f"/api/fabric/runs/{args.name}")
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        run = res["run"]
+        print(f"▲ {run.get('flow') or run['ref']} · {run['status']} · model {run.get('model') or '—'}")
+        for s in res.get("steps") or []:
+            print(f"  ├─ {s['ref']:<14} {s['status']:<9} "
+                  f"{(s.get('tokens_in') or 0) + (s.get('tokens_out') or 0):>6} tok")
+        board = call(f"/api/flows/runs/{args.name}/board").get("board") or []
+        for a in board:
+            print(f"  {a['handle']:<4} {(a['agent'] or a['kind']):<12} {a['status']:<8} "
+                  f"{a['bytes']:>7}B  {(a['preview'] or '')[:60]}")
+        if run.get("output"):
+            print("\n" + run["output"][:2000])
+        return
+
+    if act == "run":
+        if not args.name:
+            print("which flow? (agentos flow list)")
+            sys.exit(2)
+        res = call(f"/api/flows/{args.name}/run",
+                   {"input": args.input, "surface": "tui"})
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        rid = res["run_id"]
+        print(f"▶ {args.name} started · run {rid}")
+        if not args.wait:
+            print(f"  agentos flow show {rid}")
+            return
+        while True:
+            time.sleep(2)
+            d = call(f"/api/fabric/runs/{rid}")
+            run = d.get("run") or {}
+            if run.get("status") and run["status"] != "running":
+                break
+            for a in (call(f"/api/flows/runs/{rid}/board").get("board") or [])[-1:]:
+                print(f"  · {a['handle']} {a['agent'] or a['kind']} {a['status']}")
+        print(f"\n{run.get('status')} · {run.get('output') or run.get('fault') or ''}"[:4000])
+        return
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1161,6 +1287,16 @@ def main():
     p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
     p_audit.add_argument("--limit", type=int, default=50)
 
+    p_flow = sub.add_parser("flow", help="flows — standing missions run by a master orchestrator")
+    p_flow.add_argument("action", nargs="?", default="list",
+                        choices=["list", "run", "show", "approvals", "allow", "deny", "hooks"])
+    p_flow.add_argument("name", nargs="?", default="",
+                        help="flow name, or a run id for `show`, or an approval id")
+    p_flow.add_argument("--input", default="", help="what to hand the flow")
+    p_flow.add_argument("--wait", action="store_true", help="stay attached until it finishes")
+    p_flow.add_argument("--always", action="store_true",
+                        help="with `allow`: remember it as a grant, not just this once")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -1250,6 +1386,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "flow":
+        _flow_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

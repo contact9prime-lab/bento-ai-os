@@ -545,7 +545,7 @@ class Agent:
             keep = set(self.tool_filter)
             # an explicit list is somebody's decision; scoping never second-guesses it
             return [t for t in schemas if t["name"] in keep]
-        if self.toolbox.pdp and self.principal.kind in ("app", "subagent", "workflow"):
+        if self.toolbox.pdp and self.principal.kind in ("app", "subagent", "workflow", "flow"):
             # hide tools this principal can never use (built-in denies / deny grants) —
             # the model shouldn't even see them; ask-able tools stay visible.
             # audit=False: this is a "could I?" probe over the whole catalogue, not

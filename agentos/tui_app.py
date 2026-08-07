@@ -342,6 +342,36 @@ class AgentTUI(App):
                          f"{tools} · ≤ {s.get('autonomy_cap','balanced')}")
             if s.get("soul"):
                 lines.append(f"      [grey58]{s['soul'][:88]}[/]")
+        # Flows. The animation genuinely is not available in a terminal — but the tree,
+        # the statuses, the log and, most importantly, ANSWERING an approval all are.
+        fl = await self.api_get("/api/flows")
+        flows = fl.get("flows") or []
+        if flows:
+            lines.append("\n[b]Flows[/b] — standing missions with a master orchestrator\n")
+            runs = (await self.api_get("/api/fabric/runs?limit=40")).get("runs") or []
+            latest = {}
+            for r in runs:
+                if r.get("kind") == "flow" and (r.get("flow") or r["ref"]) not in latest:
+                    latest[r.get("flow") or r["ref"]] = r
+            for f in flows:
+                trg = ", ".join(t["kind"] for t in (f.get("triggers") or [])) or "manual"
+                last = latest.get(f["name"])
+                lines.append(f"  [b]{f['name']:<16}[/b] {trg:<22} "
+                             f"roster: {', '.join(r['subagent'] for r in f['roster'])[:36]}"
+                             + (f"   last: {last['status']}" if last else ""))
+                if last and last.get("id"):
+                    board = (await self.api_get(f"/api/flows/runs/{last['id']}/board")).get("board") or []
+                    for a in board[-4:]:
+                        lines.append(f"      [grey58]{a['handle']:<4} {(a['agent'] or a['kind']):<12} "
+                                     f"{a['status']:<8} {a['bytes']}B[/]")
+            lines.append("      run one: [b cyan]agentos flow run <name>[/b cyan]")
+        aps = (await self.api_get("/api/fabric/approvals")).get("approvals") or []
+        if aps:
+            lines.append("\n[b yellow]⏸ Waiting for you[/b yellow]")
+            for a in aps:
+                lines.append(f"  {a['id']}  {a['name']}  [grey58]{str(a.get('reason',''))[:60]}[/]")
+            lines.append("  [b cyan]agentos flow allow <id>[/b cyan] / "
+                         "[b cyan]agentos flow deny <id>[/b cyan]")
         lines.append("\n[b]Data planes — faults · performance · usage[/b]\n")
         m = obs.get("main_agent", {})
         lines.append(f"  {'main agent (L0)':<26} runs {m.get('runs',0):<5} "

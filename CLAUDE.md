@@ -99,6 +99,77 @@ Three things that have to stay true:
 declared in a tool schema — a model must not be able to reach into another project by
 naming one. `everywhere: true` is the one declared way out, so the gate can see it.
 
+## One deliberate name divergence: the app is "Workflows", the code says `flows`
+
+The app in the dock is **Workflows**, because that is the word people arrive with. Every
+identifier underneath is `flow`: the `flows` table, `/api/flows`, the `flow.write` action,
+`Principal("flow", …)`, `create_flow`. This is a decision, not drift — do not "fix" it by
+renaming either side.
+
+What makes it safe is that the older thing genuinely called a workflow — the fixed DAG in
+`workflows`, `run_workflow`, `/api/workflows` — no longer has a UI. Its engine still works
+for anything already using it, but it is not offered, not seeded, and not a tab, so the two
+meanings never appear on screen together. If you ever put static DAGs back in front of a
+user, this divergence stops being safe and one of the two has to be renamed.
+
+## Flows: the master orchestrator is an agent, and that has three consequences
+
+A flow is a mission, a roster and declared permissions; the master picks the agents while it
+runs (`agentos/flows.py` defines, `ControlPlane.run_flow` executes). Full reasoning in
+`docs/design/flows.md`. Three things will bite whoever touches this next:
+
+- **The depth cap is the permission gate, not a counter.** The master is a `flow` principal
+  with NO default for `agent.invoke` (`rule="roster"`), so only a grant its own definition
+  wrote lets it delegate; its children are `subagent`s, which `BUILTIN_DENY` already refuses.
+  `delegate` is absent from `risk_of`'s table and therefore arrives as *safe* — remove the
+  roster deny and every flow can reach every subagent.
+- **The orchestrator's four tools close over the run id on purpose.** They are built per run
+  in `fabric.py` and are deliberately not in `tools.py`/`TOOL_SCHEMAS`. A global
+  `delegate(run_id=…)` would take the run id as an argument, and an argument is something a
+  model can invent.
+- **`max_seconds` is working seconds.** Time spent paused for an approval is not charged
+  (`fabric.Budget`). Do not "simplify" this back to a bare `asyncio.wait_for`: that is what
+  made asking a human a reliable way to kill a run. The outer `wait_for` at
+  `budget + approval_timeout + 60` must stay — a hung run holds `knowledge.turn_started()`
+  and degrades the whole OS.
+
+**A disabled flow holds nothing** — `reconcile_grants` returns no grants and
+`reconcile_triggers` removes the `tasks` rows while keeping the declarations. That is what
+makes it safe for the model to draft a flow into the list without asking: Enable is the act
+of granting. Do not "fix" a disabled flow's missing permissions by writing them anyway.
+
+Definition-time permissions become real `grants` rows with `source='definition'` and
+`source_ref='flow:<name>'`. `add_grant` keys its dedupe on `source_ref` too, because a
+hand-written grant and a definition one can read identically and reconciliation must never
+revoke somebody's deliberate decision.
+
+## Quarantine: the ceiling that answers "how often?"
+
+Grants answer *may it?*, budgets answer *how long?* — neither answers *how often?*. A
+subagent is bounded by `max_steps` and a flow by its delegation budget, but a user app runs
+in a browser tab and can loop for as long as the tab is open.
+
+The rate ceiling sits in `PDP._decide` **before grants**, beside the channel and taint
+ceilings and for the same reason: a grant of `fetch_url` is consent to fetch pages, not
+consent to fetch six hundred a minute. Three things about it are load-bearing:
+
+- **Calls are metered in classes** (`policy.call_class`): model calls and tool calls have
+  separate budgets. Six model calls a minute is money leaving; six fetches is a page
+  refreshing. Counting them together either holds every working app or catches no runaway.
+  The defaults are calibrated against real measurements on this machine — the busiest
+  legitimate app burst was 25 fetches in 10s. Do not tighten them without measuring again.
+- **The PDP writes the hold itself**, then calls `on_rate_trip` for the side effects. If the
+  callback owned the write, an unwired embedding would refuse one call, re-meter the next,
+  and let the loop straight through.
+- **Never revoke an app's token to silence it.** `_principal_of` maps an unknown token to
+  `MAIN`, so revoking identity *promotes* the app to the user's permissions. Suspension is
+  what stops it; `_stale_app_token` refuses a presented-but-unknown token outright, which a
+  server restart alone can otherwise reach.
+
+Release is a user decision with three shapes, all recorded in `quarantine.release_mode`:
+`once` (still watched), `forever` (an exemption, which is why the row is kept rather than
+deleted), `deleted`.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and

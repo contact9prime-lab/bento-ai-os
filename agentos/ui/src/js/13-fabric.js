@@ -1,16 +1,25 @@
-/* ================= fabric app — subagents, workflows, observability ================= */
-let fabTab='team';
-async function renderFabric(body){
-  if(fabTab==='team')return renderFabTeam(body);
-  if(fabTab==='flows')return renderFabFlows(body);
-  return renderFabRuns(body);
+/* ================= fabric app — subagents, flows, workflows, observability =================
+   `var`, not `let`: the bundle is one concatenated script in filename order, and a
+   top-level `let` here is in the temporal dead zone for anything earlier that reaches
+   it (09-websocket.js calls fgApply on every fabric event). */
+/* Three tabs, not five. "Executions" and "Observability" were both answering "what
+   happened" from two different endpoints, and the legacy static-DAG tab had never been used
+   on any machine we could see — its engine, tool and API still work, it just no longer costs
+   a tab. The app is called Workflows because that is the word people arrive with; the code
+   underneath says `flows` throughout, which is written down in CLAUDE.md. */
+var fabTab='flows';
+var FAB_TABS=['flows','agents','runs'];
+async function renderFabric(body,w){
+  if(fabTab==='agents')return renderFabAgents(body);
+  if(fabTab==='runs')return renderFabRuns(body);
+  return renderFabFlows(body,w);
 }
 function fabTabs(){
-  return `<div style="margin-bottom:12px">${segTabs('fab-tabs',['Subagents','Workflows','Observability'],
-    fabTab==='team'?0:fabTab==='flows'?1:2,'fabSetTab')}</div>`;
+  return `<div style="margin-bottom:12px">${segTabs('fab-tabs',['Flows','Agents','Runs'],
+    Math.max(0,FAB_TABS.indexOf(fabTab)),'fabSetTab')}</div>`;
 }
-function fabSetTab(i){fabTab=['team','flows','runs'][i];refreshApp('fabric')}
-async function renderFabTeam(body){
+function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('fabric')}
+async function renderFabAgents(body){
   const sa=await fetch('/api/subagents').then(r=>r.json());
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
   const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
@@ -33,29 +42,68 @@ async function renderFabTeam(body){
 async function delSubagent(id){if(!await osConfirm('Delete this subagent?','',{danger:true,confirmText:'Delete'}))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
 
 /* --- subagent wizard: pick from what exists (tools, skills, models), don't type it --- */
-let SAW=null;
+var SAW=null;   // `var`: the flow editor borrows this wizard, so it is reached from more
+                // than one place in the bundle (see the header note on the TDZ)
 const SAW_PRESETS={
   'Read-only':['fetch_url','read_file','list_dir','recall','kg_query','system_info'],
   'Research':['fetch_url','read_file','list_dir','recall','kg_query','save_report'],
   'Files & shell':['run_command','read_file','write_file','list_dir','system_info'],
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
-async function openSAW(name){
+async function openSAW(name,opts){
   const [tools,skills,models]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
     fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
   const ex=name?(window.__subagents||{})[name]:null;
+  // onSaved/onCancel let another editor borrow this wizard: creating the specialist and
+  // the flow that needs it is one thought, and making someone leave, create three
+  // subagents and come back to re-pick them is how a good idea becomes a chore.
   SAW={step:1,exists:!!ex,tools:tools.tools||[],skills:skills.skills||[],models:models.models||[],q:'',
+    onSaved:(opts||{}).onSaved||null,onCancel:(opts||{}).onCancel||null,
     d:ex?{...ex,tools:[...(ex.tools||[])],skills:[...(ex.skills||[])]}
-        :{name:'',soul:'',model:'',tools:[],skills:[],autonomy_cap:'balanced',max_steps:12,max_seconds:300,builtin:0,target:'local'}};
+        :{name:(opts||{}).name||'',soul:(opts||{}).soul||'',model:'',
+          tools:[...((opts||{}).tools||[])],skills:[],autonomy_cap:'balanced',
+          max_steps:12,max_seconds:300,builtin:0,target:'local'}};
   drawSAW();
+}
+function sawClose(){const cb=SAW&&SAW.onCancel;SAW=null;drawSAW();if(cb)cb()}
+/* Draft a specialist, or revise the one on screen. Same call either way — "make it also
+   read files" and "make me one that reads files" are one question from two starting points. */
+async function sawAi(){
+  const ask=$('#sw-ai'),st=$('#sw-ai-status');
+  const req=(ask&&ask.value||'').trim();
+  if(!req)return toast('say what it should do');
+  sawCollect();
+  SAW.ask=req;
+  if(st)st.innerHTML='thinking…';
+  let r;
+  try{
+    r=await apiJSON('/api/subagents/compose',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({request:req,name:SAW.exists?SAW.d.name:''})});
+  }catch(e){if(st)st.innerHTML='<span style="color:var(--err,#f87171)">'+esc(e.message||String(e))+'</span>';return}
+  const dr=r.draft||{};
+  const was={tools:[...(SAW.d.tools||[])],soul:SAW.d.soul||''};
+  SAW.d=Object.assign(SAW.d,{
+    name:SAW.exists?SAW.d.name:(dr.name||SAW.d.name),
+    soul:dr.soul||SAW.d.soul,tools:dr.tools||[],skills:dr.skills||[],
+    autonomy_cap:dr.autonomy_cap||SAW.d.autonomy_cap,
+    max_steps:dr.max_steps||SAW.d.max_steps,max_seconds:dr.max_seconds||SAW.d.max_seconds});
+  drawSAW();
+  const s2=$('#sw-ai-status');
+  const added=(SAW.d.tools||[]).filter(t=>!was.tools.includes(t));
+  const gone=was.tools.filter(t=>!(SAW.d.tools||[]).includes(t));
+  if(s2)s2.innerHTML=esc(
+    (was.soul!==(SAW.d.soul||'')?'persona rewritten. ':'')
+    +(added.length?'+'+added.join(', ')+' ':'')+(gone.length?'−'+gone.join(', ')+' ':'')
+    +((dr.warnings||[]).join(' · ')))
+    +' <span class="mut">not saved yet</span>';
 }
 function drawSAW(){
   let ov=$('#saw-ov');
   if(!SAW){ov&&ov.remove();return}
   if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center';
-    ov.onclick=e=>{if(e.target===ov){SAW=null;drawSAW()}};document.body.appendChild(ov);}
+    ov.onclick=e=>{if(e.target===ov)sawClose()};document.body.appendChild(ov);}
   const d=SAW.d,st=SAW.step;
   const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=st?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
   let inner='';
@@ -64,6 +112,17 @@ function drawSAW(){
       .concat(SAW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
     inner=`<div class="sawh">${SAW.exists?'Edit':'New'} subagent</div>
       <div class="sawsub">A specialist team member with its own persona, model, and tools. In chat you'll address it as <code>@name</code>.</div>
+      <div class="provbox" style="margin-bottom:10px">
+        <div class="sub" style="margin-bottom:4px">${SAW.exists
+          ?'Ask for a change and it rewrites the persona and tools below — nothing is saved until you press Save.'
+          :'Describe what you need and it fills the whole thing in.'}</div>
+        <textarea id="sw-ai" rows="2" placeholder="${SAW.exists
+          ?'let it read files too · make it stricter about sources'
+          :'someone who watches my disk space and tells me when it is filling up'}">${esc(SAW.ask||'')}</textarea>
+        <div class="row" style="margin-top:6px"><button class="save" style="margin:0;flex:0 0 120px"
+            onclick="sawAi()">✦ ${SAW.exists?'Apply':'Draft it'}</button>
+          <div class="grow"><span id="sw-ai-status" class="sub"></span></div></div>
+      </div>
       <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''} style="font-size:14px">
       <label>Persona — who is it, how does it work?</label>
       <textarea id="sw-soul" rows="4" style="font-size:13px;line-height:1.5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
@@ -104,7 +163,7 @@ function drawSAW(){
     ${inner}
     <div class="row" style="margin-top:16px;align-items:center">
       <div class="grow">${dot(1)}${dot(2)}${dot(3)}</div>
-      <button onclick="SAW=null;drawSAW()">Cancel</button>
+      <button onclick="sawClose()">Cancel</button>
       ${st>1?`<button onclick="sawStep(-1)">← Back</button>`:''}
       ${st<3?`<button class="save" style="margin:0;flex:0 0 100px" onclick="sawStep(1)">Next →</button>`
             :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save</button>`}
@@ -154,8 +213,11 @@ function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];sawRefreshList()}
 async function sawSave(){
   sawCollect();
   const d=SAW.d;if(!d.name)return toast('name required');
+  const cb=SAW.onSaved;
   await fetch('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
-  SAW=null;drawSAW();toast('subagent saved — address it in chat with @'+d.name);refreshApp('fabric');
+  SAW=null;drawSAW();
+  if(cb){cb(d.name);return}          // an editor borrowed the wizard; it owns what happens next
+  toast('subagent saved — address it in chat with @'+d.name);refreshApp('fabric');
 }
 function testSubagent(name){
   // test runs live in the chat: open it with the mention prefilled
@@ -164,77 +226,14 @@ function testSubagent(name){
   toast('type the task after @'+name+' — the run streams right here and lands in Observability');
 }
 
-function wfLayers(steps){
-  const done=new Set(),layers=[];let rem=[...steps];
-  while(rem.length){
-    let layer=rem.filter(s=>(s.depends_on||[]).every(d=>done.has(d)));
-    if(!layer.length)layer=[rem[0]];
-    layer.forEach(s=>done.add(s.id));rem=rem.filter(s=>!layer.includes(s));layers.push(layer);
-  }return layers;
-}
-function wfSvg(wf,stepStatus){
-  const layers=wfLayers(wf.steps||[]);
-  const BW=158,BH=46,GX=200,GY=64,pos={};
-  layers.forEach((layer,c)=>layer.forEach((s,r)=>pos[s.id]={x:16+c*GX,y:14+r*GY,s}));
-  const H=Math.max(...layers.map(l=>l.length))*GY+22, W=16+layers.length*GX;
-  const col=st=>st==='ok'?'var(--ok,#34d399)':st==='running'||st==='start'?'var(--acc,#5eead4)':(st==='error'||st==='timeout')?'var(--err,#f87171)':'var(--line,#333)';
-  let lines='',boxes='';
-  (wf.steps||[]).forEach(s=>{(s.depends_on||[]).forEach(d=>{const a=pos[d],b=pos[s.id];if(!a||!b)return;
-    lines+=`<path d="M${a.x+BW} ${a.y+BH/2} C ${a.x+BW+24} ${a.y+BH/2}, ${b.x-24} ${b.y+BH/2}, ${b.x} ${b.y+BH/2}" fill="none" stroke="rgba(138,148,166,.5)" stroke-width="1.5" marker-end="url(#arr)"/>`;})});
-  Object.values(pos).forEach(({x,y,s})=>{const st=(stepStatus||{})[s.id]||'';
-    boxes+=`<g><rect x="${x}" y="${y}" rx="9" width="${BW}" height="${BH}" fill="rgba(255,255,255,.04)" stroke="${col(st)}" stroke-width="1.6">${st==='running'||st==='start'?'<animate attributeName="stroke-opacity" values="1;.3;1" dur="1.2s" repeatCount="indefinite"/>':''}</rect>
-      <text x="${x+10}" y="${y+19}" fill="var(--txt,#e6ebf2)" font-size="12" font-weight="600">${esc(s.name||s.id)}</text>
-      <text x="${x+10}" y="${y+35}" fill="var(--dim,#8a94a6)" font-size="10">${esc(s.subagent)}${s.model?' · '+esc(s.model.split('/').pop()):''}${st?' · '+st:''}</text></g>`;});
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:${H+10}px"><defs><marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="rgba(138,148,166,.7)"/></marker></defs>${lines}${boxes}</svg>`;
-}
-async function renderFabFlows(body){
-  const [wfs,runs]=await Promise.all([fetch('/api/workflows').then(r=>r.json()),
-                                      fetch('/api/fabric/runs?limit=30').then(r=>r.json())]);
-  // live step status per workflow: read events of its latest run
-  const latest={};runs.runs.filter(r=>r.kind==='workflow').forEach(r=>{if(!latest[r.ref])latest[r.ref]=r});
-  const statuses={};
-  await Promise.all(Object.entries(latest).map(async([name,run])=>{
-    try{const d=await fetch('/api/fabric/runs/'+run.id).then(r=>r.json());
-      const st={};d.events.forEach(e=>{if(e.type==='step'&&e.payload.wf_step)st[e.payload.wf_step]=e.payload.status});
-      statuses[name]={st,run};}catch(e){}}));
-  const blocks=wfs.workflows.map(wf=>{
-    const live=statuses[wf.name]||{};const run=live.run;
-    return `<div class="provbox"><div class="ptitle">${esc(wf.name)} ${wf.builtin?'<span class="mut">· built-in</span>':''}
-        <span style="float:right">${run?`<span class="mut">last: ${esc(run.status)}${run.tokens_out?' · '+run.tokens_out+' tok':''}</span>`:''}
-        <button title="edit JSON" onclick="editWorkflow('${esc(wf.name)}')">✎</button>
-        <button onclick="delWorkflow('${wf.id}')">✕</button></span></div>
-      <div class="sub" style="margin:2px 0 8px">${esc(wf.description||'')}</div>
-      ${wfSvg(wf,live.st)}
-      <div class="row" style="margin-top:6px"><input id="wf-in-${wf.id}" placeholder="input for this workflow…">
-        <button class="save" style="margin:0;flex:0 0 70px" onclick="runWorkflow('${esc(wf.name)}','${wf.id}')">Run</button></div>
-      ${run&&run.status==='ok'&&run.output?`<details style="margin-top:6px"><summary class="mut">last output</summary><pre style="white-space:pre-wrap;font-size:11.5px;max-height:180px;overflow:auto">${esc(run.output.slice(0,3000))}</pre></details>`:''}
-      ${run&&run.fault?`<div class="sub" style="color:var(--err,#f87171)">fault: ${esc(run.fault.slice(0,200))}</div>`:''}</div>`;
-  }).join('')||'<p class="mut">No workflows yet.</p>';
-  body.innerHTML=`<div class="pad">${fabTabs()}${blocks}
-    <div class="ptitle" style="margin-top:10px">New / edit workflow (JSON)</div>
-    <div class="row"><input id="wfj-name" placeholder="name"><input id="wfj-desc" placeholder="description"></div>
-    <textarea id="wfj-steps" rows="5" placeholder='[{"id":"draft","name":"Draft","subagent":"writer","prompt":"{input}","depends_on":[]},{"id":"validate","subagent":"validator","model":"anthropic/claude-sonnet-5","prompt":"Validate: {draft}","depends_on":["draft"]}]'></textarea>
-    <button class="save" onclick="saveWorkflow()">Save workflow</button>
-    <p class="mut">Each step runs in its own data plane. <code>{input}</code> and <code>{stepId}</code> substitute into prompts; <code>model</code> per step overrides the subagent (e.g. generate on Ollama, validate on Claude).</p></div>`;
-  window.__workflows=Object.fromEntries(wfs.workflows.map(w=>[w.name,w]));
-}
-function editWorkflow(name){const w=(window.__workflows||{})[name];if(!w)return;
-  $('#wfj-name').value=w.name;$('#wfj-desc').value=w.description||'';
-  $('#wfj-steps').value=JSON.stringify(w.steps,null,1);}
-async function saveWorkflow(){
-  const name=$('#wfj-name').value.trim();if(!name)return toast('name required');
-  let steps;try{steps=JSON.parse($('#wfj-steps').value)}catch(e){return toast('steps: invalid JSON')}
-  const old=(window.__workflows||{})[name]||{};
-  await fetch('/api/workflows',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name,description:$('#wfj-desc').value,steps,builtin:old.builtin||0})});
-  toast('workflow saved');refreshApp('fabric');}
-async function delWorkflow(id){await fetch('/api/workflows/'+id,{method:'DELETE'});refreshApp('fabric');}
-async function runWorkflow(name,id){
-  const input=$('#wf-in-'+id).value.trim();if(!input)return toast('give the workflow an input');
-  await fetch('/api/workflows/'+encodeURIComponent(name)+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input})});
-  toast('workflow running');}
+/* The static-DAG workflow UI lived here. The engine, /api/workflows and the
+   `run_workflow` tool all still work — but no workflow had ever been run on any
+   machine we could see, and flows do the same job while deciding at run time, so it
+   no longer costs a tab. Deleted rather than hidden: dead UI that nothing reaches is
+   worse than none. */
 
-async function renderFabRuns(body){
+
+async function fabPlaneStats(){
   const o=await fetch('/api/fabric/observability').then(r=>r.json());
   const runs=(await fetch('/api/fabric/runs?limit=40').then(r=>r.json()));
   const dur=r=>r.finished_at?`${Math.round(r.finished_at-r.started_at)}s`:'…';
@@ -268,11 +267,941 @@ async function showRun(id){
     ${steps}${d.run.output?`<pre style="white-space:pre-wrap;font-size:11.5px;max-height:160px;overflow:auto">${esc(d.run.output.slice(0,2500))}</pre>`:''}
     <details><summary class="mut">events (${d.events.length})</summary>${ev}</details></div>`;
 }
-let fabRefreshT=0;
+var fabRefreshT=0;
 function fabricLiveRefresh(){
+  // The flow graph updates itself from the event stream; a full re-render would restart
+  // the SVG mid-animation and throw away the log's scroll position.
+  if(fabTab==='flow'&&FG.run&&!FG.ended)return;
   const now=Date.now();
   if(now-fabRefreshT<800)return;
   fabRefreshT=now;
   if(WM.wins.get('fabric'))refreshApp('fabric');
+}
+
+/* ================= the control plane: a flow run, drawn while it happens =============
+   Two strictly separated halves:
+     fgApply(ev)  — pure state, never touches the DOM. Events that arrive while the Team
+                    window is closed still build a correct graph, so opening it paints the
+                    truth once instead of replaying what was missed.
+     fgPaint()    — idempotent, driven only by winTick. */
+var FG={run:'',flow:'',nodes:new Map(),edges:[],art:new Map(),logs:[],dirty:false,ended:false,
+        sel:'',detail:new Map()};
+
+function fgReset(runId,flow){
+  FG={run:runId||'',flow:flow||'',nodes:new Map(),edges:[],art:new Map(),logs:[],
+      dirty:true,ended:false,sel:'',detail:new Map()};
+}
+function fgLog(level,text){
+  FG.logs.push({t:Date.now(),level:level||'info',text:text||''});
+  if(FG.logs.length>300)FG.logs.splice(0,FG.logs.length-300);
+}
+function fgApply(ev){
+  if(!ev||!ev.event)return;
+  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1};
+  if(!graphish[ev.event])return;
+  if(ev.event!=='flow_start'&&ev.run_id&&FG.run&&ev.run_id!==FG.run)return; // another run
+  switch(ev.event){
+    case 'flow_start':{
+      fgReset(ev.run_id,ev.flow);
+      FG.nodes.set(ev.run_id,{id:ev.run_id,agent:'master',label:ev.flow||'flow',
+        status:'running',depth:0,t:Date.now()});
+      fgLog('info','flow '+(ev.flow||'')+' started · '+((ev.origin||{}).surface||'manual')
+            +(ev.tainted?' · payload from outside this machine':''));
+      break;}
+    case 'node_add':{
+      if(FG.nodes.has(ev.node_id))break;
+      // The master may be missing if flow_start was applied before this client knew the
+      // run id (the id is handed to the caller the moment the row exists, which is a
+      // beat before the event goes out). A delegation with nothing to hang off is worse
+      // than one hanging off a placeholder.
+      if(!FG.nodes.has(FG.run))FG.nodes.set(FG.run,{id:FG.run,agent:'master',
+        label:FG.flow||'flow',status:'running',depth:0,t:Date.now()});
+      FG.nodes.set(ev.node_id,{id:ev.node_id,agent:ev.agent,label:ev.agent,task:ev.task||'',
+        status:'running',depth:1,seq:ev.seq||0,t:Date.now()});
+      FG.edges.push({from:ev.parent||FG.run,to:ev.node_id,kind:'call'});
+      (ev.deps||[]).forEach(h=>FG.edges.push({from:'h:'+h,to:ev.node_id,kind:'data'}));
+      fgLog('info','→ '+ev.agent+': '+String(ev.task||'').slice(0,90));
+      break;}
+    case 'node_status':{
+      const n=FG.nodes.get(ev.node_id);if(!n)break;
+      n.status=ev.status;n.tokens=ev.tokens;n.fault=ev.fault;n.handle=ev.handle;
+      n.child_run=ev.child_run;n.model=ev.model;n.approval='';
+      fgLog(ev.status==='ok'?'info':'error',
+            n.label+' · '+ev.status+(ev.fault?' · '+ev.fault:'')+(ev.handle?' → '+ev.handle:''));
+      break;}
+    case 'artifact':
+      FG.art.set(ev.handle,ev);break;
+    case 'approval':{
+      const n=FG.nodes.get(ev.node_id);if(n)n.approval=ev.state;
+      fgLog(ev.state==='asked'?'warn':(ev.state==='allowed'?'info':'error'),
+            '⏸ '+ev.tool+' — '+ev.state+(ev.via?' ('+ev.via+')':'')
+            +(ev.state==='asked'&&ev.reason?' · '+ev.reason:''));
+      break;}
+    case 'log':
+      fgLog(ev.level,ev.text);break;
+    case 'flow_end':{
+      const n=FG.nodes.get(FG.run);if(n){n.status=ev.status;n.tokens=ev.tokens}
+      FG.ended=true;
+      fgLog(ev.status==='ok'?'info':'error','flow '+ev.status
+        +(ev.delivered&&ev.delivered.length?' · delivered: '+ev.delivered.join(', '):'')
+        +(ev.fault?' · '+ev.fault:''));
+      break;}
+  }
+  FG.dirty=true;
+}
+async function fgLoad(runId){
+  /* Rebuild from the stored stream. The persisted events are the SAME vocabulary the
+     websocket pushes, so there is one way to build the graph and not two. */
+  try{
+    const d=await fetch('/api/fabric/runs/'+runId).then(r=>r.json());
+    fgReset(runId,(d.run||{}).flow||(d.run||{}).ref||'');
+    (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{})));
+    if(!FG.nodes.size)FG.nodes.set(runId,{id:runId,agent:'master',label:(d.run||{}).ref||'flow',
+      status:(d.run||{}).status||'running',depth:0,t:Date.now()});
+    if((d.run||{}).status&&(d.run||{}).status!=='running')FG.ended=true;
+    FG.dirty=true;
+  }catch(e){}
+}
+function fgCol(st){
+  return st==='ok'?'var(--ok,#34d399)'
+    :st==='running'?'var(--acc,#5eead4)'
+    :st==='paused'?'var(--warn,#f59e0b)'
+    :(st==='error'||st==='timeout'||st==='cancelled')?'var(--err,#f87171)'
+    :st==='partial'?'var(--warn,#f59e0b)':'var(--line,#333)';
+}
+function fgSvgInner(){
+  /* The depth cap is 2 — the master, and the agents it starts — so the layout is two
+     columns and needs no solver. */
+  const kids=[...FG.nodes.values()].filter(n=>n.depth===1).sort((a,b)=>(a.seq||0)-(b.seq||0));
+  const master=FG.nodes.get(FG.run);
+  const BW=190,BH=50,GY=64,MX=16,KX=250;
+  const H=Math.max(BH+28,kids.length*GY+22),W=KX+BW+16;
+  const my=Math.max(14,(H-BH)/2);
+  const pos={};
+  if(master)pos[master.id]={x:MX,y:my,n:master};
+  kids.forEach((n,i)=>pos[n.id]={x:KX,y:14+i*GY,n:n});
+  const hnode={};FG.art.forEach((a,h)=>{hnode[h]=a.node_id});
+  let lines='';
+  FG.edges.forEach(e=>{
+    let from=e.from;
+    if(e.kind==='data'){const h=from.slice(2);from=hnode[h];if(!from||from===e.to)return}
+    const a=pos[from],b=pos[e.to];if(!a||!b)return;
+    const y1=a.y+BH/2,y2=b.y+BH/2;
+    lines+=`<path d="M${a.x+BW} ${y1} C ${a.x+BW+30} ${y1}, ${b.x-30} ${y2}, ${b.x} ${y2}"
+      fill="none" stroke="${e.kind==='data'?'var(--acc,#5eead4)':'rgba(138,148,166,.5)'}"
+      stroke-width="1.5" ${e.kind==='data'?'stroke-dasharray="4 3" stroke-opacity=".55"':''}
+      marker-end="url(#fgarr)"/>`;
+  });
+  let boxes='';
+  Object.values(pos).forEach(({x,y,n})=>{
+    const st=n.approval==='asked'?'paused':(n.status||'');
+    const tok=n.tokens?((n.tokens.in||0)+(n.tokens.out||0)):0;
+    const sub=n.depth===0
+      ?`${FG.nodes.size-1} delegation${FG.nodes.size===2?'':'s'}${tok?' · '+tok+' tok':''}`
+      :`${st}${tok?' · '+tok+' tok':''}${n.handle?' · '+n.handle:''}`;
+    boxes+=`<g style="cursor:pointer" onclick="fgSelect('${n.id}')">
+      <rect x="${x}" y="${y}" rx="10" width="${BW}" height="${BH}"
+        fill="${FG.sel===n.id?'rgba(94,234,212,.10)':'rgba(255,255,255,.04)'}"
+        stroke="${fgCol(st)}" stroke-width="${FG.sel===n.id?2.6:1.6}">${st==='running'||st==='paused'?
+        '<animate attributeName="stroke-opacity" values="1;.3;1" dur="1.2s" repeatCount="indefinite"/>':''}</rect>
+      <text x="${x+11}" y="${y+20}" fill="var(--txt,#e6ebf2)" font-size="12" font-weight="600">${
+        esc(n.depth===0?('▲ '+n.label):n.label)}${st==='paused'?' ⏸':''}</text>
+      <text x="${x+11}" y="${y+37}" fill="var(--dim,#8a94a6)" font-size="10">${esc(sub)}</text></g>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:${H+10}px">
+    <defs><marker id="fgarr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 z" fill="rgba(138,148,166,.7)"/></marker></defs>${lines}${boxes}</svg>`;
+}
+/* The flow before it has ever run: master, and everyone it MAY call. Drawn ghosted in the
+   same visual language as a live run, because "what will this do" and "what did this do"
+   are the same picture at two moments — and you should be able to see the first one while
+   you are still writing it. */
+function fgPredictSvg(def){
+  const roster=(def.roster||[]).map(r=>r.subagent||r);
+  const BW=190,BH=50,GY=64,MX=16,KX=250;
+  const H=Math.max(BH+28,Math.max(1,roster.length)*GY+22),W=KX+BW+16;
+  const my=Math.max(14,(H-BH)/2);
+  const ghost='stroke-dasharray="5 4" stroke-opacity=".55"';
+  let out='',lines='';
+  roster.forEach((nm,i)=>{
+    const y=14+i*GY;
+    lines+=`<path d="M${MX+BW} ${my+BH/2} C ${MX+BW+30} ${my+BH/2}, ${KX-30} ${y+BH/2}, ${KX} ${y+BH/2}"
+      fill="none" stroke="rgba(138,148,166,.45)" stroke-width="1.5" ${ghost} marker-end="url(#fgarr)"/>`;
+    out+=`<g><rect x="${KX}" y="${y}" rx="10" width="${BW}" height="${BH}"
+        fill="rgba(255,255,255,.03)" stroke="var(--line,#333)" stroke-width="1.4" ${ghost}/>
+      <text x="${KX+11}" y="${y+20}" fill="var(--dim,#8a94a6)" font-size="12" font-weight="600">${esc(nm)}</text>
+      <text x="${KX+11}" y="${y+37}" fill="var(--dim2,#5b6474)" font-size="10">${
+        esc(((def.roster||[]).find(r=>(r.subagent||r)===nm)||{}).why||'may be called')}</text></g>`;
+  });
+  if(!roster.length)out=`<text x="${KX}" y="${my+30}" fill="var(--dim,#8a94a6)" font-size="12">no roster yet</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:${H+10}px">
+    <defs><marker id="fgarr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 z" fill="rgba(138,148,166,.55)"/></marker></defs>${lines}
+    <g><rect x="${MX}" y="${my}" rx="10" width="${BW}" height="${BH}" fill="rgba(255,255,255,.04)"
+        stroke="var(--acc,#5eead4)" stroke-width="1.6" ${ghost}/>
+      <text x="${MX+11}" y="${my+20}" fill="var(--txt,#e6ebf2)" font-size="12" font-weight="600">▲ ${esc(def.name||'this flow')}</text>
+      <text x="${MX+11}" y="${my+37}" fill="var(--dim,#8a94a6)" font-size="10">picks from ${roster.length} agent${roster.length===1?'':'s'} at run time</text></g>
+    ${out}</svg>`;
+}
+function fgLogRow(l){
+  const c=l.level==='error'?'var(--err,#f87171)':l.level==='warn'?'var(--warn,#f59e0b)':'var(--dim,#8a94a6)';
+  return `<div style="color:${c}"><span style="opacity:.6">${new Date(l.t).toLocaleTimeString()}</span> ${esc(l.text)}</div>`;
+}
+/* Painted into every open view of this run — the Flows tab's inline panel and the run
+   inspector are two windows onto one piece of state, so they are found by CLASS, not id. */
+function fgPaint(){
+  if(!FG.dirty)return;
+  FG.dirty=false;
+  const all=s=>[...document.querySelectorAll(s)];
+  all('.fg-svg').forEach(svg=>{svg.innerHTML=FG.nodes.size?fgSvgInner()
+    :'<p class="mut" style="padding:14px 2px">waiting for the first delegation…</p>'});
+  const rows=[...FG.art.values()];
+  all('.fg-board').forEach(bd=>{
+    bd.innerHTML=rows.length?rows.map(a=>`<div class="item" style="cursor:pointer;padding:5px 0"
+        onclick="fgOpenHandle('${esc(a.handle)}')">
+        <div class="grow"><b>${esc(a.handle)}</b> <span class="sub">${esc(a.agent||a.kind)} · ${esc(a.status||'')}
+        · ${a.bytes||0} B${a.tainted?' · <span style="color:var(--warn,#f59e0b)">tainted</span>':''}</span>
+        <div class="sub">${esc((a.preview||'').slice(0,120))}</div></div></div>`).join('')
+      :'<p class="mut">nothing on the board yet</p>';
+  });
+  all('.fg-log').forEach(log=>{
+    const atBottom=log.scrollHeight-log.scrollTop-log.clientHeight<24;
+    log.innerHTML=FG.logs.map(fgLogRow).join('')||'<div class="mut">no control-plane events yet</div>';
+    if(atBottom)log.scrollTop=log.scrollHeight;
+  });
+  if(FG.run){
+    const m=FG.nodes.get(FG.run)||{};
+    const kids=[...FG.nodes.values()].filter(n=>n.depth===1);
+    const tok=m.tokens?((m.tokens.in||0)+(m.tokens.out||0)):0;
+    all('.fg-head').forEach(hd=>{
+      hd.innerHTML=`<b>${esc(FG.flow||'')}</b> <span class="sub">run ${esc(FG.run.slice(0,8))} · `
+        +`<b style="color:${fgCol(m.status)}">${esc(m.status||'…')}</b>`
+        +` · ${kids.length} delegation${kids.length===1?'':'s'}${tok?' · '+tok+' tok':''}</span>`
+        +(FG.ended?'':` <button style="float:right" onclick="cancelRun('${FG.run}')">⏹ Stop</button>`);
+    });
+  }
+  fgPaintDetail();
+}
+/* The debug pane: what one agent was asked, every tool it called, and what came back. */
+function fgPaintDetail(){
+  const box=$('#fr-detail');
+  if(!box)return;
+  const n=FG.sel&&FG.nodes.get(FG.sel);
+  if(!n){
+    box.innerHTML='<p class="mut">Click an agent in the graph to see what it was asked, '
+      +'every tool it called, and what came back.</p>';
+    return;
+  }
+  const d=FG.detail.get(FG.sel);
+  const tools=(d&&d.steps||[]).map(s=>`<div class="item" style="padding:4px 0">
+      <div class="grow"><b>${esc(s.tool||'?')}</b>
+      <span class="sub" style="color:${s.ok===false?'var(--err,#f87171)':'var(--dim,#8a94a6)'}">
+        ${esc(s.status||'')}${s.ok===false?' · failed':''}</span></div></div>`).join('')
+    ||'<p class="mut">'+(d?'it called no tools':'loading…')+'</p>';
+  box.innerHTML=`<div class="ptitle" style="margin-top:0">${esc(n.label||'')}
+      <span class="sub">${esc(n.status||'')}${n.model?' · '+esc(n.model.split('/').pop()):''}
+      ${n.handle?' · → '+esc(n.handle):''}</span>
+      ${n.child_run?`<button style="float:right" onclick="showRunInAudit('${esc(n.child_run)}')">full run</button>`:''}</div>
+    ${n.task?`<div class="sub" style="margin-bottom:6px"><b>asked:</b> ${esc(n.task)}</div>`:''}
+    ${n.fault?`<div class="sub" style="color:var(--err,#f87171)"><b>fault:</b> ${esc(n.fault)}</div>`:''}
+    ${n.approval&&n.approval!=='allowed'?`<div class="sub" style="color:var(--warn,#f59e0b)">⏸ approval ${esc(n.approval)}</div>`:''}
+    <div class="sawgrp" style="margin-top:6px">Tool calls</div>${tools}
+    ${d&&d.output?`<div class="sawgrp">What it returned</div>
+      <pre style="white-space:pre-wrap;font-size:11.5px;max-height:180px;overflow:auto">${esc(d.output.slice(0,4000))}</pre>`:''}`;
+}
+function fgSelect(nodeId){
+  FG.sel=nodeId;FG.dirty=true;
+  const n=FG.nodes.get(nodeId);
+  if(n&&n.child_run&&!FG.detail.has(nodeId))fgLoadDetail(nodeId,n.child_run);
+  openRunInspector(FG.run);      // clicking a node is asking to debug it
+  fgPaint();
+}
+async function fgLoadDetail(nodeId,childRun){
+  try{
+    const d=await fetch('/api/fabric/runs/'+childRun).then(r=>r.json());
+    const steps=[];
+    (d.events||[]).filter(e=>e.type==='step').forEach(e=>{
+      const p=e.payload||{};
+      if(p.status==='start')steps.push({tool:p.tool,status:'ran'});
+      else if(steps.length){const last=steps.filter(s=>s.tool===p.tool).pop();
+        if(last){last.ok=p.ok!==false;last.status=p.ok===false?'error':'ok'}}
+    });
+    FG.detail.set(nodeId,{steps,output:(d.run||{}).output||'',fault:(d.run||{}).fault||''});
+    FG.dirty=true;fgPaint();
+  }catch(e){}
+}
+function showRunInAudit(rid){fabTab='runs';refreshApp('fabric');setTimeout(()=>showRun(rid),150)}
+async function fgOpenHandle(h){
+  if(!FG.run)return;
+  const box=$('#fg-artifact');if(!box)return;
+  try{
+    const d=await fetch('/api/flows/runs/'+FG.run+'/artifacts/'+encodeURIComponent(h)).then(r=>r.json());
+    const a=d.artifact||{};
+    box.innerHTML=`<div class="provbox"><div class="ptitle">${esc(h)} · ${esc(a.agent||a.kind||'')}
+      <button style="float:right" onclick="$('#fg-artifact').innerHTML=''">✕</button></div>
+      ${a.task?`<div class="sub">asked for: ${esc(a.task)}</div>`:''}
+      ${(a.deps||[]).length?`<div class="sub">built from: ${esc((a.deps||[]).join(', '))}</div>`:''}
+      <pre style="white-space:pre-wrap;font-size:11.5px;max-height:300px;overflow:auto">${
+        esc((a.content||'(empty)').slice(0,20000))}</pre></div>`;
+  }catch(e){toast('could not open '+h)}
+}
+
+/* --- the Flows tab: definitions on the left, the live run on the right ------------- */
+var FLOWS_CACHE=[];
+var FLOW_SEL='';    // the flow shown in the detail pane
+async function renderFabFlows(body,w){
+  const [fl,runs]=await Promise.all([
+    fetch('/api/flows').then(r=>r.json()).catch(()=>({flows:[]})),
+    fetch('/api/fabric/runs?limit=40').then(r=>r.json()).catch(()=>({runs:[],live:[]}))]);
+  FLOWS_CACHE=fl.flows||[];
+  const flowRuns=(runs.runs||[]).filter(r=>r.kind==='flow');
+  const latest={};flowRuns.forEach(r=>{if(!latest[r.flow||r.ref])latest[r.flow||r.ref]=r});
+  if(FLOW_FOCUS)FLOW_SEL=FLOW_FOCUS;FLOW_FOCUS='';
+  if(!FLOWS_CACHE.some(f=>f.name===FLOW_SEL))FLOW_SEL=(FLOWS_CACHE[0]||{}).name||'';
+  const sel=FLOWS_CACHE.find(f=>f.name===FLOW_SEL);
+
+  /* Left: every flow, one line each, readable at a glance. The detail lives on the right,
+     so adding a tenth flow costs one row instead of another screenful. */
+  const list=FLOWS_CACHE.map(f=>{
+    const run=latest[f.name];
+    const dot=f.enabled?'var(--ok,#34d399)':(f.draft&&f.draft.model?'var(--acc,#5eead4)':'var(--dim2,#5b6474)');
+    return `<div class="item" style="cursor:pointer;padding:7px 8px;border-radius:8px;
+        background:${f.name===FLOW_SEL?'rgba(94,234,212,.08)':'transparent'}"
+        onclick="flowSelect('${esc(f.name)}')">
+      <span style="color:${dot};font-size:9px;margin-right:6px">●</span>
+      <div class="grow"><b>${esc(f.name)}</b>
+        <div class="sub">${f.enabled?'live':(f.draft&&f.draft.model?'drafted':'off')}${
+          run?' · last '+esc(run.status):''}</div></div></div>`;
+  }).join('')||'<p class="mut" style="padding:6px">nothing yet</p>';
+
+  body.innerHTML=`<div class="pad">${fabTabs()}
+    <div class="row" style="align-items:flex-start;gap:14px">
+      <div style="flex:0 0 210px;min-width:180px">
+        <textarea id="flw-ask" rows="3" placeholder="Every morning check my disk and tell me on Telegram if it is filling up"></textarea>
+        <button class="save" style="margin:6px 0 0" onclick="composeFlow()">✦ Draft a flow</button>
+        <button style="width:100%;margin-top:4px" onclick="openFLW()">＋ Build one by hand</button>
+        <div id="flw-ask-status" class="sub" style="margin:4px 0"></div>
+        <div class="sawgrp">Flows</div>
+        ${list}
+      </div>
+      <div style="flex:1;min-width:0" id="flow-detail">${sel?flowDetail(sel,latest[sel.name]):
+        `<p class="mut">No flows yet. A flow is a standing mission: what you want, who may work on it,
+         what it may touch, and what starts it. The orchestrator picks the agents and the order while it runs.</p>`}</div>
+    </div></div>`;
+}
+function flowSelect(name){FLOW_SEL=name;refreshApp('fabric')}
+function trigLabel(t){
+  const c=t.config||{};
+  if(t.kind==='cron')return c.type==='daily'?('cron '+(c.at||'08:00'))
+    :c.type==='interval'?('every '+(c.minutes||60)+' min'):'once';
+  if(t.kind==='message')return 'message "'+(c.pattern||'')+'"';
+  if(t.kind==='os_event')return 'on '+(c.event||'event');
+  return 'webhook';
+}
+/* One flow, in full. Everything that used to be crammed into a card, with room to read it. */
+function flowDetail(f,run){
+  const drafted=f.draft&&f.draft.model&&!f.enabled;
+  const trigs=(f.triggers||[]).map(t=>`<span class="lbadge" title="${esc(t.kind)}${
+    t.dropped?' · '+t.dropped+' fires dropped by the cooldown':''}">${esc(trigLabel(t))}${
+    f.enabled?'':' (not armed)'}</span>`).join(' ')
+    ||'<span class="mut">no triggers — runs when you say so</span>';
+  const hook=f.enabled&&(f.triggers||[]).find(t=>t.kind==='webhook');
+  const gr=f.enabled?(f.grants||[]):(f.would_grant||[]);
+  const allow=gr.filter(g=>g.effect!=='deny');
+  return `<div class="ptitle" style="margin-top:0">${esc(f.name)}
+      ${drafted?'<span class="lbadge" title="drafted by '+esc(f.draft.model)+'">✦ drafted</span>':''}
+      <span class="sub">· ${f.enabled?'live':'not enabled'}</span>
+      <span style="float:right">
+        <button class="save" style="margin:0;display:inline-block;width:auto;padding:4px 12px"
+          onclick="enableFlow('${esc(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
+        <button onclick="openFLW('${esc(f.name)}')">✎ Edit</button>
+        <button title="${drafted?'discard this draft':'delete'}"
+          onclick="${drafted?`discardFlow('${esc(f.name)}')`:`delFlow('${esc(f.name)}')`}">✕</button></span></div>
+    <div class="sub" style="margin:2px 0 8px">${esc(f.mission||'')}</div>
+    <div style="border:1px solid var(--line,#232a35);border-radius:10px;padding:6px;overflow-x:auto">${fgPredictSvg(f)}</div>
+    <div class="row" style="margin-top:8px;gap:10px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div class="sawgrp" style="margin-top:0">Starts</div><div class="sub">${trigs}</div>
+        <div class="sawgrp">Answers to</div>
+        <div class="sub">${esc((f.sinks||[]).map(s=>s.kind).join(', ')||'wherever it was triggered from')}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="sawgrp" style="margin-top:0">${f.enabled?'Granted':'Would grant'} (${gr.length})</div>
+        <div class="sub">${allow.length?esc(allow.slice(0,6).map(g=>g.resource
+          .replace(/^tool:|^agent:subagent\//,'')).join(', '))+(allow.length>6?' …':''):'nothing'}</div>
+        ${f.enabled?'':'<div class="sub" style="color:var(--warn,#f59e0b);margin-top:3px">holds none of it until you Enable</div>'}
+      </div>
+    </div>
+    ${drafted&&f.draft.notes?`<div class="sub" style="margin-top:6px">✦ assumed: ${esc(f.draft.notes)}</div>`:''}
+    ${drafted&&(f.draft.agents_created||[]).length?`<div class="sub">✦ created for it: ${esc(f.draft.agents_created.join(', '))}</div>`:''}
+    ${drafted?(f.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join(''):''}
+    ${hook?`<div class="sub" style="margin-top:6px">hook: <code style="font-size:11px">${esc(hook.url||'')}</code>
+      <button onclick="navigator.clipboard.writeText('${esc(hook.url||'')}');toast('hook URL copied')">copy</button></div>`:''}
+    <div class="row" style="margin-top:10px"><input id="fl-in-${esc(f.name)}" placeholder="input for this run (optional)…">
+      <button class="save" style="margin:0;flex:0 0 ${f.enabled?'80':'110'}px"
+        title="${f.enabled?'run it now':'try it with you watching — it holds no permissions, so every risky step asks you'}"
+        onclick="runFlow('${esc(f.name)}')">${f.enabled?'Run':'Test run'}</button></div>
+    <div class="sub" style="margin-top:4px">${f.enabled
+      ?'Opens the Run Inspector — the graph, the log and every tool call.'
+      :'A test run works with you watching: every risky step stops and asks. Nothing fires on its own until you Enable.'}</div>
+    ${run?`<div class="sub" style="margin-top:8px;cursor:pointer" onclick="fgWatch('${run.id}')">
+      last run: ${esc(run.status)} · ${new Date(run.started_at*1000).toLocaleString()}${
+      run.fault?' · <span style="color:var(--err,#f87171)">'+esc(run.fault.slice(0,70))+'</span>':''} → open</div>`:''}`;
+}
+/* Say what actually went wrong. A blanket "could not reach the model" is worse than no
+   message: it sent someone looking at Ollama when the real answer was that the server was
+   running code older than the page it had just served. */
+async function apiJSON(path,opts){
+  let res;
+  try{ res=await fetch(path,opts); }
+  catch(e){ throw new Error('could not reach AgentOS itself ('+(e.message||'network error')+')') }
+  let data=null;
+  try{ data=await res.json() }catch(e){}
+  if(res.status===404||res.status===405)
+    throw new Error('this AgentOS server does not have '+path+' — it is running older code '
+      +'than this page. Restart it to pick up the change.');
+  if(!res.ok)
+    throw new Error(((data&&(data.error||data.detail))||('HTTP '+res.status+' from '+path))
+      +((data&&(data.warnings||[]).length)?' — '+data.warnings.join(' · '):''));
+  if(!data)throw new Error(path+' answered with something that was not JSON');
+  return data;
+}
+async function composeFlow(){
+  const box=$('#flw-ask'),st=$('#flw-ask-status');
+  const req=(box&&box.value||'').trim();
+  if(!req)return toast('say what you want to happen');
+  if(st)st.innerHTML='thinking… (a local model can take a minute)';
+  try{
+    // The draft lands in the list as a disabled card, not in a modal you have to answer.
+    // Disabled means it holds no permissions and no armed trigger, so it is inert until
+    // you read it and press Enable — which is what makes creating it without asking safe.
+    const r=await apiJSON('/api/flows/draft',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({request:req})});
+    if(box)box.value='';
+    if(st)st.innerHTML='';
+    FLOW_FOCUS=r.flow.name;
+    toast('drafted “'+r.flow.name+'” — read it, then Enable');
+    refreshApp('fabric');
+  }catch(e){
+    if(st)st.innerHTML='<span style="color:var(--err,#f87171)">'+esc(e.message||String(e))+'</span>';
+  }
+}
+var FLOW_FOCUS='';   // the card to highlight after a draft lands
+async function enableFlow(name,on){
+  const r=await fetch('/api/flows/'+encodeURIComponent(name)+'/enable',
+    {method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({enabled:on})}).then(r=>r.json());
+  if(r.error)return toast(r.error);
+  const g=r.report.grants;
+  toast(on?`“${name}” is live · ${g.added} permission${g.added===1?'':'s'} granted`
+          :`“${name}” is off · ${g.revoked} permission${g.revoked===1?'':'s'} taken back`);
+  refreshApp('fabric');
+}
+async function discardFlow(name){
+  if(!await osConfirm('Discard the draft “'+name+'”?',
+     'It holds no permissions, so nothing is revoked. Agents it created are removed too, '
+     +'unless another flow is using them.',{danger:true,confirmText:'Discard'}))return;
+  const r=await fetch('/api/flows/'+encodeURIComponent(name)+'/discard',{method:'POST'})
+    .then(r=>r.json());
+  toast((r.agents_removed||[]).length?'discarded · also removed '+r.agents_removed.join(', ')
+                                     :'discarded');
+  refreshApp('fabric');
+}
+async function fgWatch(runId){await fgLoad(runId);openRunInspector(runId);fgPaint()}
+
+/* ---- Executions: what has actually been running on this machine -------------------- */
+var EXEC_FILTER='';
+async function renderFabRuns(body){
+  /* One "what happened" view. Executions and Observability were the same question asked of
+     two endpoints; the per-plane numbers are a strip at the top of the history rather than
+     a tab of their own. */
+  const [d,o,all]=await Promise.all([
+    fetch('/api/flows/runs'+(EXEC_FILTER?'?flow='+encodeURIComponent(EXEC_FILTER):''))
+      .then(r=>r.json()).catch(()=>({runs:[],flows:[],live:[]})),
+    fetch('/api/fabric/observability').then(r=>r.json()).catch(()=>({per_plane:{},main_agent:{},recent_faults:[]})),
+    fetch('/api/fabric/runs?limit=40').then(r=>r.json()).catch(()=>({runs:[]}))]);
+  const badge=s=>`<b style="color:${s==='ok'?'var(--ok,#34d399)':s==='running'?'var(--acc,#5eead4)'
+    :s==='partial'?'var(--warn,#f59e0b)':'var(--err,#f87171)'}">${esc(s)}</b>`;
+  const chips=['<button class="sawchip'+(EXEC_FILTER?'':' on')+'" onclick="execFilter(\'\')">all flows</button>']
+    .concat((d.flows||[]).map(f=>`<button class="sawchip${EXEC_FILTER===f?' on':''}"
+      onclick="execFilter('${esc(f)}')">${esc(f)}</button>`)).join(' ');
+  const rows=(d.runs||[]).map(r=>{
+    const when=new Date(r.started_at*1000);
+    return `<div class="item" style="cursor:pointer" onclick="fgWatch('${r.id}')">
+      <div class="grow">
+        <b>${esc(r.flow||r.ref)}</b> ${badge(r.status)}
+        <span class="sub">· ${r.delegations} delegation${r.delegations===1?'':'s'}
+          · ${r.seconds}s · ${(r.tokens_in||0)+(r.tokens_out||0)} tok · via ${esc(r.origin_surface||'manual')}</span>
+        <div class="sub">${when.toLocaleString()}${r.agents.length?' · '+esc(r.agents.join(', ')):''}${
+          r.failed_steps.length?' · <span style="color:var(--err,#f87171)">failed: '
+            +esc(r.failed_steps.join(', '))+'</span>':''}</div>
+        ${r.fault?`<div class="sub" style="color:var(--err,#f87171)">${esc(r.fault.slice(0,140))}</div>`:''}
+        ${r.output?`<div class="sub">${esc(r.output.slice(0,150))}</div>`:''}
+      </div>
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}
+      </div>`;
+  }).join('')||`<p class="mut">Nothing has run yet${EXEC_FILTER?' for “'+esc(EXEC_FILTER)+'”':''}.
+    Runs started by a trigger, from chat, from Telegram or by hand all land here.</p>`;
+  const live=(d.live||[]).map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b>
+      <span class="sub">${esc(i.state||'running')} · beat ${Math.round(Date.now()/1000-i.last_beat)}s ago
+      ${i.stale?'· <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
+      <button onclick="fgWatch('${i.run_id}')">watch</button></div>`).join('');
+  const m=o.main_agent||{};
+  const planes=Object.entries(o.per_plane||{}).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td>
+      <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
+      <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
+  const other=(all.runs||[]).filter(r=>r.kind!=='flow').slice(0,12).map(r=>
+    `<div class="sub" style="cursor:pointer" onclick="showRun('${r.id}')">${esc(r.kind)} ·
+      <b>${esc(r.ref)}</b> ${esc(r.status)} · ${new Date(r.started_at*1000).toLocaleString()}</div>`).join('');
+  body.innerHTML=`<div class="pad">${fabTabs()}
+    ${live?`<div class="ptitle" style="margin-top:0">Running now</div>${live}`:''}
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin:${live?'10px':'0'} 0 8px">${chips}</div>
+    ${rows}
+    <details style="margin-top:14px"><summary class="mut">Per-agent totals &amp; other runs</summary>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px">
+        <tr class="mut"><th style="text-align:left">agent</th><th>runs</th><th>faults</th><th>avg</th><th>tokens</th></tr>
+        <tr><td>main agent (this OS)</td><td>${m.runs||0}</td>
+          <td>${m.faults?`<b style="color:var(--err,#f87171)">${m.faults}</b>`:0}</td><td>—</td>
+          <td>${(m.tokens_in||0)+(m.tokens_out||0)}</td></tr>
+        ${planes}</table>
+      ${(o.recent_faults||[]).slice(0,5).map(f=>`<div class="sub" style="color:var(--err,#f87171)">
+        fault · ${esc(f.ref)}: ${esc(String(f.fault||'').slice(0,90))}</div>`).join('')}
+      ${other?`<div class="sawgrp">Delegations &amp; static workflows</div>${other}`:''}
+      <div id="fab-run-detail"></div>
+    </details>
+    <p class="mut" style="margin-top:10px">Click an execution to replay it in the Run Inspector —
+      the graph, the control-plane log and every tool call, exactly as it happened.</p></div>`;
+}
+function execFilter(f){EXEC_FILTER=f;refreshApp('fabric')}
+
+/* ---- the run inspector: what a manual run is actually doing ----------------------
+   Triggering a flow by hand is nearly always debugging, so the log comes to you rather
+   than being somewhere to go and look for. */
+function openRunInspector(runId){
+  if(!runId)return;
+  const w=openApp('flowrun');
+  if(w&&!FG.ended)winTick(w,fgPaint,250,{key:'graph'});
+  return w;
+}
+function renderFlowRun(body,w){
+  if(!FG.run){
+    body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
+      Workflows → Flows, or click a past run to replay it here.</p>
+      <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
+    return;
+  }
+  body.innerHTML=`<div class="pad">
+    <div class="ptitle" style="margin-top:0"><span class="fg-head"></span></div>
+    <div class="row" style="gap:6px;margin-bottom:6px">
+      <button onclick="fgRerun()">↻ Run again</button>
+      <button onclick="fgOpenBoardRaw()">raw events</button>
+      <div class="grow"></div>
+    </div>
+    <div class="fg-svg" style="min-height:90px;border:1px solid var(--line,#232a35);
+      border-radius:12px;padding:6px;overflow-x:auto"></div>
+    <div class="row" style="margin-top:8px;align-items:flex-start;gap:10px">
+      <div style="flex:1.1;min-width:220px">
+        <div class="ptitle" style="margin:0 0 4px">Control-plane log</div>
+        <div class="fg-log" style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;
+          max-height:210px;overflow:auto;border:1px solid var(--line,#232a35);border-radius:10px;padding:8px"></div>
+        <div class="ptitle" style="margin:8px 0 4px">Board</div>
+        <div class="fg-board"></div>
+      </div>
+      <div style="flex:1;min-width:220px"><div class="ptitle" style="margin:0 0 4px">Step detail</div>
+        <div id="fr-detail"></div>
+        <div class="ptitle" style="margin:10px 0 4px">Change this flow with AI</div>
+        <div class="sub" style="margin-bottom:4px">Watching it go wrong is the best moment to fix
+          it. Editing here does not touch the run in flight — it takes effect next time.</div>
+        <textarea id="fr-ai" rows="2" placeholder="give the researcher fetch_url too · tell the writer to be shorter"></textarea>
+        <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 130px"
+          onclick="frAiEdit()">✦ Open with this</button></div>
+      </div>
+    </div>
+    <div id="fg-artifact" style="margin-top:8px"></div>
+    <div id="fr-raw" style="margin-top:8px"></div></div>`;
+  if(w)winTick(w,fgPaint,250,{key:'graph'});
+  FG.dirty=true;fgPaint();
+}
+async function fgRerun(){
+  if(!FG.flow)return;
+  const d=await fetch('/api/fabric/runs/'+FG.run).then(r=>r.json()).catch(()=>({}));
+  const input=((d.run||{}).input)||'';
+  const r=await fetch('/api/flows/'+encodeURIComponent(FG.flow)+'/run',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({input,surface:'gui'})}).then(r=>r.json()).catch(()=>({error:'could not start it'}));
+  if(r.error)return toast(r.error);
+  fgReset(r.run_id,FG.flow);fgPaint();
+  toast('running again');
+}
+/* From the inspector into the editor, carrying the change you just typed. The run keeps
+   going: a definition edit is for the next run, and pretending otherwise — mutating a flow
+   mid-flight — would make a run's own record of itself a lie. */
+async function frAiEdit(){
+  if(!FG.flow)return;
+  const ask=($('#fr-ai')||{}).value||'';
+  const fl=await fetch('/api/flows').then(r=>r.json()).catch(()=>({flows:[]}));
+  FLOWS_CACHE=fl.flows||[];
+  if(!FLOWS_CACHE.some(f=>f.name===FG.flow))return toast('that flow no longer exists');
+  await openFLW(FG.flow);
+  const box=$('#flw-ai');
+  if(box&&ask.trim()){box.value=ask.trim();flwAiApply()}
+  else if(box)box.focus();
+}
+async function fgOpenBoardRaw(){
+  const box=$('#fr-raw');if(!box)return;
+  if(box.innerHTML){box.innerHTML='';return}
+  const d=await fetch('/api/fabric/runs/'+FG.run).then(r=>r.json()).catch(()=>({events:[]}));
+  box.innerHTML=`<div class="provbox"><div class="ptitle" style="margin-top:0">Raw events
+      (${(d.events||[]).length})</div>
+    <pre style="white-space:pre-wrap;font-size:11px;max-height:240px;overflow:auto">${
+      esc((d.events||[]).filter(e=>e.type!=='heartbeat')
+        .map(e=>new Date(e.ts*1000).toLocaleTimeString()+'  '+e.type+'  '
+          +JSON.stringify(e.payload)).join('\n'))}</pre></div>`;
+}
+async function runFlow(name){
+  const i=$('#fl-in-'+name);
+  let r;
+  try{
+    r=await apiJSON('/api/flows/'+encodeURIComponent(name)+'/run',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({input:(i&&i.value||'').trim(),surface:'gui'})});
+  }catch(e){return toast(e.message||String(e))}
+  // Only reset if flow_start has not already landed: the server hands back the run id the
+  // moment the row exists, which is a beat BEFORE it broadcasts flow_start — so a reset
+  // here can arrive second and wipe the master node the event just created.
+  if(FG.run!==r.run_id)fgReset(r.run_id,name);
+  openRunInspector(r.run_id);   // running by hand is debugging: bring the log to them
+  fgPaint();
+}
+async function delFlow(name){
+  if(!await osConfirm('Delete the flow “'+name+'”?',
+     'Its triggers stop and the permissions it was granted are revoked. Anything you granted by hand stays.',
+     {danger:true,confirmText:'Delete'}))return;
+  await fetch('/api/flows/'+encodeURIComponent(name),{method:'DELETE'});
+  refreshApp('fabric');
+}
+
+/* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
+var FLW=null;
+async function openFLW(name,draft){
+  const [subs,tools,skills,models]=await Promise.all([
+    fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
+    fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
+    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+  const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
+  FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
+    models:models.models||[],q:'',draft:(draft||null),
+    d:ex?JSON.parse(JSON.stringify(ex))
+       :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
+         permissions:{tools:[],mcp:[],skills:[],net:[],fs_read:[],fs_write:[],memory:'read-space'},
+         sinks:[{kind:'origin'}],triggers:[],autonomy_cap:'balanced',max_delegations:12,
+         max_steps:24,max_seconds:1800,enabled:1},draft||{})};
+  const p=FLW.d.permissions=FLW.d.permissions||{};
+  ['tools','mcp','skills','net','fs_read','fs_write'].forEach(k=>p[k]=p[k]||[]);
+  p.memory=p.memory||'read-space';
+  // Agents the draft proposes but that do not exist yet. They are created on Save, never
+  // before: a draft you closed without saving must not leave three subagents behind.
+  FLW.d.new_agents=FLW.d.new_agents||[];
+  drawFLW();
+}
+function flwNewAgent(spec){
+  // The wizard is opened OVER the flow editor (appended later, so it stacks above) and the
+  // flow's half-filled form is saved into FLW.d first — nothing typed is lost either way.
+  flwCollect();
+  openSAW(null,{name:(spec||{}).name||'',soul:(spec||{}).soul||'',tools:(spec||{}).tools||[],
+    onSaved:async nm=>{
+      const sa=await fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]}));
+      FLW.subs=sa.subagents||[];
+      FLW.d.new_agents=(FLW.d.new_agents||[]).filter(a=>a.name!==nm);  // it exists now
+      flwRoster(nm,true);
+      drawFLW();
+      toast('“'+nm+'” created and added to the roster');
+    },
+    onCancel:()=>drawFLW()});
+}
+function flwDropNewAgent(nm){
+  FLW.d.new_agents=(FLW.d.new_agents||[]).filter(a=>a.name!==nm);
+  FLW.d.roster=(FLW.d.roster||[]).filter(r=>r.subagent!==nm);
+  flwCollect();drawFLW();
+}
+function flwToggle(list,v,on){const a=FLW.d.permissions[list];
+  if(on&&!a.includes(v))a.push(v);if(!on)FLW.d.permissions[list]=a.filter(x=>x!==v);flwPreview()}
+function flwRoster(nm,on){
+  const r=FLW.d.roster;
+  if(on&&!r.some(x=>x.subagent===nm))r.push({subagent:nm,why:''});
+  if(!on)FLW.d.roster=r.filter(x=>x.subagent!==nm);
+  flwPreview();
+}
+function flwSink(kind,on){
+  const s=FLW.d.sinks||[];
+  if(on&&!s.some(x=>x.kind===kind))s.push({kind});
+  FLW.d.sinks=on?s:s.filter(x=>x.kind!==kind);
+}
+function flwAddTrigger(kind){
+  const c=kind==='cron'?{type:'daily',at:'08:00'}
+    :kind==='message'?{pattern:'',mode:'prefix',surfaces:['telegram','gui']}
+    :kind==='os_event'?{event:'notification',match:''}:{};
+  FLW.d.triggers=(FLW.d.triggers||[]).concat([{kind,config:c,cooldown_secs:60,enabled:1}]);
+  drawFLW();
+}
+function flwDelTrigger(i){FLW.d.triggers.splice(i,1);drawFLW()}
+function flwTrigSet(i,key,val){
+  const t=FLW.d.triggers[i];if(!t)return;
+  if(key==='cooldown_secs')t.cooldown_secs=+val||0;else t.config[key]=val;
+}
+async function flwPreview(){
+  const box=$('#flw-preview');if(!box)return;
+  flwCollect();
+  try{
+    const r=await fetch('/api/flows/preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(FLW.d)}).then(r=>r.json());
+    if(r.error){box.innerHTML=`<span style="color:var(--warn,#f59e0b)">${esc(r.error)}</span>`;return}
+    const g=r.grants||[];
+    box.innerHTML=`Saving grants <b>${g.length}</b> permission${g.length===1?'':'s'}: `
+      +esc(g.slice(0,6).map(x=>(x.effect==='deny'?'✕ ':'✓ ')+x.resource).join(' · '))
+      +(g.length>6?` +${g.length-6} more`:'');
+  }catch(e){}
+}
+function flwCollect(){
+  const d=FLW.d,g=id=>{const e=$(id);return e?e.value:''};
+  if($('#flw-name'))d.name=g('#flw-name').trim();
+  d.description=g('#flw-desc');d.mission=g('#flw-mission');d.model=g('#flw-model');
+  d.autonomy_cap=g('#flw-cap')||'balanced';
+  d.max_delegations=+g('#flw-deleg')||12;d.max_steps=+g('#flw-steps')||24;
+  d.max_seconds=+g('#flw-secs')||1800;
+  const lines=s=>String(s||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  d.permissions.net=lines(g('#flw-net'));
+  d.permissions.fs_read=lines(g('#flw-fsr'));
+  d.permissions.fs_write=lines(g('#flw-fsw'));
+  d.permissions.memory=g('#flw-mem')||'read-space';
+  (d.triggers||[]).forEach((t,i)=>{
+    document.querySelectorAll(`[data-trig="${i}"]`).forEach(el=>{
+      flwTrigSet(i,el.getAttribute('data-key'),el.type==='number'?+el.value:el.value);
+    });
+  });
+}
+function drawFLW(){
+  let ov=$('#flw-ov');
+  if(!FLW){ov&&ov.remove();return}
+  if(!ov){ov=document.createElement('div');ov.id='flw-ov';
+    ov.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center';
+    ov.onclick=e=>{if(e.target===ov){FLW=null;drawFLW()}};document.body.appendChild(ov);}
+  const d=FLW.d,p=d.permissions;
+  const pending=(d.new_agents||[]).map(a=>`<label class="sawrow on" style="border-style:dashed">
+      <span style="width:16px;text-align:center">✦</span>
+      <div class="grow"><div class="n">${esc(a.name)} <span class="lbadge">will be created on save</span></div>
+        <div class="d">${esc((a.soul||'').slice(0,90))}${(a.tools||[]).length?' · '+esc((a.tools||[]).join(', ')):''}</div></div>
+      <button onclick="event.preventDefault();flwNewAgent(${esc(JSON.stringify(a)).replace(/"/g,'&quot;')})" title="edit and create it now">✎</button>
+      <button onclick="event.preventDefault();flwDropNewAgent('${esc(a.name)}')" title="drop it">✕</button></label>`).join('');
+  const roster=pending+(FLW.subs.map(s=>{const on=(d.roster||[]).some(x=>x.subagent===s.name);
+    return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
+      onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
+  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'));
+  const q=(FLW.q||'').toLowerCase();
+  const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
+    .slice(0,60).map(t=>{const on=p.tools.includes(t.name);
+      return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
+        onchange="flwToggle('tools','${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+        <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,100))}</div></div></label>`}).join('');
+  const skl=FLW.skills.map(s=>{const on=p.skills.includes(s.name);
+    return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
+      onchange="flwToggle('skills','${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(s.name)}</div></div></label>`}).join('')
+    ||'<p class="mut">No skills installed.</p>';
+  const sinkBox=['origin','telegram','gui','notify','report'].map(k=>{
+    const on=(d.sinks||[]).some(x=>x.kind===k);
+    return `<label class="sawchip ${on?'on':''}" style="cursor:pointer"><input type="checkbox" style="margin-right:5px"
+      ${on?'checked':''} onchange="flwSink('${k}',this.checked);this.closest('label').classList.toggle('on',this.checked)">${k}</label>`;
+  }).join(' ');
+  const trigs=(d.triggers||[]).map((t,i)=>{
+    const c=t.config||{};
+    let f='';
+    if(t.kind==='cron')f=`<select data-trig="${i}" data-key="type" style="width:auto">
+        ${['daily','interval','once'].map(x=>`<option ${c.type===x?'selected':''}>${x}</option>`).join('')}</select>
+      <input data-trig="${i}" data-key="at" value="${esc(c.at||'08:00')}" placeholder="HH:MM" style="width:80px">
+      <input data-trig="${i}" data-key="minutes" type="number" value="${c.minutes||60}" placeholder="minutes" style="width:80px">`;
+    else if(t.kind==='message')f=`<input data-trig="${i}" data-key="pattern" value="${esc(c.pattern||'')}" placeholder="pattern e.g. vendor:">
+      <select data-trig="${i}" data-key="mode" style="width:auto">${['prefix','substring','regex'].map(x=>`<option ${c.mode===x?'selected':''}>${x}</option>`).join('')}</select>`;
+    else if(t.kind==='os_event')f=`<select data-trig="${i}" data-key="event" style="width:auto">
+        ${['notification','file_change','login','idle'].map(x=>`<option ${c.event===x?'selected':''}>${x}</option>`).join('')}</select>
+      <input data-trig="${i}" data-key="match" value="${esc(c.match||'')}" placeholder="match…" style="width:110px">
+      <input data-trig="${i}" data-key="path" value="${esc(c.path||'')}" placeholder="path…" style="width:110px">`;
+    else f=`<span class="sub">a URL with its own secret is minted on save${t.secret?' (already minted)':''}</span>`;
+    return `<div class="row" style="gap:5px;margin-bottom:5px;align-items:center">
+      <span class="lbadge">${esc(t.kind)}</span>${f}
+      <input data-trig="${i}" data-key="cooldown_secs" type="number" value="${t.cooldown_secs||60}" title="cooldown seconds" style="width:70px">
+      <button onclick="flwCollect();flwDelTrigger(${i})">✕</button></div>`;
+  }).join('');
+  const mopts=['<option value="">inherit from control plane (OS default)</option>']
+    .concat(FLW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+
+  ov.innerHTML=`<div style="width:1060px;max-width:96vw;max-height:90vh;background:var(--bg2,#111419);
+      border:1px solid var(--line,#232a35);border-radius:16px;padding:22px 24px;display:flex;gap:18px"
+      onclick="event.stopPropagation()">
+   <div style="flex:1.35;min-width:0;overflow:auto;max-height:82vh;padding-right:4px">
+    <div class="sawh">${FLW.exists?'Edit':(FLW.draft?'Review this draft':'New flow')}</div>
+    <div class="sawsub">A standing mission. The master orchestrator plans it, picks from the roster while it runs,
+      and stitches what comes back. What it may touch and what starts it are part of this definition — saving writes
+      the permissions, editing reconciles them.</div>
+    ${FLW.draft?`<div class="provbox" style="margin:8px 0">
+      <div class="sub">✦ Drafted by <b>${esc((FLW.draft.model||'').split('/').pop()||'the model')}</b>.
+        Nothing has been created yet — change anything, then Save.</div>
+      ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
+      ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
+      ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
+      </div>`:''}
+    <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>
+    <label>Mission — what it is for, in your own words</label>
+    <textarea id="flw-mission" rows="3" placeholder="Summarise this week's vendor mentions and send me the top three.">${esc(d.mission||'')}</textarea>
+    <label>Description (optional)</label><input id="flw-desc" value="${esc(d.description||'')}">
+    <label>Orchestrator brain</label><select id="flw-model">${mopts}</select>
+
+    <div class="sawgrp">Roster — the only agents it may use</div>
+    <div style="max-height:180px;overflow:auto">${roster}</div>
+    <button class="sawchip" style="margin-top:6px" onclick="flwNewAgent()">＋ New agent</button>
+    <button class="sawchip" style="margin-top:6px" onclick="flwAiOpen()">✦ Change it with AI</button>
+
+    <div class="sawgrp">What the roster may do (granted on save)</div>
+    <input id="flw-q" placeholder="Search tools…" oninput="FLW.q=this.value;drawFLW()" value="${esc(FLW.q||'')}">
+    <div style="max-height:170px;overflow:auto;margin:6px 0">${tl}</div>
+    <div class="row" style="gap:8px">
+      <div style="flex:1"><label>Web addresses it may fetch (one per line)</label>
+        <textarea id="flw-net" rows="2" placeholder="https://api.example.com/*">${esc((p.net||[]).join('\n'))}</textarea></div>
+      <div style="flex:1"><label>Memory</label>
+        <select id="flw-mem" onchange="flwPreview()">${['none','read','read-space','read-write'].map(x=>
+          `<option value="${x}" ${p.memory===x?'selected':''}>${x}</option>`).join('')}</select></div>
+    </div>
+    <div class="row" style="gap:8px">
+      <div style="flex:1"><label>Files it may read</label><textarea id="flw-fsr" rows="2" placeholder="~/Documents/launch/*">${esc((p.fs_read||[]).join('\n'))}</textarea></div>
+      <div style="flex:1"><label>Files it may write</label><textarea id="flw-fsw" rows="2">${esc((p.fs_write||[]).join('\n'))}</textarea></div>
+    </div>
+    <label>Skills it may load</label><div style="max-height:110px;overflow:auto">${skl}</div>
+
+    <div class="sawgrp">What starts it</div>
+    ${trigs||'<p class="mut">Nothing yet — it runs when you press Run.</p>'}
+    <div class="row" style="gap:6px;flex-wrap:wrap">
+      ${['cron','message','webhook','os_event'].map(k=>
+        `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${k}')">＋ ${k}</button>`).join('')}
+    </div>
+
+    <div class="sawgrp">Where the answer goes</div>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${sinkBox}</div>
+    <p class="mut" style="font-size:12px"><code>origin</code> answers wherever it was triggered from — a flow
+      started from Telegram replies in that chat.</p>
+
+    <div class="sawgrp">Limits &amp; trust</div>
+    <div class="row" style="gap:8px">
+      <div style="flex:1"><label>Autonomy cap</label><select id="flw-cap">
+        ${['paranoid','balanced','full'].map(x=>`<option value="${x}" ${d.autonomy_cap===x?'selected':''}>${x}</option>`).join('')}</select></div>
+      <div style="flex:1"><label>Max delegations</label><input id="flw-deleg" type="number" value="${d.max_delegations||12}"></div>
+      <div style="flex:1"><label>Max steps</label><input id="flw-steps" type="number" value="${d.max_steps||24}"></div>
+      <div style="flex:1"><label>Working seconds</label><input id="flw-secs" type="number" value="${d.max_seconds||1800}"></div>
+    </div>
+    <p class="mut" style="font-size:12px">Working seconds exclude time spent waiting for you to answer an approval.</p>
+   </div>
+   <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:8px;max-height:82vh">
+    <div class="sawgrp" style="margin-top:0">The flow</div>
+    <div id="flw-chart" style="border:1px solid var(--line,#232a35);border-radius:10px;padding:6px;
+      overflow-x:auto">${fgPredictSvg(d)}</div>
+    <p class="mut" style="font-size:12px;margin:0">There are no steps to draw — the master picks who
+      to call while it runs. This is who it may call, and it redraws as you change the roster.</p>
+    <div class="sawgrp">Change it with AI</div>
+    <textarea id="flw-ai" rows="2" placeholder="also send the result to Telegram · drop the validator · run it hourly instead"></textarea>
+    <div class="row" style="gap:6px">
+      <button class="save" style="margin:0;flex:0 0 120px" onclick="flwAiApply()">✦ Apply</button>
+      <div class="grow"><span id="flw-ai-status" class="sub"></span></div>
+    </div>
+    <div id="flw-ai-diff" class="sub" style="overflow:auto;max-height:150px"></div>
+    <div class="provbox" style="margin-top:auto"><div id="flw-preview" class="sub">…</div></div>
+    <div class="row">
+      <div class="grow"></div>
+      <button onclick="FLW=null;drawFLW()">Cancel</button>
+      <button class="save" style="margin:0;flex:0 0 130px" onclick="flwSave()">Save flow</button>
+    </div>
+   </div></div>`;
+  flwPreview();
+}
+async function flwDraftAgain(){
+  const req=(FLW.draft||{}).request||'';
+  if(!req)return;
+  const box=$('#flw-preview');
+  if(box)box.innerHTML='drafting again…';
+  let r;
+  try{
+    r=await apiJSON('/api/flows/compose',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({request:req})});
+  }catch(e){
+    if(box)box.innerHTML='<span style="color:var(--err,#f87171)">'+esc(e.message||String(e))+'</span>';
+    return;
+  }
+  FLW=null;drawFLW();openFLW(null,r.draft);
+}
+function flwAiOpen(){const a=$('#flw-ai');if(a){a.focus();a.scrollIntoView({block:'center'})}}
+/* What changed, in the words of the thing that changed — so an AI edit is reviewable rather
+   than a form that silently rearranged itself. */
+function flwDiff(before,after){
+  const out=[];
+  const names=o=>(o.roster||[]).map(r=>r.subagent||r);
+  const add=(label,was,now)=>{
+    const a=JSON.stringify(was||[]),b=JSON.stringify(now||[]);
+    if(a!==b)out.push(label+': '+(was&&was.length?was.join(', '):'—')+' → '+(now&&now.length?now.join(', '):'—'));
+  };
+  if((before.mission||'')!==(after.mission||''))out.push('mission rewritten');
+  add('roster',names(before),names(after));
+  add('tools',(before.permissions||{}).tools,(after.permissions||{}).tools);
+  add('net',(before.permissions||{}).net,(after.permissions||{}).net);
+  add('files read',(before.permissions||{}).fs_read,(after.permissions||{}).fs_read);
+  add('files written',(before.permissions||{}).fs_write,(after.permissions||{}).fs_write);
+  if(((before.permissions||{}).memory)!==((after.permissions||{}).memory))
+    out.push('memory: '+((before.permissions||{}).memory||'?')+' → '+((after.permissions||{}).memory||'?'));
+  add('sinks',(before.sinks||[]).map(x=>x.kind),(after.sinks||[]).map(x=>x.kind));
+  add('triggers',(before.triggers||[]).map(t=>t.kind),(after.triggers||[]).map(t=>t.kind));
+  add('new agents',(before.new_agents||[]).map(a=>a.name),(after.new_agents||[]).map(a=>a.name));
+  return out;
+}
+async function flwAiApply(){
+  const ask=$('#flw-ai'),st=$('#flw-ai-status');
+  const req=(ask&&ask.value||'').trim();
+  if(!req)return toast('say what to change');
+  flwCollect();
+  const before=JSON.parse(JSON.stringify(FLW.d));
+  if(st)st.innerHTML='thinking…';
+  let r;
+  try{
+    r=await apiJSON('/api/flows/compose',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({request:req,current:FLW.d})});
+  }catch(e){if(st)st.innerHTML='<span style="color:var(--err,#f87171)">'+esc(e.message||String(e))+'</span>';return}
+  const dr=r.draft||{};
+  // The name is yours, not the model's: an edit must never quietly fork into a new flow.
+  const keepName=FLW.d.name;
+  FLW.d=Object.assign(FLW.d,{...dr,name:keepName});
+  FLW.d.permissions=Object.assign({tools:[],mcp:[],skills:[],net:[],fs_read:[],fs_write:[],
+    memory:'read-space'},dr.permissions||{});
+  FLW.d.new_agents=dr.new_agents||[];
+  FLW.lastAsk=req;
+  drawFLW();
+  const changed=flwDiff(before,FLW.d);
+  const box=$('#flw-ai-diff');
+  if(box)box.innerHTML=(changed.length?'<b>changed:</b><br>'+changed.map(esc).join('<br>')
+    :'<span class="mut">it did not change anything — try being more specific</span>')
+    +((dr.warnings||[]).length?'<br><span style="color:var(--warn,#f59e0b)">⚠ '
+      +esc(dr.warnings.join(' · '))+'</span>':'')
+    +(dr.notes?'<br><span class="mut">'+esc(dr.notes)+'</span>':'');
+  const st2=$('#flw-ai-status');
+  if(st2)st2.innerHTML='<span class="mut">not saved yet — review, then Save flow</span>';
+}
+async function flwSave(){
+  flwCollect();
+  if(!FLW.d.name)return toast('give it a name');
+  const r=await fetch('/api/flows',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(FLW.d)}).then(r=>r.json());
+  if(r.error)return toast(r.error);
+  const g=r.report.grants,t=r.report.triggers,made=r.report.agents_created||[];
+  FLW=null;drawFLW();
+  toast((made.length?`created ${made.join(', ')} · `:'')
+    +`flow saved · ${g.added} permissions granted, ${g.revoked} revoked · ${t.added+t.updated} triggers`);
+  refreshApp('fabric');
 }
 

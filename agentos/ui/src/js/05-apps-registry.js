@@ -36,7 +36,8 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
-  fabric:{id:'fabric',title:'Team',icon:'',w:860,h:660,desc:'Subagents, visual workflows & data-plane observability',render:renderFabric},
+  fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
+  flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
     render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
@@ -84,7 +85,10 @@ const APP_CTX={
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
   memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
   profile:()=>'the profile view — everything the agent knows about the user',
-  fabric:()=>`the Team app, "${typeof fabTab!=='undefined'?fabTab:'team'}" tab (subagents & workflows)`,
+  fabric:()=>`the Workflows app, "${typeof fabTab!=='undefined'?fabTab:'flows'}" tab${
+    (typeof fabTab!=='undefined'&&fabTab==='flows'&&typeof FLOW_SEL!=='undefined'&&FLOW_SEL)
+      ?', flow "'+FLOW_SEL+'" selected':''}`,
+  flowrun:()=>`the Run Inspector, watching flow run ${typeof FG!=='undefined'&&FG.run?FG.run.slice(0,8):'(none)'}`,
   docs:()=>'the AgentOS manual',
   kg:()=>'the knowledge graph visualization',
   soul:()=>'the agent soul (persistent identity) editor',

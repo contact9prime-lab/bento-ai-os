@@ -82,14 +82,19 @@ system — apps, automations, memory, and a knowledge graph that compound the lo
 - ▢ Desktop modes — agent-curated layouts ("work", "evening", "travel") that swap widgets,
   wallpaper, and pinned apps by context
 
-### C. The proactive OS — triggers & automations  *(biggest near-term win)*
-Today the scheduler is time-based only. The step-change is **event-driven autonomy**:
-- ▢ **Triggers**: file/folder watch, webhook inbox, email/calendar events (via MCP), system
-  thresholds (disk > 90 %, process died, battery low), RSS/price/website change
-- ▢ One **Automations app**: trigger → agent prompt → deliverable (report / telegram /
-  notification / app update), with run history and a dry-run button
-- ▢ **Morning briefing** as the flagship default automation (calendar + inbox + system health
-  + news the KG says you care about → one report at 8:00)
+### C. The proactive OS — triggers & automations  *(largely shipped via flows)*
+- **Triggers**: cron/interval/daily, an inbound **webhook** per flow (own secret, own
+  cooldown, payload treated as untrusted), a **message pattern** on Telegram or chat, and the
+  existing OS events (desktop notification / file change / login / idle) — all of which now
+  bind to a flow, not only to a bare prompt. See pillar E and
+  [design/flows.md](design/flows.md)
+- **Team → Flows** is the automations app: trigger → mission → deliverable (report / telegram
+  / notification / desktop), with the live run graph, the board and the control-plane log
+- **Daily briefing** ships as the seeded built-in flow — deliberately with no trigger, so a
+  fresh install does not start doing things at 08:00 because it was installed
+- ▢ Remaining trigger sources: email/calendar events (via MCP), system thresholds
+  (disk > 90 %, process died, battery low), RSS/price/website change
+- ▢ A dry-run button: "show me what this flow would do" without spending anything
 - ▢ Heartbeat: a periodic "look around, anything need doing?" turn with a strict token budget
 
 ### D. Trust is the product — security & control
@@ -103,7 +108,19 @@ Today the scheduler is time-based only. The step-change is **event-driven autono
   malicious-skill problem the OpenClaw ecosystem keeps hitting
 
 ### E. A staff, not a bot — subagents & the execution fabric
-*Full design: [design/subagents.md](design/subagents.md) — status: **F0 shipped**, L1+ on the radar.*
+*Full design: [design/subagents.md](design/subagents.md) — status: **F0 shipped**, L1+ on the radar.
+Flows (an agent as the control plane) shipped on top: [design/flows.md](design/flows.md).*
+- **Flows** — a standing mission with a roster, declared permissions, triggers and delivery
+  sinks. A **master orchestrator** picks the agents and the order while it runs, aggregates
+  their work on a run-scoped blackboard of full artefacts, and finishes. The graph you watch
+  is a trace, not a plan. Two deep, and it is the permission gate that says so: the master is
+  a `flow` principal whose only route to `agent.invoke` is a grant its own definition wrote,
+  and its agents are `subagent`s, which may never delegate
+- **Permissions defined with the definition** — declared once, materialised as real grants,
+  reconciled on every save without touching anything a person wrote by hand
+- **Pause, don't fail** — an unattended run that hits an ungranted action asks (Telegram
+  inline buttons where it came from, else every open window) and resumes; `max_seconds` means
+  working seconds, so waiting for a person costs a run nothing
 - **Subagent definitions** — named specialists with their own soul, model, tool allow-list,
   bound skills, autonomy cap, and budgets; built-ins seeded (researcher / writer / validator)
 - **Control plane / data plane split** — the control plane owns definitions, model
