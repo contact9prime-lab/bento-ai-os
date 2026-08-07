@@ -207,6 +207,68 @@ async def test_non_json_chatter_on_stdout_is_ignored(tmp_path):
     assert [e["type"] for e in seen] == ["text_delta"]
 
 
+@pytest.mark.asyncio
+async def test_a_whole_app_on_one_stream_line_does_not_kill_the_run(tmp_path):
+    """One `stream-json` line carries a whole tool payload — the 44KB app file
+    the executor just wrote, read back to check its own work. asyncio's default
+    64KiB line limit made that raise "Separator is found, but chunk is longer
+    than limit", which failed a build whose app was already finished on disk."""
+    big = "<div>" + ("x" * 200_000) + "</div>"          # comfortably past 64KiB
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\ncat <<'EOF'\n" + "\n".join([
+        json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Write",
+             "input": {"file_path": "/w/app.html", "content": big}}]}}),
+        json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": big}]}}),
+        json.dumps({"type": "result", "subtype": "success", "result": "done",
+                    "total_cost_usd": 1.5, "num_turns": 4}),
+    ]) + "\nEOF\n")
+    stub.chmod(0o755)
+
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
+        run = await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
+
+    kinds = [e["type"] for e in seen]
+    assert "tool_start" in kinds and "tool_end" in kinds
+    assert run.cost_usd == 1.5 and run.turns == 4        # the run reached its own end
+    assert not run.dropped
+    assert [e for e in seen if e["type"] == "error"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_line_past_even_that_ceiling_costs_one_event_not_the_run(tmp_path):
+    """There is always a bigger line. Dropping the event keeps the run alive —
+    the executor carries on regardless of what we manage to read."""
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\ncat <<'EOF'\n" + "\n".join([
+        json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "z" * 4000}]}}),
+        json.dumps({"type": "result", "subtype": "success", "result": "done",
+                    "total_cost_usd": 0.2, "num_turns": 1}),
+    ]) + "\nEOF\n")
+    stub.chmod(0o755)
+
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    # squeeze the ceiling so the first line cannot fit but the last one can
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)), \
+            mock.patch.object(ex, "STREAM_LINE_LIMIT", 1024):
+        run = await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
+
+    assert run.dropped == 1
+    assert any(e["type"] == "error" and "still running" in e["message"] for e in seen)
+    assert run.cost_usd == 0.2, "the events after the oversized one still arrive"
+
+
 def test_a_failure_says_why_in_words_not_a_subtype(monkeypatch):
     """"the executor failed" is the message that taught us this was needed: the
     run had hit the spend ceiling the user set, and reporting it as a nameless

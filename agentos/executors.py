@@ -123,6 +123,13 @@ class Run:
     denials: list = field(default_factory=list)
     stopped: bool = False
     reported_error: bool = False   # the result event already said why; don't say it twice
+    # call_id -> (name, detail) for the calls seen so far. The CLI reports a tool
+    # RESULT with only the id, so without this the end of a call is anonymous —
+    # which is how a ten-minute build read as ten minutes of nothing.
+    calls: dict = field(default_factory=dict)
+    steps: int = 0                 # tool calls started, for a live "step N" line
+    last: str = ""                 # what it is doing right now, in words
+    dropped: int = 0               # stream events too large to read (see STREAM_LINE_LIMIT)
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -680,6 +687,55 @@ def _why(event: dict, run: Run) -> str:
     return f"the executor stopped: {subtype or 'no reason given'}"
 
 
+def tool_detail(name: str, args: dict) -> str:
+    """What a delegated tool call is actually doing, in a few words.
+
+    A tool NAME alone is not progress. "Bash" for four minutes and "Bash" for
+    four seconds look identical, and a build that reads `Read · Write · Bash ·
+    Bash · Bash` tells the watcher nothing about whether it is working or stuck.
+    The argument that identifies the call — the file, the command, the URL — is
+    already in the event; this is only about surfacing it.
+    """
+    args = args if isinstance(args, dict) else {}
+
+    def s(*keys) -> str:
+        for k in keys:
+            v = args.get(k)
+            if isinstance(v, str) and v.strip():
+                return " ".join(v.split())
+        return ""
+
+    if name in ("Read", "Write", "Edit", "NotebookEdit"):
+        p = s("file_path", "path", "notebook_path")
+        return Path(p).name if p else ""
+    if name == "Bash":
+        cmd = s("description") or s("command")
+        return cmd[:90] + ("…" if len(cmd) > 90 else "")
+    if name in ("Glob", "Grep"):
+        pat = s("pattern", "query")
+        where = s("path", "glob")
+        return f"{pat}{' in ' + Path(where).name if where else ''}"[:90]
+    if name in ("WebFetch", "WebSearch"):
+        return s("url", "query", "prompt")[:90]
+    if name == "Task":
+        return s("description", "prompt")[:90]
+    if name == "TodoWrite":
+        todos = args.get("todos")
+        if isinstance(todos, list) and todos:
+            active = [t for t in todos if isinstance(t, dict)
+                      and t.get("status") == "in_progress"]
+            done = sum(1 for t in todos if isinstance(t, dict) and t.get("status") == "completed")
+            head = str((active[0] if active else todos[0]).get("content") or "")
+            return f"{head[:70]} ({done}/{len(todos)} done)"
+        return ""
+    # An unknown tool still has SOMETHING identifying in its arguments; showing
+    # the first short string beats showing nothing.
+    for v in args.values():
+        if isinstance(v, str) and 0 < len(v.strip()) <= 90:
+            return " ".join(v.split())
+    return ""
+
+
 def translate(event: dict, run: Run) -> list[dict]:
     """Turn one Claude Code stream event into AgentOS turn events.
 
@@ -709,10 +765,15 @@ def translate(event: dict, run: Run) -> list[dict]:
             elif block.get("type") == "thinking" and block.get("thinking"):
                 out.append({"type": "thinking_delta", "text": block["thinking"]})
             elif block.get("type") == "tool_use":
+                name = block.get("name", "tool")
+                args = block.get("input") or {}
+                detail = tool_detail(name, args)
+                run.steps += 1
+                run.last = f"{name}{' · ' + detail if detail else ''}"
+                run.calls[block.get("id", "")] = (name, detail)
                 out.append({"type": "tool_start", "call_id": block.get("id", ""),
-                            "name": block.get("name", "tool"),
-                            "args": block.get("input") or {},
-                            "pending_approval": False})
+                            "name": name, "args": args, "detail": detail,
+                            "step": run.steps, "pending_approval": False})
 
     elif kind == "user":
         # The CLI reports tool results as a user turn carrying tool_result blocks.
@@ -722,8 +783,13 @@ def translate(event: dict, run: Run) -> list[dict]:
                 if isinstance(content, list):
                     content = "".join(c.get("text", "") for c in content
                                       if isinstance(c, dict))
+                # The result carries only the id, so the name is recovered from
+                # the call that opened it — an anonymous "✗ — failed" is the one
+                # error a watcher cannot act on.
+                name, detail = run.calls.pop(block.get("tool_use_id", ""), ("", ""))
                 out.append({"type": "tool_end", "call_id": block.get("tool_use_id", ""),
-                            "name": "", "output": str(content or "")[:4000],
+                            "name": name, "detail": detail,
+                            "output": str(content or "")[:4000],
                             "ok": not block.get("is_error")})
 
     elif kind == "result":
@@ -750,6 +816,22 @@ def translate(event: dict, run: Run) -> list[dict]:
     return out
 
 
+# How big one line of the CLI's stream may be.
+#
+# `stream-json` puts one whole event on one line, and an event carries whole tool
+# payloads: the app file it just wrote, the 44KB file it read back to check its
+# own work. asyncio's StreamReader defaults to a 64KiB line limit, and crossing
+# it does not truncate — `readline()` raises
+#
+#     ValueError: Separator is found, but chunk is longer than limit
+#
+# which killed the build *after* the executor had written a finished app to disk.
+# The size that made this happen is the size of a normal app, so the ceiling has
+# to be in app territory, not in log-line territory. It is a cap on one line, not
+# an allocation: the buffer only ever grows to what the CLI actually wrote.
+STREAM_LINE_LIMIT = 32 * 1024 * 1024
+
+
 async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Run:
     """Delegate a task and stream it back through `emit`.
 
@@ -768,12 +850,24 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=child_env(),
+        limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
 
     assert proc.stdout is not None
     while True:
-        line = await proc.stdout.readline()
+        try:
+            line = await proc.stdout.readline()
+        except ValueError:
+            # Past even that ceiling. `readline()` has already dropped the
+            # oversized line and left the stream usable, so lose the one event
+            # rather than the whole run — the work continues on the other side
+            # whatever we do here, and the file on disk is the deliverable.
+            run.dropped += 1
+            await emit({"type": "error",
+                        "message": "one progress update was too large to read and was "
+                                   "skipped — the build is still running"})
+            continue
         if not line:
             break
         text = line.decode(errors="replace").strip()

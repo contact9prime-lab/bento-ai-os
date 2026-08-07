@@ -323,8 +323,21 @@ function handle(ev){
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
-    case 'fabric_event': fabricLiveRefresh(); break;
+    case 'fabric_event':
+      // State first, painting second: the graph must stay correct even when the Team
+      // window is closed, so opening it shows the truth rather than a replay.
+      if(typeof fgApply==='function')fgApply(ev);
+      fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); break;
+    case 'quarantined':
+      // Loud on purpose: something the user installed just stopped working, and the worst
+      // version of this feature is one where they find out by the thing being broken.
+      toast('⚠ Quarantined “'+ev.label+'” — '+(ev.reason||'').slice(0,80));
+      refreshApp('permissions'); refreshApp('apps'); break;
+    case 'quarantine': refreshApp('permissions'); break;
+    case 'flow_done':
+      toast('▲ '+ev.flow+' · '+ev.status);
+      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R

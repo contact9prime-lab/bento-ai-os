@@ -1,5 +1,5 @@
 /* ================= permissions app: the policy console ================= */
-let PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[]};
+let PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
 const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
 function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
   return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
@@ -9,10 +9,13 @@ async function renderPermissions(body){
   try{PERM.grants=(await (await fetch('/api/grants'+(PERM.showRevoked?'?all=1':''))).json()).grants||[]}catch(e){PERM.grants=[]}
   try{PERM.opts=await (await fetch('/api/policy/options')).json()}catch(e){}
   try{PERM.apps=(await (await fetch('/api/apps')).json()).apps||[]}catch(e){PERM.apps=[]}
+  try{const q=await (await fetch('/api/quarantine?history=1')).json();
+      PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}catch(e){PERM.held=[]}
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
   body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${t==='review'&&pending?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
+    ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
+       ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
     <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
   </div>
   <div id="perm-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
@@ -22,7 +25,8 @@ async function renderPermissions(body){
 }
 function permBody(){
   const box=$('#perm-body');if(!box)return;
-  ({map:permMap,grants:permGrantsView,review:permReview,attach:permAttachView}[PERM.tab]||permMap)(box);
+  ({map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
+    attach:permAttachView}[PERM.tab]||permMap)(box);
 }
 function permPrincipals(){
   const map=new Map();
@@ -289,3 +293,58 @@ function reloadAppFrames(){ // a revoked capability shouldn't live on in an open
   document.querySelectorAll('iframe[src^="/api/apps/"]').forEach(f=>{const s=f.src;f.src=s});
 }
 
+
+/* ================= quarantine: what the OS stopped, and why =================
+   A held thing plus the evidence for holding it, so the answer to "why has my app
+   stopped working" is on screen with numbers rather than in a log somebody has to
+   go and find. Three ways out, and every one of them is recorded. */
+function permQuarantine(box){
+  const when=t=>new Date(t*1000).toLocaleString();
+  const kindIcon={app:'▢',subagent:'◈',flow:'▲'};
+  const held=(PERM.held||[]).map(q=>{
+    const ev=q.evidence||{};
+    return `<div class="provbox" style="border-color:var(--err,#f87171)">
+      <div class="ptitle" style="margin-top:0">${kindIcon[q.principal_kind]||'•'}
+        ${esc(q.label||q.principal_id)}
+        <span class="sub">· ${esc(q.principal_kind)} · held ${when(q.created_at)}</span></div>
+      <div class="sub" style="margin:2px 0 6px">${esc(q.reason||'')}</div>
+      ${ev.count?`<div class="sub">it made <b>${ev.count}</b> ${ev.class==='llm'?'model':'tool'}
+        call${ev.count===1?'':'s'} in ${Math.round(ev.window)}s — the limit is ${ev.allowed}${
+        ev.tool?', calling <code>'+esc(String(ev.tool).split('→').pop())+'</code>':''}</div>`:''}
+      <div class="sub" style="margin-top:6px">Nothing it asks for runs while it is held.</div>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+        <button onclick="permRelease('${q.id}','once')"
+          title="let it run again — it can be held again if it does this once more">Let it run once</button>
+        <button onclick="permRelease('${q.id}','forever')"
+          title="never hold this again for going too fast — recorded as your decision">Allow forever</button>
+        <button style="color:var(--err,#f87171)" onclick="permRelease('${q.id}','deleted')"
+          title="delete it">Delete it</button>
+      </div></div>`;
+  }).join('')||`<p class="mut">Nothing is quarantined. If an app, agent or flow starts calling
+    in a loop — too many model calls or too many tool calls in a short window — the OS stops it
+    here and tells you why, rather than letting it run all night.</p>`;
+  const past=(PERM.qhistory||[]).map(q=>{
+    const said={once:'let it run once',forever:'allowed forever',deleted:'deleted'}[q.release_mode]
+      ||esc(q.release_mode||'released');
+    return `<div class="sub">${when(q.created_at)} · <b>${esc(q.label||q.principal_id)}</b>
+      (${esc(q.principal_kind)}) — ${esc(q.reason||'')} → <b>${said}</b> by ${esc(q.released_by||'user')}</div>`;
+  }).join('');
+  box.innerHTML=`<div class="ptitle" style="margin-top:0">Held now</div>${held}
+    ${past?`<div class="ptitle" style="margin-top:14px">Earlier decisions</div>
+      <div class="sub" style="margin-bottom:6px">Kept on the record — "allow forever" is an
+      exemption somebody made, and it should stay visible.</div>${past}`:''}`;
+}
+async function permRelease(qid,mode){
+  const q=(PERM.held||[]).find(x=>x.id===qid)||{};
+  const name=q.label||q.principal_id||'it';
+  const ask={once:['Let “'+name+'” run again?','It stays watched — if it does this again it is held again.'],
+    forever:['Allow “'+name+'” forever?','It will never be held for going too fast again. Your decision is recorded.'],
+    deleted:['Delete “'+name+'”?','This removes it for good.']}[mode];
+  if(!await osConfirm(ask[0],ask[1],{danger:mode==='deleted',
+      confirmText:{once:'Let it run',forever:'Allow forever',deleted:'Delete'}[mode]}))return;
+  const r=await fetch('/api/quarantine/'+qid+'/release',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).then(r=>r.json());
+  if(r.error)return toast(r.error);
+  toast({once:'released — still watched',forever:'allowed forever',deleted:'deleted'}[mode]);
+  refreshApp('permissions');refreshApp('apps');refreshApp('fabric');
+}

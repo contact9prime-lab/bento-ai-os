@@ -7,6 +7,7 @@ Every tool returns a string (what the model sees). Risk levels:
 
 import asyncio
 import contextlib
+import contextvars
 import html.parser
 import json
 import os
@@ -23,6 +24,13 @@ from pathlib import Path
 import httpx
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
+APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context to protect
+
+# Per-call override of MAX_OUTPUT. The cap exists to keep a tool result from
+# eating the model's context; a caller that is not a model (a user-built app
+# reading a JSON API through /api/tool) has no such budget, and cutting its
+# response at 12k shreds the JSON it came for.
+output_limit = contextvars.ContextVar("output_limit", default=MAX_OUTPUT)
 
 # Read-only commands that are always safe to run.
 SAFE_COMMANDS = {
@@ -60,7 +68,11 @@ BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
 # autonomy. The PDP's default-allow is downgraded to ask at the enforcement sites
 # (agent loop, /api/tool); only an explicit user-written grant (rule != "default")
 # skips the prompt, because that grant IS persisted consent.
-ALWAYS_ASK = {"power_action"}
+# Confirmed EVERY time, full autonomy included — only an explicit user-written grant skips
+# the prompt. `enable_flow` is here because enabling a flow is the moment its standing
+# permissions are granted; that decision is the user's wherever they are, and over Telegram
+# the confirmation is the same inline keyboard as any other approval.
+ALWAYS_ASK = {"power_action", "enable_flow"}
 
 
 def classify_command(command: str) -> str:
@@ -189,13 +201,15 @@ def jail_argv(root: str, command: str, chdir: str | None = None) -> list[str] | 
     return None
 
 
-def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
+def _truncate(text: str, limit: int | None = None) -> str:
+    if limit is None:
+        limit = output_limit.get()
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more chars]"
 
 
-def _truncate_envelope(out: str, limit: int = MAX_OUTPUT) -> str:
+def _truncate_envelope(out: str, limit: int | None = None) -> str:
     """Truncate a tool result without shredding a media envelope.
 
     An MCP result carrying assets is JSON. Cutting it at a byte count would
@@ -203,6 +217,8 @@ def _truncate_envelope(out: str, limit: int = MAX_OUTPUT) -> str:
     one part of the result that must survive. So the envelope's *text* is
     truncated in place and the structure is left whole.
     """
+    if limit is None:
+        limit = output_limit.get()
     if len(out) <= limit:
         return out
     if '"__media__"' in out or '"__image__"' in out:
@@ -474,7 +490,7 @@ class Toolbox:
 
     async def delegate(self, subagent: str, task: str, conversation_id: str = "") -> str:
         """Hand a task to a specialist subagent; its steps run in a separate data plane
-        with its own model, tool allow-list, and budget (see the Team app)."""
+        with its own model, tool allow-list, and budget (see the Workflows app)."""
         if not self.fabric:
             return "[error] fabric not available"
         defn = self.store.get_subagent(subagent)
@@ -1446,10 +1462,85 @@ class Toolbox:
         sid = self.store.save_skill(name, description, content)
         return f"skill '{name}' saved (id {sid})"
 
-    async def telegram_send(self, message: str) -> str:
+    async def create_flow(self, name: str, mission: str, roster: list, permissions: dict | None = None,
+                          description: str = "", triggers: list | None = None,
+                          sinks: list | None = None, new_agents: list | None = None) -> str:
+        """Write a flow definition. It is ALWAYS created disabled — see the note in the
+        schema for why that is not a limitation but the entire point."""
+        from . import flows as flowsmod
+        try:
+            flow, report = flowsmod.save(self.store, {
+                "name": name, "mission": mission, "description": description,
+                "roster": roster or [], "permissions": permissions or {"memory": "read-space"},
+                "triggers": triggers or [], "sinks": sinks or [],
+                "new_agents": new_agents or [],
+                # Never enabled from a tool. A flow's definition is a set of standing
+                # permissions, so enabling one is granting them — and an agent that could
+                # do that could grant itself anything by writing a flow that says so.
+                # The user enables it in Workflows → Flows, having read what it grants.
+                "enabled": 0})
+        except ValueError as e:
+            return f"[error] {e}"
+        would = flowsmod.declared_grants({**flow, "enabled": 1})
+        lines = [f"flow '{flow['name']}' saved (disabled — it holds nothing yet)."]
+        if report.get("agents_created"):
+            lines.append(f"created agents: {', '.join(report['agents_created'])}")
+        lines.append(f"roster: {', '.join(r['subagent'] for r in flow['roster'])}")
+        lines.append(f"enabling it would grant {len(would)} permission(s): "
+                     + ", ".join(f"{'deny ' if g['effect'] == 'deny' else ''}{g['resource']}"
+                                 for g in would[:8]) + (" …" if len(would) > 8 else ""))
+        lines.append("Tell the user to open Workflows → Flows to read it and press Enable — "
+                     "you cannot enable it yourself, and a test run works before then.")
+        return "\n".join(lines)
+
+    async def enable_flow(self, name: str, enabled: bool = True) -> str:
+        """Turn a flow on or off. This is the moment its permissions are granted, so it is
+        in ALWAYS_ASK: the user confirms every time, at the desk or on their phone."""
+        from . import flows as flowsmod
+        try:
+            flow, report = flowsmod.set_enabled(self.store, name, bool(enabled))
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "fabric_defs"})
+                await self.broadcast({"type": "grants"})
+        g = report["grants"]
+        return (f"flow '{name}' is now {'live' if enabled else 'off'} — "
+                f"{g['added']} permission(s) granted, {g['revoked']} taken back, "
+                f"triggers {'armed' if enabled else 'disarmed'}")
+
+    async def list_flows(self) -> str:
+        rows = self.store.list_flows()
+        if not rows:
+            return "no flows defined yet"
+        out = []
+        for f in rows:
+            trig = ", ".join(t["kind"] for t in self.store.flow_triggers(f["name"])) or "manual"
+            out.append(f"{f['name']} — {'enabled' if f['enabled'] else 'disabled'} · "
+                       f"roster: {', '.join(r['subagent'] for r in f['roster']) or '—'} · "
+                       f"starts: {trig}\n    {(f.get('mission') or '')[:140]}")
+        return "\n".join(out)
+
+    async def run_flow(self, flow: str, input: str = "", conversation_id: str = "") -> str:
+        defn = self.store.get_flow(flow)
+        if not defn:
+            names = ", ".join(f["name"] for f in self.store.list_flows()) or "(none)"
+            return f"[error] no flow named '{flow}'. Available: {names}"
+        if not self.fabric:
+            return "[error] fabric not available"
+        res = await self.fabric.run_flow(defn, input, origin={"surface": "api"},
+                                         conversation_id=conversation_id)
+        head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
+        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+
+    async def telegram_send(self, message: str, chat_id: int = 0) -> str:
+        """`chat_id` 0 means the owner's chat. It exists so work that arrived from a
+        group can answer in that group rather than privately to the owner, which is a
+        different message to a different audience."""
         if self.telegram is None:
             return "[error] Telegram bridge not running"
-        return await self.telegram.send(message)
+        return await self.telegram.send(message, int(chat_id) or None)
 
     async def schedule_task(self, prompt: str, schedule_type: str,
                             interval_minutes: int = 0, at_time: str = "",
@@ -1505,6 +1596,16 @@ class Toolbox:
             return "safe", ""
         if name == "write_file":
             return "risky", f"Writes to {args.get('path', '?')}."
+        if name == "create_flow":
+            # It grants nothing on its own (a new flow is always disabled), but it writes a
+            # definition and may create specialists, which is a change to the OS.
+            return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
+                             f"needs. It stays disabled until you enable it.")
+        if name == "enable_flow":
+            if args.get("enabled") is False:
+                return "risky", f"Turns off '{args.get('name', '?')}' and revokes its permissions."
+            return "risky", (f"Grants '{args.get('name', '?')}' the permissions its definition "
+                             f"declares and arms its triggers.")
         if name in ("git_status", "git_log", "git_diff"):
             return "safe", ""
         if name in ("git_init", "git_commit", "git_branch"):
@@ -2686,7 +2787,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "delegate",
-        "description": "Delegate a task to a specialist subagent (see the Team app: e.g. researcher, "
+        "description": "Delegate a task to a specialist subagent (see the Workflows app: e.g. researcher, "
                        "writer, validator). It runs with its own model, restricted tools, and budget, "
                        "and returns its result. Use for focused subtasks or to get a second model's "
                        "judgement on work.",
@@ -3041,12 +3142,66 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "create_flow",
+        "description": "Define a FLOW: a standing mission carried out by a master orchestrator that picks "
+                       "agents from a roster while it runs (unlike run_workflow's fixed DAG). Use this when "
+                       "the user describes something recurring or multi-specialist — 'every morning…', "
+                       "'whenever X happens, have someone…'. Saving the same name again edits it. "
+                       "The flow is ALWAYS created disabled and you cannot enable it: its definition is a set "
+                       "of standing permissions, so enabling it is the user's decision. Say what it would "
+                       "grant and point them at Workflows → Flows.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "short-kebab-name, unique"},
+                "mission": {"type": "string", "description": "What the orchestrator is told, in the second person. Specific enough to act on; it picks the agents and the order itself, so do NOT write steps."},
+                "roster": {"type": "array", "items": {"type": "object"}, "description": "[{\"subagent\":\"researcher\",\"why\":\"what it is for here\"}] — the ONLY agents it may call. Must not be empty."},
+                "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\"}. Grant the fewest that let the mission succeed."},
+                "description": {"type": "string"},
+                "triggers": {"type": "array", "items": {"type": "object"}, "description": "[{\"kind\":\"cron\",\"config\":{\"type\":\"daily\",\"at\":\"08:00\"}}] · message/webhook/os_event also. Only if the user asked for one."},
+                "sinks": {"type": "array", "items": {"type": "object"}, "description": "Where the answer goes: [{\"kind\":\"origin\"}] (default, answers where it was triggered), telegram, gui, notify, report."},
+                "new_agents": {"type": "array", "items": {"type": "object"}, "description": "Specialists to create with it, when no existing subagent fits: [{\"name\":…,\"soul\":…,\"tools\":[…]}]. An existing name is never overwritten."},
+            },
+            "required": ["name", "mission", "roster"],
+        },
+    },
+    {
+        "name": "enable_flow",
+        "description": "Turn a flow on (or off). Enabling is the moment its permissions are actually granted "
+                       "and its triggers armed, so the user is asked to confirm every time — including from "
+                       "Telegram, where it arrives as buttons. Tell them what it will grant before you call it.",
+        "parameters": {
+            "type": "object",
+            "properties": {"name": {"type": "string"},
+                           "enabled": {"type": "boolean", "description": "true to enable, false to turn it off"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "list_flows",
+        "description": "List the defined flows: whether each is enabled, its roster, and what starts it.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "run_flow",
+        "description": "Run a flow now and return its result. Works on a flow that is not enabled (that is how "
+                       "you try one), but then every gated step stops and asks the user, so it may come back "
+                       "with denials.",
+        "parameters": {
+            "type": "object",
+            "properties": {"flow": {"type": "string"},
+                           "input": {"type": "string", "description": "what to hand this run (optional)"}},
+            "required": ["flow"],
+        },
+    },
+    {
         "name": "telegram_send",
         "description": "Send a message to the user's paired Telegram chat. Works even when they are away "
                        "from this machine (unlike desktop notify).",
         "parameters": {
             "type": "object",
-            "properties": {"message": {"type": "string", "description": "The message text to deliver (plain text; keep it concise)."}},
+            "properties": {"message": {"type": "string", "description": "The message text to deliver (plain text; keep it concise)."},
+                           "chat_id": {"type": "integer", "description": "Optional: a specific paired chat (e.g. the group a request came from). Omit for the owner's chat."}},
             "required": ["message"],
         },
     },

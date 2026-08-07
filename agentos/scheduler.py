@@ -41,6 +41,8 @@ class Scheduler:
         self.store = store
         self.toolbox = toolbox
         self.broadcast = broadcast
+        self.fabric = None            # ControlPlane, wired in server startup — a task that
+                                      # names a flow runs the flow instead of a bare prompt
         self._stop = asyncio.Event()
         self._file_state: dict = {}   # trigger task id -> {path: mtime} snapshot
         self._idle_fired: dict = {}   # trigger task id -> last-turn ts it fired against
@@ -241,19 +243,9 @@ class Scheduler:
             pass
         return cid, result_text
 
-    async def _run_task(self, task: dict, origin: str = "schedule", title: str = ""):
-        await self.broadcast({"type": "task_started", "task_id": task["id"], "prompt": task["prompt"]})
-
-        prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
-                  f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
-                  f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "
-                  f"user. Don't stop after only gathering data.]\n\n{task['prompt']}")
-        cid, result_text = await self.run_prompt(prompt, origin=origin,
-                                                 title=title or f"⏱ {task['prompt'][:40]}",
-                                                 space_id=task.get("space_id") or "")
-
+    def _reschedule(self, task: dict, result_text: str):
         now = time.time()
-        updates = {"last_run": now, "last_result": result_text[:4000]}
+        updates = {"last_run": now, "last_result": (result_text or "")[:4000]}
         if task["schedule_type"] == "interval":
             updates["next_run"] = now + (task["interval_seconds"] or 3600)
         elif task["schedule_type"] == "daily":
@@ -264,6 +256,40 @@ class Scheduler:
             updates["next_run"] = None
             updates["enabled"] = 0
         self.store.update_task(task["id"], **updates)
+
+    async def _run_task(self, task: dict, origin: str = "schedule", title: str = ""):
+        await self.broadcast({"type": "task_started", "task_id": task["id"], "prompt": task["prompt"]})
+
+        # A task that names a flow starts that flow's master orchestrator instead of a
+        # bare headless turn. The clock, the claim-on-fire and the cooldown above are the
+        # same ones every other scheduled thing uses — only the thing being started differs.
+        if (task.get("flow") or "") and self.fabric:
+            flow = self.store.get_flow(task["flow"])
+            if flow and flow.get("enabled"):
+                res = await self.fabric.run_flow(
+                    flow, task.get("prompt") or flow.get("mission", ""),
+                    origin={"surface": "task", "ref": task["id"]},
+                    space_id=task.get("space_id") or flow.get("space_id") or "")
+                self._reschedule(task, res.get("content", ""))
+                await self.broadcast({"type": "task_finished", "task_id": task["id"],
+                                      "conversation_id": "", "run_id": res.get("run_id", ""),
+                                      "result": (res.get("content") or "")[:500]})
+                return
+            self.store.log("error",
+                           f"task {task['id']} names flow '{task['flow']}', which is gone or "
+                           f"disabled — nothing ran", {"task": task["id"], "flow": task["flow"]})
+            self._reschedule(task, f"[skipped] flow '{task['flow']}' is gone or disabled")
+            return
+
+        prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
+                  f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
+                  f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "
+                  f"user. Don't stop after only gathering data.]\n\n{task['prompt']}")
+        cid, result_text = await self.run_prompt(prompt, origin=origin,
+                                                 title=title or f"⏱ {task['prompt'][:40]}",
+                                                 space_id=task.get("space_id") or "")
+
+        self._reschedule(task, result_text)
         await self.broadcast({"type": "task_finished", "task_id": task["id"],
                               "conversation_id": cid, "result": result_text[:500]})
 
