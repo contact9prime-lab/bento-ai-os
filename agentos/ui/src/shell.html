@@ -4,7 +4,7 @@
        same thing Ctrl+Space does. Every desktop has a corner you can hit to start
        something, and this was a dead label. -->
   <div id="mb-brand" role="button" tabindex="0" title="Search and run anything (Ctrl+Space)"
-       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">Bento Box AI</span></div>
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>
@@ -30,7 +30,7 @@
 </div>
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
-  <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
+  <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>
   <button onclick="powerDo('suspend','Suspend the machine?')">Suspend</button>
   <button class="danger" onclick="powerDo('logout','Log out of this session? Unsaved work in other apps will be lost.')">Log out…</button>
@@ -75,7 +75,7 @@
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 
 <div id="startmenu">
-  <div id="smhead"><div class="mark">▲</div><div><b>AgentOS</b><small>your machine, with a brain</small></div></div>
+  <div id="smhead"><div class="mark">▲</div><div><b>Bento Box AI</b><small>your machine, with a brain</small></div></div>
   <div id="smsearch"><input id="smq" placeholder="Search apps & system apps…" autocomplete="off"></div>
   <div id="smapps"></div>
   <div id="smfoot"><div id="smdot" style="width:8px;height:8px;border-radius:50%;background:var(--err)"></div><span id="smstat">connecting…</span></div>
@@ -106,5 +106,5 @@
   <div id="tbnative" title="Windows open on your host desktop — click to switch"></div>
 </div>
 
-<div id="boot"><div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div></div>
+<div id="boot"><div class="mark">▲</div><h1>Bento Box AI</h1><div class="bbar"><i></i></div></div>
 

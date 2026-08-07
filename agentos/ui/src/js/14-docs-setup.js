@@ -41,7 +41,7 @@ const WIZ_SAY_FALLBACK={
   de_here:()=>"This is your desktop now, so I'm always here — nothing to install, nothing to start.",
   wallpaper:()=>"Let's make this place yours. Pick a wallpaper to start with — I can generate a custom one for you later.",
   voice:()=>'One more thing — should I speak my replies out loud, or keep things quiet?',
-  done:()=>"That's everything — welcome to AgentOS. Let's get to work.",
+  done:()=>"That's everything — welcome to Bento Box AI. Let's get to work.",
 };
 const WIZ_WALLS={ // ids mirror setup.WALLPAPER_PRESETS; CSS gradients, no file written
   aurora:'linear-gradient(135deg,#0b3d40 0%,#123a5e 45%,#3b1d5a 100%)',
@@ -85,7 +85,7 @@ function wizRender(){
   const stage=$('#wiz-stage'),s=WIZ.info||{};
   if(WIZ.step===1)stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
-    <h1 class="wiz-title">Welcome to AgentOS</h1>
+    <h1 class="wiz-title">Welcome to Bento Box AI</h1>
     <p class="wiz-sub">Your machine, with a brain. Let's set it up together.</p>
     <label class="wiz-q">What should your agent be called?</label>
     <input id="wz-name" class="wiz-input" value="${esc(WIZ.agent_name)}" autocomplete="off" spellcheck="false">
@@ -96,14 +96,14 @@ function wizRender(){
     stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
-    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. AgentOS can set that up, or you can bring a cloud key.'}</p>
+    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. Bento Box AI can set that up, or you can bring a cloud key.'}</p>
     ${/* "install Ollama later" was the end of the road here: the first screen that
           needs a brain told you what was missing and then left you to it. Offer
           it, with the licence and the exact command, on the screen where it
           matters. */''}
     ${local?'':`<div class="wiz-offer" id="wz-ollama">
       <b>Run models on this machine</b>
-      <span>Private, free, no API key. AgentOS installs Ollama (MIT, llama.cpp underneath).</span>
+      <span>Private, free, no API key. Bento Box AI installs Ollama (MIT, llama.cpp underneath).</span>
       <button class="endbtn" onclick="wizInstallOllama()">Install it for me</button>
     </div>`}
     <div class="wiz-picks">${local}
@@ -272,7 +272,7 @@ function wizEnter(){
   openApp('chat');
 }
 async function factoryReset(){
-  if(!await osConfirm('Factory reset AgentOS?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
+  if(!await osConfirm('Factory reset Bento Box AI?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
   if(!await osConfirm('Really wipe everything?','This cannot be undone.',{danger:true,confirmText:'Reset'}))return;
   await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
   location.reload();

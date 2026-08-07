@@ -55,6 +55,11 @@
 .audok{background:rgba(80,200,120,.16);color:#4cc47c}
 .audden{background:rgba(240,90,90,.16);color:#ef6a6a}
 .audask{background:rgba(255,190,80,.16);color:#e2a33f}
+/* These three are BADGE recipes — a tint behind an inline pill. On `.val`, which
+   is a block, the tint became a full-width coloured band across the middle of the
+   stat tile and read as a rendering fault. The number takes the colour; the tile
+   keeps its own background. */
+.val.audok,.val.audden,.val.audask{background:none}
 .val.audok{color:#4cc47c}
 .val.audden{color:#ef6a6a}
 .val.audask{color:#e2a33f}

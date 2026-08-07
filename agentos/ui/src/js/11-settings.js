@@ -49,7 +49,9 @@ async function renderSettings(body){
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
-        <button class="pact" onclick="saveSettings()">Save</button>
+        ${/* One Save per page. The sticky bar at the foot is always reachable
+              while you scroll; a second copy in the header meant two controls for
+              one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>

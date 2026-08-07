@@ -58,10 +58,10 @@ function menuStd(w){
 
   const help=[
     {label:'Keyboard shortcuts',keys:(SHORTCUTS['help']||{}).keys,fn:()=>keysHelp(true)},
-    {label:'AgentOS manual',fn:()=>openApp('docs')},
+    {label:'Bento Box AI manual',fn:()=>openApp('docs')},
     {label:`Ask ${agentName()} about ${app?app.title:'this app'}`,fn:()=>copilotAsk(id,'')},
     null,
-    {label:'About AgentOS',fn:()=>openApp('about')},
+    {label:'About Bento Box AI',fn:()=>openApp('about')},
   ];
 
   const menus=[['File',file],['Edit',edit],['View',view],['Window',win],['Help',help]];
@@ -113,7 +113,7 @@ function menuNative(w){
     {label:`Ask ${agentName()} about ${name}`,fn:()=>{raiseShell(true);
       omniFocus&&omniFocus();const i=$('#omni-in');if(i){i.value='About the '+name+' window: ';omniPop(true)}}},
     null,
-    {label:'AgentOS desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
+    {label:'Bento Box AI desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
   ];
   return [[name,app],['Window',win],['Help',help]];
 }

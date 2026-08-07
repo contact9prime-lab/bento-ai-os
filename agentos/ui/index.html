@@ -7,13 +7,13 @@
 <meta name="theme-color" content="#0b0d10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="AgentOS">
+<meta name="apple-mobile-web-app-title" content="Bento Box AI">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/assets/icon-192.png" type="image/png">
-<title>AgentOS</title>
+<title>Bento Box AI</title>
 <style>
 :root{
   color-scheme:dark;   /* native widgets (select popups, scrollbars) follow the mode */
@@ -233,27 +233,51 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
    everything beneath it. Themes that genuinely want glass windows (Liquid Glass,
    Spatial) set a translucent background AND their own backdrop-filter, which is
    the only place the cost buys anything. */
+/* Depth is the whole job here. Five windows used to sit on the desktop as five
+   near-identical dark rectangles: the active one had --el-5 against --el-4 and a
+   .16 border against a .10 one, differences you cannot see at a glance, so a
+   stack read as a mush and you could not tell which window your keystrokes were
+   going to. The ladder is now unmistakable and costs nothing extra to paint:
+
+     inactive  a small shadow (--el-2) and a plain hairline — it recedes
+     active    the biggest shadow, a brighter border, and a 1px accent ring
+
+   The ring is a second box-shadow layer, not an outline, so it does not add to
+   layout and does not clip at the corner radius. Still no backdrop-filter — see
+   the note below. */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
   background:var(--bg);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
-  box-shadow:var(--el-4);
+  box-shadow:var(--el-2);
+  transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out);
   resize:both;overflow:hidden}
-.win.active{border-color:var(--hairline-strong);box-shadow:var(--el-5)}
+.win.active{border-color:var(--hairline-strong);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 30%,transparent),var(--el-5)}
+/* dragging or resizing: lift it further, so the thing under the pointer is
+   obviously the thing that is moving */
+.win.dragging{box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent),var(--el-5);
+  transition:none}
 .win.maxed{inset:0!important;width:auto!important;height:auto!important;border-radius:0;resize:none}
-.win .ttl{display:grid;grid-template-columns:66px 1fr 66px;align-items:center;height:40px;flex:none;padding:0 10px;
+/* 36px, not 40: three symmetric columns of 72px so the title is centred on the
+   window rather than nudged by whichever side has more in it. */
+.win .ttl{display:grid;grid-template-columns:72px 1fr 72px;align-items:center;height:36px;flex:none;padding:0 10px;
   background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-bottom:1px solid rgba(0,0,0,.28);cursor:default}
-.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03))}
+.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03))}
 .win .tmid{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
 .win .ticon{display:flex}
-.win .ticon .aicon{width:17px;height:17px;box-shadow:var(--el-1)}
-.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.win .ticon .aicon{width:16px;height:16px;box-shadow:var(--el-1)}
+.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  transition:color var(--d-base) var(--ease-out)}
 .win.active .tname{color:var(--txt)}
+/* An inactive window's icon recedes with the rest of its chrome. Saturation, not
+   opacity: the icon stays legible, it just stops competing for attention. */
+.win:not(.active) .ticon{filter:saturate(.3);opacity:.75}
 .win .tbtns{display:flex;gap:8px;justify-self:start}
 .win .tbtns button{width:13px;height:13px;border-radius:50%;padding:0;position:relative;
   border:.5px solid rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
   color:transparent;font-size:var(--fs-2xs);font-weight:800;line-height:1;transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .win .tbtns .cls{background:#ff5f57}.win .tbtns .mn{background:#febc2e}.win .tbtns .mx{background:#28c840}
-.win:not(.active) .tbtns button{background:#5a606c}
+.win:not(.active) .tbtns button{background:#454b56}
 .win .tbtns:hover button{color:rgba(0,0,0,.55)}
 .win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
 .win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -708,6 +732,11 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .audok{background:rgba(80,200,120,.16);color:#4cc47c}
 .audden{background:rgba(240,90,90,.16);color:#ef6a6a}
 .audask{background:rgba(255,190,80,.16);color:#e2a33f}
+/* These three are BADGE recipes — a tint behind an inline pill. On `.val`, which
+   is a block, the tint became a full-width coloured band across the middle of the
+   stat tile and read as a rendering fault. The number takes the colour; the tile
+   keeps its own background. */
+.val.audok,.val.audden,.val.audask{background:none}
 .val.audok{color:#4cc47c}
 .val.audden{color:#ef6a6a}
 .val.audask{color:#e2a33f}
@@ -728,7 +757,9 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .mut{color:var(--dim2);font-size:var(--fs-sm)}
 
 /* ================= task manager ================= */
-.tmgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+/* auto-fit, not a hard 3: a four-tile summary used to wrap as 3 + 1 orphan, and
+   the same grid is used by panels with two tiles and with six. */
+.tmgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .stat{border:1px solid var(--line);border-radius:var(--r-lg);padding:11px 13px;background:var(--bg2)}
 .stat .lbl{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
 .stat .val{font-size:var(--fs-2xl);font-weight:800;margin:3px 0 7px;font-variant-numeric:tabular-nums}
@@ -1401,12 +1432,21 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .win .wmain{flex:1;min-height:0;display:flex}
 .win .wmain .wbody{flex:1;min-width:0}
 .win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
-.win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
+/* The ✦ is the agent inside this app, and it is the one piece of chrome people
+   recognise as agentic — so on the ACTIVE window it is present rather than
+   apologetic: full opacity, accent-tinted, with a faint pill behind it. It still
+   fades out on the windows you are not using, because the point is "the agent is
+   here, in this app", and eight glowing marks say nothing. */
+.win .cp-btn{width:26px;height:26px;border-radius:var(--r-full);font-size:var(--fs-md);color:var(--dim2);
   display:flex;align-items:center;justify-content:center;opacity:0;
-  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
-.win:hover .cp-btn,.win.active .cp-btn,.win .cp-btn.on{opacity:.85}
-.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc);opacity:1}
-.win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),
+    opacity var(--d-base) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
+.win:hover .cp-btn{opacity:.6}
+.win.active .cp-btn{opacity:1;color:var(--acc);
+  background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.win .cp-btn:hover{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc);opacity:1}
+.win .cp-btn.on{opacity:1;color:var(--acc);text-shadow:0 0 12px var(--acc);
+  background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
   border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
   transition:width var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out)}
@@ -1556,15 +1596,22 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .pgroup > h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
   padding:12px 16px 0}
 .pgroup > .ghint{font-size:var(--fs-sm);color:var(--dim);padding:6px 16px 0;line-height:1.5}
-.prow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-top:1px solid var(--line)}
+/* Wrap, don't squeeze. `.pl` was flex:1;min-width:0 against a control with a hard
+   240px minimum, so in a narrow window the LABEL gave up all its space and the
+   input kept all of its: "Ollama base URL" broke across two lines beside a
+   three-line description, next to a field with room to spare. Now the label has a
+   base width it will not go under, and when both cannot fit the control drops to
+   its own line — the same stacked shape `.prow.stack` asks for explicitly, arrived
+   at without a media or container query. */
+.prow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:13px 16px;border-top:1px solid var(--line)}
 .pgroup > h3 + .prow,.pgroup > .ghint + .prow,.pgroup > .prow:first-child{border-top:none}
 .prow:first-of-type{margin-top:4px}
-.prow .pl{flex:1;min-width:0}
+.prow .pl{flex:1 1 240px;min-width:0}
 .prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
 .prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
-.prow .pc{flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.prow .pc{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
-  min-width:240px;max-width:340px}
+  min-width:200px;max-width:340px}
 .prow .pc input[type=number]{min-width:96px}
 .prow.stack{display:block}
 .prow.stack .pc{margin-top:9px;justify-content:flex-start}
@@ -1959,7 +2006,7 @@ body.glass-off .win{background:var(--bg)!important}
        same thing Ctrl+Space does. Every desktop has a corner you can hit to start
        something, and this was a dead label. -->
   <div id="mb-brand" role="button" tabindex="0" title="Search and run anything (Ctrl+Space)"
-       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">Bento Box AI</span></div>
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>
@@ -1985,7 +2032,7 @@ body.glass-off .win{background:var(--bg)!important}
 </div>
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
-  <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
+  <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>
   <button onclick="powerDo('suspend','Suspend the machine?')">Suspend</button>
   <button class="danger" onclick="powerDo('logout','Log out of this session? Unsaved work in other apps will be lost.')">Log out…</button>
@@ -2030,7 +2077,7 @@ body.glass-off .win{background:var(--bg)!important}
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 
 <div id="startmenu">
-  <div id="smhead"><div class="mark">▲</div><div><b>AgentOS</b><small>your machine, with a brain</small></div></div>
+  <div id="smhead"><div class="mark">▲</div><div><b>Bento Box AI</b><small>your machine, with a brain</small></div></div>
   <div id="smsearch"><input id="smq" placeholder="Search apps & system apps…" autocomplete="off"></div>
   <div id="smapps"></div>
   <div id="smfoot"><div id="smdot" style="width:8px;height:8px;border-radius:50%;background:var(--err)"></div><span id="smstat">connecting…</span></div>
@@ -2061,7 +2108,7 @@ body.glass-off .win{background:var(--bg)!important}
   <div id="tbnative" title="Windows open on your host desktop — click to switch"></div>
 </div>
 
-<div id="boot"><div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div></div>
+<div id="boot"><div class="mark">▲</div><h1>Bento Box AI</h1><div class="bbar"><i></i></div></div>
 
 <script>
 'use strict';
@@ -3195,14 +3242,73 @@ function openApp(id,opts){
   return createWin(app);
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
-function createWin(app){
-  const desk=$('#desktop'), dw=desk.clientWidth, dh=desk.clientHeight;
-  const el=document.createElement('div'); el.className='win';
-  const width=Math.min(app.w,dw-30), height=Math.min(app.h,dh-30);
-  const off=(WM.cascade++%6)*26;
+/* ---- where a window opens ------------------------------------------------
+   This used to be "centre it, plus 26px per window, wrapping every six". Five
+   windows therefore landed on top of each other, the same size, offset by less
+   than a title bar — the stack in the screenshot that started this. Two fixes,
+   in order of how much they matter:
+
+   1. A window you have placed opens where you left it. Geometry is remembered
+      per app in localStorage, so the desktop you arranged is the desktop you
+      come back to. This is what people actually want and it costs one key.
+   2. A window opening for the FIRST time cascades from the top-left of the
+      usable area with a step big enough to read a title bar underneath, and
+      wraps into a second column rather than marching off the bottom right.
+
+   Sizes are clamped to the usable area (below the menu bar, above the dock),
+   not to the whole viewport, so a tall window no longer opens with its footer
+   under the dock. */
+var WIN_STEP=38, WIN_MARGIN=14;
+function winGeomKey(id){return 'wingeom:'+id}
+function winSaveGeom(w){
+  if(!w||w.max||w.min||w.snap)return;          // remember the shape you chose, not a state
+  try{localStorage.setItem(winGeomKey(w.id),JSON.stringify({
+    l:parseInt(w.el.style.left,10)||0, t:parseInt(w.el.style.top,10)||0,
+    w:parseInt(w.el.style.width,10)||0, h:parseInt(w.el.style.height,10)||0}))}catch(e){}
+}
+function winLoadGeom(id){
+  try{const g=JSON.parse(localStorage.getItem(winGeomKey(id))||'null');
+    return (g&&g.w>200&&g.h>140)?g:null}catch(e){return null}
+}
+/* The rectangle a window may actually use: inside the menu bar and above the
+   dock/omnibar band, which is what --mbh and --tbh already describe. */
+function winArea(){
+  const desk=$('#desktop'), cs=getComputedStyle(document.documentElement);
+  const px=v=>parseInt(cs.getPropertyValue(v),10)||0;
+  const top=px('--mbh'), bottom=px('--tbh');
+  return {x:WIN_MARGIN, y:WIN_MARGIN,
+          w:Math.max(320,desk.clientWidth-WIN_MARGIN*2),
+          h:Math.max(240,desk.clientHeight-top-bottom-WIN_MARGIN),
+          top, bottom};
+}
+function winPlace(el,app){
+  const a=winArea();
+  const saved=winLoadGeom(app.id);
+  let width=Math.min(saved?saved.w:app.w, a.w);
+  let height=Math.min(saved?saved.h:app.h, a.h);
   el.style.width=width+'px'; el.style.height=height+'px';
-  el.style.left=Math.max(8,Math.min((dw-width)/2+off,dw-width-8))+'px';
-  el.style.top=Math.max(8,Math.min((dh-height)/2-40+off,dh-height-8))+'px';
+  if(saved){
+    // clamp into today's screen: the geometry may come from a bigger monitor
+    el.style.left=Math.max(a.x,Math.min(saved.l,a.x+a.w-width))+'px';
+    el.style.top=Math.max(a.y,Math.min(saved.t,a.y+a.h-height))+'px';
+    return;
+  }
+  /* How many steps fit before wrapping is a property of the SCREEN, not of the
+     window being placed — deriving it from `height` gave each app a different
+     wrap point, so the sixth window jumped to a column the fifth had not
+     started. Six steps or whatever the screen holds, whichever is smaller. */
+  const perCol=Math.max(1,Math.min(6,Math.floor(a.h/(WIN_STEP*3))));
+  const n=WM.cascade++;
+  const col=Math.floor(n/perCol), row=n%perCol;
+  const l=a.x+row*WIN_STEP+col*(WIN_STEP*4);
+  const t=a.y+row*WIN_STEP;
+  el.style.left=Math.max(a.x,Math.min(l,a.x+a.w-width))+'px';
+  el.style.top=Math.max(a.y,Math.min(t,a.y+a.h-height))+'px';
+}
+function createWin(app){
+  const desk=$('#desktop');
+  const el=document.createElement('div'); el.className='win';
+  winPlace(el,app);
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
@@ -3453,6 +3559,7 @@ function dragify(w,handle){
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
       el.classList.remove('dragging');snapGhost(null);
       if(zone&&moved)applySnap(w,zone);
+      else if(moved)winSaveGeom(w);      // where you put it is where it opens next time
     };
     handle.addEventListener('pointermove',move);
     handle.addEventListener('pointerup',up);
@@ -3483,7 +3590,8 @@ function resizify(w){
         nw=Math.min(nw,desk.clientWidth); nh=Math.min(nh,desk.clientHeight);
         el.style.left=l+'px';el.style.top=t+'px';el.style.width=nw+'px';el.style.height=nh+'px';
       };
-      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);el.classList.remove('dragging');w.snap=null};
+      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);
+        el.classList.remove('dragging');w.snap=null;winSaveGeom(w)};
       h.addEventListener('pointermove',move);
       h.addEventListener('pointerup',up);
     });
@@ -3496,9 +3604,21 @@ const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path 
 const SVG_EMPTY='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>';
 function panelShell(body,o){
   o=o||{};
+  /* The title bar already says which app this is. Repeating it as the first thing
+     inside the window ("Memory" above "Memory") spent the widest row in every app
+     on a word the user just read, and pushed the search box and the controls into
+     the corner. It is dropped when it matches the window's own title, and kept
+     when it does not — a panel showing something else genuinely needs a label. */
+  /* Read the title bar itself rather than making all fourteen callers pass their
+     window: what is actually on screen above this panel is the thing that must
+     not be repeated, and a copilot panel or a dialog has no title bar at all —
+     which is exactly when the label should stay. */
+  const bar=body.closest&&body.closest('.win');
+  const wtitle=(bar&&bar.querySelector('.tname')||{}).textContent||'';
+  const dup=!!wtitle&&String(o.title||'').trim().toLowerCase()===wtitle.trim().toLowerCase();
   body.innerHTML=`<div class="pshell">
     <div class="phead">
-      <span class="pt">${o.title||''}</span>
+      ${dup?'':`<span class="pt">${o.title||''}</span>`}
       ${o.sub?`<span class="ps">${o.sub}</span>`:''}
       <span class="sp"></span>
       ${o.search?`<span class="psearch">${SVG_SEARCH}<input id="${o.search.id}" placeholder="${esc(o.search.placeholder||'Search…')}" autocomplete="off"></span>`:''}
@@ -3871,10 +3991,10 @@ function menuStd(w){
 
   const help=[
     {label:'Keyboard shortcuts',keys:(SHORTCUTS['help']||{}).keys,fn:()=>keysHelp(true)},
-    {label:'AgentOS manual',fn:()=>openApp('docs')},
+    {label:'Bento Box AI manual',fn:()=>openApp('docs')},
     {label:`Ask ${agentName()} about ${app?app.title:'this app'}`,fn:()=>copilotAsk(id,'')},
     null,
-    {label:'About AgentOS',fn:()=>openApp('about')},
+    {label:'About Bento Box AI',fn:()=>openApp('about')},
   ];
 
   const menus=[['File',file],['Edit',edit],['View',view],['Window',win],['Help',help]];
@@ -3926,7 +4046,7 @@ function menuNative(w){
     {label:`Ask ${agentName()} about ${name}`,fn:()=>{raiseShell(true);
       omniFocus&&omniFocus();const i=$('#omni-in');if(i){i.value='About the '+name+' window: ';omniPop(true)}}},
     null,
-    {label:'AgentOS desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
+    {label:'Bento Box AI desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
   ];
   return [[name,app],['Window',win],['Help',help]];
 }
@@ -4139,7 +4259,7 @@ const APPS={
   jobs:{id:'jobs',title:'Jobs',icon:'◷',w:720,h:640,desc:'What this machine does for you without being asked',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
-  docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
+  docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
     render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
   soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
@@ -4166,8 +4286,8 @@ const APPS={
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
     render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
-  settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
-  about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
+  settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
 
 /* ---- copilot context: one line about what each app is showing RIGHT NOW.
@@ -5996,7 +6116,9 @@ async function renderSettings(body){
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
-        <button class="pact" onclick="saveSettings()">Save</button>
+        ${/* One Save per page. The sticky bar at the foot is always reachable
+              while you scroll; a second copy in the header meant two controls for
+              one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
@@ -8142,7 +8264,7 @@ const WIZ_SAY_FALLBACK={
   de_here:()=>"This is your desktop now, so I'm always here — nothing to install, nothing to start.",
   wallpaper:()=>"Let's make this place yours. Pick a wallpaper to start with — I can generate a custom one for you later.",
   voice:()=>'One more thing — should I speak my replies out loud, or keep things quiet?',
-  done:()=>"That's everything — welcome to AgentOS. Let's get to work.",
+  done:()=>"That's everything — welcome to Bento Box AI. Let's get to work.",
 };
 const WIZ_WALLS={ // ids mirror setup.WALLPAPER_PRESETS; CSS gradients, no file written
   aurora:'linear-gradient(135deg,#0b3d40 0%,#123a5e 45%,#3b1d5a 100%)',
@@ -8186,7 +8308,7 @@ function wizRender(){
   const stage=$('#wiz-stage'),s=WIZ.info||{};
   if(WIZ.step===1)stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
-    <h1 class="wiz-title">Welcome to AgentOS</h1>
+    <h1 class="wiz-title">Welcome to Bento Box AI</h1>
     <p class="wiz-sub">Your machine, with a brain. Let's set it up together.</p>
     <label class="wiz-q">What should your agent be called?</label>
     <input id="wz-name" class="wiz-input" value="${esc(WIZ.agent_name)}" autocomplete="off" spellcheck="false">
@@ -8197,14 +8319,14 @@ function wizRender(){
     stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
-    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. AgentOS can set that up, or you can bring a cloud key.'}</p>
+    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. Bento Box AI can set that up, or you can bring a cloud key.'}</p>
     ${/* "install Ollama later" was the end of the road here: the first screen that
           needs a brain told you what was missing and then left you to it. Offer
           it, with the licence and the exact command, on the screen where it
           matters. */''}
     ${local?'':`<div class="wiz-offer" id="wz-ollama">
       <b>Run models on this machine</b>
-      <span>Private, free, no API key. AgentOS installs Ollama (MIT, llama.cpp underneath).</span>
+      <span>Private, free, no API key. Bento Box AI installs Ollama (MIT, llama.cpp underneath).</span>
       <button class="endbtn" onclick="wizInstallOllama()">Install it for me</button>
     </div>`}
     <div class="wiz-picks">${local}
@@ -8373,7 +8495,7 @@ function wizEnter(){
   openApp('chat');
 }
 async function factoryReset(){
-  if(!await osConfirm('Factory reset AgentOS?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
+  if(!await osConfirm('Factory reset Bento Box AI?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
   if(!await osConfirm('Really wipe everything?','This cannot be undone.',{danger:true,confirmText:'Reset'}))return;
   await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
   location.reload();

@@ -7,27 +7,51 @@
    everything beneath it. Themes that genuinely want glass windows (Liquid Glass,
    Spatial) set a translucent background AND their own backdrop-filter, which is
    the only place the cost buys anything. */
+/* Depth is the whole job here. Five windows used to sit on the desktop as five
+   near-identical dark rectangles: the active one had --el-5 against --el-4 and a
+   .16 border against a .10 one, differences you cannot see at a glance, so a
+   stack read as a mush and you could not tell which window your keystrokes were
+   going to. The ladder is now unmistakable and costs nothing extra to paint:
+
+     inactive  a small shadow (--el-2) and a plain hairline — it recedes
+     active    the biggest shadow, a brighter border, and a 1px accent ring
+
+   The ring is a second box-shadow layer, not an outline, so it does not add to
+   layout and does not clip at the corner radius. Still no backdrop-filter — see
+   the note below. */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
   background:var(--bg);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
-  box-shadow:var(--el-4);
+  box-shadow:var(--el-2);
+  transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out);
   resize:both;overflow:hidden}
-.win.active{border-color:var(--hairline-strong);box-shadow:var(--el-5)}
+.win.active{border-color:var(--hairline-strong);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 30%,transparent),var(--el-5)}
+/* dragging or resizing: lift it further, so the thing under the pointer is
+   obviously the thing that is moving */
+.win.dragging{box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent),var(--el-5);
+  transition:none}
 .win.maxed{inset:0!important;width:auto!important;height:auto!important;border-radius:0;resize:none}
-.win .ttl{display:grid;grid-template-columns:66px 1fr 66px;align-items:center;height:40px;flex:none;padding:0 10px;
+/* 36px, not 40: three symmetric columns of 72px so the title is centred on the
+   window rather than nudged by whichever side has more in it. */
+.win .ttl{display:grid;grid-template-columns:72px 1fr 72px;align-items:center;height:36px;flex:none;padding:0 10px;
   background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-bottom:1px solid rgba(0,0,0,.28);cursor:default}
-.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03))}
+.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03))}
 .win .tmid{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
 .win .ticon{display:flex}
-.win .ticon .aicon{width:17px;height:17px;box-shadow:var(--el-1)}
-.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.win .ticon .aicon{width:16px;height:16px;box-shadow:var(--el-1)}
+.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  transition:color var(--d-base) var(--ease-out)}
 .win.active .tname{color:var(--txt)}
+/* An inactive window's icon recedes with the rest of its chrome. Saturation, not
+   opacity: the icon stays legible, it just stops competing for attention. */
+.win:not(.active) .ticon{filter:saturate(.3);opacity:.75}
 .win .tbtns{display:flex;gap:8px;justify-self:start}
 .win .tbtns button{width:13px;height:13px;border-radius:50%;padding:0;position:relative;
   border:.5px solid rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
   color:transparent;font-size:var(--fs-2xs);font-weight:800;line-height:1;transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .win .tbtns .cls{background:#ff5f57}.win .tbtns .mn{background:#febc2e}.win .tbtns .mx{background:#28c840}
-.win:not(.active) .tbtns button{background:#5a606c}
+.win:not(.active) .tbtns button{background:#454b56}
 .win .tbtns:hover button{color:rgba(0,0,0,.55)}
 .win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
 .win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}

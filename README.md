@@ -5,7 +5,7 @@ desktop — windows, apps, files, terminal — driven by an **autonomous AI agen
 actions** on your computer. Use local models via [Ollama](https://ollama.com) for total privacy, or
 cloud models (Anthropic Claude, OpenAI, OpenRouter, or any OpenAI-compatible endpoint) — always with
 your approval. The agent can browse, build its own apps, schedule jobs, remember what it learns,
-extend its own source code, and reach you on Telegram.
+extend its own source code, and reach you on Telegram or WhatsApp.
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
@@ -18,6 +18,33 @@ Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-ti
 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the desktop
 and every app, the agent and its tools, building apps, integrations, the API reference, and
 troubleshooting.
+
+---
+
+## The first thing it asks you is what job to do
+
+Setup ends on a question, not a door: **give me a job.** Pick one of three, answer two questions,
+and this machine is doing something for you before you have opened a single app.
+
+![The Jobs screen: three recipes — brief me every morning, watch a folder, tell me when a page changes — with the chosen one's questions and exactly what it will be allowed to do](docs/screenshots/jobs.png)
+
+| | |
+|---|---|
+| **Brief me every morning** | reads up on the things you follow overnight and leaves one page waiting |
+| **Watch a folder for me** | notices what lands in a folder *you choose*, works out what it is, tells you |
+| **Tell me when a page changes** | checks a page and speaks up only when something real has changed |
+
+Two things it will not do. It will not grant itself anything you have not seen: the panel prints
+the exact permissions before you press the button, computed by the same code that writes them —
+"reads `~/Downloads/*`, and nothing else". And it will not offer a way of reaching you that does not
+work: an unpaired Telegram is shown greyed with the sentence that would fix it, never hidden and
+never quietly substituted.
+
+The last button is **"Run it now, so I can see it work"** — because a schedule you have not seen
+fire is a promise, and a new user has no reason to believe one.
+
+A job is a *flow*, not a new kind of thing: same scheduler, same permission gate, same audit
+ledger. On a headless box: `bento job recipes`, then `bento job add morning-brief --topics "…"`.
 
 ---
 
@@ -44,6 +71,15 @@ question asked of any change, not the last.
 | ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
 
+### Windows that behave like windows
+
+![Four Bento windows stacked on the desktop: the focused one carries an accent ring and the full shadow, the rest recede](docs/screenshots/windows.png)
+
+A window opens **where you left it** — position and size are remembered per app — and a window
+opening for the first time cascades by more than a title bar, so the one underneath is still
+readable. The focused window carries an accent ring and the full shadow; the others recede. The ✦
+in the title bar is the agent *inside that app*: ask it about what is on screen without leaving it.
+
 ### Five design languages, not five palettes
 
 ![The five built-in design-language themes: Bento, Liquid Glass, Spatial, Claymorphism, Minimalism](docs/screenshots/themes.png)
@@ -55,6 +91,19 @@ a few KB each, sharp from a phone to a 4K panel. [More →](docs/desktop.md#them
 Glass is the most expensive thing a desktop can draw, and the cost compounds with every window you
 open. **Themes → Effects** measures your machine and turns it down only if it has to — five windows
 in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
+
+### It reaches you where you already are
+
+![The WhatsApp channel in Settings: the four Cloud API fields, the callback URL to paste into Meta's console, the paired number, and whether the 24-hour window is open](docs/screenshots/channels-whatsapp.png)
+
+**Telegram and WhatsApp are native channels** — the same conversation, the same memory, the same
+tools and the same approval buttons as at the desk. Not a notification bridge: a reply from your
+phone continues the thread you started this morning.
+
+WhatsApp uses Meta's Cloud API, and Bento is honest about its one real limit: outside 24 hours from
+your last message, WhatsApp will not carry a free-form reply at all. The card says whether that
+window is open, a send that cannot go through says so and how to fix it, and a scheduled job that
+delivers to WhatsApp saves its report first so nothing is lost. [Setup →](docs/whatsapp.md)
 
 ### One desktop, every screen
 
