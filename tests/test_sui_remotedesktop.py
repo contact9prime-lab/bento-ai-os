@@ -192,3 +192,105 @@ def test_doctor_reports_which_desktop_you_get():
     cli = (SRC / "__main__.py").read_text()
     assert "native desktop surface available" in cli
     assert "install_hint()" in cli
+
+
+# --- never leave a blank screen ---------------------------------------------
+# Reported from a real machine: the session came up black and needed a hard
+# reboot. Three defects, all in the launcher, all of them the same mistake —
+# treating "the libraries imported" as "the desktop appeared".
+
+def test_the_launcher_does_not_exec_the_host():
+    """`exec` replaces the process, which makes the fallback unreachable. The
+    whole point of having a fallback is being able to get to it."""
+    from agentos import session
+    script = session.shell_script_text(8321)
+    host = script.split("SHELLHOST=", 1)[1]
+    assert 'exec "$HOSTPY"' not in host, "exec makes the Chromium fallback unreachable"
+    assert "HOSTPID=$!" in host, "the host must run as a child so its exit can be seen"
+
+
+def test_the_launcher_forces_wayland():
+    """layer-shell is a Wayland protocol; gtk_layer_init_for_window() ABORTS under
+    X11, and the script exports DISPLAY for XWayland apps just above."""
+    from agentos import session
+    assert 'GDK_BACKEND=wayland "$HOSTPY"' in session.shell_script_text(8321)
+    assert 'os.environ.setdefault("GDK_BACKEND", "wayland")' in \
+        (SRC / "shellhost.py").read_text()
+
+
+def test_a_renderer_failure_falls_back_instead_of_ending_the_session():
+    """Measured: WebKit can print "desktop is up", having really loaded the page,
+    and segfault a moment later. So the marker is not proof on its own — the exit
+    status is the other half, and a non-zero one must reach the fallback."""
+    from agentos import session
+    script = session.shell_script_text(8321)
+    assert 'wait "$HOSTPID"; HOSTRC=$?' in script
+    assert '[ "$HOSTRC" = 0 ] && exit 0' in script, "only a CLEAN exit is a logout"
+    assert "falling back to Chromium" in script
+
+
+def test_the_host_gives_up_rather_than_sitting_on_a_black_screen():
+    host = (SRC / "shellhost.py").read_text()
+    assert "--give-up-after" in host
+    assert 'state["exit"] = 3' in host, "failing to render must be a non-zero exit"
+    assert "return state[\"exit\"]" in host, "main() must propagate the failure"
+
+
+def test_an_early_failure_is_remembered_and_is_clearable():
+    """A machine that cannot draw must not spend 25 black seconds on every login —
+    and dying after hours of use is a crash, not a verdict on the hardware."""
+    from agentos import session
+    script = session.shell_script_text(8321)
+    assert "layer-shell-failed" in script
+    assert "NOW - HOSTSTART" in script, "only an EARLY failure should be remembered"
+    cli = (SRC / "__main__.py").read_text()
+    assert "layer-shell-failed" in cli and "cleared the flag" in cli
+
+
+def test_the_fallback_is_announced_on_screen():
+    """A log nobody knows about is not telling the user."""
+    from agentos import session
+    assert "swaynag" in session.shell_script_text(8321).split("SHELLHOST=", 1)[1]
+
+
+# --- the session diagnostic -------------------------------------------------
+# `agentos doctor --session`. Built because the previous answer to "my screen is
+# black" was "read a renderer's stderr and tell me what you see", which is the
+# wrong way round.
+
+def test_probes_run_in_subprocesses():
+    """The failures being diagnosed are aborts and segfaults inside GTK and
+    WebKit. A probe that crashes the doctor cannot report that it crashed."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "subprocess.run" in src
+    assert "_signal_name" in src, "a signal death is a RESULT and must be named"
+
+
+def test_loading_is_not_treated_as_drawing():
+    """Measured: WebKit reports FINISHED, having really loaded and run the page,
+    then segfaults seconds later while compositing it. A probe that exits on
+    FINISHED passes on a machine that black-screens."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "state['loaded']" in src
+    assert "kept drawing" in src
+    assert "requestAnimationFrame" in src, "a still page can sit quietly on a broken stack"
+
+
+def test_the_probe_loads_the_real_desktop_when_it_can():
+    """A 20-byte page renders happily on a stack that dies on the real shell."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "__PROBE_URL__" in src and "_webkit_probe" in src
+    assert "backdrop-filter" in src, "the synthetic fallback must cost what the shell costs"
+
+
+def test_it_probes_the_combination_the_session_actually_uses():
+    """WebKit can render in a window and still fail on a layer surface."""
+    src = (SRC / "sessiondoctor.py").read_text()
+    assert "PROBE_WEBKIT_LAYER" in src
+    assert "GtkLayerShell.set_exclusive_zone" in src
+
+
+def test_doctor_exposes_it():
+    cli = (SRC / "__main__.py").read_text()
+    assert '"--session"' in cli
+    assert "sessiondoctor.report" in cli

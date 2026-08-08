@@ -272,7 +272,8 @@ def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool =
     print("  agentos tunnel --on [--public] [--provider tailscale] | --off")
 
 
-def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
+def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
+                  sets: list | None = None):
     """Show or change the ways in.
 
     The TUI face of Settings → Channels. This is the face that matters most on a
@@ -325,6 +326,15 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
         patch["enabled"] = False
     if posture:
         patch["posture"] = posture
+    known = {f.key for f in chmod.BY_ID[channel].fields}
+    for pair in (sets or []):
+        key, _, val = str(pair).partition("=")
+        key = key.strip()
+        if key not in known:
+            print(f"  {chmod.BY_ID[channel].title} has no field '{key}'"
+                  + (f" — it takes: {', '.join(sorted(known))}" if known else ""))
+            return
+        patch[key] = val
     if not patch:
         c = next(x for x in chmod.state(cfg) if x["id"] == channel)
         print(f"  {c['title']} — {c['detail']}")
@@ -333,6 +343,11 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
               + ("" if c["own_gate"] else f" (follows {c['posture_from']})"))
         if c.get("note"):
             print(f"  note: {c['note']}")
+        for f in chmod.BY_ID[channel].fields:
+            print(f"    --set {f.key}={'…' if f.secret else '<value>'}"
+                  f"{'  (set)' if c['set'].get(f.key) else ''}  {f.label}")
+        if channel == "whatsapp":
+            _whatsapp_webhook_note(cfg)
         return
 
     ok, message = chmod.save(cfg, channel, patch)
@@ -340,6 +355,28 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None):
     print(("  " if ok else "  refused: ") + message)
     if ok:
         print("  a running server picks this up on its next turn")
+        if channel == "whatsapp":
+            _whatsapp_webhook_note(cfg)
+
+
+def _whatsapp_webhook_note(cfg: dict):
+    """The callback URL, or the sentence that says why there is not one yet.
+
+    A webhook channel that is "on" but unreachable receives nothing, forever, with
+    no error anywhere. Over SSH there is no settings page to notice that on, so the
+    terminal has to say it out loud.
+    """
+    import asyncio as _aio
+
+    from . import whatsapp as wamod
+    try:
+        reach = _aio.run(wamod.reachability(cfg))
+    except Exception:
+        reach = {"reachable": False, "why": "could not check how this machine is reachable"}
+    if reach.get("reachable"):
+        print(f"  webhook URL (paste into developers.facebook.com):\n    {reach['webhook']}")
+    else:
+        print(f"  not reachable yet: {reach.get('why', '')}")
 
 
 def delegate(prompt: str, workdir: str | None, tools: str | None,
@@ -395,7 +432,7 @@ def delegate(prompt: str, workdir: str | None, tools: str | None,
     print(f"\n\n— {run.turns} turn(s), ${run.cost_usd:.4f}")
 
 
-def doctor(fix: bool = False):
+def doctor(fix: bool = False, session: bool = False):
     """Environment sanity: the checks that catch every 'it hangs' class of incident.
     With fix=True, auto-remediate what is safe to fix and print sudo steps for the rest."""
     import json as _json
@@ -421,6 +458,15 @@ def doctor(fix: bool = False):
     cfg = cfgmod.load_config()
     port = cfg.get("port", 8321)
     print("AgentOS doctor" + ("  (--fix: auto-repair on)" if fix else "") + "\n")
+
+    # --session answers one question — what can draw the desktop here — and it is
+    # the only thing worth printing when that is what you are asking. Every probe
+    # runs in a subprocess, because the failures it looks for are aborts and
+    # segfaults inside GTK and WebKit.
+    if session:
+        from . import sessiondoctor
+        sessiondoctor.report(ok, warn, bad, todo)
+        return
 
     # 1. who owns the port?
     try:
@@ -586,11 +632,26 @@ def doctor(fix: bool = False):
         # surface or a window pretending to be one.
         from . import shellhost as _sh
         from . import desktop as desktopmod
+        # A previous login tried the native surface and got nothing on screen, so
+        # the session launcher parked it. Say so loudly: otherwise the machine
+        # silently keeps using the fallback and nobody knows why.
+        _lsfail = cfgmod.AGENTOS_HOME / "layer-shell-failed"
+        if _lsfail.is_file():
+            warn("the native desktop surface is DISABLED — it failed to render here")
+            for _line in _lsfail.read_text().splitlines()[:2]:
+                print(f"      {_line}")
+            if fix:
+                _lsfail.unlink()
+                fixed("cleared the flag — the next login will try the native surface again")
+            else:
+                todo(f"agentos doctor --fix   (or: rm {_lsfail})   to try it again")
         _py, _wk = _sh.python_with_gi()
-        if _py:
+        if _py and not _lsfail.is_file():
             ok(f"native desktop surface available (WebKit2GTK {_wk} via {_py})")
             ok("  → app windows stack above the desktop natively; the menu bar and dock "
                "are reserved with the compositor")
+        elif _py:
+            pass                        # already reported as disabled above
         else:
             warn("no native desktop surface — the session will draw the desktop in a "
                  "Chromium window instead, which has to fake the stacking order")
@@ -943,6 +1004,96 @@ def _flow_cli(args):
         return
 
 
+def _job_cli(args):
+    """`bento job` — give this machine something to do, from a terminal.
+
+    The TUI face of the first-run "give it a job" beat (CLAUDE.md: every feature in
+    all three). A headless Pi is exactly where a standing job earns its keep and
+    exactly where there is no wizard to run one, so the same catalogue and the same
+    `jobs.install` are reachable here.
+
+    Listing and adding go straight through the store, so they work with the server
+    down; only `run` needs the running server, because a run is a live thing it owns.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import jobs as jobsmod
+    cfg, store = _open_store()
+    act = args.action
+
+    if act == "list":
+        rows = jobsmod.installed(store)
+        if not rows:
+            print("nothing is running yet.\n")
+            print("  bento job recipes           what this machine can be asked to do")
+            return
+        for j in rows:
+            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}")
+            print(f"    {j['description']}")
+            print(f"    next: {j['next']}")
+        return
+
+    if act == "recipes":
+        for r in jobsmod.RECIPES:
+            print(f"\n{r.icon}  {r.id}")
+            print(f"    {r.title} — {r.blurb}")
+            print(f"    e.g. {r.example}")
+            for n in r.needs:
+                if n.key == "deliver":
+                    continue
+                print(f"    --{n.key:<8} {n.label}"
+                      + (f"  (default {n.default})" if n.default else ""))
+        ways = [d for d in jobsmod.deliveries(cfg)]
+        print("\n  --deliver  " + ", ".join(
+            f"{d['id']}{'' if d['ready'] else ' (not set up)'}" for d in ways))
+        print("\n  bento job add morning-brief --topics 'my industry' --at 08:00")
+        return
+
+    if act == "add":
+        if not args.name:
+            print("which recipe? (bento job recipes)")
+            sys.exit(2)
+        answers = {k: v for k, v in
+                   (("topics", args.topics), ("folder", args.folder), ("url", args.url),
+                    ("at", args.at), ("minutes", args.minutes), ("deliver", args.deliver))
+                   if v}
+        try:
+            res = jobsmod.install(cfg, store, args.name, answers)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ {res['flow']['name']} — runs {jobsmod.describe_next(store, res['flow']['name'])}")
+        for p in res.get("reads") or []:
+            print(f"  reads: {p}")
+        print(f"  delivers: {res['delivery']['label'].lower()}")
+        if res.get("substituted"):
+            print(f"  note: {res['substituted']}")
+        # The clock lives in the running server's scheduler; a job added while it is
+        # down is still a real row, it just starts ticking at the next start.
+        print(f"\n  bento job run {res['flow']['name']}     try it now")
+        return
+
+    if act == "run":
+        if not args.name:
+            print("which job? (bento job list)")
+            sys.exit(2)
+        url = f"http://127.0.0.1:{cfg.get('port', 8321)}/api/jobs/{args.name}/run"
+        req = urllib.request.Request(url, method="POST", data=b"{}",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                res = json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
+            sys.exit(1)
+        except OSError:
+            print("✗ AgentOS is not running here — start it with `bento serve`")
+            sys.exit(1)
+        print(f"▶ {args.name} started · run {res['run_id']}\n  bento flow show {res['run_id']}")
+        return
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1168,7 +1319,12 @@ def _audit_cli(args):
 
 def main():
     _use_system_certs()
-    parser = argparse.ArgumentParser(prog="agentos", description="AgentOS — your machine, with a brain.")
+    # Name it after however it was invoked. `bento` and `agentos` are the same
+    # program, and help text that answers with a different name than the one you
+    # typed is the kind of small lie that makes people doubt the rest.
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]) or "bento",
+        description="Bento Box AI — your machine, with a brain.")
     sub = parser.add_subparsers(dest="cmd")
 
     p_serve = sub.add_parser("serve", help="start the AgentOS server + UI (default)")
@@ -1210,6 +1366,9 @@ def main():
     sub.add_parser("app", help="open AgentOS as a desktop app window")
     p_doctor = sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
     p_doctor.add_argument("--fix", action="store_true", help="auto-repair what's safe; print sudo steps for the rest")
+    p_doctor.add_argument("--session", action="store_true",
+                          help="probe what can actually draw the desktop on this machine "
+                               "(why the session came up, or did not)")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
     sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
@@ -1250,6 +1409,11 @@ def main():
     p_chan.add_argument("--off", action="store_true", help="switch this channel off")
     p_chan.add_argument("--posture", default="",
                         help="how far to trust it: inherit | read_only | ask | full")
+    # Telegram needs one value, WhatsApp needs four. Without this, configuring a
+    # channel is a GUI-only act — which is exactly backwards for a headless machine.
+    p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                        help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
+                             "(repeatable; `agentos channels <id>` lists the fields it needs)")
 
     p_tun = sub.add_parser("tunnel", help="show how to reach this machine from elsewhere (Tailscale / tunnel), or publish it")
     p_tun.add_argument("--on", action="store_true", help="publish AgentOS")
@@ -1297,6 +1461,18 @@ def main():
     p_flow.add_argument("--always", action="store_true",
                         help="with `allow`: remember it as a grant, not just this once")
 
+    p_job = sub.add_parser("job", help="give this machine a standing job — the terminal "
+                                       "half of the first-run 'give it a job' screen")
+    p_job.add_argument("action", nargs="?", default="list",
+                       choices=["list", "recipes", "add", "run"])
+    p_job.add_argument("name", nargs="?", default="", help="recipe id for `add`, job name for `run`")
+    p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")
+    p_job.add_argument("--folder", default="", help="folder-watch: the one folder it may read")
+    p_job.add_argument("--url", default="", help="page-watch: the page to check")
+    p_job.add_argument("--at", default="", help="time of day, HH:MM")
+    p_job.add_argument("--minutes", default="", help="how often, in minutes")
+    p_job.add_argument("--deliver", default="", help="report | notify | telegram")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -1323,7 +1499,7 @@ def main():
 
     args = parser.parse_args()
     if args.cmd == "doctor":
-        doctor(fix=getattr(args, "fix", False))
+        doctor(fix=getattr(args, "fix", False), session=getattr(args, "session", False))
     elif args.cmd == "ask":
         ask(" ".join(args.prompt), args.model, args.full)
     elif args.cmd == "eval":
@@ -1335,7 +1511,7 @@ def main():
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd == "channels":
-        channels_cmd(args.channel, args.on, args.off, args.posture)
+        channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
     elif args.cmd == "delegate":
         delegate(" ".join(args.prompt), args.dir, args.tools, args.model, args.budget)
     elif args.cmd == "app":
@@ -1388,6 +1564,8 @@ def main():
         _audit_cli(args)
     elif args.cmd == "flow":
         _flow_cli(args)
+    elif args.cmd == "job":
+        _job_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

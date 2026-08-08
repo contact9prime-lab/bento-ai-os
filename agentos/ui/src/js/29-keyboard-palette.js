@@ -384,6 +384,11 @@ function scMatch(e,keys){
   return scKeyName(e.key)===want||(e.code||'').toLowerCase()==='key'+want;
 }
 const SC_ACTIONS={
+  // Ctrl+Alt+Delete lands here. It offers a CHOICE — lock, log out, restart,
+  // shut down — because on every other desktop that key opens a dialog, and
+  // because a key people press when something is already wrong must never be
+  // the key that destroys their session without asking.
+  'power':()=>powerMenuOpen(true),
   'omnibar.focus':()=>omniFocus(),
   'omnibar.focus2':()=>omniFocus(),
   'palette':()=>omniFocus(),

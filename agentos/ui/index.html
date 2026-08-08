@@ -7,13 +7,13 @@
 <meta name="theme-color" content="#0b0d10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="AgentOS">
+<meta name="apple-mobile-web-app-title" content="Bento Box AI">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/assets/icon-192.png" type="image/png">
-<title>AgentOS</title>
+<title>Bento Box AI</title>
 <style>
 :root{
   color-scheme:dark;   /* native widgets (select popups, scrollbars) follow the mode */
@@ -233,27 +233,51 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
    everything beneath it. Themes that genuinely want glass windows (Liquid Glass,
    Spatial) set a translucent background AND their own backdrop-filter, which is
    the only place the cost buys anything. */
+/* Depth is the whole job here. Five windows used to sit on the desktop as five
+   near-identical dark rectangles: the active one had --el-5 against --el-4 and a
+   .16 border against a .10 one, differences you cannot see at a glance, so a
+   stack read as a mush and you could not tell which window your keystrokes were
+   going to. The ladder is now unmistakable and costs nothing extra to paint:
+
+     inactive  a small shadow (--el-2) and a plain hairline — it recedes
+     active    the biggest shadow, a brighter border, and a 1px accent ring
+
+   The ring is a second box-shadow layer, not an outline, so it does not add to
+   layout and does not clip at the corner radius. Still no backdrop-filter — see
+   the note below. */
 .win{position:absolute;display:flex;flex-direction:column;min-width:360px;min-height:240px;
   background:var(--bg);
   border:1px solid var(--hairline);border-radius:var(--r-lg);
-  box-shadow:var(--el-4);
+  box-shadow:var(--el-2);
+  transition:box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out);
   resize:both;overflow:hidden}
-.win.active{border-color:var(--hairline-strong);box-shadow:var(--el-5)}
+.win.active{border-color:var(--hairline-strong);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 30%,transparent),var(--el-5)}
+/* dragging or resizing: lift it further, so the thing under the pointer is
+   obviously the thing that is moving */
+.win.dragging{box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent),var(--el-5);
+  transition:none}
 .win.maxed{inset:0!important;width:auto!important;height:auto!important;border-radius:0;resize:none}
-.win .ttl{display:grid;grid-template-columns:66px 1fr 66px;align-items:center;height:40px;flex:none;padding:0 10px;
+/* 36px, not 40: three symmetric columns of 72px so the title is centred on the
+   window rather than nudged by whichever side has more in it. */
+.win .ttl{display:grid;grid-template-columns:72px 1fr 72px;align-items:center;height:36px;flex:none;padding:0 10px;
   background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-bottom:1px solid rgba(0,0,0,.28);cursor:default}
-.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03))}
+.win.active .ttl{background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03))}
 .win .tmid{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
 .win .ticon{display:flex}
-.win .ticon .aicon{width:17px;height:17px;box-shadow:var(--el-1)}
-.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.win .ticon .aicon{width:16px;height:16px;box-shadow:var(--el-1)}
+.win .tname{font-size:var(--fs-sm);font-weight:600;color:var(--dim2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  transition:color var(--d-base) var(--ease-out)}
 .win.active .tname{color:var(--txt)}
+/* An inactive window's icon recedes with the rest of its chrome. Saturation, not
+   opacity: the icon stays legible, it just stops competing for attention. */
+.win:not(.active) .ticon{filter:saturate(.3);opacity:.75}
 .win .tbtns{display:flex;gap:8px;justify-self:start}
 .win .tbtns button{width:13px;height:13px;border-radius:50%;padding:0;position:relative;
   border:.5px solid rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
   color:transparent;font-size:var(--fs-2xs);font-weight:800;line-height:1;transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .win .tbtns .cls{background:#ff5f57}.win .tbtns .mn{background:#febc2e}.win .tbtns .mx{background:#28c840}
-.win:not(.active) .tbtns button{background:#5a606c}
+.win:not(.active) .tbtns button{background:#454b56}
 .win .tbtns:hover button{color:rgba(0,0,0,.55)}
 .win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
 .win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -708,6 +732,11 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .audok{background:rgba(80,200,120,.16);color:#4cc47c}
 .audden{background:rgba(240,90,90,.16);color:#ef6a6a}
 .audask{background:rgba(255,190,80,.16);color:#e2a33f}
+/* These three are BADGE recipes — a tint behind an inline pill. On `.val`, which
+   is a block, the tint became a full-width coloured band across the middle of the
+   stat tile and read as a rendering fault. The number takes the colour; the tile
+   keeps its own background. */
+.val.audok,.val.audden,.val.audask{background:none}
 .val.audok{color:#4cc47c}
 .val.audden{color:#ef6a6a}
 .val.audask{color:#e2a33f}
@@ -728,7 +757,9 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .mut{color:var(--dim2);font-size:var(--fs-sm)}
 
 /* ================= task manager ================= */
-.tmgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+/* auto-fit, not a hard 3: a four-tile summary used to wrap as 3 + 1 orphan, and
+   the same grid is used by panels with two tiles and with six. */
+.tmgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .stat{border:1px solid var(--line);border-radius:var(--r-lg);padding:11px 13px;background:var(--bg2)}
 .stat .lbl{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;letter-spacing:.6px;text-transform:uppercase}
 .stat .val{font-size:var(--fs-2xl);font-weight:800;margin:3px 0 7px;font-variant-numeric:tabular-nums}
@@ -1401,12 +1432,21 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .win .wmain{flex:1;min-height:0;display:flex}
 .win .wmain .wbody{flex:1;min-width:0}
 .win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
-.win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
+/* The ✦ is the agent inside this app, and it is the one piece of chrome people
+   recognise as agentic — so on the ACTIVE window it is present rather than
+   apologetic: full opacity, accent-tinted, with a faint pill behind it. It still
+   fades out on the windows you are not using, because the point is "the agent is
+   here, in this app", and eight glowing marks say nothing. */
+.win .cp-btn{width:26px;height:26px;border-radius:var(--r-full);font-size:var(--fs-md);color:var(--dim2);
   display:flex;align-items:center;justify-content:center;opacity:0;
-  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
-.win:hover .cp-btn,.win.active .cp-btn,.win .cp-btn.on{opacity:.85}
-.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc);opacity:1}
-.win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),
+    opacity var(--d-base) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
+.win:hover .cp-btn{opacity:.6}
+.win.active .cp-btn{opacity:1;color:var(--acc);
+  background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.win .cp-btn:hover{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc);opacity:1}
+.win .cp-btn.on{opacity:1;color:var(--acc);text-shadow:0 0 12px var(--acc);
+  background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
   border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
   transition:width var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out)}
@@ -1556,15 +1596,22 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .pgroup > h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
   padding:12px 16px 0}
 .pgroup > .ghint{font-size:var(--fs-sm);color:var(--dim);padding:6px 16px 0;line-height:1.5}
-.prow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-top:1px solid var(--line)}
+/* Wrap, don't squeeze. `.pl` was flex:1;min-width:0 against a control with a hard
+   240px minimum, so in a narrow window the LABEL gave up all its space and the
+   input kept all of its: "Ollama base URL" broke across two lines beside a
+   three-line description, next to a field with room to spare. Now the label has a
+   base width it will not go under, and when both cannot fit the control drops to
+   its own line — the same stacked shape `.prow.stack` asks for explicitly, arrived
+   at without a media or container query. */
+.prow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:13px 16px;border-top:1px solid var(--line)}
 .pgroup > h3 + .prow,.pgroup > .ghint + .prow,.pgroup > .prow:first-child{border-top:none}
 .prow:first-of-type{margin-top:4px}
-.prow .pl{flex:1;min-width:0}
+.prow .pl{flex:1 1 240px;min-width:0}
 .prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
 .prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
-.prow .pc{flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.prow .pc{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
-  min-width:240px;max-width:340px}
+  min-width:200px;max-width:340px}
 .prow .pc input[type=number]{min-width:96px}
 .prow.stack{display:block}
 .prow.stack .pc{margin-top:9px;justify-content:flex-start}
@@ -1862,6 +1909,94 @@ body.glass-off .win{background:var(--bg)!important}
 /* the picker in Themes → Effects */
 .gq-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .gq-row .endbtn.on{border-color:var(--acc);color:var(--txt)}
+/* ================= jobs: the give-it-a-job screens =================
+   Shared by the wizard's last beat and the standing Jobs app, so the two cannot
+   drift. No backdrop-filter anywhere here (see 03-windows.css): these sit inside
+   a window or an already-blurred wizard stage, and a second blur is pure cost. */
+
+.job-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:var(--sp-3);margin:var(--sp-3) 0}
+.job-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;
+  padding:var(--sp-4);border:1px solid var(--hairline);border-radius:var(--r-lg);
+  background:var(--bg2);color:var(--txt);
+  transition:border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out)}
+.job-card:hover{border-color:var(--hairline-strong);transform:translateY(-2px);background:var(--bg3)}
+.job-card.on{border-color:var(--acc);background:var(--bg3);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.job-mark{font-size:var(--fs-xl);line-height:1}
+.job-card b{font-size:var(--fs-base);font-weight:650}
+.job-blurb{font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
+.job-eg{font-size:var(--fs-xs);color:var(--dim2);line-height:1.45;font-style:italic}
+
+.job-form{display:flex;flex-direction:column;gap:var(--sp-4);margin-top:var(--sp-2)}
+.job-q{display:flex;flex-direction:column;gap:6px}
+.job-q>span{font-size:var(--fs-sm);font-weight:600;color:var(--txt)}
+.job-q em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.job-q input[type=text],.job-q input:not([type]){width:100%}
+.job-q input{width:100%}
+.job-mins{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dim)}
+.job-mins input{width:90px}
+
+.job-ways{display:flex;flex-direction:column;gap:6px}
+.job-way{display:grid;grid-template-columns:auto 1fr;gap:2px var(--sp-2);align-items:baseline;
+  padding:10px var(--sp-3);border:1px solid var(--hairline);border-radius:var(--r-md);
+  background:var(--bg2);cursor:pointer}
+.job-way input{grid-row:span 2;align-self:center}
+.job-way b{font-size:var(--fs-sm);font-weight:600}
+.job-way em{grid-column:2;font-size:var(--fs-xs);color:var(--dim);font-style:normal}
+.job-way:hover{border-color:var(--hairline-strong)}
+.job-way:has(input:checked){border-color:var(--acc);background:var(--bg3)}
+/* A way out this machine cannot do is dimmed and disabled, never hidden — the
+   detail line is the sentence that says what would fix it. */
+.job-way.off{opacity:.5;cursor:not-allowed}
+.job-way.off:hover{border-color:var(--hairline)}
+
+.job-consent{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  border-left:2px solid var(--acc);padding:2px 0 2px var(--sp-3)}
+.job-consent b{display:block;color:var(--txt);font-size:var(--fs-xs);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:4px}
+.job-consent ul{list-style:none;margin:0;padding:0}
+.job-consent li{padding:1px 0}
+.job-consent code{font-family:var(--mono);font-size:var(--fs-xs);color:var(--txt)}
+.job-warn{color:var(--warn)}
+.job-consent:has(.job-warn){border-left-color:var(--warn)}
+
+.job-go{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.job-done b{font-size:var(--fs-lg);color:var(--ok)}
+.job-done .sub{font-size:var(--fs-sm);color:var(--dim);padding:2px 0}
+.job-done .job-go{margin-top:var(--sp-3)}
+
+.job-row{display:flex;align-items:center;gap:var(--sp-2)}
+.job-app h3{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim2);font-weight:700}
+
+/* The wizard's stage is sized for one sentence and a row of chips. Three cards
+   side by side need more, so the stage widens for exactly this beat rather than
+   the cards wrapping into a column nobody can compare. */
+.wiz-stage:has(.wiz-jobs){width:min(900px,94vw)}
+.wiz-stage:has(.wiz-jobs) .wiz-convo{max-height:76vh}
+.wiz-jobs{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4)}
+.wiz-jobs-head b{display:block;font-size:var(--fs-lg);font-weight:650}
+.wiz-jobs-head span{display:block;font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  margin-top:4px}
+@media (max-width:640px){.job-cards{grid-template-columns:1fr}}
+
+/* ---- WhatsApp's extras inside the channel card ---- */
+.wa-extra{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-3)}
+.wa-hook{display:flex;flex-direction:column;gap:6px;padding:var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2)}
+.wa-hook b{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim2)}
+.wa-hook code{font-family:var(--mono);font-size:var(--fs-xs);word-break:break-all;color:var(--txt)}
+.wa-hook em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.wa-hook.warnbox{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.wa-hook.warnbox b{color:var(--warn)}
+.wa-line{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.wa-line b{color:var(--txt)}
+.wa-line.ok{color:var(--ok)}
+.wa-line.warn{color:var(--warn)}
+.wa-row{display:flex;align-items:center;gap:var(--sp-2)}
 </style>
 </head>
 <body>
@@ -1871,7 +2006,7 @@ body.glass-off .win{background:var(--bg)!important}
        same thing Ctrl+Space does. Every desktop has a corner you can hit to start
        something, and this was a dead label. -->
   <div id="mb-brand" role="button" tabindex="0" title="Search and run anything (Ctrl+Space)"
-       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">AgentOS</span></div>
+       onclick="omniFocus()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();omniFocus()}"><span class="mark"></span><span id="mb-name">Bento Box AI</span></div>
   <span id="mbapp" title="focused app"></span>
   <div id="mbmenus" role="menubar"></div>
   <div id="mbwidgets"></div>
@@ -1897,7 +2032,7 @@ body.glass-off .win{background:var(--bg)!important}
 </div>
 <div id="powermenu">
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
-  <button onclick="powerDo('agentos-restart','Restart AgentOS? Running turns will stop.')">Restart AgentOS</button>
+  <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>
   <button onclick="powerDo('suspend','Suspend the machine?')">Suspend</button>
   <button class="danger" onclick="powerDo('logout','Log out of this session? Unsaved work in other apps will be lost.')">Log out…</button>
@@ -1942,7 +2077,7 @@ body.glass-off .win{background:var(--bg)!important}
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
 
 <div id="startmenu">
-  <div id="smhead"><div class="mark">▲</div><div><b>AgentOS</b><small>your machine, with a brain</small></div></div>
+  <div id="smhead"><div class="mark">▲</div><div><b>Bento Box AI</b><small>your machine, with a brain</small></div></div>
   <div id="smsearch"><input id="smq" placeholder="Search apps & system apps…" autocomplete="off"></div>
   <div id="smapps"></div>
   <div id="smfoot"><div id="smdot" style="width:8px;height:8px;border-radius:50%;background:var(--err)"></div><span id="smstat">connecting…</span></div>
@@ -1973,7 +2108,7 @@ body.glass-off .win{background:var(--bg)!important}
   <div id="tbnative" title="Windows open on your host desktop — click to switch"></div>
 </div>
 
-<div id="boot"><div class="mark">▲</div><h1>AgentOS</h1><div class="bbar"><i></i></div></div>
+<div id="boot"><div class="mark">▲</div><h1>Bento Box AI</h1><div class="bbar"><i></i></div></div>
 
 <script>
 'use strict';
@@ -2374,6 +2509,7 @@ const ICONS={
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
@@ -3106,14 +3242,73 @@ function openApp(id,opts){
   return createWin(app);
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
-function createWin(app){
-  const desk=$('#desktop'), dw=desk.clientWidth, dh=desk.clientHeight;
-  const el=document.createElement('div'); el.className='win';
-  const width=Math.min(app.w,dw-30), height=Math.min(app.h,dh-30);
-  const off=(WM.cascade++%6)*26;
+/* ---- where a window opens ------------------------------------------------
+   This used to be "centre it, plus 26px per window, wrapping every six". Five
+   windows therefore landed on top of each other, the same size, offset by less
+   than a title bar — the stack in the screenshot that started this. Two fixes,
+   in order of how much they matter:
+
+   1. A window you have placed opens where you left it. Geometry is remembered
+      per app in localStorage, so the desktop you arranged is the desktop you
+      come back to. This is what people actually want and it costs one key.
+   2. A window opening for the FIRST time cascades from the top-left of the
+      usable area with a step big enough to read a title bar underneath, and
+      wraps into a second column rather than marching off the bottom right.
+
+   Sizes are clamped to the usable area (below the menu bar, above the dock),
+   not to the whole viewport, so a tall window no longer opens with its footer
+   under the dock. */
+var WIN_STEP=38, WIN_MARGIN=14;
+function winGeomKey(id){return 'wingeom:'+id}
+function winSaveGeom(w){
+  if(!w||w.max||w.min||w.snap)return;          // remember the shape you chose, not a state
+  try{localStorage.setItem(winGeomKey(w.id),JSON.stringify({
+    l:parseInt(w.el.style.left,10)||0, t:parseInt(w.el.style.top,10)||0,
+    w:parseInt(w.el.style.width,10)||0, h:parseInt(w.el.style.height,10)||0}))}catch(e){}
+}
+function winLoadGeom(id){
+  try{const g=JSON.parse(localStorage.getItem(winGeomKey(id))||'null');
+    return (g&&g.w>200&&g.h>140)?g:null}catch(e){return null}
+}
+/* The rectangle a window may actually use: inside the menu bar and above the
+   dock/omnibar band, which is what --mbh and --tbh already describe. */
+function winArea(){
+  const desk=$('#desktop'), cs=getComputedStyle(document.documentElement);
+  const px=v=>parseInt(cs.getPropertyValue(v),10)||0;
+  const top=px('--mbh'), bottom=px('--tbh');
+  return {x:WIN_MARGIN, y:WIN_MARGIN,
+          w:Math.max(320,desk.clientWidth-WIN_MARGIN*2),
+          h:Math.max(240,desk.clientHeight-top-bottom-WIN_MARGIN),
+          top, bottom};
+}
+function winPlace(el,app){
+  const a=winArea();
+  const saved=winLoadGeom(app.id);
+  let width=Math.min(saved?saved.w:app.w, a.w);
+  let height=Math.min(saved?saved.h:app.h, a.h);
   el.style.width=width+'px'; el.style.height=height+'px';
-  el.style.left=Math.max(8,Math.min((dw-width)/2+off,dw-width-8))+'px';
-  el.style.top=Math.max(8,Math.min((dh-height)/2-40+off,dh-height-8))+'px';
+  if(saved){
+    // clamp into today's screen: the geometry may come from a bigger monitor
+    el.style.left=Math.max(a.x,Math.min(saved.l,a.x+a.w-width))+'px';
+    el.style.top=Math.max(a.y,Math.min(saved.t,a.y+a.h-height))+'px';
+    return;
+  }
+  /* How many steps fit before wrapping is a property of the SCREEN, not of the
+     window being placed — deriving it from `height` gave each app a different
+     wrap point, so the sixth window jumped to a column the fifth had not
+     started. Six steps or whatever the screen holds, whichever is smaller. */
+  const perCol=Math.max(1,Math.min(6,Math.floor(a.h/(WIN_STEP*3))));
+  const n=WM.cascade++;
+  const col=Math.floor(n/perCol), row=n%perCol;
+  const l=a.x+row*WIN_STEP+col*(WIN_STEP*4);
+  const t=a.y+row*WIN_STEP;
+  el.style.left=Math.max(a.x,Math.min(l,a.x+a.w-width))+'px';
+  el.style.top=Math.max(a.y,Math.min(t,a.y+a.h-height))+'px';
+}
+function createWin(app){
+  const desk=$('#desktop');
+  const el=document.createElement('div'); el.className='win';
+  winPlace(el,app);
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
@@ -3364,6 +3559,7 @@ function dragify(w,handle){
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
       el.classList.remove('dragging');snapGhost(null);
       if(zone&&moved)applySnap(w,zone);
+      else if(moved)winSaveGeom(w);      // where you put it is where it opens next time
     };
     handle.addEventListener('pointermove',move);
     handle.addEventListener('pointerup',up);
@@ -3394,7 +3590,8 @@ function resizify(w){
         nw=Math.min(nw,desk.clientWidth); nh=Math.min(nh,desk.clientHeight);
         el.style.left=l+'px';el.style.top=t+'px';el.style.width=nw+'px';el.style.height=nh+'px';
       };
-      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);el.classList.remove('dragging');w.snap=null};
+      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);
+        el.classList.remove('dragging');w.snap=null;winSaveGeom(w)};
       h.addEventListener('pointermove',move);
       h.addEventListener('pointerup',up);
     });
@@ -3407,9 +3604,21 @@ const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path 
 const SVG_EMPTY='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>';
 function panelShell(body,o){
   o=o||{};
+  /* The title bar already says which app this is. Repeating it as the first thing
+     inside the window ("Memory" above "Memory") spent the widest row in every app
+     on a word the user just read, and pushed the search box and the controls into
+     the corner. It is dropped when it matches the window's own title, and kept
+     when it does not — a panel showing something else genuinely needs a label. */
+  /* Read the title bar itself rather than making all fourteen callers pass their
+     window: what is actually on screen above this panel is the thing that must
+     not be repeated, and a copilot panel or a dialog has no title bar at all —
+     which is exactly when the label should stay. */
+  const bar=body.closest&&body.closest('.win');
+  const wtitle=(bar&&bar.querySelector('.tname')||{}).textContent||'';
+  const dup=!!wtitle&&String(o.title||'').trim().toLowerCase()===wtitle.trim().toLowerCase();
   body.innerHTML=`<div class="pshell">
     <div class="phead">
-      <span class="pt">${o.title||''}</span>
+      ${dup?'':`<span class="pt">${o.title||''}</span>`}
       ${o.sub?`<span class="ps">${o.sub}</span>`:''}
       <span class="sp"></span>
       ${o.search?`<span class="psearch">${SVG_SEARCH}<input id="${o.search.id}" placeholder="${esc(o.search.placeholder||'Search…')}" autocomplete="off"></span>`:''}
@@ -3782,10 +3991,10 @@ function menuStd(w){
 
   const help=[
     {label:'Keyboard shortcuts',keys:(SHORTCUTS['help']||{}).keys,fn:()=>keysHelp(true)},
-    {label:'AgentOS manual',fn:()=>openApp('docs')},
+    {label:'Bento Box AI manual',fn:()=>openApp('docs')},
     {label:`Ask ${agentName()} about ${app?app.title:'this app'}`,fn:()=>copilotAsk(id,'')},
     null,
-    {label:'About AgentOS',fn:()=>openApp('about')},
+    {label:'About Bento Box AI',fn:()=>openApp('about')},
   ];
 
   const menus=[['File',file],['Edit',edit],['View',view],['Window',win],['Help',help]];
@@ -3837,7 +4046,7 @@ function menuNative(w){
     {label:`Ask ${agentName()} about ${name}`,fn:()=>{raiseShell(true);
       omniFocus&&omniFocus();const i=$('#omni-in');if(i){i.value='About the '+name+' window: ';omniPop(true)}}},
     null,
-    {label:'AgentOS desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
+    {label:'Bento Box AI desktop',keys:(SHORTCUTS['omnibar.focus']||{}).keys,fn:()=>raiseShell(true)},
   ];
   return [[name,app],['Window',win],['Help',help]];
 }
@@ -4047,9 +4256,10 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  jobs:{id:'jobs',title:'Jobs',icon:'◷',w:720,h:640,desc:'What this machine does for you without being asked',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
-  docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full AgentOS manual, right here',render:renderDocs},
+  docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
     render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
   soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
@@ -4076,8 +4286,8 @@ const APPS={
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
     render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
-  settings:{id:'settings',title:'Settings',icon:'',w:620,h:640,desc:'Providers, voice, autonomy',render:renderSettings},
-  about:{id:'about',title:'About AgentOS',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
+  settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
 
 /* ---- copilot context: one line about what each app is showing RIGHT NOW.
@@ -4564,7 +4774,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
-  ['Automation',['automations','fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','policies','permissions','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','hermes','about']],
 ];
@@ -5906,7 +6116,9 @@ async function renderSettings(body){
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
-        <button class="pact" onclick="saveSettings()">Save</button>
+        ${/* One Save per page. The sticky bar at the foot is always reachable
+              while you scroll; a second copy in the header meant two controls for
+              one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
@@ -6366,6 +6578,7 @@ async function renderChannels(){
       +carried.map(chanCard).join('');
   }
   box.innerHTML=html;
+  if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
 function chanCard(c){
   if(c.carrier==='hermes')return chanCarriedCard(c);
@@ -6395,6 +6608,9 @@ function chanCard(c){
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
     ${onoff}${posture}${fields}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
+    ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
+         whether the 24-hour window is open. Filled by waPanel() after render. */''}
+    ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
@@ -6438,6 +6654,97 @@ async function chanSave(id){
     if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
     if(j.ok)renderChannels();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+/* ================= WhatsApp: the two things a form cannot say =================
+   The generic channel card in 11-settings draws WhatsApp's four fields fine. What
+   it cannot draw are the two things that decide whether this channel actually
+   works, and neither is a setting:
+
+     1. The callback URL Meta has to be given, and whether this machine is
+        reachable at all. A webhook channel that is "on" but unreachable receives
+        nothing, forever, with no error anywhere — the most confusing state this
+        integration has, so it is stated rather than left to be discovered.
+
+     2. Meta's 24-hour window. Outside it WhatsApp refuses free-form messages
+        outright, so "connected" and "can reach you right now" are different facts
+        and the card shows both.
+
+   `var`, not `let` — concatenated bundle, see CLAUDE.md. */
+var WA={info:null};
+
+async function waLoad(){
+  try{WA.info=await (await fetch('/api/whatsapp')).json()}catch(e){WA.info=null}
+  return WA.info;
+}
+
+/* Rendered into the placeholder chanCard leaves for it, after the fields. */
+async function waPanel(){
+  const box=document.getElementById('wa-extra');if(!box)return;
+  const d=await waLoad();
+  if(!d){box.innerHTML='';return}
+  const reach=d.reach||{};
+  const hook=reach.reachable
+    ? `<div class="wa-hook"><b>Callback URL</b>
+        <code id="wa-url">${esc(reach.webhook)}</code>
+        <button class="endbtn" onclick="waCopy()">Copy</button>
+        <em>Paste this into the WhatsApp product page on developers.facebook.com,
+          with your verify token, and subscribe to <code>messages</code>.</em></div>`
+    : `<div class="wa-hook warnbox"><b>Meta cannot reach this machine yet</b>
+        <em>${esc(reach.why||'')}</em></div>`;
+  const pairing=d.owner_wa_id
+    ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code>
+        <button class="endbtn" onclick="waUnpair()">Unpair</button></div>`
+    : `<div class="wa-line mut">Not paired yet — message the number from your phone
+        once, and that chat becomes the owner.</div>`;
+  // Two different facts, said separately on purpose.
+  const win=d.owner_wa_id
+    ? (d.window_open
+        ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open — it can
+             message you right now.</div>`
+        : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed.
+             WhatsApp will not let it speak first; send anything to the number and it
+             reopens for a day.</div>`)
+    : '';
+  const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
+  const others=chats.length
+    ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
+      +chats.map(c=>`<div class="item wa-row"><div class="grow">
+          <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
+        <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
+          ${c.allowed?'Block':'Allow'}</button></div>`).join('')
+    : '';
+  box.innerHTML=`${hook}${pairing}${win}${others}
+    ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
+      onclick="waTest()">Send me a test message</button>
+      <small id="wa-test" class="mut"></small></div>`:''}`;
+}
+
+function waCopy(){
+  const el=document.getElementById('wa-url');if(!el)return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(()=>toast('callback URL copied'));
+}
+async function waUnpair(){
+  if(!await osConfirm('Unpair this number?',
+    'The next number to message this WhatsApp becomes the owner.',{confirmText:'Unpair'}))return;
+  await fetch('/api/whatsapp',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({unpair:true})});
+  waPanel();
+}
+async function waAllow(id,allowed){
+  await fetch('/api/whatsapp/chats/'+encodeURIComponent(id),
+    {method:'PUT',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({allowed:!!allowed})});
+  waPanel();
+}
+async function waTest(){
+  const out=document.getElementById('wa-test');
+  if(out){out.textContent='sending…';out.className='mut'}
+  try{
+    const d=await (await fetch('/api/whatsapp/test',{method:'POST'})).json();
+    const bad=String(d.result||'').startsWith('[error]');
+    if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent — check your phone';
+      out.className=bad?'warn':'ok'}
+  }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}}
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -7957,7 +8264,7 @@ const WIZ_SAY_FALLBACK={
   de_here:()=>"This is your desktop now, so I'm always here — nothing to install, nothing to start.",
   wallpaper:()=>"Let's make this place yours. Pick a wallpaper to start with — I can generate a custom one for you later.",
   voice:()=>'One more thing — should I speak my replies out loud, or keep things quiet?',
-  done:()=>"That's everything — welcome to AgentOS. Let's get to work.",
+  done:()=>"That's everything — welcome to Bento Box AI. Let's get to work.",
 };
 const WIZ_WALLS={ // ids mirror setup.WALLPAPER_PRESETS; CSS gradients, no file written
   aurora:'linear-gradient(135deg,#0b3d40 0%,#123a5e 45%,#3b1d5a 100%)',
@@ -8001,7 +8308,7 @@ function wizRender(){
   const stage=$('#wiz-stage'),s=WIZ.info||{};
   if(WIZ.step===1)stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
-    <h1 class="wiz-title">Welcome to AgentOS</h1>
+    <h1 class="wiz-title">Welcome to Bento Box AI</h1>
     <p class="wiz-sub">Your machine, with a brain. Let's set it up together.</p>
     <label class="wiz-q">What should your agent be called?</label>
     <input id="wz-name" class="wiz-input" value="${esc(WIZ.agent_name)}" autocomplete="off" spellcheck="false">
@@ -8012,14 +8319,14 @@ function wizRender(){
     stage.innerHTML=`<div class="wiz-step">
     <div class="wiz-mark">▲</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
-    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. AgentOS can set that up, or you can bring a cloud key.'}</p>
+    <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. Bento Box AI can set that up, or you can bring a cloud key.'}</p>
     ${/* "install Ollama later" was the end of the road here: the first screen that
           needs a brain told you what was missing and then left you to it. Offer
           it, with the licence and the exact command, on the screen where it
           matters. */''}
     ${local?'':`<div class="wiz-offer" id="wz-ollama">
       <b>Run models on this machine</b>
-      <span>Private, free, no API key. AgentOS installs Ollama (MIT, llama.cpp underneath).</span>
+      <span>Private, free, no API key. Bento Box AI installs Ollama (MIT, llama.cpp underneath).</span>
       <button class="endbtn" onclick="wizInstallOllama()">Install it for me</button>
     </div>`}
     <div class="wiz-picks">${local}
@@ -8170,12 +8477,17 @@ async function wizFinish(){
   const fin=document.createElement('div');fin.className='wiz-finish';
   fin.innerHTML=`${(WIZ.report.applied||[]).map(l=>`<div class="sub">· ${esc(l)}</div>`).join('')}
     ${WIZ.report.autostart?`<div class="sub">· ${esc(WIZ.report.autostart)}</div>`:''}
-    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}
-    <button class="wiz-next" onclick="wizEnter()">Enter AgentOS →</button>`;
+    ${WIZ.report.boot?`<div class="sub">· ${esc(WIZ.report.boot)}</div>`:''}`;
   c.appendChild(fin);
   Motion.run(fin,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],{duration:260,easing:EASE.out});
   c.scrollTop=c.scrollHeight;
   loadConfig();loadModels();
+  // The last beat is not "Enter" — it is "give me a job". A machine you have only
+  // configured is a machine you have no reason to open tomorrow; one that is already
+  // doing something for you is a habit. jobStep owns the Enter button from here, and
+  // offers "Not now" beside it, because a first-run flow you cannot get past is one
+  // people learn to click through without reading.
+  jobStep(c,wizEnter);
 }
 function wizEnter(){
   const ov=$('#setup-wiz');
@@ -8183,7 +8495,7 @@ function wizEnter(){
   openApp('chat');
 }
 async function factoryReset(){
-  if(!await osConfirm('Factory reset AgentOS?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
+  if(!await osConfirm('Factory reset Bento Box AI?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
   if(!await osConfirm('Really wipe everything?','This cannot be undone.',{danger:true,confirmText:'Reset'}))return;
   await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
   location.reload();
@@ -8213,6 +8525,237 @@ async function wizInstallOllama(){
     }
   }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
   finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
+}
+/* ================= jobs: give this machine something to do =================
+   Two surfaces over one API (/api/jobs): the last beat of the first-run wizard,
+   and a standing app you can come back to. They share `jobCards`/`jobForm` on
+   purpose — the screen that gets somebody their first job and the screen that
+   gets them their fourth should not drift apart, because the second one is the
+   habit and the first one is only the introduction.
+
+   Everything user-facing here obeys the honesty rule: a delivery this machine
+   cannot do is shown greyed with the sentence that would fix it, never hidden,
+   and the folder a job will read is printed before the job exists.
+
+   `var`, not `let` — this file is concatenated into one script and 14-docs-setup
+   calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
+var JOBS={recipes:[],deliveries:[],installed:[],pick:'',busy:false};
+
+async function jobsLoad(){
+  try{const d=await (await fetch('/api/jobs')).json();
+    JOBS.recipes=d.recipes||[];JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];
+  }catch(e){JOBS.recipes=[];}
+  return JOBS;
+}
+
+/* the three cards. `sel` is the id currently expanded, '' for none. */
+function jobCards(sel){
+  return `<div class="job-cards">${JOBS.recipes.map(r=>`
+    <button class="job-card${r.id===sel?' on':''}" data-job="${esc(r.id)}">
+      <span class="job-mark">${esc(r.icon||'◇')}</span>
+      <b>${esc(r.title)}</b>
+      <span class="job-blurb">${esc(r.blurb)}</span>
+      <span class="job-eg">${esc(r.example)}</span>
+    </button>`).join('')}</div>`;
+}
+
+/* the two or three questions a recipe asks, plus the delivery picker */
+function jobForm(r){
+  const field=n=>{
+    if(n.key==='deliver')return jobDeliver(n);
+    const id='jf-'+n.key;
+    if(n.kind==='folder')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" value="${esc(n.default||'')}" spellcheck="false" autocomplete="off">
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='time')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" type="time" value="${esc(n.default||'08:00')}"></label>`;
+    if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    return `<label class="job-q"><span>${esc(n.label)}</span>
+      <input id="${id}" value="${esc(n.default||'')}" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+  };
+  return `<div class="job-form">${r.needs.map(field).join('')}
+    <div class="job-consent" id="jf-consent"></div>
+    <div class="job-go"><button class="wiz-next" id="jf-save">Set it up</button></div></div>`;
+}
+
+/* Delivery: every option, always — a way out that is not configured is shown
+   with the sentence that would fix it rather than left out. Absent reads as
+   "this OS cannot do that"; greyed reads as "not yet, and here is how". */
+function jobDeliver(n){
+  return `<div class="job-q"><span>${esc(n.label)}</span>
+    <div class="job-ways">${JOBS.deliveries.map(d=>`
+      <label class="job-way${d.ready?'':' off'}">
+        <input type="radio" name="jf-deliver" value="${esc(d.id)}" ${d.ready?'':'disabled'}
+          ${d.id==='report'?'checked':''}>
+        <b>${esc(d.label)}</b><em>${esc(d.detail)}</em>
+      </label>`).join('')}</div></div>`;
+}
+
+function jobAnswers(r){
+  const a={};
+  r.needs.forEach(n=>{
+    if(n.key==='deliver'){a.deliver=(document.querySelector('input[name=jf-deliver]:checked')||{}).value||'report';return}
+    const el=document.getElementById('jf-'+n.key);
+    if(el)a[n.key]=el.value.trim();
+  });
+  return a;
+}
+
+/* Ask the server what saving this would grant, and print it. Debounced by the
+   caller; a failure is silent because it is an aid, not the decision — the save
+   itself refuses with the same message if the answers are bad. */
+async function jobConsent(r){
+  const box=document.getElementById('jf-consent');if(!box)return;
+  try{
+    const d=await (await fetch('/api/jobs/preview',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
+    if(d.error){box.innerHTML=`<span class="job-warn">${esc(d.error)}</span>`;return}
+    const reads=(d.reads||[]).map(p=>`<li>reads <code>${esc(p)}</code> — and nothing else</li>`).join('');
+    const when=(d.triggers||[]).map(t=>{
+      const c=t.config||{};
+      if(t.kind==='cron'&&c.type==='daily')return `<li>runs every day at ${esc(c.at)}</li>`;
+      if(t.kind==='cron'&&c.type==='interval')return `<li>runs every ${esc(c.minutes)} minutes</li>`;
+      if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
+      return '';
+    }).join('');
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}
+      <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
+      <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
+  }catch(e){}
+}
+
+/* Wire a rendered form: live consent, and the save. `after(res)` is what the
+   surface does with the finished job — the wizard shows a "run it now" beat,
+   the app refreshes its list. */
+function jobWire(root,r,after){
+  root.querySelectorAll('.job-form input').forEach(el=>{
+    let t=null;
+    const go=()=>{clearTimeout(t);t=setTimeout(()=>jobConsent(r),260)};
+    el.oninput=go;el.onchange=go;
+  });
+  jobConsent(r);
+  const btn=root.querySelector('#jf-save');
+  btn.onclick=async()=>{
+    if(JOBS.busy)return;JOBS.busy=true;btn.disabled=true;const was=btn.textContent;btn.textContent='Setting it up…';
+    try{
+      const res=await (await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
+      if(res.error){
+        const c=document.getElementById('jf-consent');
+        if(c)c.innerHTML=`<span class="job-warn">${esc(res.error)}</span>`;
+        return;
+      }
+      await jobsLoad();
+      after(res);
+    }finally{JOBS.busy=false;btn.disabled=false;btn.textContent=was}
+  };
+}
+
+/* ---------- the wizard's last beat ---------- */
+/* Called by wizFinish once the setup report is on screen. The offer is real but
+   never compulsory: "Not now" is a first-class button, because a first-run flow
+   that will not let you past it is a first-run flow people learn to click through
+   without reading. */
+async function jobStep(container,onDone){
+  await jobsLoad();
+  if(!JOBS.recipes.length){onDone();return}
+  const box=document.createElement('div');box.className='wiz-jobs';
+  const name=(typeof WIZ!=='undefined'&&WIZ.agent_name)||'your agent';
+  box.innerHTML=`<div class="wiz-jobs-head">
+      <b>One last thing — give me a job.</b>
+      <span>Pick one and I'll do it from now on, without being asked. You can change or stop it any time.</span>
+    </div>
+    ${jobCards('')}
+    <div class="job-slot"></div>
+    <button class="wiz-back" id="jf-skip">Not now — take me in →</button>`;
+  container.appendChild(box);
+  Motion.run(box,[{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],
+    {duration:280,easing:EASE.out});
+  container.scrollTop=container.scrollHeight;
+  box.querySelector('#jf-skip').onclick=onDone;
+  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    JOBS.pick=r.id;
+    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=box.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
+      {duration:220,easing:EASE.out});
+    jobWire(slot,r,res=>jobDone(slot,res,onDone,name));
+    container.scrollTop=container.scrollHeight;
+  });
+}
+
+/* The payoff screen. "Run it now" is the important button: a schedule nobody has
+   seen fire is a promise, and a new user has no reason to believe one. */
+function jobDone(slot,res,onDone,name){
+  const reads=(res.reads||[]).map(p=>`<div class="sub">· reads ${esc(p)}</div>`).join('');
+  slot.innerHTML=`<div class="job-done">
+    <b>✓ ${esc(res.flow.name)}</b>
+    <div class="sub">· runs ${esc(res.next||'when you say so')}</div>
+    <div class="sub">· delivers: ${esc((res.delivery||{}).label||'to Reports')}</div>
+    ${reads}
+    ${res.substituted?`<div class="sub job-warn">· ${esc(res.substituted)}</div>`:''}
+    <div class="job-go">
+      <button class="wiz-next" id="jf-run">Run it now, so I can see it work</button>
+      <button class="wiz-back" id="jf-enter">Take me in →</button></div></div>`;
+  Motion.run(slot.firstElementChild,[{opacity:0,transform:'scale(.98)'},{opacity:1,transform:'none'}],
+    {duration:260,easing:EASE.spring});
+  slot.querySelector('#jf-enter').onclick=onDone;
+  slot.querySelector('#jf-run').onclick=async()=>{
+    const b=slot.querySelector('#jf-run');b.disabled=true;b.textContent=`${name} is on it…`;
+    try{
+      const d=await (await fetch(`/api/jobs/${encodeURIComponent(res.flow.name)}/run`,
+        {method:'POST'})).json();
+      if(d.error){b.textContent=d.error;b.disabled=false;return}
+      onDone();
+      // the run is live: show it, rather than describing it
+      if(typeof fgWatch==='function')fgWatch(d.run_id); else openApp('fabric');
+    }catch(e){b.textContent='could not start it';b.disabled=false}
+  };
+}
+
+/* ---------- the standing app ---------- */
+async function renderJobs(body){
+  body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+  await jobsLoad();
+  const running=JOBS.installed.map(j=>`<div class="item job-row">
+      <div class="grow"><b>${esc(j.name)}</b><div class="sub">${esc(j.description)}</div>
+        <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'}</div></div>
+      <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
+      <button class="endbtn" onclick="openApp('fabric')">Edit</button>
+    </div>`).join('');
+  body.innerHTML=`<div class="pad job-app">
+    <h3>What this machine does for you</h3>
+    ${running||'<p class="mut">Nothing standing yet — pick something below and it starts today.</p>'}
+    <h3 style="margin-top:18px">Give it another job</h3>
+    ${jobCards(JOBS.pick)}
+    <div class="job-slot"></div></div>`;
+  body.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    JOBS.pick=r.id;
+    body.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=body.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    jobWire(slot,r,res=>{
+      JOBS.pick='';
+      toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
+      renderJobs(body);
+    });
+  });
+}
+
+async function jobRunNow(name){
+  try{
+    const d=await (await fetch(`/api/jobs/${encodeURIComponent(name)}/run`,{method:'POST'})).json();
+    if(d.error){toast(d.error);return}
+    toast(`▶ ${name} started`);
+    if(typeof fgWatch==='function')fgWatch(d.run_id);
+  }catch(e){toast('could not start it')}
 }
 /* ================= scheduler app ================= */
 async function renderTasks(body){
@@ -13312,6 +13855,11 @@ function scMatch(e,keys){
   return scKeyName(e.key)===want||(e.code||'').toLowerCase()==='key'+want;
 }
 const SC_ACTIONS={
+  // Ctrl+Alt+Delete lands here. It offers a CHOICE — lock, log out, restart,
+  // shut down — because on every other desktop that key opens a dialog, and
+  // because a key people press when something is already wrong must never be
+  // the key that destroys their session without asking.
+  'power':()=>powerMenuOpen(true),
   'omnibar.focus':()=>omniFocus(),
   'omnibar.focus2':()=>omniFocus(),
   'palette':()=>omniFocus(),
@@ -13424,12 +13972,20 @@ $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
 /* power & session menu — AgentOS as the desktop environment carries real session
    controls in its menu bar (the boot-to-AgentOS direction) */
-$('#tray-power').onclick=e=>{e.stopPropagation();
-  const m=$('#powermenu');
-  const on=!m.classList.contains('show');
+function powerMenuOpen(force){
+  const m=$('#powermenu');if(!m)return false;
+  const on=force!==undefined?!!force:!m.classList.contains('show');
   m.classList.toggle('show',on);
-  if(on)popIn(m,{origin:'top right'});
-};
+  if(on){
+    // Ctrl+Alt+Delete is reached for when something is already covering the
+    // screen, so the desktop has to come forward with the menu or the menu is
+    // behind whatever the problem is.
+    if(typeof raiseShell==='function')raiseShell(true);
+    popIn(m,{origin:'top right'});
+  }
+  return true;
+}
+$('#tray-power').onclick=e=>{e.stopPropagation();powerMenuOpen()};
 document.addEventListener('click',e=>{
   if(!e.target.closest('#powermenu')&&!e.target.closest('#tray-power'))$('#powermenu').classList.remove('show');
 });

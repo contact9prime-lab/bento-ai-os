@@ -40,11 +40,24 @@ def test_gates_are_real_policy_surfaces():
 
 
 def test_agentos_does_not_reimplement_a_bridge_hermes_already_has():
-    """WhatsApp/Slack/Signal are carried by the Hermes gateway, not rebuilt here.
-    A second Meta Cloud API integration beside a working one would be a worse copy."""
+    """Slack, Signal, Discord and the rest stay carried by the Hermes gateway. A
+    second integration beside a working one is a worse copy of it."""
     native = {c["id"] for c in ch.state(base_cfg())}
-    assert "whatsapp" not in native and "slack" not in native
-    assert "whatsapp" in ch.HERMES_PLATFORMS and "slack" in ch.HERMES_PLATFORMS
+    for pid in ("slack", "signal", "discord", "matrix"):
+        assert pid not in native, f"{pid} is carried by Hermes, not rebuilt here"
+        assert pid in ch.HERMES_PLATFORMS
+
+
+def test_whatsapp_is_the_one_exception_and_the_two_do_not_pretend_to_be_the_same():
+    """The reason is direction, not enthusiasm. Hermes takes messages OUT — a reply
+    arriving there is answered by Hermes' own agent with Hermes' memory. The whole
+    point of asking for WhatsApp is to reach THIS agent, and delivery-only plumbing
+    cannot get there. So both exist, and each says which one it is."""
+    native = {c["id"]: c for c in ch.state(base_cfg())}
+    assert native["whatsapp"]["gate"] == "whatsapp"          # a way IN, with its own gate
+    assert native["whatsapp"]["direction"] == "both"
+    assert "reaches THIS agent" in native["whatsapp"]["note"]
+    assert "whatsapp" in ch.HERMES_PLATFORMS                  # and still a way OUT
 
 
 # ------------------------------------------------------------------- refusals

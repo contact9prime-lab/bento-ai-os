@@ -1,0 +1,88 @@
+/* ================= jobs: the give-it-a-job screens =================
+   Shared by the wizard's last beat and the standing Jobs app, so the two cannot
+   drift. No backdrop-filter anywhere here (see 03-windows.css): these sit inside
+   a window or an already-blurred wizard stage, and a second blur is pure cost. */
+
+.job-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:var(--sp-3);margin:var(--sp-3) 0}
+.job-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;
+  padding:var(--sp-4);border:1px solid var(--hairline);border-radius:var(--r-lg);
+  background:var(--bg2);color:var(--txt);
+  transition:border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out)}
+.job-card:hover{border-color:var(--hairline-strong);transform:translateY(-2px);background:var(--bg3)}
+.job-card.on{border-color:var(--acc);background:var(--bg3);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.job-mark{font-size:var(--fs-xl);line-height:1}
+.job-card b{font-size:var(--fs-base);font-weight:650}
+.job-blurb{font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
+.job-eg{font-size:var(--fs-xs);color:var(--dim2);line-height:1.45;font-style:italic}
+
+.job-form{display:flex;flex-direction:column;gap:var(--sp-4);margin-top:var(--sp-2)}
+.job-q{display:flex;flex-direction:column;gap:6px}
+.job-q>span{font-size:var(--fs-sm);font-weight:600;color:var(--txt)}
+.job-q em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.job-q input[type=text],.job-q input:not([type]){width:100%}
+.job-q input{width:100%}
+.job-mins{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dim)}
+.job-mins input{width:90px}
+
+.job-ways{display:flex;flex-direction:column;gap:6px}
+.job-way{display:grid;grid-template-columns:auto 1fr;gap:2px var(--sp-2);align-items:baseline;
+  padding:10px var(--sp-3);border:1px solid var(--hairline);border-radius:var(--r-md);
+  background:var(--bg2);cursor:pointer}
+.job-way input{grid-row:span 2;align-self:center}
+.job-way b{font-size:var(--fs-sm);font-weight:600}
+.job-way em{grid-column:2;font-size:var(--fs-xs);color:var(--dim);font-style:normal}
+.job-way:hover{border-color:var(--hairline-strong)}
+.job-way:has(input:checked){border-color:var(--acc);background:var(--bg3)}
+/* A way out this machine cannot do is dimmed and disabled, never hidden — the
+   detail line is the sentence that says what would fix it. */
+.job-way.off{opacity:.5;cursor:not-allowed}
+.job-way.off:hover{border-color:var(--hairline)}
+
+.job-consent{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  border-left:2px solid var(--acc);padding:2px 0 2px var(--sp-3)}
+.job-consent b{display:block;color:var(--txt);font-size:var(--fs-xs);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:4px}
+.job-consent ul{list-style:none;margin:0;padding:0}
+.job-consent li{padding:1px 0}
+.job-consent code{font-family:var(--mono);font-size:var(--fs-xs);color:var(--txt)}
+.job-warn{color:var(--warn)}
+.job-consent:has(.job-warn){border-left-color:var(--warn)}
+
+.job-go{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.job-done b{font-size:var(--fs-lg);color:var(--ok)}
+.job-done .sub{font-size:var(--fs-sm);color:var(--dim);padding:2px 0}
+.job-done .job-go{margin-top:var(--sp-3)}
+
+.job-row{display:flex;align-items:center;gap:var(--sp-2)}
+.job-app h3{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim2);font-weight:700}
+
+/* The wizard's stage is sized for one sentence and a row of chips. Three cards
+   side by side need more, so the stage widens for exactly this beat rather than
+   the cards wrapping into a column nobody can compare. */
+.wiz-stage:has(.wiz-jobs){width:min(900px,94vw)}
+.wiz-stage:has(.wiz-jobs) .wiz-convo{max-height:76vh}
+.wiz-jobs{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4)}
+.wiz-jobs-head b{display:block;font-size:var(--fs-lg);font-weight:650}
+.wiz-jobs-head span{display:block;font-size:var(--fs-sm);color:var(--dim);line-height:1.6;
+  margin-top:4px}
+@media (max-width:640px){.job-cards{grid-template-columns:1fr}}
+
+/* ---- WhatsApp's extras inside the channel card ---- */
+.wa-extra{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-3)}
+.wa-hook{display:flex;flex-direction:column;gap:6px;padding:var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2)}
+.wa-hook b{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim2)}
+.wa-hook code{font-family:var(--mono);font-size:var(--fs-xs);word-break:break-all;color:var(--txt)}
+.wa-hook em{font-size:var(--fs-xs);color:var(--dim);font-style:normal;line-height:1.5}
+.wa-hook.warnbox{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.wa-hook.warnbox b{color:var(--warn)}
+.wa-line{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.wa-line b{color:var(--txt)}
+.wa-line.ok{color:var(--ok)}
+.wa-line.warn{color:var(--warn)}
+.wa-row{display:flex;align-items:center;gap:var(--sp-2)}

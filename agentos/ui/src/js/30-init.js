@@ -20,12 +20,20 @@ $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
 /* power & session menu — AgentOS as the desktop environment carries real session
    controls in its menu bar (the boot-to-AgentOS direction) */
-$('#tray-power').onclick=e=>{e.stopPropagation();
-  const m=$('#powermenu');
-  const on=!m.classList.contains('show');
+function powerMenuOpen(force){
+  const m=$('#powermenu');if(!m)return false;
+  const on=force!==undefined?!!force:!m.classList.contains('show');
   m.classList.toggle('show',on);
-  if(on)popIn(m,{origin:'top right'});
-};
+  if(on){
+    // Ctrl+Alt+Delete is reached for when something is already covering the
+    // screen, so the desktop has to come forward with the menu or the menu is
+    // behind whatever the problem is.
+    if(typeof raiseShell==='function')raiseShell(true);
+    popIn(m,{origin:'top right'});
+  }
+  return true;
+}
+$('#tray-power').onclick=e=>{e.stopPropagation();powerMenuOpen()};
 document.addEventListener('click',e=>{
   if(!e.target.closest('#powermenu')&&!e.target.closest('#tray-power'))$('#powermenu').classList.remove('show');
 });

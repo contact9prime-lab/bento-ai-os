@@ -168,7 +168,7 @@ def _match(pattern: str, value: str) -> bool:
 # scoped to a subset (grants.surfaces csv); '*' means all surfaces (the default).
 # `webhook` is another service calling in over HTTP to start a flow — a gate with no
 # human behind it at all, which is exactly why it is nameable in a grant.
-SURFACES = ("gui", "tui", "telegram", "api", "task", "webhook")
+SURFACES = ("gui", "tui", "telegram", "whatsapp", "api", "task", "webhook")
 
 
 # How much a channel is trusted, independent of who is asking. This is a property

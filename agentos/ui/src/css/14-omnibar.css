@@ -83,12 +83,21 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .win .wmain{flex:1;min-height:0;display:flex}
 .win .wmain .wbody{flex:1;min-width:0}
 .win .ttl .tright{display:flex;justify-content:flex-end;align-items:center}
-.win .cp-btn{width:26px;height:26px;border-radius:var(--r-md);font-size:var(--fs-md);color:var(--dim);
+/* The ✦ is the agent inside this app, and it is the one piece of chrome people
+   recognise as agentic — so on the ACTIVE window it is present rather than
+   apologetic: full opacity, accent-tinted, with a faint pill behind it. It still
+   fades out on the windows you are not using, because the point is "the agent is
+   here, in this app", and eight glowing marks say nothing. */
+.win .cp-btn{width:26px;height:26px;border-radius:var(--r-full);font-size:var(--fs-md);color:var(--dim2);
   display:flex;align-items:center;justify-content:center;opacity:0;
-  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
-.win:hover .cp-btn,.win.active .cp-btn,.win .cp-btn.on{opacity:.85}
-.win .cp-btn:hover{background:rgba(255,255,255,.08);color:var(--acc);opacity:1}
-.win .cp-btn.on{color:var(--acc);text-shadow:0 0 12px var(--acc)}
+  transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out),
+    opacity var(--d-base) var(--ease-out),text-shadow var(--d-fast) var(--ease-out)}
+.win:hover .cp-btn{opacity:.6}
+.win.active .cp-btn{opacity:1;color:var(--acc);
+  background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.win .cp-btn:hover{background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc);opacity:1}
+.win .cp-btn.on{opacity:1;color:var(--acc);text-shadow:0 0 12px var(--acc);
+  background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .win .copanel{width:0;flex:none;overflow:hidden;display:flex;flex-direction:column;
   border-left:1px solid transparent;background:color-mix(in srgb,var(--bg2) 55%,transparent);
   transition:width var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out)}
@@ -238,15 +247,22 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .pgroup > h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
   padding:12px 16px 0}
 .pgroup > .ghint{font-size:var(--fs-sm);color:var(--dim);padding:6px 16px 0;line-height:1.5}
-.prow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-top:1px solid var(--line)}
+/* Wrap, don't squeeze. `.pl` was flex:1;min-width:0 against a control with a hard
+   240px minimum, so in a narrow window the LABEL gave up all its space and the
+   input kept all of its: "Ollama base URL" broke across two lines beside a
+   three-line description, next to a field with room to spare. Now the label has a
+   base width it will not go under, and when both cannot fit the control drops to
+   its own line — the same stacked shape `.prow.stack` asks for explicitly, arrived
+   at without a media or container query. */
+.prow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:13px 16px;border-top:1px solid var(--line)}
 .pgroup > h3 + .prow,.pgroup > .ghint + .prow,.pgroup > .prow:first-child{border-top:none}
 .prow:first-of-type{margin-top:4px}
-.prow .pl{flex:1;min-width:0}
+.prow .pl{flex:1 1 240px;min-width:0}
 .prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
 .prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
-.prow .pc{flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.prow .pc{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
-  min-width:240px;max-width:340px}
+  min-width:200px;max-width:340px}
 .prow .pc input[type=number]{min-width:96px}
 .prow.stack{display:block}
 .prow.stack .pc{margin-top:9px;justify-content:flex-start}

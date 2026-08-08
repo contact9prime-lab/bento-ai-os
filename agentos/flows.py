@@ -29,7 +29,7 @@ import time
 TRIGGER_KINDS = ("cron", "message", "webhook", "os_event")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
 CRON_TYPES = ("interval", "daily", "once")
-SINK_KINDS = ("origin", "telegram", "gui", "notify", "report", "conversation")
+SINK_KINDS = ("origin", "telegram", "whatsapp", "gui", "notify", "report", "conversation")
 MEMORY_SCOPES = ("none", "read", "read-space", "read-write")
 
 DEFINITION_SOURCE = "definition"
@@ -105,6 +105,9 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
         "space_id": body.get("space_id") or "",
         "enabled": int(bool(body.get("enabled", 1))),
         "builtin": int(body.get("builtin") or 0),
+        # which jobs.py recipe this came out of, '' when it was written by hand. Carried
+        # rather than dropped, so re-saving a job from the editor does not orphan it.
+        "job": re.sub(r"[^a-z0-9-]", "", str(body.get("job") or "").lower())[:48],
         "triggers": [_validate_trigger(t) for t in (body.get("triggers") or [])],
         "new_agents": [a for a in (body.get("new_agents") or []) if isinstance(a, dict)],
     }

@@ -115,6 +115,7 @@ maximise, full screen, move between desktops, and snap:
 | Resize by keyboard | `Super`+`R`, then the arrows |
 | Workspaces | `Super`+`1`…`6`, `Super`+`Shift`+`n` to carry a window |
 | Minimise / desktop / full screen | `Super`+`H` / `Super`+`D` / `Super`+`F` |
+| **Session menu** | `Ctrl`+`Alt`+`Delete` — lock, log out, restart, shut down |
 | Switch windows | `Alt`+`Tab` (held, with an on-screen switcher) |
 | End the session | `Ctrl`+`Alt`+`Backspace` |
 
@@ -154,6 +155,8 @@ rather than pretending: it is a known limitation, not a design.
 | `agentos doctor` | says which desktop you are on, what is missing, and the exact line to fix it |
 | Desktop in a Chromium window | the layer-shell stack is not installed — see *Turning it on* |
 | Apps have no title bar or controls | the compositor config predates your AgentOS build; `agentos doctor --fix` |
+| `Ctrl`+`Alt`+`Delete` | the session menu. It is **bound on purpose**: left unbound, the kernel's own handler answers it and `ctrl-alt-del.target` is an alias for `reboot.target`, so the machine reboots instantly with nothing saved and nothing asked. If the desktop is not responding, the compositor puts the same choices on screen itself |
+| `Ctrl`+`Alt`+`Backspace` | ends the session immediately, without asking — the emergency hatch, for when nothing can ask |
 | `Ctrl`+`Alt`+`F3` | a raw terminal, always, from the kernel — the escape hatch |
 
 Developing on it without a monitor: `packaging/dev/sui-testbed.sh up` runs a

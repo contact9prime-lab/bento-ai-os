@@ -203,7 +203,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-struts", action="store_true",
                     help="do not reserve space (apps may cover the dock)")
     ap.add_argument("--inspect", action="store_true", help="enable the web inspector")
+    ap.add_argument("--give-up-after", type=float, default=40.0,
+                    help="seconds to wait for the desktop to appear before failing "
+                         "so the launcher can fall back (0 = wait forever)")
     args = ap.parse_args(argv)
+
+    # Layer-shell exists ONLY on Wayland. If GDK picks X11 — and it will if
+    # $DISPLAY is set and the Wayland connection is refused for any reason —
+    # gtk_layer_init_for_window() calls g_error(), which aborts the process. The
+    # session script exports DISPLAY for XWayland apps, so that is a live risk on
+    # every machine. Ask for Wayland by name and fail with a sentence instead.
+    os.environ.setdefault("GDK_BACKEND", "wayland")
 
     import gi
     gi.require_version("Gtk", "3.0")
@@ -238,7 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.boot and os.path.exists(args.boot):
         start = "file://" + os.path.abspath(args.boot)
 
-    state = {"raised": False, "top": args.top, "bottom": args.bottom}
+    state = {"raised": False, "top": args.top, "bottom": args.bottom,
+             "painted": False, "exit": 0}
 
     # ---- the desktop surface ------------------------------------------------
     ctx = WebKit2.WebContext.get_default()
@@ -268,6 +279,40 @@ def main(argv: list[str] | None = None) -> int:
             getattr(s, setter)(val)
     # The desktop must never show a browser's error page; we retry instead.
     view.connect("load-failed", lambda *_: True)
+
+    # ---- proving the desktop actually appeared -------------------------------
+    # This is the difference between a fallback that works and a black screen you
+    # have to power-cycle. Importing the libraries proves nothing about whether
+    # WebKit can draw on THIS machine's GPU: it can import perfectly and then
+    # render nothing, and a BACKGROUND-layer surface that renders nothing has no
+    # chrome to click and takes no keyboard, so there is no way back.
+    #
+    # So the host declares failure instead of sitting there. Two signals:
+    #   · the page never finishes loading within --give-up-after
+    #   · WebKit's web process dies (its own crash, not ours)
+    # Either exits non-zero, and the session script falls back to Chromium.
+    state["painted"] = False
+
+    def on_load(_v, ev):
+        if ev == WebKit2.LoadEvent.FINISHED and not state["painted"]:
+            state["painted"] = True
+            print("agentos shell-host: desktop is up", flush=True)
+
+    view.connect("load-changed", on_load)
+
+    def web_process_died(*_a):
+        print("agentos shell-host: WebKit's web process died — the desktop cannot "
+              "be drawn here", file=sys.stderr, flush=True)
+        state["exit"] = 3
+        Gtk.main_quit()
+        return True
+
+    for sig in ("web-process-terminated", "web-process-crashed"):
+        try:
+            view.connect(sig, web_process_died)
+            break
+        except TypeError:
+            continue                       # older/newer WebKit spells it differently
 
     win = Gtk.Window()
     win.set_decorated(False)
@@ -397,15 +442,32 @@ def main(argv: list[str] | None = None) -> int:
             view.load_uri(url)
         return True
 
+    def give_up():
+        """Nothing has been drawn in --give-up-after seconds. Say so and fail.
+
+        A slow server is not this: the splash and the retry loop cover that, and
+        `painted` is set as soon as ANY page finishes loading, splash included.
+        Reaching here means WebKit is not putting pixels on this screen at all."""
+        if state["painted"]:
+            return False
+        print(f"agentos shell-host: nothing rendered in {args.give_up_after:.0f}s — "
+              "giving up so the session can fall back to a Chromium window",
+              file=sys.stderr, flush=True)
+        state["exit"] = 3
+        Gtk.main_quit()
+        return False
+
     win.show_all()
     apply_struts()
     view.load_uri(start)
     GLib.timeout_add_seconds(2, watchdog)
+    if args.give_up_after > 0:
+        GLib.timeout_add(int(args.give_up_after * 1000), give_up)
     print(f"agentos shell-host: WebKit2 {wk} on the "
           f"{args.layer} layer, struts top={state['top']} bottom={state['bottom']}",
           flush=True)
     Gtk.main()
-    return 0
+    return state["exit"]
 
 
 if __name__ == "__main__":

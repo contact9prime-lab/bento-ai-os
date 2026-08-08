@@ -16,14 +16,73 @@ function openApp(id,opts){
   return createWin(app);
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
-function createWin(app){
-  const desk=$('#desktop'), dw=desk.clientWidth, dh=desk.clientHeight;
-  const el=document.createElement('div'); el.className='win';
-  const width=Math.min(app.w,dw-30), height=Math.min(app.h,dh-30);
-  const off=(WM.cascade++%6)*26;
+/* ---- where a window opens ------------------------------------------------
+   This used to be "centre it, plus 26px per window, wrapping every six". Five
+   windows therefore landed on top of each other, the same size, offset by less
+   than a title bar — the stack in the screenshot that started this. Two fixes,
+   in order of how much they matter:
+
+   1. A window you have placed opens where you left it. Geometry is remembered
+      per app in localStorage, so the desktop you arranged is the desktop you
+      come back to. This is what people actually want and it costs one key.
+   2. A window opening for the FIRST time cascades from the top-left of the
+      usable area with a step big enough to read a title bar underneath, and
+      wraps into a second column rather than marching off the bottom right.
+
+   Sizes are clamped to the usable area (below the menu bar, above the dock),
+   not to the whole viewport, so a tall window no longer opens with its footer
+   under the dock. */
+var WIN_STEP=38, WIN_MARGIN=14;
+function winGeomKey(id){return 'wingeom:'+id}
+function winSaveGeom(w){
+  if(!w||w.max||w.min||w.snap)return;          // remember the shape you chose, not a state
+  try{localStorage.setItem(winGeomKey(w.id),JSON.stringify({
+    l:parseInt(w.el.style.left,10)||0, t:parseInt(w.el.style.top,10)||0,
+    w:parseInt(w.el.style.width,10)||0, h:parseInt(w.el.style.height,10)||0}))}catch(e){}
+}
+function winLoadGeom(id){
+  try{const g=JSON.parse(localStorage.getItem(winGeomKey(id))||'null');
+    return (g&&g.w>200&&g.h>140)?g:null}catch(e){return null}
+}
+/* The rectangle a window may actually use: inside the menu bar and above the
+   dock/omnibar band, which is what --mbh and --tbh already describe. */
+function winArea(){
+  const desk=$('#desktop'), cs=getComputedStyle(document.documentElement);
+  const px=v=>parseInt(cs.getPropertyValue(v),10)||0;
+  const top=px('--mbh'), bottom=px('--tbh');
+  return {x:WIN_MARGIN, y:WIN_MARGIN,
+          w:Math.max(320,desk.clientWidth-WIN_MARGIN*2),
+          h:Math.max(240,desk.clientHeight-top-bottom-WIN_MARGIN),
+          top, bottom};
+}
+function winPlace(el,app){
+  const a=winArea();
+  const saved=winLoadGeom(app.id);
+  let width=Math.min(saved?saved.w:app.w, a.w);
+  let height=Math.min(saved?saved.h:app.h, a.h);
   el.style.width=width+'px'; el.style.height=height+'px';
-  el.style.left=Math.max(8,Math.min((dw-width)/2+off,dw-width-8))+'px';
-  el.style.top=Math.max(8,Math.min((dh-height)/2-40+off,dh-height-8))+'px';
+  if(saved){
+    // clamp into today's screen: the geometry may come from a bigger monitor
+    el.style.left=Math.max(a.x,Math.min(saved.l,a.x+a.w-width))+'px';
+    el.style.top=Math.max(a.y,Math.min(saved.t,a.y+a.h-height))+'px';
+    return;
+  }
+  /* How many steps fit before wrapping is a property of the SCREEN, not of the
+     window being placed — deriving it from `height` gave each app a different
+     wrap point, so the sixth window jumped to a column the fifth had not
+     started. Six steps or whatever the screen holds, whichever is smaller. */
+  const perCol=Math.max(1,Math.min(6,Math.floor(a.h/(WIN_STEP*3))));
+  const n=WM.cascade++;
+  const col=Math.floor(n/perCol), row=n%perCol;
+  const l=a.x+row*WIN_STEP+col*(WIN_STEP*4);
+  const t=a.y+row*WIN_STEP;
+  el.style.left=Math.max(a.x,Math.min(l,a.x+a.w-width))+'px';
+  el.style.top=Math.max(a.y,Math.min(t,a.y+a.h-height))+'px';
+}
+function createWin(app){
+  const desk=$('#desktop');
+  const el=document.createElement('div'); el.className='win';
+  winPlace(el,app);
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
@@ -274,6 +333,7 @@ function dragify(w,handle){
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
       el.classList.remove('dragging');snapGhost(null);
       if(zone&&moved)applySnap(w,zone);
+      else if(moved)winSaveGeom(w);      // where you put it is where it opens next time
     };
     handle.addEventListener('pointermove',move);
     handle.addEventListener('pointerup',up);
@@ -304,7 +364,8 @@ function resizify(w){
         nw=Math.min(nw,desk.clientWidth); nh=Math.min(nh,desk.clientHeight);
         el.style.left=l+'px';el.style.top=t+'px';el.style.width=nw+'px';el.style.height=nh+'px';
       };
-      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);el.classList.remove('dragging');w.snap=null};
+      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);
+        el.classList.remove('dragging');w.snap=null;winSaveGeom(w)};
       h.addEventListener('pointermove',move);
       h.addEventListener('pointerup',up);
     });
@@ -317,9 +378,21 @@ const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path 
 const SVG_EMPTY='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>';
 function panelShell(body,o){
   o=o||{};
+  /* The title bar already says which app this is. Repeating it as the first thing
+     inside the window ("Memory" above "Memory") spent the widest row in every app
+     on a word the user just read, and pushed the search box and the controls into
+     the corner. It is dropped when it matches the window's own title, and kept
+     when it does not — a panel showing something else genuinely needs a label. */
+  /* Read the title bar itself rather than making all fourteen callers pass their
+     window: what is actually on screen above this panel is the thing that must
+     not be repeated, and a copilot panel or a dialog has no title bar at all —
+     which is exactly when the label should stay. */
+  const bar=body.closest&&body.closest('.win');
+  const wtitle=(bar&&bar.querySelector('.tname')||{}).textContent||'';
+  const dup=!!wtitle&&String(o.title||'').trim().toLowerCase()===wtitle.trim().toLowerCase();
   body.innerHTML=`<div class="pshell">
     <div class="phead">
-      <span class="pt">${o.title||''}</span>
+      ${dup?'':`<span class="pt">${o.title||''}</span>`}
       ${o.sub?`<span class="ps">${o.sub}</span>`:''}
       <span class="sp"></span>
       ${o.search?`<span class="psearch">${SVG_SEARCH}<input id="${o.search.id}" placeholder="${esc(o.search.placeholder||'Search…')}" autocomplete="off"></span>`:''}

@@ -169,15 +169,51 @@ CATALOGUE: list[Channel] = [
                       "Create a bot with @BotFather and paste its token.",
                       secret=True, placeholder="123456:ABC-DEF…")],
     ),
+    Channel(
+        id="whatsapp", title="WhatsApp", gate="whatsapp",
+        what="The same conversation on WhatsApp — your agent, your memory, your "
+             "tools, answering on the app you already have open.",
+        reach="Only the number you have paired. The first message pairs you; "
+              "everyone else is told this machine is not theirs.",
+        note="This is AgentOS's own WhatsApp, not the Hermes-carried one below: a "
+             "message here reaches THIS agent. It needs a public HTTPS address for "
+             "Meta's webhook, and WhatsApp only allows free-form replies within 24 "
+             "hours of your last message — so a scheduled job cannot speak first to "
+             "a silent chat.",
+        fields=[
+            Field("phone_number_id", "Phone number ID",
+                  "From the WhatsApp product page on developers.facebook.com.",
+                  placeholder="123456789012345"),
+            Field("access_token", "Access token",
+                  "The permanent token for your system user. Temporary tokens expire "
+                  "in 24 hours and the channel will simply stop.",
+                  secret=True),
+            Field("app_secret", "App secret",
+                  "Used to verify that a webhook delivery really came from Meta. "
+                  "Without it the webhook is refused — it is a public URL.",
+                  secret=True),
+            Field("verify_token", "Verify token",
+                  "Any string you invent. Paste the same one into Meta's console "
+                  "when you set the callback URL."),
+        ],
+    ),
 ]
 
 # ---------------------------------------------------------------------------
 # Channels carried by Hermes
 #
-# WhatsApp, Slack, Signal and the rest are NOT built here. Hermes already runs a
+# Slack, Signal, Discord and the rest are NOT built here. Hermes already runs a
 # messaging gateway with those bridges (agentos/hermes.py), and building a second
-# Meta Cloud API integration beside it would be a worse copy of something already
-# installed and paired on this machine.
+# integration beside it would be a worse copy of something already installed and
+# paired on this machine.
+#
+# WhatsApp is now the ONE exception, and the reason is the direction. Hermes takes
+# messages OUT; a WhatsApp message arriving at Hermes is answered by Hermes' own
+# agent with Hermes' memory. The whole point of asking for WhatsApp is to reach
+# THIS agent from the app you already have open, and no amount of delivery-only
+# plumbing gets there. So agentos/whatsapp.py is a native channel beside Telegram,
+# and the Hermes WhatsApp card below stays as what it always was: a way to deliver
+# to a paired target, clearly labelled as such.
 #
 # So these are discovered, never declared: `hermes send --list --json` reports
 # which platforms are actually paired right now. A static list would claim Signal
@@ -251,7 +287,8 @@ async def carried_state(cfg: dict) -> list[dict]:
             "direction": "out",
             "note": ("AgentOS can deliver to this. A message arriving here is "
                      "answered by Hermes' own agent, not by your AgentOS "
-                     "conversation — pair Telegram above to reach this agent."),
+                     "conversation — pair Telegram or WhatsApp above to reach "
+                     "this agent."),
             "enabled": bool(targets), "status": status, "detail": detail,
             "posture": "inherit",
             "posture_label": "Set in Hermes",
@@ -284,6 +321,12 @@ def _conf(cfg: dict, chan: Channel) -> dict:
         legacy = cfg.get("telegram") or {}
         conf.setdefault("bot_token", legacy.get("bot_token", ""))
         conf.setdefault("enabled", legacy.get("enabled", False))
+    elif chan.id == "whatsapp":
+        # whatsapp.conf() is the one reader that merges the registry block with the
+        # running bridge's own state (the paired number). Going through it means a
+        # value set in either place is seen by both.
+        from . import whatsapp as wamod
+        conf = {**wamod.conf(cfg), **{k: v for k, v in conf.items() if v}}
     return conf
 
 
@@ -386,20 +429,32 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
             continue
         conf[f.key] = val[:400]
 
+    # Decide `enabled` BEFORE mirroring it. A half-configured channel cannot be on,
+    # and the mirrored block is what the running service actually reads — so writing
+    # the mirror first and correcting `conf` afterwards left the bridge switched on
+    # by a save that had just been refused.
+    missing = _missing(chan, _conf(cfg, chan))
+    refused = bool(conf.get("enabled") and missing)
+    if refused:
+        conf["enabled"] = False
+
     # Keep the legacy blocks in step, since the running services read those.
-    if channel_id == "telegram":
+    if channel_id == "whatsapp":
+        wa = cfg.setdefault("whatsapp", {})
+        for k in ("phone_number_id", "access_token", "app_secret", "verify_token"):
+            if conf.get(k):
+                wa[k] = conf[k]
+        if "enabled" in conf:
+            wa["enabled"] = bool(conf["enabled"])
+    elif channel_id == "telegram":
         tg = cfg.setdefault("telegram", {})
         if "enabled" in conf:
             tg["enabled"] = bool(conf["enabled"])
         if conf.get("bot_token"):
             tg["bot_token"] = conf["bot_token"]
     elif channel_id == "remote" and "enabled" in patch:
-        cfg.setdefault("remote", {})["enabled"] = bool(patch["enabled"])
+        cfg.setdefault("remote", {})["enabled"] = bool(patch["enabled"]) and not refused
 
-    missing = _missing(chan, _conf(cfg, chan))
-    if conf.get("enabled") and missing:
-        conf["enabled"] = False
-        if channel_id == "telegram":
-            cfg.setdefault("telegram", {})["enabled"] = False
+    if refused:
         return False, "still needs " + ", ".join(missing)
     return True, "saved"

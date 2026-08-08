@@ -49,7 +49,9 @@ async function renderSettings(body){
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
-        <button class="pact" onclick="saveSettings()">Save</button>
+        ${/* One Save per page. The sticky bar at the foot is always reachable
+              while you scroll; a second copy in the header meant two controls for
+              one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
@@ -509,6 +511,7 @@ async function renderChannels(){
       +carried.map(chanCard).join('');
   }
   box.innerHTML=html;
+  if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
 function chanCard(c){
   if(c.carrier==='hermes')return chanCarriedCard(c);
@@ -538,6 +541,9 @@ function chanCard(c){
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
     ${onoff}${posture}${fields}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
+    ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
+         whether the 24-hour window is open. Filled by waPanel() after render. */''}
+    ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
