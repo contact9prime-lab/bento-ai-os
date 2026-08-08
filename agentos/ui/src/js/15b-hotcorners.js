@@ -29,6 +29,8 @@ const HC_ACTIONS=[
   ['expose','Overview — all windows'],
   ['showdesktop','Show desktop'],
   ['deck','App deck'],
+  ['deck.all','All apps — the app wall'],
+  ['deck.widgets','Widgets — the wall\'s other face'],
   ['launcher','Launcher (start menu)'],
   ['control','Control Centre'],
   ['notifications','Notifications'],

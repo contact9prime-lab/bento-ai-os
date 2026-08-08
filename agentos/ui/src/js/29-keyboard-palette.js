@@ -11,7 +11,10 @@ function KEYMAP_LIVE(){
       {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
       {k:['Alt','1-9'],label:'Quick launch: a result row, else that dock app'},
       {k:['Shift','Enter'],label:'Ask the agent instead of launching'},
-      row('deck'),row('help'),row('settings'),row('fullscreen'),row('voice')]},
+      row('deck'),row('deck.all'),row('deck.widgets'),
+      {k:['scroll up'],label:'Over the tiles or the wallpaper: all apps, with search'},
+      {k:['scroll down'],label:'…and the other way: your widgets'},
+      row('help'),row('settings'),row('fullscreen'),row('voice')]},
     {group:'Windows',keys:[row('switcher'),{k:['Alt','Tab'],label:'Switch window (session mode)'},
       row('expose'),row('windows.arrange'),row('window.close'),row('window.minimize'),row('window.maximize'),
       {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'}]},
@@ -347,6 +350,8 @@ const SC_DEFAULTS={
   'fullscreen':      {keys:'F11',         label:'Toggle fullscreen'},
   'help':            {keys:'Ctrl+/',      label:'Keyboard shortcuts'},
   'deck':            {keys:'Ctrl+Shift+D',label:'Show / hide the app deck'},
+  'deck.all':        {keys:'Ctrl+Shift+Up',label:'All apps — open the app wall',typing:false},
+  'deck.widgets':    {keys:'Ctrl+Shift+Down',label:'Widgets — the same wall, other face',typing:false},
 };
 let SHORTCUTS=JSON.parse(JSON.stringify(SC_DEFAULTS));
 function scLoad(){
@@ -416,6 +421,8 @@ const SC_ACTIONS={
   'fullscreen':()=>toggleFullscreen(),
   'help':()=>keysHelp(),
   'deck':()=>deckToggle(),
+  'deck.all':()=>(DECKFULL&&DECKTAB==='apps')?deckFull(false):deckFull(true,'apps'),
+  'deck.widgets':()=>(DECKFULL&&DECKTAB==='widgets')?deckFull(false):deckFull(true,'widgets'),
   // named so hot corners and automation steps reach exactly the same behaviours
   // the keyboard does — one vocabulary, three ways to trigger it
   'showdesktop':()=>toggleShowDesktop(),
@@ -441,7 +448,11 @@ document.addEventListener('keydown',e=>{
   const fsw=[...WM.wins.values()].find(w=>w.fs);
   if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
-    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
+    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}
+    // Esc clears a search before it closes the wall — losing the whole surface
+    // because you mistyped a letter is the reason people stop using a search box
+    if(DECKFULL){if(DECKQ){const q=$('#deck-q');if(q)q.value='';deckFilter('');return}
+      deckFull(false);return}}
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
   if(cmd(e)&&!e.altKey&&e.key.toLowerCase()==='a'&&!typing&&!inTerm&&!activeWin()){
     e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}

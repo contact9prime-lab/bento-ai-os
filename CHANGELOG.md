@@ -1,5 +1,188 @@
 # Changelog
 
+### Scroll the tiles and the deck becomes the wall (2026-08-08)
+
+The app deck was a strip you could only ever see all of by making the window
+bigger. It is now the near edge of a stack of three surfaces, and one gesture
+moves between them:
+
+        All apps        ← push up
+        the desktop
+        Widgets         ← push down
+
+A wheel, two fingers or a swipe **up** over the tiles — or over bare wallpaper —
+opens **All apps**: every group on one grid of equal columns, bigger icons, the
+machine's own applications no longer capped at fourteen but laid out in full
+across the width, and **the caret already in a search box**. Typing filters the
+whole wall in place — the omnibar's own ranking, so a name typed here and the
+same name typed in the prompt bar cannot disagree — Enter opens the top hit, Esc
+clears the query before it closes the wall, and a search that matches nothing
+offers to ask the agent instead of showing an empty screen.
+
+Pushing **down** instead opens **Widgets**: every widget you have, wherever it is
+pinned and whichever desktop it is on, as live cards with the app's own widget
+page inside. Tabs cross between the two faces without going back through the
+desktop. `Ctrl+Shift+↑` / `Ctrl+Shift+↓`, and either as a hot corner, for people
+who would rather not gesture.
+
+Four details are the whole feel of it:
+
+- **The strip scrolls itself first.** The gesture only fires once the deck is
+  already at the end it is being pushed past, and only for a push that adds up —
+  otherwise one stray trackpad notch would flip the desktop inside out.
+- **Tiles arrive rather than appear**: a single capped left-to-right sweep, so a
+  hundred and thirty apps still land in under half a second, and nothing at all
+  moves under `prefers-reduced-motion`.
+- **Filtering hides tiles in place rather than re-rendering**, because
+  re-rendering takes the caret out of the box on every keystroke.
+- **The wall is not chrome.** It is deliberately not persisted and deliberately
+  not measured into `--deckh` — an overview you log back into is a screen in the
+  way, and measuring it would push every toast and card off the bottom. The
+  widgets face mounts its iframes on open and throws them away on close: a
+  glance surface showing what it showed ten minutes ago is worse than one that
+  takes a moment, and a hidden iframe left running is a timer nobody can see.
+
+In the session UI the desktop is the BACKGROUND layer, so the wall raises the
+surface for exactly as long as it is up; otherwise "all apps" would open behind
+the very windows you are trying to get away from.
+
+### WhatsApp by scanning a QR, with no Meta account at all (2026-08-08)
+
+The Cloud API path works and stays, but its cost before the first "hello" is a Meta
+developer app, business verification, a publicly reachable HTTPS webhook and a
+24-hour window that silently refuses free-form messages. On a laptop behind NAT that
+is a lot of ceremony.
+
+**The linked-device transport** (`agentos/wa_baileys.py` + `agentos/wa_bridge/`) is the
+other route: Baileys (MIT) speaks the WhatsApp Web multi-device protocol, so pairing is
+a QR code scanned from the phone that already has WhatsApp on it. No Meta account, no
+webhook, no tunnel — and no 24-hour window, because a linked device may message whenever
+it likes. `window_open()` now asks the transport before answering, so that limit is not
+invented where it does not apply.
+
+**One agent path, two transports.** Inbound messages are reshaped into the exact dict
+shape the Cloud API webhook produces and handed to the same `WhatsAppBridge._one`, so
+owner pairing, the allow-list, `/clear`, flow triggers, approvals, taint and the ledger
+are the code that already ran and was already tested. The Node process decides nothing —
+a bridge that started making decisions would be a second agent, which is the thing that
+was just removed.
+
+**Offered, never shipped.** Node plus ~60 MB for one channel does not belong on every
+machine, so it is a `components.py` entry with the licence and the honest warning in
+view: this is **unofficial**, it emulates a linked WhatsApp Web session, WhatsApp does
+not support it, and accounts have been banned for automating on it. Nothing downloads
+until somebody reads that and says yes. `unavailable_reason()` gained a per-component
+hook so a machine without Node is told "needs Node.js" rather than "no debian-family
+package name is known for this component".
+
+Three faces: the QR renders as SVG in the WhatsApp card and as block art in
+`bento channels whatsapp --pair`, both encoded once in the Node process rather than
+twice in two languages. The card follows the bridge's events because the code rotates
+every ~20 seconds and a stale QR is one that silently will not scan.
+
+**A bug worth recording**, found by writing the doc before believing the code: the first
+version mapped numbered replies to button ids like `"deny"`, but `_answer` parses
+`ap:<aid>:<value>`. Every approval on this transport would have hung until it timed out.
+Digits now resolve against the approval that is actually pending — and a digit with
+nothing pending stays an ordinary message, so texting "2" to your own agent reaches it.
+
+### Hermes is removed, and the gateway hub with it (2026-08-08)
+
+The Hermes integration is gone: the chat engine, the `hermes_*` tools, the companion
+app, the `/api/hermes/*` endpoints, the twelve carried channels, and `agentos/hermes.py`
+itself. The planned **gateway hub** (`openclaw.py` behind a shared `Gateway` interface)
+and **carriers become channels** roadmap items are dropped with it. `openclaw.py` was
+never written, which made that half free.
+
+**The reason is not that it failed.** It worked, and it gave AgentOS twelve messaging
+platforms for the cost of shelling out to a CLI. The problem was that we could not judge
+what we had:
+
+- a carried channel could only deliver **out** — a reply arriving there was answered by
+  a different agent, with a different memory, and the user had to be told so on every card
+- nothing Hermes did reached this OS's grants, ledger or budgets, so `hermes_ask` was a
+  hole in the one rule the audit design rests on
+- as a chat engine it was worse than it looked: `hermes -z` is one-shot, so **turn 2 never
+  knew about turn 1**, `tokens` were hardcoded to `0` and `steps` to `[]`
+
+Abstracting a dependency we could not measure behind a `Gateway` interface would have made
+it permanent rather than understood. Removing it costs real capability — Slack, Signal,
+Discord and the rest are not available from AgentOS today, and that is the honest price.
+
+**What replaces it is a bar, not a plan.** A channel is offered only if AgentOS owns it
+end to end: it brings a conversation to *this* agent, through this policy, with every call
+in this ledger. Telegram and the native WhatsApp meet it. `tests/test_channels.py` enforces
+that on every channel, and separately asserts the carrier surface is really gone rather
+than half-removed — the failure mode of a removal this wide is one module attribute left
+behind for a surface to call.
+
+Upgrades are handled rather than assumed: a config pinned to `engine: "hermes"` is repaired
+to `aria` on load (a machine pinned to a removed engine must still answer with something),
+and the dead `hermes` config block is pruned, because a setting for something that no longer
+exists reads as a feature merely switched off. Your own Hermes install is untouched —
+this removes AgentOS's integration, not the program.
+
+### Quarantine is a place you can get to (2026-08-08)
+
+It shipped as a tab inside the policy console, which is the wrong home. Permissions is
+where you go to *think about rules*; quarantine is where you go when something has
+already stopped working and you want to know why. Nobody whose app just went quiet
+thinks "I should check the policy console".
+
+- **Quarantine is now an app** — its own icon in the launcher, the deck and the bento
+  layout. Same renderer as the tab, which stays as a deep link: a second copy of the
+  list would drift, and the drift would be in the screen that explains why the OS
+  stopped something.
+- **`bento quarantine list | history | release <id> --mode …`** — until now the hold
+  existed on a headless box and the way out did not, so an app stopped over SSH could
+  be seen in the logs and never released. A hold you cannot lift is worse than no hold.
+- **A test over the app registry**, because adding an app means agreeing four lists
+  across three files and nothing checked they matched. An id with no entry, or an entry
+  whose render function was never written, is an icon that opens nothing — the dead
+  control the honesty rules exist to prevent, in the place a user is most likely to
+  click. It found nothing broken today; it exists so the next one is caught.
+
+Existing installs pick the app up automatically: `deckReconcile()` gives every new
+built-in a home, so it appears under **More** on a deck that was already customised.
+
+### The popular servers were never findable, and could not have connected anyway (2026-08-08)
+
+"Canva and Higgsfield aren't in the MCP" turned out to be two separate faults stacked on
+each other, and fixing either alone would have produced something that looked fixed.
+
+- **Discover could not find them.** It searches the public MCP registry, which is a
+  *publishing* registry: a vendor is in it only if that vendor published there. Measured
+  against the live API, `higgsfield` returns zero results and `canva` returns third-party
+  imitations plus Canvas-LMS courseware — the official servers are announced on the
+  vendors' own domains and are simply not in the index. No better query finds them.
+- **And a URL alone would not have worked.** Every first-party remote server answers an
+  unauthenticated `initialize` with `401` + `WWW-Authenticate`, and the HTTP transport only
+  ever sent static headers. Adding one by URL produced a server permanently in `error` —
+  the dead control the honesty rules forbid. This is why the catalogue and OAuth shipped
+  together rather than one at a time.
+
+**Native OAuth 2.1** (`agentos/mcp_oauth.py`) — AgentOS now discovers the authorisation
+server from the 401, registers itself by DCR, does code+PKCE and refreshes the token. No
+Node, no `mcp-remote` subprocess, no bridge. Tokens sit in `~/.agentos/oauth/<name>.json`
+at `0600` (opened with that mode, not chmod'd after — the gap is the exposure), and Sign
+out deletes the client registration too, because keeping it would silently reuse an
+authorisation the user just ended.
+
+**A curated catalogue** (`agentos/mcp_catalog.py`) — Higgsfield, Canva, Replicate, fal,
+Figma, Notion and Linear, merged *ahead of* registry results so the official server outranks
+imitations of it. Two entry rules: probed live before inclusion, and DCR required, since
+that is what makes it one click. `mcp.stripe.com` is real, works, and is deliberately
+excluded because it has no DCR — it stays an API-key preset. `packaging/dev/probe-catalog.sh`
+re-probes all seven; the unit tests stay offline, because a suite that failed during a Canva
+outage would be reporting on Canva, not on this code.
+
+Three faces: the MCP app grows a curated section plus Sign in / Sign out per server; the
+callback is a page a human reads; and `bento mcp catalog|add|list|connect|disconnect` covers
+the headless case, where it **prints** the URL instead of assuming a browser exists — a
+consent page must not open in a room the user is not in. That is also why the redirect base
+is configurable rather than a hardcoded `localhost`, and why the server only auto-opens a
+tab when no UI is connected to do it better.
+
 ### Quarantine: the OS stops what will not stop itself (2026-08-07)
 
 A stock-ticker app was firing bursts of `fetch_url` on every refresh, and nothing in the OS

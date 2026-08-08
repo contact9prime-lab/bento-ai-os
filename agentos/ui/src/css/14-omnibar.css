@@ -178,6 +178,91 @@ body:not(.deck-open) #deck-scroll{display:none}
 .deck-wx:hover{color:var(--err)}
 body.exposing #deck,body.omni-pop #deck{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
 
+/* ---- the wall: the same deck, scrolled open over the whole desktop ----
+   Every group on ONE grid of equal columns, so a wall of forty apps reads as
+   aligned rather than as ragged wrap — that alignment is the whole reason the
+   overview is a different layout instead of just a taller strip. It sits above
+   the windows (below Overview at 90) and leaves the prompt bar on top of it,
+   because "all apps" and "ask for one" are the same question. */
+body.deck-full #deck{left:0;right:0;top:0;bottom:0;width:auto;max-height:none;transform:none;
+  z-index:80;flex-direction:column;align-items:stretch;gap:0;
+  background:var(--scrim);backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25)}
+body.deck-full #omnibar{z-index:82}
+#deck-head{display:none}
+body.deck-full #deck-head{flex:none;display:flex;align-items:center;gap:12px;
+  width:min(1680px,94vw);margin:0 auto;padding:14px 4px 10px}
+.dh-tabs{display:flex;gap:4px;flex:none;padding:3px;border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--bg2) 55%,transparent);border:1px solid var(--hairline)}
+.dh-tab{display:flex;align-items:center;gap:7px;padding:6px 14px;border-radius:var(--r-full);
+  font-size:var(--fs-sm);font-weight:700;color:var(--dim);
+  transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.dh-tab:hover{color:var(--txt)}
+.dh-tab.on{color:var(--txt);background:var(--bg3);box-shadow:var(--el-1)}
+.dh-tab .dh-n{font-size:var(--fs-2xs);color:var(--dim2);font-variant-numeric:tabular-nums}
+/* the search box is the fast path, so it gets the width and the caret */
+#deck-q{flex:1;min-width:0;max-width:460px;height:36px;padding:0 14px;border-radius:var(--r-full);
+  background:var(--glass-tint);border:1px solid var(--hairline-strong);color:var(--txt);
+  font-size:var(--fs-base);font-family:inherit;box-shadow:var(--el-1)}
+#deck-q::placeholder{color:var(--dim2)}
+#deck-q:focus{outline:none;border-color:color-mix(in srgb,var(--acc) 55%,var(--hairline-strong));
+  box-shadow:var(--el-1),0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+#deck-head .dh-hint{margin-left:auto;font-size:var(--fs-2xs);color:var(--dim2);white-space:nowrap}
+body.deck-full #deck-toggle{align-self:center;margin:0;width:26px;height:26px}
+body.deck-full #deck-scroll{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:14px;align-content:start;align-items:start;justify-content:stretch;flex:1;min-height:0;max-height:none;
+  width:min(1680px,94vw);margin:0 auto;padding:2px 4px calc(var(--tbh) + 18px)}
+/* align-items:start above is doing real work: without it every card in a row is
+   stretched to the tallest one and a four-app group reads as a broken panel. */
+body.deck-full .deck-group{padding:12px 14px 14px}
+body.deck-full .deck-tiles{grid-template-rows:none;grid-auto-flow:row;
+  grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px 4px}
+body.deck-full .deck-tile{width:auto;min-width:0;padding:10px 4px 8px;gap:7px}
+body.deck-full .deck-tile span{max-width:100%;font-size:var(--fs-xs)}
+body.deck-full .deck-tile:hover{transform:translateY(-3px)}
+/* the machine's own applications are eighty-odd on this laptop: as one column
+   they are a mile-long stripe next to six short cards, so on the wall they get
+   the full width and flow like the app grid they are */
+body.deck-full .deck-native{grid-column:1/-1}
+body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118px}
+
+/* ---- searching the wall ----
+   Tiles are hidden in place (never re-rendered) so the caret stays in the box;
+   the survivors keep their grid cells, so the wall re-flows rather than
+   scattering. The top hit carries a ring because Enter opens it. */
+#deck.filtering .deck-tile.nomatch,#deck.filtering .deck-group.nomatch,
+#deck.filtering .deck-new,#deck.filtering .deck-wgroup{display:none}
+.deck-tile.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);
+  box-shadow:0 0 0 1.5px color-mix(in srgb,var(--acc) 65%,transparent)}
+.deck-none{display:none;grid-column:1/-1;flex-direction:column;align-items:flex-start;gap:10px;
+  padding:22px 24px;border-radius:var(--r-lg);border:1px dashed var(--line);color:var(--dim)}
+#deck.noresults .deck-none{display:flex}
+.deck-none .dn-ask{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+
+/* ---- the widgets face ----
+   The same card as a group, with the app's own widget page inside it. Heights
+   come from the size the APP chose, so a widget looks the same here as it does
+   pinned to the desktop. */
+.deck-board .deck-gname{gap:8px}
+.deck-board .deck-gname .mut{font-size:var(--fs-2xs);font-weight:600;opacity:.6;text-transform:none;letter-spacing:0}
+.deck-board .db-open{margin-left:auto;color:var(--dim2);font-size:var(--fs-sm)}
+.deck-board .db-open:hover{color:var(--acc)}
+.deck-board .deck-wframe{width:100%;border-radius:var(--r-md);overflow:hidden;
+  background:color-mix(in srgb,var(--bg2) 40%,transparent)}
+.deck-board .db-s{height:170px}.deck-board .db-m{height:240px}.deck-board .db-l{height:340px}
+.deck-board iframe{width:100%;height:100%;border:none;display:block}
+.deck-empty{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;align-items:flex-start;
+  max-width:620px;margin:8vh auto 0;padding:26px 28px;border-radius:var(--r-lg);
+  background:var(--glass-tint);border:1px solid var(--hairline-strong);box-shadow:var(--el-3)}
+.deck-empty b{font-size:var(--fs-lg)}
+.deck-empty span{font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.deck-empty .row{display:flex;gap:8px;margin-top:4px}
+.deck-empty button{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
+  border:1px solid var(--line);color:var(--txt)}
+.deck-empty .de-studio{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.deck-empty button:hover{border-color:var(--acc)}
+body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
+
 /* widgets pinned beside the prompt bar */
 #barwidgets{position:absolute;bottom:86px;left:calc(50% + min(292px,45vw));z-index:7;display:none;gap:8px}
 #barwidgets.on{display:flex}

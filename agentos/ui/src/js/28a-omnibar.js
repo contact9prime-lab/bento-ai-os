@@ -24,6 +24,9 @@ function omniPop(on){
   bar.classList.toggle('pop',on);
   document.body.classList.toggle('omni-pop',on);
   if(on){
+    // typing IS the other way to find an app, so the wall stands down rather
+    // than sitting invisible behind the results it was just replaced by
+    if(typeof deckFull==='function')deckFull(false);
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
     if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],

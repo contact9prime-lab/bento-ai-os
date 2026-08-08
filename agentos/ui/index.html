@@ -1527,6 +1527,91 @@ body:not(.deck-open) #deck-scroll{display:none}
 .deck-wx:hover{color:var(--err)}
 body.exposing #deck,body.omni-pop #deck{opacity:0;pointer-events:none;transition:opacity var(--d-fast) var(--ease-out)}
 
+/* ---- the wall: the same deck, scrolled open over the whole desktop ----
+   Every group on ONE grid of equal columns, so a wall of forty apps reads as
+   aligned rather than as ragged wrap — that alignment is the whole reason the
+   overview is a different layout instead of just a taller strip. It sits above
+   the windows (below Overview at 90) and leaves the prompt bar on top of it,
+   because "all apps" and "ask for one" are the same question. */
+body.deck-full #deck{left:0;right:0;top:0;bottom:0;width:auto;max-height:none;transform:none;
+  z-index:80;flex-direction:column;align-items:stretch;gap:0;
+  background:var(--scrim);backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25)}
+body.deck-full #omnibar{z-index:82}
+#deck-head{display:none}
+body.deck-full #deck-head{flex:none;display:flex;align-items:center;gap:12px;
+  width:min(1680px,94vw);margin:0 auto;padding:14px 4px 10px}
+.dh-tabs{display:flex;gap:4px;flex:none;padding:3px;border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--bg2) 55%,transparent);border:1px solid var(--hairline)}
+.dh-tab{display:flex;align-items:center;gap:7px;padding:6px 14px;border-radius:var(--r-full);
+  font-size:var(--fs-sm);font-weight:700;color:var(--dim);
+  transition:color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.dh-tab:hover{color:var(--txt)}
+.dh-tab.on{color:var(--txt);background:var(--bg3);box-shadow:var(--el-1)}
+.dh-tab .dh-n{font-size:var(--fs-2xs);color:var(--dim2);font-variant-numeric:tabular-nums}
+/* the search box is the fast path, so it gets the width and the caret */
+#deck-q{flex:1;min-width:0;max-width:460px;height:36px;padding:0 14px;border-radius:var(--r-full);
+  background:var(--glass-tint);border:1px solid var(--hairline-strong);color:var(--txt);
+  font-size:var(--fs-base);font-family:inherit;box-shadow:var(--el-1)}
+#deck-q::placeholder{color:var(--dim2)}
+#deck-q:focus{outline:none;border-color:color-mix(in srgb,var(--acc) 55%,var(--hairline-strong));
+  box-shadow:var(--el-1),0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+#deck-head .dh-hint{margin-left:auto;font-size:var(--fs-2xs);color:var(--dim2);white-space:nowrap}
+body.deck-full #deck-toggle{align-self:center;margin:0;width:26px;height:26px}
+body.deck-full #deck-scroll{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:14px;align-content:start;align-items:start;justify-content:stretch;flex:1;min-height:0;max-height:none;
+  width:min(1680px,94vw);margin:0 auto;padding:2px 4px calc(var(--tbh) + 18px)}
+/* align-items:start above is doing real work: without it every card in a row is
+   stretched to the tallest one and a four-app group reads as a broken panel. */
+body.deck-full .deck-group{padding:12px 14px 14px}
+body.deck-full .deck-tiles{grid-template-rows:none;grid-auto-flow:row;
+  grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px 4px}
+body.deck-full .deck-tile{width:auto;min-width:0;padding:10px 4px 8px;gap:7px}
+body.deck-full .deck-tile span{max-width:100%;font-size:var(--fs-xs)}
+body.deck-full .deck-tile:hover{transform:translateY(-3px)}
+/* the machine's own applications are eighty-odd on this laptop: as one column
+   they are a mile-long stripe next to six short cards, so on the wall they get
+   the full width and flow like the app grid they are */
+body.deck-full .deck-native{grid-column:1/-1}
+body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118px}
+
+/* ---- searching the wall ----
+   Tiles are hidden in place (never re-rendered) so the caret stays in the box;
+   the survivors keep their grid cells, so the wall re-flows rather than
+   scattering. The top hit carries a ring because Enter opens it. */
+#deck.filtering .deck-tile.nomatch,#deck.filtering .deck-group.nomatch,
+#deck.filtering .deck-new,#deck.filtering .deck-wgroup{display:none}
+.deck-tile.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);
+  box-shadow:0 0 0 1.5px color-mix(in srgb,var(--acc) 65%,transparent)}
+.deck-none{display:none;grid-column:1/-1;flex-direction:column;align-items:flex-start;gap:10px;
+  padding:22px 24px;border-radius:var(--r-lg);border:1px dashed var(--line);color:var(--dim)}
+#deck.noresults .deck-none{display:flex}
+.deck-none .dn-ask{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+
+/* ---- the widgets face ----
+   The same card as a group, with the app's own widget page inside it. Heights
+   come from the size the APP chose, so a widget looks the same here as it does
+   pinned to the desktop. */
+.deck-board .deck-gname{gap:8px}
+.deck-board .deck-gname .mut{font-size:var(--fs-2xs);font-weight:600;opacity:.6;text-transform:none;letter-spacing:0}
+.deck-board .db-open{margin-left:auto;color:var(--dim2);font-size:var(--fs-sm)}
+.deck-board .db-open:hover{color:var(--acc)}
+.deck-board .deck-wframe{width:100%;border-radius:var(--r-md);overflow:hidden;
+  background:color-mix(in srgb,var(--bg2) 40%,transparent)}
+.deck-board .db-s{height:170px}.deck-board .db-m{height:240px}.deck-board .db-l{height:340px}
+.deck-board iframe{width:100%;height:100%;border:none;display:block}
+.deck-empty{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;align-items:flex-start;
+  max-width:620px;margin:8vh auto 0;padding:26px 28px;border-radius:var(--r-lg);
+  background:var(--glass-tint);border:1px solid var(--hairline-strong);box-shadow:var(--el-3)}
+.deck-empty b{font-size:var(--fs-lg)}
+.deck-empty span{font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.deck-empty .row{display:flex;gap:8px;margin-top:4px}
+.deck-empty button{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
+  border:1px solid var(--line);color:var(--txt)}
+.deck-empty .de-studio{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.deck-empty button:hover{border-color:var(--acc)}
+body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
+
 /* widgets pinned beside the prompt bar */
 #barwidgets{position:absolute;bottom:86px;left:calc(50% + min(292px,45vw));z-index:7;display:none;gap:8px}
 #barwidgets.on{display:flex}
@@ -1728,6 +1813,8 @@ body.dev-tablet .tbnat .aicon,body.dev-tablet #startbtn .mark{width:42px;height:
 body.dev-tablet #tbnative{max-width:22vw}
 body.dev-tablet #deck{width:calc(100vw - 24px)}
 body.dev-tablet .deck-tile{width:76px}
+body.dev-tablet.deck-full #deck{width:auto}     /* the wall is full-bleed on every size */
+body.dev-tablet.deck-full .deck-tile{width:auto}
 body.dev-tablet #omnibar{width:min(560px,92vw)}
 body.dev-tablet #omnicards{width:min(560px,92vw)}
 body.dev-tablet #barwidgets{display:none!important}     /* the bar needs the whole width */
@@ -1838,6 +1925,21 @@ body.dev-mobile .deck-tiles{grid-template-rows:none;grid-auto-flow:row;
 body.dev-mobile .deck-tile{width:auto}
 body.dev-mobile .deck-new{width:100%;height:64px;flex-direction:row;gap:8px}
 body.dev-mobile .deck-wgroup .deck-wframe{width:100%}
+/* the wall on a phone: swipe up and the deck becomes the screen — one column of
+   groups reading downward, so it is a drawer rather than a widened strip */
+body.dev-mobile.deck-full #deck{flex-direction:column;top:0;bottom:0;left:0;right:0;
+  width:auto;max-height:none;padding:0 10px}
+/* margin:0 matters: the desktop rule centres these with `margin:0 auto`, and an
+   auto side margin stops a column-flex child stretching — the wall came out
+   half a phone wide and centred. */
+body.dev-mobile.deck-full #deck-head{width:auto;margin:0;padding:10px 4px 6px;
+  flex-wrap:wrap;row-gap:8px}
+body.dev-mobile.deck-full #deck-head .dh-hint{display:none}
+body.dev-mobile.deck-full #deck-q{order:3;flex:1 0 100%;max-width:none}
+body.dev-mobile.deck-full #deck-toggle{margin-left:auto}
+body.dev-mobile.deck-full #deck-scroll{display:grid;grid-template-columns:1fr;width:auto;margin:0;
+  justify-content:stretch;padding:2px 0 calc(var(--chrome-b) + 16px)}
+body.dev-mobile.deck-full .deck-tiles{grid-template-columns:repeat(auto-fill,minmax(80px,1fr))}
 body.dev-mobile #widgets{display:none}   /* free-floating widgets need a canvas */
 
 /* ---- launcher and popovers become sheets pinned to the bottom edge ---- */
@@ -4272,6 +4374,7 @@ const APPS={
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
+  quarantine:{id:'quarantine',title:'Quarantine',icon:'⛔',w:720,h:600,desc:'What the OS stopped, and why — with the evidence',render:renderQuarantine},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
@@ -4284,8 +4387,6 @@ const APPS={
     render:renderMission},
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
-  hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
-    render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
@@ -4321,6 +4422,7 @@ const APP_CTX={
   skills:()=>'the skills library (reusable procedures)',
   policies:()=>'always-allow / always-deny policy rules',
   permissions:()=>'the policy console: permission maps, grants, IO gates',
+  quarantine:()=>`what the OS has stopped for running away: ${(PERM&&PERM.held||[]).length} held`,
   store:()=>'the Store: app templates, MCP discovery, build-with-AI',
   studio:()=>`App Studio${typeof STUDIO!=='undefined'&&STUDIO.sel?`, editing app "${STUDIO.sel}"`:''}${typeof STUDIO!=='undefined'&&STUDIO.building?' (a build is RUNNING)':''}`,
   themes:()=>`the theme gallery (current theme: ${typeof CURRENT_THEME!=='undefined'?CURRENT_THEME:'agentos'})`,
@@ -4330,14 +4432,13 @@ const APP_CTX={
   train:()=>'TrainForge — fine-tuning datasets, jobs, models',
   mission:()=>'Mission Control: the Train/Test/Operate/Build/Ship/Manage lifecycle dashboard',
   evals:()=>'Evals: behavioural test cases for the agent itself (memory, tool choice, injection resistance, honesty)',
-  hermes:()=>'the Hermes companion-agent app (install, config, gateway)',
   settings:()=>'core settings: providers, API keys, autonomy, voice',
   about:()=>'system information',
 };
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -4594,7 +4695,7 @@ const BENTO_GROUPS=[
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','settings','policies','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];
 function arrangeBento(){
@@ -4775,10 +4876,31 @@ const DECK_DEFAULTS=[
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','policies','permissions','audit','snapshots','logs','tokens']],
-  ['Library',['docs','mission','train','hermes','about']],
+  ['System',['taskmgr','control','syssettings','settings','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
+  ['Library',['docs','mission','train','about']],
 ];
 let DECK=null;
+/* ---- the full app wall ----
+   Scrolling up over the tiles (or over bare wallpaper) grows the deck into the
+   whole desktop: every group, every system app, bigger tiles, laid out on one
+   aligned grid. Scrolling back down, Esc, clicking the wallpaper or opening
+   anything puts it back. State is deliberately NOT persisted — an overview you
+   log back into is a screen in the way, not a launcher.
+   TUI: not applicable, there is no wall to scroll; `agentos apps` already lists
+   everything. SUI: the desktop is the BACKGROUND layer, so an overview would
+   otherwise open UNDER the native windows — deckFull raises the surface for as
+   long as it is up, exactly as the omnibar does.
+
+   The wall has two faces, stacked the way the gesture reads: scroll UP for your
+   apps, DOWN for your widgets, and tabs to cross between them without going
+   back through the desktop. The apps face opens with the caret already in its
+   search box, so the fastest way to an app is still typing its name. */
+var DECKFULL=false;         // var, not let: earlier files in the bundle read it
+var DECKTAB='apps';         // 'apps' | 'widgets'
+var DECKQ='';               // the search box, kept across rebuilds
+var DECK_RAISED=false;      // we brought the session surface forward, so we lower it
+var DECK_LASTOPEN=false;    // tiles animate in when the deck APPEARS, not on every rebuild
+function deckIconPx(){return DECKFULL?54:46}
 function deckLoad(){
   try{DECK=JSON.parse(localStorage.getItem('deck')||'null')}catch(e){DECK=null}
   if(!DECK||!Array.isArray(DECK.groups))
@@ -4817,6 +4939,7 @@ function deckAllowed(){
 }
 function deckVisibleNow(){
   if(!DECK)return false;
+  if(DECKFULL)return true;                               // the wall overrides every other rule
   if(!deckAllowed())return false;                        // this space is kept clear
   if(DECK._override!==undefined)return DECK._override;   // the user just toggled it
   if(!DECK.auto)return !!DECK.open;
@@ -4841,27 +4964,44 @@ function deckToggle(){
   toast(showing?`Desktop ${curDesk} is clear — Ctrl+Shift+D brings the deck back`
                :`app deck on Desktop ${curDesk}`);
 }
-function buildDeck(){
+function buildDeck(fresh){
   const box=$('#deck');if(!box)return;
   if(!DECK)deckLoad();
   deckReconcile();
   const open=deckVisibleNow();
   document.body.classList.toggle('deck-open',open);
   DECK._shown=open;
-  box.innerHTML=`<button id="deck-toggle" title="${open?`Hide the deck on Desktop ${curDesk} (Ctrl+Shift+D)`:`Show the deck on Desktop ${curDesk} (Ctrl+Shift+D)`}">${open?'▾':'▴'}</button>
-    <div id="deck-scroll">${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
+  const board=DECKFULL&&DECKTAB==='widgets';
+  box.innerHTML=`${DECKFULL?deckHeadHTML()
+      :`<button id="deck-toggle" title="${open?`Hide the deck on Desktop ${curDesk} (Ctrl+Shift+D) — scroll up here for all apps`:`Show the deck on Desktop ${curDesk} (Ctrl+Shift+D)`}">${open?'▾':'▴'}</button>`}
+    <div id="deck-scroll">${board?deckBoardHTML()
+      :`${DECKFULL?deckNoneHTML():''}
+      ${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
       ${deckNativeHTML()}
       ${deckWidgetsHTML()}
-      <button class="deck-new" title="New group">＋<span>New group</span></button>
+      <button class="deck-new" title="New group">＋<span>New group</span></button>`}
     </div>`;
-  $('#deck-toggle').onclick=deckToggle;
-  box.querySelector('.deck-new').onclick=deckNewGroup;
+  $('#deck-toggle').onclick=DECKFULL?(()=>deckFull(false)):deckToggle;
+  if(DECKFULL)deckHeadWire();
+  const nw=box.querySelector('.deck-new');
+  if(nw)nw.onclick=deckNewGroup;
+  const ask=box.querySelector('.dn-ask');
+  if(ask)ask.onclick=()=>{const q=DECKQ;deckFull(false);omniSummon(true);
+    const i=$('#omni-in');if(i){i.value=q;omniPop(true)}};
+  box.querySelectorAll('.deck-board').forEach(c=>{
+    const id=c.dataset.w;
+    c.querySelector('.db-open').onclick=()=>{deckFull(false);openApp('ua_'+id)};
+    c.querySelector('.deck-gname').oncontextmenu=e=>{e.preventDefault();deckBoardMenu(e,id)};
+  });
+  const st=box.querySelector('.de-studio'), so=box.querySelector('.de-store');
+  if(st)st.onclick=()=>{deckFull(false);openApp('studio')};
+  if(so)so.onclick=()=>{deckFull(false);openApp('store')};
   box.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
-    t.onclick=()=>openApp(t.dataset.app);
+    t.onclick=()=>{deckFull(false);openApp(t.dataset.app)};
     t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
   });
   box.querySelectorAll('.deck-nat').forEach(t=>{
-    t.onclick=()=>launchNative(t.dataset.nat,t.dataset.natname);
+    t.onclick=()=>{deckFull(false);launchNative(t.dataset.nat,t.dataset.natname)};
     t.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
       {label:'Open',fn:()=>launchNative(t.dataset.nat,t.dataset.natname)},
       {label:'Show all applications',fn:()=>openApp('apps')},
@@ -4870,7 +5010,7 @@ function buildDeck(){
     ])};
   });
   const more=box.querySelector('.deck-natmore');
-  if(more)more.onclick=()=>openApp('apps');
+  if(more)more.onclick=()=>deckFull(true);   // "+N more" is the wall, one click instead of a scroll
   box.querySelectorAll('.deck-gname[data-native]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();showCtxItems(e,[
       {label:'Show all applications',fn:()=>openApp('apps')},
@@ -4880,12 +5020,195 @@ function buildDeck(){
   box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
   });
+  // on the wall, the space around the tiles is a way out, like any overview
+  box.onclick=e=>{if(DECKFULL&&(e.target===box||e.target.id==='deck-scroll'))deckFull(false)};
   deckMeasure(open);
+  if(DECKFULL&&!board)deckFilter(DECKQ,true);   // a rebuild must not drop the query
+  if(open&&(fresh||!DECK_LASTOPEN))deckStagger();
+  DECK_LASTOPEN=open;
+}
+/* ---- the wall's header: two tabs, a search box, and the way out ----
+   The count is on the tab rather than beside a title because the tabs are what
+   you are choosing between; a heading that says "All apps" above a Widgets tab
+   is a heading that lies half the time. */
+function deckHeadHTML(){
+  const own=DECK.groups.reduce((n,g)=>n+g.apps.filter(id=>APPS[id]).length,0);
+  const nat=(typeof NATIVEAPPS!=='undefined'&&!deckNativeHidden())?NATIVEAPPS.length:0;
+  const apps={};(typeof USERAPPS!=='undefined'?USERAPPS:[]).forEach(a=>apps[a.id]=a);
+  const wn=(typeof WIDGETS!=='undefined'?WIDGETS:[]).filter(w=>apps[w.app_id]).length;
+  const tab=(id,label,n)=>`<button class="dh-tab${DECKTAB===id?' on':''}" data-tab="${id}"
+    role="tab" aria-selected="${DECKTAB===id}">${label}<span class="dh-n">${n}</span></button>`;
+  return `<div id="deck-head">
+    <div class="dh-tabs" role="tablist">${tab('apps','All apps',own+nat)}${tab('widgets','Widgets',wn)}</div>
+    ${DECKTAB==='apps'?`<input id="deck-q" type="search" autocomplete="off" spellcheck="false"
+      placeholder="Search apps and system apps…" value="${esc(DECKQ)}"
+      aria-label="Search apps">`:''}
+    <span class="dh-hint">${DECKTAB==='apps'?'scroll down or press Esc to go back'
+                                            :'scroll up for your apps · Esc to go back'}</span>
+    <button id="deck-toggle" title="Back to the desktop (Esc)">✕</button></div>`;
+}
+function deckHeadWire(){
+  const box=$('#deck');
+  box.querySelectorAll('.dh-tab').forEach(b=>b.onclick=()=>deckTab(b.dataset.tab));
+  const q=$('#deck-q');
+  if(!q)return;
+  q.oninput=()=>deckFilter(q.value);
+  q.onkeydown=e=>{
+    if(e.key==='Enter'){e.preventDefault();deckOpenSelected();return}
+    if(e.key==='ArrowRight'||e.key==='ArrowLeft'||e.key==='ArrowDown'||e.key==='ArrowUp'){
+      // the caret stays put: on a wall of tiles the arrows are for the tiles
+      e.preventDefault();deckMoveSel(e.key==='ArrowLeft'||e.key==='ArrowUp'?-1:1);
+    }
+  };
+  // the wall is a launcher, so the caret belongs in the box the moment it opens
+  q.focus();
+  const n=q.value.length;try{q.setSelectionRange(n,n)}catch(e){}
+}
+/* switch faces without leaving the wall */
+function deckTab(tab){
+  if(!DECKFULL||tab===DECKTAB)return;
+  DECKTAB=tab;
+  if(tab==='widgets')DECKQ='';
+  buildDeck(true);
+}
+/* ---- search ----
+   palScore is the omnibar's own ranking (3 prefix · 2 substring · 1 scattered),
+   so a name typed here and the same name typed in the prompt bar cannot
+   disagree about what it matches. Tiles are hidden in place rather than
+   re-rendered: re-rendering would take the caret out of the box on every
+   keystroke. */
+function deckFilter(q,quiet){
+  const box=$('#deck');if(!box)return;
+  DECKQ=q||'';
+  const s=DECKQ.trim();
+  box.classList.toggle('filtering',!!s);
+  const tiles=[...box.querySelectorAll('.deck-tile')];
+  const scored=tiles.map(t=>({t,s:s?deckTileScore(s,t):3}));
+  const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
+  const floor=best>=2?2:1;                  // drop the scattered tail once there is a real hit
+  scored.forEach(x=>x.t.classList.toggle('nomatch',s?x.s<floor:false));
+  box.querySelectorAll('.deck-group').forEach(g=>{
+    const any=[...g.querySelectorAll('.deck-tile')].some(t=>!t.classList.contains('nomatch'));
+    g.classList.toggle('nomatch',!!s&&!any);
+  });
+  const hits=scored.filter(x=>!x.t.classList.contains('nomatch'));
+  if(s)hits.sort((a,b)=>b.s-a.s);
+  // no query, no selection: a ring on the first tile of an unfiltered wall reads
+  // as "this is where you are", which is not true and Enter would prove it
+  deckSelect(s&&hits.length?hits[0].t:null);
+  box.classList.toggle('noresults',!!s&&!hits.length);
+}
+function deckTileScore(q,t){
+  const label=(t.querySelector('span')||{}).textContent||'';
+  return Math.max(palScore(q,label),
+                  t.dataset.app?palScore(q,t.dataset.app):0,
+                  t.title?(String(t.title).toLowerCase().includes(q.toLowerCase())?1.5:0):0);
+}
+/* "nothing matches" is a sentence with a way forward, not an empty screen: the
+   thing you typed goes to the agent, which is the one search that can't miss. */
+function deckNoneHTML(){
+  return `<div class="deck-none"><b>Nothing here matches that.</b>
+    <button class="dn-ask">Ask the agent instead</button></div>`;
+}
+function deckSelect(t){
+  const box=$('#deck');if(!box)return;
+  box.querySelectorAll('.deck-tile.sel').forEach(e=>e.classList.remove('sel'));
+  if(t){t.classList.add('sel');if(t.scrollIntoView)t.scrollIntoView({block:'nearest'})}
+}
+function deckMoveSel(step){
+  const box=$('#deck');if(!box)return;
+  const vis=[...box.querySelectorAll('.deck-tile')].filter(t=>!t.classList.contains('nomatch'));
+  if(!vis.length)return;
+  const cur=vis.findIndex(t=>t.classList.contains('sel'));
+  deckSelect(vis[Math.max(0,Math.min(vis.length-1,(cur<0?0:cur+step)))]);
+}
+function deckOpenSelected(){
+  const t=$('#deck .deck-tile.sel');
+  if(t)t.click();
+}
+/* Tiles arrive rather than appear: one sweep left-to-right, capped so a machine
+   with two hundred apps does not spend a second and a half drawing them. Under
+   prefers-reduced-motion Motion.run resolves without animating, so this whole
+   function costs nothing rather than being branched around. */
+function deckStagger(){
+  const box=$('#deck');if(!box||Motion.reduced)return;
+  box.querySelectorAll('.deck-group').forEach((g,i)=>Motion.run(g,
+    [{opacity:0,transform:'translateY(14px) scale(.985)'},{opacity:1,transform:'none'}],
+    {duration:280,delay:Math.min(i*26,190),easing:EASE.out,fill:'backwards'}));
+  box.querySelectorAll('.deck-tile').forEach((t,i)=>Motion.run(t,
+    [{opacity:0,transform:'translateY(10px) scale(.88)'},{opacity:1,transform:'none'}],
+    {duration:260,delay:Math.min(70+i*9,430),easing:EASE.spring,fill:'backwards'}));
+}
+/* ---- open / close the wall ----
+   Opening is a rebuild (bigger icons, every system app) plus a scrim fade;
+   closing fades the scrim out FIRST, so the compact deck is never seen wearing
+   the wall's layout for a frame. */
+function deckFull(on,tab){
+  on=!!on;
+  const box=$('#deck');
+  if(!box)return;
+  if(on&&DECKFULL)return tab?deckTab(tab):undefined;   // already up: the gesture just picks a face
+  if(on===DECKFULL)return;
+  if(on){
+    DECKFULL=true;DECKTAB=tab||'apps';DECKQ='';
+    document.body.classList.add('deck-full');
+    // SUI/DE: come in front of the native windows for as long as the wall is up
+    if(!(typeof OMNI!=='undefined'&&OMNI.pop)&&typeof raiseShell==='function'){
+      DECK_RAISED=true;raiseShell(true);
+    }
+    buildDeck(true);
+    Motion.run(box,[{opacity:0},{opacity:1}],{duration:180,easing:EASE.out});
+    return;
+  }
+  const a=Motion.run(box,[{opacity:1},{opacity:0}],{duration:130,easing:EASE.in,fill:'forwards'});
+  (a.finished||Promise.resolve()).then(()=>{
+    a.cancel();                       // drop the held opacity in the same task as the rebuild
+    DECKFULL=false;DECKQ='';DECKTAB='apps';
+    document.body.classList.remove('deck-full');
+    box.classList.remove('filtering','noresults');
+    buildDeck();
+    // the caret goes back where the desktop keeps it, without popping the launcher
+    const i=$('#omni-in');if(i&&!(typeof OMNI!=='undefined'&&OMNI.pop))i.focus();
+    if(DECK_RAISED){DECK_RAISED=false;if(typeof raiseShell==='function')raiseShell(false)}
+  });
+}
+/* ---- the widgets face ----
+   Every widget you have, wherever it is pinned and whichever desktop it is on,
+   as live cards. The iframes are mounted on open and thrown away on close: a
+   glance surface that shows what it showed ten minutes ago is worse than one
+   that takes a moment to load, and a hidden iframe left running is a timer
+   nobody can see. */
+function deckBoardHTML(){
+  const apps={};(typeof USERAPPS!=='undefined'?USERAPPS:[]).forEach(a=>apps[a.id]=a);
+  const list=(typeof WIDGETS!=='undefined'?WIDGETS:[]).filter(w=>apps[w.app_id]);
+  if(!list.length)return `<div class="deck-empty">
+    <b>No widgets pinned yet</b>
+    <span>Every app you build has a second face — one glanceable card. Right-click
+      one of your own apps on the apps tab to pin it, or make one in App Studio.
+      The built-in apps are windows only; they have no widget to pin.</span>
+    <div class="row"><button class="de-studio">Open App Studio</button>
+      <button class="de-store">Browse the Store</button></div></div>`;
+  const where=w=>((typeof WIDGET_PLACES!=='undefined'
+    ?(WIDGET_PLACES.find(p=>p[0]===(w.place||''))||[])[1]:'')||'Desktop')
+    +(w.place?'':' '+(w.desk||1));
+  return list.map(w=>{
+    const a=apps[w.app_id], size=esc(a.widget_size||'m');
+    return `<div class="deck-group deck-board" data-w="${esc(w.app_id)}">
+      <div class="deck-gname">${esc(a.name)}<span class="mut">${esc(where(w))}</span>
+        <button class="db-open" title="Open the whole app">⤢</button></div>
+      <div class="deck-wframe db-${size}"><iframe loading="lazy" title="${esc(a.name)}"
+        src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${size}"
+        sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
+    </div>`;
+  }).join('');
 }
 /* the deck's real height drives --deckh, so cards, toasts and the start menu
    always sit above it however many rows it wrapped into */
 function deckMeasure(open){
   const box=$('#deck');if(!box)return;
+  // the wall is a transient overlay, not chrome: measuring it would push toasts,
+  // cards and the start menu off the bottom of the screen
+  if(DECKFULL)return;
   requestAnimationFrame(()=>{
     const h=open?Math.ceil(box.getBoundingClientRect().height)+8:0;
     document.documentElement.style.setProperty('--deckh',h+'px');
@@ -4897,7 +5220,7 @@ function deckGroupHTML(g){
     <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}</div>
     <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
       <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
-        ${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
+        ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
   </div>`;
 }
 /* ---- system apps ----
@@ -4912,14 +5235,17 @@ function deckNativeHidden(){return !!(DECK&&DECK.hide_native)}
 function deckNativeHTML(){
   const apps=(typeof NATIVEAPPS!=='undefined'?NATIVEAPPS:[]);
   if(!apps.length||deckNativeHidden())return '';
-  const show=apps.slice(0,DECK_NATIVE_MAX), rest=apps.length-show.length;
+  // the wall is where "all apps" has to mean all of them — the shelf is capped
+  // only while it is sharing the desktop with your work
+  const show=DECKFULL?apps:apps.slice(0,DECK_NATIVE_MAX), rest=apps.length-show.length;
+  const px=deckIconPx();
   return `<div class="deck-group deck-native">
     <div class="deck-gname" data-native="1">System apps <span class="mut">${apps.length}</span></div>
     <div class="deck-tiles">${show.map(a=>`
       <button class="deck-tile deck-nat" data-nat="${esc(a.id)}" data-natname="${esc(a.name)}"
-              title="${esc(a.comment||a.name)}">${nativeIcon(a,46)}<span>${esc(a.name)}</span></button>`).join('')}
+              title="${esc(a.comment||a.name)}">${nativeIcon(a,px)}<span>${esc(a.name)}</span></button>`).join('')}
       ${rest>0?`<button class="deck-tile deck-natmore" title="Every installed application">
-        ${appIcon('apps',46)}<span>+${rest} more</span></button>`:''}</div>
+        ${appIcon('apps',px)}<span>+${rest} more</span></button>`:''}</div>
   </div>`;
 }
 function deckWidgetsHTML(){
@@ -4943,6 +5269,20 @@ async function deckNewGroup(){
   deckSave();buildDeck();
   toast('group "'+name.trim()+'" added — right-click any app to move it here');
 }
+/* the board's own right-click: size, where it lives, unpin — the same verbs the
+   widget has on the desktop, reached from the one place that lists them all */
+function deckBoardMenu(e,id){
+  const items=[{label:'Open the app',fn:()=>{deckFull(false);openApp('ua_'+id)}},null];
+  if(typeof WIDGET_SIZES!=='undefined')
+    Object.entries(WIDGET_SIZES).forEach(([k,d])=>items.push({label:d.label+' widget',
+      fn:()=>{setWidgetSize(id,k);if(DECKFULL)buildDeck(true)}}));
+  items.push(null);
+  if(typeof WIDGET_PLACES!=='undefined')
+    WIDGET_PLACES.forEach(([p,label])=>items.push({label:'Move to '+label,
+      fn:()=>{setWidgetPlace(id,p);if(DECKFULL)buildDeck(true)}}));
+  items.push(null,{label:'Unpin',danger:true,fn:()=>{unpinWidget(id);if(DECKFULL)buildDeck(true)}});
+  showCtxItems(e,items);
+}
 function deckTileMenu(e,id){
   const cur=deckGroupOf(id);
   const items=[{label:'Open',fn:()=>openApp(id)}];
@@ -4954,7 +5294,10 @@ function deckTileMenu(e,id){
     g.apps.push(id);deckSave();buildDeck();
   }}));
   items.push(null,{label:'Pin to dock',fn:()=>pinToDock(id)});
-  if(id.startsWith('ua_'))items.push({label:'Pin as widget (deck)',fn:()=>setWidgetPlace(id.slice(3),'deck')});
+  if(id.startsWith('ua_')){
+    items.push({label:'Pin as widget',fn:()=>{setWidgetPlace(id.slice(3),'');if(DECKFULL)deckTab('widgets')}});
+    items.push({label:'Pin as widget (deck)',fn:()=>setWidgetPlace(id.slice(3),'deck')});
+  }
   showCtxItems(e,items);
 }
 function deckGroupMenu(e,gid){
@@ -4977,6 +5320,92 @@ function deckGroupMenu(e,gid){
     }},
   ]);
 }
+
+/* ================= the gesture: scroll the tiles to open everything ==========
+   Three surfaces in a vertical stack, which is what makes one gesture enough:
+
+            All apps        ← push up
+            the desktop
+            Widgets         ← push down
+
+   From the desktop (or the deck) a wheel, two fingers or a swipe up opens the
+   apps face and down opens the widgets face; from either face, a push past the
+   end you are already at drops you back on the desktop. Two rules keep it from
+   fighting the ordinary scrollbar: the strip scrolls itself first and only
+   fires the gesture once it is AT the end it is being pushed past, and a
+   gesture has to add up to a real push rather than one stray notch.
+
+   GUI: plain DOM events, so it works in any browser tab. SUI: identical — the
+   desktop is a layer surface, and a wheel over it is still a wheel. */
+const DECK_GESTURE=90;     // px of accumulated scroll before the wall moves
+const DECK_WINDOW=420;     // ms after which a stalled gesture is forgotten
+var DGEST={acc:0,at:0,cool:0};
+/* Where the pointer is, in the only three terms this gesture cares about. The
+   chrome and any window are somebody else's scroll and are left alone. */
+function deckWheelZone(t){
+  if(!t||!t.closest)return '';
+  if(t.closest('#deck'))return 'deck';
+  if(t.closest('.win,#taskbar,#menubar,#omnibar,#omnicards,#omnilist,#startmenu,#notifpanel,#widgets,#ccpop,#expose,.dlg-scrim,#switcher,#keyshelp'))return '';
+  return t.closest('#desktop')?'wall':'';
+}
+function deckWheelPx(e){
+  return e.deltaMode===1?e.deltaY*16:e.deltaMode===2?e.deltaY*innerHeight:e.deltaY;
+}
+/* true when the deck's own scroller has nothing left to give in this direction */
+function deckAtEdge(up){
+  const sc=$('#deck-scroll');
+  if(!sc)return true;
+  return up?sc.scrollTop<=0:sc.scrollTop+sc.clientHeight>=sc.scrollHeight-1;
+}
+function deckGesture(dy,now){
+  if(now-DGEST.at>DECK_WINDOW||(dy<0)!==(DGEST.acc<0))DGEST.acc=0;
+  DGEST.at=now;
+  DGEST.acc+=dy;
+  const up=DGEST.acc<0;
+  if(Math.abs(DGEST.acc)<DECK_GESTURE)return false;
+  DGEST.acc=0;
+  DGEST.cool=now+420;                 // one gesture, one change of state
+  // open: this push is already past the end, so it goes back to the desktop
+  if(DECKFULL){deckFull(false);return true}
+  deckFull(true,up?'apps':'widgets');
+  return true;
+}
+addEventListener('wheel',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;                 // zoom, not a scroll
+  const zone=deckWheelZone(e.target);
+  if(!zone)return;
+  const now=performance.now();
+  if(now<DGEST.cool)return;
+  const dy=deckWheelPx(e);
+  if(!dy)return;
+  // let the strip scroll itself while it still can
+  if(zone==='deck'&&!deckAtEdge(dy<0))return;
+  if(deckGesture(dy,now))e.preventDefault();
+},{passive:false});
+
+/* Touch: the same three-surface stack under a finger — swipe up for apps, down
+   for widgets, and either way out of a face that is already at its end. Only
+   vertical drags count, so a horizontal flick through a group's tiles stays a
+   flick. Note the inverted edge test: a finger moving UP scrolls a list DOWN,
+   so the edge a swipe has to be past is the opposite one from the wheel's. */
+var DTOUCH=null;
+addEventListener('touchstart',e=>{
+  if(e.touches.length!==1)return DTOUCH=null;
+  const zone=deckWheelZone(e.target);
+  DTOUCH=zone?{zone,x:e.touches[0].clientX,y:e.touches[0].clientY,fired:false}:null;
+},{passive:true});
+addEventListener('touchmove',e=>{
+  if(!DTOUCH||DTOUCH.fired||e.touches.length!==1)return;
+  const dx=e.touches[0].clientX-DTOUCH.x, dy=e.touches[0].clientY-DTOUCH.y;
+  if(Math.abs(dx)>Math.abs(dy))return;
+  const up=dy<0;                                   // finger travelling up the screen
+  if(DTOUCH.zone==='deck'&&!deckAtEdge(!up))return;
+  if(Math.abs(dy)<70)return;
+  DTOUCH.fired=true;
+  if(DECKFULL)deckFull(false);
+  else deckFull(true,up?'apps':'widgets');
+},{passive:true});
+addEventListener('touchend',()=>{DTOUCH=null},{passive:true});
 /* ================= desktop widgets =================
    Every app has two surfaces: the desktop window (the whole application) and a
    widget (the one glanceable fact). The widget's size is a property of the APP —
@@ -5453,8 +5882,8 @@ function handle(ev){
       break;}
     case 'turn_start':{
       // a new turn: until an engine says otherwise, this is the built-in agent
-      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'||ev.model==='hermes'?ev.model:'',
-                          model:(ev.model==='claude-code'||ev.model==='hermes')?'':(ev.model||'')};
+      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
+                          model:ev.model==='claude-code'?'':(ev.model||'')};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
       updateSpin();
@@ -5584,6 +6013,12 @@ function handle(ev){
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'whatsapp_link':
+      // The pairing code rotates every ~20 seconds. A card left showing a stale QR
+      // is a code that silently will not scan, so it follows the bridge's events
+      // rather than making the panel poll.
+      if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
+      break;
     case 'telegram_chats': refreshApp('telegram'); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
@@ -5598,8 +6033,8 @@ function handle(ev){
       // Loud on purpose: something the user installed just stopped working, and the worst
       // version of this feature is one where they find out by the thing being broken.
       toast('⚠ Quarantined “'+ev.label+'” — '+(ev.reason||'').slice(0,80));
-      refreshApp('permissions'); refreshApp('apps'); break;
-    case 'quarantine': refreshApp('permissions'); break;
+      refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
+    case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
       toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
@@ -5624,7 +6059,6 @@ function handle(ev){
     case 'automation.run': onAutomationBroadcast(ev.automation); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
-    case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
@@ -5996,7 +6430,7 @@ function paintModelChip(){
   const engine=(cfg&&cfg.engine)||d.engine||'aria';
   if(engine&&engine!=='aria'){
     const e=(d.engines||[]).find(x=>x.id===engine)||{};
-    chip.innerHTML=`${{'claude-code':'◈','hermes':'🜁'}[engine]||'⇥'} ${esc(e.name||engine)}`;
+    chip.innerHTML=`${{'claude-code':'◈'}[engine]||'⇥'} ${esc(e.name||engine)}`;
     chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
     chip.classList.add('engine');
     return;
@@ -6032,7 +6466,7 @@ function paintForwardChip(){
   const on=engine!=='aria';
   chip.hidden=!on;
   if(!on)return;
-  const name=engine==='claude-code'?'Claude Code':(engine==='hermes'?'Hermes':engine);
+  const name=engine==='claude-code'?'Claude Code':engine;
   // The model rides on the chip too, so "what is this running on" is answered by
   // looking up rather than by asking. It is filled in the first time a forwarded
   // turn reports it — before that the engine name alone is all we honestly know.
@@ -6047,13 +6481,13 @@ function paintForwardChip(){
 
 /* ---- who actually answered -------------------------------------------------
    A reply is labelled with the agent that produced it, not with the built-in
-   one by default. When the machine forwards, Claude Code or Hermes writes the
+   one by default. When the machine forwards, Claude Code writes the
    text — calling that "Aria" is the kind of quiet mislabelling that makes a
    forwarding machine confusing, and the model is shown alongside so the answer
    to "what is this running on" is on screen rather than something you ask. */
 function engineLabel(engine,model){
-  const mark={'claude-code':'◈','hermes':'🜁'}[engine]||'▲';
-  const name={'claude-code':'Claude Code','hermes':'Hermes'}[engine]||agentName();
+  const mark={'claude-code':'◈'}[engine]||'▲';
+  const name={'claude-code':'Claude Code'}[engine]||agentName();
   const m=(model||'').trim();
   return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
 }
@@ -6178,8 +6612,7 @@ function setTab(body,all){
     P.push(pGroup('Forward everything',[
       pRow('This machine answers with',pSelect('s-engine',[
           ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
-          ['claude-code','Claude Code'],
-          ['hermes','Hermes']],cfg.engine||'aria'),
+          ['claude-code','Claude Code']],cfg.engine||'aria'),
         {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
          f:'forward everything engine forwarder proxy relay'}),
     ],{f:'forwarding engine'}));
@@ -6568,20 +7001,10 @@ async function renderChannels(){
   CHAN_POSTURES=d.postures||[];
   var html=`<h3 class="chsec">Channels that reach this agent</h3>`
     +d.channels.map(chanCard).join('');
-  /* Hermes already runs a messaging gateway with bridges AgentOS deliberately
-     does not rebuild. These are discovered from it, so the list is whatever is
-     really paired right now — and they are delivery routes OUT, which the
-     heading has to say or "WhatsApp: on" reads as "Aria is on WhatsApp". */
-  const carried=d.carried||[];
-  if(carried.length){
-    html+=`<h3 class="chsec">Carried by Hermes <span class="mut">— AgentOS can send to these; a reply there is answered by Hermes, not by ${esc(agentName())}</span></h3>`
-      +carried.map(chanCard).join('');
-  }
   box.innerHTML=html;
   if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
 function chanCard(c){
-  if(c.carrier==='hermes')return chanCarriedCard(c);
   const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';
   const fields=(c.fields||[]).map(f=>pRow(f.label,
       f.secret?pSecret(`ch-${c.id}-${f.key}`,!!(c.set||{})[f.key],'••••',f.placeholder)
@@ -6614,24 +7037,6 @@ function chanCard(c){
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
-  </div>`;
-}
-/* A Hermes-carried channel has nothing to save here: pairing happens in Hermes,
-   and inventing an on/off switch beside it would be a control that lies. The
-   card reports what the probe found and points at where it is really changed. */
-function chanCarriedCard(c){
-  const dot={on:'ok',off:'mut',unavailable:'warn'}[c.status]||'mut';
-  const tg=(c.targets||[]).length
-    ? `<div class="chtargets">${c.targets.map(t=>
-        `<code title="${esc(t.id)}">${esc(t.name||t.id)}</code>`).join('')}</div>`
-    : '';
-  return `<div class="pgroup chan carried" data-f="channel hermes ${esc(c.title)}">
-    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span>
-      <span class="chvia">via Hermes</span></h3>
-    ${tg}
-    ${c.status==='unavailable'
-      ? `<div class="ghint mut">${esc(c.detail)}</div>`
-      : `<div class="ghint mut">${esc(c.note)}</div>`}
   </div>`;
 }
 async function chanSave(id){
@@ -6682,6 +7087,9 @@ async function waPanel(){
   const box=document.getElementById('wa-extra');if(!box)return;
   const d=await waLoad();
   if(!d){box.innerHTML='';return}
+  // Two transports, one card. Which one is showing is decided by cfg, not by
+  // guessing from which fields happen to be filled in.
+  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d);return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -6745,6 +7153,96 @@ async function waTest(){
     if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent — check your phone';
       out.className=bad?'warn':'ok'}
   }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}}
+}
+
+/* ---- the linked-device (Baileys) transport --------------------------------
+   The whole flow is one card: offer → install → scan → paired. Splitting it over
+   a wizard would be more screens for four states, and the state is always visible
+   from the server anyway. */
+function waLinkPanel(d){
+  const L=d.link||{};
+  const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
+    Using the <b>WhatsApp Web link</b> — no Meta account needed.
+    <button class="endbtn" onclick="waSetMode('cloud')">Use the Business API instead</button></div>`;
+  if(!L.installed){
+    // The consent ladder: what it unlocks, its licence, the honest warning, and
+    // one button. Nothing is installed before this is read.
+    return `<div class="wa-hook warnbox">
+      <b>The WhatsApp Web bridge is not installed</b>
+      <em>${esc(L.why||'')}</em>
+      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this
+        machine becomes a linked device — no Meta developer account, no public webhook,
+        no 24-hour reply window.</div>
+      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> It emulates a
+        linked WhatsApp Web device. WhatsApp does not support this and has banned
+        accounts for automating on it — prefer a spare number.</div>
+      <div class="wa-line mut">MIT (Baileys) · needs Node.js · downloads ~60 MB</div>
+      <div class="wa-line"><button class="pact" onclick="waInstall()">Install the bridge</button>
+        <small id="wa-inst" class="mut"></small></div>
+    </div>${modeSwitch}`;
+  }
+  if(L.state==='qr'&&L.qr_svg){
+    return `<div class="wa-hook">
+      <b>Scan this with WhatsApp</b>
+      <em>On your phone: WhatsApp → Settings → Linked devices → Link a device.
+        The code refreshes automatically.</em>
+      <div class="wa-qr" style="background:#fff;padding:10px;border-radius:10px;
+        width:min(260px,60vw);margin:10px 0">${L.qr_svg}</div>
+      <button class="endbtn" onclick="waUnlink()">Cancel</button>
+    </div>${modeSwitch}`;
+  }
+  if(L.state==='ready'){
+    const owner=d.owner_wa_id
+      ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code></div>`
+      : `<div class="wa-line mut">Linked, but nobody has written in yet — message this
+           WhatsApp from your phone and that chat becomes the owner.</div>`;
+    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>
+        — it can message you at any time (no 24-hour window on a linked device).</div>
+      ${owner}
+      <div class="wa-line"><button class="endbtn" onclick="waTest()">Send me a test message</button>
+        <small id="wa-test" class="mut"></small>
+        <button class="endbtn" onclick="waUnlink()">Unlink</button></div>${modeSwitch}`;
+  }
+  const err=L.error?`<div class="wa-line warn">${esc(L.error)}</div>`:'';
+  return `<div class="wa-line">Ready to link this machine to WhatsApp.</div>${err}
+    <div class="wa-line"><button class="pact" onclick="waLink()">Link with a QR code</button>
+      <small id="wa-link" class="mut"></small></div>${modeSwitch}`;
+}
+
+async function waSetMode(mode){
+  await fetch('/api/whatsapp',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode})});
+  waPanel();
+}
+async function waInstall(){
+  const out=document.getElementById('wa-inst');
+  if(out){out.textContent='installing — this takes a minute…';out.className='mut'}
+  try{
+    const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:'whatsapp-bridge'})});
+    const d=await r.json();
+    if(!r.ok||d.error||d.ok===false){
+      if(out){out.textContent=d.error||d.detail||'install failed';out.className='warn'}return}
+    toast('WhatsApp bridge installed');
+  }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}return}
+  waPanel();
+}
+async function waLink(){
+  const out=document.getElementById('wa-link');
+  if(out){out.textContent='starting the bridge…';out.className='mut'}
+  try{
+    const r=await fetch('/api/whatsapp/link',{method:'POST'});
+    const d=await r.json();
+    if(!r.ok||d.error){if(out){out.textContent=d.error||'could not start';out.className='warn'}return}
+  }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}return}
+  waPanel();
+}
+async function waUnlink(){
+  if(!await osConfirm('Unlink this device?',
+    'AgentOS forgets the WhatsApp credentials and the paired chat. You can scan again at any time.',
+    {confirmText:'Unlink'}))return;
+  await fetch('/api/whatsapp/link',{method:'DELETE'});
+  waPanel();
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -9153,6 +9651,8 @@ const HC_ACTIONS=[
   ['expose','Overview — all windows'],
   ['showdesktop','Show desktop'],
   ['deck','App deck'],
+  ['deck.all','All apps — the app wall'],
+  ['deck.widgets','Widgets — the wall\'s other face'],
   ['launcher','Launcher (start menu)'],
   ['control','Control Centre'],
   ['notifications','Notifications'],
@@ -9298,9 +9798,14 @@ const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your brow
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
   let REG={};try{((await (await fetch('/api/mcp/registry')).json()).registry||[]).forEach(x=>REG[x.name]=x)}catch(e){}
+  // The curated catalogue is served, not hardcoded here: it is the same list the TUI
+  // and `bento mcp` install from, and a second copy would drift. See mcp_catalog.py.
+  let CUR=[],CURCATS=[];
+  try{const c=await(await fetch('/api/mcp/catalog')).json();CUR=c.catalog||[];CURCATS=c.categories||[]}catch(e){}
   MCPCFG={};
   d.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
-  const badge=s=>s.status==='connected'?`<span class="badge ok">● connected</span>`
+  const badge=s=>s.status==='authorizing'?`<span class="badge run">waiting for sign-in</span>`
+    :s.status==='connected'?`<span class="badge ok">● connected</span>`
     :s.status==='connecting'?`<span class="badge run">connecting…</span>`
     :s.status==='disabled'?`<span class="badge">disabled</span>`
     :`<span class="badge err">error</span>`;
@@ -9316,6 +9821,9 @@ async function renderMCP(body){
         ${tools.map(t=>`<div class="mtool"><code>${esc(t.name)}</code><span>${esc((t.description||'').split('\n')[0].slice(0,180))||'<i>no description provided by the server</i>'}</span></div>`).join('')}
       </details>`:''}
     </div>${badge(s)}
+    ${s.auth==='oauth'?(s.authorized
+        ?`<button title="sign out and forget the tokens" onclick="mcpSignOut('${esc(s.name)}')">Sign out</button>`
+        :`<button class="pact" title="sign in with your browser" onclick="mcpSignIn('${esc(s.name)}')">Sign in</button>`):''}
     ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${esc(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
     <button title="enable/disable" onclick="mcpToggle('${esc(s.name)}')">${s.enabled?'⏸':'▶'}</button>
     <button title="remove" onclick="mcpDel('${esc(s.name)}')">✕</button></div>`}).join('');
@@ -9329,6 +9837,17 @@ async function renderMCP(body){
     <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
       <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
     ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.','','mcp','Find me a useful MCP server and set it up.')}
+    ${CURCATS.map(cat=>{
+      const es=CUR.filter(e=>e.category===cat.id);
+      if(!es.length)return '';
+      return `<div data-fgroup>
+      <div class="sect">${esc(cat.title)} <span class="mut" style="font-weight:400">· sign in with your browser, no key to paste</span></div>
+      <div class="cat">${es.map(e=>`
+        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" onclick="mcpConnectCurated('${esc(e.registry_name)}')">
+          <span class="cn">${esc(e.title)}</span><span class="cd">${esc(e.description)}</span>
+          <span class="ck">${e.installed?'added':'OAuth — opens your browser'}</span>
+        </button>`).join('')}
+      </div></div>`}).join('')}
     ${MCP_GROUPS.map((g,gi)=>`
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
@@ -9453,6 +9972,40 @@ async function mcpPreset(key){
 }
 function mcpToggle(name){if(MCPCFG[name]){MCPCFG[name].enabled=!MCPCFG[name].enabled;mcpSave()}}
 function mcpDel(name){delete MCPCFG[name];mcpSave()}
+/* ---- curated (OAuth) servers -------------------------------------------------
+   Install and sign-in are one gesture: a curated entry has nothing to fill in, so
+   stopping to say "added — now press Sign in" would be a step that asks the user to
+   confirm what they already asked for. */
+async function mcpConnectCurated(regName){
+  const r=await fetch('/api/store/mcp/install',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({registry_name:regName})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not add that server');
+  toast(d.name+' added — opening sign-in…');
+  refreshApp('mcp');
+  await mcpSignIn(d.name);
+}
+async function mcpSignIn(name){
+  const r=await fetch('/api/mcp/oauth/'+encodeURIComponent(name)+'/connect',{method:'POST'});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'sign-in could not be started');
+  if(d.url){
+    // Opened here rather than server-side on purpose: this page knows which machine
+    // the user is actually sitting at, which a headless host cannot.
+    window.open(d.url,'_blank','noopener');
+    toast('approve the sign-in in the tab that just opened');
+  }else if(d.authorized)toast(name+' is already signed in');
+  else toast('no sign-in was requested — the server may be unreachable');
+  setTimeout(()=>refreshApp('mcp'),2500);
+  setTimeout(()=>refreshApp('mcp'),8000);
+}
+async function mcpSignOut(name){
+  if(!await osConfirm('Sign out of '+name+'?',
+     'AgentOS forgets the tokens and its registration with that service. Its tools stop working until you sign in again.'))return;
+  await fetch('/api/mcp/oauth/'+encodeURIComponent(name),{method:'DELETE'});
+  toast('signed out of '+name);
+  setTimeout(()=>refreshApp('mcp'),1200);
+}
 
 /* ================= telegram app ================= */
 async function renderTelegram(body){
@@ -10385,6 +10938,34 @@ function permQuarantine(box){
       <div class="sub" style="margin-bottom:6px">Kept on the record — "allow forever" is an
       exemption somebody made, and it should stay visible.</div>${past}`:''}`;
 }
+/* Quarantine as an app in its own right.
+
+   It was only ever a tab inside the policy console, which is the wrong place to keep
+   it: Permissions is where you go to think about rules, and quarantine is where you
+   go when something has ALREADY stopped working and you want to know why. Nobody
+   whose app just went quiet thinks "I should check the policy console" — so the
+   answer has to be somewhere you can find without knowing the architecture.
+
+   Same renderer, two homes. `permQuarantine` still draws the tab; this only loads the
+   data the tab gets for free from `renderPermissions` and hands it the same box. A
+   second copy of the list would drift, and the drift would be in the screen that
+   explains why the OS stopped something. */
+async function renderQuarantine(body){
+  try{const q=await (await fetch('/api/quarantine?history=1')).json();
+      PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}
+  catch(e){PERM.held=[];PERM.qhistory=[]}
+  const n=PERM.held.length;
+  const pb=panelShell(body,{
+    title:'Quarantine',
+    sub:n?`${n} held — nothing ${n===1?'it':'they'} ask${n===1?'s':''} for runs while held`
+        :'Nothing is held right now',
+  });
+  pb.innerHTML=`<div id="perm-body"></div>
+    <p class="mut" style="margin-top:14px">Rules and grants live in
+      <a href="#" onclick="openApp('permissions');PERM.tab='map';refreshApp('permissions');return false">Permissions</a>
+      — this is only what has been stopped.</p>`;
+  permQuarantine(pb.querySelector('#perm-body'));
+}
 async function permRelease(qid,mode){
   const q=(PERM.held||[]).find(x=>x.id===qid)||{};
   const name=q.label||q.principal_id||'it';
@@ -10397,7 +10978,7 @@ async function permRelease(qid,mode){
     headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).then(r=>r.json());
   if(r.error)return toast(r.error);
   toast({once:'released — still watched',forever:'allowed forever',deleted:'deleted'}[mode]);
-  refreshApp('permissions');refreshApp('apps');refreshApp('fabric');
+  refreshApp('permissions');refreshApp('quarantine');refreshApp('apps');refreshApp('fabric');
 }
 /* ================= skills app ================= */
 /* Curated open-source skills — every entry is MIT or Apache-2.0 licensed.
@@ -12473,7 +13054,7 @@ async function studioLoadModels(){
        entire app; an executor writes it as a file and keeps working until it is
        finished, which is the difference between a sketch and something you could
        demo. Listed first for anything ambitious. */
-    // only executors build here: Hermes answers, but has no file workspace to build in
+    // only executors build here: an engine with no file workspace cannot build
     const engines=(d.engines||[]).filter(e=>e.available&&e.kind==='executor');
     sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
       engines.map(e=>`<option value="${esc(e.id)}">${esc(e.name||e.id)} · builds as a file, keeps going until done</option>`).join('')+
@@ -12901,8 +13482,7 @@ async function renderMission(body,w){
         ['scheduled jobs',(o.tasks_enabled??0)+' on / '+(o.scheduled_tasks??0)],
         ['turns (24h)',o.turns_24h??0],
         ['errors (24h)',o.errors_24h??0,(o.errors_24h||0)>0],
-        ['turns running now',o.turns_running??0],
-        ['hermes',o.hermes||'—']])}
+        ['turns running now',o.turns_running??0]])}
       ${lane('🔨 Build','studio',[
         ['apps installed',b.apps??0],
         ['build running',b.build_running?'yes':'no'],
@@ -12922,70 +13502,6 @@ async function renderMission(body,w){
   };
   await paint();
   winTick(w,paint,6000,{now:false,key:'poll'});
-}
-
-/* ================= hermes app (companion agent + wrapper) ================= */
-const HERMES_SETUP_LISTENERS=new Set();
-async function renderHermes(body,w){
-  stopWinTicks(w);
-  body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
-  const load=async()=>{try{return await (await fetch('/api/hermes/status')).json()}catch(e){return{installed:false}}};
-  const log=(m)=>{const el=$('#hz-log');if(el){el.textContent=m;el.scrollTop=el.scrollHeight}};
-  const paint=async()=>{
-    const st=await load();if(!body.isConnected)return;
-    const busy=st.setup==='installing';
-    body.innerHTML=`
-      <div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px">
-        <div style="font-size:24px">🜁</div>
-        <div style="flex:1">
-          <div style="font-weight:650">Hermes agent <span class="mut" style="font-weight:400;font-size:11px">· MIT · NousResearch</span></div>
-          <div class="mut" style="font-size:12px">${st.installed?('installed — '+esc(st.model||'?')+' · '+esc(st.provider||'?')+' · gateway '+(st.gateway?'running':'stopped')):'not installed'}</div>
-        </div>
-        ${st.installed?`<span class="pill" style="font-size:11px;padding:4px 9px;border-radius:20px;background:${st.gateway?'rgba(94,234,212,.15)':'var(--bg3)'};border:1px solid var(--line)">${st.gateway?'● live':'○ idle'}</span>`:''}
-      </div>
-      <div style="padding:16px 18px;overflow:auto;flex:1">
-        ${!st.installed?`
-          <div class="mut" style="max-width:560px;margin-bottom:12px">Hermes is a second self-hosted agent (WhatsApp/Slack/Discord/Signal, skills, cron). Download it here to use it as an alternative chat engine, or to reach those platforms. AgentOS becomes its control surface — you can edit its config below once installed.</div>
-          <button class="pact" id="hz-install" ${busy?'disabled':''}>${busy?'downloading…':'Download Hermes (MIT)'}</button>
-          <div class="mut" style="font-size:11px;margin-top:6px">clones ${esc(st.install_dir||'~/.hermes/hermes-agent')} and provisions its venv — a few minutes, one-time</div>
-        `:`
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-            <button class="endbtn" id="hz-gw">${st.gateway?'Stop gateway':'Start gateway'}</button>
-            <button class="endbtn" id="hz-update">Update Hermes</button>
-            <button class="endbtn" onclick="openApp('chat')">Use as chat engine →</button>
-          </div>
-          <div style="font-weight:600;margin-bottom:6px">Config <span class="mut" style="font-weight:400;font-size:11px">· ${esc(st.config_path||'~/.hermes/config.yaml')} (API keys live in .env and are never shown here)</span></div>
-          <textarea id="hz-config" spellcheck="false" style="width:100%;height:300px;font-family:var(--mono);font-size:12px;background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <button class="pact" id="hz-save">Save config</button>
-            <button class="endbtn" id="hz-reload">Reload</button>
-            <span class="mut" id="hz-cfgmsg" style="font-size:12px"></span>
-          </div>
-        `}
-        <pre id="hz-log" class="mut" style="font-size:11px;white-space:pre-wrap;margin-top:14px;max-height:120px;overflow:auto"></pre>
-      </div>`;
-    if(!st.installed){
-      const b=$('#hz-install');if(b&&!busy)b.onclick=async()=>{b.disabled=true;b.textContent='downloading…';
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'install'})});};
-    }else{
-      const ta=$('#hz-config');
-      const loadCfg=async()=>{try{const d=await (await fetch('/api/hermes/config')).json();if(ta)ta.value=d.text||''}catch(e){}};
-      await loadCfg();
-      $('#hz-reload').onclick=loadCfg;
-      $('#hz-save').onclick=async()=>{const msg=$('#hz-cfgmsg');msg.textContent='saving…';
-        const r=await fetch('/api/hermes/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ta.value})});
-        const d=await r.json();msg.textContent=r.ok?'saved ✓':(d.error||'error');msg.style.color=r.ok?'var(--ok)':'var(--err)';};
-      $('#hz-gw').onclick=async()=>{$('#hz-gw').disabled=true;
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:st.gateway?'gateway_stop':'gateway_start'})});
-        setTimeout(paint,1500);};
-      $('#hz-update').onclick=async()=>{log('updating…');
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update'})});};
-    }
-  };
-  w._onSetup=ev=>{if(ev.type==='hermes_setup'){log(ev.message||'');if(ev.done)setTimeout(paint,800)}};
-  HERMES_SETUP_LISTENERS.add(w._onSetup);
-  await paint();
-  winTick(w,async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000,{now:false,key:'poll'});
 }
 
 /* ================= train app (TrainForge) ================= */
@@ -13200,6 +13716,9 @@ function omniPop(on){
   bar.classList.toggle('pop',on);
   document.body.classList.toggle('omni-pop',on);
   if(on){
+    // typing IS the other way to find an app, so the wall stands down rather
+    // than sitting invisible behind the results it was just replaced by
+    if(typeof deckFull==='function')deckFull(false);
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
     if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
@@ -13482,7 +14001,10 @@ function KEYMAP_LIVE(){
       {k:['any key'],label:'Start typing anywhere — it lands in the prompt bar'},
       {k:['Alt','1-9'],label:'Quick launch: a result row, else that dock app'},
       {k:['Shift','Enter'],label:'Ask the agent instead of launching'},
-      row('deck'),row('help'),row('settings'),row('fullscreen'),row('voice')]},
+      row('deck'),row('deck.all'),row('deck.widgets'),
+      {k:['scroll up'],label:'Over the tiles or the wallpaper: all apps, with search'},
+      {k:['scroll down'],label:'…and the other way: your widgets'},
+      row('help'),row('settings'),row('fullscreen'),row('voice')]},
     {group:'Windows',keys:[row('switcher'),{k:['Alt','Tab'],label:'Switch window (session mode)'},
       row('expose'),row('windows.arrange'),row('window.close'),row('window.minimize'),row('window.maximize'),
       {k:['drag to edge'],label:'Snap: halves, corners, top to maximize'}]},
@@ -13818,6 +14340,8 @@ const SC_DEFAULTS={
   'fullscreen':      {keys:'F11',         label:'Toggle fullscreen'},
   'help':            {keys:'Ctrl+/',      label:'Keyboard shortcuts'},
   'deck':            {keys:'Ctrl+Shift+D',label:'Show / hide the app deck'},
+  'deck.all':        {keys:'Ctrl+Shift+Up',label:'All apps — open the app wall',typing:false},
+  'deck.widgets':    {keys:'Ctrl+Shift+Down',label:'Widgets — the same wall, other face',typing:false},
 };
 let SHORTCUTS=JSON.parse(JSON.stringify(SC_DEFAULTS));
 function scLoad(){
@@ -13887,6 +14411,8 @@ const SC_ACTIONS={
   'fullscreen':()=>toggleFullscreen(),
   'help':()=>keysHelp(),
   'deck':()=>deckToggle(),
+  'deck.all':()=>(DECKFULL&&DECKTAB==='apps')?deckFull(false):deckFull(true,'apps'),
+  'deck.widgets':()=>(DECKFULL&&DECKTAB==='widgets')?deckFull(false):deckFull(true,'widgets'),
   // named so hot corners and automation steps reach exactly the same behaviours
   // the keyboard does — one vocabulary, three ways to trigger it
   'showdesktop':()=>toggleShowDesktop(),
@@ -13912,7 +14438,11 @@ document.addEventListener('keydown',e=>{
   const fsw=[...WM.wins.values()].find(w=>w.fs);
   if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
-    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}}
+    if($('#keyshelp').classList.contains('show')){keysHelp(false);return}
+    // Esc clears a search before it closes the wall — losing the whole surface
+    // because you mistyped a letter is the reason people stop using a search box
+    if(DECKFULL){if(DECKQ){const q=$('#deck-q');if(q)q.value='';deckFilter('');return}
+      deckFull(false);return}}
   if(e.key==='?'&&!typing){e.preventDefault();keysHelp();return}
   if(cmd(e)&&!e.altKey&&e.key.toLowerCase()==='a'&&!typing&&!inTerm&&!activeWin()){
     e.preventDefault();launcherIds().forEach(id=>setSel(id,true));return}

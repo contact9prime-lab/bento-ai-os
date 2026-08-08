@@ -44,6 +44,8 @@ body.dev-tablet .tbnat .aicon,body.dev-tablet #startbtn .mark{width:42px;height:
 body.dev-tablet #tbnative{max-width:22vw}
 body.dev-tablet #deck{width:calc(100vw - 24px)}
 body.dev-tablet .deck-tile{width:76px}
+body.dev-tablet.deck-full #deck{width:auto}     /* the wall is full-bleed on every size */
+body.dev-tablet.deck-full .deck-tile{width:auto}
 body.dev-tablet #omnibar{width:min(560px,92vw)}
 body.dev-tablet #omnicards{width:min(560px,92vw)}
 body.dev-tablet #barwidgets{display:none!important}     /* the bar needs the whole width */
@@ -154,6 +156,21 @@ body.dev-mobile .deck-tiles{grid-template-rows:none;grid-auto-flow:row;
 body.dev-mobile .deck-tile{width:auto}
 body.dev-mobile .deck-new{width:100%;height:64px;flex-direction:row;gap:8px}
 body.dev-mobile .deck-wgroup .deck-wframe{width:100%}
+/* the wall on a phone: swipe up and the deck becomes the screen — one column of
+   groups reading downward, so it is a drawer rather than a widened strip */
+body.dev-mobile.deck-full #deck{flex-direction:column;top:0;bottom:0;left:0;right:0;
+  width:auto;max-height:none;padding:0 10px}
+/* margin:0 matters: the desktop rule centres these with `margin:0 auto`, and an
+   auto side margin stops a column-flex child stretching — the wall came out
+   half a phone wide and centred. */
+body.dev-mobile.deck-full #deck-head{width:auto;margin:0;padding:10px 4px 6px;
+  flex-wrap:wrap;row-gap:8px}
+body.dev-mobile.deck-full #deck-head .dh-hint{display:none}
+body.dev-mobile.deck-full #deck-q{order:3;flex:1 0 100%;max-width:none}
+body.dev-mobile.deck-full #deck-toggle{margin-left:auto}
+body.dev-mobile.deck-full #deck-scroll{display:grid;grid-template-columns:1fr;width:auto;margin:0;
+  justify-content:stretch;padding:2px 0 calc(var(--chrome-b) + 16px)}
+body.dev-mobile.deck-full .deck-tiles{grid-template-columns:repeat(auto-fill,minmax(80px,1fr))}
 body.dev-mobile #widgets{display:none}   /* free-floating widgets need a canvas */
 
 /* ---- launcher and popovers become sheets pinned to the bottom edge ---- */
