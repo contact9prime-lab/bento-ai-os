@@ -25,6 +25,9 @@ async function waPanel(){
   const box=document.getElementById('wa-extra');if(!box)return;
   const d=await waLoad();
   if(!d){box.innerHTML='';return}
+  // Two transports, one card. Which one is showing is decided by cfg, not by
+  // guessing from which fields happen to be filled in.
+  if((d.mode||'link')==='link'){box.innerHTML=waLinkPanel(d);return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -56,10 +59,15 @@ async function waPanel(){
         <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
           ${c.allowed?'Block':'Allow'}</button></div>`).join('')
     : '';
+  // The way back. Without it, choosing the Business API once is a one-way door:
+  // the four fields are the only thing on screen and nothing offers the QR again.
+  const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
+    Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
+    <button class="endbtn" onclick="waSetMode('link')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
       onclick="waTest()">Send me a test message</button>
-      <small id="wa-test" class="mut"></small></div>`:''}`;
+      <small id="wa-test" class="mut"></small></div>`:''}${modeSwitch}`;
 }
 
 function waCopy(){
@@ -88,4 +96,94 @@ async function waTest(){
     if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent — check your phone';
       out.className=bad?'warn':'ok'}
   }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}}
+}
+
+/* ---- the linked-device (Baileys) transport --------------------------------
+   The whole flow is one card: offer → install → scan → paired. Splitting it over
+   a wizard would be more screens for four states, and the state is always visible
+   from the server anyway. */
+function waLinkPanel(d){
+  const L=d.link||{};
+  const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
+    Using the <b>WhatsApp Web link</b> — no Meta account needed.
+    <button class="endbtn" onclick="waSetMode('cloud')">Use the Business API instead</button></div>`;
+  if(!L.installed){
+    // The consent ladder: what it unlocks, its licence, the honest warning, and
+    // one button. Nothing is installed before this is read.
+    return `<div class="wa-hook warnbox">
+      <b>The WhatsApp Web bridge is not installed</b>
+      <em>${esc(L.why||'')}</em>
+      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this
+        machine becomes a linked device — no Meta developer account, no public webhook,
+        no 24-hour reply window.</div>
+      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> It emulates a
+        linked WhatsApp Web device. WhatsApp does not support this and has banned
+        accounts for automating on it — prefer a spare number.</div>
+      <div class="wa-line mut">MIT (Baileys) · needs Node.js · downloads ~60 MB</div>
+      <div class="wa-line"><button class="pact" onclick="waInstall()">Install the bridge</button>
+        <small id="wa-inst" class="mut"></small></div>
+    </div>${modeSwitch}`;
+  }
+  if(L.state==='qr'&&L.qr_svg){
+    return `<div class="wa-hook">
+      <b>Scan this with WhatsApp</b>
+      <em>On your phone: WhatsApp → Settings → Linked devices → Link a device.
+        The code refreshes automatically.</em>
+      <div class="wa-qr" style="background:#fff;padding:10px;border-radius:10px;
+        width:min(260px,60vw);margin:10px 0">${L.qr_svg}</div>
+      <button class="endbtn" onclick="waUnlink()">Cancel</button>
+    </div>${modeSwitch}`;
+  }
+  if(L.state==='ready'){
+    const owner=d.owner_wa_id
+      ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code></div>`
+      : `<div class="wa-line mut">Linked, but nobody has written in yet — message this
+           WhatsApp from your phone and that chat becomes the owner.</div>`;
+    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>
+        — it can message you at any time (no 24-hour window on a linked device).</div>
+      ${owner}
+      <div class="wa-line"><button class="endbtn" onclick="waTest()">Send me a test message</button>
+        <small id="wa-test" class="mut"></small>
+        <button class="endbtn" onclick="waUnlink()">Unlink</button></div>${modeSwitch}`;
+  }
+  const err=L.error?`<div class="wa-line warn">${esc(L.error)}</div>`:'';
+  return `<div class="wa-line">Ready to link this machine to WhatsApp.</div>${err}
+    <div class="wa-line"><button class="pact" onclick="waLink()">Link with a QR code</button>
+      <small id="wa-link" class="mut"></small></div>${modeSwitch}`;
+}
+
+async function waSetMode(mode){
+  await fetch('/api/whatsapp',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode})});
+  waPanel();
+}
+async function waInstall(){
+  const out=document.getElementById('wa-inst');
+  if(out){out.textContent='installing — this takes a minute…';out.className='mut'}
+  try{
+    const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:'whatsapp-bridge'})});
+    const d=await r.json();
+    if(!r.ok||d.error||d.ok===false){
+      if(out){out.textContent=d.error||d.detail||'install failed';out.className='warn'}return}
+    toast('WhatsApp bridge installed');
+  }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}return}
+  waPanel();
+}
+async function waLink(){
+  const out=document.getElementById('wa-link');
+  if(out){out.textContent='starting the bridge…';out.className='mut'}
+  try{
+    const r=await fetch('/api/whatsapp/link',{method:'POST'});
+    const d=await r.json();
+    if(!r.ok||d.error){if(out){out.textContent=d.error||'could not start';out.className='warn'}return}
+  }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}return}
+  waPanel();
+}
+async function waUnlink(){
+  if(!await osConfirm('Unlink this device?',
+    'AgentOS forgets the WhatsApp credentials and the paired chat. You can scan again at any time.',
+    {confirmText:'Unlink'}))return;
+  await fetch('/api/whatsapp/link',{method:'DELETE'});
+  waPanel();
 }

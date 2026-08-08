@@ -28,7 +28,6 @@ from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 # tracking that honestly needs provenance on the file, not on the tool.
 UNTRUSTED_TOOLS = {
     "fetch_url",          # any web page, and the most likely carrier
-    "hermes_ask",         # another agent's answer, with its own tools and memory
 }
 
 

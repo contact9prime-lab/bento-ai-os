@@ -194,7 +194,7 @@ async function studioLoadModels(){
        entire app; an executor writes it as a file and keeps working until it is
        finished, which is the difference between a sketch and something you could
        demo. Listed first for anything ambitious. */
-    // only executors build here: Hermes answers, but has no file workspace to build in
+    // only executors build here: an engine with no file workspace cannot build
     const engines=(d.engines||[]).filter(e=>e.available&&e.kind==='executor');
     sel.innerHTML=`<option value="auto">My default model${d.default?' · '+esc(d.default):''}</option>`+
       engines.map(e=>`<option value="${esc(e.id)}">${esc(e.name||e.id)} · builds as a file, keeps going until done</option>`).join('')+

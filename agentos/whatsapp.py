@@ -1,10 +1,21 @@
 """WhatsApp, natively: the same agent, the same memory, on the app people already use.
 
-This is deliberately NOT the Hermes-carried WhatsApp in `channels.HERMES_PLATFORMS`.
-That one takes messages OUT — a message arriving there is answered by Hermes' own
-agent, with Hermes' memory. This one brings a conversation IN to *your* agent, the
-way Telegram does: same conversation history, same tools, same approvals, same
-`space_id`. Someone who enables "WhatsApp" expecting to reach Aria gets Aria.
+A conversation arriving here reaches *your* agent, the way Telegram does: same
+history, same tools, same approvals, same `space_id`. Someone who enables
+"WhatsApp" expecting to reach Aria gets Aria.
+
+There are TWO transports and the channel carries both, because they fail in
+opposite directions:
+
+  cloud    Meta's WhatsApp Cloud API. Official and stable, but it needs a Meta
+           developer account, a public HTTPS webhook, and it will not carry a
+           free-form message outside 24 hours of the user's last one.
+  link     A linked WhatsApp Web device (agentos/whatsapp_link.py). Scan a QR
+           and it works — no account, no webhook, no 24-hour window — but it is
+           unofficial and WhatsApp has banned accounts for automating on it.
+
+`conf(cfg)["mode"]` decides which is live. Everything below this line is the
+cloud transport.
 
 It uses Meta's WhatsApp Cloud API, which is free to set up and does not require a
 scraped or reverse-engineered client. Setup is four values from
@@ -59,6 +70,9 @@ import httpx
 from . import config as cfgmod
 from .agent import Agent
 
+#: The two transports. `link` is agentos/whatsapp_link.py; `cloud` is this file.
+MODES = ("link", "cloud")
+
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
 WINDOW_SECS = 24 * 3600   # Meta's customer-service window
@@ -77,14 +91,26 @@ def conf(cfg: dict) -> dict:
     c = dict((cfg.get("channels") or {}).get("whatsapp") or {})
     legacy = cfg.get("whatsapp") or {}
     for k in ("phone_number_id", "access_token", "app_secret", "verify_token",
-              "enabled", "owner_wa_id", "display_number"):
+              "enabled", "owner_wa_id", "display_number", "mode"):
         if not c.get(k):
             c[k] = legacy.get(k) or ("" if k != "enabled" else False)
+    # `link` is the default because it is the one somebody can finish in a minute.
+    # The Cloud API is the better answer for an unattended machine and the card
+    # says so, but defaulting to it means the first thing a new user meets is a
+    # Meta developer account.
+    c["mode"] = c.get("mode") if c.get("mode") in MODES else "link"
     return c
 
 
 def configured(cfg: dict) -> bool:
+    """Is the LIVE transport ready to run? Which one that is depends on `mode`, so
+    a machine with a linked device is 'configured' even with no Meta credentials
+    anywhere — asking for four Cloud API values it will never use would be the
+    channel refusing to switch on for a reason that does not apply to it."""
     c = conf(cfg)
+    if c["mode"] == "link":
+        from . import whatsapp_link
+        return whatsapp_link.installed()
     return all(c.get(k) for k in ("phone_number_id", "access_token", "verify_token"))
 
 
@@ -161,6 +187,11 @@ class WhatsAppBridge:
         self._pending: dict[str, asyncio.Future] = {}
         self._seen: dict[str, float] = {}   # message id -> when, for redelivery
         self._exec_sessions: dict[str, str] = {}
+        # The linked-device transport. Constructed, never started: a machine that
+        # has not asked for WhatsApp must not have a WhatsApp process.
+        from . import whatsapp_link
+        self.link = whatsapp_link.LinkBridge(cfg, store, broadcast,
+                                             on_message=self.on_link_message)
 
     # -- outbound ------------------------------------------------------------
 
@@ -168,7 +199,15 @@ class WhatsAppBridge:
         return conf(self.cfg)
 
     def window_open(self, wa_id: str = "") -> bool:
-        """Is Meta's 24-hour customer-service window open for this chat?"""
+        """Is Meta's 24-hour customer-service window open for this chat?
+
+        Always true on a linked device: the window is a Cloud API rule about
+        business-initiated messages, and a linked device is not a business. This
+        is the whole reason the link transport is worth its unofficial status,
+        so it must not inherit a restriction that does not apply to it.
+        """
+        if self._c()["mode"] == "link":
+            return self.link.linked()
         chat = self.store.wa_get_chat(wa_id or self._c().get("owner_wa_id") or "")
         return bool(chat and (time.time() - (chat.get("last_inbound") or 0)) < WINDOW_SECS)
 
@@ -193,6 +232,15 @@ class WhatsAppBridge:
         """
         c = self._c()
         wa_id = wa_id or c.get("owner_wa_id") or ""
+        if c["mode"] == "link":
+            if not wa_id:
+                return ("[error] Not paired yet — message this WhatsApp from your phone "
+                        "once, and that chat becomes the owner")
+            err = await self.link.send(wa_id, text or "(empty)")
+            if err:
+                return f"[error] {err}"
+            self.store.log("whatsapp", f"→ sent: {(text or '')[:200]}")
+            return "sent via WhatsApp"
         if not configured(self.cfg):
             return ("[error] WhatsApp is not set up — add the phone number id, access "
                     "token and verify token in Settings → Channels → WhatsApp")
@@ -250,6 +298,14 @@ class WhatsAppBridge:
         return wa_id
 
     async def _one(self, msg: dict, val: dict):
+        """Unwrap ONE message from Meta's envelope and hand it on.
+
+        Everything below the unwrapping is shared with the linked-device
+        transport (`on_link_message`), because pairing, the allow-list, the
+        commands and the turn itself are properties of the channel, not of how
+        the bytes arrived. Two copies would drift, and the half that drifted
+        would be whichever one was not being demoed.
+        """
         wa_id = msg.get("from") or ""
         if not wa_id:
             return
@@ -258,8 +314,22 @@ class WhatsAppBridge:
         if inter.get("type") == "button_reply":
             self._answer(wa_id, (inter.get("button_reply") or {}).get("id") or "")
             return
-        text = ((msg.get("text") or {}).get("body") or "").strip()
-        kind = msg.get("type") or ""
+        await self.incoming(wa_id, self._profile_name(val, msg.get("from") or ""),
+                            ((msg.get("text") or {}).get("body") or "").strip(),
+                            msg.get("type") or "")
+
+    async def on_link_message(self, wa_id: str, name: str, text: str, kind: str,
+                              msg_id: str = ""):
+        """The linked-device transport's inbound hook. Same de-duplication as the
+        webhook: Baileys replays on reconnect exactly as Meta redelivers."""
+        if msg_id:
+            if msg_id in self._seen:
+                return
+            self._seen[msg_id] = time.time()
+        await self.incoming(wa_id, name, text, kind)
+
+    async def incoming(self, wa_id: str, name: str, text: str, kind: str = "text"):
+        text = (text or "").strip()
         if not text:
             # Media, location, contacts, reactions. Saying so is better than silence:
             # a photo sent to an assistant that never answers reads as broken.
@@ -267,8 +337,7 @@ class WhatsAppBridge:
                 await self.send(f"I can only read text here for now — that arrived as "
                                 f"a {kind}.", wa_id)
             return
-
-        name = self._profile_name(val, wa_id)
+        name = name or wa_id
         chat = self.store.wa_upsert_chat(wa_id, name)
         self.store.log("whatsapp", f"← {name} ({wa_id}): {text[:160]}")
 
@@ -485,7 +554,8 @@ class WhatsAppBridge:
         else:
             self.status = "ready"
         owner = c.get("owner_wa_id") or ""
-        return {"enabled": bool(c.get("enabled")), "configured": ok,
+        return {"mode": c["mode"], "link": self.link.status(),
+                "enabled": bool(c.get("enabled")), "configured": ok,
                 "status": self.status, "error": self.error,
                 "has_token": bool(c.get("access_token")),
                 "has_secret": bool(c.get("app_secret")),

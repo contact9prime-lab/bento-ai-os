@@ -7089,7 +7089,7 @@ async function waPanel(){
   if(!d){box.innerHTML='';return}
   // Two transports, one card. Which one is showing is decided by cfg, not by
   // guessing from which fields happen to be filled in.
-  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d);return}
+  if((d.mode||'link')==='link'){box.innerHTML=waLinkPanel(d);return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -7121,10 +7121,15 @@ async function waPanel(){
         <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
           ${c.allowed?'Block':'Allow'}</button></div>`).join('')
     : '';
+  // The way back. Without it, choosing the Business API once is a one-way door:
+  // the four fields are the only thing on screen and nothing offers the QR again.
+  const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
+    Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
+    <button class="endbtn" onclick="waSetMode('link')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
       onclick="waTest()">Send me a test message</button>
-      <small id="wa-test" class="mut"></small></div>`:''}`;
+      <small id="wa-test" class="mut"></small></div>`:''}${modeSwitch}`;
 }
 
 function waCopy(){
@@ -9798,8 +9803,10 @@ const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your brow
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
   let REG={};try{((await (await fetch('/api/mcp/registry')).json()).registry||[]).forEach(x=>REG[x.name]=x)}catch(e){}
-  // The curated catalogue is served, not hardcoded here: it is the same list the TUI
-  // and `bento mcp` install from, and a second copy would drift. See mcp_catalog.py.
+  // The curated catalogue is SERVED, not hardcoded here, so the desktop and the
+  // terminal install from one list. It is also why this whole block is inert on a
+  // machine whose server does not offer /api/mcp/catalog: CUR stays empty and
+  // nothing renders, rather than a section of dead buttons.
   let CUR=[],CURCATS=[];
   try{const c=await(await fetch('/api/mcp/catalog')).json();CUR=c.catalog||[];CURCATS=c.categories||[]}catch(e){}
   MCPCFG={};
@@ -10006,6 +10013,7 @@ async function mcpSignOut(name){
   toast('signed out of '+name);
   setTimeout(()=>refreshApp('mcp'),1200);
 }
+
 
 /* ================= telegram app ================= */
 async function renderTelegram(body){

@@ -140,7 +140,7 @@ const BENTO_GROUPS=[
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','settings','policies','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];
 function arrangeBento(){

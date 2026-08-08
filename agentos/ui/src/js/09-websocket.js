@@ -188,8 +188,8 @@ function handle(ev){
       break;}
     case 'turn_start':{
       // a new turn: until an engine says otherwise, this is the built-in agent
-      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'||ev.model==='hermes'?ev.model:'',
-                          model:(ev.model==='claude-code'||ev.model==='hermes')?'':(ev.model||'')};
+      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
+                          model:ev.model==='claude-code'?'':(ev.model||'')};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
       if(_cur)setRunning(true);
       updateSpin();
@@ -319,6 +319,12 @@ function handle(ev){
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'whatsapp_link':
+      // The pairing code rotates every ~20 seconds. A card left showing a stale QR
+      // is a code that silently will not scan, so it follows the bridge's events
+      // rather than making the panel poll.
+      if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
+      break;
     case 'telegram_chats': refreshApp('telegram'); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
@@ -333,8 +339,8 @@ function handle(ev){
       // Loud on purpose: something the user installed just stopped working, and the worst
       // version of this feature is one where they find out by the thing being broken.
       toast('⚠ Quarantined “'+ev.label+'” — '+(ev.reason||'').slice(0,80));
-      refreshApp('permissions'); refreshApp('apps'); break;
-    case 'quarantine': refreshApp('permissions'); break;
+      refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
+    case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
       toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
@@ -359,7 +365,6 @@ function handle(ev){
     case 'automation.run': onAutomationBroadcast(ev.automation); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
-    case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;

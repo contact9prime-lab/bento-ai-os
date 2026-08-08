@@ -6,7 +6,7 @@
 
 ## Positioning
 
-Every personal-agent product on the market today — OpenClaw, Hermes-class assistants, the
+Every personal-agent product on the market today — OpenClaw-class assistants, the
 wave of "Claude in your terminal" wrappers — is **chat-first**: a bot you message, with tools
 bolted on. They live in a message thread. Everything they know, do, and produce is trapped in
 scrollback.
@@ -191,14 +191,14 @@ a media MCP returned was thrown away.
 - ▢ **A persistent approval queue** — today an unattended run either has full autonomy or
   is auto-denied after a 300s in-memory wait. A parked decision should survive a restart
   and be answerable in the morning from a phone, over SSH, or at the desk
-- ▢ **The gateway hub** — `agentos/openclaw.py` beside `hermes.py` behind one `Gateway`
+- ▢ **The gateway hub** — `agentos/openclaw.py` behind one `Gateway`
   interface (install, status, config, lifecycle, live target probe). AgentOS owns a
   *named subset* of `~/.openclaw/openclaw.json`, applied through `openclaw config set`
   and picked up by the gateway's hot reload — never by writing the JSON5 file, which
   would destroy comments and bake `${VAR}` substitutions into literals. Secrets stay
-  with the gateway, exactly as `hermes.py` refuses to touch `.env`
+  with the gateway, and never touching its `.env`
 - ▢ **Carriers become channels, and AgentOS becomes the hub** — today a message arriving
-  at Hermes is answered by Hermes' own agent, which is why every carried channel is
+  at a gateway is answered by that gateway's own agent, which is why every carried channel is
   stamped `direction: out`. Pointing a gateway's agent endpoint at AgentOS makes the
   conversation land *here*, with this memory, this policy and this ledger. That is the
   step that turns the gateways into transport and AgentOS into the permission and

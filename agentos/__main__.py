@@ -273,7 +273,7 @@ def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool =
 
 
 def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
-                  sets: list | None = None):
+                  sets: list | None = None, link: bool = False):
     """Show or change the ways in.
 
     The TUI face of Settings → Channels. This is the face that matters most on a
@@ -292,23 +292,6 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                                           else f" (follows {c['posture_from']})")
             print(f"  {mark} {c['title']:<16} {c['detail']:<34} {trust}")
             print(f"      {c['reach']}")
-        # Hermes carries platforms AgentOS deliberately does not rebuild. Shown
-        # separately because they are delivery routes out, not ways in.
-        import asyncio as _aio
-        try:
-            carried = _aio.run(chmod.carried_state(cfg))
-        except Exception:
-            carried = []
-        live = [c for c in carried if c["status"] == "on"]
-        if live:
-            print()
-            print("  carried by Hermes (AgentOS sends to these; a reply there is "
-                  "answered by Hermes):")
-            for c in live:
-                print(f"    ● {c['title']:<14} {c['detail']}")
-        elif carried:
-            print()
-            print(f"  carried by Hermes: {carried[0]['detail']}")
         print()
         print("  agentos channels <id> --on|--off --posture "
               f"{'|'.join(chmod.POSTURE_LABELS)}")
@@ -326,6 +309,13 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
         patch["enabled"] = False
     if posture:
         patch["posture"] = posture
+    if link:
+        if channel != "whatsapp":
+            print("  --link is only for whatsapp")
+            return
+        _whatsapp_link_cli(cfg)
+        return
+
     known = {f.key for f in chmod.BY_ID[channel].fields}
     for pair in (sets or []):
         key, _, val = str(pair).partition("=")
@@ -357,6 +347,74 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
         print("  a running server picks this up on its next turn")
         if channel == "whatsapp":
             _whatsapp_webhook_note(cfg)
+
+
+def _whatsapp_link_cli(cfg: dict):
+    """Draw the QR in the terminal and wait for the scan.
+
+    The one place a QR genuinely has to be ASCII: a headless Pi over SSH is
+    exactly where you cannot open a settings page, and it is also exactly where a
+    standing WhatsApp channel is most useful. Goes through the running server so
+    there is one bridge process, not two fighting over the same credentials.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import whatsapp_link as wl
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def call(path, method="GET"):
+        req = urllib.request.Request(base + path, method=method,
+                                     data=b"{}" if method == "POST" else None,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read() or b"{}")
+
+    try:
+        st = call("/api/whatsapp")
+    except OSError:
+        print("✗ AgentOS is not running here — start it with `bento serve`")
+        sys.exit(1)
+    if not st.get("link", {}).get("installed"):
+        print(f"  {st.get('link', {}).get('why', 'the bridge is not installed')}")
+        print("\n  Install it first — it is MIT (Baileys) and UNOFFICIAL:")
+        print("  WhatsApp does not support automating a linked device and has banned")
+        print("  accounts for it. Prefer a spare number.\n")
+        print("  bento apps install whatsapp-bridge     (or use Settings → Channels)")
+        sys.exit(1)
+    try:
+        call("/api/whatsapp/link", "POST")
+    except urllib.error.HTTPError as e:
+        print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
+        sys.exit(1)
+
+    print("  On your phone: WhatsApp → Settings → Linked devices → Link a device\n")
+    seen = ""
+    for _ in range(90):                      # ~3 minutes of QR rounds
+        time.sleep(2)
+        try:
+            link = call("/api/whatsapp").get("link") or {}
+        except OSError:
+            print("✗ lost the server")
+            sys.exit(1)
+        if link.get("state") == "ready":
+            print(f"\n  ✓ linked as {(link.get('me') or '').split(':')[0]}")
+            print("  Message this WhatsApp from your phone — that chat becomes the owner.")
+            return
+        payload = link.get("qr_payload") or ""
+        if payload and payload != seen:
+            seen = payload
+            art = wl.qr_ascii(payload)
+            if art:
+                print(art)
+            else:
+                # No renderer: hand over the payload rather than an empty box.
+                print("  (install the `qrcode` package to draw it here; the raw code is)")
+                print(f"  {payload}")
+            print("  waiting for the scan…\n")
+        if link.get("error"):
+            print(f"  {link['error']}")
+    print("  timed out waiting for the scan — run it again when you are ready")
 
 
 def _whatsapp_webhook_note(cfg: dict):
@@ -584,11 +642,6 @@ def doctor(fix: bool = False, session: bool = False):
         warn("TrainForge not installed — the Train app will fetch it on first Start")
     else:
         warn("TrainForge not found — set trainforge.path or trainforge.repo to enable the Train pillar")
-
-    from . import hermes as hermesmod
-    hcli = hermesmod.cli_path()
-    if hcli:
-        ok(f"Hermes companion agent available ({'gateway running' if hermesmod.gateway_running() else 'installed'})")
 
     # 6. the desktop (AgentOS-as-the-DE)
     if sys.platform == "linux":
@@ -1353,7 +1406,7 @@ def main():
     p_eval.add_argument("--json", action="store_true", help="print the raw report")
 
     p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
-    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "hermes", "off"],
+    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
     p_del = sub.add_parser("delegate", help="hand a task to an executor (Claude Code) and stream it here")
@@ -1411,6 +1464,8 @@ def main():
                         help="how far to trust it: inherit | read_only | ask | full")
     # Telegram needs one value, WhatsApp needs four. Without this, configuring a
     # channel is a GUI-only act — which is exactly backwards for a headless machine.
+    p_chan.add_argument("--link", action="store_true",
+                        help="whatsapp: link this machine by QR, drawn in the terminal")
     p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
                              "(repeatable; `agentos channels <id>` lists the fields it needs)")
@@ -1511,7 +1566,8 @@ def main():
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd == "channels":
-        channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
+        channels_cmd(args.channel, args.on, args.off, args.posture, args.set,
+                     link=args.link)
     elif args.cmd == "delegate":
         delegate(" ".join(args.prompt), args.dir, args.tools, args.model, args.budget)
     elif args.cmd == "app":
