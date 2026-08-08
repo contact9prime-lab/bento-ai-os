@@ -1993,16 +1993,7 @@ async def api_executor_install(body: dict):
 async def api_channels():
     """Every way to reach this machine from elsewhere, and what each one still needs."""
     from . import channels as chmod
-    # Hermes-carried channels are a live probe of another program, so a slow or
-    # wedged CLI must not take the whole panel down with it — the native channels
-    # are the ones that actually reach this agent.
-    carried = []
-    try:
-        carried = await asyncio.wait_for(chmod.carried_state(state["cfg"]), timeout=30)
-    except Exception:
-        carried = []
     return {"channels": chmod.state(state["cfg"], state.get("store")),
-            "carried": carried,
             "postures": [{"id": p, "label": chmod.POSTURE_LABELS[p],
                           "help": chmod.POSTURE_HELP[p]} for p in chmod.POSTURE_LABELS]}
 
