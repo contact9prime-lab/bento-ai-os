@@ -59,10 +59,15 @@ async function waPanel(){
         <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
           ${c.allowed?'Block':'Allow'}</button></div>`).join('')
     : '';
+  // The way back. Without it, choosing the Business API once is a one-way door:
+  // the four fields are the only thing on screen and nothing offers the QR again.
+  const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
+    Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
+    <button class="endbtn" onclick="waSetMode('link')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
       onclick="waTest()">Send me a test message</button>
-      <small id="wa-test" class="mut"></small></div>`:''}`;
+      <small id="wa-test" class="mut"></small></div>`:''}${modeSwitch}`;
 }
 
 function waCopy(){

@@ -190,7 +190,47 @@ that bar — not proxied to something that cannot meet it.
 `tests/test_channels.py` enforces it, and also asserts the removed carrier surface is
 really gone rather than half-removed.
 
-Four things about WhatsApp that a port of the Telegram bridge gets wrong for free:
+## WhatsApp is one channel with two transports
+
+`conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:
+
+- **`baileys`** (`wa_baileys.py` + the `wa_bridge/` Node sidecar) — a linked
+  WhatsApp Web device. No Meta account, no webhook, no 24-hour window.
+  **Unofficial**, and every surface that offers it says so in those words, because
+  WhatsApp has banned accounts for automating on it.
+- **`cloud`** (`whatsapp.py`, the default) — Meta's Cloud API. Official, and the
+  right answer for an unattended machine, but it needs a developer account and a
+  public HTTPS webhook.
+
+Both reach `WhatsAppBridge.incoming()`. Pairing, the allow-list, the commands and
+the turn are properties of the CHANNEL, not of how the bytes arrived — two copies
+would drift, and the half that drifted would be whichever one was not being
+demoed. `configured()` asks only about the live transport: holding the channel off
+because four Cloud API boxes it will never read are empty is refusing to switch on
+for a reason that does not apply.
+
+Starting a link IS choosing the transport — `/api/whatsapp/link` sets the mode
+itself rather than making the user find a dropdown first, and it is loopback-only
+because a linked device is a credential.
+
+### The link transport
+
+- **stdio, never a port.** WhatsApp credentials behind an unauthenticated loopback port
+  would be a full account takeover for anything else on the machine, and a bridge that
+  outlives a crashed AgentOS keeps a live session nobody is reading.
+- **The session directory is the phone.** `~/.agentos/whatsapp/session`, 0700,
+  deleted on unlink and on factory reset. "Disconnected"
+  with the keys still on disk is still a linked device.
+- **A logout is never retried.** Exit code 2 means the credentials are void; retrying
+  reads as "it keeps failing" rather than "you need to scan again".
+- **Both sides need a deadline.** A socket that never opens produces no event at all,
+  so the Node side has its own 25s timer. Without it the bridge exited 0 in silence and
+  the card called that "off" — found by running it behind a proxy that blocks
+  `web.whatsapp.com`.
+
+### The cloud transport
+
+Four things about it that a port of the Telegram bridge gets wrong for free:
 
 - **It is a webhook, not a poll.** Meta calls this machine, so it needs a public HTTPS
   address. A webhook channel that is "on" but unreachable receives nothing, forever, with
@@ -200,8 +240,10 @@ Four things about WhatsApp that a port of the Telegram bridge gets wrong for fre
   fails on every legitimate message and then gets deleted rather than fixed. No app
   secret means refuse, not trust: it is a public URL.
 - **The 24-hour window is real.** Outside it Meta will not carry a free-form message at
-  all, so an unattended job cannot rely on WhatsApp. `wa_upsert_chat` moves `last_inbound`
-  only on an INBOUND message, because that is exactly what the rule measures.
+  all, so an unattended job cannot rely on it. `wa_upsert_chat` moves `last_inbound`
+  only on an INBOUND message, because that is exactly what the rule measures. It does
+  NOT apply to a linked device, and `window_open` must keep saying so — that exemption
+  is the entire reason the link transport is worth its unofficial status.
 - **Reply buttons are three, at 20 characters.** Over the limit Meta truncates
   server-side and the user approves something whose label was cut off.
 

@@ -12,8 +12,11 @@ const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your brow
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
   let REG={};try{((await (await fetch('/api/mcp/registry')).json()).registry||[]).forEach(x=>REG[x.name]=x)}catch(e){}
-  // The curated catalogue is served, not hardcoded here: it is the same list the TUI
-  // and `bento mcp` install from, and a second copy would drift. See mcp_catalog.py.
+  // The curated catalogue is SERVED, not hardcoded here (mcp_catalog.py), so the
+  // desktop, the TUI and `bento mcp` install from one list. It is also why this
+  // whole block is inert on a machine whose server does not offer
+  // /api/mcp/catalog: CUR stays empty and nothing renders, rather than a
+  // section of dead buttons.
   let CUR=[],CURCATS=[];
   try{const c=await(await fetch('/api/mcp/catalog')).json();CUR=c.catalog||[];CURCATS=c.categories||[]}catch(e){}
   MCPCFG={};

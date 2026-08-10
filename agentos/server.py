@@ -125,6 +125,8 @@ async def startup():
     mcp_oauth.set_notifier(broadcast, ui_probe=lambda: bool(clients))
     # A device that was linked before a restart is still linked: WhatsApp keeps the
     # session, so resuming is silent and not resuming would look like it broke.
+    # Reconnect only — never START a link nobody asked for. An unlinked machine
+    # gets no child process at all.
     async def _resume_whatsapp_link():
         try:
             from . import whatsapp as _wa
@@ -293,6 +295,11 @@ async def shutdown():
         state["scheduler"].stop()
     if "telegram" in state:
         state["telegram"].stop()
+    if "whatsapp" in state:
+        # stop(), not logout(): shutting the server down is a pause, so the next
+        # start goes straight back to linked rather than asking for the QR again.
+        with contextlib.suppress(Exception):
+            await state["whatsapp"].link.stop()
     if "mcp" in state:
         await state["mcp"].stop()
     if "trainforge" in state:
@@ -1507,6 +1514,24 @@ async def api_components():
                    "session_capable": d["session_capable"], "why": d["why"]}}
 
 
+@app.post("/api/components/install")
+async def api_component_install(body: dict, request: Request):
+    """Install one catalogue entry.
+
+    The first-run wizard's "install Ollama for me" and the WhatsApp bridge card
+    have both always POSTed here; there was no such route, so both buttons 404'd
+    silently while reporting "could not install". Loopback-only — this changes
+    the machine.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    from . import components as compmod
+    cid = str((body or {}).get("id") or "")
+    res = await compmod.install(cid)
+    state["store"].log("system", f"component '{cid}': {res.get('message', '')}"[:200])
+    return res
+
+
 @app.post("/api/components")
 async def api_components_install(body: dict):
     """The UI shows the licence and asks before calling this — same contract as
@@ -2282,7 +2307,7 @@ async def api_whatsapp_chat_delete(wa_id: str):
 
 
 @app.post("/api/whatsapp/link")
-async def api_whatsapp_link(body: dict | None = None):
+async def api_whatsapp_link(request: Request):
     """Start the WhatsApp Web bridge and hand back a QR to scan.
 
     Pairing is not a separate verb: starting the link IS the pairing flow, because a
@@ -2291,6 +2316,11 @@ async def api_whatsapp_link(body: dict | None = None):
     briefly for either outcome rather than returning "starting…" and making the UI
     invent a poll.
     """
+    # Loopback only, like every other route that changes what this machine is
+    # connected to: a linked WhatsApp device IS a credential, and starting one
+    # is not something a remote browser should be able to do on your behalf.
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
     from . import whatsapp as wamod
     from . import wa_baileys
     gap = wa_baileys.why_not()
@@ -2319,8 +2349,11 @@ async def api_whatsapp_link(body: dict | None = None):
 
 
 @app.delete("/api/whatsapp/link")
-async def api_whatsapp_unlink():
-    """Unlink the device, forget the credentials, and clear the paired owner."""
+async def api_whatsapp_unlink(request: Request):
+    """Unlink the device, forget the credentials, and clear the paired owner.
+    Not merely a disconnect: the stored keys ARE the linked device."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
     res = await state["whatsapp"].unlink()
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "result": res, **state["whatsapp"].info()}
@@ -5343,7 +5376,7 @@ async def api_docs():
             out.append({"file": rel, "title": first.lstrip("# ").strip()})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
-             "tui.md", "security.md", "integrations.md", "models.md", "configuration.md",
+             "tui.md", "security.md", "whatsapp.md", "integrations.md", "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
     out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
     return {"docs": out}

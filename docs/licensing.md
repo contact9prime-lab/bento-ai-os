@@ -15,6 +15,20 @@ second.
 
 ---
 
+## Asked for, never shipped: the WhatsApp Web bridge
+
+`components.py` carries a `whatsapp-bridge` entry for [Baileys](
+https://github.com/WhiskeySockets/Baileys) (MIT) and `qrcode` (MIT). Both are
+permissive, so the licence is not the reason it is opt-in — the reason is that it
+is **unofficial**: it emulates a linked WhatsApp Web device, which WhatsApp does
+not support and has banned accounts for. The consent card says exactly that,
+recommends a spare number, and nothing downloads before it is read.
+
+It installs into `~/.agentos/whatsapp-bridge` with `npm`, never as a system
+package, so it needs no root and touches nothing outside the user's own AgentOS
+home. `packaging/audit-licenses.sh` is unaffected: nothing here is a dependency of
+AgentOS, so none of it is redistributed.
+
 ## What AgentOS is
 
 AgentOS is MIT (see `LICENSE`). Its own code, its own assets — the mark, the

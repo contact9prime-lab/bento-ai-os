@@ -65,6 +65,11 @@ WINDOW_SECS = 24 * 3600   # Meta's customer-service window
 _TITLES = {"deny": "Deny", "once": "Allow once", "always": "Allow & remember"}
 
 
+#: The transports this channel can run on. `channels.save` validates against it,
+#: so adding one here is what makes it settable at all.
+MODES = ("baileys", "cloud")
+
+
 def conf(cfg: dict) -> dict:
     """The WhatsApp block, read through the channel registry.
 
@@ -81,7 +86,11 @@ def conf(cfg: dict) -> dict:
     # Which transport carries this channel. "baileys" pairs by QR against WhatsApp
     # Web; "cloud" is Meta's Business API. Default is cloud so an install that was
     # already working keeps working — the choice is only ever made deliberately.
-    c["mode"] = (c.get("mode") or legacy.get("mode") or "cloud").strip() or "cloud"
+    # Anything else normalises to the default rather than being carried around as
+    # a mode no code branches on: a typo in config must not leave the channel in
+    # a state that reads as neither transport.
+    m = (c.get("mode") or legacy.get("mode") or "").strip()
+    c["mode"] = m if m in MODES else "cloud"
     return c
 
 

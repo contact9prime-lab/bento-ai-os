@@ -6,7 +6,7 @@
 
 ## Positioning
 
-Every personal-agent product on the market today — OpenClaw, Hermes-class assistants, the
+Every personal-agent product on the market today — OpenClaw-class assistants, the
 wave of "Claude in your terminal" wrappers — is **chat-first**: a bot you message, with tools
 bolted on. They live in a message thread. Everything they know, do, and produce is trapped in
 scrollback.

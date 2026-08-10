@@ -59,6 +59,10 @@ def test_whatsapp_is_a_way_in_with_its_own_gate():
     assert native["whatsapp"]["gate"] == "whatsapp"
     assert native["whatsapp"]["direction"] == "both"
     assert "reaches THIS agent" in native["whatsapp"]["note"]
+    # and nothing else is offered: one messenger, the one people actually ask
+    # for. A second bridge is a second thing to keep working.
+    for pid in ("slack", "signal", "discord", "matrix"):
+        assert pid not in native, f"{pid} is not a channel this OS implements"
 
 
 def test_the_removed_carrier_surface_is_really_gone():

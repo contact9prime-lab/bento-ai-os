@@ -176,13 +176,16 @@ CATALOGUE: list[Channel] = [
         reach="Only the number you have paired. The first message pairs you; "
               "everyone else is told this machine is not theirs.",
         note="A message here reaches THIS agent, with your memory and permissions. "
-             "It needs a public HTTPS address for "
-             "Meta's webhook, and WhatsApp only allows free-form replies within 24 "
-             "hours of your last message — so a scheduled job cannot speak first to "
-             "a silent chat.",
+             "Two ways to connect it, and they behave differently. The WhatsApp Web "
+             "link needs nothing but a QR scan from your phone, but it is "
+             "unofficial. The Business (Cloud) API is official and needs a Meta "
+             "developer account and a public HTTPS address for the webhook, and it "
+             "only allows free-form replies within 24 hours of your last message — "
+             "so a scheduled job cannot speak first to a silent chat.",
         fields=[
             Field("phone_number_id", "Phone number ID",
-                  "From the WhatsApp product page on developers.facebook.com.",
+                  "Business API only. From the WhatsApp product page on "
+                  "developers.facebook.com.",
                   placeholder="123456789012345"),
             Field("access_token", "Access token",
                   "The permanent token for your system user. Temporary tokens expire "
@@ -226,7 +229,16 @@ BY_ID = {c.id: c for c in CATALOGUE}
 
 
 def _missing(chan: Channel, conf: dict) -> list[str]:
-    """Which required fields still have no value, by label."""
+    """Which required fields still have no value, by label.
+
+    WhatsApp carries two transports and only one of them needs the Cloud API
+    fields. Holding the channel off because four boxes it will never read are
+    empty would be refusing to switch on for a reason that does not apply — so
+    in `link` mode the requirement is the bridge being installed, and that is
+    reported by the card rather than as a missing field.
+    """
+    if chan.id == "whatsapp" and (conf or {}).get("mode", "link") == "link":
+        return []
     return [f.label for f in chan.fields
             if f.required and not str((conf or {}).get(f.key) or "").strip()]
 
@@ -334,6 +346,13 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
                            f"channel's permissions — set it there")
         conf["posture"] = p
 
+    if "mode" in patch and channel_id == "whatsapp":
+        from . import whatsapp as wamod
+        m = str(patch["mode"] or "")
+        if m not in wamod.MODES:
+            return False, f"whatsapp mode is one of {', '.join(wamod.MODES)}"
+        conf["mode"] = m
+
     if "enabled" in patch:
         if chan.builtin:
             # Refusing here rather than pretending: switching off the window you
@@ -361,6 +380,8 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
     # Keep the legacy blocks in step, since the running services read those.
     if channel_id == "whatsapp":
         wa = cfg.setdefault("whatsapp", {})
+        if conf.get("mode"):
+            wa["mode"] = conf["mode"]
         for k in ("phone_number_id", "access_token", "app_secret", "verify_token"):
             if conf.get(k):
                 wa[k] = conf[k]

@@ -29,9 +29,12 @@ from agentos import whatsapp as wa                                 # noqa: E402
 from agentos.memory import Store                                   # noqa: E402
 
 SECRET = "s3cr3t-app-secret"
+# Everything above the link-transport section is about the CLOUD transport, so it
+# says so rather than relying on a default. `link` is what a fresh machine gets.
 CFG = {"channels": {"whatsapp": {
-    "enabled": True, "phone_number_id": "111", "access_token": "tok",
+    "mode": "cloud", "enabled": True, "phone_number_id": "111", "access_token": "tok",
     "app_secret": SECRET, "verify_token": "let-me-in"}}}
+CLOUD = {"channels": {"whatsapp": {"mode": "cloud"}}}
 
 
 def sign(body: bytes, secret: str = SECRET) -> str:
@@ -206,7 +209,8 @@ def test_an_unconfigured_channel_says_what_is_missing_not_a_stack_trace(tmp_path
 
     class _TB:
         fabric = None
-    b = wa.WhatsAppBridge({}, store, _TB(), lambda ev: asyncio.sleep(0))
+    b = wa.WhatsAppBridge(json.loads(json.dumps(CLOUD)), store, _TB(),
+                          lambda ev: asyncio.sleep(0))
     assert "not set up" in asyncio.run(b.send("hello"))
 
 
@@ -261,7 +265,7 @@ def test_whatsapp_is_a_real_io_gate():
 
 def test_it_is_a_channel_that_needs_all_four_values():
     from agentos import channels
-    st = {c["id"]: c for c in channels.state({})}
+    st = {c["id"]: c for c in channels.state(json.loads(json.dumps(CLOUD)))}
     assert st["whatsapp"]["status"] == "needs"
     assert st["whatsapp"]["gate"] == "whatsapp" and st["whatsapp"]["own_gate"]
     missing = st["whatsapp"]["detail"]
@@ -279,7 +283,7 @@ def test_saving_a_blank_secret_does_not_erase_the_saved_one():
 
 def test_switching_it_on_half_configured_is_refused():
     from agentos import channels
-    cfg: dict = {}
+    cfg: dict = json.loads(json.dumps(CLOUD))
     ok, msg = channels.save(cfg, "whatsapp", {"enabled": True, "phone_number_id": "1"})
     assert not ok and "still needs" in msg
     assert not wa.conf(cfg).get("enabled")
@@ -292,7 +296,7 @@ def test_it_is_a_flow_delivery_sink():
 
 def test_a_job_offers_whatsapp_only_when_paired_and_says_why_not():
     from agentos import jobs
-    off = {d["id"]: d for d in jobs.deliveries({})}
+    off = {d["id"]: d for d in jobs.deliveries(json.loads(json.dumps(CLOUD)))}
     assert off["whatsapp"]["ready"] is False
     assert "Settings → Channels → WhatsApp" in off["whatsapp"]["detail"]
     paired = json.loads(json.dumps(CFG))
@@ -313,3 +317,63 @@ def test_a_whatsapp_job_also_saves_a_report_because_the_send_can_be_refused(tmp_
                       {"topics": "rust", "deliver": "whatsapp"})
     assert {"whatsapp_send", "save_report"} <= set(body["permissions"]["tools"])
     assert "save_report" in body["mission"] and "FIRST" in body["mission"]
+
+
+# ---------------------------------------------------------------------------
+# The link transport over HTTP
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def api():
+    from fastapi.testclient import TestClient
+
+    from agentos import server as servermod
+    with TestClient(servermod.app) as c:
+        yield c, servermod.state
+
+
+def test_the_card_is_told_which_transport_is_live(api):
+    c, st = api
+    d = c.get("/api/whatsapp").json()
+    assert d["mode"] in ("baileys", "cloud")
+    assert "link" in d and "installed" in d["link"]
+
+
+def test_linking_without_the_bridge_refuses_with_the_reason(api, monkeypatch):
+    """Never a dead control: the refusal names what is missing and which
+    component would fix it, which is what the card turns into an install offer."""
+    c, st = api
+    from agentos import wa_baileys as wab
+    monkeypatch.setattr(wab, "node_path", lambda: "")
+    r = c.post("/api/whatsapp/link")
+    assert r.status_code == 428
+    assert "Node" in r.json()["error"]
+    assert r.json()["component"] == "whatsapp-bridge"
+
+
+def test_unlinking_is_idempotent_and_forgets_the_credentials(api):
+    """Unlink on a machine that was never linked must succeed quietly — and it
+    clears the owner, or the next person to scan inherits somebody else's chat."""
+    c, st = api
+    assert c.request("DELETE", "/api/whatsapp/link").json()["ok"]
+    assert c.request("DELETE", "/api/whatsapp/link").json()["ok"]
+    from agentos import wa_baileys as wab
+    assert not wab.paired()
+    assert not st["whatsapp"]._c().get("owner_wa_id")
+
+
+def test_switching_transport_over_http_sticks(api):
+    c, st = api
+    assert c.put("/api/whatsapp", json={"mode": "cloud"}).json()["mode"] == "cloud"
+    assert c.get("/api/whatsapp").json()["mode"] == "cloud"
+    c.put("/api/whatsapp", json={"mode": "baileys"})
+
+
+def test_installing_a_component_has_a_route_at_all(api):
+    """Both the first-run 'install Ollama for me' button and the WhatsApp bridge
+    card have always POSTed here. There was no such route, so both 404'd silently
+    while reporting 'could not install'."""
+    c, st = api
+    r = c.post("/api/components/install", json={"id": "definitely-not-a-component"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is False and "unknown component" in r.json()["message"]
