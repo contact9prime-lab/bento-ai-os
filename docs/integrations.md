@@ -35,6 +35,14 @@ commands; every other enabled chat can only converse.
 | `/perms` | who has been granted what |
 | `/clear` | wipe this conversation and start fresh |
 
+The commands appear as Telegram's **Menu** button and `/` autocomplete — AgentOS registers them
+itself (`setMyCommands`) when the bridge starts and again when a chat becomes the owner, so there
+is nothing to type into BotFather and no hand-kept copy to go stale. The menu is scoped: the
+owner's chat sees the console, every other enabled chat sees only `/help`, `/status` and `/clear`,
+because offering somebody a command they will then be refused is worse than not offering it. If
+the menu ever looks out of date, restart the bridge from the Telegram app — publishing happens on
+start. (Telegram clients cache the list briefly; it can take a minute to appear.)
+
 Two things about it are deliberate. **A command is never a way around the gate:** `/run` is
 `delegate` and `/model` is `configure_agentos`, so each goes through the same policy decision,
 the same Allow / Deny buttons and the same audit row as the equivalent action at the desk — a

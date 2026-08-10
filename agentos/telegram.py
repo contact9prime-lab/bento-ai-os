@@ -53,6 +53,32 @@ class TelegramBridge:
             raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
         return data["result"]
 
+    async def publish_commands(self) -> None:
+        """Register the command menu with Telegram (the blue Menu button and the
+        `/` autocomplete).
+
+        Done here rather than asked of the user in BotFather: a menu typed by hand
+        is a copy that goes stale the first time a command is added, and "why does
+        my bot not show the menu" is a support question nobody should have.
+
+        Scoped in two: the console for the owner's chat, the conversational three
+        for the default scope. Offering `/logs` to somebody who will be refused it
+        is a worse experience than not offering it.
+        """
+        if not self._t().get("bot_token"):
+            return
+        try:
+            await self._api("setMyCommands", commands=telegram_admin.menu(False),
+                            scope={"type": "default"})
+            owner = self._t().get("owner_chat_id") or 0
+            if owner:
+                await self._api("setMyCommands", commands=telegram_admin.menu(True),
+                                scope={"type": "chat", "chat_id": owner})
+        except Exception as e:
+            # Never fatal: the commands all still work by typing them. A bot that
+            # refused to poll because a cosmetic menu failed would be worse.
+            self.store.log("telegram", f"could not publish the command menu: {e}")
+
     async def send(self, text: str, chat_id: int | None = None) -> str:
         chat_id = chat_id or self._t().get("owner_chat_id")
         if not self._t().get("bot_token"):
@@ -108,6 +134,7 @@ class TelegramBridge:
             chat["allowed"] = 1
             name = self.cfg.get("agent_name") or "Aria"
             self.store.log("telegram", f"paired: owner = {title} ({chat_id})")
+            await self.publish_commands()   # the console menu is owner-scoped
             await self.send(f"▲ Linked! Hi {frm.get('first_name', 'there')} — I'm {name}, "
                             f"the agent on your machine. This chat is now the owner. "
                             f"Send me anything; /clear resets our session.", chat_id)
@@ -335,6 +362,7 @@ class TelegramBridge:
                     except Exception:
                         pass
                     self.store.log("telegram", f"polling as @{self.bot_username}")
+                    await self.publish_commands()
                 self.status = "polling"
                 self.error = ""
                 updates = await self._api("getUpdates", offset=self._offset, timeout=50,

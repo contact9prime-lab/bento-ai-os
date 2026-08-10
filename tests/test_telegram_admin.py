@@ -259,3 +259,73 @@ async def test_the_real_bridge_routes_commands_to_the_console(tmp_path, monkeypa
                       "from": {"id": OWNER, "first_name": "P"}})
     assert any("a thing happened" in s for s in sent), sent
     assert not tg._busy, "a console command must not take the conversation lock"
+
+
+# ------------------------------------------------- the menu Telegram renders
+
+def test_the_menu_and_the_dispatcher_are_the_same_list():
+    """A menu maintained by hand in BotFather is a copy, and a copy goes stale the
+    first time a command is added."""
+    from agentos import telegram_admin as ta
+    owner = {c["command"] for c in ta.menu(True)}
+    for cmd, _, _ in ta.COMMANDS:
+        assert cmd[1:] in owner, f"{cmd} exists but is not offered in the menu"
+    for c in ta.menu(True):
+        assert c["command"].islower() and c["command"].isidentifier(), c
+        assert 0 < len(c["description"]) <= 256, c
+
+
+def test_a_guest_is_not_offered_what_they_would_be_refused():
+    from agentos import telegram_admin as ta
+    guest = {c["command"] for c in ta.menu(False)}
+    assert {"help", "status", "clear", "start"} <= guest
+    for admin_only in ("logs", "perms", "run", "model", "agents", "flows", "tools"):
+        assert admin_only not in guest, f"/{admin_only} is offered to chats that cannot run it"
+
+
+@pytest.mark.asyncio
+async def test_the_console_menu_is_scoped_to_the_owners_chat(tmp_path, monkeypatch):
+    from agentos.telegram import TelegramBridge
+
+    store = Store(tmp_path / "t.db")
+    cfg = {"policies": [], "workspace": str(tmp_path / "ws"),
+           "telegram": {"bot_token": "x", "owner_chat_id": OWNER}}
+
+    async def _broadcast(_ev):
+        pass
+    tg = TelegramBridge(cfg, store, Toolbox(cfg, store), _broadcast)
+    calls = []
+
+    async def _api(method, **params):
+        calls.append((method, params))
+        return {}
+    monkeypatch.setattr(tg, "_api", _api)
+
+    await tg.publish_commands()
+    scopes = {c[1]["scope"]["type"]: c[1]["commands"] for c in calls
+              if c[0] == "setMyCommands"}
+    assert set(scopes) == {"default", "chat"}
+    assert "logs" in {c["command"] for c in scopes["chat"]}
+    assert "logs" not in {c["command"] for c in scopes["default"]}
+
+
+@pytest.mark.asyncio
+async def test_a_menu_that_cannot_be_published_does_not_stop_the_bot(tmp_path, monkeypatch):
+    """Cosmetic. Every command still works by typing it, so a failure here must
+    never be the reason the bridge does not poll."""
+    from agentos.telegram import TelegramBridge
+
+    store = Store(tmp_path / "t.db")
+    cfg = {"policies": [], "workspace": str(tmp_path / "ws"),
+           "telegram": {"bot_token": "x", "owner_chat_id": OWNER}}
+
+    async def _broadcast(_ev):
+        pass
+    tg = TelegramBridge(cfg, store, Toolbox(cfg, store), _broadcast)
+
+    async def _boom(method, **params):
+        raise RuntimeError("Bad Request: too many commands")
+    monkeypatch.setattr(tg, "_api", _boom)
+
+    await tg.publish_commands()          # must not raise
+    assert any("command menu" in (r["message"] or "") for r in store.list_logs(limit=10))

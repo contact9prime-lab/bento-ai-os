@@ -47,8 +47,33 @@ COMMANDS = [
 ]
 
 
+# What every enabled chat may use. Administration is not in here: a command the
+# client offers and the bot then refuses is worse than one that was never shown.
+_EVERYONE = {"/help", "/status", "/clear"}
+
+
 def is_command(text: str) -> bool:
     return (text or "").strip().startswith("/")
+
+
+def menu(owner: bool) -> list[dict]:
+    """The command list Telegram's blue Menu button and `/` autocomplete render.
+
+    Registered with `setMyCommands` by the bridge rather than typed into
+    BotFather by hand: this list and the dispatcher are the same list, so the
+    menu cannot drift into offering a command that no longer exists.
+
+    Scoped, because the menu is a promise. The owner's chat gets the console;
+    everyone else gets the three that work for them. Telegram wants lowercase
+    names without the slash, and descriptions of at most 256 characters.
+    """
+    out = [{"command": "start", "description": "link this chat / say hello"}]
+    for cmd, arg, desc in COMMANDS:
+        if not owner and cmd not in _EVERYONE:
+            continue
+        out.append({"command": cmd[1:],
+                    "description": (f"{arg} — {desc}" if arg else desc)[:256]})
+    return out
 
 
 def _fmt_age(ts: float) -> str:
