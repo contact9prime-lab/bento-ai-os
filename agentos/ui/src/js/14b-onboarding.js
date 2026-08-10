@@ -85,8 +85,13 @@ function obPane(pane,s){
   const sk=$('#ob-skip');
   if(sk)sk.onclick=()=>obSkip(s.id,s.status==='skipped');
   const pn=$('#ob-panel');
-  if(pn)pn.onclick=()=>{SETTAB=s.panel;localStorage.setItem('settab',s.panel);
-    obClose();openApp('settings')};
+  // Most steps live in a Settings tab; accounts have an app of their own. Both are
+  // "where this lives afterwards", which is the promise the button makes.
+  if(pn)pn.onclick=()=>{
+    obClose();
+    if(APPS[s.panel])return openApp(s.panel);
+    SETTAB=s.panel;localStorage.setItem('settab',s.panel);openApp('settings');
+  };
   if(OB_WIRE[s.id])OB_WIRE[s.id](s);
 }
 
@@ -171,6 +176,11 @@ var OB_PANES={
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
+
+  /* Deliberately the last step. Everything above is somebody setting this machine
+     up, and the first account inherits all of it — so the honest order is "make it
+     work, then say who it belongs to", not the other way round. */
+  account:s=>`<div id="ob-acct"><p class="mut">Reading the accounts…</p></div>`,
 };
 
 /* ---------- the wiring ---------- */
@@ -338,6 +348,76 @@ var OB_WIRE={
         if(el)el.scrollIntoView({block:'start'})},700)};
     $('#ob-ch-tg').onclick=()=>go('telegram');
     $('#ob-ch-wa').onclick=()=>go('whatsapp');
+  },
+
+  async account(){
+    const box=$('#ob-acct');if(!box)return;
+    let d={};try{d=await (await fetch('/api/users')).json()}catch(e){}
+    const list=(d.users||[]),me=d.me||{},first=!me.multiuser;
+    box.innerHTML=`
+      ${list.length?`<div class="ob-card">
+          <b>${list.length} account${list.length===1?'':'s'}</b>
+          <span>${list.map(u=>esc(u.name)+' · '+(u.role==='admin'?'admin':'executor')).join('<br>')}</span>
+        </div>`:''}
+      ${first?`<div class="usr-note">
+        <b>Three things happen the moment you add the first account.</b>
+        <ul>
+          <li>Everything you just set up becomes <em>that</em> account's — the agent,
+            the specialist, the flow, the schedule. Nothing is lost.</li>
+          <li>This desktop starts asking who you are, at the keyboard as well as from
+            a phone. So do not forget the password.</li>
+          <li>It is an admin, whatever you pick — a machine whose only account cannot
+            administer it is a machine nobody can administer.</li>
+        </ul></div>`
+       :`<p class="mut">Each account is its own home: own memory, own agents, own
+          channels, own credentials. Settings stay shared, and agents and apps can be
+          handed over deliberately, as copies.</p>`}
+      <p class="mut"><b>It is the same sign-in from anywhere.</b> The username and
+        password below are what this person types on their phone too — there is no
+        separate remote passphrase to invent or share.</p>
+      <form class="usr-form" id="ob-acct-form" autocomplete="off">
+        <label><span>Username</span><input id="ob-u-name" placeholder="ada"
+          autocapitalize="none" spellcheck="false"></label>
+        <label><span>Display name</span><input id="ob-u-disp" placeholder="Ada Lovelace"></label>
+        <label><span>Password</span><input id="ob-u-pass" type="password"
+          placeholder="at least 8 characters" autocomplete="new-password"></label>
+        ${first?'':`<div class="usr-roles">
+          <label class="usr-pick"><input type="radio" name="ob-u-role" value="executor" checked>
+            <b>Executor</b><em>Everything inside their own home.</em></label>
+          <label class="usr-pick"><input type="radio" name="ob-u-role" value="admin">
+            <b>Admin</b><em>That, plus the machine: accounts, providers, components,
+              remote access.</em></label></div>`}
+        <div class="job-go"><button class="wiz-next" id="ob-u-go">${
+          first?'Create the first account':'Add this person'}</button>
+          ${list.length?'<button class="endbtn" type="button" id="ob-u-manage">Manage accounts</button>':''}
+        </div>
+      </form>`;
+    const mg=$('#ob-u-manage');
+    if(mg)mg.onclick=()=>{obClose();openApp('users')};
+    $('#ob-acct-form').onsubmit=async e=>{
+      e.preventDefault();
+      const btn=$('#ob-u-go');
+      const body={name:($('#ob-u-name').value||'').trim(),
+                  display:($('#ob-u-disp').value||'').trim(),
+                  password:$('#ob-u-pass').value||'',
+                  role:(document.querySelector('input[name=ob-u-role]:checked')||{}).value||'executor'};
+      if(!body.name||!body.password)return obMsg('a username and a password, please','warn');
+      if(first&&!await osConfirm('Turn on accounts for this machine?',
+        'Everything you have just set up becomes your account. From now on this '+
+        'desktop asks who you are — at the keyboard as well as from a phone.',
+        {confirmText:'Create the account'}))return;
+      btn.disabled=true;obMsg('creating…');
+      try{
+        const r=await fetch('/api/users',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)return obMsg(d.error||'could not create the account','warn');
+        obMsg(d.signed_in?`signed in as ${body.name} — this is your machine now`
+                         :`${body.name} can sign in, here and from their phone`,'ok');
+        if(typeof usersBoot==='function')usersBoot();
+        setTimeout(()=>obRefresh(false),900);
+      }finally{btn.disabled=false}
+    };
   },
 
   async look(){

@@ -43,9 +43,11 @@
 .usr-tag{font-size:var(--fs-xs);padding:3px 9px;border-radius:var(--r-full);
   background:var(--bg4);color:var(--dim)}
 .usr-tag.adm{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
-/* flex:none and a width: a bare <select> in a flex row takes the whole line and
-   pushes every button below it, which turned one account into three rows. */
-.usr-role{flex:none;width:130px;font-size:var(--fs-sm);padding:5px 8px;
+/* `.usr-row` and not `.usr-role` alone: the panel shell sets `.pbody select
+   {width:100%}`, which is one class MORE specific than a bare `.usr-role` and
+   quietly won — the select took the whole line and pushed every button below it,
+   turning one account into three rows. */
+.usr-row .usr-role{flex:none;width:132px;font-size:var(--fs-sm);padding:5px 8px;
   border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--hairline);
   color:var(--txt)}
 .usr-pw,.usr-del,.usr-take,.usr-unshare{font-size:var(--fs-xs);padding:5px 10px;
@@ -100,3 +102,12 @@
   .usr-row,.usr-share{gap:var(--sp-2)}
   .usr-pw,.usr-del{flex:1 1 auto}
 }
+
+/* The remote-access panel, when the accounts are the lock. Bordered so it reads
+   as an answer to "what is protecting this", not as another setting. */
+.rm-lock{margin-top:14px;padding:var(--sp-3) var(--sp-4);border:1px solid var(--hairline);
+  border-left:2px solid var(--acc);border-radius:var(--r-md);background:var(--bg2);
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.6}
+.rm-lock b{color:var(--txt)}
+/* Its own line: inline mid-sentence, the button broke the paragraph around it. */
+.rm-lock .endbtn{display:block;margin-top:10px}

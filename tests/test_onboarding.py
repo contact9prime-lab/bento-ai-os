@@ -42,6 +42,29 @@ def test_every_step_says_what_it_will_produce():
         assert s.blurb.strip(), s.id
 
 
+def test_the_account_step_is_last_because_the_first_one_inherits_everything(store):
+    """Asking "who are you?" first would mean asking it of a machine that does not
+    yet do anything, and then handing the result to an account nobody had a reason
+    to want. So it comes after there is something worth owning."""
+    assert ob.STEPS[-1].id == "account"
+    assert ob.BY_ID["account"].optional
+
+
+def test_an_account_ticks_the_step_and_removing_it_unticks_it(store, tmp_path,
+                                                              monkeypatch):
+    from agentos import config as cfgmod
+    from agentos import users as usersmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path / "m")
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "m" / "config.json")
+    usersmod.reset_caches()
+    assert by_id(ob.state({}, store))["account"]["status"] == "todo"
+    u = usersmod.create("ada", "hunter2hunter")
+    assert by_id(ob.state({}, store))["account"]["status"] == "done"
+    usersmod.registry_path().unlink()
+    assert by_id(ob.state({}, store))["account"]["status"] == "todo"
+    usersmod.reset_caches()
+
+
 def test_the_two_steps_the_machine_cannot_work_without_are_not_skippable():
     assert not ob.BY_ID["name"].optional
     assert not ob.BY_ID["model"].optional
@@ -173,6 +196,9 @@ def test_everything_answered_counts_as_finished(store):
     cfg = {"agent_name": "Bento", "default_model": "ollama/x",
            "telegram": {"enabled": True, "bot_token": "t", "owner_chat_id": 1},
            "desktop": {"theme": "bento"}}
+    # A machine that stays single-user is a finished machine, not an unfinished
+    # one — which is the whole reason the account step is optional.
+    ob.skip(cfg, "account")
     store.create_conversation("hi")
     store.save_subagent({"name": "mine"})
     flowsmod.save(store, {"name": "f", "mission": "m", "roster": ["mine"],

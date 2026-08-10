@@ -7,6 +7,20 @@ Nothing about this document applies to a machine that never does: it keeps using
 exactly the files it always used, there is no login screen, and there is nothing
 to migrate.
 
+The offer is the last step of setup, and it says what it costs before the button:
+
+![The last onboarding step, "Add the people who will use it": a bordered note listing the three things that happen the moment you add the first account, the line "It is the same sign-in from anywhere", and username / display name / password fields](screenshots/onboarding-4-account.png)
+
+Creating the first one is a decision with a confirmation on it, because it changes
+how this machine behaves for everybody at it:
+
+![A confirmation dialog: "Turn on accounts for this machine? Everything you have just set up becomes your account. From now on this desktop asks who you are — at the keyboard as well as from a phone."](screenshots/onboarding-5-account-consent.png)
+
+Afterwards you are signed in as that account — bouncing somebody to a sign-in page
+they had just created would be theatre:
+
+![The account step, now ticked, with the message "signed in as ada — this is your machine now"](screenshots/onboarding-6-account-done.png)
+
 ---
 
 ## The layout
@@ -71,6 +85,13 @@ asked for is a poll loop for nothing.
 | **executor** | everything inside their own home: agents, flows, jobs, apps, channels, MCP, credentials, their own permissions |
 | **admin** | all of that, plus the machine: accounts, providers and models, components, remote access |
 
+![The Users app: two accounts, Ada Lovelace marked admin and "this is you", Bob Kahn with a role dropdown set to Executor, and Password / Remove buttons](screenshots/users-two-accounts.png)
+
+Two roles, and the form says what each one means rather than offering a grid of
+checkboxes:
+
+![The "add somebody" form: username, display name, password, and two role cards — Executor ("everything inside their own home") and Admin ("all of that, plus the machine")](screenshots/users-add.png)
+
 There is deliberately no per-user grid of capabilities. **Grants** already answer
 *what may this principal do* in far more detail than a role could, and they are
 per user because the `grants` table is per user. The role answers only the one
@@ -99,6 +120,17 @@ living in a filesystem — and the publisher would not know they had shipped a
 change. Taking a copy renames on collision, so installing one never overwrites
 something of yours with the same name.
 
+Share from where the thing lives — an agent in Workflows, an app in App Studio:
+
+![The Agents tab in Workflows, each agent row carrying a Share button next to Test in chat](screenshots/sharing-agent-share-button.png)
+
+![A confirmation: "Share market-watcher with everybody on this machine? They get a COPY. Changing yours afterwards does not change theirs, and nothing else of yours becomes visible."](screenshots/sharing-consent.png)
+
+It lands in the shared library at the bottom of the Users app, where anybody can
+install a copy:
+
+![The shared library showing market-watcher — "agent · shared by ada" — with Install a copy and Remove buttons](screenshots/sharing-library.png)
+
 ## Adding the first account
 
 This is the consequential moment, and the UI says so before the button:
@@ -117,6 +149,48 @@ This is the consequential moment, and the UI says so before the button:
 The person who creates the first account is signed in by the same request. They
 proved they were the machine's owner by being able to make it; bouncing them to a
 sign-in page they had just created would be theatre.
+
+From then on the power menu names who is signed in, and offers a way out. Neither
+appears on a machine without accounts — a "sign out" there would lock somebody out
+of their own laptop with nothing to sign back in as.
+
+![The power menu with "Bob" at the top, then "Sign out…", above Lock screen and the rest](screenshots/power-menu-signed-in.png)
+
+![The sign-in page, asking for a username and a password](screenshots/login.png)
+
+A new account gets its own arc on a machine somebody else already set up, rather
+than landing in a stranger's finished desktop:
+
+![The setup arc, freshly at 0 of 9, for the second account](screenshots/second-user-onboarding.png)
+
+An executor sees their own account and the shared library, and is told plainly what
+is and is not theirs:
+
+![The Users app as Bob: both accounts listed but no role dropdown, no Remove, no "add somebody" — and the line "Only an admin can add or remove accounts. Everything inside your own home — agents, flows, channels, credentials — is yours."](screenshots/users-executor-view.png)
+
+And the isolation is visible: Ada's `market-watcher` is not in Bob's Workflows.
+
+![Bob's Agents tab, showing only the three built-in specialists — researcher, validator and writer — and none of Ada's](screenshots/isolation-second-user-agents.png)
+
+## One sign-in, here and from anywhere
+
+Remote access needs a lock on the door. On a single-user machine that is a shared
+passphrase. **On a machine with accounts it is the accounts** — the phone in
+somebody's pocket signs in with the same username and password as the desktop, and
+lands in their own home.
+
+![The Remote access panel: "Locked by this machine's accounts. Everyone signs in from their phone with the same username and password they use here, and lands in their own desktop — their memory, their agents, their channels. No separate remote passphrase to invent, share or forget." with a Manage accounts button, and Turn remote access on enabled](screenshots/remote-locked-by-accounts.png)
+
+A second shared passphrase in front of per-person credentials would be worse than
+none: one more secret, held in common by people who are otherwise isolated from
+each other, and "sign in" would mean two different things depending on where you
+were standing. `/api/remote/login` accepts the account password too, because a
+phone that added AgentOS to its home screen months ago has that URL cached and a
+404 there reads as "remote access broke".
+
+What signing in does **not** do is sandbox somebody from the machine. An executor
+has their own data, and still has the Terminal and the agent's shell. Accounts are
+about whose memory is whose, not about containing a hostile user.
 
 ## From a terminal
 

@@ -104,6 +104,16 @@ STEPS: list[Step] = [
          blurb="A theme, a wallpaper, and whether it speaks out loud.",
          produces="a desktop that looks like your machine",
          panel="look"),
+    # Last on purpose. Everything above is somebody setting up THEIR machine, and
+    # the first account inherits all of it — so asking this first would mean
+    # asking "who are you?" of a machine that does not yet do anything, and then
+    # handing the result to an account nobody had a reason to want yet.
+    Step("account", "Add the people who will use it", icon="◱",
+         blurb="An account gives somebody their own home on this machine — their "
+               "own memory, agents, channels and credentials — and it is the same "
+               "username and password they will use from their phone.",
+         produces="an account that can sign in, here and from anywhere",
+         panel="users"),
 ]
 
 BY_ID = {s.id: s for s in STEPS}
@@ -166,6 +176,18 @@ def state(cfg: dict, store=None) -> dict:
         if sid == "channel":
             live = _live_channels(cfg)
             return ("done", ", ".join(live)) if live else ("todo", "")
+        if sid == "account":
+            # Probed like everything else: accounts exist or they do not. The
+            # single-user machine this ships as is a legitimate finished state,
+            # which is why the step is optional and skipping it is remembered.
+            try:
+                from . import users as usersmod
+                people = usersmod.list_users()
+            except Exception:
+                people = []
+            if not people:
+                return "todo", ""
+            return "done", ", ".join(u["name"] for u in people[:3])
         if sid == "look":
             d = cfg.get("desktop") or {}
             if d.get("wallpaper_preset") or d.get("theme") or "voice_tts" in d:

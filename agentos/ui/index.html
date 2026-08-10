@@ -2290,9 +2290,11 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-tag{font-size:var(--fs-xs);padding:3px 9px;border-radius:var(--r-full);
   background:var(--bg4);color:var(--dim)}
 .usr-tag.adm{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
-/* flex:none and a width: a bare <select> in a flex row takes the whole line and
-   pushes every button below it, which turned one account into three rows. */
-.usr-role{flex:none;width:130px;font-size:var(--fs-sm);padding:5px 8px;
+/* `.usr-row` and not `.usr-role` alone: the panel shell sets `.pbody select
+   {width:100%}`, which is one class MORE specific than a bare `.usr-role` and
+   quietly won — the select took the whole line and pushed every button below it,
+   turning one account into three rows. */
+.usr-row .usr-role{flex:none;width:132px;font-size:var(--fs-sm);padding:5px 8px;
   border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--hairline);
   color:var(--txt)}
 .usr-pw,.usr-del,.usr-take,.usr-unshare{font-size:var(--fs-xs);padding:5px 10px;
@@ -2347,6 +2349,15 @@ body.glass-off .win{background:var(--bg)!important}
   .usr-row,.usr-share{gap:var(--sp-2)}
   .usr-pw,.usr-del{flex:1 1 auto}
 }
+
+/* The remote-access panel, when the accounts are the lock. Bordered so it reads
+   as an answer to "what is protecting this", not as another setting. */
+.rm-lock{margin-top:14px;padding:var(--sp-3) var(--sp-4);border:1px solid var(--hairline);
+  border-left:2px solid var(--acc);border-radius:var(--r-md);background:var(--bg2);
+  font-size:var(--fs-sm);color:var(--dim);line-height:1.6}
+.rm-lock b{color:var(--txt)}
+/* Its own line: inline mid-sentence, the button broke the paragraph around it. */
+.rm-lock .endbtn{display:block;margin-top:10px}
 </style>
 </head>
 <body>
@@ -10169,8 +10180,13 @@ function obPane(pane,s){
   const sk=$('#ob-skip');
   if(sk)sk.onclick=()=>obSkip(s.id,s.status==='skipped');
   const pn=$('#ob-panel');
-  if(pn)pn.onclick=()=>{SETTAB=s.panel;localStorage.setItem('settab',s.panel);
-    obClose();openApp('settings')};
+  // Most steps live in a Settings tab; accounts have an app of their own. Both are
+  // "where this lives afterwards", which is the promise the button makes.
+  if(pn)pn.onclick=()=>{
+    obClose();
+    if(APPS[s.panel])return openApp(s.panel);
+    SETTAB=s.panel;localStorage.setItem('settab',s.panel);openApp('settings');
+  };
   if(OB_WIRE[s.id])OB_WIRE[s.id](s);
 }
 
@@ -10255,6 +10271,11 @@ var OB_PANES={
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
+
+  /* Deliberately the last step. Everything above is somebody setting this machine
+     up, and the first account inherits all of it — so the honest order is "make it
+     work, then say who it belongs to", not the other way round. */
+  account:s=>`<div id="ob-acct"><p class="mut">Reading the accounts…</p></div>`,
 };
 
 /* ---------- the wiring ---------- */
@@ -10422,6 +10443,76 @@ var OB_WIRE={
         if(el)el.scrollIntoView({block:'start'})},700)};
     $('#ob-ch-tg').onclick=()=>go('telegram');
     $('#ob-ch-wa').onclick=()=>go('whatsapp');
+  },
+
+  async account(){
+    const box=$('#ob-acct');if(!box)return;
+    let d={};try{d=await (await fetch('/api/users')).json()}catch(e){}
+    const list=(d.users||[]),me=d.me||{},first=!me.multiuser;
+    box.innerHTML=`
+      ${list.length?`<div class="ob-card">
+          <b>${list.length} account${list.length===1?'':'s'}</b>
+          <span>${list.map(u=>esc(u.name)+' · '+(u.role==='admin'?'admin':'executor')).join('<br>')}</span>
+        </div>`:''}
+      ${first?`<div class="usr-note">
+        <b>Three things happen the moment you add the first account.</b>
+        <ul>
+          <li>Everything you just set up becomes <em>that</em> account's — the agent,
+            the specialist, the flow, the schedule. Nothing is lost.</li>
+          <li>This desktop starts asking who you are, at the keyboard as well as from
+            a phone. So do not forget the password.</li>
+          <li>It is an admin, whatever you pick — a machine whose only account cannot
+            administer it is a machine nobody can administer.</li>
+        </ul></div>`
+       :`<p class="mut">Each account is its own home: own memory, own agents, own
+          channels, own credentials. Settings stay shared, and agents and apps can be
+          handed over deliberately, as copies.</p>`}
+      <p class="mut"><b>It is the same sign-in from anywhere.</b> The username and
+        password below are what this person types on their phone too — there is no
+        separate remote passphrase to invent or share.</p>
+      <form class="usr-form" id="ob-acct-form" autocomplete="off">
+        <label><span>Username</span><input id="ob-u-name" placeholder="ada"
+          autocapitalize="none" spellcheck="false"></label>
+        <label><span>Display name</span><input id="ob-u-disp" placeholder="Ada Lovelace"></label>
+        <label><span>Password</span><input id="ob-u-pass" type="password"
+          placeholder="at least 8 characters" autocomplete="new-password"></label>
+        ${first?'':`<div class="usr-roles">
+          <label class="usr-pick"><input type="radio" name="ob-u-role" value="executor" checked>
+            <b>Executor</b><em>Everything inside their own home.</em></label>
+          <label class="usr-pick"><input type="radio" name="ob-u-role" value="admin">
+            <b>Admin</b><em>That, plus the machine: accounts, providers, components,
+              remote access.</em></label></div>`}
+        <div class="job-go"><button class="wiz-next" id="ob-u-go">${
+          first?'Create the first account':'Add this person'}</button>
+          ${list.length?'<button class="endbtn" type="button" id="ob-u-manage">Manage accounts</button>':''}
+        </div>
+      </form>`;
+    const mg=$('#ob-u-manage');
+    if(mg)mg.onclick=()=>{obClose();openApp('users')};
+    $('#ob-acct-form').onsubmit=async e=>{
+      e.preventDefault();
+      const btn=$('#ob-u-go');
+      const body={name:($('#ob-u-name').value||'').trim(),
+                  display:($('#ob-u-disp').value||'').trim(),
+                  password:$('#ob-u-pass').value||'',
+                  role:(document.querySelector('input[name=ob-u-role]:checked')||{}).value||'executor'};
+      if(!body.name||!body.password)return obMsg('a username and a password, please','warn');
+      if(first&&!await osConfirm('Turn on accounts for this machine?',
+        'Everything you have just set up becomes your account. From now on this '+
+        'desktop asks who you are — at the keyboard as well as from a phone.',
+        {confirmText:'Create the account'}))return;
+      btn.disabled=true;obMsg('creating…');
+      try{
+        const r=await fetch('/api/users',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)return obMsg(d.error||'could not create the account','warn');
+        obMsg(d.signed_in?`signed in as ${body.name} — this is your machine now`
+                         :`${body.name} can sign in, here and from their phone`,'ok');
+        if(typeof usersBoot==='function')usersBoot();
+        setTimeout(()=>obRefresh(false),900);
+      }finally{btn.disabled=false}
+    };
   },
 
   async look(){
@@ -13018,7 +13109,8 @@ let TUNNEL={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
   try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
-  const on=!!REMOTE.enabled, set=!!REMOTE.configured;
+  const on=!!REMOTE.enabled, set=!!REMOTE.configured,
+        byAccounts=REMOTE.lock==='accounts';   // the accounts ARE the lock — see remote.py
   el.innerHTML=`
     <div class="provbox">
       <div class="ptitle">Remote access
@@ -13026,9 +13118,19 @@ async function sysRemote(el){
       <p class="mut" style="margin-top:8px;line-height:1.6">
         Serve this desktop to your phone or another machine on your network.
         <b>Everything you can do here, whoever signs in can do too</b> — including the
-        Terminal and the agent's shell — so it stays off until you set a passphrase.
+        Terminal and the agent's shell — so it stays off until there is a lock on it.
         Using AgentOS on this machine is unaffected either way.</p>
 
+      ${/* Accounts ARE the lock. Offering a second, shared passphrase in front of
+            per-person credentials would make "sign in" mean two different things
+            depending on where somebody was standing. */''}
+      ${byAccounts?`<div class="rm-lock">
+        <b>Locked by this machine's accounts.</b>
+        Everyone signs in from their phone with the <b>same username and password</b>
+        they use here, and lands in their own desktop — their memory, their agents,
+        their channels. No separate remote passphrase to invent, share or forget.
+        <button class="endbtn" style="margin-top:8px" onclick="openApp('users')">Manage accounts</button>
+      </div>`:`
       <label style="margin-top:14px">${set?'Change the passphrase':'Set a passphrase'}</label>
       <div class="row" style="gap:8px">
         <input id="rm-pw" type="password" autocomplete="new-password"
@@ -13036,12 +13138,15 @@ async function sysRemote(el){
         <button class="endbtn" onclick="rmSetPass()">${set?'Update':'Set'}</button>
       </div>
       ${set?'<p class="mut" style="margin-top:6px;font-size:11px">A passphrase is set. Changing it signs every remote device out.</p>':''}
+      <p class="mut" style="margin-top:6px;font-size:11px">Or add user accounts in
+        <a href="#" onclick="openApp('users');return false">Users</a> — they lock this
+        themselves, and give each person their own desktop.</p>`}
 
       <div class="row" style="margin-top:16px;gap:10px;align-items:center">
         <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
-                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase first"'}>
+                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase or add accounts first"'}>
           ${on?'Turn remote access off':'Turn remote access on'}</button>
-        <span class="mut" style="font-size:12px">${set?'':'a passphrase is required first'}</span>
+        <span class="mut" style="font-size:12px">${set?'':'it needs a lock first — a passphrase, or accounts'}</span>
       </div>
     </div>
 
@@ -13089,7 +13194,7 @@ async function sysRemote(el){
         <p class="mut" style="margin-top:8px">
           <button class="endbtn" onclick="tunStart()">Publish an address for anywhere</button></p>`:''}
       <p class="mut" style="margin-top:10px;line-height:1.6">
-        Open that on your phone, sign in with the passphrase, then
+        Open that on your phone, sign in ${byAccounts?'with your username and password':'with the passphrase'}, then
         <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
         full-screen app with no browser chrome. The layout adapts to the phone on its own.</p>
       ${REMOTE.listening_on&&REMOTE.listening_on!=='127.0.0.1'?'':
@@ -13099,7 +13204,9 @@ async function sysRemote(el){
     <div class="provbox">
       <div class="ptitle">Before you open it up</div>
       <ul class="rm-notes">
-        <li>This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is.</li>
+        <li>${byAccounts
+          ?'Signing in gets somebody <b>their own desktop</b> — their memory, their agents, their channels. It does not sandbox them from the <b>machine</b>: an executor still has the Terminal and the agent\'s shell.'
+          :'This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is. Adding accounts in Users changes that.'}</li>
         <li>Keep it on your <b>home network or a VPN</b>. Don't port-forward it to the open internet — there is no TLS here, so a passphrase would cross the network in the clear.</li>
         <li>Over the internet, put it behind something that terminates TLS and authenticates — Tailscale, WireGuard, or a reverse proxy you trust.</li>
         <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>

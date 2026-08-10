@@ -1707,7 +1707,7 @@ def main():
                           help="probe what can actually draw the desktop on this machine "
                                "(why the session came up, or did not)")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
-    sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
+    sub.add_parser("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
                            help="launcher only; skip the background boot service")
@@ -1887,13 +1887,17 @@ def main():
         from . import desktop
         desktop.app_mode()
     elif args.cmd == "setup":
-        from . import setup as setupmod
-        setupmod.run_cli_wizard()
+        # The arc, not the old five-question form: the same catalogue and the same
+        # probe the browser wizard uses, so a machine set up half way in one and
+        # finished in the other picks up exactly where it was left.
+        from . import setup_tui
+        cfg, store = _open_store(getattr(args, "user", ""))
+        setup_tui.run(cfg, store)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():
-            from . import setup as setupmod
-            setupmod.run_cli_wizard()
+            from . import setup_tui
+            setup_tui.run()
         try:
             from . import tui_app          # full-screen Textual UI
             tui_app.run()

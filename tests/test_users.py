@@ -860,3 +860,79 @@ def test_the_cli_needs_no_user_on_a_single_user_machine(home):
     from agentos import __main__ as cli
     cfg, store = cli._open_store("")
     assert store is not None and "providers" in cfg
+
+
+# ---------------------------------------------------------------------------
+# One sign-in, here and from anywhere
+# ---------------------------------------------------------------------------
+
+def test_accounts_are_the_lock_on_remote_access(two):
+    """A second shared passphrase in front of per-person credentials would make
+    "sign in" mean two different things depending on where you were standing."""
+    from agentos import remote as remotemod
+    cfg = {"remote": {"enabled": True}}
+    assert remotemod.lock_kind(cfg) == "accounts"
+    assert remotemod.enabled(cfg) is True
+    assert remotemod.bind_host(cfg) != "127.0.0.1"
+
+
+def test_without_accounts_or_a_passphrase_it_stays_shut(home):
+    from agentos import remote as remotemod
+    cfg = {"remote": {"enabled": True}}
+    assert remotemod.lock_kind(cfg) == ""
+    assert remotemod.enabled(cfg) is False
+    assert remotemod.bind_host(cfg) == "127.0.0.1"
+    remotemod.sanitize_remote(cfg)
+    assert cfg["remote"]["enabled"] is False
+
+
+def test_accounts_win_over_a_leftover_passphrase(two):
+    """A door only some people have the key to is a door that gets propped open."""
+    from agentos import remote as remotemod
+    assert remotemod.lock_kind({"remote": {"pass_hash": "x", "pass_salt": "y"}}) == "accounts"
+
+
+def test_adding_accounts_does_not_forget_a_machine_that_was_reachable(home):
+    """`sanitize_remote` runs on every load; zeroing `enabled` would mean adding an
+    account silently un-published a machine somebody had deliberately opened."""
+    from agentos import remote as remotemod
+    cfg = {"remote": {"enabled": True, "pass_hash": "h", "pass_salt": "s"}}
+    usersmod.create("ada", "hunter2hunter")
+    cfg["remote"]["pass_hash"] = cfg["remote"]["pass_salt"] = ""
+    remotemod.sanitize_remote(cfg)
+    assert cfg["remote"]["enabled"] is True
+    assert remotemod.enabled(cfg) is True
+
+
+def test_the_remote_login_path_takes_the_account_password(api):
+    """A phone that added AgentOS to its home screen months ago has this URL
+    cached, and an old client meeting a 404 reads as "remote access broke"."""
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.cookies.clear()
+    assert api.get("/api/config").status_code == 401
+    r = api.post("/api/remote/login", json={"name": "ada", "password": "hunter2hunter"})
+    assert r.status_code == 200
+    assert api.get("/api/config").status_code == 200
+    assert api.get("/api/users/who").json()["name"] == "ada"
+
+
+def test_the_old_shared_passphrase_stops_working_once_there_are_accounts(api):
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.cookies.clear()
+    r = api.post("/api/remote/login", json={"passphrase": "hunter2hunter"})
+    assert r.status_code == 401
+
+
+def test_remote_access_can_be_turned_on_without_inventing_a_passphrase(api):
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    r = api.post("/api/remote", json={"enabled": True})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["enabled"] is True and d["lock"] == "accounts"
+
+
+def test_the_onboarding_account_step_exists_and_is_reachable_over_http(api):
+    from agentos import onboarding as ob
+    d = api.get("/api/onboarding").json()
+    assert d["steps"][-1]["id"] == "account"
+    assert ob.BY_ID["account"].panel == "users", "it has somewhere to live afterwards"

@@ -4,9 +4,15 @@ AgentOS is a browser desktop with a real shell behind it. Serving that to
 anything beyond loopback is a decision with consequences, so this module exists
 to make the decision explicit and then hold the line:
 
-  * It is OFF until a human turns it on AND sets a passphrase. There is no code
-    path that enables it without both — not the agent's configure_agentos tool,
-    not an app, not a config file push (`sanitize_remote` re-checks on load).
+  * It is OFF until a human turns it on AND there is a lock on the door. There
+    is no code path that enables it without both — not the agent's
+    configure_agentos tool, not an app, not a config file push
+    (`sanitize_remote` re-checks on load).
+  * The lock is one of two things. On a single-user machine it is a shared
+    passphrase. On a machine with accounts it is the ACCOUNTS: the phone in
+    somebody's pocket signs in with the same username and password as the
+    desktop, and no second shared secret is invented in front of them. A door
+    only some people have the key to is a door that gets propped open.
   * Loopback stays trusted, so turning it on changes nothing about using AgentOS
     on the machine it runs on. A LAN client cannot forge a loopback source
     address to the kernel, so this is a real boundary rather than a header check.
@@ -15,10 +21,11 @@ to make the decision explicit and then hold the line:
   * Failed attempts back off per source address, so a weak passphrase cannot be
     brute-forced at network speed.
 
-The threat model is honest about what it is not: this is one shared passphrase
-protecting one machine, not multi-user auth. It is the lock on your front door,
-and it expects to be behind your home network or a VPN rather than on the open
-internet.
+The threat model is honest about what it is not. With a passphrase this is one
+shared secret protecting one machine; with accounts it is real per-person auth,
+but still one process, one host and one kernel — a signed-in executor is not
+sandboxed from the machine, only from other people's data. Either way it expects
+to be behind your home network or a VPN rather than on the open internet.
 """
 
 from __future__ import annotations
@@ -180,17 +187,49 @@ def is_loopback(host: str) -> bool:
         return host in ("localhost", "testclient")   # starlette's TestClient
 
 
+def accounts_lock() -> bool:
+    """Do this machine's user accounts serve as the lock?
+
+    Once there are accounts they ARE the credentials, and a second shared
+    passphrase in front of them is worse than none: it is one more secret, held
+    in common by people who are otherwise isolated from each other, and it makes
+    "sign in" mean two different things depending on where you are standing. So a
+    multi-user machine is locked by definition, and the phone in somebody's
+    pocket signs in with the same username and password as the desktop.
+    """
+    from . import users as usersmod
+    return usersmod.enabled()
+
+
+def lock_kind(cfg: dict) -> str:
+    """Which lock is on the door: 'accounts', 'passphrase', or '' for neither.
+
+    Accounts win when both exist — the passphrase becomes dead config rather than
+    a second door, because a door only some people have the key to is a door that
+    will be propped open.
+    """
+    if accounts_lock():
+        return "accounts"
+    return "passphrase" if (cfg.get("remote") or {}).get("pass_hash") else ""
+
+
 def enabled(cfg: dict) -> bool:
     """Remote access counts as on only when it is BOTH switched on and locked."""
     r = cfg.get("remote") or {}
-    return bool(r.get("enabled")) and bool(r.get("pass_hash"))
+    return bool(r.get("enabled")) and bool(lock_kind(cfg))
 
 
 def sanitize_remote(cfg: dict) -> dict:
     """Re-assert the invariant every time config is loaded or written: enabled
-    without a passphrase is not a state this system has."""
+    without a lock is not a state this system has.
+
+    `enabled` is left alone rather than forced off when there is no lock — the
+    stored intent survives, and `enabled()` above refuses until a lock exists.
+    Zeroing it would mean that adding the first account silently un-remembered a
+    machine that was deliberately reachable before.
+    """
     r = cfg.setdefault("remote", {})
-    if r.get("enabled") and not r.get("pass_hash"):
+    if r.get("enabled") and not r.get("pass_hash") and not accounts_lock():
         r["enabled"] = False
     return cfg
 
@@ -265,7 +304,8 @@ def status(cfg: dict) -> dict:
     port = int(cfg.get("port") or 8321)
     return {
         "enabled": enabled(cfg),
-        "configured": bool(r.get("pass_hash")),
+        "configured": bool(lock_kind(cfg)),
+        "lock": lock_kind(cfg),
         "bind": r.get("bind") or "0.0.0.0",
         "port": port,
         "session_days": int(r.get("session_days") or 30),

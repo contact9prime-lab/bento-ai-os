@@ -21,6 +21,21 @@ troubleshooting.
 
 ---
 
+## Setup is nine steps, and each one leaves something behind
+
+Not a settings form with a progress bar. Every step **produces something real** — a model
+that answers, an agent that exists, a flow that runs, a schedule that fires — and says what
+you will end up with before it asks you for anything.
+
+![The first-run setup screen: a rail of nine steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](docs/screenshots/onboarding-1-name.png)
+
+Every step is **probed, never remembered**: it is ticked because the machine has the thing.
+Delete the agent and the step goes back to todo. That is what makes `Run setup again` on day
+300 safe, and it is why `bento setup` over SSH picks up exactly where the browser left off —
+same catalogue, same probe, nine steps in a terminal.
+
+---
+
 ## The first thing it asks you is what job to do
 
 Setup ends on a question, not a door: **give me a job.** Pick one of three, answer two questions,
@@ -70,6 +85,24 @@ question asked of any change, not the last.
 |---|---|
 | ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
+
+### Several people, one machine
+
+Add an account and each person gets **their own home** — their own database, memory, agents,
+channels, MCP servers and credentials. Not a `user_id` column that one forgotten `WHERE`
+clause leaks: their own directory, because two files cannot leak into each other.
+
+![The Users app: two accounts, Ada Lovelace marked admin and "this is you", Bob Kahn with a role dropdown set to Executor](docs/screenshots/users-two-accounts.png)
+
+Two roles — **executor** (everything inside their own home) and **admin** (that, plus the
+machine). Settings stay shared, so there is one provider key for the machine rather than one
+per person. Agents and apps cross deliberately, as copies, through a shared library.
+
+And it is **one sign-in, here and from anywhere**: a machine with accounts is locked by
+them, so the phone in somebody's pocket uses the same username and password as the desktop
+and lands in their own home. No second shared passphrase to invent, share or forget.
+
+![The Remote access panel reading "Locked by this machine's accounts — everyone signs in from their phone with the same username and password they use here"](docs/screenshots/remote-locked-by-accounts.png)
 
 ### You can see what it is doing
 

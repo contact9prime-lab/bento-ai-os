@@ -5065,8 +5065,18 @@ async def login_page():
 
 @app.post("/api/remote/login")
 async def api_remote_login(body: dict, request: Request):
-    cfg = state["cfg"]
+    """Sign in from elsewhere.
+
+    On a machine with accounts this IS the account login — same username, same
+    password, same session — rather than a second credential in front of it. Kept
+    as its own path because a phone that added AgentOS to its home screen months
+    ago has this URL cached, and an old client meeting a 404 would read as "remote
+    access broke" rather than "the door moved".
+    """
+    cfg = state.machine_cfg()
     addr = _client_addr(request)
+    if usersmod.enabled():
+        return await api_users_login(body, request)
     if not remotemod.enabled(cfg):
         return {"ok": True}                        # nothing to sign in to
     wait = remotemod.locked_for(addr)
@@ -5130,8 +5140,12 @@ async def api_remote_configure(body: dict, request: Request):
 
     if "enabled" in body:
         want = bool(body["enabled"])
-        if want and not r.get("pass_hash"):
-            return JSONResponse({"error": "set a passphrase before enabling remote access"},
+        # A machine with accounts is already locked — asking it for a second,
+        # shared passphrase in front of per-person credentials would make "sign
+        # in" mean two different things depending on where you were standing.
+        if want and not r.get("pass_hash") and not remotemod.accounts_lock():
+            return JSONResponse({"error": "set a passphrase before enabling remote access "
+                                          "— or add user accounts, which lock it themselves"},
                                 status_code=400)
         r["enabled"] = want
     for k in ("bind", "session_days", "trust_loopback"):
