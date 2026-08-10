@@ -14,6 +14,7 @@ import time
 import httpx
 
 from . import config as cfgmod
+from . import telegram_admin
 from .agent import Agent
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -36,6 +37,9 @@ class TelegramBridge:
         # When forwarding, keep the executor's own session per conversation so a
         # follow-up over Telegram continues rather than starting from nothing.
         self._exec_sessions: dict[str, str] = {}
+        # Operating the machine from the phone — owner-only, and every command
+        # that DOES something goes through the same PDP the desktop uses.
+        self._console = telegram_admin.Console(self)
 
     def _t(self) -> dict:
         return self.cfg.get("telegram") or {}
@@ -73,6 +77,12 @@ class TelegramBridge:
         cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}")
         self.store.tg_set_conversation(chat["chat_id"], cid)
         return cid
+
+    def _conversation_for_chat(self, chat_id: int) -> str:
+        """Same persistent conversation, reached by id — the admin console has the
+        chat_id in hand but not the row `_handle` looked up."""
+        chat = self.store.tg_upsert_chat(chat_id, "", "", "private")
+        return self._conversation(chat)
 
     async def _handle(self, msg: dict):
         chat_info = msg.get("chat", {})
@@ -121,9 +131,10 @@ class TelegramBridge:
             self.store.log("telegram", f"session cleared for {title}")
             await self.send("🧹 Session cleared — starting fresh.", chat_id)
             return
-        if text.startswith("/status"):
-            await self.send(f"▲ online · model {self.cfg.get('default_model') or '(none)'} · "
-                            f"autonomy {self.cfg.get('autonomy')}", chat_id)
+        # The admin console. Placed after the allow-list (only known chats reach it)
+        # and before the busy lock (reading the logs must work WHILE a turn runs —
+        # "what is it doing" is exactly the question you ask when it is busy).
+        if telegram_admin.is_command(text) and await self._console.handle(chat_id, text):
             return
 
         # A message trigger starts a flow. Checked before the busy lock on purpose: a flow

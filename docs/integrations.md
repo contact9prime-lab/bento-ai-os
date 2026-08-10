@@ -17,7 +17,31 @@ Once paired, the agent has all of its tools over Telegram — build apps, change
 reports. When it hits a risky action, it sends inline **Allow / Deny** buttons and waits for your tap
 (unless autonomy is Full).
 
-**Commands:** `/clear` resets the session · `/status` reports the current model and autonomy.
+### The admin console
+
+Telegram is also how you **operate** the machine when you are not at it. The paired owner gets
+commands; every other enabled chat can only converse.
+
+| | |
+|---|---|
+| `/help` | the list below |
+| `/status` | model, autonomy, and whether a turn is running |
+| `/model` `[id]` | what can answer; with an id, switch this machine to it |
+| `/agents` | the specialists this machine has |
+| `/run <agent> <task>` | hand a task to one of them |
+| `/flows` · `/flow <name> [input]` | standing missions, and running one now |
+| `/tools [search]` | what the agent can do |
+| `/logs [n\|search]` | the operator diary, plus what was recently denied or asked about |
+| `/perms` | who has been granted what |
+| `/clear` | wipe this conversation and start fresh |
+
+Two things about it are deliberate. **A command is never a way around the gate:** `/run` is
+`delegate` and `/model` is `configure_agentos`, so each goes through the same policy decision,
+the same Allow / Deny buttons and the same audit row as the equivalent action at the desk — a
+console that bypassed policy would be a second, unaudited way to use the machine. And **reading
+works while it is busy**, because "what is it doing" is exactly the question you ask when it is
+in the middle of something.
+
 
 **Chat management:** the Telegram app shows every user, group and **channel** that has reached the
 bot, with the owner badged and an enable/disable toggle for each. Only enabled chats can talk to the
