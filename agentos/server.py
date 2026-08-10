@@ -22,6 +22,7 @@ from . import flows as flowsmod
 from . import history as historymod
 from . import channels as channelsmod
 from . import jobs as jobsmod
+from . import onboarding as onboardmod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
@@ -5511,6 +5512,114 @@ async def api_setup_apply(body: dict):
     state["store"].log("system", "first-run setup completed via wizard", report)
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "report": report}
+
+
+# ---------------------------------------------------------------------------
+# Onboarding: the arc from a fresh install to a machine that is working.
+#
+# Every route here CREATES something — an agent, a flow, a schedule — rather than
+# recording that a step happened. `onboarding.state()` then reads the machine back,
+# so a step is ticked because the thing exists, not because a flag says so. That is
+# what makes "run setup again" honest on day 300.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/onboarding")
+async def api_onboarding():
+    return onboardmod.state(state["cfg"], state["store"])
+
+
+@app.post("/api/onboarding/skip")
+async def api_onboarding_skip(body: dict):
+    step = str((body or {}).get("step") or "")
+    try:
+        res = (onboardmod.unskip if (body or {}).get("undo")
+               else onboardmod.skip)(state["cfg"], step)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    return {**res, **onboardmod.state(state["cfg"], state["store"])}
+
+
+@app.post("/api/onboarding/restart")
+async def api_onboarding_restart():
+    """Walk the arc again. NOT a factory reset — see onboarding.restart()."""
+    onboardmod.restart(state["cfg"])
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "setup"})
+    return onboardmod.state(state["cfg"], state["store"])
+
+
+@app.post("/api/onboarding/hello")
+async def api_onboarding_hello(body: dict):
+    """One real turn against the chosen model, so the user watches it answer.
+
+    Deliberately the ordinary chat path rather than a raw provider ping: what this
+    step is proving is that the whole stack works — provider, key, model id, the
+    agent loop — and a bare HTTP 200 from an API proves none of that.
+    """
+    model = (state["cfg"].get("default_model") or "").strip()
+    if not model:
+        return JSONResponse({"error": "no model is set yet"}, status_code=400)
+    text = (body or {}).get("text") or (
+        "In two sentences: what can you do on this machine that a chat website cannot?")
+    cid = state["store"].create_conversation("✦ First hello")
+    state["store"].add_message(cid, "user", text)
+
+    async def emit(_ev):
+        pass
+
+    async def approver(*_a, **_k):
+        return False        # a hello never needs to touch anything
+
+    agent = Agent(state["cfg"], state["toolbox"], model, emit, approver,
+                  conversation_id=cid, surface="gui")
+    knowledge.turn_started()
+    try:
+        res = await asyncio.wait_for(
+            agent.run([{"role": "user", "content": text}]), timeout=120)
+    except asyncio.TimeoutError:
+        return JSONResponse({"error": f"{model} did not answer within two minutes — "
+                                      f"check the model name and key in Settings → "
+                                      f"AI providers"}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"error": f"{model} could not answer: {e}"}, status_code=400)
+    finally:
+        knowledge.turn_ended()
+    reply = res.get("content") or "(no text came back)"
+    state["store"].add_message(cid, "assistant", reply, {"steps": res.get("steps") or []})
+    return {"ok": True, "model": model, "reply": reply, "conversation_id": cid}
+
+
+@app.post("/api/onboarding/agent")
+async def api_onboarding_agent(body: dict):
+    """Create the starter specialist. The name is checked against what exists, so
+    running setup twice makes a second one rather than silently overwriting the
+    first — which might be one somebody has since edited."""
+    defn = onboardmod.starter_agent(state["store"])
+    defn.update({k: v for k, v in (body or {}).items()
+                 if k in ("name", "soul", "tools", "max_steps", "max_seconds")})
+    state["store"].save_subagent(defn)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"ok": True, "agent": state["store"].get_subagent(defn["name"])}
+
+
+@app.post("/api/onboarding/flow")
+async def api_onboarding_flow(body: dict):
+    """Create the starter flow, rostered with whatever specialists exist."""
+    roster = [(body or {}).get("agent")] if (body or {}).get("agent") else \
+        [s["name"] for s in state["store"].list_subagents() if not s.get("builtin")] or \
+        [s["name"] for s in state["store"].list_subagents()]
+    if not roster or not roster[0]:
+        return JSONResponse({"error": "build an agent first — a flow orchestrates, "
+                                      "it does not do the work itself"}, status_code=400)
+    try:
+        flow, report = flowsmod.save(state["store"],
+                                     onboardmod.starter_flow(state["store"], roster))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "flow": flow, "report": report}
 
 
 @app.post("/api/setup/reset")

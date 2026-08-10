@@ -1,0 +1,100 @@
+/* ================= onboarding =================
+   Two columns: a rail you can move around in freely, and one pane at a time. The
+   rail is the point — a linear wizard hides how much is left and gives you nowhere
+   to go when a step needs something you have not got yet. Here every step is
+   visible, ticked ones stay ticked, and a blocked one says what it is waiting for.
+
+   No backdrop-filter: this is a full-screen opaque surface, so a blur would cost
+   a compositor pass over the whole desktop for something nobody can see. */
+
+.wiz.ob{align-items:stretch;justify-content:center;padding:0}
+.ob-stage{display:grid;grid-template-columns:290px 1fr;width:min(1080px,100vw);
+  margin:0 auto;height:100%;min-height:0}
+
+/* ---- the rail ---- */
+.ob-rail{display:flex;flex-direction:column;gap:2px;padding:var(--sp-5) var(--sp-3);
+  border-right:1px solid var(--hairline);overflow-y:auto;background:var(--bg2)}
+.ob-head{padding:0 var(--sp-3) var(--sp-4)}
+.ob-mark{width:44px;height:44px;border-radius:var(--r-lg);margin-bottom:var(--sp-3);
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;
+  display:flex;align-items:center;justify-content:center;font-size:var(--fs-xl);font-weight:900;
+  box-shadow:0 0 40px color-mix(in srgb,var(--acc) 30%,transparent)}
+.ob-head b{display:block;font-size:var(--fs-lg);font-weight:700}
+.ob-head span{display:block;font-size:var(--fs-xs);color:var(--dim2);margin-top:2px}
+.ob-bar{height:3px;border-radius:2px;background:var(--bg4);margin-top:var(--sp-3);overflow:hidden}
+.ob-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));
+  transition:width var(--d-slow) var(--ease-out)}
+
+.ob-item{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border-radius:var(--r-md);
+  text-align:left;color:var(--dim);transition:background var(--d-fast) var(--ease-out),
+  color var(--d-fast) var(--ease-out)}
+.ob-item:hover:not(:disabled){background:var(--bg3);color:var(--txt)}
+.ob-item.on{background:var(--bg3);color:var(--txt)}
+.ob-item.on .ob-tick{border-color:var(--acc)}
+.ob-item:disabled{opacity:.45;cursor:not-allowed}
+.ob-tick{flex:none;width:22px;height:22px;border-radius:var(--r-full);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs);margin-top:1px}
+.ob-item.done .ob-tick{background:var(--ok);border-color:var(--ok);color:#04211c;font-weight:800}
+.ob-item.done{color:var(--dim2)}
+.ob-item.skipped .ob-tick{color:var(--dim2)}
+.ob-t{font-size:var(--fs-sm);font-weight:600;line-height:1.35;min-width:0}
+.ob-t em{display:block;font-size:var(--fs-xs);font-weight:400;color:var(--dim2);
+  font-style:normal;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-leave{margin-top:auto;padding-top:var(--sp-4);font-size:var(--fs-sm);color:var(--dim)}
+.ob-leave:hover{color:var(--txt)}
+
+/* ---- the pane ---- */
+.ob-pane{overflow-y:auto;padding:var(--sp-6) var(--sp-6) var(--sp-5);min-width:0}
+.ob-step{display:flex;flex-direction:column;gap:var(--sp-3);max-width:640px}
+.ob-kicker{font-size:var(--fs-2xl);font-weight:750;letter-spacing:-.01em}
+.ob-blurb{font-size:var(--fs-base);color:var(--dim);line-height:1.6;margin:0}
+/* The promise, set apart from the explanation: this is the line that turns "fill
+   in a field" into "here is what you are about to have". */
+.ob-produces{font-size:var(--fs-sm);color:var(--dim);line-height:1.5;
+  border-left:2px solid var(--acc);padding:4px 0 4px var(--sp-3)}
+.ob-produces b{color:var(--txt)}
+.ob-body{display:flex;flex-direction:column;gap:var(--sp-4);margin-top:var(--sp-2)}
+.ob-body .job-q>span{font-size:var(--fs-sm)}
+.ob-foot{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
+  margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--hairline)}
+.ob-msg{font-size:var(--fs-sm);color:var(--dim)}
+.ob-msg.ok{color:var(--ok)}
+.ob-msg.warn{color:var(--warn)}
+
+.ob-card{display:flex;flex-direction:column;gap:5px;padding:var(--sp-4);
+  border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--bg2)}
+.ob-card b{font-size:var(--fs-base);font-weight:650}
+.ob-card span{font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.ob-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--sp-3)}
+
+/* the model's own words, quoted — the payoff of the `hello` step */
+.ob-reply:empty{display:none}
+.ob-said{padding:var(--sp-4);border-radius:var(--r-lg);background:var(--bg2);
+  border:1px solid var(--hairline);font-size:var(--fs-base);line-height:1.65;
+  white-space:pre-wrap;user-select:text}
+.ob-said b{display:block;font-size:var(--fs-xs);color:var(--acc);font-weight:700;
+  letter-spacing:.05em;margin-bottom:6px}
+.ob-think{font-size:var(--fs-sm);color:var(--dim);padding:var(--sp-3) 0}
+.ob-think::after{content:'';display:inline-block;width:5px;height:5px;margin-left:6px;
+  border-radius:50%;background:var(--acc);animation:ob-pulse 1s var(--ease-in-out) infinite}
+@keyframes ob-pulse{0%,100%{opacity:.25}50%{opacity:1}}
+
+.ob-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.ob-sw{display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:var(--r-full);
+  border:1px solid var(--hairline);background:var(--bg2);font-size:var(--fs-sm);color:var(--dim)}
+.ob-sw i{width:12px;height:12px;border-radius:50%;flex:none}
+.ob-sw:hover{border-color:var(--hairline-strong);color:var(--txt)}
+.ob-sw.on{border-color:var(--acc);color:var(--txt);background:var(--bg3)}
+
+/* On a phone the rail becomes a strip along the top: two columns at 380px wide is
+   two unreadable columns. */
+@media (max-width:760px){
+  .ob-stage{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .ob-rail{flex-direction:row;overflow-x:auto;border-right:none;
+    border-bottom:1px solid var(--hairline);padding:var(--sp-3);align-items:center}
+  .ob-head,.ob-leave{display:none}
+  .ob-item{flex:none;flex-direction:column;align-items:center;gap:4px;width:78px}
+  .ob-t{font-size:var(--fs-2xs);text-align:center;white-space:normal}
+  .ob-t em{display:none}
+  .ob-pane{padding:var(--sp-4)}
+}

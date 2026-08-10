@@ -42,6 +42,13 @@ def save_soul(text: str) -> None:
     SOUL_PATH.write_text(text)
 
 DEFAULTS = {
+    # Explicit, and in DEFAULTS on purpose. `is_first_run()` reads the RAW file, so
+    # anything that calls save_config() before the wizard finishes used to write a
+    # config with no key at all — which the grandfather clause below reads as "an
+    # old install, already set up", and the machine silently never sees onboarding
+    # again. Seeding False means the first save says so out loud. Configs written
+    # before this key existed are untouched and still grandfathered.
+    "setup_complete": False,
     "providers": {
         "ollama": {
             "enabled": True,
