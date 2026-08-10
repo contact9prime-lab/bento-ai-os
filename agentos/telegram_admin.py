@@ -28,6 +28,7 @@ panels. This is the surface that had no way in.
 
 from __future__ import annotations
 
+import re
 import time
 
 # One line each, and this IS /help — a list that lives apart from the dispatcher
@@ -50,6 +51,12 @@ COMMANDS = [
 # What every enabled chat may use. Administration is not in here: a command the
 # client offers and the bot then refuses is worse than one that was never shown.
 _EVERYONE = {"/help", "/status", "/clear"}
+
+
+#: Handled by the bridge itself, before the console ever sees them.
+_BRIDGE_OWNED = {"start", "clear"}
+#: "/word" or "/word@thisbot" and nothing else — a command being tried, not prose.
+_BARE_COMMAND = re.compile(r"^/[A-Za-z0-9_]{1,32}(@[A-Za-z0-9_]+)?$")
 
 
 def is_command(text: str) -> bool:
@@ -138,6 +145,15 @@ class Console:
         arg = arg.strip()
         fn = getattr(self, "_cmd_" + cmd[1:], None) if len(cmd) > 1 else None
         if fn is None:
+            # A BARE unknown token is somebody trying a command that does not
+            # exist; say so. Anything with words after it ("/why did that fail",
+            # "/home/p/x.py what is this?") is a sentence and belongs to the
+            # conversation — as does /start and /clear, which the bridge owns.
+            if _BARE_COMMAND.match(raw) and cmd[1:] not in _BRIDGE_OWNED:
+                await self.tg.send(f"▲ I have no command called {cmd}. "
+                                   f"Send /help for the list — or just say it in words.",
+                                   chat_id)
+                return True
             return False                          # not ours — /start, /clear, or a real message
         if not self._is_owner(chat_id):
             # Said plainly rather than silently ignored: a colleague typing /logs

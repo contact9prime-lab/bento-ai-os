@@ -329,3 +329,40 @@ async def test_a_menu_that_cannot_be_published_does_not_stop_the_bot(tmp_path, m
 
     await tg.publish_commands()          # must not raise
     assert any("command menu" in (r["message"] or "") for r in store.list_logs(limit=10))
+
+
+# ------------------------------------------------- the executor slash-command leak
+
+def test_a_message_starting_with_a_slash_reaches_the_model_as_prose():
+    """`claude --print "/help"` never reaches the model: the CLI matches the leading
+    token against its OWN slash commands and answers "/help isn't available in this
+    environment." Verified against the real CLI, both ways — a Telegram user typing
+    /help got that refusal, about a command it does not have and an environment it
+    never mentioned."""
+    from agentos import executors as ex
+
+    assert ex.as_prose("/help") == " /help"
+    assert ex.as_prose("/home/p/notes.md — what is in here?") == " /home/p/notes.md — what is in here?"
+    assert ex.as_prose("summarise my inbox") == "summarise my inbox"
+
+    env = ex.Envelope(workspace="/tmp/ws")
+    cmd = ex.build_command("/help", env)
+    assert cmd[cmd.index("--print") + 1] == " /help", \
+        "the prompt handed to the CLI must not begin with a slash"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_bare_command_is_answered_not_forwarded(tmp_path):
+    """Forwarding it is how the executor's own vocabulary leaked into this channel."""
+    console, tg = _console(tmp_path)
+    assert await _run(console, "/deploy") is True
+    assert "no command called /deploy" in tg.sent[-1]
+    assert "/help" in tg.sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_sentence_that_begins_with_a_slash_is_still_a_sentence(tmp_path):
+    console, tg = _console(tmp_path)
+    assert await _run(console, "/why did that fail") is False
+    assert await _run(console, "/home/p/x.py what is this?") is False
+    assert not tg.sent, "a question must reach the agent, not a 'no such command'"

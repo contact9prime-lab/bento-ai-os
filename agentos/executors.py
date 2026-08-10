@@ -566,6 +566,24 @@ def permission_mode(env: Envelope) -> str:
     return "dontAsk"
 
 
+def as_prose(task: str) -> str:
+    """A user's message, in a form the CLI will not mistake for an instruction to itself.
+
+    `claude --print "/help"` does not ask the model anything: the CLI matches the
+    leading token against its OWN slash commands and answers "/help isn't
+    available in this environment." Every surface that forwards to an executor
+    inherits that — a Telegram user typing /help got the executor's refusal for a
+    command it does not have, about an environment it never mentioned.
+
+    A single leading space is enough to make it prose again (verified against the
+    real CLI, both ways), and it changes nothing else about the message. Done here
+    rather than at each caller because every forwarded turn goes through this
+    function, and a message beginning with a slash is not rare — it is a path, a
+    fraction, or somebody trying a command.
+    """
+    return " " + task if task.startswith("/") else task
+
+
 def build_command(task: str, env: Envelope) -> list[str]:
     """The exact argv for a delegated run.
 
@@ -578,7 +596,7 @@ def build_command(task: str, env: Envelope) -> list[str]:
     already limited to what we allowed, so there is nothing left to ask about.
     """
     exe = claude_exe() or "claude"
-    cmd = [exe, "--print", task,
+    cmd = [exe, "--print", as_prose(task),
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
            *(("--add-dir", source_root()) if env.allow_source else ()),
