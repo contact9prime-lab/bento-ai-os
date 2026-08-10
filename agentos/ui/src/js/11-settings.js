@@ -111,8 +111,7 @@ function setTab(body,all){
     P.push(pGroup('Forward everything',[
       pRow('This machine answers with',pSelect('s-engine',[
           ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
-          ['claude-code','Claude Code'],
-          ['hermes','Hermes']],cfg.engine||'aria'),
+          ['claude-code','Claude Code']],cfg.engine||'aria'),
         {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
          f:'forward everything engine forwarder proxy relay'}),
     ],{f:'forwarding engine'}));
@@ -501,20 +500,10 @@ async function renderChannels(){
   CHAN_POSTURES=d.postures||[];
   var html=`<h3 class="chsec">Channels that reach this agent</h3>`
     +d.channels.map(chanCard).join('');
-  /* Hermes already runs a messaging gateway with bridges AgentOS deliberately
-     does not rebuild. These are discovered from it, so the list is whatever is
-     really paired right now — and they are delivery routes OUT, which the
-     heading has to say or "WhatsApp: on" reads as "Aria is on WhatsApp". */
-  const carried=d.carried||[];
-  if(carried.length){
-    html+=`<h3 class="chsec">Carried by Hermes <span class="mut">— AgentOS can send to these; a reply there is answered by Hermes, not by ${esc(agentName())}</span></h3>`
-      +carried.map(chanCard).join('');
-  }
   box.innerHTML=html;
   if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
 function chanCard(c){
-  if(c.carrier==='hermes')return chanCarriedCard(c);
   const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';
   const fields=(c.fields||[]).map(f=>pRow(f.label,
       f.secret?pSecret(`ch-${c.id}-${f.key}`,!!(c.set||{})[f.key],'••••',f.placeholder)
@@ -547,24 +536,6 @@ function chanCard(c){
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
-  </div>`;
-}
-/* A Hermes-carried channel has nothing to save here: pairing happens in Hermes,
-   and inventing an on/off switch beside it would be a control that lies. The
-   card reports what the probe found and points at where it is really changed. */
-function chanCarriedCard(c){
-  const dot={on:'ok',off:'mut',unavailable:'warn'}[c.status]||'mut';
-  const tg=(c.targets||[]).length
-    ? `<div class="chtargets">${c.targets.map(t=>
-        `<code title="${esc(t.id)}">${esc(t.name||t.id)}</code>`).join('')}</div>`
-    : '';
-  return `<div class="pgroup chan carried" data-f="channel hermes ${esc(c.title)}">
-    <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span>
-      <span class="chvia">via Hermes</span></h3>
-    ${tg}
-    ${c.status==='unavailable'
-      ? `<div class="ghint mut">${esc(c.detail)}</div>`
-      : `<div class="ghint mut">${esc(c.note)}</div>`}
   </div>`;
 }
 async function chanSave(id){

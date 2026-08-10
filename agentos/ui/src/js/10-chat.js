@@ -296,7 +296,7 @@ function paintModelChip(){
   const engine=(cfg&&cfg.engine)||d.engine||'aria';
   if(engine&&engine!=='aria'){
     const e=(d.engines||[]).find(x=>x.id===engine)||{};
-    chip.innerHTML=`${{'claude-code':'◈','hermes':'🜁'}[engine]||'⇥'} ${esc(e.name||engine)}`;
+    chip.innerHTML=`${{'claude-code':'◈'}[engine]||'⇥'} ${esc(e.name||engine)}`;
     chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
     chip.classList.add('engine');
     return;
@@ -332,7 +332,7 @@ function paintForwardChip(){
   const on=engine!=='aria';
   chip.hidden=!on;
   if(!on)return;
-  const name=engine==='claude-code'?'Claude Code':(engine==='hermes'?'Hermes':engine);
+  const name=engine==='claude-code'?'Claude Code':engine;
   // The model rides on the chip too, so "what is this running on" is answered by
   // looking up rather than by asking. It is filled in the first time a forwarded
   // turn reports it — before that the engine name alone is all we honestly know.
@@ -347,13 +347,13 @@ function paintForwardChip(){
 
 /* ---- who actually answered -------------------------------------------------
    A reply is labelled with the agent that produced it, not with the built-in
-   one by default. When the machine forwards, Claude Code or Hermes writes the
+   one by default. When the machine forwards, Claude Code writes the
    text — calling that "Aria" is the kind of quiet mislabelling that makes a
    forwarding machine confusing, and the model is shown alongside so the answer
    to "what is this running on" is on screen rather than something you ask. */
 function engineLabel(engine,model){
-  const mark={'claude-code':'◈','hermes':'🜁'}[engine]||'▲';
-  const name={'claude-code':'Claude Code','hermes':'Hermes'}[engine]||agentName();
+  const mark={'claude-code':'◈'}[engine]||'▲';
+  const name={'claude-code':'Claude Code'}[engine]||agentName();
   const m=(model||'').trim();
   return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
 }

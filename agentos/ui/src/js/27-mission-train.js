@@ -51,8 +51,7 @@ async function renderMission(body,w){
         ['scheduled jobs',(o.tasks_enabled??0)+' on / '+(o.scheduled_tasks??0)],
         ['turns (24h)',o.turns_24h??0],
         ['errors (24h)',o.errors_24h??0,(o.errors_24h||0)>0],
-        ['turns running now',o.turns_running??0],
-        ['hermes',o.hermes||'—']])}
+        ['turns running now',o.turns_running??0]])}
       ${lane('🔨 Build','studio',[
         ['apps installed',b.apps??0],
         ['build running',b.build_running?'yes':'no'],
@@ -72,70 +71,6 @@ async function renderMission(body,w){
   };
   await paint();
   winTick(w,paint,6000,{now:false,key:'poll'});
-}
-
-/* ================= hermes app (companion agent + wrapper) ================= */
-const HERMES_SETUP_LISTENERS=new Set();
-async function renderHermes(body,w){
-  stopWinTicks(w);
-  body.style.cssText='padding:0;height:100%;display:flex;flex-direction:column';
-  const load=async()=>{try{return await (await fetch('/api/hermes/status')).json()}catch(e){return{installed:false}}};
-  const log=(m)=>{const el=$('#hz-log');if(el){el.textContent=m;el.scrollTop=el.scrollHeight}};
-  const paint=async()=>{
-    const st=await load();if(!body.isConnected)return;
-    const busy=st.setup==='installing';
-    body.innerHTML=`
-      <div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px">
-        <div style="font-size:24px">🜁</div>
-        <div style="flex:1">
-          <div style="font-weight:650">Hermes agent <span class="mut" style="font-weight:400;font-size:11px">· MIT · NousResearch</span></div>
-          <div class="mut" style="font-size:12px">${st.installed?('installed — '+esc(st.model||'?')+' · '+esc(st.provider||'?')+' · gateway '+(st.gateway?'running':'stopped')):'not installed'}</div>
-        </div>
-        ${st.installed?`<span class="pill" style="font-size:11px;padding:4px 9px;border-radius:20px;background:${st.gateway?'rgba(94,234,212,.15)':'var(--bg3)'};border:1px solid var(--line)">${st.gateway?'● live':'○ idle'}</span>`:''}
-      </div>
-      <div style="padding:16px 18px;overflow:auto;flex:1">
-        ${!st.installed?`
-          <div class="mut" style="max-width:560px;margin-bottom:12px">Hermes is a second self-hosted agent (WhatsApp/Slack/Discord/Signal, skills, cron). Download it here to use it as an alternative chat engine, or to reach those platforms. AgentOS becomes its control surface — you can edit its config below once installed.</div>
-          <button class="pact" id="hz-install" ${busy?'disabled':''}>${busy?'downloading…':'Download Hermes (MIT)'}</button>
-          <div class="mut" style="font-size:11px;margin-top:6px">clones ${esc(st.install_dir||'~/.hermes/hermes-agent')} and provisions its venv — a few minutes, one-time</div>
-        `:`
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-            <button class="endbtn" id="hz-gw">${st.gateway?'Stop gateway':'Start gateway'}</button>
-            <button class="endbtn" id="hz-update">Update Hermes</button>
-            <button class="endbtn" onclick="openApp('chat')">Use as chat engine →</button>
-          </div>
-          <div style="font-weight:600;margin-bottom:6px">Config <span class="mut" style="font-weight:400;font-size:11px">· ${esc(st.config_path||'~/.hermes/config.yaml')} (API keys live in .env and are never shown here)</span></div>
-          <textarea id="hz-config" spellcheck="false" style="width:100%;height:300px;font-family:var(--mono);font-size:12px;background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <button class="pact" id="hz-save">Save config</button>
-            <button class="endbtn" id="hz-reload">Reload</button>
-            <span class="mut" id="hz-cfgmsg" style="font-size:12px"></span>
-          </div>
-        `}
-        <pre id="hz-log" class="mut" style="font-size:11px;white-space:pre-wrap;margin-top:14px;max-height:120px;overflow:auto"></pre>
-      </div>`;
-    if(!st.installed){
-      const b=$('#hz-install');if(b&&!busy)b.onclick=async()=>{b.disabled=true;b.textContent='downloading…';
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'install'})});};
-    }else{
-      const ta=$('#hz-config');
-      const loadCfg=async()=>{try{const d=await (await fetch('/api/hermes/config')).json();if(ta)ta.value=d.text||''}catch(e){}};
-      await loadCfg();
-      $('#hz-reload').onclick=loadCfg;
-      $('#hz-save').onclick=async()=>{const msg=$('#hz-cfgmsg');msg.textContent='saving…';
-        const r=await fetch('/api/hermes/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ta.value})});
-        const d=await r.json();msg.textContent=r.ok?'saved ✓':(d.error||'error');msg.style.color=r.ok?'var(--ok)':'var(--err)';};
-      $('#hz-gw').onclick=async()=>{$('#hz-gw').disabled=true;
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:st.gateway?'gateway_stop':'gateway_start'})});
-        setTimeout(paint,1500);};
-      $('#hz-update').onclick=async()=>{log('updating…');
-        await fetch('/api/hermes/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update'})});};
-    }
-  };
-  w._onSetup=ev=>{if(ev.type==='hermes_setup'){log(ev.message||'');if(ev.done)setTimeout(paint,800)}};
-  HERMES_SETUP_LISTENERS.add(w._onSetup);
-  await paint();
-  winTick(w,async()=>{const el=$('#hz-config');if(el&&document.activeElement===el)return;await paint()},8000,{now:false,key:'poll'});
 }
 
 /* ================= train app (TrainForge) ================= */

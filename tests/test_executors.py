@@ -331,7 +331,6 @@ def test_an_explicit_choice_beats_the_machine_setting():
     machine setting — otherwise a forwarder could never be escaped per-chat."""
     cfg = {"engine": "claude-code"}
     assert ex.resolve_engine(cfg, "ollama/qwen3.5:9b") == "aria"
-    assert ex.resolve_engine(cfg, "hermes") == "hermes"
     assert ex.resolve_engine(cfg, "claude-code") == "claude-code"
 
 
@@ -346,23 +345,6 @@ def test_the_surfaces_a_forwarder_covers_are_stated():
     list the UI promises, kept next to the code that honours it."""
     for surface in ("chat", "omnibar", "copilot", "telegram", "api", "task"):
         assert surface in ex.FORWARDED_SURFACES
-
-
-@pytest.mark.asyncio
-async def test_forwarding_to_hermes_does_not_touch_the_executor(monkeypatch):
-    """Hermes answers in one shot and has no envelope — routing it through the
-    Claude Code path would invent a workspace and a spend cap it never needed."""
-    called = []
-
-    async def fake_ask(prompt, timeout=600):
-        called.append(prompt)
-        return "hermes says hi"
-
-    import agentos.hermes as hermesmod
-    monkeypatch.setattr(hermesmod, "ask", fake_ask)
-    with mock.patch.object(ex, "run_task", side_effect=AssertionError("must not run")):
-        text, run = await ex.forward("hermes", "ping", {}, "/tmp/ws")
-    assert text == "hermes says hi" and run is None and called == ["ping"]
 
 
 @pytest.mark.asyncio

@@ -278,6 +278,22 @@ CATALOG: dict[str, dict] = {
     # and it is packaged only on Arch — an entry absent on three of the four
     # families we claim to support is the silent gap
     # test_every_component_has_a_name_for_every_supported_family exists to catch.
+    # Not a system package: everything lands under the user's own AgentOS home,
+    # so this entry never touches the privilege ladder above. It is here anyway
+    # because this is where consent lives — what it unlocks, its licence, and the
+    # warning, on one screen, before anything downloads.
+    "whatsapp-bridge": {
+        "packages": {}, "method": "script", "licence": "MIT (Baileys)",
+        "group": "optional", "for_session": False,
+        "title": "WhatsApp Web bridge",
+        "unlocks": "Reaching your agent on WhatsApp by scanning a QR code — no Meta "
+                   "developer account, no public webhook, and none of the Cloud "
+                   "API's 24-hour reply window. UNOFFICIAL: it emulates a linked "
+                   "WhatsApp Web device, which WhatsApp does not support and has "
+                   "banned accounts for automating on. Prefer a spare number.",
+        "argv": lambda: [],          # installed by whatsapp_link.install(), not a shell
+        "detect": lambda: _whatsapp_bridge_present(),
+    },
     "plymouth-theme": {
         "packages": {}, "method": "script", "licence": "MIT (AgentOS)",
         "group": "optional", "for_session": True,
@@ -291,6 +307,11 @@ CATALOG: dict[str, dict] = {
 
 #: Order the installer and the settings panel present groups in.
 GROUPS = ("required", "recommended", "optional")
+
+
+def _whatsapp_bridge_present() -> bool:
+    from . import whatsapp_link
+    return whatsapp_link.installed()
 
 
 def _portal_present() -> bool:
@@ -460,6 +481,17 @@ async def install(component_id: str) -> dict:
                 "command": "", "needs_terminal": False}
     if comp["detect"]():
         return {"ok": True, "message": "already installed", "command": "",
+                "needs_terminal": False}
+
+    # A component that installs into the user's own home has its own installer and
+    # never needs root — running it through the sudo ladder below would ask for a
+    # privilege it does not use.
+    if component_id == "whatsapp-bridge":
+        from . import whatsapp_link
+        res = await whatsapp_link.install()
+        if res.get("ok"):
+            _refresh_platform()
+        return {**res, "command": "npm install (in ~/.agentos/whatsapp-bridge)",
                 "needs_terminal": False}
 
     argv = install_argv(comp)

@@ -151,7 +151,7 @@ class Run:
 #     picker exists to prevent.
 #
 # The UI states this rather than implying totality.
-ENGINES = ("aria", "claude-code", "hermes")
+ENGINES = ("aria", "claude-code")
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
@@ -162,7 +162,7 @@ def resolve_engine(cfg: dict, requested: str = "") -> str:
     local override, not a fight with the machine setting. Otherwise the machine's
     own engine decides, so a forwarder stays a forwarder on every surface.
     """
-    if requested in ("claude-code", "hermes"):
+    if requested == "claude-code":
         return requested
     if requested:                      # a real model id: the built-in agent
         return "aria"
@@ -211,9 +211,6 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
         if emit:
             await emit(ev)
 
-    if engine == "hermes":
-        from . import hermes as hermesmod
-        return await hermesmod.ask(text), None
 
     env = envelope_from(cfg, workspace_default)
     env.session_id = session_id

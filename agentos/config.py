@@ -170,11 +170,6 @@ DEFAULTS = {
     # clones `repo` into `install_dir` and provisions it via run.sh. Set `repo` to
     # the doneitrightai git URL to enable auto-fetch.
     "trainforge": {"path": "", "port": 8377, "repo": "", "install_dir": ""},
-    # Hermes (companion agent AND a selectable chat engine). AgentOS can download it
-    # (MIT, from `repo`) and edit its config in the Hermes app. `engine_enabled`
-    # lets the user pick Hermes instead of the built-in agent in the chat selector.
-    "hermes": {"repo": "https://github.com/NousResearch/hermes-agent.git",
-               "install_dir": "", "engine_enabled": True},
     # generation budgets: Ollama context window and output-token caps (chat / builds).
     # ollama_think: null = model default; false = disable the thinking channel
     # (App Studio builds always disable it regardless).

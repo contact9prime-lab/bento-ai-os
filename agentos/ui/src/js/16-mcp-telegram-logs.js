@@ -12,9 +12,16 @@ const mcpBadge=e=>e.oauth?'<span class="ck">OAuth — sign-in opens in your brow
 async function renderMCP(body){
   const r=await fetch('/api/mcp');const d=await r.json();
   let REG={};try{((await (await fetch('/api/mcp/registry')).json()).registry||[]).forEach(x=>REG[x.name]=x)}catch(e){}
+  // The curated catalogue is SERVED, not hardcoded here, so the desktop and the
+  // terminal install from one list. It is also why this whole block is inert on a
+  // machine whose server does not offer /api/mcp/catalog: CUR stays empty and
+  // nothing renders, rather than a section of dead buttons.
+  let CUR=[],CURCATS=[];
+  try{const c=await(await fetch('/api/mcp/catalog')).json();CUR=c.catalog||[];CURCATS=c.categories||[]}catch(e){}
   MCPCFG={};
   d.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
-  const badge=s=>s.status==='connected'?`<span class="badge ok">● connected</span>`
+  const badge=s=>s.status==='authorizing'?`<span class="badge run">waiting for sign-in</span>`
+    :s.status==='connected'?`<span class="badge ok">● connected</span>`
     :s.status==='connecting'?`<span class="badge run">connecting…</span>`
     :s.status==='disabled'?`<span class="badge">disabled</span>`
     :`<span class="badge err">error</span>`;
@@ -30,6 +37,9 @@ async function renderMCP(body){
         ${tools.map(t=>`<div class="mtool"><code>${esc(t.name)}</code><span>${esc((t.description||'').split('\n')[0].slice(0,180))||'<i>no description provided by the server</i>'}</span></div>`).join('')}
       </details>`:''}
     </div>${badge(s)}
+    ${s.auth==='oauth'?(s.authorized
+        ?`<button title="sign out and forget the tokens" onclick="mcpSignOut('${esc(s.name)}')">Sign out</button>`
+        :`<button class="pact" title="sign in with your browser" onclick="mcpSignIn('${esc(s.name)}')">Sign in</button>`):''}
     ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${esc(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
     <button title="enable/disable" onclick="mcpToggle('${esc(s.name)}')">${s.enabled?'⏸':'▶'}</button>
     <button title="remove" onclick="mcpDel('${esc(s.name)}')">✕</button></div>`}).join('');
@@ -43,6 +53,17 @@ async function renderMCP(body){
     <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
       <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
     ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.','','mcp','Find me a useful MCP server and set it up.')}
+    ${CURCATS.map(cat=>{
+      const es=CUR.filter(e=>e.category===cat.id);
+      if(!es.length)return '';
+      return `<div data-fgroup>
+      <div class="sect">${esc(cat.title)} <span class="mut" style="font-weight:400">· sign in with your browser, no key to paste</span></div>
+      <div class="cat">${es.map(e=>`
+        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" onclick="mcpConnectCurated('${esc(e.registry_name)}')">
+          <span class="cn">${esc(e.title)}</span><span class="cd">${esc(e.description)}</span>
+          <span class="ck">${e.installed?'added':'OAuth — opens your browser'}</span>
+        </button>`).join('')}
+      </div></div>`}).join('')}
     ${MCP_GROUPS.map((g,gi)=>`
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
@@ -167,6 +188,41 @@ async function mcpPreset(key){
 }
 function mcpToggle(name){if(MCPCFG[name]){MCPCFG[name].enabled=!MCPCFG[name].enabled;mcpSave()}}
 function mcpDel(name){delete MCPCFG[name];mcpSave()}
+/* ---- curated (OAuth) servers -------------------------------------------------
+   Install and sign-in are one gesture: a curated entry has nothing to fill in, so
+   stopping to say "added — now press Sign in" would be a step that asks the user to
+   confirm what they already asked for. */
+async function mcpConnectCurated(regName){
+  const r=await fetch('/api/store/mcp/install',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({registry_name:regName})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not add that server');
+  toast(d.name+' added — opening sign-in…');
+  refreshApp('mcp');
+  await mcpSignIn(d.name);
+}
+async function mcpSignIn(name){
+  const r=await fetch('/api/mcp/oauth/'+encodeURIComponent(name)+'/connect',{method:'POST'});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'sign-in could not be started');
+  if(d.url){
+    // Opened here rather than server-side on purpose: this page knows which machine
+    // the user is actually sitting at, which a headless host cannot.
+    window.open(d.url,'_blank','noopener');
+    toast('approve the sign-in in the tab that just opened');
+  }else if(d.authorized)toast(name+' is already signed in');
+  else toast('no sign-in was requested — the server may be unreachable');
+  setTimeout(()=>refreshApp('mcp'),2500);
+  setTimeout(()=>refreshApp('mcp'),8000);
+}
+async function mcpSignOut(name){
+  if(!await osConfirm('Sign out of '+name+'?',
+     'AgentOS forgets the tokens and its registration with that service. Its tools stop working until you sign in again.'))return;
+  await fetch('/api/mcp/oauth/'+encodeURIComponent(name),{method:'DELETE'});
+  toast('signed out of '+name);
+  setTimeout(()=>refreshApp('mcp'),1200);
+}
+
 
 /* ================= telegram app ================= */
 async function renderTelegram(body){

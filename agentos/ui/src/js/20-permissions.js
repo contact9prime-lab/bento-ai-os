@@ -334,6 +334,34 @@ function permQuarantine(box){
       <div class="sub" style="margin-bottom:6px">Kept on the record — "allow forever" is an
       exemption somebody made, and it should stay visible.</div>${past}`:''}`;
 }
+/* Quarantine as an app in its own right.
+
+   It was only ever a tab inside the policy console, which is the wrong place to keep
+   it: Permissions is where you go to think about rules, and quarantine is where you
+   go when something has ALREADY stopped working and you want to know why. Nobody
+   whose app just went quiet thinks "I should check the policy console" — so the
+   answer has to be somewhere you can find without knowing the architecture.
+
+   Same renderer, two homes. `permQuarantine` still draws the tab; this only loads the
+   data the tab gets for free from `renderPermissions` and hands it the same box. A
+   second copy of the list would drift, and the drift would be in the screen that
+   explains why the OS stopped something. */
+async function renderQuarantine(body){
+  try{const q=await (await fetch('/api/quarantine?history=1')).json();
+      PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}
+  catch(e){PERM.held=[];PERM.qhistory=[]}
+  const n=PERM.held.length;
+  const pb=panelShell(body,{
+    title:'Quarantine',
+    sub:n?`${n} held — nothing ${n===1?'it':'they'} ask${n===1?'s':''} for runs while held`
+        :'Nothing is held right now',
+  });
+  pb.innerHTML=`<div id="perm-body"></div>
+    <p class="mut" style="margin-top:14px">Rules and grants live in
+      <a href="#" onclick="openApp('permissions');PERM.tab='map';refreshApp('permissions');return false">Permissions</a>
+      — this is only what has been stopped.</p>`;
+  permQuarantine(pb.querySelector('#perm-body'));
+}
 async function permRelease(qid,mode){
   const q=(PERM.held||[]).find(x=>x.id===qid)||{};
   const name=q.label||q.principal_id||'it';
@@ -346,5 +374,5 @@ async function permRelease(qid,mode){
     headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).then(r=>r.json());
   if(r.error)return toast(r.error);
   toast({once:'released — still watched',forever:'allowed forever',deleted:'deleted'}[mode]);
-  refreshApp('permissions');refreshApp('apps');refreshApp('fabric');
+  refreshApp('permissions');refreshApp('quarantine');refreshApp('apps');refreshApp('fabric');
 }

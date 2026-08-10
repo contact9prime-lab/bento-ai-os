@@ -39,25 +39,15 @@ def test_gates_are_real_policy_surfaces():
         assert c.gate in policy.SURFACES, f"{c.id} points at unknown gate {c.gate!r}"
 
 
-def test_agentos_does_not_reimplement_a_bridge_hermes_already_has():
-    """Slack, Signal, Discord and the rest stay carried by the Hermes gateway. A
-    second integration beside a working one is a worse copy of it."""
-    native = {c["id"] for c in ch.state(base_cfg())}
-    for pid in ("slack", "signal", "discord", "matrix"):
-        assert pid not in native, f"{pid} is carried by Hermes, not rebuilt here"
-        assert pid in ch.HERMES_PLATFORMS
-
-
-def test_whatsapp_is_the_one_exception_and_the_two_do_not_pretend_to_be_the_same():
-    """The reason is direction, not enthusiasm. Hermes takes messages OUT — a reply
-    arriving there is answered by Hermes' own agent with Hermes' memory. The whole
-    point of asking for WhatsApp is to reach THIS agent, and delivery-only plumbing
-    cannot get there. So both exist, and each says which one it is."""
+def test_whatsapp_reaches_this_agent_and_carries_both_transports():
+    """Only ONE messenger is built here, and it is the one people actually ask for:
+    reaching your own agent from the app already on your phone. Everything else stays
+    out — a second bridge is a second thing to keep working."""
     native = {c["id"]: c for c in ch.state(base_cfg())}
-    assert native["whatsapp"]["gate"] == "whatsapp"          # a way IN, with its own gate
+    assert native["whatsapp"]["gate"] == "whatsapp"      # a way IN, with its own gate
     assert native["whatsapp"]["direction"] == "both"
-    assert "reaches THIS agent" in native["whatsapp"]["note"]
-    assert "whatsapp" in ch.HERMES_PLATFORMS                  # and still a way OUT
+    for pid in ("slack", "signal", "discord", "matrix"):
+        assert pid not in native, f"{pid} is not a channel this OS implements"
 
 
 # ------------------------------------------------------------------- refusals
@@ -174,58 +164,3 @@ def test_a_posture_on_one_channel_does_not_leak_to_another():
         dec = pdp.decide_tool(policy.MAIN, "write_file", {"path": "/x"}, "risky",
                               "writes", surface=surface)
         assert dec.effect != "deny", f"{surface} was caught by telegram's ceiling"
-
-
-# ------------------------------------------------- channels carried by Hermes
-
-def _probe(monkeypatch, result):
-    async def fake():
-        return result
-    monkeypatch.setattr(ch, "hermes_targets", lambda *a, **k: fake())
-
-
-def test_carried_channels_are_discovered_not_declared(monkeypatch):
-    """Configured and working are different things. Hermes' config lists Signal on
-    this machine while its gateway has been failing to reach signal-cli every five
-    minutes — only the live probe knows the difference."""
-    _probe(monkeypatch, {"available": True, "gateway": True, "platforms": {
-        "slack": [{"id": "C1", "name": "#ops", "type": "group"}],
-        "telegram": [{"id": "PC", "name": "PC", "type": "dm"}]}})
-    got = {c["title"]: c for c in asyncio.run(ch.carried_state({}))}
-    assert got["Slack"]["status"] == "on" and got["Slack"]["targets"][0]["name"] == "#ops"
-    assert got["Signal"]["status"] == "off", "not paired must not read as available"
-    assert got["WhatsApp"]["status"] == "off"
-
-
-def test_carried_channels_say_a_reply_goes_to_hermes_not_this_agent(monkeypatch):
-    """Somebody enabling 'WhatsApp' expecting to reach Aria would otherwise be
-    quietly talking to a different assistant."""
-    _probe(monkeypatch, {"available": True, "platforms": {
-        "whatsapp": [{"id": "1", "name": "me", "type": "dm"}]}})
-    wa = next(c for c in asyncio.run(ch.carried_state({})) if c["title"] == "WhatsApp")
-    assert wa["direction"] == "out"
-    assert "Hermes' own agent" in wa["note"]
-    assert wa["gate"] == "", "a carried channel has no IO gate here — nothing arrives"
-
-
-def test_carried_channels_report_why_when_hermes_is_missing(monkeypatch):
-    _probe(monkeypatch, {"available": False, "platforms": {},
-                         "reason": "Hermes is not installed on this machine"})
-    for c in asyncio.run(ch.carried_state({})):
-        assert c["status"] == "unavailable"
-        assert "not installed" in c["detail"], "never a dead control — say why"
-
-
-def test_paired_platforms_sort_first(monkeypatch):
-    _probe(monkeypatch, {"available": True, "platforms": {
-        "whatsapp": [{"id": "1", "name": "me", "type": "dm"}]}})
-    titles = [c["title"] for c in asyncio.run(ch.carried_state({}))]
-    assert titles[0] == "WhatsApp", "what is actually working belongs at the top"
-
-
-def test_no_configured_channels_changes_nothing():
-    """The feature must be invisible until someone uses it."""
-    assert policy.channel_posture({}, "gui") == "inherit"
-    assert policy.channel_posture({"channels": {}}, "telegram") == "inherit"
-    assert policy.channel_posture({"channels": {"gui": {"posture": "junk"}}}, "gui") == "inherit"
-    assert policy.channel_posture({"channels": {"gui": {"posture": "full"}}}, "") == "inherit"

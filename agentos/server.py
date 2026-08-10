@@ -122,6 +122,14 @@ async def startup():
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
+    # A machine that was linked before the restart is still linked: the credentials
+    # are on disk. Reconnect it, but never START a link nobody asked for — an
+    # unlinked machine gets no process at all.
+    from . import whatsapp_link as _wl
+    if (whatsapp._c()["mode"] == "link" and whatsapp._c().get("enabled")
+            and _wl.installed() and _wl.auth_dir().is_dir()
+            and any(_wl.auth_dir().iterdir())):
+        asyncio.create_task(whatsapp.link.start())
     asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
     # attention engine: notification triage (importance + "For you" digest),
     # batch-gated and model-idle-deferred — a no-op without a daemon or model
@@ -278,6 +286,11 @@ async def shutdown():
         state["scheduler"].stop()
     if "telegram" in state:
         state["telegram"].stop()
+    if "whatsapp" in state:
+        # stop(), not logout(): shutting the server down is a pause, so the next
+        # start goes straight back to linked rather than asking for the QR again.
+        with contextlib.suppress(Exception):
+            await state["whatsapp"].link.stop()
     if "mcp" in state:
         await state["mcp"].stop()
     if "trainforge" in state:
@@ -1492,6 +1505,24 @@ async def api_components():
                    "session_capable": d["session_capable"], "why": d["why"]}}
 
 
+@app.post("/api/components/install")
+async def api_component_install(body: dict, request: Request):
+    """Install one catalogue entry.
+
+    The first-run wizard's "install Ollama for me" and the WhatsApp bridge card
+    have both always POSTed here; there was no such route, so both buttons 404'd
+    silently while reporting "could not install". Loopback-only — this changes
+    the machine.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    from . import components as compmod
+    cid = str((body or {}).get("id") or "")
+    res = await compmod.install(cid)
+    state["store"].log("system", f"component '{cid}': {res.get('message', '')}"[:200])
+    return res
+
+
 @app.post("/api/components")
 async def api_components_install(body: dict):
     """The UI shows the licence and asks before calling this — same contract as
@@ -1884,15 +1915,6 @@ async def api_models():
             "envelope": env.describe(),
         })
 
-    try:
-        from . import hermes as hermesmod
-        h = await hermesmod.status(cfg)
-        if h.get("installed") and h.get("engine_enabled") is not False:
-            engines.append({"id": "hermes", "name": "Hermes", "kind": "agent",
-                            "available": True, "reason": "", "detail": "", "envelope": ""})
-    except Exception:
-        pass
-
     return {"models": await providers.available_models(cfg),
             "default": cfg.get("default_model", ""),
             "engines": engines,
@@ -1971,16 +1993,7 @@ async def api_executor_install(body: dict):
 async def api_channels():
     """Every way to reach this machine from elsewhere, and what each one still needs."""
     from . import channels as chmod
-    # Hermes-carried channels are a live probe of another program, so a slow or
-    # wedged CLI must not take the whole panel down with it — the native channels
-    # are the ones that actually reach this agent.
-    carried = []
-    try:
-        carried = await asyncio.wait_for(chmod.carried_state(state["cfg"]), timeout=30)
-    except Exception:
-        carried = []
     return {"channels": chmod.state(state["cfg"], state.get("store")),
-            "carried": carried,
             "postures": [{"id": p, "label": chmod.POSTURE_LABELS[p],
                           "help": chmod.POSTURE_HELP[p]} for p in chmod.POSTURE_LABELS]}
 
@@ -2256,7 +2269,7 @@ async def api_put_whatsapp(body: dict):
     """
     patch = {k: v for k, v in (body or {}).items()
              if k in ("phone_number_id", "access_token", "app_secret", "verify_token",
-                      "enabled", "posture")}
+                      "enabled", "posture", "mode")}
     ok, msg = channelsmod.save(state["cfg"], "whatsapp", patch)
     if body.get("unpair"):
         state["cfg"].setdefault("whatsapp", {})["owner_wa_id"] = ""
@@ -2277,6 +2290,34 @@ async def api_whatsapp_chat(wa_id: str, body: dict):
 @app.delete("/api/whatsapp/chats/{wa_id}")
 async def api_whatsapp_chat_delete(wa_id: str):
     state["store"].wa_delete_chat(wa_id)
+    return {"ok": True}
+
+
+@app.post("/api/whatsapp/link")
+async def api_whatsapp_link(request: Request):
+    """Start the linked-device bridge and begin producing QR codes.
+
+    Loopback-only, like every other route that changes what this machine is
+    connected to: a linked WhatsApp device is a credential, and starting one is
+    not something a remote browser should be able to do on your behalf.
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    res = await state["whatsapp"].link.start()
+    if not res.get("ok"):
+        return JSONResponse({"error": res.get("error") or "could not start"},
+                            status_code=400)
+    return {"ok": True, **state["whatsapp"].link.status()}
+
+
+@app.delete("/api/whatsapp/link")
+async def api_whatsapp_unlink(request: Request):
+    """Unlink and forget the credentials. Not merely a disconnect — see
+    whatsapp_link.logout()."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    await state["whatsapp"].link.logout()
+    await state["broadcast"]({"type": "whatsapp_link", "state": "off"})
     return {"ok": True}
 
 
@@ -5205,7 +5246,7 @@ async def api_docs():
             out.append({"file": rel, "title": first.lstrip("# ").strip()})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
-             "tui.md", "security.md", "hermes.md", "integrations.md", "models.md", "configuration.md",
+             "tui.md", "security.md", "whatsapp.md", "integrations.md", "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
     out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
     return {"docs": out}
@@ -6660,26 +6701,6 @@ async def run_chat(cid: str, data: dict):
                       # attributes it correctly rather than crediting the built-in agent
                       "engine": "claude-code", "engine_model": run.model,
                       "tokens": {"input": 0, "output": 0}}
-        elif model == "hermes":
-            # Engine = Hermes: the user picked Hermes as the chat backend. Route the
-            # turn to the Hermes CLI, keeping AgentOS's turn lifecycle (working
-            # indicator, global turn slot, cancellation, persistence). Hermes replies
-            # in one shot rather than token-streaming.
-            from . import hermes as hermesmod
-            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "hermes"}
-            knowledge.turn_started()
-            started = True
-            await evsend({"type": "turn_start", "model": "hermes"})
-            await evsend({"type": "status", "message": "Hermes is working…"})
-            await evsend({"type": "engine_info", "engine": "hermes", "model": "", "tools": []})
-            reply = await hermesmod.ask(text)
-            # The bubble is labelled "Hermes" now, so prefixing the text with the
-            # name too would say it twice.
-            await evsend({"type": "text_delta", "text": reply})
-            result = {"content": reply, "steps": [],
-                      "engine": "hermes", "engine_model": "",
-                      "tokens": {"input": 0, "output": 0}}
-            header = ""
         elif flow_hit:
             trig, flow = flow_hit
             model = state["fabric"].resolve_model({"name": flow["name"],
@@ -7113,14 +7134,10 @@ async def api_lifecycle():
             (day_ago,)).fetchone()["c"]
     except Exception:
         errors_24h = turns_24h = 0
-    from . import hermes as hermesmod
-    hs = await hermesmod.status(cfg)
     out["operate"] = {"scheduled_tasks": len(tasks),
                       "tasks_enabled": sum(1 for t in tasks if t.get("enabled")),
                       "turns_24h": turns_24h, "errors_24h": errors_24h,
-                      "turns_running": len(state.get("turns") or {}),
-                      "hermes": ("gateway running" if hs["gateway"]
-                                 else "installed" if hs["installed"] else "not installed")}
+                      "turns_running": len(state.get("turns") or {})}
     # the proactivity north star: what share of conversations did the OS start?
     try:
         rows = store.db.execute(
@@ -7184,56 +7201,6 @@ async def train_service(body: dict):
     if action == "stop":
         return {"result": await state["trainforge"].stop()}
     return JSONResponse({"error": "action must be start|stop"}, status_code=400)
-
-
-# ---- Hermes (companion agent + wrapper: install, config, gateway) ---------
-
-@app.get("/api/hermes/status")
-async def hermes_status():
-    from . import hermes as hermesmod
-    return await hermesmod.status(state["cfg"])
-
-
-@app.get("/api/hermes/config")
-async def hermes_get_config():
-    from . import hermes as hermesmod
-    return {"text": await hermesmod.read_config(), "path": hermesmod.CONFIG_PATH}
-
-
-@app.put("/api/hermes/config")
-async def hermes_put_config(body: dict):
-    from . import hermes as hermesmod
-    res = await hermesmod.write_config(body.get("text", ""))
-    if res.startswith("[error]"):
-        return JSONResponse({"error": res}, status_code=400)
-    return {"result": res}
-
-
-@app.post("/api/hermes/service")
-async def hermes_service(body: dict):
-    """Wrapper controls: install/update Hermes (streams progress via the
-    hermes_setup broadcast) and start/stop its gateway."""
-    from . import hermes as hermesmod
-    action = (body or {}).get("action", "")
-    bcast = state["broadcast"]
-
-    async def note(msg: str):
-        with contextlib.suppress(Exception):
-            await bcast({"type": "hermes_setup", "message": msg})
-        state["store"].log("system", f"hermes: {msg}"[:200])
-
-    if action in ("install", "update"):
-        # run detached so the HTTP request returns immediately; progress streams
-        async def _do():
-            res = await hermesmod.install(state["cfg"], note=note, update=(action == "update"))
-            await note(res)
-            await bcast({"type": "hermes_setup", "message": res, "done": True})
-        asyncio.create_task(_do())
-        return {"result": f"Hermes {action} started — watch progress in the Hermes app"}
-    if action in ("gateway_start", "gateway_stop"):
-        return {"result": await hermesmod.gateway("start" if action == "gateway_start" else "stop")}
-    return JSONResponse({"error": "action must be install|update|gateway_start|gateway_stop"},
-                        status_code=400)
 
 
 @app.get("/api/build/status")

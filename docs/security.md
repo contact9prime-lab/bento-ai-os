@@ -47,7 +47,7 @@ untrusted text and trusted text in the same context window.
 
 So AgentOS does not try to detect the attack. It bounds the blast radius:
 
-- Output from `fetch_url`, `hermes_ask` and any `mcp_*` tool is **fenced** before the model
+- Output from `fetch_url` and any `mcp_*` tool is **fenced** before the model
   sees it (`<untrusted source="…">`), and the system prompt states that instructions inside a
   fence are content to report on, never to obey.
 - Once a turn has read untrusted content it is **tainted for the rest of the turn**, and a
