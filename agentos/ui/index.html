@@ -6012,7 +6012,11 @@ function sinkOff(cid){CHAT_SINKS.delete(cid)}
 /* one approval card builder for every surface (Chat inline, floating, sinks) */
 function buildApprovalBox(ev,cur){
   const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
-  const detail=ev.name==='run_command'?(ev.args.command||''):(ev.name+' '+JSON.stringify(ev.args,null,1));
+  // Words, not a JSON dump: the thing being approved should be readable at a
+  // glance, and `detail` is the same phrase the tool cards and the waiting row use.
+  const d=typeof actDetail==='function'?actDetail(ev.name,ev.args):'';
+  const detail=ev.name==='run_command'?(ev.args.command||'')
+              :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
   box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
@@ -6366,6 +6370,10 @@ function resolveApproval(id,approved,remember){
 }
 function permPrincipalLabel(kind,id){
   if(kind==='app'){const a=(USERAPPS||[]).find(x=>x.id===id);return 'app "'+(a?a.name:id)+'"';}
+  // "user" is what the ledger calls the main agent acting as you; on a card asking
+  // for your permission it reads as though YOU are the one being restricted.
+  if(kind==='user')return agentName();
+  if(kind==='subagent')return 'agent "'+id+'"';
   return kind+(id?' "'+id+'"':'');
 }
 function flushText(){

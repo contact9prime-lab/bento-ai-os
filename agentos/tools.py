@@ -1494,6 +1494,44 @@ class Toolbox:
                      "you cannot enable it yourself, and a test run works before then.")
         return "\n".join(lines)
 
+    async def create_subagent(self, name: str, soul: str, tools: list | None = None,
+                              skills: list | None = None, model: str = "",
+                              max_steps: int = 12, max_seconds: int = 300) -> str:
+        """Define a specialist agent.
+
+        The counterpart to `create_flow` for the simple case: one agent, invoked from
+        a conversation, with no mission or triggers around it. Building one grants
+        nothing — the definition only says what that agent WOULD hold, and the user is
+        asked the first time it is actually invoked (`agent.invoke`, once per agent).
+        That is what makes it safe to build one without asking first, exactly as a
+        drafted flow is safe because it is created disabled.
+
+        An existing name is never overwritten: an agent other conversations already
+        use must not be silently rewritten under them.
+        """
+        from . import flows as flowsmod
+        name = (name or "").strip()
+        if self.store.get_subagent(name):
+            return (f"[error] an agent called '{name}' already exists — pick another name, "
+                    f"or edit that one in the Team app so its other users see the change")
+        created = flowsmod.ensure_agents(self.store, [{
+            "name": name, "soul": soul, "model": model,
+            "tools": [str(t) for t in (tools or [])],
+            "skills": [str(k) for k in (skills or [])],
+            "max_steps": int(max_steps or 12), "max_seconds": int(max_seconds or 300)}])
+        if not created:
+            return (f"[error] '{name}' is not a usable agent name — short-kebab-case, "
+                    f"letters/digits/hyphens")
+        if self.broadcast:
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "fabric_defs"})
+        held = ", ".join(tools or []) or "the safe read-only tool set"
+        return (f"agent '{name}' defined (it holds nothing yet). It would run on "
+                f"{model or 'the default model'} with: {held}"
+                + (f"; skills: {', '.join(skills)}" if skills else "")
+                + f". Delegating to it the first time will ask the user to approve it — "
+                  f"say what it is for when you do.")
+
     async def enable_flow(self, name: str, enabled: bool = True) -> str:
         """Turn a flow on or off. This is the moment its permissions are granted, so it is
         in ALWAYS_ASK: the user confirms every time, at the desk or on their phone."""
@@ -1614,6 +1652,11 @@ class Toolbox:
             # definition and may create specialists, which is a change to the OS.
             return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
                              f"needs. It stays disabled until you enable it.")
+        if name == "create_subagent":
+            # Grants nothing on its own (invoking it is what asks), but it writes a
+            # definition other conversations can then use — a change to the OS.
+            return "risky", (f"Defines a new agent '{args.get('name', '?')}'. It holds nothing "
+                             f"until you approve its first use.")
         if name == "enable_flow":
             if args.get("enabled") is False:
                 return "risky", f"Turns off '{args.get('name', '?')}' and revokes its permissions."
@@ -3132,6 +3175,28 @@ TOOL_SCHEMAS = [
                 "content": {"type": "string", "description": "The full procedure in markdown."},
             },
             "required": ["name", "description", "content"],
+        },
+    },
+    {
+        "name": "create_subagent",
+        "description": "Define a specialist agent for work that deserves its own actor: a focused job, its "
+                       "own tool list, its own step and time budget, running beside the conversation rather "
+                       "than inside it. Use it when no existing agent fits — check `delegate`'s roster first. "
+                       "Defining one grants NOTHING: the user is asked to approve the agent the first time you "
+                       "delegate to it, and the approval names the tools you list here, so ask for the fewest "
+                       "that let the job succeed. An existing name is never overwritten.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "short-kebab-name, unique"},
+                "soul": {"type": "string", "description": "Its persona and job, in the second person — what it does, what it returns, and what it should refuse to guess at. This is its whole brief; it never sees this conversation."},
+                "tools": {"type": "array", "items": {"type": "string"}, "description": "Tool names it may use. Empty = the safe read-only set. It can use NOTHING else, so include what the job needs."},
+                "skills": {"type": "array", "items": {"type": "string"}, "description": "Installed skills to ship into its prompt."},
+                "model": {"type": "string", "description": "'' inherits this machine's default model."},
+                "max_steps": {"type": "integer"},
+                "max_seconds": {"type": "integer"},
+            },
+            "required": ["name", "soul"],
         },
     },
     {

@@ -67,10 +67,17 @@ _SELF_MOD = ["tool:configure_agentos*", "tool:update_soul*", "tool:develop_agent
 # whatever it liked by writing a flow that says so. Only the user's own agent may, and even
 # then the flow is created disabled — enabling is what grants, and that stays a human act.
 _NO_FLOW_WRITE = [("flow.write", "*")]
+# Defining a subagent is the same shape of decision as defining a flow: the
+# definition IS a capability set (a model, a tool list, a skill list), so anything
+# that could write one could hand itself capabilities by naming them in a new
+# agent and then calling it. Only the user's own agent may define one — and
+# defining grants nothing by itself, because `agent.invoke` is what asks.
+_NO_AGENT_WRITE = [("agent.write", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_FLOW_WRITE,
-    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _NO_FLOW_WRITE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _NO_FLOW_WRITE,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
+    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -78,7 +85,7 @@ BUILTIN_DENY = {
     # (its roster) can satisfy one. The agents it starts run as `subagent`, which IS
     # denied above — which is what makes the tree exactly two deep, enforced by the gate
     # rather than by a counter somebody has to remember to increment.
-    "flow": [("tool.use", p) for p in _SELF_MOD] + _NO_FLOW_WRITE,
+    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -146,6 +153,11 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
     # the same kind of question and must be grantable apart.
     if name in ("create_flow", "enable_flow"):
         return "flow.write", f"flow:{args.get('name', '') or '*'}"
+    # Building an agent is not "using a tool". It writes a standing definition that
+    # says which model, tools and skills that agent will hold, so it is grantable
+    # (and deniable) apart from everything else — see _NO_AGENT_WRITE.
+    if name == "create_subagent":
+        return "agent.write", f"agent:subagent/{args.get('name', '') or '*'}"
     if name == "list_flows":
         return "flow.read", "flow:*"
     if name == "run_flow":
@@ -436,6 +448,36 @@ class PDP:
                         f"{principal.label} was quarantined: {reason}.",
                         rule="quarantined")
 
+    def _invoke_reason(self, resource: str) -> str:
+        """What approving this invocation actually hands over.
+
+        A subagent is a second actor with its own model, its own tools and its own
+        spending, so "the assistant wants to delegate" is not enough to consent to.
+        The card names the agent, what it runs on and what it may reach — the same
+        list its definition will enforce — because a permission nobody can picture
+        is one people click through.
+        """
+        kind, _, name = resource.partition(":")[2].partition("/")
+        if kind != "subagent" or not name or not self.store:
+            return f"Runs '{name or resource}' — a separate agent, with its own steps and budget."
+        try:
+            d = self.store.get_subagent(name) or {}
+        except Exception:
+            d = {}
+        if not d:
+            return f"Runs '{name}', a separate agent with its own steps and budget."
+        tools = d.get("tools") or []
+        skills = d.get("skills") or []
+        bits = [f"Runs '{name}' as a separate agent",
+                f"on {d.get('model') or 'the default model'}",
+                f"capped at {d.get('max_steps', 12)} steps / {d.get('max_seconds', 300)}s"]
+        line = ", ".join(bits) + "."
+        line += (f" It may use: {', '.join(tools[:12])}."
+                 if tools else " It gets the safe read-only tool set.")
+        if skills:
+            line += f" Skills: {', '.join(skills[:6])}."
+        return line
+
     def _declared_roster(self, principal: Principal) -> set:
         """The agents a flow's definition lists. Memoised briefly, like the skills."""
         key = "roster:" + principal.label
@@ -660,6 +702,20 @@ class PDP:
             autonomy = "balanced"
         elif posture == "full":
             autonomy = "full"
+        # Starting another agent is its own consent, asked ONCE per agent. It is not
+        # covered by the risk table — `delegate` is absent from it and so arrives here
+        # as "safe" — and it should not be: a turn that quietly starts a researcher
+        # which reads forty pages and bills a cloud model is not the same event as a
+        # turn that read one file. The offer is scoped to that one agent, so this is a
+        # first-use question and never a per-call one.
+        #
+        # Unattended (a scheduled task, a webhook) nobody answers and it ends in a
+        # denial with the reason in the ledger — the same shape a flow's ungranted
+        # roster takes, and for the same reason: this must not become a way for
+        # something running alone to acquire an actor the user never approved.
+        if action == "agent.invoke" and autonomy != "full":
+            return Decision("ask", reason or self._invoke_reason(resource),
+                            rule="default", grant_offer=offer)
         if risk == "risky" and autonomy != "full":
             return Decision("ask", reason, rule="default",
                             grant_offer=offer if principal.kind != "user" else None)
