@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import shlex
+from . import users as usersmod
 
 try:
     from mcp import ClientSession, StdioServerParameters
@@ -169,7 +170,7 @@ class MCPServer:
             self.task.cancel()
 
 
-class MCPManager:
+class MCPManager(usersmod.Scoped):
     def __init__(self, cfg: dict, store=None):
         self.cfg = cfg
         self.store = store

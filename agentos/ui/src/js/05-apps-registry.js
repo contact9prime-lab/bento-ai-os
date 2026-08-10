@@ -66,6 +66,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  users:{id:'users',title:'Users',icon:'◱',w:720,h:640,desc:'Who can use this machine — accounts, roles, shared agents & apps',render:renderUsers},
   about:{id:'about',title:'About Bento Box AI',icon:'▲',w:520,h:620,desc:'Version, what is new, and system information',render:renderAbout},
 };
 
@@ -82,6 +83,9 @@ const APP_CTX={
   remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
+  users:()=>(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)
+    ?`the account list (${USERS.list.length} accounts, signed in as ${(USERS.me.name||'?')})`
+    :'the accounts screen — this machine has one user and has not turned accounts on',
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
   memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
   profile:()=>'the profile view — everything the agent knows about the user',

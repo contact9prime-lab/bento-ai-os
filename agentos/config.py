@@ -28,18 +28,29 @@ I am the resident intelligence of this machine. I act, I remember, I learn.
 """
 
 
+def soul_path() -> Path:
+    """Whose soul. On a single-user machine this is the one file it has always
+    been; with users, it is theirs — an agent's identity is the most personal
+    thing in the OS and sharing one would be the strangest possible default."""
+    from . import users as usersmod
+    uid = usersmod.current() if usersmod.enabled() else ""
+    return usersmod.soul_path_for(uid) if uid else SOUL_PATH
+
+
 def load_soul() -> str:
-    if SOUL_PATH.exists():
+    p = soul_path()
+    if p.exists():
         try:
-            return SOUL_PATH.read_text()
+            return p.read_text()
         except Exception:
             return DEFAULT_SOUL
     return DEFAULT_SOUL
 
 
 def save_soul(text: str) -> None:
-    AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
-    SOUL_PATH.write_text(text)
+    p = soul_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text)
 
 DEFAULTS = {
     # Explicit, and in DEFAULTS on purpose. `is_first_run()` reads the RAW file, so
@@ -300,6 +311,22 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
+    """Write the config — to the right file, for whoever is asking.
+
+    There are ~26 call sites and none of them know about users, which is the
+    point: the routing lives here rather than in each of them. A user's save
+    writes their own keys to their own file and stops. An admin's also writes the
+    machine's half, stripped of the personal keys — because everything in the
+    machine file becomes the starting point for the next person created.
+    """
+    from . import users as usersmod
+    uid = usersmod.current() if usersmod.enabled() else ""
+    if uid:
+        usersmod.save_user_cfg(uid, cfg)
+        if not usersmod.is_admin(uid):
+            return
+        cfg = usersmod.machine_view(cfg)
+        usersmod.machine_changed(cfg)
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
@@ -307,7 +334,16 @@ def save_config(cfg: dict) -> None:
 def is_first_run() -> bool:
     """True when the setup wizard should run: no config yet, or a factory reset
     explicitly set setup_complete=false. Pre-wizard installs (config exists without
-    the key) are grandfathered as already set up."""
+    the key) are grandfathered as already set up.
+
+    Per user once there are users: the arc is name-your-agent, say hello, build
+    one, choose a look. All of that is personal, so a new account gets walked
+    through it rather than dropped into somebody else's finished desktop.
+    """
+    from . import users as usersmod
+    uid = usersmod.current() if usersmod.enabled() else ""
+    if uid:
+        return usersmod.cfg_for(uid).get("setup_complete") is not True
     if not CONFIG_PATH.exists():
         return True
     try:

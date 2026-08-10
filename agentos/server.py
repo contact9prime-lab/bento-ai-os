@@ -23,6 +23,7 @@ from . import history as historymod
 from . import channels as channelsmod
 from . import jobs as jobsmod
 from . import onboarding as onboardmod
+from . import users as usersmod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
@@ -43,7 +44,76 @@ UI_DIR = Path(__file__).parent / "ui"
 
 app = FastAPI(title="AgentOS")
 
-state: dict = {}  # cfg, store, toolbox, scheduler, clients
+class _State(dict):
+    """The server's globals, with two keys that answer per USER.
+
+    `state["store"]` and `state["cfg"]` are read in ~250 places. Threading a user
+    through all of them would be 250 chances to forget one, and a forgotten one is
+    somebody reading a colleague's memory. So the lookup itself resolves: the
+    request middleware sets a contextvar, and these two keys follow it.
+
+    On a single-user machine `users.current()` is '' and both fall straight through
+    to the machine's own store and config — the files this OS has always used, with
+    nothing to migrate and nothing new to go wrong.
+    """
+
+    def __getitem__(self, k):
+        if usersmod.enabled():
+            if k in ("store", "cfg"):
+                uid = usersmod.current()
+                if k == "store":
+                    return usersmod.store_for(uid)
+                return usersmod.cfg_for(uid, machine=dict.__getitem__(self, "cfg"))
+            if k in PER_USER_SERVICES:
+                got = usersmod.services().get(k)
+                if got is not None:
+                    return got
+        return dict.__getitem__(self, k)
+
+    def machine_cfg(self) -> dict:
+        """The machine's own config, never a user's view of it. Admin-only writes:
+        providers, models, remote access, components."""
+        return dict.__getitem__(self, "cfg")
+
+
+state: _State = _State()  # cfg, store, toolbox, scheduler, clients
+
+#: The three services `_State` also routes per user. Everything else in `state` is
+#: either machine-wide (the client set, the compositor) or reaches the right data
+#: through `users.Scoped` and so needs only one instance.
+PER_USER_SERVICES = ("telegram", "whatsapp", "mcp")
+
+
+def _build_user_services(uid: str, toolbox, broadcast) -> dict:
+    """This person's own bridges, and the loops that drive them.
+
+    A Telegram bridge polls with one bot token; a WhatsApp bridge holds one linked
+    device; an MCP manager owns live subprocesses started with somebody's own
+    credentials. None of the three can be shared, so each user gets their own —
+    built the first time anything reaches for them rather than at startup, because
+    most accounts on most machines have configured none of it and an idle bridge
+    that was never asked for is a poll loop for nothing.
+
+    They are handed the SAME toolbox: it is `users.Scoped`, so its cfg and store
+    already answer for whoever the turn belongs to.
+    """
+    cfg, store = usersmod.cfg_for(uid, machine=state.machine_cfg()), usersmod.store_for(uid)
+    tg = TelegramBridge(cfg, store, toolbox, broadcast)
+    wa = WhatsAppBridge(cfg, store, toolbox, broadcast)
+    mcp = MCPManager(cfg, store)
+    bag = {"telegram": tg, "whatsapp": wa, "mcp": mcp}
+
+    async def _run():
+        # Every loop runs inside the owner's context, so anything they reach for —
+        # the store, a tool, a turn — resolves to this person and not to whoever
+        # happened to be the last request.
+        with usersmod.as_user(uid):
+            await asyncio.gather(tg.run_forever(), mcp.start(), return_exceptions=True)
+
+    with contextlib.suppress(RuntimeError):     # no loop yet: CLI use, tests
+        asyncio.get_running_loop()
+        bag["_task"] = asyncio.create_task(_run())
+    return bag
 
 
 @app.on_event("startup")
@@ -140,6 +210,10 @@ async def startup():
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
+    # The three services that cannot be shared get built per user, on demand, the
+    # first time somebody's request or scheduled job reaches for one.
+    usersmod.set_service_factory(
+        lambda uid: _build_user_services(uid, toolbox, broadcast))
     asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
     # attention engine: notification triage (importance + "For you" digest),
     # batch-gated and model-idle-deferred — a no-op without a daemon or model
@@ -2143,6 +2217,17 @@ async def api_executors():
 
 @app.put("/api/config")
 async def api_put_config(patch: dict):
+    # Machine settings are the machine's. Refusing here rather than letting the
+    # save drop them quietly is the difference between "you cannot change that"
+    # and a Settings page that appears to work and does nothing — which is the
+    # version somebody reports as a bug six months later.
+    mine = usersmod.current()
+    if usersmod.enabled() and not usersmod.is_admin(mine):
+        theirs = [k for k in (patch or {}) if k not in usersmod.USER_KEYS]
+        if theirs:
+            return JSONResponse(
+                {"error": "only an admin can change machine settings on this machine "
+                          f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
     cfg = state["cfg"]
     for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name",
                 "policies", "sandbox", "steer_queued_messages"):
@@ -3949,8 +4034,7 @@ async def api_quarantine_release(qid: str, body: dict):
     elif kind == "app":
         store.resume_app(pid)
     with contextlib.suppress(Exception):
-        state["pdp"]._rate.forget(f"{kind}:{pid}|llm")
-        state["pdp"]._rate.forget(f"{kind}:{pid}|tool")
+        state["pdp"].forget_rate(kind, pid)
     store.log("policy",
               f"{kind} '{row.get('label') or pid}' released from quarantine by the user: "
               + {"once": "allowed to run again, still watched",
@@ -4167,7 +4251,8 @@ async def app_privilege_guard(request: Request, call_next):
 # not remote access is on.
 # ---------------------------------------------------------------------------
 
-REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/assets/", "/manifest.webmanifest",
+REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
+                     "/api/users/who", "/assets/", "/manifest.webmanifest",
                      "/favicon.ico", "/apple-touch-icon.png",
                      # Flow webhooks. A service posting from the internet has no session
                      # and cannot get one, so this is the one path deliberately reachable
@@ -4183,12 +4268,41 @@ def _client_addr(request: Request) -> str:
 
 
 def _authed(request: Request) -> bool:
-    cfg = state["cfg"]
+    cfg = state.machine_cfg()
+    # Adding a second person is what turns this machine into one that needs a login.
+    # Loopback trust cannot survive it: "whoever is sitting here" is exactly the
+    # thing that must stop being an identity once there is more than one identity,
+    # and without this everybody at the keyboard would share the machine store
+    # rather than reaching their own.
+    if usersmod.enabled():
+        uid = remotemod.session_user(cfg, request.cookies.get(remotemod.COOKIE, ""))
+        return bool(uid) and usersmod.get(uid) is not None
     if not remotemod.enabled(cfg):
         return True                                     # loopback-only: nothing to gate
     if cfg["remote"].get("trust_loopback", True) and remotemod.is_loopback(_client_addr(request)):
         return True
     return remotemod.valid_session(cfg, request.cookies.get(remotemod.COOKIE, ""))
+
+
+@app.middleware("http")
+async def resolve_user(request: Request, call_next):
+    """Who is this request, before anything reads data.
+
+    Set from the SIGNED session cookie only — never a header or a query parameter,
+    because those are things a caller chooses and this decides which private
+    directory gets opened.
+    """
+    uid = ""
+    if usersmod.enabled():
+        uid = remotemod.session_user(state.machine_cfg(),
+                                     request.cookies.get(remotemod.COOKIE, "")) or ""
+        if uid and not usersmod.get(uid):
+            uid = ""                     # the account was deleted mid-session
+    token = usersmod._current.set(uid)
+    try:
+        return await call_next(request)
+    finally:
+        usersmod._current.reset(token)
 
 
 @app.middleware("http")
@@ -4239,7 +4353,7 @@ async def api_resume_app(aid: str):
         return JSONResponse({"error": "no such app"}, status_code=404)
     state["store"].resume_app(aid)
     with contextlib.suppress(Exception):
-        state["pdp"]._rate.forget(Principal("app", aid).label)
+        state["pdp"].forget_rate("app", aid)
     state["store"].log("policy", f"app {aid} started again by the user", {"app": aid})
     await state["broadcast"]({"type": "apps"})
     return {"ok": True}
@@ -5471,7 +5585,8 @@ async def api_docs():
             out.append({"file": rel, "title": first.lstrip("# ").strip()})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
-             "tui.md", "security.md", "whatsapp.md", "integrations.md", "models.md", "configuration.md",
+             "tui.md", "security.md", "users.md", "whatsapp.md", "integrations.md",
+             "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
     out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
     return {"docs": out}
@@ -5512,6 +5627,229 @@ async def api_setup_apply(body: dict):
     state["store"].log("system", "first-run setup completed via wizard", report)
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "report": report}
+
+
+# ---------------------------------------------------------------------------
+# Users: several people on one machine, isolated by directory.
+#
+# Every route below decides on `usersmod.is_admin(current)` — never on a field in
+# the request. A machine with nobody added has no one to refuse, so is_admin('')
+# is True and a single-user install behaves exactly as it always did.
+# ---------------------------------------------------------------------------
+
+def _me() -> dict:
+    """Who this request is, in the shape the UI draws."""
+    uid = usersmod.current()
+    u = usersmod.get(uid) if uid else None
+    return {"id": uid, "name": (u or {}).get("name", ""),
+            "display": (u or {}).get("display", ""),
+            "role": (u or {}).get("role", "admin" if not usersmod.enabled() else ""),
+            "admin": usersmod.is_admin(uid),
+            "multiuser": usersmod.enabled()}
+
+
+def _require_admin():
+    if not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can do that"}, status_code=403)
+    return None
+
+
+@app.get("/api/users/who")
+async def api_users_who():
+    """Deliberately outside the auth gate: the sign-in page has to know whether this
+    machine has users at all before it can ask for anything."""
+    return {**_me(), "any": usersmod.enabled()}
+
+
+@app.post("/api/users/login")
+async def api_users_login(body: dict, request: Request):
+    name = str((body or {}).get("name") or "").strip().lower()
+    pw = str((body or {}).get("password") or "")
+    addr = _client_addr(request)
+    wait = remotemod.locked_for(addr)
+    if wait:
+        return JSONResponse({"error": f"too many attempts — wait {wait}s"},
+                            status_code=429)
+    u = usersmod.by_name(name)
+    # One message for both failures, on purpose: "no such user" tells somebody
+    # probing which names exist.
+    if not u or not usersmod.check_password(u["id"], pw):
+        remotemod.note_failure(addr)
+        return JSONResponse({"error": "that username and password do not match"},
+                            status_code=401)
+    remotemod.note_success(addr)
+    tok = remotemod.issue_session(state.machine_cfg(), u["id"])
+    resp = JSONResponse({"ok": True, "id": u["id"], "name": u["name"],
+                         "role": u["role"]})
+    resp.set_cookie(remotemod.COOKIE, tok, httponly=True, samesite="lax",
+                    max_age=86400 * 30, path="/")
+    usersmod.store_for(u["id"]).log("system", f"signed in: {u['name']}")
+    return resp
+
+
+@app.post("/api/users/logout")
+async def api_users_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(remotemod.COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/users")
+async def api_users():
+    """The roster. Readable by everyone — you cannot share an app with somebody
+    whose name you are not allowed to see."""
+    return {"users": usersmod.list_users(), "me": _me(), "roles": list(usersmod.ROLES)}
+
+
+@app.post("/api/users")
+async def api_users_create(body: dict):
+    if (r := _require_admin()):
+        return r
+    b = body or {}
+    first = not usersmod.enabled()
+    try:
+        u = usersmod.create(str(b.get("name") or ""), str(b.get("password") or ""),
+                            role=str(b.get("role") or "executor"),
+                            display=str(b.get("display") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    resp = JSONResponse({"ok": True, "user": u, "signed_in": first})
+    if first:
+        # Creating the first account is what turns this into a machine that needs
+        # a login — including for the person who just did it, who has no session
+        # and would be bounced to a sign-in page by their own next click. They
+        # proved they were the machine's owner by being able to make the account;
+        # hand them the session rather than the door.
+        with usersmod.as_user(u["id"]):
+            usersmod.store_for(u["id"]).log(
+                "system", f"multi-user turned on; {u['name']} is the first admin")
+        resp.set_cookie(remotemod.COOKIE,
+                        remotemod.issue_session(state.machine_cfg(), u["id"]),
+                        httponly=True, samesite="lax", max_age=86400 * 30, path="/")
+    else:
+        state["store"].log("system", f"user created: {u['name']} ({u['role']})")
+    return resp
+
+
+@app.put("/api/users/{uid}")
+async def api_users_update(uid: str, body: dict):
+    b = body or {}
+    me = usersmod.current()
+    admin = usersmod.is_admin(me)
+    # Your own password is yours. Everything else about an account is the machine's.
+    if not admin and uid != me:
+        return JSONResponse({"error": "only an admin can change another account"},
+                            status_code=403)
+    try:
+        if b.get("password"):
+            usersmod.set_password(uid, str(b["password"]))
+        if b.get("role"):
+            if not admin:
+                return JSONResponse({"error": "only an admin can change a role"},
+                                    status_code=403)
+            usersmod.set_role(uid, str(b["role"]))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "user": usersmod.get(uid) and
+            {k: v for k, v in usersmod.get(uid).items()
+             if k not in ("pass_hash", "salt")}}
+
+
+@app.delete("/api/users/{uid}")
+async def api_users_delete(uid: str, wipe: bool = False):
+    if (r := _require_admin()):
+        return r
+    if uid == usersmod.current():
+        return JSONResponse({"error": "you cannot delete the account you are using"},
+                            status_code=400)
+    try:
+        return usersmod.delete(uid, wipe=wipe)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+# ---- sharing: the one place data crosses between people --------------------
+
+@app.get("/api/shared")
+async def api_shared(kind: str = ""):
+    return {"shared": usersmod.shared(kind), "me": _me()}
+
+
+@app.post("/api/shared")
+async def api_share(body: dict):
+    """Publish a COPY. Never a link — a shared app that changes under the people
+    using it is a supply-chain problem living in a filesystem."""
+    b = body or {}
+    kind, name = str(b.get("kind") or ""), str(b.get("name") or "")
+    store = state["store"]
+    if kind == "agent":
+        defn = store.get_subagent(name)
+        if not defn:
+            return JSONResponse({"error": f"no agent called '{name}'"}, status_code=404)
+        payload = {k: v for k, v in defn.items() if k not in ("id", "created_at",
+                                                              "updated_at", "builtin")}
+    elif kind == "app":
+        app_rec = next((a for a in store.list_apps(with_html=True)
+                        if a.get("name") == name or a.get("id") == name), None)
+        if not app_rec:
+            return JSONResponse({"error": f"no app called '{name}'"}, status_code=404)
+        # The HTML and nothing else. `app_data`, grants and the version history stay
+        # behind: an app's stored data is whatever the publisher happened to be doing
+        # with it, and shipping that with the app is a data leak wearing a feature's
+        # clothes.
+        payload = {"name": app_rec.get("name") or name, "icon": app_rec.get("icon") or "",
+                   "description": app_rec.get("description") or "",
+                   "html": app_rec.get("html") or ""}
+    else:
+        return JSONResponse({"error": f"only {', '.join(usersmod.SHAREABLE)} can be shared"},
+                            status_code=400)
+    try:
+        rec = usersmod.publish(kind, name, payload, by=_me()["name"] or "this machine")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "shared"})
+    return {"ok": True, "shared": rec}
+
+
+@app.post("/api/shared/take")
+async def api_share_take(body: dict):
+    """Install a shared copy into MY store. A copy again, so editing it afterwards
+    is editing mine and cannot reach back to the person who published it."""
+    b = body or {}
+    kind, slug = str(b.get("kind") or ""), str(b.get("slug") or "")
+    try:
+        payload = usersmod.take(kind, slug)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    store = state["store"]
+    if kind == "agent":
+        name = payload.get("name") or slug
+        while store.get_subagent(name):
+            name += "-copy"
+        store.save_subagent({**payload, "name": name, "builtin": 0})
+        await state["broadcast"]({"type": "fabric_defs"})
+        return {"ok": True, "installed": name}
+    if kind == "app":
+        # `save_app` keys on the name, so an unqualified install would silently
+        # overwrite an app of mine that happens to share a name with a shared one.
+        name = payload.get("name") or slug
+        have = {a.get("name", "").lower() for a in store.list_apps()}
+        while name.lower() in have:
+            name += " (shared)" if not name.endswith("(shared)") else " copy"
+        store.save_app(name, payload.get("icon") or "", payload.get("description") or "",
+                       payload.get("html") or "", note=f"installed from shared:{slug}")
+        await state["broadcast"]({"type": "apps"})
+        return {"ok": True, "installed": name}
+    return JSONResponse({"error": "unknown kind"}, status_code=400)
+
+
+@app.delete("/api/shared/{kind}/{slug}")
+async def api_unshare(kind: str, slug: str):
+    try:
+        return usersmod.unpublish(kind, slug, by=_me()["name"] or "",
+                                  admin=usersmod.is_admin(usersmod.current()))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
 
 
 # ---------------------------------------------------------------------------

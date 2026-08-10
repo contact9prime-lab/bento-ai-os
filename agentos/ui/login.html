@@ -52,7 +52,9 @@ button:disabled{opacity:.55;cursor:default}
     <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
     <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/></svg></div>
   <h1>AgentOS</h1>
-  <p class="sub">This desktop is locked. Sign in to continue.</p>
+  <p class="sub" id="sub">This desktop is locked. Sign in to continue.</p>
+  <input id="who" type="text" name="username" placeholder="Username" hidden
+         autocomplete="username" autocapitalize="none" spellcheck="false" enterkeyhint="next">
   <input id="pw" type="password" name="password" placeholder="Passphrase"
          autocomplete="current-password" autofocus enterkeyhint="go">
   <button id="go" type="submit">Sign in</button>
@@ -61,13 +63,31 @@ button:disabled{opacity:.55;cursor:default}
 </form>
 <script>
 const f=document.getElementById('f'),pw=document.getElementById('pw'),
+      who=document.getElementById('who'),sub=document.getElementById('sub'),
       go=document.getElementById('go'),err=document.getElementById('err');
+
+// One page, two questions. A machine with nobody added asks for the remote
+// passphrase — one household, one secret. A machine with users has to ask WHO,
+// because the answer decides which private directory gets opened. Asked of the
+// server rather than guessed: /api/users/who is deliberately outside the gate so
+// the locked page can find out what kind of machine it is locked out of.
+let multi=false;
+fetch('/api/users/who').then(r=>r.json()).then(d=>{
+  if(!d||!d.any)return;
+  multi=true;who.hidden=false;who.focus();
+  pw.placeholder='Password';
+  sub.textContent='Sign in to your desktop.';
+}).catch(()=>{});
+
 f.addEventListener('submit',async e=>{
   e.preventDefault();
   err.textContent='';go.disabled=true;go.textContent='Signing in…';
   try{
-    const r=await fetch('/api/remote/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({passphrase:pw.value})});
+    const r=multi
+      ? await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({name:who.value,password:pw.value})})
+      : await fetch('/api/remote/login',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({passphrase:pw.value})});
     const d=await r.json().catch(()=>({}));
     if(r.ok)return location.replace('/');
     err.textContent=d.error||'sign-in failed';

@@ -68,6 +68,7 @@ loadAutomations();   // the palette and the hot-corner picker both read this lis
 loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
+usersBoot();         // who is signed in — nothing at all unless this machine has accounts
 APPS_READY=true;
 // If this page is the Linux session's desktop, tell the compositor how much
 // room our chrome needs so no application window can cover it.

@@ -16,12 +16,13 @@ import httpx
 from . import config as cfgmod
 from . import telegram_admin
 from .agent import Agent
+from . import users as usersmod
 
 API = "https://api.telegram.org/bot{token}/{method}"
 CHUNK = 3900  # Telegram hard limit is 4096
 
 
-class TelegramBridge:
+class TelegramBridge(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast):
         self.cfg = cfg
         self.store = store

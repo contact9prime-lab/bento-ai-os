@@ -314,6 +314,10 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   box-shadow:var(--el-4)}
 #powermenu.show{display:block}
 #powermenu button{display:flex;gap:9px;width:100%;padding:7px 10px;border-radius:var(--r-sm);font-size:var(--fs-sm);text-align:left;color:var(--txt)}
+/* `display:flex` above beats the UA stylesheet's rule for [hidden], so a hidden
+   button showed anyway — as a blank row, and then as a "Sign out" on a machine
+   with no accounts to sign into. Anything with `hidden` here means it. */
+#powermenu [hidden]{display:none}
 #powermenu button:hover{background:var(--bg4)}
 #powermenu button.danger:hover{background:var(--bg4);color:var(--err)}
 #powermenu hr{border:none;border-top:1px solid var(--line);margin:4px 6px}
@@ -2241,6 +2245,108 @@ body.glass-off .win{background:var(--bg)!important}
   .ob-t em{display:none}
   .ob-pane{padding:var(--sp-4)}
 }
+/* ================= users =================
+   Two shapes: an offer (prose, because the decision is consequential and needs
+   reading) and a roster (rows, because it is a list). They share the form.
+
+   No backdrop-filter anywhere here — see CLAUDE.md: every translucent surface
+   makes the compositor re-blur what is under it, and a settings list is the last
+   place to spend that. */
+
+.usr-offer{display:flex;flex-direction:column;gap:var(--sp-3);max-width:620px}
+.usr-mark{width:40px;height:40px;border-radius:var(--r-lg);display:flex;
+  align-items:center;justify-content:center;font-size:var(--fs-lg);
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.usr-offer>b{font-size:var(--fs-lg);font-weight:700}
+.usr-offer p{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;margin:0}
+
+/* The consequences box. It is bordered and accented because these three
+   sentences are the ones somebody will wish they had read. */
+.usr-note{border:1px solid var(--hairline);border-left:2px solid var(--acc);
+  border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);background:var(--bg2)}
+.usr-note b{display:block;font-size:var(--fs-sm);margin-bottom:6px}
+.usr-note ul{margin:0;padding-left:18px}
+.usr-note li{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;margin:4px 0}
+.usr-note em{font-style:italic;color:var(--txt)}
+
+.usr-head{display:flex;align-items:center;gap:var(--sp-2);padding:0 0 var(--sp-2);
+  font-size:var(--fs-sm);color:var(--dim)}
+.usr-head .sp{flex:1}
+.usr-out{padding:6px 12px;border-radius:var(--r-full);border:1px solid var(--hairline);
+  background:var(--bg2);color:var(--dim);font-size:var(--fs-sm)}
+.usr-out:hover{color:var(--txt);border-color:var(--hairline-strong)}
+
+.usr-row{display:flex;align-items:center;gap:var(--sp-3);padding:10px var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2);
+  margin-bottom:6px;flex-wrap:wrap}
+.usr-row.me{border-color:color-mix(in srgb,var(--acc) 35%,var(--hairline))}
+.usr-av{flex:none;width:32px;height:32px;border-radius:var(--r-full);
+  display:flex;align-items:center;justify-content:center;font-weight:700;
+  background:var(--bg4);color:var(--txt);font-size:var(--fs-sm)}
+.usr-row.me .usr-av{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.usr-who{flex:1 1 180px;min-width:0;display:flex;flex-direction:column}
+.usr-who b{font-size:var(--fs-sm);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usr-who em{font-style:normal;font-size:var(--fs-xs);color:var(--dim2)}
+.usr-tag{font-size:var(--fs-xs);padding:3px 9px;border-radius:var(--r-full);
+  background:var(--bg4);color:var(--dim)}
+.usr-tag.adm{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+/* flex:none and a width: a bare <select> in a flex row takes the whole line and
+   pushes every button below it, which turned one account into three rows. */
+.usr-role{flex:none;width:130px;font-size:var(--fs-sm);padding:5px 8px;
+  border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--hairline);
+  color:var(--txt)}
+.usr-pw,.usr-del,.usr-take,.usr-unshare{font-size:var(--fs-xs);padding:5px 10px;
+  border-radius:var(--r-full);border:1px solid var(--hairline);background:var(--bg3);color:var(--dim)}
+.usr-pw:hover,.usr-take:hover,.usr-unshare:hover{color:var(--txt);border-color:var(--hairline-strong)}
+.usr-del{color:var(--err)}
+.usr-del:hover{background:color-mix(in srgb,var(--err) 14%,transparent)}
+.usr-foot{margin-top:var(--sp-3);font-size:var(--fs-sm);line-height:1.6}
+
+.usr-add{margin-top:var(--sp-4)}
+.usr-add>summary{cursor:pointer;font-size:var(--fs-sm);color:var(--dim);
+  padding:8px 0;list-style:none}
+.usr-add>summary::-webkit-details-marker{display:none}
+.usr-add>summary::before{content:'+ ';color:var(--acc)}
+.usr-add>summary:hover{color:var(--txt)}
+
+.usr-form{display:flex;flex-direction:column;gap:var(--sp-3);margin-top:var(--sp-3);
+  max-width:460px}
+.usr-form label{display:flex;flex-direction:column;gap:5px}
+.usr-form label>span{font-size:var(--fs-sm);color:var(--dim)}
+.usr-form input[type=text],.usr-form input[type=password],.usr-form input:not([type]){
+  padding:10px 12px;border-radius:var(--r-md);border:1px solid var(--hairline);
+  background:var(--bg2);color:var(--txt);font:inherit;font-size:var(--fs-sm)}
+.usr-form input:focus{outline:none;border-color:var(--acc)}
+
+/* The whole permission model, as two paragraphs. A grid of checkboxes here would
+   imply a model that does not exist — grants answer "what may this principal do"
+   in far more detail, and they are already per user. */
+.usr-roles{display:grid;gap:var(--sp-2)}
+.usr-pick{display:grid;grid-template-columns:auto 1fr;gap:4px var(--sp-3);
+  align-items:start;padding:var(--sp-3);border:1px solid var(--hairline);
+  border-radius:var(--r-md);background:var(--bg2);cursor:pointer}
+.usr-pick:has(input:checked){border-color:var(--acc);background:var(--bg3)}
+.usr-pick input{grid-row:1/3;margin-top:3px}
+.usr-pick b{font-size:var(--fs-sm);font-weight:650}
+.usr-pick em{font-style:normal;font-size:var(--fs-xs);color:var(--dim);line-height:1.5}
+
+.usr-go{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.usr-msg{font-size:var(--fs-sm);color:var(--dim)}
+.usr-msg.warn{color:var(--warn)}
+
+.usr-shared{margin-top:var(--sp-6);padding-top:var(--sp-4);
+  border-top:1px solid var(--hairline)}
+.usr-shared p{margin:0 0 var(--sp-3);font-size:var(--fs-sm);line-height:1.6}
+.usr-share{display:flex;align-items:center;gap:var(--sp-3);padding:9px var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2);
+  margin-bottom:6px;flex-wrap:wrap}
+.usr-kind{flex:none;width:28px;height:28px;border-radius:var(--r-sm);display:flex;
+  align-items:center;justify-content:center;background:var(--bg4);color:var(--dim)}
+
+@media (max-width:560px){
+  .usr-row,.usr-share{gap:var(--sp-2)}
+  .usr-pw,.usr-del{flex:1 1 auto}
+}
 </style>
 </head>
 <body>
@@ -2275,6 +2381,12 @@ body.glass-off .win{background:var(--bg)!important}
   </div>
 </div>
 <div id="powermenu">
+  <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
+       install would be a button that locks you out of your own laptop with
+       nothing to sign back in as. -->
+  <button id="pm-user" hidden onclick="openApp('users')"></button>
+  <button id="pm-signout" hidden onclick="usersSignOut()">Sign out…</button>
+  <hr id="pm-userhr" hidden>
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>
@@ -4681,6 +4793,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  users:{id:'users',title:'Users',icon:'◱',w:720,h:640,desc:'Who can use this machine — accounts, roles, shared agents & apps',render:renderUsers},
   about:{id:'about',title:'About Bento Box AI',icon:'▲',w:520,h:620,desc:'Version, what is new, and system information',render:renderAbout},
 };
 
@@ -4697,6 +4810,9 @@ const APP_CTX={
   remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
+  users:()=>(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)
+    ?`the account list (${USERS.list.length} accounts, signed in as ${(USERS.me.name||'?')})`
+    :'the accounts screen — this machine has one user and has not turned accounts on',
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
   memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
   profile:()=>'the profile view — everything the agent knows about the user',
@@ -5169,7 +5285,7 @@ const DECK_DEFAULTS=[
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','syssettings','settings','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
 let DECK=null;
@@ -8215,6 +8331,7 @@ async function renderFabAgents(body){
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
     ||'<p class="mut">No subagents yet — create your first specialist.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
@@ -13054,6 +13171,295 @@ async function tunStop(){
   toast(d.message||(d.ok?'stopped':'nothing to stop'));
   refreshApp('syssettings');
 }
+/* ================= users: several people on one machine =================
+   Three screens in one app, and which you get depends on who you are:
+
+     - a machine with nobody added   → the offer, and what it will cost you
+     - an admin                      → the roster, roles, and sign-out
+     - an executor                   → their own account, and sign-out
+
+   The offer screen is the important one. Turning multi-user on is the single
+   most consequential switch in this OS — it ends loopback trust, so from that
+   moment the person at the keyboard has to sign in — and it is irreversible in
+   the sense that matters: everything already on the machine becomes the first
+   account's. So it says all of that, in sentences, before the button.
+
+   Sharing lives here too rather than in the Store, because it is the only place
+   data crosses between people and it should be read next to the isolation it is
+   the exception to.
+
+   `var`, not `let`: one concatenated bundle, and the menu bar reads USERS at
+   boot before this file's line is reached. See CLAUDE.md on the TDZ trap. */
+var USERS={me:null,list:[],roles:['admin','executor'],shared:[],busy:false};
+
+async function usersLoad(){
+  try{
+    const [u,s]=await Promise.all([
+      fetch('/api/users').then(r=>r.ok?r.json():{users:[],me:{}}),
+      fetch('/api/shared').then(r=>r.ok?r.json():{shared:[]}),
+    ]);
+    USERS.me=u.me||{};USERS.list=u.users||[];USERS.roles=u.roles||USERS.roles;
+    USERS.shared=s.shared||[];
+  }catch(e){}
+  return USERS;
+}
+
+/* Who you are, in the power menu. Nothing at all on a single-user machine: a
+   label saying who you are is noise when there is only one answer, and a "sign
+   out" button there would lock somebody out of their own laptop with no account
+   to sign back in as. */
+async function usersBoot(){
+  try{
+    const d=await (await fetch('/api/users/who')).json();
+    USERS.me=d||{};
+    if(!d||!d.multiuser)return;
+    const who=document.getElementById('pm-user'),
+          out=document.getElementById('pm-signout'),
+          hr=document.getElementById('pm-userhr');
+    if(who){who.textContent=(d.display||d.name)+(d.admin?' · admin':'');who.hidden=false}
+    if(out)out.hidden=false;
+    if(hr)hr.hidden=false;
+  }catch(e){}
+}
+
+async function renderUsers(body,w){
+  const pb=panelShell(body,{title:'Users',sub:'Who can use this machine'});
+  pb.innerHTML='<div class="dim">…</div>';
+  await usersLoad();
+  const me=USERS.me||{};
+  pb.innerHTML=(me.multiuser?usersRoster():usersOffer())+usersShareBox();
+  usersWire(pb,w);
+}
+
+/* ---- before anybody has been added ---------------------------------------- */
+
+function usersOffer(){
+  return `<div class="usr-offer">
+    <div class="usr-mark">◱</div>
+    <b>This machine has one user: you.</b>
+    <p>Everything — memory, agents, flows, channels, credentials, the gallery —
+      lives in one home directory, and anyone at this keyboard is you.</p>
+    <p>Adding people gives each of them their own home: their own database, their
+      own channels, their own MCP servers and credentials, their own permissions.
+      Two files cannot leak into each other, so the isolation is not a query
+      somebody has to remember to write.</p>
+    <div class="usr-note">
+      <b>Three things happen the moment you add the first account.</b>
+      <ul>
+        <li>Everything already on this machine becomes <em>that</em> account's —
+          your agents, your conversations, your linked phone. Nothing is lost and
+          nothing is copied to anybody else.</li>
+        <li>This desktop starts asking who you are. Being at the keyboard stops
+          being an identity, because there is now more than one identity.</li>
+        <li>The first account is an admin, whatever you pick — a machine whose only
+          account cannot administer it is a machine nobody can administer.</li>
+      </ul>
+    </div>
+    <p class="dim">Settings stay shared: one set of provider keys for the machine,
+      not one per person. Agents and apps can be shared deliberately, as copies.</p>
+    ${usersForm('Create the first account',true)}
+  </div>`;
+}
+
+/* ---- the roster ----------------------------------------------------------- */
+
+function usersRoster(){
+  const me=USERS.me||{};
+  const rows=USERS.list.map(u=>{
+    const isMe=u.id===me.id;
+    return `<div class="usr-row${isMe?' me':''}" data-f="${esc(u.name+' '+u.role)}">
+      <span class="usr-av">${esc((u.display||u.name||'?').slice(0,1).toUpperCase())}</span>
+      <span class="usr-who"><b>${esc(u.display||u.name)}</b>
+        <em>${esc(u.name)}${isMe?' · this is you':''}</em></span>
+      ${me.admin&&!isMe
+        ? `<select class="usr-role" data-uid="${esc(u.id)}">${USERS.roles.map(r=>
+            `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
+        : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
+      <button class="usr-pw" data-uid="${esc(u.id)}">Password…</button>
+      ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
+        data-name="${esc(u.name)}">Remove</button>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="usr-roster">
+    <div class="usr-head">
+      <span><b>${USERS.list.length}</b> ${USERS.list.length===1?'account':'accounts'}</span>
+      <span class="sp"></span>
+      <button class="usr-out" id="usr-signout">Sign out</button>
+    </div>
+    ${rows}
+    ${(USERS.me||{}).admin?`<details class="usr-add"><summary>Add somebody</summary>
+      ${usersForm('Add the account',false)}</details>`
+      :`<p class="dim usr-foot">Only an admin can add or remove accounts. Everything
+        inside your own home — agents, flows, channels, credentials — is yours.</p>`}
+  </div>`;
+}
+
+function usersRoleName(r){
+  return r==='admin'?'Admin':'Executor';
+}
+
+/* One form, both places. Two roles and one sentence each — this is the entire
+   permission model, and a grid of checkboxes would imply one that does not
+   exist. Grants already answer "what may this principal do" in far more detail
+   than a role could, and they are per user because the table is. */
+function usersForm(cta,first){
+  return `<form class="usr-form" id="usr-form" autocomplete="off">
+    <label><span>Username</span>
+      <input id="usr-name" placeholder="ada" autocapitalize="none" spellcheck="false"></label>
+    <label><span>Display name</span>
+      <input id="usr-display" placeholder="Ada Lovelace"></label>
+    <label><span>Password</span>
+      <input id="usr-pass" type="password" placeholder="at least 8 characters"
+        autocomplete="new-password"></label>
+    ${first?'':`<div class="usr-roles">
+      <label class="usr-pick"><input type="radio" name="usr-role" value="executor" checked>
+        <b>Executor</b><em>Everything inside their own home: agents, flows, jobs, apps,
+          channels, MCP, credentials, permissions.</em></label>
+      <label class="usr-pick"><input type="radio" name="usr-role" value="admin">
+        <b>Admin</b><em>All of that, plus the machine: accounts, providers and models,
+          components, remote access.</em></label></div>`}
+    <div class="usr-go"><button class="wiz-next" id="usr-save">${esc(cta)}</button>
+      <span class="usr-msg" id="usr-msg"></span></div>
+  </form>`;
+}
+
+/* ---- sharing: the one place data crosses ---------------------------------- */
+
+function usersShareBox(){
+  const me=USERS.me||{};
+  if(!me.multiuser)return '';
+  const items=USERS.shared.length?USERS.shared.map(s=>`
+    <div class="usr-share" data-f="${esc(s.name+' '+s.kind)}">
+      <span class="usr-kind">${s.kind==='app'?'▤':'◇'}</span>
+      <span class="usr-who"><b>${esc(s.name)}</b><em>${esc(s.kind)} · shared by ${esc(s.by||'somebody')}</em></span>
+      <button class="usr-take" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Install a copy</button>
+      <button class="usr-unshare" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Remove</button>
+    </div>`).join('')
+    :`<p class="dim">Nothing shared yet. Share an agent from Workflows, or an app
+       from App Studio — it goes out as a <b>copy</b>, so editing yours afterwards
+       never reaches anybody who took it.</p>`;
+  return `<div class="usr-shared">
+    <div class="usr-head"><span><b>Shared library</b></span></div>
+    <p class="dim">The one place anything crosses between accounts, and it crosses
+      as a copy. A shared app that changed under the people using it would be a
+      supply-chain problem living in a filesystem.</p>
+    ${items}</div>`;
+}
+
+/* ---- wiring --------------------------------------------------------------- */
+
+function usersWire(pb,w){
+  const form=pb.querySelector('#usr-form');
+  if(form)form.onsubmit=e=>{e.preventDefault();usersCreate(pb,w)};
+  const out=pb.querySelector('#usr-signout');
+  if(out)out.onclick=()=>usersSignOut();
+
+  pb.querySelectorAll('.usr-role').forEach(sel=>{
+    sel.onchange=async()=>{
+      const r=await usersPut(sel.dataset.uid,{role:sel.value});
+      if(r.error){toast(r.error);}
+      else toast('✓ role changed');
+      renderUsers(w?w.el.querySelector('.wbody'):pb.closest('.wbody')||pb,w);
+    };
+  });
+  pb.querySelectorAll('.usr-pw').forEach(b=>{
+    b.onclick=async()=>{
+      const pw=await osPrompt('New password',{message:'At least 8 characters.',
+        placeholder:'••••••••',password:true,confirmText:'Change it'});
+      if(!pw)return;
+      const r=await usersPut(b.dataset.uid,{password:pw});
+      toast(r.error||'✓ password changed');
+    };
+  });
+  pb.querySelectorAll('.usr-del').forEach(b=>{
+    b.onclick=async()=>{
+      // Two decisions, asked as two: removing somebody's access and destroying
+      // what they made are not the same thing, and one mis-click must not make
+      // them one.
+      if(!await osConfirm(`Remove ${b.dataset.name}?`,
+        'Their home directory is kept — their agents, memory and files stay on this '+
+        'machine and can be handed back by recreating the account.',
+        {confirmText:'Remove the account',danger:true}))return;
+      const r=await (await fetch('/api/users/'+encodeURIComponent(b.dataset.uid),
+        {method:'DELETE'})).json();
+      toast(r.error||'✓ account removed — their files are still on this machine');
+      renderUsers(w?w.el.querySelector('.wbody'):pb,w);
+    };
+  });
+  pb.querySelectorAll('.usr-take').forEach(b=>{
+    b.onclick=async()=>{
+      const r=await (await fetch('/api/shared/take',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kind:b.dataset.kind,slug:b.dataset.slug})})).json();
+      toast(r.error||`✓ installed as "${r.installed}" — it is yours now, editing it changes only your copy`);
+    };
+  });
+  pb.querySelectorAll('.usr-unshare').forEach(b=>{
+    b.onclick=async()=>{
+      const r=await (await fetch(`/api/shared/${encodeURIComponent(b.dataset.kind)}/${encodeURIComponent(b.dataset.slug)}`,
+        {method:'DELETE'})).json();
+      if(r.error)return toast(r.error);
+      renderUsers(w?w.el.querySelector('.wbody'):pb,w);
+    };
+  });
+}
+
+async function usersPut(uid,patch){
+  try{
+    return await (await fetch('/api/users/'+encodeURIComponent(uid),{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})).json();
+  }catch(e){return {error:String(e)}}
+}
+
+async function usersCreate(pb,w){
+  if(USERS.busy)return;
+  const msg=pb.querySelector('#usr-msg'),btn=pb.querySelector('#usr-save');
+  const body={name:(pb.querySelector('#usr-name')||{}).value||'',
+              display:(pb.querySelector('#usr-display')||{}).value||'',
+              password:(pb.querySelector('#usr-pass')||{}).value||'',
+              role:(pb.querySelector('input[name=usr-role]:checked')||{}).value||'executor'};
+  const first=!(USERS.me||{}).multiuser;
+  if(first&&!await osConfirm('Turn on accounts for this machine?',
+      'Everything already here becomes your account. From now on this desktop asks '+
+      'who you are, at the keyboard as well as from a phone — so do not forget this '+
+      'password.',{confirmText:'Create the account'}))return;
+  USERS.busy=true;btn.disabled=true;msg.textContent='';
+  try{
+    const r=await fetch('/api/users',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){msg.textContent=d.error||'could not create the account';msg.className='usr-msg warn';return}
+    toast(d.signed_in?'✓ accounts are on — you are signed in as '+body.name
+                     :'✓ '+body.name+' can sign in now');
+    usersBoot();   // the power menu now has a name to show and a way out
+    renderUsers(w?w.el.querySelector('.wbody'):pb,w);
+  }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}
+  finally{USERS.busy=false;btn.disabled=false}
+}
+
+async function usersSignOut(){
+  if(!await osConfirm('Sign out?','Anything running keeps running — it belongs to '+
+    'your account, not to this window.',{confirmText:'Sign out'}))return;
+  try{await fetch('/api/users/logout',{method:'POST'})}catch(e){}
+  location.replace('/login');
+}
+
+/* Share something of mine. Called from Workflows (an agent) and App Studio (an
+   app), so the sentence about what sharing means is written once, here. */
+async function usersShare(kind,name){
+  if(!(USERS.me||{}).multiuser){
+    toast('sharing needs more than one account — add somebody in Users first');
+    return false;
+  }
+  if(!await osConfirm(`Share "${name}" with everybody on this machine?`,
+    'They get a COPY. Changing yours afterwards does not change theirs, and '+
+    'nothing else of yours becomes visible.',{confirmText:'Share a copy'}))return false;
+  const r=await (await fetch('/api/shared',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind,name})})).json();
+  toast(r.error||`✓ "${name}" is in the shared library`);
+  return !r.error;
+}
 /* ================= notification center ================= */
 const NOTIF={unread:0,dnd:false};
 function svgBell(px){px=px||14;return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 9.5a6 6 0 0 1 12 0c0 5 1.7 6 1.7 6H4.3S6 14.5 6 9.5"/><path d="M10.3 19.5a2 2 0 0 0 3.4 0"/></svg>`}
@@ -14305,6 +14711,8 @@ function studioActions(){
       </span>
       <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
       <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser&&app)
+        ?`<button class="endbtn" onclick="usersShare('app',${JSON.stringify(app.name).replace(/"/g,'&quot;')})">Share</button>`:''}
       <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
 /* The preview switches between the app's two surfaces, at the exact size the
@@ -15766,6 +16174,7 @@ loadAutomations();   // the palette and the hot-corner picker both read this lis
 loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
+usersBoot();         // who is signed in — nothing at all unless this machine has accounts
 APPS_READY=true;
 // If this page is the Linux session's desktop, tell the compositor how much
 // room our chrome needs so no application window can cover it.

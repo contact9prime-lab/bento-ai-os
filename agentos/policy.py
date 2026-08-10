@@ -33,6 +33,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
+from . import users as usersmod
 
 
 @dataclass(frozen=True)
@@ -328,36 +329,59 @@ def surface_allows(grant_surfaces: str, surface: str) -> bool:
     return surface in {s.strip() for s in gs.split(",") if s.strip()}
 
 
-class PDP:
+class PDP(usersmod.Scoped):
     """Holds the live grants (cached in memory, invalidated on any write) and decides."""
 
     def __init__(self, cfg: dict, store):
         self.cfg = cfg
         self.store = store
         self.mcp = None  # MCPManager, wired up in server startup (resolves mcp_* names)
-        self._cache: list[dict] = []
-        self._cache_version = -1
-        self._skills: dict = {}   # principal.label -> (expires_at, set(names)) — see _declared_skills
+        # Every in-memory cache below is keyed by WHO as well as by what. One PDP
+        # serves every user on the machine, and a version counter is per-database:
+        # two people can both be at grants_version 3, and without the prefix the
+        # second would be decided against the first one's grants. `_skills` and the
+        # rate meter collide the same way — two users may each own a subagent called
+        # "researcher" or an app called "notes".
+        self._cache: dict = {}    # uid -> (version, grants)
+        self._skills: dict = {}   # uid|principal.label -> (expires_at, set(names))
         self._rate = RateMeter()
-        self._q_cache: dict = {}
-        self._q_version = -1
+        self._q_cache: dict = {}  # uid|principal.label -> row or None
+        self._q_version: dict = {}
         # on_rate_trip(principal, stats): wired in server startup. The PDP decides that
         # something has gone rogue; what happens then — writing the hold, telling the user —
         # belongs to the layer that owns apps and notifications, not to the gate.
         self.on_rate_trip = None
 
+    def _who(self) -> str:
+        """The prefix that keeps one person's cached decisions out of another's."""
+        return usersmod.current() if usersmod.enabled() else ""
+
+    def forget_rate(self, kind: str, pid: str) -> None:
+        """Drop a principal's call history — what "release from quarantine" means.
+
+        A method rather than three pokes at `_rate` from the server, because the
+        meter's key now carries the user, and a key built by hand at a call site is
+        a key that will eventually be built without it: the release would silently
+        do nothing and the app would look permanently held.
+        """
+        label = Principal(kind, pid).label
+        for cls in ("llm", "tool"):
+            self._rate.forget(f"{self._who()}|{label}|{cls}")
+
     def _grants(self) -> list[dict]:
-        if self._cache_version != getattr(self.store, "grants_version", 0):
-            self._cache = self.store.grants_live()
-            self._cache_version = self.store.grants_version
+        uid = self._who()
+        ver, cached = self._cache.get(uid, (-1, []))
+        if ver != getattr(self.store, "grants_version", 0):
+            cached = self.store.grants_live()
+            self._cache[uid] = (self.store.grants_version, cached)
         now = time.time()
-        return [g for g in self._cache if not g.get("expires_at") or g["expires_at"] > now]
+        return [g for g in cached if not g.get("expires_at") or g["expires_at"] > now]
 
     def _declared_skills(self, principal: Principal) -> set:
         """The skills a definition lists — an allow-list when non-empty, unrestricted when
         not. Memoised for a few seconds because a skill load is rare and an edit in the
         Workflows app should take effect without a restart."""
-        key = principal.label
+        key = self._who() + "|" + principal.label
         hit = self._skills.get(key)
         now = time.time()
         if hit and hit[0] > now:
@@ -381,10 +405,13 @@ class PDP:
         because this is asked on every capability call."""
         if principal.kind not in ("app", "subagent", "flow"):
             return None
+        uid = self._who()
         ver = getattr(self.store, "quarantine_version", 0)
-        if self._q_version != ver:
-            self._q_cache, self._q_version = {}, ver
-        key = principal.label
+        if self._q_version.get(uid) != ver:
+            self._q_cache = {k: v for k, v in self._q_cache.items()
+                             if not k.startswith(uid + "|")}
+            self._q_version[uid] = ver
+        key = uid + "|" + principal.label
         if key not in self._q_cache:
             try:
                 self._q_cache[key] = self.store.quarantined(principal.kind, principal.id)
@@ -418,7 +445,7 @@ class PDP:
             pass
         cls = call_class(ctx.get("tool") or "")
         allowed, window = lim.get(cls) or lim.get("tool")
-        label = f"{principal.label}|{cls}"
+        label = f"{self._who()}|{principal.label}|{cls}"
         now = time.time()
         self._rate.record(label, now, window)
         n = self._rate.count(label, now, window)
@@ -443,7 +470,7 @@ class PDP:
                 self.on_rate_trip(principal, stats)   # telling the user is the caller's job
             except Exception:
                 pass
-        self._q_version = -1              # the hold was just written; re-read it next call
+        self._q_version.clear()           # the hold was just written; re-read it next call
         return Decision("deny",
                         f"{principal.label} was quarantined: {reason}.",
                         rule="quarantined")
@@ -480,7 +507,7 @@ class PDP:
 
     def _declared_roster(self, principal: Principal) -> set:
         """The agents a flow's definition lists. Memoised briefly, like the skills."""
-        key = "roster:" + principal.label
+        key = self._who() + "|roster:" + principal.label
         hit = self._skills.get(key)
         now = time.time()
         if hit and hit[0] > now:

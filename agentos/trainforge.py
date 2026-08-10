@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 import httpx
+from . import users as usersmod
 
 DEFAULT_PORT = 8377   # deliberately not TrainForge's default 8000 (dev-server collisions)
 DEFAULT_REPO = "https://github.com/YOUR_ORG/doneitrightai.git"  # override via config trainforge.repo
@@ -61,7 +62,7 @@ def conf(cfg: dict) -> dict:
             "install_dir": os.path.expanduser(tf.get("install_dir") or "~/.agentos/trainforge")}
 
 
-class TrainForge:
+class TrainForge(usersmod.Scoped):
     """Lifecycle + API access for the local TrainForge instance."""
 
     def __init__(self, cfg: dict, store, broadcast=None):

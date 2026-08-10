@@ -30,6 +30,7 @@ async function renderFabAgents(body){
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
     ||'<p class="mut">No subagents yet — create your first specialist.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}

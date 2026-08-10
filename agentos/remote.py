@@ -79,20 +79,78 @@ def passphrase_problem(passphrase: str) -> str:
 # session tokens
 # ---------------------------------------------------------------------------
 
+def _machine_key() -> bytes:
+    """A random per-machine signing key, on disk at 0600.
+
+    There has to be one. The passphrase hash below is a fine secret when remote
+    access is on, but a multi-user machine on a private LAN may never turn remote
+    access on at all — and a cookie signed with a constant is a cookie anybody can
+    write, including the `uid` field that decides whose directory gets opened.
+
+    On disk rather than in the config because the config gets exported, copied
+    into bug reports and read by every surface; this is only ever read here.
+    """
+    from . import config as cfgmod
+    p = cfgmod.AGENTOS_HOME / "session.key"
+    try:
+        if p.exists():
+            got = p.read_bytes().strip()
+            if len(got) >= 32:
+                return got
+    except OSError:
+        pass
+    key = secrets.token_hex(32).encode()
+    try:
+        cfgmod.AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(key)
+        os.chmod(p, 0o600)
+    except OSError:
+        pass                    # read-only home: still better than a constant
+    return key
+
+
 def _secret(cfg: dict) -> bytes:
     """Sessions are signed with the passphrase hash, so changing the passphrase
-    invalidates every device that was signed in with the old one."""
+    invalidates every device that was signed in with the old one — and with the
+    machine key underneath it, so a machine with no passphrase still signs with
+    something nobody else can guess."""
     r = cfg.get("remote") or {}
-    return (r.get("pass_hash", "") + r.get("pass_salt", "")).encode() or b"agentos-unset"
+    return _machine_key() + (r.get("pass_hash", "") + r.get("pass_salt", "")).encode()
 
 
-def issue_session(cfg: dict) -> str:
+def issue_session(cfg: dict, uid: str = "") -> str:
+    """A signed cookie. `uid` rides inside it because on a multi-user machine the
+    cookie has to say WHO, not merely that somebody proved something once."""
     days = int((cfg.get("remote") or {}).get("session_days") or 30)
     payload = json.dumps({"exp": int(time.time()) + days * 86400,
+                          "uid": uid or "",
                           "jti": secrets.token_hex(8)}, separators=(",", ":")).encode()
     body = base64.urlsafe_b64encode(payload).decode().rstrip("=")
     sig = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{body}.{sig}"
+
+
+def session_user(cfg: dict, token: str) -> str | None:
+    """The user id inside a valid session cookie, or None if it does not verify.
+
+    Separate from `valid_session` on purpose: the signature check and the identity
+    read are the same operation, and doing them in two places is how a route ends
+    up trusting a uid it never verified.
+    """
+    if not token or "." not in token:
+        return None
+    body, _, sig = token.rpartition(".")
+    want = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig, want):
+        return None
+    try:
+        pad = "=" * (-len(body) % 4)
+        d = json.loads(base64.urlsafe_b64decode(body + pad))
+    except Exception:
+        return None
+    if d.get("exp", 0) <= time.time():
+        return None
+    return str(d.get("uid") or "")
 
 
 def valid_session(cfg: dict, token: str) -> bool:

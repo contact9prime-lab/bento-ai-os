@@ -25,6 +25,7 @@ import time
 
 from .agent import Agent, fence
 from .policy import Principal
+from . import users as usersmod
 
 _AUTONOMY_ORDER = {"paranoid": 0, "balanced": 1, "full": 2}
 
@@ -122,7 +123,7 @@ class _RunToolbox:
         return await self._inner.execute(name, args)
 
 
-class ControlPlane:
+class ControlPlane(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast=None):
         self.cfg = cfg
         self.store = store
