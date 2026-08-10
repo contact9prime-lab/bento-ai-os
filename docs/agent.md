@@ -159,6 +159,28 @@ ninety can now ask for it in plain words instead of telling you the OS cannot do
 
 ---
 
+## Asking the OS about itself
+
+The manual you are reading is in the agent's retrieval index, so a question about how *this
+build* behaves is answered from these pages rather than from the model's memory of some other
+project. The Docs app has an ask box on top of every page:
+
+![The Docs app answering a question about this OS, with the answer grounded in the manual](screenshots/docs-ask.png)
+
+It is **agentic retrieval, not a one-shot lookup**: the agent calls `search_docs`, reads what
+comes back, and searches again with better words when the first pass misses — because a real
+question ("why did my scheduled flow stop delegating?") is usually answered by two or three
+pages that no single similarity search returns together. The reply names the page it used, so
+the answer is checkable against the thing it came from.
+
+`search_docs` is an ordinary tool, so the agent reaches for it in any conversation, not only
+in the Docs app. If the manual genuinely does not cover something, it says so rather than
+filling the gap from memory.
+
+> One limitation, stated plainly: when the machine is set to **forward turns to an executor**
+> (Settings → Executors), the executor answers with *its* tools, and `search_docs` is not
+> among them. The Docs ask box is grounded only when the built-in agent is answering.
+
 ## Safety
 
 AgentOS is designed to give the agent real power without letting it surprise you.

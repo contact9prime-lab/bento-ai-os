@@ -100,6 +100,12 @@ allow, and hard-blocked destructive commands stay blocked regardless. Manage the
   (`full`). Destructive commands are always blocked.
 - `max_steps` caps how many tool steps the agent takes per turn (a safety limit against loops).
 
+- **Starting another agent asks once per agent**, at `paranoid` and `balanced`, whatever the
+  risk table says — `delegate` is not a "risky command", it is a second actor with its own
+  model and its own spending. At `full` it does not ask, like everything else. See
+  [Agents that start agents](security.md) for what the approval covers and how it is
+  remembered.
+
 ---
 
 ## What it costs

@@ -37,6 +37,37 @@ can be scoped to a subset of them in the Permissions app (the ⛩ badge on any r
 Deny rules scope the same way, so "allowed everywhere except over Telegram" is one allow rule
 plus one telegram-scoped deny.
 
+## Agents that start agents
+
+A conversation can hand work to a specialist, and build one when none fits. Both are
+capabilities in their own right, decided by the same gate as everything else.
+
+![Approving a delegation: the card names the agent, the model it runs on, its step and time budget, and the exact tools and skills its definition grants it](screenshots/agent-approval.png)
+
+| The step | The action | The default |
+|---|---|---|
+| build a specialist | `agent.write` · `agent:subagent/<name>` | **only the user's own agent** — apps, subagents, workflows and flows are refused by a built-in deny that no grant can override |
+| start one | `agent.invoke` · `agent:subagent/<name>` | **asks the first time**, then remembered per agent |
+| what it then does | its own tools, skills and grants, as `subagent:<name>` | its definition is the ceiling; every call is its own audit row |
+
+Three consequences worth knowing:
+
+- **Defining an agent grants nothing.** The definition only says what that agent *would*
+  hold; the first invocation is what asks. That is what makes it safe for the agent to build
+  a specialist without interrupting you — the same reason a drafted flow is safe because it
+  is created disabled.
+- **The approval is per agent, not per call.** Approving `researcher` is not approving
+  `deploy-bot`. "Allow & remember" writes `agent.invoke agent:subagent/researcher` and
+  nothing wider, and it is revocable in Permissions like any other grant.
+- **Unattended, it is refused rather than acquired.** A scheduled task has nobody to ask, so
+  the ask ends in a denial with the reason in the ledger. Something running alone must not be
+  able to pick up an actor you never approved. Approve it once at the desk and the job works
+  from then on.
+
+An agent may never start or define another one — enforced by the gate, not by a counter, which
+is what keeps the tree exactly two deep. The one exception is a flow's master orchestrator,
+whose whole purpose is delegation, and it may only reach the agents on its own roster.
+
 ## The taint ceiling: what a fetched page is allowed to cause
 
 Grants answer *who is asking*. They cannot answer *on whose say-so* — and those are

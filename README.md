@@ -71,6 +71,36 @@ question asked of any change, not the last.
 | ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
 
+### You can see what it is doing
+
+![A turn in flight: the finished Read call kept its duration, the running Bash call ages in place, and the row underneath says which step and how long the turn has taken](docs/screenshots/agent-working.png)
+
+A turn is mostly waiting, and "working…" for four minutes tells you nothing — a model thinking
+and a run that has silently died look identical under it. Every waiting surface says **what it is
+on and for how long**: the running call ages in place (`running · 2m 14s`), finished calls keep
+their duration, and the row underneath carries the step and the turn total. The same sentence
+appears on the presence bubble and the omnibar, so it is answerable from the desktop without
+opening the chat.
+
+### It can build its own team — and asks before it does
+
+![Approving a delegation: the card names the agent, the model, the step and time budget, and the exact tools and skills it would hold](docs/screenshots/agent-approval.png)
+
+When no existing specialist fits, the agent **builds one** and delegates to it. Defining an agent
+grants it nothing; the first time it is actually used you get a card naming the model it runs on,
+its budget, and the exact tools and skills its definition gives it — because consent to an actor
+you cannot picture is consent in name only. Approving `researcher` is not approving `deploy-bot`,
+and the grant is revocable in Permissions like any other. [How it works →](docs/security.md)
+
+### It answers questions about itself from its own manual
+
+![The Docs app answering a question about this OS, grounded in the manual](docs/screenshots/docs-ask.png)
+
+The manual is in the retrieval index, so "how do I stop an app reaching the internet but keep it
+working?" is answered from **these pages**, not from a model's memory of a different project — and
+the reply names the page it used. It is agentic retrieval rather than a one-shot lookup: the agent
+searches, reads, and searches again when the first pass misses.
+
 ### Windows that behave like windows
 
 ![Four Bento windows stacked on the desktop: the focused one carries an accent ring and the full shadow, the rest recede](docs/screenshots/windows.png)
@@ -100,10 +130,16 @@ in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
 tools and the same approval buttons as at the desk. Not a notification bridge: a reply from your
 phone continues the thread you started this morning.
 
-WhatsApp uses Meta's Cloud API, and Bento is honest about its one real limit: outside 24 hours from
-your last message, WhatsApp will not carry a free-form reply at all. The card says whether that
-window is open, a send that cannot go through says so and how to fix it, and a scheduled job that
-delivers to WhatsApp saves its report first so nothing is lost. [Setup →](docs/whatsapp.md)
+WhatsApp has **two transports**, and they fail in opposite directions. Meta's Cloud API is
+official but needs a developer account and a public webhook, and outside 24 hours from your last
+message it will not carry a free-form reply at all — the card says whether that window is open, a
+send that cannot go through says so and how to fix it, and a scheduled job saves its report first
+so nothing is lost. The WhatsApp Web link needs only a QR scan and has no 24-hour window, but it is
+**unofficial** and Bento says so on the install card before anything downloads. [Setup →](docs/whatsapp.md)
+
+Telegram is also an **admin console**: `/agents`, `/run`, `/flows`, `/model`, `/logs`, `/perms` —
+owner only, and every command that *does* something goes through the same permission gate and the
+same approval buttons as the desktop, so it is never a cheaper way in. [Commands →](docs/integrations.md)
 
 ### One desktop, every screen
 
