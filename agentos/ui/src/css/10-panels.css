@@ -293,3 +293,8 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .wiz-offer b{font-size:var(--fs-md)}
 .wiz-offer span{font-size:var(--fs-sm);color:var(--dim)}
 .wiz-offer button{align-self:flex-start;margin-top:2px}
+
+/* The row that is currently in force (the model answering turns). It is a
+   state, not a hover: it must be legible without pointing at it. */
+.item.on{border-color:color-mix(in srgb,var(--acc) 45%,var(--line));
+  background:color-mix(in srgb,var(--acc) 8%,transparent)}

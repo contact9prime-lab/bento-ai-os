@@ -1055,6 +1055,11 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .wiz-offer b{font-size:var(--fs-md)}
 .wiz-offer span{font-size:var(--fs-sm);color:var(--dim)}
 .wiz-offer button{align-self:flex-start;margin-top:2px}
+
+/* The row that is currently in force (the model answering turns). It is a
+   state, not a hover: it must be legible without pointing at it. */
+.item.on{border-color:color-mix(in srgb,var(--acc) 45%,var(--line));
+  background:color-mix(in srgb,var(--acc) 8%,transparent)}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -6892,7 +6897,22 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the model picker.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the picker below.</p>`);
+    // The chat chip has always said "change it in Settings → AI providers", and
+    // for a long time this panel had nowhere to change it: you could add a key
+    // and edit a provider's model LIST, but choosing which model actually answers
+    // was only possible as "Set default" in the Model Manager. So editing the
+    // list here looked like picking a model and did nothing. This is that control,
+    // in the place everything already points at, and it applies on the spot —
+    // needing a second Save to make a chosen model take effect is the same bug
+    // wearing a different hat.
+    P.push(pGroup('Answering', [
+      pRow('This machine answers with',
+        `<select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>`,
+        {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
+         f:'model default answers with picker which model'}),
+    ], {f:'model answering default'}));
+    setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -7039,6 +7059,35 @@ function settingsVoices(){
   };
   fill();
   if(window.speechSynthesis)speechSynthesis.onvoiceschanged=fill;
+}
+/* The model picker in Settings → AI providers. Fetched rather than read from
+   cfg, because what can answer is a live question — a provider's catalogue, the
+   models Ollama has pulled, and any executor this machine forwards to. */
+async function paintModelPicker(){
+  const sel=document.getElementById('s-model'); if(!sel)return;
+  let d={models:[],default:'',engines:[]};
+  try{d=await (await fetch('/api/models')).json()}catch(e){}
+  const cur=(cfg&&cfg.default_model)||d.default||'';
+  const groups={};
+  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
+  const opts=Object.keys(groups).sort().map(prov=>
+    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
+      `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
+    +`</optgroup>`).join('');
+  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  // A model set in config that the providers no longer offer must stay visible
+  // and selected, or opening Settings would silently look like something else
+  // is answering.
+  if(cur&&!(d.models||[]).some(m=>m.id===cur))
+    sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
+}
+async function pickModel(id){
+  if(!id)return;
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({default_model:id})});
+  if(cfg)cfg.default_model=id;
+  toast('answering with '+id);
+  loadModels();paintModelChip();refreshApp('models');
 }
 async function saveSettings(){
   // only the open category is in the DOM, so save exactly what is on screen —
@@ -11637,10 +11686,17 @@ async function renderModels(body){
     <div class="bar"><i style="width:${100*g.mem_used_mb/g.mem_total_mb}%" class="${g.mem_used_mb/g.mem_total_mb>.85?'hot':''}"></i></div></div>`).join('');
   const all=d2.models||[],dft=d2.default||'';
   const provBadge=p=>p==='ollama'?'<span class="badge">local</span>':`<span class="badge" style="color:var(--acc2)">${esc(p)}</span>`;
-  const configured=all.map(m=>`<div class="item" data-f="${esc(m.id+' '+m.provider)}">
-      <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ default</span>':''}
+  // "Set default" was the wrong word for the only control that does anything:
+  // there is no per-chat override for it to be the default OF — this model IS
+  // what answers. It read as a preference you could skip, so people changed a
+  // provider's model list and wondered why nothing happened. Now the whole row
+  // is the control and it says what it does.
+  const configured=all.map(m=>`<div class="item${m.id===dft?' on':''}" data-f="${esc(m.id+' '+m.provider)}"
+      style="cursor:pointer" onclick="modelSetDefault('${esc(m.id)}')"
+      title="${m.id===dft?'This is what answers every turn':'Answer with '+esc(m.id)}">
+      <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ answering</span>':''}
         <div class="sub">${esc(m.id)}</div></div>
-      ${m.id===dft?'':`<button class="endbtn" style="border-color:var(--line);color:var(--dim)" onclick="modelSetDefault('${esc(m.id)}')">Set default</button>`}
+      ${m.id===dft?'':`<button class="endbtn" style="border-color:var(--line);color:var(--dim)">Use this</button>`}
     </div>`).join('');
   const pb=panelShell(body,{
     title:'Model Manager',
@@ -11690,8 +11746,15 @@ async function renderModels(body){
 }
 async function modelSetDefault(id){
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_model:id})});
-  toast('default model: '+id);
-  loadModels();refreshApp('models');
+  // Update the in-memory cfg too. Every surface reads the model from `cfg`, and
+  // waiting for the config broadcast to come back meant the chip still named the
+  // old model for a moment — which is exactly what "it didn't change" looks like.
+  if(typeof cfg!=='undefined'&&cfg)cfg.default_model=id;
+  toast('answering with '+id);
+  loadModels();
+  if(typeof paintModelChip==='function')paintModelChip();
+  if(typeof paintModelPicker==='function')paintModelPicker();
+  refreshApp('models');
 }
 async function modelPull(name){
   name=(name||$('#mdl-name')?.value||'').trim();if(!name)return toast('enter a model name');

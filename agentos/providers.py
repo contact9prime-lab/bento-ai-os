@@ -384,16 +384,16 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
         if not p.get("api_key"):
             raise ProviderError("Google (Gemini) API key not set — add it in Settings.")
         # Gemini speaks an OpenAI-compatible dialect under /v1beta/openai
-        base = p["base_url"].rstrip("/")
-        if not base.endswith("/openai"):
-            base = base + "/v1beta/openai"
-        gen = _chat_openai(base, p["api_key"], model, messages, tools, options)
+        gen = _chat_openai(openai_base(provider, p), p["api_key"], model, messages, tools, options)
     elif provider in ("openai", "custom", "openrouter"):
         if provider == "custom" and not p.get("base_url"):
             raise ProviderError("Custom provider base URL not set — add it in Settings.")
         if provider == "openrouter" and not p.get("api_key"):
             raise ProviderError("OpenRouter API key not set — add it in Settings.")
-        gen = _chat_openai(p["base_url"], p.get("api_key", ""), model, messages, tools, options)
+        # openai_base, not the raw setting: the URL that answers a turn has to be
+        # the one the picker listed from, or a model you can see is one you cannot use.
+        gen = _chat_openai(openai_base(provider, p), p.get("api_key", ""), model,
+                           messages, tools, options)
     else:
         raise ProviderError(f"Unknown provider: {provider}")
     async for ev in gen:
@@ -414,16 +414,132 @@ async def complete(cfg: dict, model_id: str, prompt: str, system: str = "") -> s
     return "".join(parts)
 
 
-async def available_models(cfg: dict) -> list[dict]:
-    """All usable models as [{'id': 'provider/model', 'provider': ..., 'name': ...}]."""
+# Model families that cannot answer a turn. Listing them is not a neutral
+# inconvenience — picking one produces "does not support chat" on the first
+# message, which reads as the OS being broken. Deliberately conservative: it
+# excludes only families that are unambiguously not chat, because hiding a model
+# that CAN answer is the worse of the two mistakes.
+_NOT_CHAT = ("embed", "embedding", "whisper", "tts", "dall-e", "imagen", "veo",
+             "moderation", "rerank", "-image", "aqa", "stable-diffusion", "clip",
+             "bge-", "gte-", "nomic-", "mxbai-")
+
+
+def is_chat_model(name: str) -> bool:
+    n = (name or "").lower()
+    return bool(n) and not any(k in n for k in _NOT_CHAT)
+
+
+def openai_base(prov: str, conf: dict) -> str:
+    """The OpenAI-compatible root for a provider, exactly as `chat()` resolves it.
+
+    Derived here rather than copied, because a listing that probes a different URL
+    from the one that answers turns is worse than no listing: it would show models
+    that cannot be reached, or hide ones that can.
+
+    A bare host with no path gets `/v1`. That is what makes a stock **llama.cpp**
+    (`llama-server`, port 8080) work when someone types the URL it printed at
+    startup: every OpenAI-compatible server — llama.cpp, LM Studio, vLLM, Ollama's
+    shim, Groq — serves the API under `/v1`, and only OpenAI's own docs make the
+    user paste a URL that already contains it. Anything with a real path is left
+    exactly as written, so a reverse proxy on a subpath is not second-guessed.
+    """
+    base = (conf.get("base_url") or "").rstrip("/")
+    if not base:
+        return ""
+    if prov == "google":
+        # Gemini speaks an OpenAI dialect under /v1beta/openai
+        return base + ("" if base.endswith("/openai") else "/v1beta/openai")
+    from urllib.parse import urlsplit
+    if urlsplit(base).path in ("", "/"):
+        return base + "/v1"
+    return base
+
+
+async def openai_models(base_url: str, api_key: str = "") -> list[str]:
+    """Ask an OpenAI-compatible endpoint what it can run (`GET /models`).
+
+    Every provider here except Anthropic implements it — OpenAI, OpenRouter,
+    Gemini's compatibility layer, and the whole LM Studio / vLLM / llama.cpp /
+    Groq family behind `custom`. Without this the picker could only show a static
+    list somebody typed into config, which is why a working custom endpoint
+    appeared to have no models at all: `custom.models` defaults to `[]`.
+
+    Best-effort by design. A slow or non-conforming endpoint returns nothing and
+    the caller falls back to the configured list — a model picker must never be
+    the reason the OS looks broken.
+    """
+    if not base_url:
+        return []
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    base = base_url.rstrip("/")
+    # Try what we resolved, then the other convention. Servers disagree about
+    # whether the caller supplies `/v1`, and a 404 here would look to the user
+    # exactly like "this endpoint has no models" — which is the bug being fixed.
+    candidates = [base] + ([base + "/v1"] if not base.endswith("/v1") else [base[:-3]])
+    body = None
+    for cand in candidates:
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                r = await client.get(f"{cand}/models", headers=headers)
+                r.raise_for_status()
+                body = r.json()
+                break
+        except Exception:
+            continue
+    if body is None:
+        return []
+    # {"data": [{"id": ...}]} is the spec; some local servers return a bare list.
+    rows = body.get("data") if isinstance(body, dict) else body
+    if not isinstance(rows, list):
+        return []
     out = []
+    for row in rows:
+        mid = row.get("id") if isinstance(row, dict) else row
+        if not (isinstance(mid, str) and mid.strip()):
+            continue
+        mid = mid.strip()
+        # Gemini's compatibility layer returns canonical names ("models/gemini-3-pro").
+        # Kept as the bare name so it matches what a user pins by hand and does not
+        # appear twice in the picker under two spellings.
+        if mid.startswith("models/"):
+            mid = mid[len("models/"):]
+        out.append(mid)
+    return sorted(set(out))
+
+
+async def available_models(cfg: dict) -> list[dict]:
+    """All usable models as [{'id': 'provider/model', 'provider': ..., 'name': ...}].
+
+    Fetched from each provider where the provider can be asked, falling back to
+    whatever is pinned in config. Both are kept: a hand-pinned model that the
+    endpoint does not advertise (a private deployment, an alias) must not vanish
+    from the picker just because a listing succeeded.
+    """
+    out: list[dict] = []
     p = cfg["providers"]
     if p["ollama"].get("enabled", True):
         for m in await ollama_models(p["ollama"]["base_url"]):
             out.append({"id": f"ollama/{m}", "provider": "ollama", "name": m})
     for prov in ("anthropic", "openai", "openrouter", "google", "custom"):
         conf = p.get(prov) or {}
-        if conf.get("enabled") and (conf.get("api_key") or prov == "custom") :
-            for m in conf.get("models", []):
-                out.append({"id": f"{prov}/{m}", "provider": prov, "name": m})
+        if not (conf.get("enabled") and (conf.get("api_key") or prov == "custom")):
+            continue
+        names = list(conf.get("models") or [])
+        # Anthropic has no OpenAI-style /models endpoint; the rest do.
+        if prov != "anthropic":
+            fetched = await openai_models(openai_base(prov, conf), conf.get("api_key", ""))
+            names += [m for m in fetched if m not in names]
+        for m in names:
+            out.append({"id": f"{prov}/{m}", "provider": prov, "name": m})
+    # A pinned model is somebody's explicit choice and is never filtered; a
+    # FETCHED one is a whole catalogue, and catalogues contain embedders, image
+    # and speech models that cannot answer a turn.
+    return [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p)]
+
+
+def _pinned(providers_cfg: dict) -> set:
+    out = set()
+    for conf in (providers_cfg or {}).values():
+        for m in (conf.get("models") or []):
+            out.add(m)
     return out

@@ -79,7 +79,22 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the model picker.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the picker below.</p>`);
+    // The chat chip has always said "change it in Settings → AI providers", and
+    // for a long time this panel had nowhere to change it: you could add a key
+    // and edit a provider's model LIST, but choosing which model actually answers
+    // was only possible as "Set default" in the Model Manager. So editing the
+    // list here looked like picking a model and did nothing. This is that control,
+    // in the place everything already points at, and it applies on the spot —
+    // needing a second Save to make a chosen model take effect is the same bug
+    // wearing a different hat.
+    P.push(pGroup('Answering', [
+      pRow('This machine answers with',
+        `<select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>`,
+        {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
+         f:'model default answers with picker which model'}),
+    ], {f:'model answering default'}));
+    setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -226,6 +241,35 @@ function settingsVoices(){
   };
   fill();
   if(window.speechSynthesis)speechSynthesis.onvoiceschanged=fill;
+}
+/* The model picker in Settings → AI providers. Fetched rather than read from
+   cfg, because what can answer is a live question — a provider's catalogue, the
+   models Ollama has pulled, and any executor this machine forwards to. */
+async function paintModelPicker(){
+  const sel=document.getElementById('s-model'); if(!sel)return;
+  let d={models:[],default:'',engines:[]};
+  try{d=await (await fetch('/api/models')).json()}catch(e){}
+  const cur=(cfg&&cfg.default_model)||d.default||'';
+  const groups={};
+  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
+  const opts=Object.keys(groups).sort().map(prov=>
+    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
+      `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
+    +`</optgroup>`).join('');
+  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  // A model set in config that the providers no longer offer must stay visible
+  // and selected, or opening Settings would silently look like something else
+  // is answering.
+  if(cur&&!(d.models||[]).some(m=>m.id===cur))
+    sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
+}
+async function pickModel(id){
+  if(!id)return;
+  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({default_model:id})});
+  if(cfg)cfg.default_model=id;
+  toast('answering with '+id);
+  loadModels();paintModelChip();refreshApp('models');
 }
 async function saveSettings(){
   // only the open category is in the DOM, so save exactly what is on screen —

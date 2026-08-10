@@ -300,10 +300,17 @@ async function renderModels(body){
     <div class="bar"><i style="width:${100*g.mem_used_mb/g.mem_total_mb}%" class="${g.mem_used_mb/g.mem_total_mb>.85?'hot':''}"></i></div></div>`).join('');
   const all=d2.models||[],dft=d2.default||'';
   const provBadge=p=>p==='ollama'?'<span class="badge">local</span>':`<span class="badge" style="color:var(--acc2)">${esc(p)}</span>`;
-  const configured=all.map(m=>`<div class="item" data-f="${esc(m.id+' '+m.provider)}">
-      <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ default</span>':''}
+  // "Set default" was the wrong word for the only control that does anything:
+  // there is no per-chat override for it to be the default OF — this model IS
+  // what answers. It read as a preference you could skip, so people changed a
+  // provider's model list and wondered why nothing happened. Now the whole row
+  // is the control and it says what it does.
+  const configured=all.map(m=>`<div class="item${m.id===dft?' on':''}" data-f="${esc(m.id+' '+m.provider)}"
+      style="cursor:pointer" onclick="modelSetDefault('${esc(m.id)}')"
+      title="${m.id===dft?'This is what answers every turn':'Answer with '+esc(m.id)}">
+      <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ answering</span>':''}
         <div class="sub">${esc(m.id)}</div></div>
-      ${m.id===dft?'':`<button class="endbtn" style="border-color:var(--line);color:var(--dim)" onclick="modelSetDefault('${esc(m.id)}')">Set default</button>`}
+      ${m.id===dft?'':`<button class="endbtn" style="border-color:var(--line);color:var(--dim)">Use this</button>`}
     </div>`).join('');
   const pb=panelShell(body,{
     title:'Model Manager',
@@ -353,8 +360,15 @@ async function renderModels(body){
 }
 async function modelSetDefault(id){
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_model:id})});
-  toast('default model: '+id);
-  loadModels();refreshApp('models');
+  // Update the in-memory cfg too. Every surface reads the model from `cfg`, and
+  // waiting for the config broadcast to come back meant the chip still named the
+  // old model for a moment — which is exactly what "it didn't change" looks like.
+  if(typeof cfg!=='undefined'&&cfg)cfg.default_model=id;
+  toast('answering with '+id);
+  loadModels();
+  if(typeof paintModelChip==='function')paintModelChip();
+  if(typeof paintModelPicker==='function')paintModelPicker();
+  refreshApp('models');
 }
 async function modelPull(name){
   name=(name||$('#mdl-name')?.value||'').trim();if(!name)return toast('enter a model name');
