@@ -79,6 +79,62 @@ function showBriefing(ev){
      <div class="pc-text">${esc(ev.text||'')}</div>`,
     ev.conversation_id?()=>{openApp('chat');openConv(ev.conversation_id)}:null);
 }
+/* ---- a new version is available ----
+   Not auto-dismissed like the other cards: an update is a decision, and one that
+   vanished after 45 seconds would be one people never quite get round to. The
+   three answers are all real — install it, remind me later (say nothing and it
+   comes back next cycle), or skip this version for good. */
+function showUpdate(ev){
+  const old=document.getElementById('updcard');if(old)old.remove();
+  const c=document.createElement('div');c.id='updcard';c.className='procard';
+  c.innerHTML=`<div class="pc-head">▲ Update available — ${esc(ev.latest||'')}</div>
+    <div class="pc-text">You are running ${esc(ev.current||'')}.${ev.notes?' ':''}
+      ${ev.notes?`<span class="mut">${esc(String(ev.notes).split('\n').slice(1,4).join(' ').slice(0,180))}</span>`:''}</div>
+    <div id="upd-prog" class="pc-text mut" style="display:none"></div>
+    <div class="pc-actions">
+      <button class="pc-go">Update now</button>
+      <button class="pc-x">Later</button>
+      <button class="pc-skip endbtn">Skip ${esc(ev.latest||'')}</button></div>`;
+  $('#desktop').appendChild(c);popIn(c,{origin:'bottom right'});
+  c.querySelector('.pc-x').onclick=()=>popOut(c,()=>c.remove());
+  c.querySelector('.pc-skip').onclick=()=>{
+    fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({skip:ev.latest})});
+    popOut(c,()=>c.remove());toast('skipping '+ev.latest);
+  };
+  c.querySelector('.pc-go').onclick=()=>runUpdate(c);
+}
+function runUpdate(card){
+  const go=card.querySelector('.pc-go'),prog=card.querySelector('#upd-prog');
+  go.disabled=true;go.textContent='Updating…';
+  card.querySelector('.pc-x').style.display='none';
+  card.querySelector('.pc-skip').style.display='none';
+  prog.style.display='';prog.textContent='starting…';
+  // The card must outlive the restart it causes: the server stops answering
+  // partway through, so the reply may never arrive. The websocket's update_done
+  // is the real signal; this only reports a refusal we can still hear.
+  fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(r=>r.json()).then(d=>{if(!d.ok&&d.error)updateFailed(d)})
+    .catch(()=>{});
+}
+function updateProgress(ev){
+  const p=document.getElementById('upd-prog');
+  if(p){p.style.display='';p.textContent=ev.message||''}
+}
+function updateFailed(d){
+  const c=document.getElementById('updcard');
+  if(!c){toast('update failed: '+(d.error||''));return}
+  c.querySelector('#upd-prog').innerHTML=`<span style="color:var(--err)">${esc(d.error||'update failed')}</span>`;
+  const go=c.querySelector('.pc-go');go.disabled=false;go.textContent='Try again';
+  c.querySelector('.pc-x').style.display='';
+}
+function updateDone(ev){
+  if(!ev.ok){updateFailed(ev);return}
+  const c=document.getElementById('updcard');
+  if(c)c.querySelector('#upd-prog').textContent=
+    `updated to ${ev.version||''} — restarting, this page will come back on its own…`;
+  toast('updated to '+(ev.version||'the new version'));
+}
 function showSuggestion(ev){
   desktopCard('suggcard',
     `<div class="pc-head">${appIcon('chat',15)} ${esc(agentName())} has an idea</div>

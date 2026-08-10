@@ -359,6 +359,9 @@ function handle(ev){
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
+    case 'update': showUpdate(ev); break;            // a newer version exists; installing still asks
+    case 'update_progress': updateProgress(ev); break;
+    case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':

@@ -1,5 +1,43 @@
 # Changelog
 
+### 0.2.0 — it tells you what it is doing, and it keeps up to date (2026-08-10)
+
+**You can see what it is waiting on.** Every surface that showed a turn in
+flight said the same three words for however long it took, so a model thinking
+and a run that had died looked identical. One shared record now drives all of
+them — the chat row, the copilot panels, the omnibar, the presence bubble, the
+voice overlay — with the live step and its age. Open tool calls age in place
+(`running · 2m 14s`) and keep their duration when they finish. Sending from a
+copilot panel is acknowledged immediately instead of at the server's reply.
+
+**Agents that build agents, with consent.** The chat can now define a specialist
+(`create_subagent`) when none fits, and starting one asks once per agent — the
+card names the model, the budget and the exact tools and skills it would hold.
+Defining grants nothing; the first use is what asks. Nothing but your own agent
+may define one, and an agent may never start or define another.
+
+**Telegram is an admin console.** `/agents`, `/run`, `/flows`, `/flow`,
+`/model`, `/tools`, `/logs`, `/perms` — owner only, published as Telegram's own
+command menu, and every command that acts goes through the same permission gate
+and approval buttons as the desktop.
+
+**It answers questions about itself.** The manual is in the retrieval index and
+the Docs app has an ask box; the reply cites the page it came from.
+
+**Providers are asked what they can run.** Model lists were static config, so a
+working OpenAI-compatible endpoint appeared to have none. They are fetched now,
+`llama.cpp`'s bare host URL resolves, and models that cannot chat (embedders,
+image, speech) are no longer offered as choices that fail on first use. Choosing
+a model in Settings or the Model Manager takes effect immediately.
+
+**Updates.** `agentos/VERSION` is the one place a version is written. AgentOS
+checks for a newer one on its own and asks; installing pulls, verifies against
+the test suite, rolls back on failure, restarts the service and reloads the page.
+
+**A reload no longer costs you the desktop.** Which windows were open, where,
+minimised or maximised, and any unsent message come back after a refresh — which
+is what makes an update safe to accept while you are working.
+
 ### Scroll the tiles and the deck becomes the wall (2026-08-08)
 
 The app deck was a strip you could only ever see all of by making the window

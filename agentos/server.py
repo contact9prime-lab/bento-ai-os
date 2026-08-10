@@ -145,6 +145,9 @@ async def startup():
     from . import attention
     asyncio.create_task(attention.attention_loop(cfg, store,
                                                  lambda: state.get("notifd"), broadcast))
+    # Is there a newer version? Checking is automatic; installing never is.
+    from . import updates as updmod
+    asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -601,6 +604,87 @@ async def api_shell_wake(body: dict | None = None):
     # clock; telling it to repaint is cheaper than making the user find Ctrl+R.
     await state["broadcast"]({"type": "wake"})
     return {"ok": True, "did": done}
+
+
+@app.get("/api/update")
+async def api_update_status(check: bool = False):
+    """What version this is, and whether there is a newer one.
+
+    `check=false` answers from the last check so opening Settings is instant;
+    `check=true` goes and looks.
+    """
+    from . import updates as updmod
+    cfg = state["cfg"]
+    ok, why = updmod.can_apply(cfg)
+    if check:
+        res = await updmod.check(cfg, force=True)
+        cfgmod.save_config(cfg)
+    else:
+        c = updmod.conf(cfg)
+        res = {"current": updmod.current(), "latest": c.get("last_seen", ""),
+               "update_available": bool(c.get("last_seen")
+                                        and updmod.is_newer(c["last_seen"], updmod.current())),
+               "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
+    return {**res, "can_apply": ok, "blocked_reason": why,
+            "branch": updmod.conf(cfg).get("branch"),
+            "enabled": updmod.conf(cfg).get("enabled", True)}
+
+
+@app.get("/api/changelog")
+async def api_changelog(limit: int = 5):
+    """What this build contains. Read from the changelog on disk rather than a
+    remote, so it describes the code that is actually running."""
+    from . import updates as updmod
+    return {"version": updmod.current(),
+            "entries": updmod.local_notes(max(1, min(20, limit)))}
+
+
+@app.post("/api/update")
+async def api_update_apply(request: Request, body: dict | None = None):
+    """Install the update: pull, sync, verify, then restart the service and tell
+    every open page to reload.
+
+    Loopback only. This replaces the code that enforces every other permission on
+    this machine, so it is not something a remote browser gets to do — the same
+    rule the WhatsApp link route follows, for a larger reason.
+
+    The restart is scheduled AFTER the response flushes. Restarting inside the
+    handler kills the connection carrying the result, and a browser cannot tell
+    "the update worked and the server went away" from "the update failed".
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "an update can only be started from this machine"},
+                            status_code=403)
+    from . import updates as updmod
+    body = body or {}
+    if (body.get("skip") or "").strip():          # "not now, and stop asking for this one"
+        updmod.conf(state["cfg"])["skipped"] = str(body["skip"]).strip()
+        cfgmod.save_config(state["cfg"])
+        return {"ok": True, "skipped": body["skip"]}
+
+    async def say(msg):
+        await state["broadcast"]({"type": "update_progress", "message": msg})
+
+    loop = asyncio.get_running_loop()
+    res = await updmod.apply(
+        state["cfg"], run_tests=bool(body.get("run_tests", True)),
+        log=lambda m: loop.call_soon(asyncio.ensure_future, say(m)))
+    state["store"].log("system", f"update: {res}")
+    if not res.get("ok"):
+        await state["broadcast"]({"type": "update_done", **res})
+        return JSONResponse(res, status_code=400)
+
+    async def _finish():
+        # The page first: it must be told to come back, and by whom, before the
+        # server that would tell it disappears.
+        await state["broadcast"]({"type": "update_done", **res})
+        await asyncio.sleep(1.0)
+        await state["broadcast"]({"type": "reload", "delay": 6000})
+        await asyncio.sleep(0.5)
+        from . import desktop as desktopmod
+        desktopmod.restart_service()
+    asyncio.create_task(_finish())
+    return {**res, "restarting": True}
 
 
 @app.post("/api/shell/reload")
@@ -2063,6 +2147,16 @@ async def api_put_config(patch: dict):
                 "policies", "sandbox", "steer_queued_messages"):
         if key in patch:
             cfg[key] = patch[key]
+    if isinstance(patch.get("updates"), dict):
+        from . import updates as updmod
+        u = updmod.conf(cfg)
+        for k in ("enabled", "branch", "check_interval_hours"):
+            if k in patch["updates"]:
+                u[k] = patch["updates"][k]
+        # Turning checks back on means "tell me about the current one again":
+        # a skip that outlived the decision is a machine that never updates.
+        if patch["updates"].get("enabled"):
+            u["skipped"] = ""
     if isinstance(patch.get("build"), dict) and "model" in patch["build"]:
         cfg.setdefault("build", {})["model"] = str(patch["build"]["model"] or "")[:80]
     if isinstance(patch.get("locale"), dict):

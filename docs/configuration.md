@@ -108,6 +108,49 @@ allow, and hard-blocked destructive commands stay blocked regardless. Manage the
 
 ---
 
+## Updates
+
+`agentos/VERSION` is the one place a version is written — the package reads it, the
+update checker compares against the same file published on `master`, and a test fails if
+`pyproject.toml` disagrees. A release is one edit.
+
+```jsonc
+"updates": {
+  "enabled": true,             // check automatically. Installing is NEVER automatic.
+  "branch": "master",
+  "check_interval_hours": 24,
+  "skipped": ""                // a version you said no to; cleared if you re-enable checks
+}
+```
+
+When a newer version exists you get a card: **Update now · Later · Skip this version**.
+There is deliberately no "install automatically" setting. An agentic OS that could
+replace its own code unattended is a different product from the one you agreed to run —
+the consent model in [security](security.md) would mean little if the code implementing
+it could rewrite itself overnight.
+
+Installing does four things in order, and refuses rather than guessing:
+
+1. **Pull** `origin/<branch>`, fast-forward only. Refused if the checkout has uncommitted
+   changes (it would land on top of your work), is on another branch, or is not a git
+   install at all — each with a sentence naming which.
+2. **Sync dependencies**, only if `pyproject.toml` or `uv.lock` changed.
+3. **Verify** against the test suite. If the new version fails its own tests the checkout
+   is reset to the commit it started from: a machine that cannot answer is worse than a
+   machine one version behind.
+4. **Restart the service, then reload every open page** — the code on disk, the running
+   service and the page on screen, or you end up looking at the old shell talking to the
+   new server.
+
+`GET /api/update` reports the state (`?check=true` to look now); `POST /api/update`
+installs and is **loopback-only** — this replaces the code enforcing every other
+permission on the machine, so it is not something a remote browser may start.
+
+Your desktop survives it: which windows were open, where, and any unsent message come
+back after the reload.
+
+---
+
 ## What it costs
 
 Every turn's tokens are recorded, per model, surface, space and conversation:
