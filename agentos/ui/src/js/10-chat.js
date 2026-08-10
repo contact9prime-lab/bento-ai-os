@@ -153,30 +153,44 @@ function send(){
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
 }
-let WORK_TICK=null, WORK_T0=0, WORK_MSG='';
+let WORK_T0=0, WORK_MSG='';
 function showWorking(){
   if(!feed)return;
   if(!$('#working')){
     const w=document.createElement('div');w.className='working';w.id='working';
-    w.innerHTML=`<div class="orb"></div><div class="wtxt">${esc(agentName())} is working</div><div class="dots"><i></i><i></i><i></i></div><div class="wsub" style="font-size:11px;opacity:.6;margin-left:8px"></div>`;
+    w.innerHTML=`<div class="orb"></div><div class="wcol"><div class="wtxt"></div><div class="wsub"></div></div><div class="dots"><i></i><i></i><i></i></div>`;
     feed.appendChild(w);
   }
   WORK_T0=WORK_T0||Date.now();
-  if(!WORK_TICK)WORK_TICK=setInterval(tickWorking,1000);
+  tickWorking();          // paint at once: a row that says nothing for a second is a flicker
 }
+/* The waiting row. Driven by the shared activity record (08b-activity.js) so
+   the sentence here, in the copilot panels and on the presence bubble is the
+   same sentence — and it is a sentence, not "working": what the step is, how
+   long THIS step has taken, and how long the whole turn has. The ticker that
+   calls this lives in actTick(); it stops itself when nothing is running. */
 function tickWorking(){
-  const w=$('#working'); if(!w){clearInterval(WORK_TICK);WORK_TICK=null;return}
-  const s=Math.round((Date.now()-WORK_T0)/1000);
-  const sub=w.querySelector('.wsub');
-  if(sub)sub.textContent=WORK_MSG||(s>3?(s>=60?Math.floor(s/60)+'m '+(s%60)+'s':s+'s')+' · working…':'');
+  const w=$('#working'); if(!w)return;
+  const cid=currentConv;
+  const txt=w.querySelector('.wtxt'), sub=w.querySelector('.wsub');
+  // While a tool card sits directly above with its own live timer, THAT is the
+  // sentence — repeating it here just says the same thing twice. The row keeps
+  // the orb (the turn is alive) and the turn-level clock the card cannot show.
+  const inTool=!!(cid&&ACT[cid]&&ACT[cid].phase==='tool');
+  const phrase=(!inTool&&typeof actText==='function'&&cid)?actText(cid):'';
+  if(txt)txt.textContent=phrase?phrase.charAt(0).toUpperCase()+phrase.slice(1)
+                               :(WORK_MSG||agentName()+' is working');
+  if(sub)sub.textContent=(typeof actClock==='function'&&cid&&ACT[cid])
+    ? actClock(cid)
+    : (WORK_T0?actDur(Date.now()-WORK_T0):'');
   // a visible per-second mutation forces the compositor to repaint — this is what
   // switching tabs was doing manually on macOS to make streamed text appear
+  const s=Math.round((Date.now()-WORK_T0)/1000);
   w.style.opacity=(0.999+(s%2)*0.001);
   scrollDown();
 }
 function removeWorking(){
   $('#working')?.remove();
-  if(WORK_TICK){clearInterval(WORK_TICK);WORK_TICK=null}
   WORK_T0=0;WORK_MSG='';
 }
 async function loadConvs(){
@@ -220,7 +234,9 @@ async function openConv(cid){
     else{m.innerHTML='<div class="who">'+msgWho(msg.meta)+'</div>';
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
-          const argStr=s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args);
+          // a reopened conversation reads the same way a live one did
+          const argStr=actDetail(s.name,s.args)
+            ||(s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args));
           card.innerHTML=`<div class="head"><span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
           card.querySelector('.out').textContent=s.output||'';
           card.querySelector('.head').onclick=()=>card.classList.toggle('open');
@@ -296,7 +312,7 @@ function paintModelChip(){
   const engine=(cfg&&cfg.engine)||d.engine||'aria';
   if(engine&&engine!=='aria'){
     const e=(d.engines||[]).find(x=>x.id===engine)||{};
-    chip.innerHTML=`${{'claude-code':'◈','hermes':'🜁'}[engine]||'⇥'} ${esc(e.name||engine)}`;
+    chip.innerHTML=`${{'claude-code':'◈'}[engine]||'⇥'} ${esc(e.name||engine)}`;
     chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
     chip.classList.add('engine');
     return;
@@ -332,7 +348,7 @@ function paintForwardChip(){
   const on=engine!=='aria';
   chip.hidden=!on;
   if(!on)return;
-  const name=engine==='claude-code'?'Claude Code':(engine==='hermes'?'Hermes':engine);
+  const name=engine==='claude-code'?'Claude Code':engine;
   // The model rides on the chip too, so "what is this running on" is answered by
   // looking up rather than by asking. It is filled in the first time a forwarded
   // turn reports it — before that the engine name alone is all we honestly know.
@@ -347,13 +363,13 @@ function paintForwardChip(){
 
 /* ---- who actually answered -------------------------------------------------
    A reply is labelled with the agent that produced it, not with the built-in
-   one by default. When the machine forwards, Claude Code or Hermes writes the
+   one by default. When the machine forwards, Claude Code writes the
    text — calling that "Aria" is the kind of quiet mislabelling that makes a
    forwarding machine confusing, and the model is shown alongside so the answer
    to "what is this running on" is on screen rather than something you ask. */
 function engineLabel(engine,model){
-  const mark={'claude-code':'◈','hermes':'🜁'}[engine]||'▲';
-  const name={'claude-code':'Claude Code','hermes':'Hermes'}[engine]||agentName();
+  const mark={'claude-code':'◈'}[engine]||'▲';
+  const name={'claude-code':'Claude Code'}[engine]||agentName();
   const m=(model||'').trim();
   return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
 }

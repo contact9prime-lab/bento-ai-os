@@ -10,9 +10,14 @@ function omniPresence(){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
   const n=RUNNING.size;
   orb.classList.toggle('busy',n>0);
-  if(inp&&!inp.value&&document.activeElement!==inp)
-    inp.placeholder=n>0?`${agentName()} is working${n>1?' ('+n+' turns)':''}…`
-                       :`Ask ${agentName()} anything — or press Ctrl+Space`;
+  if(!inp||inp.value||document.activeElement===inp)return;
+  // The bar is the one thing always on screen, so it is often where somebody
+  // looks to ask "is it stuck?" — it answers with the step, not with "working".
+  const live=n===1?actLine([...RUNNING][0]):'';
+  const want=n>1?`${agentName()} · ${n} turns running…`
+          :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
+             :`Ask ${agentName()} anything — or press Ctrl+Space`;
+  if(inp.placeholder!==want)inp.placeholder=want;   // once a second, only when it changed
 }
 /* ---- pop: the launcher state. Pure state — it never re-selects text, so
    popping open as you type can't swallow the next keystroke. ---- */

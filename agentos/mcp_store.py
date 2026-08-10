@@ -209,12 +209,25 @@ async def _sync_index(store=None):
 
 def search_local(query: str, limit: int = 30) -> list[dict]:
     """Instant search over the local index: every query word must appear in the
-    name+description; exact/prefix name matches rank first."""
+    name+description; exact/prefix name matches rank first.
+
+    The curated catalogue is merged in AHEAD of the index. The public registry only
+    contains what a vendor chose to publish there, and most first-party servers are
+    not in it — searching "canva" returns knock-offs and Canvas-LMS courseware, and
+    "higgsfield" returns nothing at all. Ranking the official server below an
+    imitation of it would be worse than not listing it, so curated hits lead and the
+    index cannot displace them.
+    """
+    from . import mcp_catalog
     idx = _load_index()
     q = (query or "").strip().lower()
     words = q.split()
+    curated = mcp_catalog.search(query, limit=limit)
+    taken = {c["registry_name"] for c in curated}
     scored = []
     for c in idx["servers"]:
+        if c["registry_name"] in taken:
+            continue
         hay = (c["registry_name"] + " " + (c.get("description") or "")).lower()
         if not all(w in hay for w in words):
             continue
@@ -226,7 +239,8 @@ def search_local(query: str, limit: int = 30) -> list[dict]:
                  3 if q and q in name else 4)
         scored.append((score, c))
     scored.sort(key=lambda t: (t[0], t[1]["registry_name"]))
-    return [c for _, c in scored[:max(1, int(limit))]]
+    room = max(1, int(limit)) - len(curated)
+    return curated + ([c for _, c in scored[:room]] if room > 0 else [])
 
 
 # ---- deep discovery: when the registry isn't enough, widen the net ---------------
@@ -350,7 +364,11 @@ async def search_any(query: str, limit: int = 30, store=None) -> list[dict]:
 async def lookup(registry_name: str, store=None) -> dict | None:
     """Resolve an installable candidate by name: an exact public-registry name, or a
     deep-discovery 'npm:<package>' (verified against the npm registry at install time)."""
+    from . import mcp_catalog
     name = (registry_name or "").strip()
+    curated = mcp_catalog.get(name)   # curated servers are not in the public registry
+    if curated:
+        return curated
     if name.startswith("npm:"):
         pkg = name[4:].strip()
         async with httpx.AsyncClient(timeout=15, follow_redirects=True,
@@ -385,6 +403,10 @@ def to_conf(cand: dict, env_values: dict | None = None) -> tuple[dict, list[str]
     missing: list[str] = []
     if cand.get("remote_url"):
         conf = {"transport": "http", "url": cand["remote_url"]}
+        if cand.get("auth") == "oauth":
+            # Nothing to fill in: the credential is obtained by asking the user once,
+            # so this server is enabled immediately and authorises on first connect.
+            conf["auth"] = "oauth"
         headers = {}
         for h in cand.get("remote_headers", []):
             tpl = h.get("value") or "{" + h["name"] + "}"

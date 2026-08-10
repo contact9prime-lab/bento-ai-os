@@ -178,9 +178,12 @@ a media MCP returned was thrown away.
 
 **Next, one at a time:**
 - ▢ **Creator suite** — local rendering (trim/concat/caption/reframe) behind the offered
-  ffmpeg component, a storyboard the agent fills with `storyboard_add_shot`, and a
-  **Media & creative** category in the MCP catalogue (Higgsfield, Canva, Replicate, fal;
-  ElevenLabs moves into it). Publishing goes **through MCP servers** — no bespoke
+  ffmpeg component, a storyboard the agent fills with `storyboard_add_shot`.
+  The **Media & creative** category ✅ *shipped 2026-08-08*: Higgsfield, Canva, Replicate,
+  fal and Figma, in a curated catalogue with native OAuth, because the public registry does
+  not list any of them (see the CHANGELOG entry). ElevenLabs has not moved into it yet — it
+  is still an API-key preset, since `mcp.elevenlabs.io` did not resolve when probed.
+  Publishing goes **through MCP servers** — no bespoke
   TikTok/Instagram API clients to own and no platform review to chase — with
   `publish.post` as a risky, grantable action per carrier and target
 - ▢ **Multi-agent for an operator** — `delegate(wait=false)` with a durable run registry,
@@ -191,18 +194,24 @@ a media MCP returned was thrown away.
 - ▢ **A persistent approval queue** — today an unattended run either has full autonomy or
   is auto-denied after a 300s in-memory wait. A parked decision should survive a restart
   and be answerable in the morning from a phone, over SSH, or at the desk
-- ▢ **The gateway hub** — `agentos/openclaw.py` beside `hermes.py` behind one `Gateway`
-  interface (install, status, config, lifecycle, live target probe). AgentOS owns a
-  *named subset* of `~/.openclaw/openclaw.json`, applied through `openclaw config set`
-  and picked up by the gateway's hot reload — never by writing the JSON5 file, which
-  would destroy comments and bake `${VAR}` substitutions into literals. Secrets stay
-  with the gateway, exactly as `hermes.py` refuses to touch `.env`
-- ▢ **Carriers become channels, and AgentOS becomes the hub** — today a message arriving
-  at Hermes is answered by Hermes' own agent, which is why every carried channel is
-  stamped `direction: out`. Pointing a gateway's agent endpoint at AgentOS makes the
-  conversation land *here*, with this memory, this policy and this ledger. That is the
-  step that turns the gateways into transport and AgentOS into the permission and
-  audit hub in front of them — and it is opt-in, because it changes who answers
+- ✅ **Gateways removed, not abstracted** *(2026-08-08)* — this slot used to hold two
+  items: a **gateway hub** (`openclaw.py` beside `hermes.py` behind one `Gateway`
+  interface) and **carriers become channels** (pointing a gateway's agent endpoint at
+  AgentOS so the conversation landed here). Both are dropped, and the Hermes
+  integration with them.
+
+  The reason is worth keeping. Hermes worked as transport and gave AgentOS twelve
+  messaging platforms for free, but we could not evaluate what it gave us: a carried
+  channel delivered out only, a reply was answered by a different agent with a
+  different memory, and nothing it did reached this OS's grants, ledger or budgets.
+  Abstracting an unmeasurable dependency behind an interface would have made it
+  permanent rather than understood. `openclaw.py` was never written, which made this
+  a cheap decision to take.
+
+  What replaces it is a bar, not a plan: a channel ships here only when AgentOS owns
+  it end to end. Telegram and the native WhatsApp meet it today; Slack, Signal and
+  Discord will be built to it or not offered. Fewer surfaces, each of which means
+  what it says.
 
 ### F. Everywhere — surfaces
 - Web desktop, desktop app, Telegram, CLI, TUI
@@ -269,7 +278,7 @@ look like one OS, not twenty utilities.*
 | Horizon | Ship |
 |---|---|
 | **Now** *(done)* | Memory v2: two-tier + auto-learn + semantic recall + rollup + supersede + KG dedup + Profile · **fabric F0**: subagents + visual workflows + control/data-plane split + heartbeats + observability + heterogeneous models ([design/subagents.md](design/subagents.md)) · **spaces foundation** (pillar J): spaces + scoped KG + timeline + MCP media bridge + asset store + Gallery + the access ledger |
-| **Next — one at a time** | **J1 creator suite** (ffmpeg component + storyboard + Media MCP category + publish via MCP) · **J2 multi-agent for an operator** (async delegate, run registry, budgets, scheduler→subagent, handoff, org chart in GUI *and* TUI) · **J3 approval queue** (durable, answerable in the morning) · **J4 gateway hub** (`openclaw.py` + one `Gateway` interface + reconciled config) · **J5 carriers as channels** (inbound handoff into AgentOS — opt-in, it changes who answers) |
+| **Next — one at a time** | **J1 creator suite** (ffmpeg component + storyboard + Media MCP category + publish via MCP) · **J2 multi-agent for an operator** (async delegate, run registry, budgets, scheduler→subagent, handoff, org chart in GUI *and* TUI) · **J3 approval queue** (durable, answerable in the morning) |
 | **Then (2–6 wks)** | Automations app with event triggers · morning briefing · **UI kit + density pass (Chat, Settings, Memory first)** · **fabric F1: task-envelope wire protocol + mTLS PKI + worker mode** · secrets vault · privacy ledger · registry v0 (git index + signed bundles + publish flow) |
 | **Later** | Fabric F2–F3 (docker workers → remote nodes) · **voice provider layer (ElevenLabs/OpenAI/local TTS + realtime STT)** · mobile PWA · app gardener · self-improvement loop · desktop modes · portable brain · per-app UI modules |
 

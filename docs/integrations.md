@@ -67,6 +67,47 @@ servers — and turns any result into a working AgentOS integration:
 The agent can drive the same flow conversationally: `discover_mcp_servers(query)` searches the
 registry, and `install_mcp_server(...)` — always approval-gated — installs after you say yes.
 
+### The curated catalogue: first-party servers the registry does not list
+
+The public registry is a *publishing* registry — a vendor appears in it only if that vendor
+chose to publish there, and most of the well-known ones did not. Searching it for
+`higgsfield` returns **nothing**; searching for `canva` returns third-party imitations and
+Canvas-LMS courseware, with no official server among them. Their servers are real and
+running; they are announced on the vendor's own domain instead.
+
+So AgentOS ships a short curated list (`agentos/mcp_catalog.py`) of servers it knows exist,
+merged **ahead of** registry results in Discover and shown as its own section in the MCP
+Servers app. Every entry was probed live before being added, and
+`packaging/dev/probe-catalog.sh` re-checks them all on demand.
+
+| Server | Category | What it adds |
+|---|---|---|
+| Higgsfield | Media & creative | video, image, audio and 3D generation; upscale, reframe, publish |
+| Canva | Media & creative | designs, brand templates, folders, exports |
+| Replicate | Media & creative | thousands of open image/video/audio models |
+| fal | Media & creative | fast hosted generative media |
+| Figma | Media & creative | read designs and components to build from |
+| Notion | Productivity | pages and databases |
+| Linear | Productivity | issues, projects, cycles |
+
+All seven sign in with **OAuth in your browser** — there is no key to paste. Two rules keep
+the list honest, and both are enforced by review rather than by hope:
+
+- **Nothing goes in unprobed.** The endpoint must answer an MCP `initialize`.
+- **Dynamic Client Registration is required.** That is what makes connecting one click. A
+  server that needs a hand-made OAuth app cannot be one click, so it stays out —
+  `mcp.stripe.com` is real, and deliberately absent for exactly this reason. (Stripe is
+  still available as an API-key preset, below.)
+
+Add one from anywhere:
+
+```
+bento mcp catalog              # what is on offer
+bento mcp add canva            # add it and start sign-in
+bento mcp list                 # what is connected, and what is waiting for you
+bento mcp disconnect canva     # forget the tokens and the registration
+```
+
 ### Catalog & authentication
 
 **Essentials — no key needed:** Playwright (browser automation), Filesystem, Fetch, Memory
@@ -121,9 +162,24 @@ registry, and `install_mcp_server(...)` — always approval-gated — installs a
   config entry) — the catalog prompts you and stores them in `~/.agentos/config.json`.
 - **http servers** authenticate with **request headers**, typically
   `"headers": {"Authorization": "Bearer <token>"}`.
-- **OAuth-based remote servers** (Linear, Sentry, Atlassian, Vercel, …) run through the
+- **Curated OAuth servers** (Canva, Higgsfield, Notion, Linear, Figma, Replicate, fal)
+  authenticate **natively** — AgentOS speaks OAuth 2.1 itself (`agentos/mcp_oauth.py`):
+  it discovers the authorisation server from the `401`, registers itself dynamically,
+  runs the code+PKCE exchange and refreshes the token when it expires. No Node, no
+  subprocess, no bridge. Tokens live in `~/.agentos/oauth/<server>.json` at mode `0600`,
+  and **Sign out** deletes both the tokens and the client registration, so the next
+  sign-in genuinely asks again.
+
+  Each server gets its own callback path (`/api/mcp/oauth/callback/<name>`), which is how
+  two simultaneous sign-ins are told apart. On a **headless machine** nothing can open a
+  browser, so `bento mcp connect <name>` prints the URL for you to open anywhere — set
+  `mcp_oauth.redirect_base` in `~/.agentos/config.json` when the box is not reachable at
+  `127.0.0.1` from wherever you open it.
+
+- **Older OAuth presets** (Sentry, Atlassian, Vercel) still run through the
   [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge: the first connection opens a
-  browser tab where you sign in; the token is cached in `~/.mcp-auth` afterwards.
+  browser tab where you sign in; the token is cached in `~/.mcp-auth` afterwards. These need
+  Node, which is the trade-off native OAuth removes.
 
 A connected server's tools appear to the agent as `mcp_<server>_<tool>` and to built apps via
 `appTool(...)`. You can also just ask: *"add the playwright channel," "remove the git server."*

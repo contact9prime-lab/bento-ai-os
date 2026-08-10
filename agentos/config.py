@@ -170,11 +170,6 @@ DEFAULTS = {
     # clones `repo` into `install_dir` and provisions it via run.sh. Set `repo` to
     # the doneitrightai git URL to enable auto-fetch.
     "trainforge": {"path": "", "port": 8377, "repo": "", "install_dir": ""},
-    # Hermes (companion agent AND a selectable chat engine). AgentOS can download it
-    # (MIT, from `repo`) and edit its config in the Hermes app. `engine_enabled`
-    # lets the user pick Hermes instead of the built-in agent in the chat selector.
-    "hermes": {"repo": "https://github.com/NousResearch/hermes-agent.git",
-               "install_dir": "", "engine_enabled": True},
     # generation budgets: Ollama context window and output-token caps (chat / builds).
     # ollama_think: null = model default; false = disable the thinking channel
     # (App Studio builds always disable it regardless).
@@ -287,6 +282,13 @@ def load_config() -> dict:
     # backfill Gemini chat models for installs whose saved config predates them
     if not cfg["providers"]["google"].get("models"):
         cfg["providers"]["google"]["models"] = list(DEFAULTS["providers"]["google"]["models"])
+    # Removed features leave their settings behind in every saved config. A key for
+    # something that no longer exists is worse than clutter — it reads as a feature
+    # that is merely switched off. `engine` is repaired rather than dropped, because
+    # a machine pinned to a removed engine must still answer with something.
+    cfg.pop("hermes", None)
+    if cfg.get("engine") not in ("", None, "aria", "claude-code"):
+        cfg["engine"] = "aria"
     return cfg
 
 

@@ -205,7 +205,14 @@ def test_search_local_ranking(monkeypatch):
     assert got == ["io.github.b/weather", "io.github.a/weather-extras",
                    "io.github.c/tools"]
     assert mcp_store.search_local("weather forecasts") == [servers[1]]
-    assert mcp_store.search_local("") == servers  # empty query lists everything
+    # An empty query lists everything, curated storefront first — the curated
+    # catalogue is merged ahead of the index (see mcp_catalog.py). None of the
+    # rankings above are affected, because no curated entry matches "weather".
+    from agentos import mcp_catalog
+    empty = mcp_store.search_local("", limit=100)
+    assert [c["registry_name"] for c in empty[:len(mcp_catalog.CATALOG)]] == \
+        [c["registry_name"] for c in mcp_catalog.search("")]
+    assert empty[len(mcp_catalog.CATALOG):] == servers
 
 
 def test_index_status_and_persistence(tmp_path, monkeypatch):

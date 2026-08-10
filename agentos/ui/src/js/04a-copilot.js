@@ -44,6 +44,12 @@ function agentTurn(o){
   }
   if(o.cid)sinkOn(o.cid,o.sink);
   else PENDING_SINKS.push({origin:o.origin,sink:o.sink,onCid:o.onCid});
+  // Acknowledge the send HERE, not when the server says turn_start. Creating a
+  // conversation, loading its history and waking the model take seconds, and
+  // for all of them the panel used to look exactly like a message that never
+  // left — the Chat window has always shown its working row on send, and this
+  // is the same promise for every embedded surface.
+  if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
     context:o.context||''}));
@@ -64,6 +70,25 @@ function stopAllAgents(){
   toast(n?`stopping ${n} running turn${n>1?'s':''}…`:'nothing is running right now');
 }
 
+/* Every mini-feed's waiting line, repainted from the shared activity record —
+   the same sentence and the same clock the Chat window shows. Called once a
+   second from actTick(); a panel whose turn has ended has no record and falls
+   back to whatever the last status said. */
+function mfPaint(){
+  document.querySelectorAll('.mf-working').forEach(el=>{
+    const cid=el.dataset.cid;
+    const t=el.querySelector('.mft'), c=el.querySelector('.mfc');
+    if(t&&typeof actText==='function'&&ACT[cid])t.textContent=actText(cid);
+    // Before turn_start there is no record yet, so the row keeps its own clock:
+    // the seconds between pressing send and the server answering are the ones
+    // that felt like nothing had happened.
+    if(c)c.textContent=(typeof actClock==='function'&&ACT[cid])?actClock(cid)
+      :(el.dataset.t0?actDur(Date.now()-(+el.dataset.t0)):'');
+    // While a tool card is open right above it, the card IS the live line — two
+    // copies of "running npm test · 12s" in a 300px panel is noise, not progress.
+    el.classList.toggle('quiet',!!(ACT[cid]&&ACT[cid].phase==='tool'));
+  });
+}
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
 function miniFeed(box,opts){
   opts=opts||{};
@@ -72,19 +97,29 @@ function miniFeed(box,opts){
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
     if(!body){body=document.createElement('div');body.className='mf-body body';box.appendChild(body)}};
+  // Which conversation this feed is watching. Known from the first event that
+  // carries it — a brand-new thread has no id until the server names it.
+  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id};
   return {
-    start(){
+    // Called twice on purpose: once locally the instant the message is sent,
+    // then again on the server's turn_start. The second call must not wipe the
+    // row and restart its clock — it only learns the conversation id.
+    start(ev){
+      if(working&&working.isConnected){bind(ev);mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
       working=document.createElement('div');working.className='mf-working';
-      working.innerHTML='<span class="mfo"></span><span class="mft">thinking…</span>';
-      box.appendChild(working);scroll();
+      working.dataset.t0=Date.now();
+      working.innerHTML='<span class="mfo"></span><span class="mft">sent — waking the agent</span><span class="mfc"></span>';
+      box.appendChild(working);bind(ev);scroll();
+      actSync();          // the row has its own clock now — start the ticker for it
     },
-    status(ev){if(working)working.querySelector('.mft').textContent=ev.message||'working…'},
+    status(ev){bind(ev);
+      if(working&&ev.message)working.querySelector('.mft').textContent=ev.message},
     thinking(t){
       // answer surfaces (cards) stay clean: the reasoning trace only says "thinking…"
       if(opts.showThinking===false){
-        if(working)working.querySelector('.mft').textContent='thinking…';
+        if(working)working.querySelector('.mft').textContent='thinking';
         return;
       }
       if(!think){think=document.createElement('div');think.className='think mf-think';box.insertBefore(think,working)}
@@ -95,17 +130,23 @@ function miniFeed(box,opts){
       text+=t;body.innerHTML=md(text);scroll();
     },
     toolStart(ev,argStr){
-      body=null;text='';think=null;
+      body=null;text='';think=null;bind(ev);
       const card=document.createElement('div');card.className='tool';card.dataset.mf=ev.call_id;
-      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run">${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      // data-t0: actPaintTimers ages it once a second, so a long call is visibly long
+      const arg=ev.detail||actDetail(ev.name,ev.args)||argStr;   // words, not JSON
+      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argStr)}">${esc(arg)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
-      box.insertBefore(card,working);scroll();
+      box.insertBefore(card,working);scroll();mfPaint();
     },
     toolEnd(ev){
       const card=box.querySelector(`.tool[data-mf="${CSS.escape(ev.call_id)}"]`);
-      if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');
-        st.textContent=ev.ok?'done':'failed';card.querySelector('.out').textContent=ev.output||'(no output)';
+      if(card){const st=card.querySelector('.tstat');
+        const t0=+st.dataset.t0||0;st.removeAttribute('data-t0');
+        st.className='tstat '+(ev.ok?'ok':'fail');
+        st.textContent=(ev.ok?'done':'failed')+(t0?' · '+actDur(Date.now()-t0):'');
+        card.querySelector('.out').textContent=ev.output||'(no output)';
         if(!ev.ok)card.classList.add('open')}
+      mfPaint();
       if(opts.onTool)opts.onTool(ev);
     },
     approval(apBox){box.insertBefore(apBox,working);scroll();return true},
@@ -114,7 +155,7 @@ function miniFeed(box,opts){
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       box.appendChild(d);scroll();
     },
-    end(ev){clearWorking();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
+    end(ev){clearWorking();actSync();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
 }
 
@@ -228,7 +269,9 @@ async function initCopilot(w,panel){
         :m.role==='assistant'?`<div class="mf-body body">${md(m.content||'')}</div>`:'').join('');
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
-    if(RUNNING.has(cid))sinkOn(cid,mkSink());   // re-attach to a live turn
+    // re-attach to a live turn — and say so at once, rather than looking idle
+    // until the next event happens to arrive
+    if(RUNNING.has(cid)){const s=mkSink();sinkOn(cid,s);s.start({conversation_id:cid})}
   }
   let live=null;
   const setBusy=on=>{
@@ -248,6 +291,9 @@ async function initCopilot(w,panel){
     const text=input.value.trim();if(!text)return;
     input.value='';
     feedEl.insertAdjacentHTML('beforeend',`<div class="mf-user">${esc(text)}</div>`);
+    // the starters were an invitation; leaving them under a question in flight
+    // is the panel still offering to begin something it has already begun
+    startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
     agentTurn({text,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,

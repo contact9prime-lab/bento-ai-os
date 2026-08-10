@@ -52,6 +52,7 @@ const APPS={
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
+  quarantine:{id:'quarantine',title:'Quarantine',icon:'⛔',w:720,h:600,desc:'What the OS stopped, and why — with the evidence',render:renderQuarantine},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
@@ -64,8 +65,6 @@ const APPS={
     render:renderMission},
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
-  hermes:{id:'hermes',title:'Hermes',icon:'🜁',w:820,h:660,desc:'Download, configure & control the Hermes agent — use it as your engine',
-    render:renderHermes,onClose(w){if(w._onSetup)HERMES_SETUP_LISTENERS.delete(w._onSetup);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
   about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
 };
@@ -101,6 +100,7 @@ const APP_CTX={
   skills:()=>'the skills library (reusable procedures)',
   policies:()=>'always-allow / always-deny policy rules',
   permissions:()=>'the policy console: permission maps, grants, IO gates',
+  quarantine:()=>`what the OS has stopped for running away: ${(PERM&&PERM.held||[]).length} held`,
   store:()=>'the Store: app templates, MCP discovery, build-with-AI',
   studio:()=>`App Studio${typeof STUDIO!=='undefined'&&STUDIO.sel?`, editing app "${STUDIO.sel}"`:''}${typeof STUDIO!=='undefined'&&STUDIO.building?' (a build is RUNNING)':''}`,
   themes:()=>`the theme gallery (current theme: ${typeof CURRENT_THEME!=='undefined'?CURRENT_THEME:'agentos'})`,
@@ -110,14 +110,13 @@ const APP_CTX={
   train:()=>'TrainForge — fine-tuning datasets, jobs, models',
   mission:()=>'Mission Control: the Train/Test/Operate/Build/Ship/Manage lifecycle dashboard',
   evals:()=>'Evals: behavioural test cases for the agent itself (memory, tool choice, injection resistance, honesty)',
-  hermes:()=>'the Hermes companion-agent app (install, config, gateway)',
   settings:()=>'core settings: providers, API keys, autonomy, voice',
   about:()=>'system information',
 };
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','hermes','mcp','telegram','policies','permissions','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}

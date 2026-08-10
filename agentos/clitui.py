@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 
 from . import config as cfgmod
 
@@ -113,6 +114,7 @@ async def run_tui():
         try:
             async with websockets.connect(ws_url, max_size=None) as ws:
                 pending = {}
+                _tool_t0: dict[str, float] = {}   # call_id -> when, for step durations
 
                 async def drain_turn():
                     nonlocal cid
@@ -125,10 +127,23 @@ async def run_tui():
                             sys.stdout.write(ev["text"]); sys.stdout.flush()
                         elif t == "thinking_delta":
                             pass
+                        elif t == "status":
+                            # The one line that explains a silent gap ("starting
+                            # Claude Code", "waiting for the model — 30s"). It was
+                            # being dropped here, so the CLI showed a blank prompt
+                            # for the whole of it.
+                            if ev.get("message"):
+                                print(f"{C['dim']}  {ev['message']}{C['r']}")
                         elif t == "tool_start":
-                            arg = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])
+                            from .executors import tool_detail
+                            arg = ev.get("detail") or tool_detail(ev["name"], ev.get("args") or {}) \
+                                or json.dumps(ev.get("args") or {})
+                            _tool_t0[ev.get("call_id", "")] = time.monotonic()
                             print(f"\n{C['dim']}▸ {ev['name']} {arg[:100]}{C['r']}")
                         elif t == "tool_end":
+                            t0 = _tool_t0.pop(ev.get("call_id", ""), None)
+                            if t0 and time.monotonic() - t0 >= 3:
+                                print(f"{C['dim']}  ({time.monotonic() - t0:.0f}s){C['r']}")
                             out = (ev.get("output") or "").strip().splitlines()
                             for ln in out[:6]:
                                 print(f"{C['dim']}  {ln[:_w()-2]}{C['r']}")

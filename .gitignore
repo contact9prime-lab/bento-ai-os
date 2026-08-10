@@ -33,3 +33,7 @@ packaging/dist/
 # OS / editor
 .DS_Store
 *.swp
+
+# the WhatsApp bridge fetches its own dependencies on request (components.py)
+agentos/wa_bridge/node_modules/
+agentos/wa_bridge/package-lock.json

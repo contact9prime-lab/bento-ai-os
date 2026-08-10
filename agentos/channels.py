@@ -175,8 +175,8 @@ CATALOGUE: list[Channel] = [
              "tools, answering on the app you already have open.",
         reach="Only the number you have paired. The first message pairs you; "
               "everyone else is told this machine is not theirs.",
-        note="This is AgentOS's own WhatsApp, not the Hermes-carried one below: a "
-             "message here reaches THIS agent. It needs a public HTTPS address for "
+        note="A message here reaches THIS agent, with your memory and permissions. "
+             "It needs a public HTTPS address for "
              "Meta's webhook, and WhatsApp only allows free-form replies within 24 "
              "hours of your last message — so a scheduled job cannot speak first to "
              "a silent chat.",
@@ -200,108 +200,27 @@ CATALOGUE: list[Channel] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Channels carried by Hermes
+# Channels are the ones AgentOS owns, end to end
 #
-# Slack, Signal, Discord and the rest are NOT built here. Hermes already runs a
-# messaging gateway with those bridges (agentos/hermes.py), and building a second
-# integration beside it would be a worse copy of something already installed and
-# paired on this machine.
+# There used to be a second tier here: platforms "carried" by the Hermes gateway —
+# Slack, Signal, Discord, Teams, Matrix and the rest — delivered by shelling out to
+# another agent already installed on the machine. They were removed deliberately.
 #
-# WhatsApp is now the ONE exception, and the reason is the direction. Hermes takes
-# messages OUT; a WhatsApp message arriving at Hermes is answered by Hermes' own
-# agent with Hermes' memory. The whole point of asking for WhatsApp is to reach
-# THIS agent from the app you already have open, and no amount of delivery-only
-# plumbing gets there. So agentos/whatsapp.py is a native channel beside Telegram,
-# and the Hermes WhatsApp card below stays as what it always was: a way to deliver
-# to a paired target, clearly labelled as such.
+# The reasoning was never that the bridges did not work. It was that we could not
+# judge them: a carried channel could only ever deliver OUT, a reply arriving there
+# was answered by a different agent with a different memory, and none of what that
+# agent did reached this OS's grants, ledger or budgets. That is a lot of surface to
+# stand behind while being unable to say whether it is good.
 #
-# So these are discovered, never declared: `hermes send --list --json` reports
-# which platforms are actually paired right now. A static list would claim Signal
-# works here because it appears in Hermes' config, when in fact its gateway has
-# been failing to reach signal-cli every five minutes.
+# So the rule is now simple enough to hold: a channel is offered here only if AgentOS
+# owns it end to end — it brings a conversation to THIS agent, through this policy,
+# and every capability call it makes lands in this ledger. Telegram and WhatsApp
+# qualify. When Slack or Signal earn a place, they will be built to that same bar
+# rather than proxied to something that cannot meet it.
 #
-# The direction matters and is stated on every card. Hermes carries messages
-# OUT — AgentOS can deliver to any paired target. A message arriving IN is
-# answered by Hermes' own agent with Hermes' memory and tools, not by Aria in
-# your AgentOS conversation. Only the native channels above bring a conversation
-# to this agent. Somebody enabling "WhatsApp" expecting to reach Aria would
-# otherwise be quietly talking to a different assistant.
+# Fewer channels, each of which means what it says.
 # ---------------------------------------------------------------------------
 
-HERMES_PLATFORMS = {
-    "whatsapp": "WhatsApp", "slack": "Slack", "signal": "Signal",
-    "discord": "Discord", "telegram": "Telegram", "teams": "Teams",
-    "matrix": "Matrix", "mattermost": "Mattermost",
-    "google_chat": "Google Chat", "qqbot": "QQ", "yuanbao": "Yuanbao",
-    "homeassistant": "Home Assistant",
-}
-
-
-async def hermes_targets(timeout: int = 25) -> dict:
-    """Which platforms Hermes can deliver to right now.
-
-    A live probe of the CLI rather than a read of its config: configured and
-    working are different things, and only the probe knows which.
-    """
-    from . import hermes
-
-    cli = hermes.cli_path()
-    if not cli:
-        return {"available": False, "platforms": {},
-                "reason": "Hermes is not installed on this machine",
-                "install": "https://github.com/NousResearch/hermes-agent"}
-    code, out = await hermes._run([cli, "send", "--list", "--json"], timeout=timeout)
-    if code != 0:
-        return {"available": False, "platforms": {},
-                "reason": f"Hermes is installed but would not list its targets "
-                          f"(exit {code})"}
-    try:
-        import json
-        data = json.loads(out or "{}")
-    except Exception:
-        return {"available": False, "platforms": {},
-                "reason": "Hermes returned something this build could not read"}
-    plats = data.get("platforms") or {}
-    return {"available": True, "reason": "", "gateway": hermes.gateway_running(),
-            "platforms": {k: v for k, v in plats.items() if v}}
-
-
-async def carried_state(cfg: dict) -> list[dict]:
-    """Hermes-carried channels, shaped like the native ones so one list renders both."""
-    probe = await hermes_targets()
-    out: list[dict] = []
-    for pid, title in HERMES_PLATFORMS.items():
-        targets = (probe.get("platforms") or {}).get(pid) or []
-        if probe["available"]:
-            if targets:
-                status, detail = "on", f"{len(targets)} target{'' if len(targets) == 1 else 's'} paired"
-            else:
-                status, detail = "off", "not paired in Hermes yet"
-        else:
-            status, detail = "unavailable", probe.get("reason", "Hermes is not available")
-        out.append({
-            "id": f"hermes:{pid}", "title": title, "carrier": "hermes",
-            "what": f"{title}, carried by the Hermes gateway already on this machine.",
-            "reach": "Whoever Hermes is paired with there.",
-            "gate": "", "builtin": False, "own_gate": False, "fields": [],
-            "direction": "out",
-            "note": ("AgentOS can deliver to this. A message arriving here is "
-                     "answered by Hermes' own agent, not by your AgentOS "
-                     "conversation — pair Telegram or WhatsApp above to reach "
-                     "this agent."),
-            "enabled": bool(targets), "status": status, "detail": detail,
-            "posture": "inherit",
-            "posture_label": "Set in Hermes",
-            "posture_from": "Hermes",
-            "reach_panel": "the Hermes app",
-            "targets": [{"id": t.get("id", ""), "name": t.get("name", ""),
-                         "type": t.get("type", "")} for t in targets[:12]],
-            "set": {}, "values": {},
-        })
-    # paired first, then merely available, then unavailable — the useful order
-    rank = {"on": 0, "off": 1, "unavailable": 2}
-    out.sort(key=lambda c: (rank.get(c["status"], 3), c["title"]))
-    return out
 
 BY_ID = {c.id: c for c in CATALOGUE}
 
@@ -368,8 +287,9 @@ def state(cfg: dict, store=None) -> list[dict]:
             "posture": posture,
             "posture_label": POSTURE_LABELS[posture],
             "posture_from": "" if chan.own_gate else (owner.title if owner else ""),
-            # native channels bring a conversation TO this agent; Hermes-carried
-            # ones only take messages out (see carried_state)
+            # Every channel offered here brings a conversation TO this agent. The
+            # keys stay so a surface that renders both directions still works if a
+            # deliver-only channel is ever added back on its own merits.
             "carrier": "", "direction": "both",
             "set": {f.key: bool(str(conf.get(f.key) or "").strip()) for f in chan.fields},
             "values": {f.key: ("" if f.secret else str(conf.get(f.key) or ""))

@@ -171,13 +171,24 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
-## WhatsApp is a way IN; Hermes carries messages OUT
+## A channel is one AgentOS owns end to end
 
-Both exist, and the difference is the direction. `channels.HERMES_PLATFORMS` delivers to
-a paired target; a reply arriving there is answered by Hermes' own agent with Hermes'
-memory. `agentos/whatsapp.py` brings a conversation to THIS agent, like Telegram. Slack,
-Signal, Discord and the rest stay Hermes-only — WhatsApp is the one exception, because
-reaching your own agent from the app you already have open is the entire ask.
+There used to be a second tier: platforms "carried" by the Hermes gateway — Slack,
+Signal, Discord and the rest — delivered by shelling out to another agent installed on
+the machine. It was removed, along with the rest of the Hermes integration.
+
+The reason was not that the bridges failed. It was that we could not judge them: a
+carried channel delivered OUT only, a reply arriving there was answered by a different
+agent with a different memory, and nothing that agent did reached this OS's grants,
+ledger or budgets. Depending on a surface you cannot evaluate is worse than having
+fewer surfaces.
+
+So the rule is now one line: **a channel is offered only if it brings a conversation to
+THIS agent, through this policy, with every call in this ledger.** Telegram and
+`agentos/whatsapp.py` qualify. When Slack or Signal earn a place they will be built to
+that bar — not proxied to something that cannot meet it.
+`tests/test_channels.py` enforces it, and also asserts the removed carrier surface is
+really gone rather than half-removed.
 
 Four things about WhatsApp that a port of the Telegram bridge gets wrong for free:
 

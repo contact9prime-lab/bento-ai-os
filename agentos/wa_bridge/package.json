@@ -1,0 +1,13 @@
+{
+  "name": "agentos-wa-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgentOS ↔ WhatsApp Web bridge (Baileys). Installed on request, never shipped.",
+  "license": "MIT",
+  "main": "bridge.js",
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

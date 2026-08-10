@@ -102,7 +102,23 @@ class MCPServer:
             transport = self.conf.get("transport", "stdio")
             if transport == "http":
                 headers = {k: str(v) for k, v in (self.conf.get("headers") or {}).items()}
-                ctx = streamablehttp_client(self.conf.get("url", ""), headers=headers or None)
+                url = self.conf.get("url", "")
+                # `auth: "oauth"` is the whole configuration for a first-party remote
+                # server — no key to paste, because the token is obtained by asking
+                # the user once and then refreshed. Without this the connection gets
+                # a 401 it cannot answer; see mcp_oauth.py.
+                auth = None
+                if (self.conf.get("auth") or "") == "oauth":
+                    from . import mcp_oauth
+                    auth = mcp_oauth.provider_for(
+                        self.name, url, scope=self.conf.get("scope", "") or "")
+                    if auth is None:
+                        raise RuntimeError(
+                            "this server needs OAuth, which this MCP SDK is too old "
+                            "to do — upgrade the 'mcp' package")
+                    self.status = "authorizing" if not mcp_oauth.has_tokens(self.name) \
+                        else self.status
+                ctx = streamablehttp_client(url, headers=headers or None, auth=auth)
                 async with ctx as (read, write, _):
                     await self._serve(read, write, on_change)
             else:
@@ -330,8 +346,12 @@ class MCPManager:
         return json.dumps(envelope)
 
     def status(self) -> list[dict]:
+        from . import mcp_oauth
+        waiting = {p["name"]: p for p in mcp_oauth.pending_status()}
         out = []
         for name, srv in self.servers.items():
+            auth = srv.conf.get("auth", "") or ""
+            pend = waiting.get(name)
             out.append({
                 "name": name,
                 "transport": srv.conf.get("transport", "stdio"),
@@ -341,7 +361,13 @@ class MCPManager:
                 "env": srv.conf.get("env") or {},
                 "headers": srv.conf.get("headers") or {},
                 "enabled": srv.conf.get("enabled", True),
-                "status": srv.status,
+                # An OAuth server has three states a key-based one does not: never
+                # signed in, waiting for the human, and signed in. The UI needs all
+                # three to avoid calling "waiting for you" an error.
+                "auth": auth,
+                "authorized": mcp_oauth.has_tokens(name) if auth == "oauth" else True,
+                "auth_url": (pend or {}).get("url", ""),
+                "status": "authorizing" if pend else srv.status,
                 "error": srv.error,
                 "instructions": srv.instructions,
                 "tools": [{"name": t["name"],

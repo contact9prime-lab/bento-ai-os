@@ -1656,12 +1656,6 @@ class Toolbox:
             return "safe", ""
         if name == "trainforge_service":
             return "safe", ""
-        if name == "hermes_status":
-            return "safe", ""
-        if name == "hermes_ask":
-            return "risky", "Delegates a task to the Hermes agent — it acts with its own tools and permissions."
-        if name == "hermes_send":
-            return "risky", f"Sends a message via Hermes to {args.get('target', '?')} (leaves this machine)."
         if name == "run_tests":
             # running a test suite executes that project's code
             p = args.get("path") or ""
@@ -2088,20 +2082,6 @@ class Toolbox:
         else:
             return "[error] action must be list|signature|predict|publish"
         return self._tf_out(code, data)
-
-    # ---- Hermes (companion agent) -------------------------------------------
-
-    async def hermes_status(self) -> str:
-        from . import hermes
-        return json.dumps(await hermes.status(self.cfg))
-
-    async def hermes_ask(self, task: str) -> str:
-        from . import hermes
-        return _truncate(await hermes.ask(task))
-
-    async def hermes_send(self, target: str, message: str) -> str:
-        from . import hermes
-        return await hermes.send(target, message)
 
     # ---- Desktop parity (the parity law) ------------------------------------
     # Every capability the desktop UI has is also an agent tool through the same
@@ -3280,37 +3260,6 @@ TEST_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(TEST_TOOL_SCHEMAS)
-
-HERMES_TOOL_SCHEMAS = [
-    {
-        "name": "hermes_status",
-        "description": "Companion agents: is Hermes (the Nous assistant) installed on this "
-                       "machine, is its gateway running, and what model does it use.",
-        "parameters": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "hermes_ask",
-        "description": "Delegate a one-shot task to the local Hermes agent — a different "
-                       "assistant with its own tools, skills, and messaging platforms. Use when "
-                       "the user asks for Hermes specifically, or for capabilities Hermes has "
-                       "and you don't. Returns its final answer.",
-        "parameters": {"type": "object", "properties": {
-            "task": {"type": "string", "description": "The task/question for Hermes."}},
-            "required": ["task"]},
-    },
-    {
-        "name": "hermes_send",
-        "description": "Send a message through any platform Hermes is paired with — WhatsApp, "
-                       "Slack, Discord, Signal, Telegram. Target format: 'platform', "
-                       "'platform:chat_id', or 'platform:#channel' (e.g. 'slack:#ops', "
-                       "'signal:+15551234567'). Extends delivery beyond AgentOS's own Telegram.",
-        "parameters": {"type": "object", "properties": {
-            "target": {"type": "string", "description": "Delivery target."},
-            "message": {"type": "string", "description": "Message text."}},
-            "required": ["target", "message"]},
-    },
-]
-TOOL_SCHEMAS.extend(HERMES_TOOL_SCHEMAS)
 
 TRAIN_TOOL_SCHEMAS = [
     {

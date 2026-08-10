@@ -4,13 +4,51 @@ Your agent, on the app you already have open. Same conversation, same memory, sa
 tools, same permission prompts as at the desk — a reply on your phone continues the
 thread you started this morning.
 
-This is **not** the Hermes-carried WhatsApp in Settings → Channels → *Carried by
-Hermes*. That one takes messages **out**: AgentOS can deliver to it, and a reply
-arriving there is answered by Hermes' own agent with Hermes' memory. This one
-brings a conversation **in**, to your agent.
+This brings a conversation **in**, to your agent — the only kind of channel
+AgentOS offers. (An earlier build also listed platforms "carried" by the Hermes
+gateway, which could deliver out but were answered by a different agent; that tier
+was removed.)
 
-## What you need
+## Two ways in — pick one
 
+| | **Linked device (Baileys)** | **Business Cloud API** |
+|---|---|---|
+| Setup | scan a QR from your phone | Meta app + business verification |
+| Needs a public HTTPS address | **no** | yes (a tunnel) |
+| 24-hour reply window | **no** | yes — it cannot speak first to a silent chat |
+| Supported by Meta | **no** — see the warning below | yes |
+| Extra dependencies | Node.js + ~60 MB | none |
+
+Both reach **this** agent, with your memory, tools and permission prompts. They are
+mutually exclusive per number; switch with the link in Settings → Channels → WhatsApp.
+
+### The linked device, in three steps
+
+```
+bento channels whatsapp --pair       # prints a QR in the terminal
+```
+
+or in the desktop: **Settings → Channels → WhatsApp → Link with a QR code**. Then:
+
+1. Install the bridge when asked — MIT (Baileys), needs Node.js, ~60 MB. Nothing is
+   downloaded until you say yes.
+2. On your phone: **WhatsApp → Settings → Linked devices → Link a device**, and scan.
+   The code rotates every ~20 seconds; the screen refreshes itself.
+3. Message it once from your phone. The first chat to write becomes the owner.
+
+`bento channels whatsapp --unpair` unlinks the device and forgets the paired chat.
+
+> **This one is unofficial.** It works by emulating a linked WhatsApp Web session.
+> WhatsApp does not support it and has banned accounts for automating on it. Use a
+> spare number if that matters to you. This is stated on the install screen too — it
+> is your account, and the choice is yours to make with the risk in view.
+
+Two smaller differences worth knowing: approvals arrive as **numbered replies**
+(`1` deny, `2` allow once, `3` allow and remember) because a linked device has no
+interactive buttons; and only **direct messages** are read — groups and status
+updates are ignored.
+
+## What the Cloud API needs
 Four values from [developers.facebook.com](https://developers.facebook.com) — create
 an app, add the **WhatsApp** product, and it hands you a test number to start with:
 

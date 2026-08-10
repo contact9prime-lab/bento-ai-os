@@ -151,7 +151,7 @@ class Run:
 #     picker exists to prevent.
 #
 # The UI states this rather than implying totality.
-ENGINES = ("aria", "claude-code", "hermes")
+ENGINES = ("aria", "claude-code")
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
@@ -162,7 +162,7 @@ def resolve_engine(cfg: dict, requested: str = "") -> str:
     local override, not a fight with the machine setting. Otherwise the machine's
     own engine decides, so a forwarder stays a forwarder on every surface.
     """
-    if requested in ("claude-code", "hermes"):
+    if requested == "claude-code":
         return requested
     if requested:                      # a real model id: the built-in agent
         return "aria"
@@ -211,9 +211,6 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
         if emit:
             await emit(ev)
 
-    if engine == "hermes":
-        from . import hermes as hermesmod
-        return await hermesmod.ask(text), None
 
     env = envelope_from(cfg, workspace_default)
     env.session_id = session_id
@@ -705,17 +702,22 @@ def tool_detail(name: str, args: dict) -> str:
                 return " ".join(v.split())
         return ""
 
-    if name in ("Read", "Write", "Edit", "NotebookEdit"):
+    # The executor's tool names (Read/Bash/…) and AgentOS's own (read_file/
+    # run_command/…) are the same handful of shapes under different spellings,
+    # and both kinds of turn are drawn by the same progress surfaces — so they
+    # are answered here together rather than in two tables that drift.
+    if name in ("Read", "Write", "Edit", "NotebookEdit",
+                "read_file", "write_file", "list_dir", "read_source"):
         p = s("file_path", "path", "notebook_path")
         return Path(p).name if p else ""
-    if name == "Bash":
+    if name in ("Bash", "run_command"):
         cmd = s("description") or s("command")
         return cmd[:90] + ("…" if len(cmd) > 90 else "")
-    if name in ("Glob", "Grep"):
+    if name in ("Glob", "Grep", "search_files"):
         pat = s("pattern", "query")
         where = s("path", "glob")
         return f"{pat}{' in ' + Path(where).name if where else ''}"[:90]
-    if name in ("WebFetch", "WebSearch"):
+    if name in ("WebFetch", "WebSearch", "fetch_url"):
         return s("url", "query", "prompt")[:90]
     if name == "Task":
         return s("description", "prompt")[:90]
@@ -757,6 +759,12 @@ def translate(event: dict, run: Run) -> list[dict]:
                     "model": run.model,
                     "version": event.get("claude_code_version", ""),
                     "tools": event.get("tools") or []})
+        # Between spawning the CLI and its first token there is a gap the user
+        # watches with nothing on screen. This is the one moment we can name it:
+        # the process is up, the wait from here on is the model's.
+        out.append({"type": "status",
+                    "message": f"Claude Code is ready{' on ' + run.model if run.model else ''}"
+                               f" — reading the task"})
 
     elif kind == "assistant":
         for block in (event.get("message") or {}).get("content", []):
@@ -811,7 +819,11 @@ def translate(event: dict, run: Run) -> list[dict]:
     elif kind == "rate_limit_event":
         info = event.get("rate_limit_info") or {}
         if info.get("status") not in (None, "allowed"):
-            out.append({"type": "status", "text": "Claude Code is rate limited — waiting…"})
+            # `message`, not `text`: every surface reads the status line from
+            # `message`, so the one event that explains a multi-minute stall was
+            # the one event nobody could see.
+            out.append({"type": "status",
+                        "message": "Claude Code is rate limited — waiting for the window to reopen"})
 
     return out
 

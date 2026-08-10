@@ -1,8 +1,6 @@
 """WhatsApp, natively: the same agent, the same memory, on the app people already use.
 
-This is deliberately NOT the Hermes-carried WhatsApp in `channels.HERMES_PLATFORMS`.
-That one takes messages OUT — a message arriving there is answered by Hermes' own
-agent, with Hermes' memory. This one brings a conversation IN to *your* agent, the
+This brings a conversation IN to *your* agent, the
 way Telegram does: same conversation history, same tools, same approvals, same
 `space_id`. Someone who enables "WhatsApp" expecting to reach Aria gets Aria.
 
@@ -80,11 +78,27 @@ def conf(cfg: dict) -> dict:
               "enabled", "owner_wa_id", "display_number"):
         if not c.get(k):
             c[k] = legacy.get(k) or ("" if k != "enabled" else False)
+    # Which transport carries this channel. "baileys" pairs by QR against WhatsApp
+    # Web; "cloud" is Meta's Business API. Default is cloud so an install that was
+    # already working keeps working — the choice is only ever made deliberately.
+    c["mode"] = (c.get("mode") or legacy.get("mode") or "cloud").strip() or "cloud"
     return c
 
 
+def mode(cfg: dict) -> str:
+    return conf(cfg).get("mode") or "cloud"
+
+
 def configured(cfg: dict) -> bool:
+    """Is this channel able to carry a message at all?
+
+    The two transports need entirely different things, and asking a QR-paired link
+    for a phone_number_id would report "not set up" on a channel that is working.
+    """
     c = conf(cfg)
+    if c.get("mode") == "baileys":
+        from . import wa_baileys
+        return wa_baileys.installed() and wa_baileys.paired()
     return all(c.get(k) for k in ("phone_number_id", "access_token", "verify_token"))
 
 
@@ -111,6 +125,10 @@ async def reachability(cfg: dict) -> dict:
     no error anywhere — the single most confusing state this integration can be in,
     so it is reported rather than left to be discovered.
     """
+    if mode(cfg) == "baileys":
+        # A linked device dials out to WhatsApp; nothing has to reach this machine.
+        return {"reachable": True, "base": "", "via": "linked device",
+                "webhook": "", "why": ""}
     from . import tunnel
     try:
         st = await tunnel.status(cfg)
@@ -160,6 +178,10 @@ class WhatsAppBridge:
         self._busy = False
         self._pending: dict[str, asyncio.Future] = {}
         self._seen: dict[str, float] = {}   # message id -> when, for redelivery
+        #: The Baileys child process, when this channel is running in that mode.
+        #: None on the Cloud API path, where Meta calls us and there is nothing to
+        #: supervise.
+        self.link = None
         self._exec_sessions: dict[str, str] = {}
 
     # -- outbound ------------------------------------------------------------
@@ -168,7 +190,14 @@ class WhatsAppBridge:
         return conf(self.cfg)
 
     def window_open(self, wa_id: str = "") -> bool:
-        """Is Meta's 24-hour customer-service window open for this chat?"""
+        """Is Meta's 24-hour customer-service window open for this chat?
+
+        Only the Business API has this rule. A linked device may message whenever it
+        likes, so answering "closed" there would invent a restriction and refuse a
+        send that would have worked — which is why this asks the mode first.
+        """
+        if self._c().get("mode") == "baileys":
+            return True
         chat = self.store.wa_get_chat(wa_id or self._c().get("owner_wa_id") or "")
         return bool(chat and (time.time() - (chat.get("last_inbound") or 0)) < WINDOW_SECS)
 
@@ -193,6 +222,14 @@ class WhatsAppBridge:
         """
         c = self._c()
         wa_id = wa_id or c.get("owner_wa_id") or ""
+        if c.get("mode") == "baileys":
+            if not self.link:
+                return ("[error] the WhatsApp Web bridge is not running — pair it in "
+                        "Settings → Channels → WhatsApp")
+            if not wa_id:
+                return ("[error] Not paired yet — message this WhatsApp from your "
+                        "phone once, and that chat becomes the owner")
+            return await self.link.send(text, wa_id)
         if not configured(self.cfg):
             return ("[error] WhatsApp is not set up — add the phone number id, access "
                     "token and verify token in Settings → Channels → WhatsApp")
@@ -428,12 +465,26 @@ class WhatsAppBridge:
         fut: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending[aid] = fut
         try:
-            await self._api(f"{self._c()['phone_number_id']}/messages", {
-                "messaging_product": "whatsapp", "to": wa_id, "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": {"text": f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}"[:1024]},
-                    "action": {"buttons": rows}}})
+            if self._c().get("mode") == "baileys":
+                # No interactive buttons on a linked device. Numbered replies are
+                # the fallback, and they are spelled out — an approval nobody can
+                # see how to answer is a run that hangs until it times out.
+                from . import wa_baileys
+                opts = "1 to deny · 2 to allow once"
+                if offer:
+                    opts += " · 3 to allow and remember"
+                sent = await self.link.send(
+                    f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}\n\n"
+                    f"Reply {opts}", wa_id) if self.link else "[error] no link"
+                if str(sent).startswith("[error]"):
+                    raise RuntimeError(sent)
+            else:
+                await self._api(f"{self._c()['phone_number_id']}/messages", {
+                    "messaging_product": "whatsapp", "to": wa_id, "type": "interactive",
+                    "interactive": {
+                        "type": "button",
+                        "body": {"text": f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}"[:1024]},
+                        "action": {"buttons": rows}}})
         except Exception as e:
             self._pending.pop(aid, None)
             self.store.log("error", f"whatsapp: could not ask for approval: {e}")
@@ -461,6 +512,19 @@ class WhatsAppBridge:
                 pass
         return val in ("1", "2")
 
+    def pending_button(self, value: str) -> str:
+        """The button id a typed digit should resolve, or '' if nothing is waiting.
+
+        Only meaningful for the linked-device transport, which has no real buttons.
+        The newest unanswered approval wins: approvals are asked one at a time and
+        answered immediately, so "the one I was just asked" is the only reading a
+        person would expect.
+        """
+        for aid, fut in reversed(list(self._pending.items())):
+            if not fut.done():
+                return f"ap:{aid}:{value}"
+        return ""
+
     def _answer(self, wa_id: str, button_id: str):
         """A tap on an approval button. Only the owner's taps count — anybody else
         with the number could otherwise answer a prompt that was not theirs."""
@@ -474,6 +538,48 @@ class WhatsAppBridge:
             fut.set_result(val)
 
     # -- state ---------------------------------------------------------------
+
+    # -- the linked-device transport -----------------------------------------
+
+    async def start_link(self) -> str:
+        """Start (or restart) the WhatsApp Web bridge. Returns '' or why not.
+
+        Inbound is pointed straight at `_one`, the same entry point the Cloud API
+        webhook uses, so everything downstream — pairing, the allow-list, commands,
+        flow triggers, approvals, taint, the ledger — is one implementation.
+        """
+        from . import wa_baileys
+        if mode(self.cfg) != "baileys":
+            return "WhatsApp is not set to the linked-device transport"
+        if self.link is None:
+            self.link = wa_baileys.BaileysTransport(
+                on_message=self._one, on_event=self.broadcast, store=self.store,
+                pending_button=self.pending_button)
+        return await self.link.start()
+
+    async def stop_link(self):
+        if self.link:
+            await self.link.stop()
+
+    async def unlink(self) -> str:
+        """Unlink this device and forget who was paired.
+
+        The owner is cleared too. Keeping it would mean the next person to scan
+        inherits the previous owner's chat — an authorisation nobody granted.
+        """
+        from . import wa_baileys
+        if self.link:
+            await self.link.logout()
+        else:
+            wa_baileys.forget_session()
+        c = self.cfg.setdefault("whatsapp", {})
+        c["owner_wa_id"] = ""
+        ch = (self.cfg.setdefault("channels", {}).setdefault("whatsapp", {}))
+        ch["owner_wa_id"] = ""
+        cfgmod.save_config(self.cfg)
+        self.store.log("whatsapp", "unlinked — device credentials and owner cleared")
+        await self.broadcast({"type": "whatsapp_chats"})
+        return "unlinked"
 
     def info(self) -> dict:
         c = self._c()
@@ -495,4 +601,18 @@ class WhatsAppBridge:
                 "window_open": self.window_open(owner) if owner else False,
                 "window_hours": WINDOW_SECS // 3600,
                 "webhook_path": webhook_path(),
+                "mode": c.get("mode") or "cloud",
+                # The linked-device half of the story. Present in both modes so a
+                # surface can render one card that knows which transport it is
+                # looking at, rather than two that disagree.
+                "link": (self.link.info() if self.link else _link_info_idle()),
                 "chats": self.store.wa_list_chats()}
+
+
+def _link_info_idle() -> dict:
+    """What the linked-device transport looks like before it has been started."""
+    from . import wa_baileys
+    return {"mode": "baileys", "installed": wa_baileys.installed(),
+            "paired": wa_baileys.paired(), "state": "stopped", "qr": "",
+            "qr_svg": "", "qr_ascii": "", "error": "", "me": "",
+            "why": wa_baileys.why_not(), "window_open": False}

@@ -10,6 +10,7 @@ function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
   ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
+    for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
     if(window.STUDIO&&STUDIO.building)studioLog('<span class="mut">connection lost — reconnecting…</span>');
     setTimeout(connect,1500)};
@@ -106,7 +107,9 @@ function buildApprovalBox(ev,cur){
 function updateSpin(){
   const s=$('#spin');if(!s)return;
   s.classList.toggle('on',RUNNING.size>0||running);
-  s.title=RUNNING.size>1?RUNNING.size+' agent turns running':'agent is working';
+  const one=actLine(actAny());
+  s.title=RUNNING.size>1?RUNNING.size+' agent turns running'
+         :(one?agentName()+' — '+one:'agent is working');
   if(typeof omniPresence==='function')omniPresence();
   if(typeof aiBubble==='function')aiBubble();
 }
@@ -130,7 +133,12 @@ function aiBubble(){
   }
   const n=RUNNING.size;
   if(n)AIB.last=[...RUNNING][0];
-  const label=n?(n>1?`${agentName()} · ${n} turns`:`${agentName()} is working`)
+  // The bubble is often the only thing on screen saying a turn exists — on the
+  // desktop, with Chat closed. "is working" for four minutes is not a report,
+  // so it carries the live step and its age like every other waiting surface.
+  const live=n===1?actLine([...RUNNING][0]):'';
+  const label=n?(n>1?`${agentName()} · ${n} turns`
+                    :(live?`${agentName()} · ${live}`:`${agentName()} is working`))
                :(AIB.seen?`${agentName()} replied`:'');
   b.classList.toggle('on',!!(n||AIB.seen));
   b.classList.toggle('busy',!!n);
@@ -148,7 +156,11 @@ function handle(ev){
   switch(ev.type){
     case 'state_sync':{ // sent on every (re)connect: what is actually still running
       RUNNING.clear();
-      (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''}});
+      for(const k in ACT)if(!(ev.running||[]).includes(k))actDone(k);
+      (ev.running||[]).forEach(c=>{RUNNING.add(c);if(!STREAMS[c])STREAMS[c]={html:'',text:''};
+        // re-attached to a turn that started before this socket: the clock
+        // restarts here, which is honest — we do not know when it began
+        if(!ACT[c])actBegin(c)});
       for(const k in QUEUES)delete QUEUES[k];
       Object.assign(QUEUES,ev.queues||{});      // the backlog survives a reload too
       renderQueue();
@@ -162,6 +174,8 @@ function handle(ev){
       }
       break;}
     case 'status':{ // model-side heartbeat ("loading model / evaluating prompt…")
+      // the server's own words for the current step, wherever it is being shown
+      if(_cid)actMove(_cid,(ACT[_cid]||{}).phase||'start',{msg:ev.message||''});
       if(_sk&&_sk.status)_sk.status(ev);
       if(!_cur)break;
       WORK_MSG=ev.message||'';
@@ -188,14 +202,15 @@ function handle(ev){
       break;}
     case 'turn_start':{
       // a new turn: until an engine says otherwise, this is the built-in agent
-      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'||ev.model==='hermes'?ev.model:'',
-                          model:(ev.model==='claude-code'||ev.model==='hermes')?'':(ev.model||'')};
-      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};}
+      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
+                          model:ev.model==='claude-code'?'':(ev.model||'')};
+      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);}
       if(_cur)setRunning(true);
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
     case 'text_delta':{
+      actMove(_cid,'write');
       if(_s)_s.text+=ev.text;
       if(_sk&&_sk.delta)_sk.delta(ev.text,_s?_s.text:'');
       if(!_cur)break;
@@ -205,6 +220,7 @@ function handle(ev){
       if(!curBody)startAssistant();
       if(curBody){curBody.innerHTML=md(curText);curBody.style.transform='translateZ(0)';scrollDown()} break;}
     case 'thinking_delta':{
+      actMove(_cid,'think');
       if(_sk&&_sk.thinking)_sk.thinking(ev.text);
       if(!_cur)break;
       if(!curBody)startAssistant();
@@ -212,11 +228,20 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
-      const argStr=ev.name==='run_command'?(ev.args.command||''):JSON.stringify(ev.args);
+      // `detail` is the server's few words about what this call is on. Older
+      // servers do not send it, so it is recomputed here rather than left blank.
+      const detail=ev.detail||actDetail(ev.name,ev.args);
+      // A card headed `Read {"file_path":"/home/p/proj/agent.py"}` makes the
+      // reader parse JSON to learn it is reading agent.py. Show the words; the
+      // full arguments stay one hover away and in the expanded output.
+      const argStr=detail||(ev.name==='run_command'?(ev.args.command||''):JSON.stringify(ev.args));
+      const argFull=ev.name==='run_command'?(ev.args.command||''):JSON.stringify(ev.args);
+      const step=(ev.step||((ACT[_cid]||{}).step||0)+1);
+      actMove(_cid,ev.pending_approval?'approve':'tool',{name:ev.name,detail,step});
       if(_s){ // mirror into the buffer so switching chats mid-turn is lossless
         if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
         _s.text='';
-        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}">running</span></div><div class="out"></div></div>`;}
+        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}" data-t0="${Date.now()}">running</span></div><div class="out"></div></div>`;}
       if(typeof agentHands==='function')agentHands(ev);   // visible hands: glow the affected app
       if(_sk&&_sk.toolStart)_sk.toolStart(ev,argStr);
       if(!_cur)break;
@@ -224,16 +249,27 @@ function handle(ev){
       if(!curBody)break;
       flushText();
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
-      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run">${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      // data-t0 is what makes a four-minute call look different from a four-second
+      // one: actPaintTimers ages every open call once a second, wherever it is drawn
+      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'tool_end':{
-      if(_s)_s.html=_s.html.replace(`class="tstat run" data-b="${ev.call_id}">running`,
-        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}">${ev.ok?'done':'failed'}`);
+      // the model is about to think about this result: the wait moves phase here,
+      // not at the next event, or the gap after a tool reads as a frozen "running"
+      actMove(_cid,'after');
+      if(_s)_s.html=_s.html.replace(
+        new RegExp(`class="tstat run" data-b="${reEsc(ev.call_id)}"([^>]*)>running`),
+        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`);
       if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
       if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
-      if(card){const st=card.querySelector('.tstat');st.className='tstat '+(ev.ok?'ok':'fail');st.textContent=ev.ok?'done':'failed';
+      if(card){const st=card.querySelector('.tstat');
+        // how long it took stays on the card: the record of the wait outlives it
+        const t0=+st.dataset.t0||0;
+        st.removeAttribute('data-t0');       // stop ageing it — this one is finished
+        st.className='tstat '+(ev.ok?'ok':'fail');
+        st.textContent=(ev.ok?'done':'failed')+(t0?' · '+actDur(Date.now()-t0):'');
         card.querySelector('.out').textContent=ev.output||'(no output)';
         // Content this machine did not write is marked where it lands, not only in
         // the approval card it later causes — you should be able to see which step
@@ -250,6 +286,8 @@ function handle(ev){
       if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
     case 'approval_request':{
+      // the turn is not slow here, it is waiting on a human — say which
+      actMove(_cid,'approve',{name:ev.name||''});
       const box=buildApprovalBox(ev,_cur);
       if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
       else if(_cur&&feed){
@@ -272,7 +310,7 @@ function handle(ev){
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
       curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
     case 'turn_end':{
-      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];agentQueueFlush(_cid);}
+      if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
       if(!_cur){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
       if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
@@ -319,6 +357,12 @@ function handle(ev){
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'whatsapp_link':
+      // The pairing code rotates every ~20 seconds. A card left showing a stale QR
+      // is a code that silently will not scan, so it follows the bridge's events
+      // rather than making the panel poll.
+      if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
+      break;
     case 'telegram_chats': refreshApp('telegram'); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
@@ -333,8 +377,8 @@ function handle(ev){
       // Loud on purpose: something the user installed just stopped working, and the worst
       // version of this feature is one where they find out by the thing being broken.
       toast('⚠ Quarantined “'+ev.label+'” — '+(ev.reason||'').slice(0,80));
-      refreshApp('permissions'); refreshApp('apps'); break;
-    case 'quarantine': refreshApp('permissions'); break;
+      refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
+    case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
       toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
@@ -359,7 +403,6 @@ function handle(ev){
     case 'automation.run': onAutomationBroadcast(ev.automation); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
-    case 'hermes_setup': HERMES_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
@@ -389,6 +432,8 @@ function handle(ev){
 }
 function resolveApproval(id,approved,remember){
   ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
+  // it is no longer waiting on you — whatever was held for this answer runs now
+  for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');
     box.querySelector('.atitle').textContent=approved?'✓ Allowed':'✕ Denied';}
 }

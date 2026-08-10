@@ -76,8 +76,11 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
 .mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
 .mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
+.mf-working.quiet{display:none}
 .mf-working .mfo{width:10px;height:10px;border-radius:var(--r-full);flex:none;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2));animation:obusy 1s ease-in-out infinite}
+.mf-working .mft{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mf-working .mfc{margin-left:auto;flex:none;font-size:var(--fs-xs);opacity:.7;font-variant-numeric:tabular-nums}
 
 /* ---- copilot panel inside windows ---- */
 .win .wmain{flex:1;min-height:0;display:flex}

@@ -550,6 +550,7 @@ class AgentTUI(App):
                                           "conversation_id": self.cid, "model": self.model}))
                 log.write(f"[b cyan]{self.agent_name}[/]  ")
                 buf = ""
+                started: dict[str, float] = {}   # call_id -> when, for step durations
                 while True:
                     ev = json.loads(await ws.recv())
                     t = ev.get("type")
@@ -568,11 +569,23 @@ class AgentTUI(App):
                         if ev.get("message"):
                             log.write(f"[grey58]{ev['message']}[/]")
                     elif t == "tool_start":
-                        arg = ev["args"].get("command", "") if ev["name"] == "run_command" else ""
-                        log.write(f"[grey58]▸ {ev['name']} {arg[:80]}[/]")
+                        # Same answer the GUI shows, in the one form a log can
+                        # carry: WHAT the call is on. A column of bare tool
+                        # names is the terminal version of "working…".
+                        from .executors import tool_detail
+                        detail = ev.get("detail") or tool_detail(ev["name"], ev.get("args") or {})
+                        started[ev.get("call_id", "")] = time.monotonic()
+                        log.write(f"[grey58]▸ {ev['name']}{'  ' + detail[:80] if detail else ''}[/]")
                     elif t == "tool_end":
+                        # There is no repainting line to age here, so the wait is
+                        # reported when it ends — a four-minute step must not be
+                        # indistinguishable from a four-second one afterwards.
+                        t0 = started.pop(ev.get("call_id", ""), None)
+                        took = f" ({time.monotonic() - t0:.0f}s)" if t0 and time.monotonic() - t0 >= 3 else ""
                         if not ev.get("ok", True):
-                            log.write(f"[red]✗ {ev.get('name','')} — {(ev.get('output') or '')[:120]}[/]")
+                            log.write(f"[red]✗ {ev.get('name','')}{took} — {(ev.get('output') or '')[:120]}[/]")
+                        elif took:
+                            log.write(f"[grey58]✓ {ev.get('name','')}{took}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))

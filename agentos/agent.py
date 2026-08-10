@@ -13,6 +13,13 @@ from . import config as cfgmod
 from . import localeinfo
 from . import providers
 from . import toolscope
+# `tool_detail` lives with the executor because that is where it was needed
+# first, but it is not about executors: it is the one answer to "what is this
+# call actually on", and a local turn's tool_start must carry the same field a
+# delegated one does or every surface showing progress has to special-case
+# which kind of turn it is watching. (executors.py imports nothing from the
+# package, so this direction cannot cycle.)
+from .executors import tool_detail
 from .policy import MAIN, Principal
 from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 
@@ -28,7 +35,6 @@ from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 # tracking that honestly needs provenance on the file, not on the tool.
 UNTRUSTED_TOOLS = {
     "fetch_url",          # any web page, and the most likely carrier
-    "hermes_ask",         # another agent's answer, with its own tools and memory
 }
 
 
@@ -883,7 +889,8 @@ class Agent:
                     output = f"[denied] {dec.reason or reason}"
                 elif dec.effect == "ask":
                     await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
-                                     "args": args, "pending_approval": True})
+                                     "args": args, "detail": tool_detail(name, args),
+                                     "pending_approval": True})
                     approved = await self.approver(name, args, dec.reason or reason,
                                                    dec.grant_offer)
                     if approved:
@@ -895,7 +902,8 @@ class Agent:
                                   "and why.")
                 else:
                     await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
-                                     "args": args, "pending_approval": False})
+                                     "args": args, "detail": tool_detail(name, args),
+                                     "pending_approval": False})
                     output = await self.toolbox.execute(name, args)
                 if dec.effect != "allow":  # every gate decision is auditable in Logs
                     self.toolbox.store.log(

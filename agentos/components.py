@@ -278,6 +278,35 @@ CATALOG: dict[str, dict] = {
     # and it is packaged only on Arch — an entry absent on three of the four
     # families we claim to support is the silent gap
     # test_every_component_has_a_name_for_every_supported_family exists to catch.
+    # WhatsApp without Meta. Two reasons this is offered rather than shipped, and
+    # neither is licensing — Baileys is MIT and would pass the audit:
+    #
+    #  1. It is a Node runtime plus ~30 MB of dependencies for one channel. An OS
+    #     that installs that on every machine in case somebody wants WhatsApp is
+    #     not local-first, it is just heavy.
+    #  2. It is UNOFFICIAL. It works by emulating a linked WhatsApp Web device, and
+    #     accounts have been banned for automating on it. That is a decision only
+    #     the account's owner can take, so it is stated in `unlocks` and shown on
+    #     the consent screen before anything installs — not buried in a doc.
+    #
+    # The official Cloud API path stays available for anyone who wants a supported,
+    # business-grade integration and is willing to pay its setup cost.
+    "whatsapp-bridge": {
+        "packages": {}, "method": "script", "licence": "MIT (Baileys)",
+        "group": "optional", "for_session": False,
+        "title": "WhatsApp Web bridge (Baileys)",
+        "unlocks": "Message your agent on WhatsApp by scanning a QR code — no Meta "
+                   "developer account, no public webhook and no 24-hour reply "
+                   "window. UNOFFICIAL: it emulates a linked WhatsApp Web device, "
+                   "which WhatsApp does not support and has banned accounts for. "
+                   "Prefer a spare number. Needs Node.js and downloads ~60 MB.",
+        "argv": lambda: _wa_bridge_argv(),
+        "detect": lambda: _wa_bridge_installed(),
+        "why_unavailable": lambda: (
+            "" if _wa_bridge_npm() else
+            "Node.js (with npm) is not installed. AgentOS will not install a "
+            "language runtime for you — on Debian/Ubuntu: sudo apt install nodejs npm"),
+    },
     "plymouth-theme": {
         "packages": {}, "method": "script", "licence": "MIT (AgentOS)",
         "group": "optional", "for_session": True,
@@ -291,6 +320,33 @@ CATALOG: dict[str, dict] = {
 
 #: Order the installer and the settings panel present groups in.
 GROUPS = ("required", "recommended", "optional")
+
+
+def _wa_bridge_installed() -> bool:
+    from . import wa_baileys
+    return wa_baileys.installed()
+
+
+def _wa_bridge_npm() -> str:
+    from . import wa_baileys
+    return wa_baileys.npm_path()
+
+
+def _wa_bridge_argv() -> list:
+    """`npm install` inside the shipped bridge directory — no global installs.
+
+    Returns [] when Node is absent, which is how `unavailable_reason()` learns to
+    say "needs Node.js" instead of offering a button that cannot work. Node itself
+    is deliberately not auto-installed: it is a language runtime, and silently
+    putting one on somebody's machine is exactly the kind of system change the
+    privilege ladder exists to prevent.
+    """
+    from . import wa_baileys
+    npm = wa_baileys.npm_path()
+    if not npm:
+        return []
+    return [npm, "install", "--omit=dev", "--no-audit", "--no-fund",
+            "--prefix", str(wa_baileys.BRIDGE_DIR)]
 
 
 def _portal_present() -> bool:
@@ -363,6 +419,17 @@ def unavailable_reason(comp: dict) -> str:
     """
     if install_argv(comp):
         return ""
+    # A component may know its own reason better than the package machinery can
+    # guess. Without this, "needs Node.js" comes out as "no debian-family package
+    # name is known for this component" — true, and useless.
+    own = comp.get("why_unavailable")
+    if callable(own):
+        try:
+            said = (own() or "").strip()
+            if said:
+                return said
+        except Exception:
+            pass
     d = osdetect.detect()
     # The OS-level reason outranks every package-level one. Telling a macOS user
     # "no macos-family package name is known for this component" is technically

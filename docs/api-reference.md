@@ -108,6 +108,18 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 | POST | `/api/quarantine/{id}/release` | `{"mode": "once"\|"forever"\|"deleted"}` — the choice and who made it are logged |
 | POST | `/api/apps/{id}/resume` | start a stopped app again (its rate history is forgotten, or it would trip immediately) |
 
+Reachable as the **Quarantine** app (its own icon, not only the Permissions tab — nobody
+whose app just went quiet thinks to look in the policy console), and from a terminal:
+
+```
+bento quarantine list                          # what is held, with the numbers
+bento quarantine history                       # past decisions, including exemptions
+bento quarantine release <id> --mode once      # once | forever | deleted
+```
+
+The CLI exists because a hold you cannot lift is worse than no hold: before it, an app
+stopped on a headless box could be seen in the logs and never released.
+
 ### Docs & setup
 | Method | Path | Purpose |
 |---|---|---|

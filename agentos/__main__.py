@@ -292,23 +292,6 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                                           else f" (follows {c['posture_from']})")
             print(f"  {mark} {c['title']:<16} {c['detail']:<34} {trust}")
             print(f"      {c['reach']}")
-        # Hermes carries platforms AgentOS deliberately does not rebuild. Shown
-        # separately because they are delivery routes out, not ways in.
-        import asyncio as _aio
-        try:
-            carried = _aio.run(chmod.carried_state(cfg))
-        except Exception:
-            carried = []
-        live = [c for c in carried if c["status"] == "on"]
-        if live:
-            print()
-            print("  carried by Hermes (AgentOS sends to these; a reply there is "
-                  "answered by Hermes):")
-            for c in live:
-                print(f"    ● {c['title']:<14} {c['detail']}")
-        elif carried:
-            print()
-            print(f"  carried by Hermes: {carried[0]['detail']}")
         print()
         print("  agentos channels <id> --on|--off --posture "
               f"{'|'.join(chmod.POSTURE_LABELS)}")
@@ -335,6 +318,10 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                   + (f" — it takes: {', '.join(sorted(known))}" if known else ""))
             return
         patch[key] = val
+    if channel == "whatsapp" and (getattr(args, "pair", False)
+                                  or getattr(args, "unpair", False)):
+        _whatsapp_pair_cli(cfg, unpair=getattr(args, "unpair", False))
+        return
     if not patch:
         c = next(x for x in chmod.state(cfg) if x["id"] == channel)
         print(f"  {c['title']} — {c['detail']}")
@@ -357,6 +344,108 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
         print("  a running server picks this up on its next turn")
         if channel == "whatsapp":
             _whatsapp_webhook_note(cfg)
+
+
+def _qr_ascii(data: str) -> str:
+    """A scannable QR in a terminal, with no new dependency.
+
+    `qrcode` is not a dependency of AgentOS and adding one for a pairing screen
+    would be a poor trade, so this encodes it here. Two rows per line via the
+    half-block character, because a QR drawn one row per line is twice as tall as
+    most terminals and scans badly when it wraps.
+    """
+    try:
+        import qrcode                      # present on some machines; use it if so
+        q = qrcode.QRCode(border=1)
+        q.add_data(data)
+        q.make(fit=True)
+        m = q.get_matrix()
+    except Exception:
+        return ""
+    out = []
+    for y in range(0, len(m), 2):
+        row = ""
+        for x in range(len(m[0])):
+            top, bot = m[y][x], (m[y + 1][x] if y + 1 < len(m) else False)
+            row += "█" if top and bot else "▀" if top else "▄" if bot else " "
+        out.append(row)
+    return "\n".join(out)
+
+
+def _whatsapp_pair_cli(cfg: dict, unpair: bool = False):
+    """Link this machine to WhatsApp from a terminal.
+
+    The QR is the whole reason this verb exists. On a headless box there is no
+    browser to render one, and telling somebody to "open Settings → Channels" on a
+    machine with no screen is the kind of instruction that makes a feature
+    theoretical. So it is drawn here, in the terminal, and failing that the raw
+    payload is printed so it can be turned into a QR anywhere.
+    """
+    import json as _json
+    import urllib.request
+    from . import wa_baileys
+
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def api(path, method="GET"):
+        req = urllib.request.Request(base + path, method=method)
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return _json.loads(r.read() or b"{}")
+
+    if unpair:
+        try:
+            api("/api/whatsapp/link", method="DELETE")
+            print("✓ unlinked — the device credentials and the paired chat are gone")
+        except Exception as e:
+            print(f"could not reach the AgentOS server at {base}: {e}")
+            sys.exit(1)
+        return
+
+    gap = wa_baileys.why_not()
+    if gap:
+        # The component ladder, in a terminal: say what is missing, what it costs,
+        # and the exact command — then stop. Nothing installs without a yes.
+        from . import components
+        comp = components.CATALOG["whatsapp-bridge"]
+        print(f"\n  {gap}\n")
+        print(f"  {comp['title']} — {comp['licence']}")
+        print(f"  {comp['unlocks']}\n")
+        cmd = components.install_command(comp)
+        if cmd:
+            print(f"  Install it with:\n    {cmd}\n")
+            print("  or from the desktop: Settings → Channels → WhatsApp → Install")
+        else:
+            print(f"  {components.unavailable_reason(comp)}")
+        sys.exit(1)
+
+    print("  starting the WhatsApp Web bridge…")
+    try:
+        d = api("/api/whatsapp/link", method="POST")
+    except Exception as e:
+        print(f"could not reach the AgentOS server at {base}: {e}")
+        print("is it running?  systemctl --user status agentos.service")
+        sys.exit(1)
+
+    if d.get("state") == "ready":
+        print("✓ already linked — this machine is connected to WhatsApp.")
+        return
+    qr = d.get("qr") or ""
+    if not qr:
+        print(f"  no pairing code arrived: {d.get('error') or d.get('state') or 'unknown'}")
+        sys.exit(1)
+    art = _qr_ascii(qr)
+    print()
+    if art:
+        print(art)
+    else:
+        print("  (install `qrcode` to render this here: uv pip install qrcode)")
+        print("  pairing payload:\n")
+        print("   " + qr)
+    print("\n  On your phone: WhatsApp → Settings → Linked devices → Link a device,")
+    print("  and scan the code above. It expires after about 20 seconds; re-run")
+    print("  this command for a fresh one.\n")
+    print("  Then message this WhatsApp from your phone — the first chat to write")
+    print("  becomes the owner. Check with: bento channels whatsapp")
 
 
 def _whatsapp_webhook_note(cfg: dict):
@@ -585,11 +674,6 @@ def doctor(fix: bool = False, session: bool = False):
     else:
         warn("TrainForge not found — set trainforge.path or trainforge.repo to enable the Train pillar")
 
-    from . import hermes as hermesmod
-    hcli = hermesmod.cli_path()
-    if hcli:
-        ok(f"Hermes companion agent available ({'gateway running' if hermesmod.gateway_running() else 'installed'})")
-
     # 6. the desktop (AgentOS-as-the-DE)
     if sys.platform == "linux":
         from pathlib import Path as _P
@@ -775,6 +859,167 @@ def _doctor_session_handover(compmod, effective, runmode, ok, warn, bad):
         ok("the compositor accepts launch commands verbatim (.desktop Exec lines are safe)")
     except Exception as e:
         bad(f"the compositor rejected a launch command: {e}")
+
+
+def _quarantine_cli(args):
+    """Quarantine from a terminal.
+
+    Quarantine shipped with a GUI tab and nothing else, which meant that on a headless
+    box — over SSH, on a Pi — an app the OS had stopped could be seen in the logs and
+    never released. "Something stopped working and I cannot un-stop it" is the worst
+    shape for this feature to have, so the way out exists wherever the hold does.
+    """
+    import json as _json
+    import time
+    import urllib.request
+    from . import config as cfgmod
+
+    cfg = cfgmod.load_config()
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def api(path, method="GET", body=None):
+        data = _json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            base + path, method=method, data=data,
+            headers={"Content-Type": "application/json"} if data else {})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return _json.loads(r.read() or b"{}")
+
+    try:
+        if args.action == "release":
+            if not args.id:
+                print("which hold? run `bento quarantine list` for the ids")
+                sys.exit(2)
+            out = api(f"/api/quarantine/{args.id}/release", method="POST",
+                      body={"mode": args.mode})
+            if out.get("error"):
+                print(out["error"])
+                sys.exit(1)
+            print({"once": "✓ released — still watched",
+                   "forever": "✓ allowed forever — recorded as your decision",
+                   "deleted": "✓ deleted"}[args.mode])
+            return
+
+        d = api("/api/quarantine?history=1")
+        held = d.get("held") or []
+        if args.action == "history":
+            rows = [r for r in (d.get("history") or []) if r.get("released_at")]
+            if not rows:
+                print("Nothing has been released yet.")
+                return
+            for r in rows:
+                when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created_at"]))
+                print(f"  {when}  {r.get('label') or r.get('principal_id')} "
+                      f"({r.get('principal_kind')}) → {r.get('release_mode')} "
+                      f"by {r.get('released_by') or 'user'}")
+            return
+
+        if not held:
+            print("Nothing is quarantined.")
+            print("\nIf an app, agent or flow starts calling in a loop, the OS holds it")
+            print("and it shows up here with the numbers that justified the hold.")
+            return
+        for q in held:
+            ev = q.get("evidence") or {}
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(q["created_at"]))
+            print(f"\n  {q['id']}  {q.get('label') or q.get('principal_id')} "
+                  f"({q.get('principal_kind')}) — held {when}")
+            print(f"    {q.get('reason', '')}")
+            if ev.get("count"):
+                kind = "model" if ev.get("class") == "llm" else "tool"
+                print(f"    {ev['count']} {kind} calls in {round(ev.get('window', 0))}s "
+                      f"— the limit is {ev.get('allowed')}")
+        print("\n  bento quarantine release <id> --mode once|forever|deleted")
+    except Exception as e:
+        print(f"could not reach the AgentOS server at {base}: {e}")
+        print("is it running?  systemctl --user status agentos.service")
+        sys.exit(1)
+
+
+def _mcp_cli(args):
+    """MCP servers from a terminal — the TUI/headless face of the Store.
+
+    This is not a convenience wrapper on the GUI. A machine with no screen is the
+    case OAuth is hardest for: the consent page has to be opened *somewhere else*,
+    so `connect` prints the URL instead of assuming a browser exists here, and the
+    callback is served over HTTP so finishing it from a laptop works. Set
+    `mcp_oauth.redirect_base` in the config when this box is not reachable at
+    127.0.0.1 from wherever you will open that link.
+    """
+    import json as _json
+    import urllib.request
+    from . import config as cfgmod
+    from . import mcp_catalog
+
+    cfg = cfgmod.load_config()
+    base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+
+    def api(path, method="GET"):
+        req = urllib.request.Request(base + path, method=method)
+        with urllib.request.urlopen(req, timeout=90) as r:
+            return _json.loads(r.read() or b"{}")
+
+    if args.action == "catalog":
+        by_cat: dict[str, list] = {}
+        for c in mcp_catalog.all_candidates():
+            by_cat.setdefault(c["category_title"], []).append(c)
+        for title, entries in by_cat.items():
+            print(f"\n{title}")
+            for c in entries:
+                print(f"  {c['key']:<12} {c['description']}")
+        print("\n  bento mcp add <key>        add it and start sign-in")
+        print("  bento mcp connect <name>   sign in (or sign in again)")
+        return
+
+    if args.action in ("add", "connect", "disconnect") and not args.name:
+        print(f"which server? try: bento mcp {args.action} canva")
+        sys.exit(2)
+
+    try:
+        if args.action == "list":
+            for s in api("/api/mcp").get("servers", []):
+                mark = {"connected": "✓", "authorizing": "…"}.get(s["status"], "✗")
+                extra = ""
+                if s.get("auth") == "oauth" and not s.get("authorized"):
+                    extra = "  — not signed in: bento mcp connect " + s["name"]
+                print(f"  {mark} {s['name']:<18} {s['status']:<12}"
+                      f"{len(s.get('tools') or [])} tools{extra}")
+            return
+
+        if args.action == "disconnect":
+            api(f"/api/mcp/oauth/{args.name}", method="DELETE")
+            print(f"✓ signed out of {args.name}")
+            return
+
+        name = args.name
+        if args.action == "add":
+            cand = mcp_catalog.get(args.name)
+            if not cand:
+                print(f"'{args.name}' is not in the curated catalogue — "
+                      f"see: bento mcp catalog")
+                sys.exit(2)
+            req = urllib.request.Request(
+                base + "/api/store/mcp/install", method="POST",
+                data=_json.dumps({"registry_name": cand["registry_name"]}).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=90) as r:
+                name = _json.loads(r.read()).get("name", args.name)
+            print(f"✓ added {name}")
+
+        out = api(f"/api/mcp/oauth/{name}/connect", method="POST")
+        if out.get("url"):
+            print("\nOpen this to sign in — any browser, on any machine that can reach"
+                  "\nthis one. AgentOS is waiting for you to finish:\n")
+            print("  " + out["url"] + "\n")
+            print("Then: bento mcp list")
+        elif out.get("authorized"):
+            print(f"{name} is already signed in.")
+        else:
+            print(f"{name} did not ask for a sign-in — check `bento mcp list` for its error.")
+    except Exception as e:
+        print(f"could not reach the AgentOS server at {base}: {e}")
+        print("is it running?  systemctl --user status agentos.service")
+        sys.exit(1)
 
 
 def _apps_cli(args):
@@ -1353,7 +1598,7 @@ def main():
     p_eval.add_argument("--json", action="store_true", help="print the raw report")
 
     p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
-    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "hermes", "off"],
+    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
     p_del = sub.add_parser("delegate", help="hand a task to an executor (Claude Code) and stream it here")
@@ -1411,6 +1656,11 @@ def main():
                         help="how far to trust it: inherit | read_only | ask | full")
     # Telegram needs one value, WhatsApp needs four. Without this, configuring a
     # channel is a GUI-only act — which is exactly backwards for a headless machine.
+    p_chan.add_argument("--pair", action="store_true",
+                        help="whatsapp: link this machine by scanning a QR code "
+                             "(the Baileys bridge — no Meta account needed)")
+    p_chan.add_argument("--unpair", action="store_true",
+                        help="whatsapp: unlink the device and forget the paired chat")
     p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
                              "(repeatable; `agentos channels <id>` lists the fields it needs)")
@@ -1486,6 +1736,22 @@ def main():
                         choices=["list", "search", "install", "remove"])
     p_apps.add_argument("name", nargs="?", default="", help="query, or the package to act on")
     p_apps.add_argument("--backend", default="", help="flatpak, apt, dnf or pacman")
+
+    p_mcp = sub.add_parser("mcp", help="MCP servers — what is connected, and add the "
+                                       "first-party ones (Canva, Higgsfield, Notion…)")
+    p_mcp.add_argument("action", nargs="?", default="list",
+                       choices=["list", "catalog", "add", "connect", "disconnect"])
+    p_mcp.add_argument("name", nargs="?", default="",
+                       help="with add: a catalogue key (canva, higgsfield…); "
+                            "otherwise a configured server name")
+
+    p_quar = sub.add_parser("quarantine",
+                            help="what the OS stopped for running away, and let it go again")
+    p_quar.add_argument("action", nargs="?", default="list",
+                        choices=["list", "history", "release"])
+    p_quar.add_argument("id", nargs="?", default="", help="with release: the hold id")
+    p_quar.add_argument("--mode", default="once", choices=["once", "forever", "deleted"],
+                        help="once (still watched), forever (an exemption), deleted")
 
     p_rd = sub.add_parser("remote-desktop",
                           help="the browser remote desktop — use the real screen from a phone")
@@ -1570,6 +1836,10 @@ def main():
         _remote_cli(args)
     elif args.cmd == "apps":
         _apps_cli(args)
+    elif args.cmd == "mcp":
+        _mcp_cli(args)
+    elif args.cmd == "quarantine":
+        _quarantine_cli(args)
     elif args.cmd == "remote-desktop":
         _remote_desktop_cli(args)
     elif args.cmd == "session":
