@@ -680,6 +680,21 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   text-overflow:ellipsis;white-space:nowrap}
 .modelchip:hover{color:var(--txt);border-color:var(--acc)}
 .modelchip.engine{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+
+/* ---- Docs: ask the manual ----
+   The box sits above the page rather than in a side panel, because the answer
+   and the page it cites are the same subject and should be read together. */
+.doc-ask{display:flex;gap:8px;padding:12px 24px 0;flex:none}
+.doc-ask input{flex:1;min-width:0;background:var(--bg2);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:9px 12px;color:inherit;font-size:var(--fs-md)}
+.doc-ask input:focus{outline:none;border-color:var(--acc)}
+.doc-ask button{flex:none;padding:9px 16px;border-radius:var(--r-md);
+  background:var(--acc);color:#04201c;font-weight:600}
+.doc-ans{display:none;margin:10px 24px 0;padding:12px 14px;flex:none;max-height:38%;overflow:auto;
+  border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:var(--r-md);
+  background:var(--bg2)}
+.doc-ans.on{display:block}
+.doc-ans .mf-user{margin-bottom:8px}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -9022,7 +9037,7 @@ async function flwSave(){
 }
 
 /* ================= docs app ================= */
-let docsCur='';
+let docsCur='', DOCS_ASK=null;
 async function renderDocs(body){
   const d=await fetch('/api/docs').then(r=>r.json());
   if(!d.docs.length){body.innerHTML='<div class="pad"><p class="mut">No documentation found on this install.</p></div>';return}
@@ -9032,11 +9047,46 @@ async function renderDocs(body){
   const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
   body.innerHTML=`<div style="display:flex;height:100%;min-height:0">
     <div class="doc-nav">${items}</div>
-    <div style="flex:1;overflow:auto;padding:16px 24px" class="docbody">${md(doc.content||'(not found)')}</div></div>`;
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="doc-ask">
+        <input id="doc-q" placeholder="Ask about this OS — answered from these pages, with the page named">
+        <button id="doc-go">Ask</button>
+      </div>
+      <div id="doc-ans" class="doc-ans"></div>
+      <div style="flex:1;overflow:auto;padding:16px 24px" class="docbody">${md(doc.content||'(not found)')}</div>
+    </div></div>`;
   // relative .md links navigate inside the Docs app
   body.querySelectorAll('a.doclink').forEach(a=>a.onclick=e=>{
     e.preventDefault();docsCur=a.dataset.doc.split('#')[0];refreshApp('docs');
   });
+  const q=body.querySelector('#doc-q');
+  body.querySelector('#doc-go').onclick=()=>docsAsk(q.value);
+  q.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();docsAsk(q.value)}});
+}
+/* Ask the manual. Deliberately an AGENT turn with `search_docs`, not a one-shot
+   "stuff the top 5 chunks into a prompt": a real question ("why did my scheduled
+   flow stop delegating?") is answered from two or three pages that no single
+   similarity search returns together, and the agent can search again with better
+   words when the first pass misses. The reply names the page, so the answer is
+   checkable against the thing it came from — which is the whole point of having
+   the manual on disk rather than in a model's memory. */
+function docsAsk(text){
+  text=(text||'').trim(); if(!text)return;
+  const box=$('#doc-ans'); if(!box)return;
+  box.classList.add('on');
+  box.innerHTML=`<div class="mf-user">${esc(text)}</div>`;
+  const q=$('#doc-q'); if(q)q.value='';
+  const sink=miniFeed(box,{scrollEl:box,showThinking:false});
+  agentTurn({text,cid:DOCS_ASK,origin:'copilot:docs',title:'✦ Docs',
+    context:['You are answering a question about AgentOS itself, from inside its Docs app.',
+      `The user is reading ${docsCur}.`,
+      'ALWAYS call search_docs first and answer from what it returns — this build\'s',
+      'behaviour is what the manual says, not what a similar project does. Search again',
+      'with different words if the first pass misses. Name the page you used (e.g.',
+      '"see security.md"). If the manual genuinely does not cover it, say so plainly',
+      'rather than filling the gap from memory. Two or three sentences unless asked for more.'
+    ].join('\n'),
+    sink,onCid:id=>{DOCS_ASK=id}});
 }
 
 /* ================= first-run setup wizard (agent-led) =================

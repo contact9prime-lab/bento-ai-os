@@ -1,5 +1,5 @@
 /* ================= docs app ================= */
-let docsCur='';
+let docsCur='', DOCS_ASK=null;
 async function renderDocs(body){
   const d=await fetch('/api/docs').then(r=>r.json());
   if(!d.docs.length){body.innerHTML='<div class="pad"><p class="mut">No documentation found on this install.</p></div>';return}
@@ -9,11 +9,46 @@ async function renderDocs(body){
   const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
   body.innerHTML=`<div style="display:flex;height:100%;min-height:0">
     <div class="doc-nav">${items}</div>
-    <div style="flex:1;overflow:auto;padding:16px 24px" class="docbody">${md(doc.content||'(not found)')}</div></div>`;
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="doc-ask">
+        <input id="doc-q" placeholder="Ask about this OS — answered from these pages, with the page named">
+        <button id="doc-go">Ask</button>
+      </div>
+      <div id="doc-ans" class="doc-ans"></div>
+      <div style="flex:1;overflow:auto;padding:16px 24px" class="docbody">${md(doc.content||'(not found)')}</div>
+    </div></div>`;
   // relative .md links navigate inside the Docs app
   body.querySelectorAll('a.doclink').forEach(a=>a.onclick=e=>{
     e.preventDefault();docsCur=a.dataset.doc.split('#')[0];refreshApp('docs');
   });
+  const q=body.querySelector('#doc-q');
+  body.querySelector('#doc-go').onclick=()=>docsAsk(q.value);
+  q.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();docsAsk(q.value)}});
+}
+/* Ask the manual. Deliberately an AGENT turn with `search_docs`, not a one-shot
+   "stuff the top 5 chunks into a prompt": a real question ("why did my scheduled
+   flow stop delegating?") is answered from two or three pages that no single
+   similarity search returns together, and the agent can search again with better
+   words when the first pass misses. The reply names the page, so the answer is
+   checkable against the thing it came from — which is the whole point of having
+   the manual on disk rather than in a model's memory. */
+function docsAsk(text){
+  text=(text||'').trim(); if(!text)return;
+  const box=$('#doc-ans'); if(!box)return;
+  box.classList.add('on');
+  box.innerHTML=`<div class="mf-user">${esc(text)}</div>`;
+  const q=$('#doc-q'); if(q)q.value='';
+  const sink=miniFeed(box,{scrollEl:box,showThinking:false});
+  agentTurn({text,cid:DOCS_ASK,origin:'copilot:docs',title:'✦ Docs',
+    context:['You are answering a question about AgentOS itself, from inside its Docs app.',
+      `The user is reading ${docsCur}.`,
+      'ALWAYS call search_docs first and answer from what it returns — this build\'s',
+      'behaviour is what the manual says, not what a similar project does. Search again',
+      'with different words if the first pass misses. Name the page you used (e.g.',
+      '"see security.md"). If the manual genuinely does not cover it, say so plainly',
+      'rather than filling the gap from memory. Two or three sentences unless asked for more.'
+    ].join('\n'),
+    sink,onCid:id=>{DOCS_ASK=id}});
 }
 
 /* ================= first-run setup wizard (agent-led) =================

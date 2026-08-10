@@ -183,3 +183,18 @@
   text-overflow:ellipsis;white-space:nowrap}
 .modelchip:hover{color:var(--txt);border-color:var(--acc)}
 .modelchip.engine{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+
+/* ---- Docs: ask the manual ----
+   The box sits above the page rather than in a side panel, because the answer
+   and the page it cites are the same subject and should be read together. */
+.doc-ask{display:flex;gap:8px;padding:12px 24px 0;flex:none}
+.doc-ask input{flex:1;min-width:0;background:var(--bg2);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:9px 12px;color:inherit;font-size:var(--fs-md)}
+.doc-ask input:focus{outline:none;border-color:var(--acc)}
+.doc-ask button{flex:none;padding:9px 16px;border-radius:var(--r-md);
+  background:var(--acc);color:#04201c;font-weight:600}
+.doc-ans{display:none;margin:10px 24px 0;padding:12px 14px;flex:none;max-height:38%;overflow:auto;
+  border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:var(--r-md);
+  background:var(--bg2)}
+.doc-ans.on{display:block}
+.doc-ans .mf-user{margin-bottom:8px}

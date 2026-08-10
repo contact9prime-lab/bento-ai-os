@@ -1494,6 +1494,29 @@ class Toolbox:
                      "you cannot enable it yourself, and a test run works before then.")
         return "\n".join(lines)
 
+    async def search_docs(self, query: str, limit: int = 6) -> str:
+        """Retrieve from AgentOS's own manual so an answer about this OS is grounded
+        in what this build actually does, rather than in the model's memory of a
+        project it has never read.
+
+        Agentic rather than one-shot: the model decides what to look up, reads the
+        passages, and searches again with better words if the first pass missed. It
+        gets file names back precisely so it can cite them — an unsourced answer
+        about a permission model is worse than no answer.
+        """
+        from . import search as searchmod
+        hits = await searchmod.query(self.cfg, self.store, query, limit=max(1, min(12, limit)))
+        docs = [h for h in hits if h.get("kind") == "doc"]
+        if not docs:
+            return (f"[no match] Nothing in the manual matches “{query}”. Try the words the "
+                    f"docs would use, or say plainly that this is not documented.")
+        out = []
+        for h in docs:
+            name = Path(h["path"]).name
+            out.append(f"— {name} (score {h['score']})\n{h['snippet']}")
+        return ("Passages from the AgentOS manual. Cite the file you used, e.g. “see "
+                "security.md”:\n\n" + "\n\n".join(out))
+
     async def create_subagent(self, name: str, soul: str, tools: list | None = None,
                               skills: list | None = None, model: str = "",
                               max_steps: int = 12, max_seconds: int = 300) -> str:
@@ -3175,6 +3198,24 @@ TOOL_SCHEMAS = [
                 "content": {"type": "string", "description": "The full procedure in markdown."},
             },
             "required": ["name", "description", "content"],
+        },
+    },
+    {
+        "name": "search_docs",
+        "description": "Search AgentOS's OWN manual (the Docs app) and get back the passages that "
+                       "match, with the file each came from. Use it before answering any question "
+                       "about how THIS system works — permissions, grants, flows, channels, "
+                       "executors, the session UI, configuration — instead of answering from "
+                       "memory: this build's behaviour is what the manual says, not what a similar "
+                       "project did. Search again with different words if the first pass misses, "
+                       "and cite the file you used.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What you want to know, in the words the docs would use."},
+                "limit": {"type": "integer", "description": "How many passages (default 6)."},
+            },
+            "required": ["query"],
         },
     },
     {

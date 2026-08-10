@@ -4,6 +4,8 @@ import asyncio
 import os
 import tempfile
 
+import pytest
+
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 
 from agentos import search, knowledge          # noqa: E402
@@ -14,6 +16,16 @@ def _cfg(tmp_path):
     ws = tmp_path / "ws"
     ws.mkdir(exist_ok=True)
     return {"workspace": str(ws)}, ws
+
+
+@pytest.fixture(autouse=True)
+def _only_the_workspace(monkeypatch):
+    """These tests are about indexing mechanics — chunking, mtime, eviction — so
+    they count rows and need a corpus they control. The shipped manual is a real
+    part of the corpus (see test_the_manual_is_part_of_the_corpus below); it just
+    is not what any of these are measuring."""
+    monkeypatch.setattr(search, "shipped_docs_dir", lambda: None)
+
 
 
 def test_refresh_indexes_and_reindexes_on_mtime(tmp_path, monkeypatch):

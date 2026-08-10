@@ -39,12 +39,28 @@ def _ensure_table(store) -> None:
     store.db.commit()
 
 
+def shipped_docs_dir() -> Path | None:
+    """The manual that ships with AgentOS (`docs/`), wherever it landed."""
+    for cand in (Path(__file__).parent / "docs",          # packaged wheel
+                 Path(__file__).parent.parent / "docs"):  # repo checkout
+        if cand.is_dir():
+            return cand
+    return None
+
+
 def _corpus_dirs(cfg: dict) -> list[Path]:
     dirs = []
     ws = cfg.get("workspace")
     if ws:
         dirs.append(Path(ws).expanduser())
     dirs.append(cfgmod.AGENTOS_HOME / "docs")
+    # The OS's own manual. It was the one corpus missing, which is why "how do I
+    # scope a grant to Telegram?" could only ever be answered from the model's
+    # memory of a project it has never read — the answer is in docs/security.md,
+    # on this disk, and now it is retrievable like anything else.
+    shipped = shipped_docs_dir()
+    if shipped:
+        dirs.append(shipped)
     return [d for d in dirs if d.is_dir()]
 
 
