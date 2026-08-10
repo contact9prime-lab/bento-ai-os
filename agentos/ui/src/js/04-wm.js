@@ -13,7 +13,9 @@ function openApp(id,opts){
     if(w){ if(w.desk!==curDesk){w.desk=curDesk;applyDeskVisibility()} if(w.min)restoreWin(w); focusWin(w); return w; }
   }
   dockBounce(id);
-  return createWin(app);
+  const w=createWin(app);
+  sessionSave();   // the arrangement changed
+  return w;
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
 /* ---- where a window opens ------------------------------------------------
@@ -165,6 +167,7 @@ document.addEventListener('pointermove',e=>{
 function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||'';
   if(typeof buildAppMenus==='function')buildAppMenus()}
 function minimizeWin(w){
+  sessionSave();
   w.min=true;w.tb.classList.add('mini');w.tb.classList.remove('on');
   zoomWin(w.el,w.id,-1).then(()=>{if(w.min)w.el.style.display='none'});
   // hand focus to the topmost remaining window
@@ -173,6 +176,7 @@ function minimizeWin(w){
   applyWindowActivity();       // nothing to see — stop this window's periodic work
 }
 function restoreWin(w){
+  sessionSave();
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
   applyWindowActivity();       // and back to work, refreshing on the way in
@@ -180,6 +184,7 @@ function restoreWin(w){
   if(typeof buildDock==='function')buildDock();
 }
 function toggleMax(w){
+  sessionSave();
   flipWin(w.el,()=>{
     if(w.max){w.el.classList.remove('maxed');w.max=false;
       if(w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;w.el.style.width=w.prev.w;w.el.style.height=w.prev.h}}
@@ -269,6 +274,7 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  sessionSave();
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();

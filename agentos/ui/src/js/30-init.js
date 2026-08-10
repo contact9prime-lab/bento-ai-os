@@ -88,7 +88,10 @@ connect();
   const wait=Math.max(0,650-(performance.now()-t0));   // let the mark breathe — no sub-frame flash
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
-    if($('#setup-wiz'))return;
+    if($('#setup-wiz'))return;      // a first run has no desktop to bring back
+    // Bring back the desktop this page had before it reloaded. After the splash,
+    // so eight windows do not animate in behind it, and never during setup.
+    try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}
     // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);

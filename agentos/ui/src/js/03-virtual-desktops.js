@@ -37,6 +37,7 @@ function applyDeskVisibility(){
   applyWindowActivity();   // windows on the desktops you left stop working until you come back
 }
 function switchDesk(n){
+  if(typeof sessionSave==='function')sessionSave();
   if(n===curDesk)return;
   const dir=n>curDesk?1:-1;
   // outgoing windows slide away, incoming slide in from the travel direction

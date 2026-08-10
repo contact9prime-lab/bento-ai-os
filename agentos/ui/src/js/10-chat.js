@@ -33,7 +33,8 @@ function renderChat(body){
   feed=$('#feed');chatEl=$('#chat');input=$('#input');sendBtn=$('#send');
   sendBtn.onclick=send;
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
-  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend()});
+  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend();
+    draftSave(currentConv,input.value)});   // a half-typed message is work too
   input.addEventListener('paste',e=>{
     const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
     if(!items.length)return;
@@ -55,9 +56,20 @@ function renderChat(body){
      it. Kept as a var so the old onchange path has nothing to bind to. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
   loadModels();loadConfig();loadConvs();
+  restoreDraft();
   if(currentConv)openConv(currentConv);else showWelcome();
   setRunning(RUNNING.has(currentConv));
   renderQueue();
+}
+/* The composer's unsent text, per conversation. Restored when the window opens
+   and when you switch back to a thread you were mid-sentence in. */
+function restoreDraft(cid){
+  if(!input)return;
+  const d=draftLoad(cid===undefined?currentConv:cid);
+  if(!d)  {input.value='';syncSend();return}
+  input.value=d;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';
+  syncSend();
 }
 function setRunning(r){running=r;
   $('#spin').classList.toggle('on',r);
@@ -149,6 +161,7 @@ function send(){
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
+  draftClear(currentConv);
   input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
@@ -223,7 +236,9 @@ async function loadConvs(){
   });
 }
 async function openConv(cid){
+  if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
+  restoreDraft(cid);
   const r=await fetch('/api/conversations/'+cid);const d=await r.json();
   if(!feed)return;
   curBody=null;curThink=null;curText='';
