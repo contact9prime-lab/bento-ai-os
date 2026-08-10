@@ -112,14 +112,22 @@ def can_apply(cfg: dict) -> tuple[bool, str]:
     ok, _ = _run(["git", "--version"])
     if not ok:
         return False, "git is not available on this machine."
-    ok, out = _run(["git", "status", "--porcelain"], cwd=root)
+    # `--untracked-files=no` matters more than it looks. An UNTRACKED file is not
+    # work a fast-forward can clobber — git will not touch it — but almost every
+    # real checkout has some: __pycache__, an editor backup, a stray log, a tool's
+    # dotfolder. Counting those as "uncommitted changes" made the machine this was
+    # written on permanently un-updatable, and it would have done the same to most
+    # installs. If an incoming commit does add a file at that path the merge fails
+    # on its own, cleanly, having changed nothing — which is the honest place for
+    # that collision to be reported.
+    ok, out = _run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root)
     if not ok:
         return False, f"could not read the checkout: {out[:200]}"
     if out.strip():
         n = len(out.strip().splitlines())
-        return False, (f"There are {n} uncommitted change(s) in {root}. Updating would "
-                       f"pull on top of your own work, so it is refused — commit or stash "
-                       f"them first.")
+        return False, (f"There are {n} uncommitted change(s) to tracked files in {root}. "
+                       f"Updating would pull on top of your own work, so it is refused — "
+                       f"commit or stash them first.")
     ok, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     want = conf(cfg).get("branch") or DEFAULT_BRANCH
     if not ok or branch.strip() != want:

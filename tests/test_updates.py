@@ -158,7 +158,7 @@ def test_it_refuses_to_pull_over_your_own_work(tmp_path, monkeypatch):
     r = _repo(tmp_path, dirty=True)
     monkeypatch.setattr(up, "install_dir", lambda: r)
     ok, why = up.can_apply({})
-    assert not ok and "uncommitted" in why and str(r) in why
+    assert not ok and "uncommitted change" in why and str(r) in why
 
 
 def test_it_refuses_on_a_different_branch(tmp_path, monkeypatch):
@@ -166,6 +166,19 @@ def test_it_refuses_on_a_different_branch(tmp_path, monkeypatch):
     monkeypatch.setattr(up, "install_dir", lambda: r)
     ok, why = up.can_apply({})
     assert not ok and "my-experiment" in why
+
+
+def test_an_untracked_file_does_not_block_an_update(tmp_path, monkeypatch):
+    """A fast-forward cannot clobber an untracked file, and almost every real
+    checkout has one — __pycache__, an editor backup, a tool's dotfolder. Treating
+    those as "uncommitted work" made the machine this was written on permanently
+    un-updatable."""
+    r = _repo(tmp_path)
+    (r / "notes.txt").write_text("mine")
+    (r / "__pycache__").mkdir()
+    monkeypatch.setattr(up, "install_dir", lambda: r)
+    ok, why = up.can_apply({})
+    assert ok, why
 
 
 def test_a_clean_checkout_on_the_right_branch_may_update(tmp_path, monkeypatch):
