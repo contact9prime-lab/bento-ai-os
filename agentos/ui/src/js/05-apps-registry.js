@@ -66,7 +66,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
-  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
+  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:520,h:620,desc:'Version, what is new, and system information',render:renderAbout},
 };
 
 /* ---- copilot context: one line about what each app is showing RIGHT NOW.

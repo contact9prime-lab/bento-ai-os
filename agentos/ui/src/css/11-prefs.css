@@ -68,3 +68,17 @@
 .rm-cmd{display:inline-block;margin-top:4px;padding:3px 7px;border-radius:6px;
   background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
   font-size:var(--fs-xs);word-break:break-all;max-width:100%}
+
+/* Settings → AI providers: the model chooser, its refresh and the way
+   through to the Model Manager, on one line. */
+.s-modelrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.s-modelrow select{min-width:200px;max-width:320px}
+
+/* About: which build this is, and what came with it. */
+.ab-ver{font-size:var(--fs-md);color:var(--dim);margin-top:4px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+.ab-ver b{color:var(--txt)}
+.ab-new{padding:1px 9px;border-radius:var(--r-full);font-size:var(--fs-xs);background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+.ab-log{text-align:left}
+.ab-entry{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;margin-bottom:8px;background:var(--bg2)}
+.ab-entry summary{cursor:pointer;font-weight:600;color:var(--txt);font-size:var(--fs-md)}
+.ab-entry .body{margin-top:8px;font-size:var(--fs-sm);line-height:1.6;color:var(--dim)}

@@ -1157,6 +1157,20 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .rm-cmd{display:inline-block;margin-top:4px;padding:3px 7px;border-radius:6px;
   background:var(--bg3,rgba(127,127,127,.12));border:1px solid var(--line);
   font-size:var(--fs-xs);word-break:break-all;max-width:100%}
+
+/* Settings → AI providers: the model chooser, its refresh and the way
+   through to the Model Manager, on one line. */
+.s-modelrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.s-modelrow select{min-width:200px;max-width:320px}
+
+/* About: which build this is, and what came with it. */
+.ab-ver{font-size:var(--fs-md);color:var(--dim);margin-top:4px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+.ab-ver b{color:var(--txt)}
+.ab-new{padding:1px 9px;border-radius:var(--r-full);font-size:var(--fs-xs);background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+.ab-log{text-align:left}
+.ab-entry{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;margin-bottom:8px;background:var(--bg2)}
+.ab-entry summary{cursor:pointer;font-weight:600;color:var(--txt);font-size:var(--fs-md)}
+.ab-entry .body{margin-top:8px;font-size:var(--fs-sm);line-height:1.6;color:var(--dim)}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -3174,6 +3188,7 @@ function applyDeskVisibility(){
   applyWindowActivity();   // windows on the desktops you left stop working until you come back
 }
 function switchDesk(n){
+  if(typeof sessionSave==='function')sessionSave();
   if(n===curDesk)return;
   const dir=n>curDesk?1:-1;
   // outgoing windows slide away, incoming slide in from the travel direction
@@ -3369,7 +3384,9 @@ function openApp(id,opts){
     if(w){ if(w.desk!==curDesk){w.desk=curDesk;applyDeskVisibility()} if(w.min)restoreWin(w); focusWin(w); return w; }
   }
   dockBounce(id);
-  return createWin(app);
+  const w=createWin(app);
+  sessionSave();   // the arrangement changed
+  return w;
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
 /* ---- where a window opens ------------------------------------------------
@@ -3521,6 +3538,7 @@ document.addEventListener('pointermove',e=>{
 function setMenubarApp(title){const el=$('#mbapp');if(el)el.textContent=title||'';
   if(typeof buildAppMenus==='function')buildAppMenus()}
 function minimizeWin(w){
+  sessionSave();
   w.min=true;w.tb.classList.add('mini');w.tb.classList.remove('on');
   zoomWin(w.el,w.id,-1).then(()=>{if(w.min)w.el.style.display='none'});
   // hand focus to the topmost remaining window
@@ -3529,6 +3547,7 @@ function minimizeWin(w){
   applyWindowActivity();       // nothing to see — stop this window's periodic work
 }
 function restoreWin(w){
+  sessionSave();
   w.min=false;w.el.style.display='';w.tb.classList.remove('mini');
   zoomWin(w.el,w.id,1);
   applyWindowActivity();       // and back to work, refreshing on the way in
@@ -3536,6 +3555,7 @@ function restoreWin(w){
   if(typeof buildDock==='function')buildDock();
 }
 function toggleMax(w){
+  sessionSave();
   flipWin(w.el,()=>{
     if(w.max){w.el.classList.remove('maxed');w.max=false;
       if(w.prev){w.el.style.left=w.prev.l;w.el.style.top=w.prev.t;w.el.style.width=w.prev.w;w.el.style.height=w.prev.h}}
@@ -3625,6 +3645,7 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  sessionSave();
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
@@ -4394,6 +4415,104 @@ function applyWindowActivity(){
 /* The page itself going to the background is the same thing as every window
    being hidden — and on a phone, switching apps is the common case. */
 document.addEventListener('visibilitychange',()=>applyWindowActivity());
+/* ================= the desktop you left =================
+   The shell is a page, and a page reloads. Until now a reload — Ctrl+R, a
+   deploy, waking a dead socket, and now an update — closed every window and
+   dropped you on an empty desktop. Window GEOMETRY was remembered per app, so
+   the pieces knew where to sit; nothing remembered that they were there at all.
+
+   That is the difference between "my desktop came back" and "my work is gone",
+   and it matters most exactly when the reload was not your idea. An update that
+   swept away eight open windows would be a worse feature than no update.
+
+   What is kept is the arrangement, not the contents: which apps were open, on
+   which desktop, minimised or maximised, and in what stacking order. Each app
+   restores its own contents the way it already does — a conversation from the
+   server, a folder from its own memory. Two things are deliberately not
+   restored: a Terminal's shell (the pty died with the connection, and pretending
+   otherwise would show a dead prompt) and anything a modal was in the middle of.
+
+   `var`, not `let`: the bundle is one script and earlier files reach in here. */
+var SESSION_KEY = 'session:desktop';
+var SESSION_TEXT = 'session:draft:';       // per-conversation composer drafts
+var _sessionT = null;
+var SESSION_RESTORING = false;
+
+/* Debounced: window moves fire continuously, and this is a localStorage write,
+   not a render. */
+function sessionSave() {
+  if (SESSION_RESTORING) return;           // restoring is not a user arrangement
+  clearTimeout(_sessionT);
+  _sessionT = setTimeout(sessionSaveNow, 400);
+}
+function sessionSaveNow() {
+  try {
+    const wins = [];
+    WM.wins.forEach(w => {
+      if (!w || !w.id || !APPS[w.id]) return;
+      wins.push({id: w.id, desk: w.desk || 1, min: !!w.min, max: !!w.max,
+                 z: +(w.el && w.el.style.zIndex) || 0});
+    });
+    wins.sort((a, b) => a.z - b.z);        // reopen bottom-up so the stack lands right
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      v: 1, at: Date.now(), desk: (typeof curDesk !== 'undefined' ? curDesk : 1), wins}));
+  } catch (e) {}
+}
+
+/* Reopen what was open. Never throws: one app that cannot start must not cost
+   you the other seven. */
+function sessionRestore() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') } catch (e) {}
+  if (!s || !Array.isArray(s.wins) || !s.wins.length) return 0;
+  SESSION_RESTORING = true;
+  let n = 0;
+  try {
+    s.wins.forEach(rec => {
+      try {
+        if (!APPS[rec.id]) return;         // an app that was uninstalled since
+        const w = openApp(rec.id);
+        if (!w) return;
+        n++;
+        if (rec.desk && rec.desk !== w.desk) w.desk = rec.desk;
+        if (rec.max && typeof toggleMax === 'function' && !w.max) toggleMax(w);
+        if (rec.min && typeof minimizeWin === 'function') minimizeWin(w);
+      } catch (e) {}
+    });
+    if (s.desk && typeof switchDesk === 'function' && s.desk !== curDesk) switchDesk(s.desk);
+    else if (typeof applyDeskVisibility === 'function') applyDeskVisibility();
+  } catch (e) {}
+  SESSION_RESTORING = false;
+  return n;
+}
+
+/* ---- composer drafts ----
+   A half-typed message is work too, and losing it to a reload is the small
+   version of the same complaint. Kept per conversation so switching chats does
+   not shuffle drafts between them, and cleared the moment it is sent. */
+function draftKey(cid) { return SESSION_TEXT + (cid || 'new') }
+function draftSave(cid, text) {
+  try {
+    if ((text || '').trim()) localStorage.setItem(draftKey(cid), text);
+    else localStorage.removeItem(draftKey(cid));
+  } catch (e) {}
+}
+function draftLoad(cid) {
+  try { return localStorage.getItem(draftKey(cid)) || '' } catch (e) { return '' }
+}
+function draftClear(cid) {
+  try { localStorage.removeItem(draftKey(cid)) } catch (e) {}
+}
+
+/* A reload can arrive with no warning (a deploy, an update, a crashed socket),
+   so the last state is written on the way out as well as on every change. */
+window.addEventListener('beforeunload', () => {
+  try {
+    sessionSaveNow();
+    if (typeof currentConv !== 'undefined' && typeof input !== 'undefined' && input)
+      draftSave(currentConv, input.value);
+  } catch (e) {}
+});
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -4462,7 +4581,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
-  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:400,h:330,desc:'System information',render:renderAbout},
+  about:{id:'about',title:'About Bento Box AI',icon:'▲',w:520,h:620,desc:'Version, what is new, and system information',render:renderAbout},
 };
 
 /* ---- copilot context: one line about what each app is showing RIGHT NOW.
@@ -6306,6 +6425,9 @@ function handle(ev){
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
+    case 'update': showUpdate(ev); break;            // a newer version exists; installing still asks
+    case 'update_progress': updateProgress(ev); break;
+    case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':
@@ -6468,7 +6590,8 @@ function renderChat(body){
   feed=$('#feed');chatEl=$('#chat');input=$('#input');sendBtn=$('#send');
   sendBtn.onclick=send;
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
-  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend()});
+  input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend();
+    draftSave(currentConv,input.value)});   // a half-typed message is work too
   input.addEventListener('paste',e=>{
     const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
     if(!items.length)return;
@@ -6490,9 +6613,20 @@ function renderChat(body){
      it. Kept as a var so the old onchange path has nothing to bind to. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
   loadModels();loadConfig();loadConvs();
+  restoreDraft();
   if(currentConv)openConv(currentConv);else showWelcome();
   setRunning(RUNNING.has(currentConv));
   renderQueue();
+}
+/* The composer's unsent text, per conversation. Restored when the window opens
+   and when you switch back to a thread you were mid-sentence in. */
+function restoreDraft(cid){
+  if(!input)return;
+  const d=draftLoad(cid===undefined?currentConv:cid);
+  if(!d)  {input.value='';syncSend();return}
+  input.value=d;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';
+  syncSend();
 }
 function setRunning(r){running=r;
   $('#spin').classList.toggle('on',r);
@@ -6584,6 +6718,7 @@ function send(){
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
+  draftClear(currentConv);
   input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
@@ -6658,7 +6793,9 @@ async function loadConvs(){
   });
 }
 async function openConv(cid){
+  if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
+  restoreDraft(cid);
   const r=await fetch('/api/conversations/'+cid);const d=await r.json();
   if(!feed)return;
   curBody=null;curThink=null;curText='';
@@ -6908,9 +7045,16 @@ function setTab(body,all){
     // wearing a different hat.
     P.push(pGroup('Answering', [
       pRow('This machine answers with',
-        `<select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>`,
+        `<span class="s-modelrow">
+           <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
+           <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
+           <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
+         </span>`,
         {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
-         f:'model default answers with picker which model'}),
+         f:'model default answers with picker which model refresh available'}),
+      pRow('Available', '<span id="s-model-count" class="mut">…</span>',
+        {desc:'Fetched from each enabled provider, not a list typed into config. Refresh after pulling a model or adding a key.',
+         f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
     P.push(pGroup('Local',[
@@ -7022,6 +7166,14 @@ function setTab(body,all){
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    P.push(pGroup('Version',[
+      pRow('This build','<span id="s-ver" class="mut">checking…</span>',
+        {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
+         f:'version update upgrade check for updates auto-update'}),
+      pRow('Check automatically',pSwitch('s-upd-on',true),
+        {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+    ],{f:'version updates'}));
+    setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
@@ -7063,10 +7215,47 @@ function settingsVoices(){
 /* The model picker in Settings → AI providers. Fetched rather than read from
    cfg, because what can answer is a live question — a provider's catalogue, the
    models Ollama has pulled, and any executor this machine forwards to. */
-async function paintModelPicker(){
+/* The version row. Answers from the last check so opening Settings is instant;
+   "Check now" is the one that goes and looks. */
+async function paintVersion(check){
+  const el=document.getElementById('s-ver'); if(!el)return;
+  el.textContent='checking…';
+  let d={};
+  try{d=await (await fetch('/api/update'+(check?'?check=true':''))).json()}catch(e){
+    el.textContent='could not check';return}
+  const sw=document.getElementById('s-upd-on'); if(sw)sw.checked=d.enabled!==false;
+  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
+  if(d.update_available){
+    // Never a dead button: when an update cannot be installed the reason is the
+    // sentence, not a control that fails when pressed.
+    el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+      +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
+                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn;
+  }else{
+    el.innerHTML=`<b>${esc(d.current||'?')}</b> `
+      +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;
+  }
+}
+async function updateNow(btn){
+  btn.disabled=true;btn.textContent='Updating…';
+  try{
+    const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
+  }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
+}
+async function paintModelPicker(refresh){
   const sel=document.getElementById('s-model'); if(!sel)return;
+  const btn=document.getElementById('s-model-refresh');
+  const count=document.getElementById('s-model-count');
+  if(refresh&&btn){btn.disabled=true;btn.textContent='↻ Asking…'}
+  if(refresh&&count)count.textContent='asking each provider…';
   let d={models:[],default:'',engines:[]};
-  try{d=await (await fetch('/api/models')).json()}catch(e){}
+  // A refresh is a real round trip to every enabled provider, so it is asked for
+  // rather than done on every repaint — a Settings tab that stalled behind three
+  // network calls would be worse than a list that is a minute old.
+  try{d=await (await fetch('/api/models'+(refresh?'?t='+Date.now():''))).json()}catch(e){}
+  if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}
   const cur=(cfg&&cfg.default_model)||d.default||'';
   const groups={};
   (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
@@ -7080,6 +7269,16 @@ async function paintModelPicker(){
   // is answering.
   if(cur&&!(d.models||[]).some(m=>m.id===cur))
     sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
+  // What was actually found, per provider — the answer to "did adding that key
+  // work?" and "did my pull land?", which the picker alone cannot give.
+  if(count){
+    const n=(d.models||[]).length;
+    const per=Object.keys(groups).sort().map(k=>`${esc(k)} ${groups[k].length}`).join(' · ');
+    const eng=(d.engines||[]).filter(e=>e.available).map(e=>esc(e.name));
+    count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'} — ${per}`
+                     :`none found — enable a provider below, or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
+    if(eng.length)count.innerHTML+=` · engines: ${eng.join(', ')}`;
+  }
 }
 async function pickModel(id){
   if(!id)return;
@@ -7133,6 +7332,7 @@ async function saveSettings(){
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
   if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
   if(document.getElementById('s-exec-on')!==null){
@@ -12438,6 +12638,62 @@ function showBriefing(ev){
      <div class="pc-text">${esc(ev.text||'')}</div>`,
     ev.conversation_id?()=>{openApp('chat');openConv(ev.conversation_id)}:null);
 }
+/* ---- a new version is available ----
+   Not auto-dismissed like the other cards: an update is a decision, and one that
+   vanished after 45 seconds would be one people never quite get round to. The
+   three answers are all real — install it, remind me later (say nothing and it
+   comes back next cycle), or skip this version for good. */
+function showUpdate(ev){
+  const old=document.getElementById('updcard');if(old)old.remove();
+  const c=document.createElement('div');c.id='updcard';c.className='procard';
+  c.innerHTML=`<div class="pc-head">▲ Update available — ${esc(ev.latest||'')}</div>
+    <div class="pc-text">You are running ${esc(ev.current||'')}.${ev.notes?' ':''}
+      ${ev.notes?`<span class="mut">${esc(String(ev.notes).split('\n').slice(1,4).join(' ').slice(0,180))}</span>`:''}</div>
+    <div id="upd-prog" class="pc-text mut" style="display:none"></div>
+    <div class="pc-actions">
+      <button class="pc-go">Update now</button>
+      <button class="pc-x">Later</button>
+      <button class="pc-skip endbtn">Skip ${esc(ev.latest||'')}</button></div>`;
+  $('#desktop').appendChild(c);popIn(c,{origin:'bottom right'});
+  c.querySelector('.pc-x').onclick=()=>popOut(c,()=>c.remove());
+  c.querySelector('.pc-skip').onclick=()=>{
+    fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({skip:ev.latest})});
+    popOut(c,()=>c.remove());toast('skipping '+ev.latest);
+  };
+  c.querySelector('.pc-go').onclick=()=>runUpdate(c);
+}
+function runUpdate(card){
+  const go=card.querySelector('.pc-go'),prog=card.querySelector('#upd-prog');
+  go.disabled=true;go.textContent='Updating…';
+  card.querySelector('.pc-x').style.display='none';
+  card.querySelector('.pc-skip').style.display='none';
+  prog.style.display='';prog.textContent='starting…';
+  // The card must outlive the restart it causes: the server stops answering
+  // partway through, so the reply may never arrive. The websocket's update_done
+  // is the real signal; this only reports a refusal we can still hear.
+  fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(r=>r.json()).then(d=>{if(!d.ok&&d.error)updateFailed(d)})
+    .catch(()=>{});
+}
+function updateProgress(ev){
+  const p=document.getElementById('upd-prog');
+  if(p){p.style.display='';p.textContent=ev.message||''}
+}
+function updateFailed(d){
+  const c=document.getElementById('updcard');
+  if(!c){toast('update failed: '+(d.error||''));return}
+  c.querySelector('#upd-prog').innerHTML=`<span style="color:var(--err)">${esc(d.error||'update failed')}</span>`;
+  const go=c.querySelector('.pc-go');go.disabled=false;go.textContent='Try again';
+  c.querySelector('.pc-x').style.display='';
+}
+function updateDone(ev){
+  if(!ev.ok){updateFailed(ev);return}
+  const c=document.getElementById('updcard');
+  if(c)c.querySelector('#upd-prog').textContent=
+    `updated to ${ev.version||''} — restarting, this page will come back on its own…`;
+  toast('updated to '+(ev.version||'the new version'));
+}
 function showSuggestion(ev){
   desktopCard('suggcard',
     `<div class="pc-head">${appIcon('chat',15)} ${esc(agentName())} has an idea</div>
@@ -14096,16 +14352,56 @@ async function renderTerminal(body,w){
 
 /* ================= about app ================= */
 function renderAbout(body){
-  body.innerHTML=`<div class="pad" style="text-align:center;padding-top:30px">
-    <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
-    <div style="font-size:20px;font-weight:800">AgentOS</div>
-    <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
-    <p class="mut" id="ab-info">…</p>
+  body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
+    <div style="text-align:center;padding-top:26px">
+      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
+      <div style="font-size:20px;font-weight:800">AgentOS</div>
+      <div id="ab-ver" class="ab-ver">…</div>
+      <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
+      <p class="mut" id="ab-info">…</p>
+    </div>
+    <div class="sect" style="margin-top:22px">What's new</div>
+    <div id="ab-log" class="ab-log mut">…</div>
   </div>`;
   fetch('/api/system').then(r=>r.json()).then(d=>{
     const el=$('#ab-info');if(!el)return;
     el.textContent=`${d.cores} CPU cores · ${fmtBytes(d.mem.total_kb*1024)} RAM · ${fmtBytes(d.disk.total)} disk`;
   }).catch(()=>{});
+  aboutVersion();
+}
+/* The version, whether there is a newer one, and what this build actually
+   contains. About is where people look for "which one am I running" — answering
+   only "AgentOS" was the version of that question nobody needed. The changelog
+   is read from disk, so it describes the code that is running rather than
+   whatever the website says. */
+async function aboutVersion(){
+  const v=$('#ab-ver'), log=$('#ab-log');
+  try{
+    const d=await (await fetch('/api/changelog?limit=4')).json();
+    if(v)v.innerHTML=`<b>${esc(d.version||'?')}</b>`;
+    if(log)log.innerHTML=(d.entries||[]).map(e=>
+      `<details class="ab-entry"${(d.entries||[])[0]===e?' open':''}>
+         <summary>${esc(e.title)}</summary>
+         <div class="body">${md(e.body||'')}</div></details>`).join('')
+      ||'<p class="mut">No changelog on this install.</p>';
+  }catch(e){ if(log)log.textContent='could not read the changelog' }
+  try{
+    const u=await (await fetch('/api/update')).json();
+    if(!v)return;
+    if(u.update_available)
+      v.innerHTML+=` <span class="ab-new">${esc(u.latest)} available</span>`
+        +` <button class="endbtn" onclick="openApp('settings');SETTAB='system';localStorage.setItem('settab','system');refreshApp('settings')">Update…</button>`;
+    else v.innerHTML+=` <span class="mut">· <a href="#" onclick="aboutCheck(this);return false">check for updates</a></span>`;
+  }catch(e){}
+}
+async function aboutCheck(a){
+  a.textContent='checking…';
+  try{
+    const u=await (await fetch('/api/update?check=true')).json();
+    a.parentElement.innerHTML=u.update_available
+      ? `· <b style="color:var(--acc)">${esc(u.latest)} available</b>`
+      : `· ${esc(u.error||'up to date')}`;
+  }catch(e){a.textContent='could not check'}
 }
 
 /* ================= omnibar: the always-present prompt bar =================
@@ -14993,7 +15289,10 @@ connect();
   const wait=Math.max(0,650-(performance.now()-t0));   // let the mark breathe — no sub-frame flash
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
-    if($('#setup-wiz'))return;
+    if($('#setup-wiz'))return;      // a first run has no desktop to bring back
+    // Bring back the desktop this page had before it reloaded. After the splash,
+    // so eight windows do not animate in behind it, and never during setup.
+    try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}
     // the prompt bar owns the caret from the first frame — the OS is ready to be told what to do
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);

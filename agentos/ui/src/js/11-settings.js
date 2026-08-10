@@ -90,9 +90,16 @@ function setTab(body,all){
     // wearing a different hat.
     P.push(pGroup('Answering', [
       pRow('This machine answers with',
-        `<select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>`,
+        `<span class="s-modelrow">
+           <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
+           <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
+           <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
+         </span>`,
         {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
-         f:'model default answers with picker which model'}),
+         f:'model default answers with picker which model refresh available'}),
+      pRow('Available', '<span id="s-model-count" class="mut">…</span>',
+        {desc:'Fetched from each enabled provider, not a list typed into config. Refresh after pulling a model or adding a key.',
+         f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
     P.push(pGroup('Local',[
@@ -204,6 +211,14 @@ function setTab(body,all){
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    P.push(pGroup('Version',[
+      pRow('This build','<span id="s-ver" class="mut">checking…</span>',
+        {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
+         f:'version update upgrade check for updates auto-update'}),
+      pRow('Check automatically',pSwitch('s-upd-on',true),
+        {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+    ],{f:'version updates'}));
+    setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
@@ -245,10 +260,47 @@ function settingsVoices(){
 /* The model picker in Settings → AI providers. Fetched rather than read from
    cfg, because what can answer is a live question — a provider's catalogue, the
    models Ollama has pulled, and any executor this machine forwards to. */
-async function paintModelPicker(){
+/* The version row. Answers from the last check so opening Settings is instant;
+   "Check now" is the one that goes and looks. */
+async function paintVersion(check){
+  const el=document.getElementById('s-ver'); if(!el)return;
+  el.textContent='checking…';
+  let d={};
+  try{d=await (await fetch('/api/update'+(check?'?check=true':''))).json()}catch(e){
+    el.textContent='could not check';return}
+  const sw=document.getElementById('s-upd-on'); if(sw)sw.checked=d.enabled!==false;
+  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
+  if(d.update_available){
+    // Never a dead button: when an update cannot be installed the reason is the
+    // sentence, not a control that fails when pressed.
+    el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+      +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
+                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn;
+  }else{
+    el.innerHTML=`<b>${esc(d.current||'?')}</b> `
+      +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;
+  }
+}
+async function updateNow(btn){
+  btn.disabled=true;btn.textContent='Updating…';
+  try{
+    const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
+  }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
+}
+async function paintModelPicker(refresh){
   const sel=document.getElementById('s-model'); if(!sel)return;
+  const btn=document.getElementById('s-model-refresh');
+  const count=document.getElementById('s-model-count');
+  if(refresh&&btn){btn.disabled=true;btn.textContent='↻ Asking…'}
+  if(refresh&&count)count.textContent='asking each provider…';
   let d={models:[],default:'',engines:[]};
-  try{d=await (await fetch('/api/models')).json()}catch(e){}
+  // A refresh is a real round trip to every enabled provider, so it is asked for
+  // rather than done on every repaint — a Settings tab that stalled behind three
+  // network calls would be worse than a list that is a minute old.
+  try{d=await (await fetch('/api/models'+(refresh?'?t='+Date.now():''))).json()}catch(e){}
+  if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}
   const cur=(cfg&&cfg.default_model)||d.default||'';
   const groups={};
   (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
@@ -262,6 +314,16 @@ async function paintModelPicker(){
   // is answering.
   if(cur&&!(d.models||[]).some(m=>m.id===cur))
     sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
+  // What was actually found, per provider — the answer to "did adding that key
+  // work?" and "did my pull land?", which the picker alone cannot give.
+  if(count){
+    const n=(d.models||[]).length;
+    const per=Object.keys(groups).sort().map(k=>`${esc(k)} ${groups[k].length}`).join(' · ');
+    const eng=(d.engines||[]).filter(e=>e.available).map(e=>esc(e.name));
+    count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'} — ${per}`
+                     :`none found — enable a provider below, or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
+    if(eng.length)count.innerHTML+=` · engines: ${eng.join(', ')}`;
+  }
 }
 async function pickModel(id){
   if(!id)return;
@@ -315,6 +377,7 @@ async function saveSettings(){
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
   if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
   if(document.getElementById('s-exec-on')!==null){

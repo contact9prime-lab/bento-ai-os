@@ -37,15 +37,55 @@ async function renderTerminal(body,w){
 
 /* ================= about app ================= */
 function renderAbout(body){
-  body.innerHTML=`<div class="pad" style="text-align:center;padding-top:30px">
-    <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
-    <div style="font-size:20px;font-weight:800">AgentOS</div>
-    <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
-    <p class="mut" id="ab-info">…</p>
+  body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
+    <div style="text-align:center;padding-top:26px">
+      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
+      <div style="font-size:20px;font-weight:800">AgentOS</div>
+      <div id="ab-ver" class="ab-ver">…</div>
+      <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
+      <p class="mut" id="ab-info">…</p>
+    </div>
+    <div class="sect" style="margin-top:22px">What's new</div>
+    <div id="ab-log" class="ab-log mut">…</div>
   </div>`;
   fetch('/api/system').then(r=>r.json()).then(d=>{
     const el=$('#ab-info');if(!el)return;
     el.textContent=`${d.cores} CPU cores · ${fmtBytes(d.mem.total_kb*1024)} RAM · ${fmtBytes(d.disk.total)} disk`;
   }).catch(()=>{});
+  aboutVersion();
+}
+/* The version, whether there is a newer one, and what this build actually
+   contains. About is where people look for "which one am I running" — answering
+   only "AgentOS" was the version of that question nobody needed. The changelog
+   is read from disk, so it describes the code that is running rather than
+   whatever the website says. */
+async function aboutVersion(){
+  const v=$('#ab-ver'), log=$('#ab-log');
+  try{
+    const d=await (await fetch('/api/changelog?limit=4')).json();
+    if(v)v.innerHTML=`<b>${esc(d.version||'?')}</b>`;
+    if(log)log.innerHTML=(d.entries||[]).map(e=>
+      `<details class="ab-entry"${(d.entries||[])[0]===e?' open':''}>
+         <summary>${esc(e.title)}</summary>
+         <div class="body">${md(e.body||'')}</div></details>`).join('')
+      ||'<p class="mut">No changelog on this install.</p>';
+  }catch(e){ if(log)log.textContent='could not read the changelog' }
+  try{
+    const u=await (await fetch('/api/update')).json();
+    if(!v)return;
+    if(u.update_available)
+      v.innerHTML+=` <span class="ab-new">${esc(u.latest)} available</span>`
+        +` <button class="endbtn" onclick="openApp('settings');SETTAB='system';localStorage.setItem('settab','system');refreshApp('settings')">Update…</button>`;
+    else v.innerHTML+=` <span class="mut">· <a href="#" onclick="aboutCheck(this);return false">check for updates</a></span>`;
+  }catch(e){}
+}
+async function aboutCheck(a){
+  a.textContent='checking…';
+  try{
+    const u=await (await fetch('/api/update?check=true')).json();
+    a.parentElement.innerHTML=u.update_available
+      ? `· <b style="color:var(--acc)">${esc(u.latest)} available</b>`
+      : `· ${esc(u.error||'up to date')}`;
+  }catch(e){a.textContent='could not check'}
 }
 
