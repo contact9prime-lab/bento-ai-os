@@ -189,8 +189,15 @@ phone that added AgentOS to its home screen months ago has that URL cached and a
 404 there reads as "remote access broke".
 
 What signing in does **not** do is sandbox somebody from the machine. An executor
-has their own data, and still has the Terminal and the agent's shell. Accounts are
-about whose memory is whose, not about containing a hostile user.
+has their own data, and still has the Terminal and the agent's shell — which means
+they can read another account's files on disk directly. So be precise about the
+boundary today: **accounts isolate co-workers who trust each other, not mutually
+distrusting tenants.** They keep each person's memory, channels and credentials
+their own, and keep honest people out of each other's data through the app; they
+do not contain a hostile insider who opens a shell. Making accounts a boundary
+against a hostile user is per-user OS isolation (a real uid, or a per-user
+sandbox) — the plan is `docs/design/tenant-isolation.md`, not a claim this feature
+makes yet.
 
 ## From a terminal
 

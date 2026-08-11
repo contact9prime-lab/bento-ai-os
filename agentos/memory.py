@@ -1236,8 +1236,14 @@ class Store:
     #: what to do with a space's contents when it is deleted
     SPACE_CONTENTS = ("archive", "global", "delete")
     #: every table that carries a space_id, so no disposition can silently miss one
+    # The tables a space owns and a space-delete moves or removes. `audit` is
+    # deliberately NOT here: deleting a project must never erase the security record
+    # of what happened in it. The ledger is append-only by intent, so a space-delete
+    # archives/moves the work but the audit trail of it survives — otherwise
+    # "delete this space" is a one-click way to destroy evidence, reachable by
+    # anything that can call the route.
     _SPACED = ("memories", "kg_edges", "conversations", "logs", "fabric_runs",
-               "tasks", "assets", "timeline_events", "audit")
+               "tasks", "assets", "timeline_events")
 
     def delete_space(self, sid: str, contents: str = "archive") -> dict:
         """Deleting a space must never silently orphan what is in it, so the caller

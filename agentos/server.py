@@ -4193,7 +4193,7 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/grants"), ("DELETE", "/api/grants"),
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
     ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
-    ("DELETE", "/api/skills"), ("POST", "/api/factory-reset"),
+    ("DELETE", "/api/skills"), ("POST", "/api/setup/reset"), ("POST", "/api/factory-reset"),
     ("POST", "/api/power"), ("POST", "/api/store/mcp"), ("DELETE", "/api/mcp/registry"),
     # signing this machine's owner in or out of a third-party account is a user act;
     # the GET callback stays reachable because it is a browser redirect, not an API
@@ -5986,8 +5986,21 @@ async def api_onboarding_flow(body: dict):
 
 
 @app.post("/api/setup/reset")
-async def api_setup_reset(body: dict):
-    """Factory reset: wipe profile/data, reset config, re-arm the wizard."""
+async def api_setup_reset(body: dict, request: Request):
+    """Factory reset: wipe profile/data, reset config, re-arm the wizard.
+
+    Loopback-only and admin-only. This destroys everything — including, on a
+    multi-user machine, every account's home — so it is not something an app
+    (which renders inside the desktop and reaches the API same-origin) or a remote
+    session gets to trigger. The `SENSITIVE_FOR_APPS` guard blocks the app-referer
+    case; this is the belt to that suspenders, and it also stops a signed-in
+    executor from wiping the machine."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "a factory reset can only be run from the machine itself"},
+                            status_code=403)
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can factory-reset this machine"},
+                            status_code=403)
     if not (body or {}).get("confirm"):
         return JSONResponse({"error": "pass {\"confirm\": true}"}, status_code=400)
     from . import setup as setupmod

@@ -135,3 +135,17 @@ def test_a_probe_is_not_subject_to_fail_closed(tmp_path, monkeypatch):
     dec = pdp.decide(APP, "tool.use", "tool:fetch_url",
                      {"risk": "safe", "surface": "gui", "audit": False})
     assert dec.effect == "allow"
+
+
+def test_deleting_a_space_does_not_erase_its_audit_trail(tmp_path):
+    """'Delete this space' must not become a one-click way to destroy the security
+    record of what happened in it. The ledger outlives the project."""
+    st = Store(tmp_path / "t.db")
+    sid = st.create_space("proj")
+    for i in range(4):
+        st.audit_add(principal_kind="app", principal_id="notes", action="tool.use",
+                     resource=f"r{i}", effect="allow", space_id=sid)
+    before = st.db.execute("SELECT COUNT(*) c FROM audit").fetchone()["c"]
+    st.delete_space(sid, "delete")     # the destructive variant
+    after = st.db.execute("SELECT COUNT(*) c FROM audit").fetchone()["c"]
+    assert after == before == 4
