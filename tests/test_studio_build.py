@@ -80,7 +80,7 @@ def test_the_executor_path_reports_the_app_the_studio_can_open():
     import inspect
 
     from agentos import server
-    src = inspect.getsource(server.run_build)
+    src = inspect.getsource(server._run_build)
     executor_path = src.split('if model == "claude-code":', 1)[1].split("# Auto model selection", 1)[0]
     assert '"app_id": built["id"]' in executor_path
     assert '"manifest_status": manifest_status' in executor_path
@@ -146,7 +146,7 @@ def test_a_lost_stream_does_not_discard_an_app_already_written_to_disk():
     import inspect
 
     from agentos import server
-    src = inspect.getsource(server.run_build)
+    src = inspect.getsource(server._run_build)
     executor_path = src.split('if model == "claude-code":', 1)[1].split("# Auto model selection", 1)[0]
     relay = executor_path.split("relay_failed = ", 1)[1]
     # the read happens AFTER the failure is caught, not instead of it
@@ -160,7 +160,7 @@ def test_a_name_typed_by_the_user_reaches_the_build(monkeypatch):
     import inspect
 
     from agentos import server
-    src = inspect.getsource(server.run_build)
+    src = inspect.getsource(server._run_build)
     assert 'want_name = (data.get("name") or "").strip()' in src
     # applied to an existing app BEFORE the build, so create_app updates in place
     assert "store.rename_app(app_id, name=want_name, icon=want_icon)" in src

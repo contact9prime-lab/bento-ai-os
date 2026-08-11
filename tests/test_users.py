@@ -936,3 +936,61 @@ def test_the_onboarding_account_step_exists_and_is_reachable_over_http(api):
     d = api.get("/api/onboarding").json()
     assert d["steps"][-1]["id"] == "account"
     assert ob.BY_ID["account"].panel == "users", "it has somewhere to live afterwards"
+
+
+# ---------------------------------------------------------------------------
+# The WebSocket is not a hole in the isolation
+# ---------------------------------------------------------------------------
+
+def test_a_socket_resolves_to_the_signed_in_account_not_the_machine(api):
+    """The primary way you talk to the agent is the WebSocket, and no HTTP
+    middleware runs for it. A turn launched from the receive loop must act as the
+    account whose signed cookie opened the socket — not the machine store, which
+    is what it silently did before."""
+    from agentos import server as servermod
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    b = api.post("/api/users", json={"name": "bob", "password": "hunter2hunter",
+                                     "role": "executor"}).json()["user"]
+    api.post("/api/users/login", json={"name": "bob", "password": "hunter2hunter"})
+    cookie = dict(api.cookies)[servermod.remotemod.COOKIE]
+
+    class WS:
+        cookies = {servermod.remotemod.COOKIE: cookie}
+        client = type("c", (), {"host": "10.0.0.9"})()   # not loopback, on purpose
+    assert servermod._ws_user(WS) == b["id"]
+    assert servermod._ws_authed(WS) is True
+
+
+def test_a_socket_with_a_bad_cookie_is_refused_not_promoted(api):
+    """None means refused. The dangerous outcome would be '' — the machine
+    account — which is exactly the silent promotion this guards against."""
+    from agentos import server as servermod
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+
+    class WS:
+        cookies = {servermod.remotemod.COOKIE: "forged.forged"}
+        client = type("c", (), {"host": "10.0.0.9"})()
+    assert servermod._ws_user(WS) is None
+    assert servermod._ws_authed(WS) is False
+
+
+def test_a_single_user_socket_is_the_machine_account(api):
+    """With nobody added, '' is the right answer and loopback is still trusted —
+    the fix must not turn a single-user machine into one that demands a login."""
+    from agentos import server as servermod
+
+    class WS:
+        cookies = {}
+        client = type("c", (), {"host": "127.0.0.1"})()
+    assert servermod._ws_user(WS) == ""
+    assert servermod._ws_authed(WS) is True
+
+
+def test_a_queued_message_carries_the_account_into_the_next_turn(api):
+    """The turn that flushes a queued message runs as its own task later; it must
+    still act as the account that sent it, not whoever the machine last saw."""
+    from agentos import server as servermod
+    servermod._queue_add("cid-x", {"text": "hi", "uid": "someuid"})
+    item = servermod.state["queues"]["cid-x"][0]
+    assert item["uid"] == "someuid"
+    servermod.state["queues"].pop("cid-x", None)

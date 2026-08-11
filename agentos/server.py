@@ -6968,13 +6968,37 @@ def _ws_authed(ws) -> bool:
     """Websockets do not pass through HTTP middleware, so the same gate is
     applied by hand here — a socket is a longer-lived and more capable channel
     than any REST call, and the terminal one is literally a shell."""
-    cfg = state["cfg"]
+    cfg = state.machine_cfg()
+    if usersmod.enabled():
+        # A machine with accounts is locked by them: only a valid signed session
+        # cookie gets a socket, whichever transport it arrived on. Loopback trust
+        # cannot survive multi-user for the same reason it cannot for HTTP — see
+        # _authed — so it is deliberately not consulted here.
+        return _ws_user(ws) is not None
     if not remotemod.enabled(cfg):
         return True
     if cfg["remote"].get("trust_loopback", True) and \
        remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
         return True
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+
+
+def _ws_user(ws) -> str | None:
+    """Which account this socket belongs to, from the SIGNED cookie only.
+
+    None means the cookie did not verify. The empty string is a real answer: a
+    single-user machine, where '' is the machine account and every turn runs as
+    it. This is the WebSocket half of the `resolve_user` middleware — the HTTP
+    middleware never runs for a socket, so a turn launched from the receive loop
+    would otherwise resolve `state["store"]` to the machine on a multi-user box,
+    quietly reading and writing the wrong person's memory, grants and ledger.
+    """
+    if not usersmod.enabled():
+        return ""
+    uid = remotemod.session_user(state.machine_cfg(), ws.cookies.get(remotemod.COOKIE, ""))
+    if uid is None or (uid and not usersmod.get(uid)):
+        return None
+    return uid or ""
 
 
 @app.websocket("/ws/vnc")
@@ -7177,6 +7201,7 @@ def _queue_add(cid: str, data: dict) -> dict:
             "surface": data.get("surface") or "gui",
             "origin": str(data.get("origin") or "user")[:40],
             "context": str(data.get("context") or "")[:4096],
+            "uid": data.get("uid", ""),   # the turn that flushes this must run as the same account
             "status": "queued", "reason": "", "at": time.time()}
     state["queues"].setdefault(cid, []).append(item)
     return item
@@ -7238,7 +7263,8 @@ async def _queue_flush(cid: str):
         state["queues"].pop(cid, None)
     data = {"text": item["text"], "images": item["images"], "model": item["model"],
             "surface": item["surface"], "origin": item["origin"],
-            "context": item["context"], "conversation_id": cid}
+            "context": item["context"], "conversation_id": cid,
+            "uid": item.get("uid", "")}
     state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
@@ -7248,6 +7274,14 @@ async def run_chat(cid: str, data: dict):
     """One chat turn, running as its own task — several conversations may run at
     once. Two guarantees on every exit path: the turn slot is released, and a
     terminal event reaches the UI."""
+    # Enter the owning account's context BEFORE the first `state["store"]` read:
+    # store/cfg/PDP all resolve through `users.current()`, so a turn that read them
+    # first and entered the context second would act as the machine, not the user.
+    with usersmod.as_user(data.get("uid", "")):
+        return await _run_chat(cid, data)
+
+
+async def _run_chat(cid: str, data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     turns = state["turns"]
     text = (data.get("text") or "").strip()
@@ -7904,6 +7938,11 @@ async def run_build(data: dict):
     """Agentic App Builder: an agent whose job is to build/refine a UI app via create_app,
     streamed live to App Studio with a preview. Exactly one terminal event
     (build_done / build_error) is emitted on every exit path."""
+    with usersmod.as_user(data.get("uid", "")):   # the app is built into the owner's store
+        return await _run_build(data)
+
+
+async def _run_build(data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     build = state["build"]
     bcast = state["broadcast"]
@@ -8345,6 +8384,12 @@ async def ws_endpoint(ws: WebSocket):
     state["clients"].add(ws)
     turns, build = state["turns"], state["build"]
 
+    # Which account owns this socket, from the signed cookie, resolved once. Every
+    # turn and build started below is stamped with it and runs inside
+    # `users.as_user(uid)` — create_task copies the CURRENT context, and the receive
+    # loop's context is not the user's because no HTTP middleware runs for a socket.
+    ws_uid = _ws_user(ws) or ""
+
     async def send(event: dict):
         with contextlib.suppress(Exception):
             await ws.send_text(json.dumps(event))
@@ -8412,11 +8457,13 @@ async def ws_endpoint(ws: WebSocket):
                     await send({"type": "conversation", "id": cid, "title": title,
                                 "origin": origin, "space_id": _space})
                 turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
+                data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
+                    data["uid"] = ws_uid
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
                 build["cancel_requested"] = True

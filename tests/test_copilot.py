@@ -12,7 +12,7 @@ from agentos.memory import Store               # noqa: E402
 
 
 def test_run_chat_passes_context_as_extra_system():
-    src = inspect.getsource(server.run_chat)
+    src = inspect.getsource(server._run_chat)
     assert "extra_system=extra" in src
     assert "[:4096]" in src                       # UI-supplied context is capped
 

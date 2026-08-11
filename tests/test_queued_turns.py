@@ -224,7 +224,7 @@ def test_queue_flushes_into_the_next_turn():
     assert "run_chat(cid, data)" in src
     assert 'state["turns"][cid] = {"agent": None' in src, "claim the slot before starting"
     # run_chat flushes on every exit path, right after it releases the slot
-    rc = inspect.getsource(server.run_chat)
+    rc = inspect.getsource(server._run_chat)
     assert rc.index("turns.pop(cid, None)") < rc.index("_queue_flush(cid)")
 
 
@@ -241,7 +241,7 @@ def test_queue_never_broadcasts_image_payloads():
 
 
 def test_run_chat_hands_the_queue_to_the_agent():
-    src = inspect.getsource(server.run_chat)
+    src = inspect.getsource(server._run_chat)
     assert 'for queued in state["queues"].get(cid) or []:' in src
     assert "agent.offer(queued)" in src
     assert "agent.on_steer_decision = _steer_hook(cid)" in src
