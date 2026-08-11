@@ -22,6 +22,7 @@ import uuid
 from pathlib import Path
 
 import httpx
+from . import users as usersmod
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
 APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context to protect
@@ -256,8 +257,17 @@ def _automation_step_label(s: dict) -> str:
     return str(k)
 
 
-class Toolbox:
+class Toolbox(usersmod.Scoped):
     """Executes tools. `store` is a memory.Store; `scheduler` is set by the app."""
+
+    # Three services that cannot be shared between people: a Telegram bridge polls
+    # one bot token, a WhatsApp bridge holds one linked device, an MCP manager owns
+    # live subprocesses started from somebody's own credentials. On a multi-user
+    # machine each of these resolves to the caller's own; on a single-user one it
+    # is the instance startup assigned, unchanged.
+    mcp = usersmod.PerUser("mcp")
+    telegram = usersmod.PerUser("telegram")
+    whatsapp = usersmod.PerUser("whatsapp")
 
     def __init__(self, cfg: dict, store):
         self.cfg = cfg

@@ -9,7 +9,7 @@ const DECK_DEFAULTS=[
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
+  ['System',['taskmgr','control','syssettings','settings','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
 let DECK=null;

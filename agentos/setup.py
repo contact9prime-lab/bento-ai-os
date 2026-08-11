@@ -69,7 +69,22 @@ def factory_reset(cfg: dict, store) -> None:
         assetmod.purge_all()
     except Exception:
         pass
-    cfgmod.SOUL_PATH.unlink(missing_ok=True)
+    cfgmod.soul_path().unlink(missing_ok=True)
+    # Accounts and their homes. "Back to day one" that left three people's private
+    # databases on the machine — and left the machine still demanding a sign-in
+    # nobody has the password for — would be the most misleading button in the OS.
+    try:
+        import shutil
+
+        from . import users as usersmod
+        for u in usersmod.list_users():
+            shutil.rmtree(usersmod.home_for(u["id"]), ignore_errors=True)
+        usersmod.registry_path().unlink(missing_ok=True)
+        shutil.rmtree(usersmod.shared_root(), ignore_errors=True)
+        usersmod.reset_caches()
+        usersmod.set_current("")
+    except Exception:
+        pass
     # rebuild defaults in place so every live reference (toolbox, scheduler, …) sees them
     import copy
     defaults = copy.deepcopy(cfgmod.DEFAULTS)

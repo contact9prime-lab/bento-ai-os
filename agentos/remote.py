@@ -4,9 +4,15 @@ AgentOS is a browser desktop with a real shell behind it. Serving that to
 anything beyond loopback is a decision with consequences, so this module exists
 to make the decision explicit and then hold the line:
 
-  * It is OFF until a human turns it on AND sets a passphrase. There is no code
-    path that enables it without both — not the agent's configure_agentos tool,
-    not an app, not a config file push (`sanitize_remote` re-checks on load).
+  * It is OFF until a human turns it on AND there is a lock on the door. There
+    is no code path that enables it without both — not the agent's
+    configure_agentos tool, not an app, not a config file push
+    (`sanitize_remote` re-checks on load).
+  * The lock is one of two things. On a single-user machine it is a shared
+    passphrase. On a machine with accounts it is the ACCOUNTS: the phone in
+    somebody's pocket signs in with the same username and password as the
+    desktop, and no second shared secret is invented in front of them. A door
+    only some people have the key to is a door that gets propped open.
   * Loopback stays trusted, so turning it on changes nothing about using AgentOS
     on the machine it runs on. A LAN client cannot forge a loopback source
     address to the kernel, so this is a real boundary rather than a header check.
@@ -15,10 +21,11 @@ to make the decision explicit and then hold the line:
   * Failed attempts back off per source address, so a weak passphrase cannot be
     brute-forced at network speed.
 
-The threat model is honest about what it is not: this is one shared passphrase
-protecting one machine, not multi-user auth. It is the lock on your front door,
-and it expects to be behind your home network or a VPN rather than on the open
-internet.
+The threat model is honest about what it is not. With a passphrase this is one
+shared secret protecting one machine; with accounts it is real per-person auth,
+but still one process, one host and one kernel — a signed-in executor is not
+sandboxed from the machine, only from other people's data. Either way it expects
+to be behind your home network or a VPN rather than on the open internet.
 """
 
 from __future__ import annotations
@@ -79,20 +86,78 @@ def passphrase_problem(passphrase: str) -> str:
 # session tokens
 # ---------------------------------------------------------------------------
 
+def _machine_key() -> bytes:
+    """A random per-machine signing key, on disk at 0600.
+
+    There has to be one. The passphrase hash below is a fine secret when remote
+    access is on, but a multi-user machine on a private LAN may never turn remote
+    access on at all — and a cookie signed with a constant is a cookie anybody can
+    write, including the `uid` field that decides whose directory gets opened.
+
+    On disk rather than in the config because the config gets exported, copied
+    into bug reports and read by every surface; this is only ever read here.
+    """
+    from . import config as cfgmod
+    p = cfgmod.AGENTOS_HOME / "session.key"
+    try:
+        if p.exists():
+            got = p.read_bytes().strip()
+            if len(got) >= 32:
+                return got
+    except OSError:
+        pass
+    key = secrets.token_hex(32).encode()
+    try:
+        cfgmod.AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(key)
+        os.chmod(p, 0o600)
+    except OSError:
+        pass                    # read-only home: still better than a constant
+    return key
+
+
 def _secret(cfg: dict) -> bytes:
     """Sessions are signed with the passphrase hash, so changing the passphrase
-    invalidates every device that was signed in with the old one."""
+    invalidates every device that was signed in with the old one — and with the
+    machine key underneath it, so a machine with no passphrase still signs with
+    something nobody else can guess."""
     r = cfg.get("remote") or {}
-    return (r.get("pass_hash", "") + r.get("pass_salt", "")).encode() or b"agentos-unset"
+    return _machine_key() + (r.get("pass_hash", "") + r.get("pass_salt", "")).encode()
 
 
-def issue_session(cfg: dict) -> str:
+def issue_session(cfg: dict, uid: str = "") -> str:
+    """A signed cookie. `uid` rides inside it because on a multi-user machine the
+    cookie has to say WHO, not merely that somebody proved something once."""
     days = int((cfg.get("remote") or {}).get("session_days") or 30)
     payload = json.dumps({"exp": int(time.time()) + days * 86400,
+                          "uid": uid or "",
                           "jti": secrets.token_hex(8)}, separators=(",", ":")).encode()
     body = base64.urlsafe_b64encode(payload).decode().rstrip("=")
     sig = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{body}.{sig}"
+
+
+def session_user(cfg: dict, token: str) -> str | None:
+    """The user id inside a valid session cookie, or None if it does not verify.
+
+    Separate from `valid_session` on purpose: the signature check and the identity
+    read are the same operation, and doing them in two places is how a route ends
+    up trusting a uid it never verified.
+    """
+    if not token or "." not in token:
+        return None
+    body, _, sig = token.rpartition(".")
+    want = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig, want):
+        return None
+    try:
+        pad = "=" * (-len(body) % 4)
+        d = json.loads(base64.urlsafe_b64decode(body + pad))
+    except Exception:
+        return None
+    if d.get("exp", 0) <= time.time():
+        return None
+    return str(d.get("uid") or "")
 
 
 def valid_session(cfg: dict, token: str) -> bool:
@@ -122,17 +187,49 @@ def is_loopback(host: str) -> bool:
         return host in ("localhost", "testclient")   # starlette's TestClient
 
 
+def accounts_lock() -> bool:
+    """Do this machine's user accounts serve as the lock?
+
+    Once there are accounts they ARE the credentials, and a second shared
+    passphrase in front of them is worse than none: it is one more secret, held
+    in common by people who are otherwise isolated from each other, and it makes
+    "sign in" mean two different things depending on where you are standing. So a
+    multi-user machine is locked by definition, and the phone in somebody's
+    pocket signs in with the same username and password as the desktop.
+    """
+    from . import users as usersmod
+    return usersmod.enabled()
+
+
+def lock_kind(cfg: dict) -> str:
+    """Which lock is on the door: 'accounts', 'passphrase', or '' for neither.
+
+    Accounts win when both exist — the passphrase becomes dead config rather than
+    a second door, because a door only some people have the key to is a door that
+    will be propped open.
+    """
+    if accounts_lock():
+        return "accounts"
+    return "passphrase" if (cfg.get("remote") or {}).get("pass_hash") else ""
+
+
 def enabled(cfg: dict) -> bool:
     """Remote access counts as on only when it is BOTH switched on and locked."""
     r = cfg.get("remote") or {}
-    return bool(r.get("enabled")) and bool(r.get("pass_hash"))
+    return bool(r.get("enabled")) and bool(lock_kind(cfg))
 
 
 def sanitize_remote(cfg: dict) -> dict:
     """Re-assert the invariant every time config is loaded or written: enabled
-    without a passphrase is not a state this system has."""
+    without a lock is not a state this system has.
+
+    `enabled` is left alone rather than forced off when there is no lock — the
+    stored intent survives, and `enabled()` above refuses until a lock exists.
+    Zeroing it would mean that adding the first account silently un-remembered a
+    machine that was deliberately reachable before.
+    """
     r = cfg.setdefault("remote", {})
-    if r.get("enabled") and not r.get("pass_hash"):
+    if r.get("enabled") and not r.get("pass_hash") and not accounts_lock():
         r["enabled"] = False
     return cfg
 
@@ -207,7 +304,8 @@ def status(cfg: dict) -> dict:
     port = int(cfg.get("port") or 8321)
     return {
         "enabled": enabled(cfg),
-        "configured": bool(r.get("pass_hash")),
+        "configured": bool(lock_kind(cfg)),
+        "lock": lock_kind(cfg),
         "bind": r.get("bind") or "0.0.0.0",
         "port": port,
         "session_days": int(r.get("session_days") or 30),

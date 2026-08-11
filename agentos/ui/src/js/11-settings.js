@@ -219,6 +219,11 @@ function setTab(body,all){
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
+    P.push(pGroup('Setup',[
+      pRow('Run setup again','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
+        {desc:'The same eight steps as the first run — name, model, a specialist, a flow, a schedule, a channel, the look. Steps you have already done show ticked, and nothing is wiped: this is a tour of the settings, not a reset.',
+         f:'setup onboarding wizard first run walkthrough tour again'}),
+    ],{f:'setup onboarding'}));
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),

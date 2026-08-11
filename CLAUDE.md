@@ -99,6 +99,48 @@ Three things that have to stay true:
 declared in a tool schema — a model must not be able to reach into another project by
 naming one. `everywhere: true` is the one declared way out, so the gate can see it.
 
+## Users are isolated by DIRECTORY, and that is the opposite claim to spaces
+
+`space_id` is a column and its rule is deliberately leaky. A user is not a column —
+a user is **their own home**: `~/.agentos/users/<id>/{agentos.db,config.json,workspace,
+assets,soul.md}`. One forgotten WHERE clause among ~250 query sites is somebody reading
+a colleague's memory, and no amount of review makes that failure mode acceptable. Two
+files cannot leak into each other; that is the whole argument. Full reasoning in
+`docs/users.md`.
+
+`users.enabled()` is False until somebody is added, and everything below is invisible
+until then — an install that never adds a user keeps using exactly the files it always
+used. `is_admin('')` is True for the same reason: a machine with no accounts has nobody
+to refuse.
+
+**Nothing threads a user through a signature. The LOOKUP resolves.** `users.current()`
+is a contextvar set by the request middleware from the SIGNED COOKIE ONLY — never a
+header or a query parameter, because those are things a caller chooses and this decides
+which private directory gets opened. Three mechanisms read it and there should never be
+a fourth:
+
+- `server._State.__getitem__` — routes `state["store"]`, `state["cfg"]` and the three
+  per-user services. ~250 call sites unchanged.
+- `users.Scoped` — a two-descriptor mixin on every long-lived service. `self.cfg = cfg`
+  in an existing `__init__` keeps working; it stores the machine's copy as the fallback.
+- `users.as_user(uid)` for background work. `asyncio.create_task` copies the context, so
+  a job launched at 08:00 still reads its owner's memory hours later. **That inheritance
+  is why this is a contextvar and not a parameter** — do not "simplify" it to an argument.
+
+Three things will bite whoever touches this next:
+
+- **In-memory caches must be keyed on the user, not only on a name or a version.** A
+  version counter is per-database, so two people can both be at `grants_version` 3 —
+  without the prefix the second is decided against the first one's grants. `PDP._who()`
+  exists for this; the rate meter and the skills cache collide the same way, because two
+  users may each own an app called `notes`.
+- **`users.USER_KEYS` is the whole definition of "mine".** The line is cost and blast
+  radius, not how personal something feels: anything that spends money or reconfigures
+  the machine stays the machine's. A key missing from that tuple silently never saves.
+- **The machine config is the seed for every account created later.** `machine_view()`
+  strips the personal keys before an admin's save reaches it — leaving a Telegram token
+  there hands it to the next person who signs up.
+
 ## One deliberate name divergence: the app is "Workflows", the code says `flows`
 
 The app in the dock is **Workflows**, because that is the word people arrive with. Every

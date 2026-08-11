@@ -125,15 +125,22 @@ def dismiss_digest(store):
 
 async def attention_loop(cfg: dict, store, notifd_get, broadcast=None, interval: int = 60):
     """Idle-scheduled triage: checks the batch gate every minute, works rarely."""
+    from . import users as usersmod
     await asyncio.sleep(120)  # let the daemon claim the bus name and the desktop settle
     while True:
-        try:
-            await triage(cfg, store, notifd_get(), broadcast)
-        except Exception as e:
-            try:
-                store.log("error", f"notification triage failed: {type(e).__name__}: {e}")
-            except Exception:
-                pass
+        # Triage is about somebody's own notifications and reads their own memory
+        # to decide what matters to them, so it runs once per account rather than
+        # once per machine.
+        for uid in usersmod.sweep():
+            with usersmod.as_user(uid):
+                c, st = usersmod.resolve(cfg, store)
+                try:
+                    await triage(c, st, notifd_get(), broadcast)
+                except Exception as e:
+                    try:
+                        st.log("error", f"notification triage failed: {type(e).__name__}: {e}")
+                    except Exception:
+                        pass
         await asyncio.sleep(interval)
 
 

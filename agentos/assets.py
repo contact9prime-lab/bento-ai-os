@@ -41,8 +41,20 @@ from pathlib import Path
 
 from .config import AGENTOS_HOME
 
-ASSETS_ROOT = AGENTOS_HOME / "assets"
-THUMBS_ROOT = AGENTOS_HOME / "assets" / ".thumbs"
+#: The gallery lives under the home of whoever is asking. On a single-user
+#: machine that is `~/.agentos/assets`, exactly as it always was; with users it is
+#: theirs, because an image somebody generated is not the machine's to show around.
+#: A module CONSTANT could not answer that, so this is a function — every use site
+#: below calls it rather than closing over one path at import time.
+def assets_root() -> Path:
+    from . import users as usersmod
+    uid = usersmod.current() if usersmod.enabled() else ""
+    return usersmod.assets_root_for(uid) if uid else AGENTOS_HOME / "assets"
+
+
+def thumbs_root() -> Path:
+    return assets_root() / ".thumbs"
+
 
 #: the biggest thing we will accept in one JSON body (data-URL uploads, MCP
 #: payloads). Raw streaming uploads have their own, larger cap.
@@ -92,7 +104,7 @@ def _path_for(sha: str, ext: str) -> Path:
     """Content-addressed, sharded two levels so a directory listing stays usable
     after a few thousand generations."""
     when = time.gmtime()
-    return (ASSETS_ROOT / f"{when.tm_year:04d}" / f"{when.tm_mon:02d}"
+    return (assets_root() / f"{when.tm_year:04d}" / f"{when.tm_mon:02d}"
             / sha[:2] / f"{sha}{ext}")
 
 
@@ -185,8 +197,8 @@ async def make_thumb(path: Path, kind: str, sha: str) -> str:
     ff = ffmpeg_path()
     if not ff or kind not in ("image", "video"):
         return ""
-    THUMBS_ROOT.mkdir(parents=True, exist_ok=True)
-    out = THUMBS_ROOT / f"{sha}.jpg"
+    thumbs_root().mkdir(parents=True, exist_ok=True)
+    out = thumbs_root() / f"{sha}.jpg"
     if out.is_file():
         return str(out)
     argv = [ff, "-y", "-loglevel", "error"]
@@ -280,8 +292,8 @@ async def put_stream(store, chunks, *, name: str = "", mime: str = "",
     not multipart — multipart would also mean adding python-multipart, and this
     module's whole point is adding nothing.
     """
-    ASSETS_ROOT.mkdir(parents=True, exist_ok=True)
-    tmp = ASSETS_ROOT / f".incoming-{os.getpid()}-{time.time_ns()}.part"
+    assets_root().mkdir(parents=True, exist_ok=True)
+    tmp = assets_root() / f".incoming-{os.getpid()}-{time.time_ns()}.part"
     digest = hashlib.sha256()
     total = 0
     try:
@@ -339,14 +351,14 @@ def gc(store) -> dict:
     known = {r["path"] for r in store.asset_list(limit=100000)}
     thumbs = {r["thumb"] for r in store.asset_list(limit=100000) if r.get("thumb")}
     orphan_files = orphan_rows = 0
-    if ASSETS_ROOT.is_dir():
-        for path in ASSETS_ROOT.rglob("*"):
+    if assets_root().is_dir():
+        for path in assets_root().rglob("*"):
             if not path.is_file():
                 continue
             sp = str(path)
             if sp in known or sp in thumbs:
                 continue
-            if path.name.endswith(".part") or THUMBS_ROOT in path.parents or path.parent == THUMBS_ROOT:
+            if path.name.endswith(".part") or thumbs_root() in path.parents or path.parent == thumbs_root():
                 if sp in thumbs:
                     continue
             with contextlib.suppress(Exception):
@@ -364,14 +376,14 @@ def purge_all() -> int:
     tables, and without this the bytes would quietly survive a reset that told
     the user everything was gone."""
     n = 0
-    if ASSETS_ROOT.is_dir():
-        for path in ASSETS_ROOT.rglob("*"):
+    if assets_root().is_dir():
+        for path in assets_root().rglob("*"):
             if path.is_file():
                 with contextlib.suppress(Exception):
                     path.unlink()
                     n += 1
         with contextlib.suppress(Exception):
-            shutil.rmtree(ASSETS_ROOT)
+            shutil.rmtree(assets_root())
     return n
 
 

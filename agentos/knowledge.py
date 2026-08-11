@@ -459,7 +459,14 @@ async def run_maintenance(cfg: dict, store, broadcast=None, force: bool = False)
 
 
 async def maintenance_loop(cfg: dict, store, broadcast=None, interval: int = 1800):
+    from . import users as usersmod
     await asyncio.sleep(90)  # let the server (and Ollama) settle after boot
     while True:
-        await run_maintenance(cfg, store, broadcast)
+        # Everybody's graph, one at a time. A machine with accounts keeps its
+        # memory in each person's own database, so a loop that only ever swept the
+        # machine's would leave every real user's knowledge unconsolidated —
+        # silently, and in the one subsystem whose whole job is to notice things.
+        for uid in usersmod.sweep():
+            with usersmod.as_user(uid):
+                await run_maintenance(*usersmod.resolve(cfg, store), broadcast)
         await asyncio.sleep(interval)

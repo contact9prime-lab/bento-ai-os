@@ -29,6 +29,12 @@
   </div>
 </div>
 <div id="powermenu">
+  <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
+       install would be a button that locks you out of your own laptop with
+       nothing to sign back in as. -->
+  <button id="pm-user" hidden onclick="openApp('users')"></button>
+  <button id="pm-signout" hidden onclick="usersSignOut()">Sign out…</button>
+  <hr id="pm-userhr" hidden>
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>

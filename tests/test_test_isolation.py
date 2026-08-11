@@ -28,4 +28,9 @@ def test_saving_config_lands_in_the_throwaway_home():
     cfgmod.save_config({"canary": True})
     assert cfgmod.CONFIG_PATH.exists()
     assert '"canary"' in cfgmod.CONFIG_PATH.read_text()
-    assert not (Path.home() / ".agentos" / "config.json").read_text().startswith('{\n  "canary"')
+    # The real file not being there at all is the strongest possible pass — and it
+    # is the normal case on a fresh CI runner, which is exactly the machine this
+    # canary is meant to protect. Reading it unconditionally made the test crash
+    # there instead of passing.
+    real = Path.home() / ".agentos" / "config.json"
+    assert not real.exists() or not real.read_text().startswith('{\n  "canary"')

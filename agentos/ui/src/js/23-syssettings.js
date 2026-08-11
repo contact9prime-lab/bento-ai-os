@@ -277,7 +277,8 @@ let TUNNEL={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
   try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
-  const on=!!REMOTE.enabled, set=!!REMOTE.configured;
+  const on=!!REMOTE.enabled, set=!!REMOTE.configured,
+        byAccounts=REMOTE.lock==='accounts';   // the accounts ARE the lock — see remote.py
   el.innerHTML=`
     <div class="provbox">
       <div class="ptitle">Remote access
@@ -285,9 +286,19 @@ async function sysRemote(el){
       <p class="mut" style="margin-top:8px;line-height:1.6">
         Serve this desktop to your phone or another machine on your network.
         <b>Everything you can do here, whoever signs in can do too</b> — including the
-        Terminal and the agent's shell — so it stays off until you set a passphrase.
+        Terminal and the agent's shell — so it stays off until there is a lock on it.
         Using AgentOS on this machine is unaffected either way.</p>
 
+      ${/* Accounts ARE the lock. Offering a second, shared passphrase in front of
+            per-person credentials would make "sign in" mean two different things
+            depending on where somebody was standing. */''}
+      ${byAccounts?`<div class="rm-lock">
+        <b>Locked by this machine's accounts.</b>
+        Everyone signs in from their phone with the <b>same username and password</b>
+        they use here, and lands in their own desktop — their memory, their agents,
+        their channels. No separate remote passphrase to invent, share or forget.
+        <button class="endbtn" style="margin-top:8px" onclick="openApp('users')">Manage accounts</button>
+      </div>`:`
       <label style="margin-top:14px">${set?'Change the passphrase':'Set a passphrase'}</label>
       <div class="row" style="gap:8px">
         <input id="rm-pw" type="password" autocomplete="new-password"
@@ -295,12 +306,15 @@ async function sysRemote(el){
         <button class="endbtn" onclick="rmSetPass()">${set?'Update':'Set'}</button>
       </div>
       ${set?'<p class="mut" style="margin-top:6px;font-size:11px">A passphrase is set. Changing it signs every remote device out.</p>':''}
+      <p class="mut" style="margin-top:6px;font-size:11px">Or add user accounts in
+        <a href="#" onclick="openApp('users');return false">Users</a> — they lock this
+        themselves, and give each person their own desktop.</p>`}
 
       <div class="row" style="margin-top:16px;gap:10px;align-items:center">
         <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
-                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase first"'}>
+                onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase or add accounts first"'}>
           ${on?'Turn remote access off':'Turn remote access on'}</button>
-        <span class="mut" style="font-size:12px">${set?'':'a passphrase is required first'}</span>
+        <span class="mut" style="font-size:12px">${set?'':'it needs a lock first — a passphrase, or accounts'}</span>
       </div>
     </div>
 
@@ -348,7 +362,7 @@ async function sysRemote(el){
         <p class="mut" style="margin-top:8px">
           <button class="endbtn" onclick="tunStart()">Publish an address for anywhere</button></p>`:''}
       <p class="mut" style="margin-top:10px;line-height:1.6">
-        Open that on your phone, sign in with the passphrase, then
+        Open that on your phone, sign in ${byAccounts?'with your username and password':'with the passphrase'}, then
         <b>Share → Add to Home Screen</b> (iOS) or <b>⋮ → Install app</b> (Android) for a
         full-screen app with no browser chrome. The layout adapts to the phone on its own.</p>
       ${REMOTE.listening_on&&REMOTE.listening_on!=='127.0.0.1'?'':
@@ -358,7 +372,9 @@ async function sysRemote(el){
     <div class="provbox">
       <div class="ptitle">Before you open it up</div>
       <ul class="rm-notes">
-        <li>This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is.</li>
+        <li>${byAccounts
+          ?'Signing in gets somebody <b>their own desktop</b> — their memory, their agents, their channels. It does not sandbox them from the <b>machine</b>: an executor still has the Terminal and the agent\'s shell.'
+          :'This is <b>one shared passphrase for one machine</b>, not per-user accounts. Treat it like the key to the machine, because it is. Adding accounts in Users changes that.'}</li>
         <li>Keep it on your <b>home network or a VPN</b>. Don't port-forward it to the open internet — there is no TLS here, so a passphrase would cross the network in the clear.</li>
         <li>Over the internet, put it behind something that terminates TLS and authenticates — Tailscale, WireGuard, or a reverse proxy you trust.</li>
         <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>

@@ -66,7 +66,11 @@ async function checkSetup(){
     // the wizard branches on PLATFORM.mode (de vs hosted); init loads it in
     // parallel with us, so fetch it ourselves if it hasn't landed yet
     try{if(!Object.keys(PLATFORM.capabilities||{}).length)PLATFORM=await(await fetch('/api/platform')).json()}catch(e){}
-    WIZ.info=s;WIZ.agent_name=s.agent_name||'Aria';showWizard();
+    WIZ.info=s;WIZ.agent_name=s.agent_name||'Aria';
+    // The arc, not the old four-question form. One component for the first run and
+    // for Settings → Run setup again, so the two can never drift.
+    if(typeof obShow==='function'){obShow({});return}
+    showWizard();
   }catch(e){}
 }
 const WIZ_SAY_FALLBACK={

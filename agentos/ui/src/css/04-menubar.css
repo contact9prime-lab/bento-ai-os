@@ -29,6 +29,10 @@
   box-shadow:var(--el-4)}
 #powermenu.show{display:block}
 #powermenu button{display:flex;gap:9px;width:100%;padding:7px 10px;border-radius:var(--r-sm);font-size:var(--fs-sm);text-align:left;color:var(--txt)}
+/* `display:flex` above beats the UA stylesheet's rule for [hidden], so a hidden
+   button showed anyway — as a blank row, and then as a "Sign out" on a machine
+   with no accounts to sign into. Anything with `hidden` here means it. */
+#powermenu [hidden]{display:none}
 #powermenu button:hover{background:var(--bg4)}
 #powermenu button.danger:hover{background:var(--bg4);color:var(--err)}
 #powermenu hr{border:none;border-top:1px solid var(--line);margin:4px 6px}

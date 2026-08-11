@@ -11,6 +11,8 @@ import base64
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agentos import assets as assetmod                             # noqa: E402
@@ -48,9 +50,27 @@ class _Resource:
                                        "mimeType": mime})()
 
 
+@pytest.fixture(autouse=True)
+def _restore_asset_roots():
+    """`_point_assets_at` replaces module functions, so put them back.
+
+    Not tidiness: the gallery root now answers per user, and a test file that
+    leaves it pinned to its own tmp_path makes the users tests pass or fail
+    depending on which order pytest ran them in."""
+    real = (assetmod.assets_root, assetmod.thumbs_root)
+    yield
+    assetmod.assets_root, assetmod.thumbs_root = real
+
+
+def _point_assets_at(home):
+    """The gallery root is a function now, not a constant — it answers for whoever
+    the turn belongs to. Tests redirect it by replacing the function."""
+    assetmod.assets_root = lambda: home / "assets"
+    assetmod.thumbs_root = lambda: home / "assets" / ".thumbs"
+
+
 def _manager(tmp_path, blocks, home, is_error=False):
-    assetmod.ASSETS_ROOT = home / "assets"
-    assetmod.THUMBS_ROOT = home / "assets" / ".thumbs"
+    _point_assets_at(home)
     store = Store(tmp_path / "t.db")
     result = type("Res", (), {"content": blocks, "isError": is_error})()
     session = type("S", (), {"call_tool": staticmethod(
@@ -152,8 +172,7 @@ def test_ffmpeg_is_offered_never_shipped():
 
 
 def test_deleting_an_asset_removes_the_file(tmp_path):
-    assetmod.ASSETS_ROOT = tmp_path / "assets"
-    assetmod.THUMBS_ROOT = tmp_path / "assets" / ".thumbs"
+    _point_assets_at(tmp_path)
     store = Store(tmp_path / "t.db")
     row = asyncio.run(assetmod.put_bytes(store, PNG, name="a.png", source="test"))
     path = Path(row["path"])
@@ -164,8 +183,7 @@ def test_deleting_an_asset_removes_the_file(tmp_path):
 
 
 def test_a_row_whose_file_vanished_reports_missing_rather_than_raising(tmp_path):
-    assetmod.ASSETS_ROOT = tmp_path / "assets"
-    assetmod.THUMBS_ROOT = tmp_path / "assets" / ".thumbs"
+    _point_assets_at(tmp_path)
     store = Store(tmp_path / "t.db")
     row = asyncio.run(assetmod.put_bytes(store, PNG, name="a.png", source="test"))
     Path(row["path"]).unlink()

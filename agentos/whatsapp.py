@@ -56,6 +56,7 @@ import httpx
 
 from . import config as cfgmod
 from .agent import Agent
+from . import users as usersmod
 
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
@@ -174,7 +175,7 @@ def verify_signature(app_secret: str, raw: bytes, header: str) -> bool:
     return hmac.compare_digest(want, got)
 
 
-class WhatsAppBridge:
+class WhatsAppBridge(usersmod.Scoped):
     """One paired WhatsApp chat, carried to the same agent as every other channel."""
 
     def __init__(self, cfg: dict, store, toolbox, broadcast):

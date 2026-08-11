@@ -1136,7 +1136,7 @@ def _flow_cli(args):
 
     from . import config as cfgmod
     from . import flows as flowsmod
-    cfg, store = _open_store()
+    cfg, store = _open_store(getattr(args, "user", ""))
     base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
 
     def call(path, data=None, method=None):
@@ -1264,7 +1264,7 @@ def _job_cli(args):
     import urllib.request
 
     from . import jobs as jobsmod
-    cfg, store = _open_store()
+    cfg, store = _open_store(getattr(args, "user", ""))
     act = args.action
 
     if act == "list":
@@ -1393,9 +1393,97 @@ def _remote_cli(args):
 # which sets the TUI surface's own default — never the GUI's.
 # ---------------------------------------------------------------------------
 
-def _open_store():
+def _user_cli(args):
+    """`bento user` — accounts from a terminal.
+
+    The TUI face of the Users app (CLAUDE.md: every feature in all three). It is
+    not a nicety here: a headless machine has no desktop to add the first account
+    from, and the alternative would be editing users.json by hand — which is also
+    the only way back from a machine with no admin, so it must not be the normal
+    way in.
+    """
+    import getpass
+
+    from . import users as usersmod
+    act = args.action
+
+    if act == "list":
+        if not usersmod.enabled():
+            print("this machine has one user: whoever is at it.\n"
+                  "`bento user add NAME` turns on accounts — everything already here "
+                  "becomes that account's.")
+            return
+        for u in usersmod.list_users():
+            print(f"  {u['name']:<16} {u['role']:<9} {u.get('display') or ''}")
+        return
+
+    if act == "add":
+        if not args.name:
+            print("usage: bento user add NAME [--role admin|executor]")
+            sys.exit(2)
+        first = not usersmod.enabled()
+        if first:
+            print("Adding the first account turns on accounts for this machine.\n"
+                  "  · everything already here becomes that account's\n"
+                  "  · this machine starts asking who you are, at the keyboard too\n"
+                  "  · the first account is an admin, whatever you ask for")
+        pw = args.password or getpass.getpass("password: ")
+        try:
+            u = usersmod.create(args.name, pw, role=args.role, display=args.display)
+        except ValueError as e:
+            print(e)
+            sys.exit(1)
+        print(f"✓ {u['name']} ({u['role']}) — home {usersmod.home_for(u['id'])}")
+        return
+
+    if act in ("role", "passwd", "remove"):
+        u = usersmod.by_name(args.name or "")
+        if not u:
+            print(f"no user called {args.name!r}")
+            sys.exit(1)
+        try:
+            if act == "role":
+                print("✓ " + usersmod.set_role(u["id"], args.role)["role"])
+            elif act == "passwd":
+                usersmod.set_password(u["id"], args.password or getpass.getpass("new password: "))
+                print("✓ password changed")
+            else:
+                # `--wipe` is separate and explicit: taking somebody's access away
+                # and destroying what they made are two decisions.
+                r = usersmod.delete(u["id"], wipe=args.wipe)
+                print(f"✓ removed — {'home wiped' if r['wiped'] else 'home kept at ' + r['home']}")
+        except ValueError as e:
+            print(e)
+            sys.exit(1)
+
+
+def _open_store(uid: str = ""):
+    """The config and database this command should work with.
+
+    On a single-user machine that is the one pair it has always been. With users
+    it has to be somebody's, and guessing is the wrong answer: a `bento job add`
+    that silently landed in the wrong person's database would be discovered weeks
+    later by whoever did not get their briefing. So: whoever `--user` names; the
+    only account if there is exactly one; otherwise say who to choose between.
+    """
     from . import config as cfgmod
+    from . import users as usersmod
     from .memory import Store
+    if usersmod.enabled():
+        want = (uid or "").strip().lower()
+        people = usersmod.list_users()
+        u = usersmod.by_name(want) or usersmod.get(want) if want else (
+            people[0] if len(people) == 1 else None)
+        if not u:
+            if want:
+                print(f"no user called {want!r} on this machine")
+            else:
+                print("this machine has accounts, so a command has to say whose:\n"
+                      "  " + "  ".join(x["name"] for x in people) + "\n"
+                      "use --user NAME, or set AGENTOS_USER.")
+            sys.exit(2)
+        usersmod.set_current(u["id"])
+        return usersmod.cfg_for(u["id"]), usersmod.store_for(u["id"])
     return cfgmod.load_config(), Store(cfgmod.DB_PATH)
 
 
@@ -1418,7 +1506,7 @@ def _since_secs(text: str) -> float:
 def _space_cli(args):
     from . import config as cfgmod
     from . import spaces as spacemod
-    cfg, store = _open_store()
+    cfg, store = _open_store(getattr(args, "user", ""))
 
     if args.new:
         sid = store.create_space(args.new, description=args.about)
@@ -1463,8 +1551,7 @@ def _space_cli(args):
 
 
 def _timeline_cli(args):
-    _, store = _open_store()
-    cfg, _ = _open_store()
+    cfg, store = _open_store(getattr(args, "user", ""))
     active = (cfg.get("spaces") or {}).get("active", {}).get("tui", "")
     since = _since_secs(args.since)
     rows = store.timeline(space=active, kind=args.kind,
@@ -1487,7 +1574,7 @@ def _assets_cli(args):
     import subprocess
 
     from . import assets as assetmod
-    cfg, store = _open_store()
+    cfg, store = _open_store(getattr(args, "user", ""))
     active = (cfg.get("spaces") or {}).get("active", {}).get("tui", "")
 
     if args.action in ("path", "open", "rm"):
@@ -1536,7 +1623,7 @@ def _assets_cli(args):
 
 
 def _audit_cli(args):
-    _, store = _open_store()
+    _, store = _open_store(getattr(args, "user", ""))
     since = _since_secs(args.since)
     ts = (time.time() - since) if since else 0.0
     summary = store.audit_summary(since=ts)
@@ -1570,6 +1657,11 @@ def main():
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]) or "bento",
         description="Bento Box AI — your machine, with a brain.")
+    # Whose machine. Ignored entirely until somebody adds a user; after that every
+    # verb that reads data needs to know, because there is no longer one answer.
+    # An environment variable too, so a cron line or a systemd unit can say it once.
+    parser.add_argument("--user", default=os.environ.get("AGENTOS_USER", ""),
+                        help="act as this user (multi-user machines only)")
     sub = parser.add_subparsers(dest="cmd")
 
     p_serve = sub.add_parser("serve", help="start the AgentOS server + UI (default)")
@@ -1615,7 +1707,7 @@ def main():
                           help="probe what can actually draw the desktop on this machine "
                                "(why the session came up, or did not)")
     sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
-    sub.add_parser("setup", help="first-time setup wizard (name, model, autonomy, autostart)")
+    sub.add_parser("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
     p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
                            help="launcher only; skip the background boot service")
@@ -1723,6 +1815,17 @@ def main():
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
     p_job.add_argument("--deliver", default="", help="report | notify | telegram")
 
+    p_user = sub.add_parser("user", help="accounts — several people on one machine, "
+                                         "each with their own home")
+    p_user.add_argument("action", nargs="?", default="list",
+                        choices=["list", "add", "role", "passwd", "remove"])
+    p_user.add_argument("name", nargs="?", default="")
+    p_user.add_argument("--role", default="executor", choices=["admin", "executor"])
+    p_user.add_argument("--display", default="", help="the name shown on screen")
+    p_user.add_argument("--password", default="", help="prompted for if omitted")
+    p_user.add_argument("--wipe", action="store_true",
+                        help="remove: also delete their home directory and everything in it")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -1784,13 +1887,17 @@ def main():
         from . import desktop
         desktop.app_mode()
     elif args.cmd == "setup":
-        from . import setup as setupmod
-        setupmod.run_cli_wizard()
+        # The arc, not the old five-question form: the same catalogue and the same
+        # probe the browser wizard uses, so a machine set up half way in one and
+        # finished in the other picks up exactly where it was left.
+        from . import setup_tui
+        cfg, store = _open_store(getattr(args, "user", ""))
+        setup_tui.run(cfg, store)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():
-            from . import setup as setupmod
-            setupmod.run_cli_wizard()
+            from . import setup_tui
+            setup_tui.run()
         try:
             from . import tui_app          # full-screen Textual UI
             tui_app.run()
@@ -1832,6 +1939,8 @@ def main():
         _flow_cli(args)
     elif args.cmd == "job":
         _job_cli(args)
+    elif args.cmd == "user":
+        _user_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

@@ -274,6 +274,8 @@ function studioActions(){
       </span>
       <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
       <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser&&app)
+        ?`<button class="endbtn" onclick="usersShare('app',${JSON.stringify(app.name).replace(/"/g,'&quot;')})">Share</button>`:''}
       <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
 }
 /* The preview switches between the app's two surfaces, at the exact size the

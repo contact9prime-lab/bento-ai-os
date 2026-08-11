@@ -10,19 +10,74 @@ This walks you from a fresh launch to giving the agent real work.
 uv run agentos
 ```
 
-The desktop opens at **http://127.0.0.1:8321**. On a **fresh install a setup wizard** walks you
-through everything in four steps: name your agent, pick a brain (detected local Ollama models,
-or a cloud API key), choose an autonomy level, and optionally enable **start-at-boot** (it
-installs the app launcher and a systemd user service for you — with `loginctl` lingering the
-server is up before you even log in). In the terminal, the same wizard runs as `agentos setup`
-(and automatically on the first `agentos tui`).
+The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens onto
+**setup** — nine steps down the left, one at a time on the right.
+
+![The first-run setup screen: a rail of nine steps down the left with the first one selected, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply" above the field](screenshots/onboarding-1-name.png)
+
+It is not a settings form with a progress bar. Every step **produces something real** and
+shows it happening, and every step says what you will end up with before it asks you for
+anything:
+
+| Step | What exists afterwards |
+|---|---|
+| Name your agent | the name on the menu bar and in every reply |
+| Give it a brain | a model this machine can actually reach |
+| Watch it answer | a real reply, from your model, in front of you |
+| Build a specialist | an agent you can call by name with `@` |
+| Give it a mission | a flow you can run, and watch run |
+| Let it run without you | something on the clock, with a next run time |
+| Reach it from your phone | a paired chat that answers as your agent |
+| Make it yours | a desktop that looks like your machine |
+| Add the people who will use it | an account that can sign in, here and from anywhere |
+
+![The "Build a specialist" step, showing the researcher-plus card — what it does and the six tools it will hold — with "Create this agent" beneath it](screenshots/onboarding-2-agent.png)
+
+The scheduling step is the same three job recipes as the **Jobs** app, so what you set up
+here is editable there afterwards — and it prints exactly what the job will be allowed to
+do before it is saved.
+
+![The "Let it run without you" step showing three job recipes: brief me every morning, watch a folder, tell me when a page changes](screenshots/onboarding-3-schedule.png)
+
+Three things are worth knowing about it:
+
+- **Every step is probed, never remembered.** A step is ticked because the machine has the
+  thing, not because this page remembers you clicking. Delete the agent and the step goes
+  back to todo. That is what makes it safe to re-run.
+- **Re-running is the same screen.** `Settings → Run setup again`, or `bento setup` in a
+  terminal, walks the same steps on day 300 and finds most of them already green.
+- **Every step can be skipped and says where it lives.** Nothing here is the only way to
+  reach a setting.
+
+### The same arc in a terminal
+
+A headless machine — a Pi over SSH, a server — gets the whole thing, from the same
+catalogue and the same probe. Set up half of it in the browser and finish it over SSH; the
+right steps are already ticked.
+
+```
+$ bento setup
+
+▲ Set up Aria — 2 of 9 done
+
+  ✓  1  Name your agent                   Bento
+  ✓  2  Give it a brain                   ollama/qwen2.5
+  ○  3  Watch it answer
+  ○  4  Build a specialist
+  ○  5  Give the specialist a mission     needs agent
+  ○  6  Let it run without you            needs flow
+  –  7  Reach it from your phone
+  ○  8  Make it yours
+  ○  9  Add the people who will use it
+
+  next: 3. Watch it answer
+  a number to do a step · s<n> to skip one · q to finish
+  Step [3]:
+```
 
 Already set up but want a clean slate? **Settings → Danger zone → Factory reset** wipes
-everything (memory, apps, conversations, settings, soul) and re-runs the wizard — day one again.
-
-After the wizard you'll see a wallpaper, app icons, a taskbar with a Start menu and dock, and
-the **Agent Chat** window. The full manual lives inside the OS: **Docs** on the desktop, or
-tab **8** in the TUI.
+everything (memory, apps, conversations, settings, soul, accounts) and starts the arc again
+— day one, properly.
 
 ---
 

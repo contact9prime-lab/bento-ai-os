@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from .agent import Agent
+from . import users as usersmod
 
 TRIGGER_KINDS = ("notification", "file_change", "login", "idle")
 OS_ORIGINS = ("schedule", "trigger", "briefing", "suggestion")
@@ -34,7 +35,7 @@ def _next_daily(at_time: str, after: float) -> float:
     return dt.timestamp()
 
 
-class Scheduler:
+class Scheduler(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast):
         """broadcast(event) -> awaitable: pushes events to all connected UI clients."""
         self.cfg = cfg
@@ -293,17 +294,31 @@ class Scheduler:
         await self.broadcast({"type": "task_finished", "task_id": task["id"],
                               "conversation_id": cid, "result": result_text[:500]})
 
+    def _sweep(self):
+        """Whose tasks to look at this tick. One person on a single-user machine;
+        everybody, one at a time, once there are users — a scheduled job belongs to
+        whoever created it and has to read THEIR memory when it fires."""
+        if not usersmod.enabled():
+            return [""]
+        return [u["id"] for u in usersmod.list_users()]
+
     async def run_forever(self):
         while not self._stop.is_set():
-            try:
-                for task in self.store.due_tasks(time.time()):
-                    # claim it immediately so a slow run can't double-fire
-                    self.store.update_task(task["id"], next_run=None)
-                    self._launch(task, origin="schedule")
-                self._poll_file_triggers()
-                self._poll_idle_triggers()
-            except Exception:
-                pass
+            for uid in self._sweep():
+                # `_launch` calls asyncio.create_task, and a task copies the current
+                # context at creation — so the run inherits this uid and reads the
+                # right person's data hours later. That inheritance is the whole
+                # reason the seam is a contextvar and not a parameter.
+                with usersmod.as_user(uid):
+                    try:
+                        for task in self.store.due_tasks(time.time()):
+                            # claim it immediately so a slow run can't double-fire
+                            self.store.update_task(task["id"], next_run=None)
+                            self._launch(task, origin="schedule")
+                        self._poll_file_triggers()
+                        self._poll_idle_triggers()
+                    except Exception:
+                        pass
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=20)
             except asyncio.TimeoutError:
