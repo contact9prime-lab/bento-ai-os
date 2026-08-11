@@ -30,9 +30,14 @@ you will end up with before it asks you for anything.
 ![The first-run setup screen: a rail of nine steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](docs/screenshots/onboarding-1-name.png)
 
 Every step is **probed, never remembered**: it is ticked because the machine has the thing.
-Delete the agent and the step goes back to todo. That is what makes `Run setup again` on day
-300 safe, and it is why `bento setup` over SSH picks up exactly where the browser left off —
-same catalogue, same probe, nine steps in a terminal.
+Delete the agent and the step goes back to todo. That is what makes it safe to re-run — and
+re-running is a normal thing to do here, because **Setup is also an app**. Open it any time to
+see what a step does, on a machine you set up months ago.
+
+![The Setup app in a window: the nine-step rail on the left, and the "Build a specialist" step open on the right](docs/screenshots/setup-app.png)
+
+Same catalogue, same probe, same panes — including in a terminal, where `bento setup` over
+SSH picks up exactly where the browser left off.
 
 ---
 

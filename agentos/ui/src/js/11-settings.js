@@ -220,9 +220,12 @@ function setTab(body,all){
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
-      pRow('Run setup again','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
-        {desc:'The same eight steps as the first run — name, model, a specialist, a flow, a schedule, a channel, the look. Steps you have already done show ticked, and nothing is wiped: this is a tour of the settings, not a reset.',
-         f:'setup onboarding wizard first run walkthrough tour again'}),
+      pRow('Open Setup','<button class="endbtn" onclick="openApp(\'setup\')">Open the app</button>',
+        {desc:'The nine steps as an ordinary window you can open any time — name, model, a first answer, a specialist, a flow, a schedule, a channel, the look, accounts. Steps already done show ticked, because every one is probed rather than remembered. Nothing here wipes anything: it creates.',
+         f:'setup onboarding wizard app steps arc walkthrough tour open'}),
+      pRow('Run it again from the start','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
+        {desc:'The same steps, full screen, with anything you skipped offered again. Still not a reset — see Factory reset below for that.',
+         f:'setup onboarding wizard first run walkthrough tour again restart'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
