@@ -78,6 +78,29 @@ async def onboarding(s: Shooter, base: str):
     await s.shot("onboarding-4-account", wait=1400)
 
 
+async def setup_app(s: Shooter):
+    """The arc as an ordinary window — the version you open months later to see
+    what a step does, rather than because the machine made you."""
+    print("setup app")
+    await s.p.evaluate("() => { obClose() }")
+    await s.p.wait_for_timeout(700)
+    # a model, so the later steps are not blocked — a blocked step is deliberately
+    # un-clickable and would photograph as a broken rail
+    await s.p.evaluate("""fetch('/api/config',{method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({default_model:'ollama/qwen2.5'})})""")
+    await s.p.wait_for_timeout(700)
+    await s.app("setup", wait=2000)
+    await s.p.evaluate("() => { document.querySelector('[data-step=\"agent\"]').click() }")
+    await s.shot("setup-app", wait=1200)
+    await s.p.evaluate("() => { winsOf('setup').forEach(w=>closeWin(w)) }")
+    await s.p.wait_for_timeout(600)
+    # Hand the arc back to the overlay, on the step `make_account` expects — the
+    # app leaves `OB.open` wherever the reader was, which is the point of it.
+    await s.p.evaluate("obShow({step:'account'})")
+    await s.p.wait_for_timeout(1200)
+
+
 async def make_account(s: Shooter):
     """Create the first account through the wizard — the real POST, the real
     adoption, the real sign-in."""
@@ -191,6 +214,7 @@ async def main():
                                 device_scale_factor=2)
         s = Shooter(page, out)
         await onboarding(s, base)
+        await setup_app(s)
         await make_account(s)
         await users_app(s)
         await sharing(s)

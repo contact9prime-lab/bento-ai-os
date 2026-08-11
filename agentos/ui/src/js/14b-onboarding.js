@@ -8,8 +8,21 @@
    It is the same component in both places. There is no first-run version and
    settings version to drift apart; Settings → "Run setup again" opens this.
 
+   THE ARC HAS TWO HOMES AND ONE IMPLEMENTATION.
+   It is a full-screen overlay on first run, and the **Setup app** the rest of the
+   time — same catalogue, same probe, same panes, same wiring. A "tour mode" that
+   only *showed* you the steps would be a second implementation to drift, and the
+   one that drifted would be whichever nobody was demoing; so the app is the real
+   thing, and it is safe to open because re-running setup is safe by design (it
+   creates, it never wipes, and a step already satisfied is already ticked).
+
+   Only ONE arc is alive at a time. Every pane wires itself by element id, so two
+   hosts on screen would mean two `#ob-name-go` buttons and a coin toss over which
+   one your click reached. `obHost()` enforces that rather than leaving it to
+   whoever opens the second one.
+
    `var`, not `let` — concatenated bundle, and 14-docs-setup calls into it. */
-var OB={state:null,open:'',busy:false,done:null};
+var OB={state:null,open:'',busy:false,done:null,host:null};
 
 async function obLoad(){
   try{OB.state=await (await fetch('/api/onboarding')).json()}catch(e){OB.state=null}
@@ -18,6 +31,26 @@ async function obLoad(){
 function obStep(id){return ((OB.state||{}).steps||[]).find(s=>s.id===id)}
 
 /* ---------- the shell ---------- */
+
+function obCloseApp(){
+  if(typeof winsOf==='function')winsOf('setup').forEach(w=>closeWin(w));
+}
+
+/* Claim the arc for one host, tearing down whichever had it. Returns the element
+   that now contains the rail and the pane. */
+function obHost(el,opts){
+  opts=opts||{};
+  if(OB.host&&OB.host!==el){
+    const ov=$('#ob-wiz');
+    if(ov&&(ov===OB.host||ov.contains(OB.host)))ov.remove();     // the overlay had it
+    else if(opts.fromOverlay)obCloseApp();
+  }
+  el.innerHTML='<div class="ob-stage"><div class="ob-rail" id="ob-rail"></div>'
+    +'<div class="ob-pane" id="ob-pane"></div></div>';
+  OB.host=el;
+  return el;
+}
+
 async function obShow(opts){
   opts=opts||{};
   await obLoad();
@@ -25,24 +58,53 @@ async function obShow(opts){
   let ov=$('#ob-wiz');
   if(!ov){
     ov=document.createElement('div');ov.id='ob-wiz';ov.className='wiz ob';
-    ov.innerHTML='<div class="ob-stage"><div class="ob-rail" id="ob-rail"></div>'
-      +'<div class="ob-pane" id="ob-pane"></div></div>';
     document.body.appendChild(ov);
     Motion.run(ov,[{opacity:0},{opacity:1}],{duration:240,easing:EASE.out});
   }
+  obHost(ov,{fromOverlay:true});
   OB.done=opts.onDone||obClose;
   OB.open=opts.step||OB.state.next||(OB.state.steps[0]||{}).id;
   obRender();
 }
 function obClose(){
   const ov=$('#ob-wiz');if(!ov)return;
+  if(OB.host===ov)OB.host=null;
   Motion.run(ov,[{opacity:1},{opacity:0}],{duration:200,easing:EASE.in})
     .finished.then(()=>ov.remove());
 }
 
+/* ---------- the same arc, as an app ----------
+   A window rather than a takeover, because this is the version you open to look
+   at what setup does — including on a machine that finished setup months ago. The
+   only differences are the frame it sits in and the last button on the rail, which
+   closes a window instead of dismissing a wizard. */
+async function renderSetup(body,w){
+  body.innerHTML='<div class="dim" style="padding:var(--sp-4)">…</div>';
+  await obLoad();
+  if(!OB.state){body.innerHTML='<p class="mut" style="padding:16px">Setup is '
+    +'unavailable — the server did not answer.</p>';return}
+  body.classList.add('ob-inwin');
+  obHost(body);
+  // Two columns at 500px are two unreadable columns. Watched rather than measured
+  // once, because a window is resized and a container query would need
+  // `container-type` on every `.wbody` in the OS to work here.
+  const fit=()=>body.classList.toggle('narrow',body.clientWidth<700);
+  fit();
+  if(w&&window.ResizeObserver){
+    w._obRO=new ResizeObserver(fit);w._obRO.observe(body);
+  }
+  OB.done=obCloseApp;
+  OB.open=OB.open||OB.state.next||(OB.state.steps[0]||{}).id;
+  obRender();
+}
+
 function obRender(){
-  const rail=$('#ob-rail'),pane=$('#ob-pane');if(!rail||!pane)return;
-  const S=OB.state,agent=(typeof agentName==='function'&&agentName())||'your agent';
+  const host=OB.host||document;
+  const rail=host.querySelector?host.querySelector('.ob-rail'):$('#ob-rail');
+  const pane=host.querySelector?host.querySelector('.ob-pane'):$('#ob-pane');
+  if(!rail||!pane)return;
+  const S=OB.state,agent=(typeof agentName==='function'&&agentName())||'your agent',
+        inWin=!!(OB.host&&OB.host.classList&&OB.host.classList.contains('ob-inwin'));
   rail.innerHTML=`<div class="ob-head">
       <div class="ob-mark">▲</div>
       <b>Set up ${esc(agent)}</b>
@@ -56,9 +118,21 @@ function obRender(){
         ${s.detail?`<em>${esc(s.detail)}</em>`
           :s.blocked.length?`<em>needs ${esc(s.blocked.join(', '))}</em>`:''}</span>
     </button>`).join('')}
-    <button class="ob-leave" id="ob-leave">${S.finished?'Done — take me in →':'Finish later'}</button>`;
+    ${inWin
+      ? `<button class="ob-leave" id="ob-full">Open it full screen</button>
+         <button class="ob-leave" id="ob-leave">Close</button>`
+      : `<button class="ob-leave" id="ob-leave">${
+           S.finished?'Done — take me in →':'Finish later'}</button>`}`;
   rail.querySelectorAll('.ob-item').forEach(b=>b.onclick=()=>{OB.open=b.dataset.step;obRender()});
-  $('#ob-leave').onclick=()=>{markSetupComplete();OB.done()};
+  /* Closing a WINDOW is not "I have finished setting this machine up". Marking it
+     complete here would mean somebody who opened the app to look around, on a
+     machine still half configured, silently never saw the first-run screen again. */
+  rail.querySelector('#ob-leave').onclick=()=>{
+    if(!inWin)markSetupComplete();
+    OB.done();
+  };
+  const full=rail.querySelector('#ob-full');
+  if(full)full.onclick=()=>{obCloseApp();obShow({step:OB.open})};
   obPane(pane,obStep(OB.open)||S.steps[0]);
 }
 

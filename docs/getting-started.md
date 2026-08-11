@@ -49,6 +49,32 @@ Three things are worth knowing about it:
 - **Every step can be skipped and says where it lives.** Nothing here is the only way to
   reach a setting.
 
+### Setup is also an app
+
+You do not have to wait for a fresh install to see it. **Setup** is an ordinary app —
+in the deck, the start menu and the omnibar — so you can open the arc any time to look
+at what a step actually does.
+
+![The Setup app in a window: the nine-step rail on the left with "Give it a brain" ticked, and on the right the "Build a specialist" step showing the researcher-plus card and a Create this agent button](screenshots/setup-app.png)
+
+It is the **same arc**, not a preview of it: same catalogue, same probe, same panes,
+same buttons. A tour mode that only showed you the steps would be a second
+implementation to drift from the real one. That is safe here because re-running setup
+is safe by design — it creates, it never wipes, and a step you have already done is
+already ticked.
+
+Two things behave differently because a window is not a wizard:
+
+- **Closing it does not mark setup finished.** Otherwise somebody who opened the app
+  to look around, on a half-configured machine, would silently never see the first-run
+  screen again.
+- **`Open it full screen`** hands the arc back to the wizard, on the step you were
+  reading. There is only ever one arc alive — every step wires itself by element id,
+  so two on screen would be a coin toss over which one your click reached.
+
+`Settings → Setup` offers both: the app, and a full-screen run from the start with
+anything you skipped offered again.
+
 ### The same arc in a terminal
 
 A headless machine — a Pi over SSH, a server — gets the whole thing, from the same

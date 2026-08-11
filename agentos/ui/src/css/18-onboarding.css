@@ -98,3 +98,34 @@
   .ob-t em{display:none}
   .ob-pane{padding:var(--sp-4)}
 }
+
+/* ---- the same arc, inside a window ----
+   The overlay version sizes itself against the VIEWPORT (`min(1080px,100vw)`),
+   which inside a 1000px window is the screen and not the window — the stage would
+   overhang its own frame. In a window it simply fills the body, and the rail loses
+   a little width because the window supplies its own title instead. */
+.wbody.ob-inwin{padding:0;overflow:hidden}
+.wbody.ob-inwin .ob-stage{width:100%;height:100%;grid-template-columns:262px 1fr}
+.wbody.ob-inwin .ob-rail{padding:var(--sp-4) var(--sp-3)}
+.wbody.ob-inwin .ob-head{padding-bottom:var(--sp-3)}
+.wbody.ob-inwin .ob-mark{width:36px;height:36px;font-size:var(--fs-base)}
+.wbody.ob-inwin .ob-pane{padding:var(--sp-5) var(--sp-5) var(--sp-4)}
+/* Two buttons at the foot of the rail now, not one. */
+.wbody.ob-inwin .ob-leave{margin-top:0;padding-top:var(--sp-2)}
+.wbody.ob-inwin .ob-leave:first-of-type{margin-top:auto;padding-top:var(--sp-4)}
+
+/* A window narrowed past the point where two columns are two unreadable columns
+   gets the phone treatment — the rail becomes a strip along the top. A container
+   query is what this wants, but nothing else in the bundle establishes a
+   container, and `container-type:size` on `.wbody` changes layout containment for
+   every app in the OS. So the JS sets `.narrow` from the window's own width. */
+.wbody.ob-inwin.narrow .ob-stage{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+.wbody.ob-inwin.narrow .ob-rail{flex-direction:row;overflow-x:auto;border-right:none;
+  border-bottom:1px solid var(--hairline);align-items:center;padding:var(--sp-3)}
+.wbody.ob-inwin.narrow .ob-head{display:none}
+.wbody.ob-inwin.narrow .ob-item{flex:none;flex-direction:column;align-items:center;
+  gap:4px;width:78px}
+.wbody.ob-inwin.narrow .ob-t{font-size:var(--fs-2xs);text-align:center;white-space:normal}
+.wbody.ob-inwin.narrow .ob-t em{display:none}
+.wbody.ob-inwin.narrow .ob-leave{margin:0;padding:0 var(--sp-2);white-space:nowrap}
+.wbody.ob-inwin.narrow .ob-leave:first-of-type{margin-top:0;padding-top:0}

@@ -67,6 +67,17 @@ const APPS={
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
   users:{id:'users',title:'Users',icon:'◱',w:720,h:640,desc:'Who can use this machine — accounts, roles, shared agents & apps',render:renderUsers},
+  setup:{id:'setup',title:'Setup',icon:'▲',w:1000,h:680,
+    desc:'Set this machine up, or open the arc to see what each step does',
+    render:renderSetup,
+    // The window and the first-run overlay share one arc, so leaving the window
+    // has to hand the arc back — otherwise the next `obShow()` renders into a
+    // host that is no longer on screen.
+    onClose(w){
+      try{w._obRO&&w._obRO.disconnect()}catch(e){}
+      if(OB&&OB.host&&OB.host.classList&&OB.host.classList.contains('ob-inwin'))OB.host=null;
+      return true;
+    }},
   about:{id:'about',title:'About Bento Box AI',icon:'▲',w:520,h:620,desc:'Version, what is new, and system information',render:renderAbout},
 };
 
@@ -83,6 +94,10 @@ const APP_CTX={
   remotedesk:()=>'the interactive Remote Desktop — the real screen, clickable, relayed through AgentOS',
   control:()=>'Quick Settings: volume, brightness, network, battery, DND',
   syssettings:()=>`System Settings, "${(typeof SYS_TABS!=='undefined'&&SYS_TABS[SYS.tab])||'Network'}" tab open`,
+  setup:()=>(typeof OB!=='undefined'&&OB.state)
+    ?`the setup arc, ${OB.state.done} of ${OB.state.total} steps done, "${
+      ((OB.state.steps||[]).find(s=>s.id===OB.open)||{}).title||'?'}" open`
+    :'the setup arc',
   users:()=>(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)
     ?`the account list (${USERS.list.length} accounts, signed in as ${(USERS.me.name||'?')})`
     :'the accounts screen — this machine has one user and has not turned accounts on',
