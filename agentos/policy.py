@@ -564,9 +564,23 @@ class PDP(usersmod.Scoped):
 
     def decide(self, principal: Principal, action: str, resource: str,
                context: dict | None = None) -> Decision:
-        dec = self._decide(principal, action, resource, context)
+        ctx = context or {}
+        dec = self._decide(principal, action, resource, ctx)
         dec.action, dec.resource = action, resource
-        dec.audit_id = self._record(principal, action, resource, context or {}, dec)
+        dec.audit_id = self._record(principal, action, resource, ctx, dec)
+        # Fail-closed: if the ledger could not record an ALLOW, refuse it. An
+        # enterprise deployment can require that nothing happens off the record —
+        # an adversary who wedges the audit DB (locks it, fills the disk) must not
+        # thereby buy un-logged-but-allowed actions. Off by default (a home machine
+        # would rather keep working than stop when its disk is full); denies and
+        # asks are already safe, and a probe (audit=False) is not an access.
+        if (dec.effect == "allow" and not dec.audit_id
+                and ctx.get("audit") is not False
+                and (self.cfg.get("security") or {}).get("audit_fail_closed")):
+            return Decision("deny",
+                            "refused: this machine requires every action to be recorded, and "
+                            "the audit ledger could not be written (see Logs).",
+                            rule="audit-unavailable", action=action, resource=resource)
         return dec
 
     def _record(self, principal: Principal, action: str, resource: str,
@@ -590,6 +604,7 @@ class PDP(usersmod.Scoped):
             return ""
         try:
             return store.audit_add(
+                uid=self._who(),          # the acting account, so the row is self-describing
                 principal_kind=principal.kind, principal_id=principal.id,
                 surface=ctx.get("surface", ""), action=action, resource=resource,
                 effect=dec.effect, rule=dec.rule, risk=ctx.get("risk", ""),

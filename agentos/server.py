@@ -5520,6 +5520,17 @@ async def api_audit_summary(since: float = 0.0):
     return state["store"].audit_summary(since=since)
 
 
+@app.get("/api/audit/verify")
+async def api_audit_verify():
+    """Walk the ledger's hash chain and report whether it is intact, or the first
+    seq where a row was altered, deleted or reordered. Admin-only: on a multi-user
+    machine, whether somebody's ledger has been tampered with is a machine-level
+    question, and the answer names how far the record can be trusted."""
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can verify the ledger"}, status_code=403)
+    return state["store"].audit_verify()
+
+
 @app.get("/api/memories")
 async def api_memories(scope: str = "", conversation_id: str = "", q: str = "",
                        space: str = ""):
