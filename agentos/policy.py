@@ -214,10 +214,13 @@ TAINT_MODES = ("off", "ask", "strict")
 # between those two is the only thing standing between a bug in a refresh handler and a
 # machine hammering somebody else's API all night.
 #
-# Two thresholds, because the two failures look different. A dashboard fetching a dozen
-# tickers on refresh is a legitimate BURST; a runaway loop is SUSTAINED. Tripping the burst
-# limit refuses that one call and nothing else. Tripping it over and over is what gets an
-# app stopped.
+# Two thresholds, because the two failures look different, and a real runaway can wear
+# either shape. A tight loop is a BURST — many calls in a few seconds; the burst ceiling
+# catches it at once. A patient loop is a DRIP — a rate low enough to stay under the burst
+# ceiling forever (fetch a page every half-second, all night) while still hammering
+# somebody else's API; the SUSTAINED ceiling, a lower rate over a much longer window,
+# is the only thing that sees it. Neither subsumes the other: a legitimate dashboard
+# bursts on refresh but does not sustain, so it must pass the first and the second.
 # Calls are metered in CLASSES, because "too many" means different numbers for different
 # things. Six model calls a minute from a dashboard is money leaving at a rate nobody asked
 # for; six fetches is a page refreshing. Counting them together would either quarantine
@@ -233,7 +236,7 @@ def call_class(tool: str) -> str:
     return "tool"
 
 
-# principal kind -> class -> (calls allowed, window seconds)
+# principal kind -> class -> (calls allowed, window seconds), the BURST ceiling.
 # Grounded in what this machine actually does: its busiest legitimate app burst was 25
 # fetches in 10s on refresh, and no app has ever made more than a handful of model calls in
 # a minute. So the tool limit sits above real bursts and the llm limit sits just above real
@@ -242,6 +245,18 @@ RATE_DEFAULTS = {
     "app":      {"llm": (6, 60), "tool": (60, 20)},
     "subagent": {"llm": (20, 60), "tool": (120, 20)},
     "flow":     {"llm": (20, 60), "tool": (120, 20)},
+}
+
+# The SUSTAINED ceiling: a lower rate over a much longer window, to catch a drip that
+# never bursts. The windows are ~15x the burst windows and the budgets are set so a
+# legitimate app that bursts on refresh but then goes quiet stays well under, while a
+# steady loop — even one paced to slip under the burst limit — crosses it. tool: 300 in
+# 5 min is one call every second, sustained; a real refresh every 30s is nowhere near it.
+# llm: 30 model calls in 10 min is far above any real app and far below a spend runaway.
+SUSTAIN_DEFAULTS = {
+    "app":      {"llm": (30, 600), "tool": (300, 300)},
+    "subagent": {"llm": (60, 600), "tool": (600, 300)},
+    "flow":     {"llm": (60, 600), "tool": (600, 300)},
 }
 
 
@@ -254,21 +269,31 @@ def rate_limits(cfg: dict, kind: str) -> dict | None:
     return {k: tuple(v) for k, v in lim.items()} if lim else None
 
 
+def sustain_limits(cfg: dict, kind: str) -> dict | None:
+    """The sustained ceiling, disabled together with the burst one (they are one
+    feature) and overridable via security.sustain_limits in the same shape."""
+    if rate_limits(cfg, kind) is None:
+        return None
+    conf = (cfg.get("security") or {}).get("sustain_limits")
+    table = {**SUSTAIN_DEFAULTS, **(conf or {})}
+    lim = table.get(kind)
+    return {k: tuple(v) for k, v in lim.items()} if lim else None
+
+
 class RateMeter:
     """In-memory call history per principal. Never touches the database: this is consulted
     on every single capability call, and a gate that costs a write is a gate somebody will
     eventually be tempted to remove."""
 
     def __init__(self):
-        self._calls: dict = {}   # label -> [timestamps]
-        self._trips: dict = {}   # label -> [timestamps of burst trips]
+        self._calls: dict = {}   # label -> [timestamps], trimmed to the widest window asked of it
 
     def record(self, label: str, now: float, keep: float):
         q = self._calls.setdefault(label, [])
         q.append(now)
-        if len(q) > 512:                  # bounded: a runaway must not also eat memory
-            del q[:-512]
-        cut = now - keep
+        if len(q) > 4096:                 # bounded: a runaway must not also eat memory.
+            del q[:-4096]                 # wide enough that the sustained window is never
+        cut = now - keep                  # under-counted by the cap at any real rate.
         while q and q[0] < cut:
             q.pop(0)
 
@@ -276,17 +301,8 @@ class RateMeter:
         cut = now - window
         return sum(1 for t in self._calls.get(label, ()) if t >= cut)
 
-    def trip(self, label: str, now: float, window: float) -> int:
-        q = self._trips.setdefault(label, [])
-        q.append(now)
-        cut = now - window
-        while q and q[0] < cut:
-            q.pop(0)
-        return len(q)
-
     def forget(self, label: str):
         self._calls.pop(label, None)
-        self._trips.pop(label, None)
 
 
 def taint_mode(cfg: dict) -> str:
@@ -445,15 +461,28 @@ class PDP(usersmod.Scoped):
             pass
         cls = call_class(ctx.get("tool") or "")
         allowed, window = lim.get(cls) or lim.get("tool")
+        slim = sustain_limits(self.cfg, principal.kind) or {}
+        s_allowed, s_window = slim.get(cls) or slim.get("tool") or (None, None)
         label = f"{self._who()}|{principal.label}|{cls}"
         now = time.time()
-        self._rate.record(label, now, window)
+        # Record once, keeping the widest window either ceiling needs, then read both
+        # off the one history — a drip that never breaches the burst window is only
+        # visible against the long one.
+        self._rate.record(label, now, max(window, s_window or 0))
         n = self._rate.count(label, now, window)
-        if n <= allowed:
-            return None
         what = "model calls" if cls == "llm" else "tool calls"
+        over = None
+        if n > allowed:
+            over = (n, allowed, window, "in a tight loop")
+        elif s_allowed is not None:
+            sn = self._rate.count(label, now, s_window)
+            if sn > s_allowed:
+                over = (sn, s_allowed, s_window, "at a steady rate that does not let up")
+        if over is None:
+            return None
+        n, allowed, window, how = over
         reason = (f"{n} {what} in {int(window)}s, over its limit of {allowed} — "
-                  f"it was calling {ctx.get('tool') or 'tools'} in a loop")
+                  f"it was calling {ctx.get('tool') or 'tools'} {how}")
         stats = {"count": n, "window": window, "allowed": allowed, "class": cls,
                  "tool": ctx.get("tool", ""), "reason": reason}
         # The hold is written HERE, not in the callback. The gate deciding something is
