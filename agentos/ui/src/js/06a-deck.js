@@ -331,7 +331,7 @@ function deckBoardHTML(){
         <button class="db-open" title="Open the whole app">⤢</button></div>
       <div class="deck-wframe db-${size}"><iframe loading="lazy" title="${esc(a.name)}"
         src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${size}"
-        sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
+        sandbox="allow-scripts allow-forms"></iframe></div>
     </div>`;
   }).join('');
 }
@@ -387,7 +387,7 @@ function deckWidgetsHTML(){
   return here.map(w=>`<div class="deck-group deck-wgroup" data-w="${esc(w.app_id)}">
     <div class="deck-gname">${esc(apps[w.app_id].name)}
       <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
-    <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>
+    <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-forms"></iframe></div>
   </div>`).join('');
 }
 function deckToggleNative(){

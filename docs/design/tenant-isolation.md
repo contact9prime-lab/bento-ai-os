@@ -48,6 +48,45 @@ invent a new app transport — it has to make the token the *only* thing that wo
 
 ## Piece 1 — app origin isolation
 
+**Status: done** (`agentos/server.py` `csrf_origin_guard`, the opaque-origin
+iframes, `tests/test_app_origin.py`). Verified end to end in a real browser: an
+app's `POST /api/grants` forge is refused, `appTool`/`appData` still work, and the
+app can no longer read `parent.document.cookie`.
+
+**What shipped is simpler than the CSRF-token design below, and stronger.** The
+insight: once app iframes are **opaque-origin** (sandbox without
+`allow-same-origin`), their fetches carry `Origin: null` — a header the browser
+sets and **no script may forge** (Origin is a forbidden header name). The
+desktop's own fetches carry the real same-origin value. So the server tells an
+app's request apart from the user's by the browser-stamped Origin, with **no token
+plumbed onto the desktop's hundreds of fetch sites** — miss one and the hole is
+back, so not plumbing them at all is the safer design.
+
+The guard, on every mutating `/api/*` request:
+
+- **A same-origin request is the user** — the desktop. Allowed.
+- **A cross-origin request to a normal route is refused.** An opaque app (`Origin:
+  null`) or a foreign site cannot mutate `/api/grants`, `/api/config`, anything.
+  This is the leg that closes the verified escape, and it holds on a single-user
+  loopback machine too, because it keys on Origin, not on the source address.
+- **The app runtime** (`/api/tool`, `/api/apps/*/data`, `/api/apps/context`,
+  `/api/apps/llm/*`) answers a valid **X-App-Token** (the app, cross-origin, with
+  CORS so it can read the reply) **or** the same-origin desktop (an automation step
+  running a tool as the user). A cross-origin call with neither is refused — it can
+  no longer fall through to `MAIN`.
+- **Non-browser clients** (curl, the TUI) send no Origin and carry no ambient
+  cookie to abuse, so they are not a CSRF vector and are left to the auth gate.
+
+Removing `allow-same-origin` also stops the iframe reaching `window.parent`, so an
+app can no longer read the desktop's cookies or DOM — the other half of the same
+root cause. Apps keep working because they reach the OS only through the
+token-bearing runtime, which now sets the CORS the opaque origin needs; apps that
+used `localStorage` migrate to `appData` (already the recommended path).
+
+---
+
+### The earlier design, kept for the record
+
 **Goal:** an app can reach exactly the four token-authenticated runtime endpoints
 and nothing else, and it cannot read the desktop's secrets — on a single-user
 loopback machine as much as a multi-user remote one.
@@ -172,5 +211,5 @@ real boundary.
 2. ✅ Piece 2 enforcement (done): the file tools, `run_command` and the Terminal
    honour the per-account boundary and fail closed; `bwrap`-per-user is the
    default jail. What remains is the deployment choice of jail strength above.
-3. Piece 1, staged behind a flag with Playwright verification — the last
-   verified-CRITICAL escape.
+3. ✅ Piece 1 done: opaque-origin apps + the Origin-checking `csrf_origin_guard`.
+   Browser-verified; the verified-CRITICAL escape is closed.

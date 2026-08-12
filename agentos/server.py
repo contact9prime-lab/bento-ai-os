@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
@@ -4212,6 +4213,99 @@ SENSITIVE_FOR_APPS = (
     # user's decision to make, not something an app kicks off in the background
     ("POST", "/api/evals/run"),
 )
+
+
+# ---------------------------------------------------------------------------
+# App origin isolation (docs/design/tenant-isolation.md, Piece 1).
+#
+# Apps run in opaque-origin iframes (sandbox without allow-same-origin), so they
+# cannot read the desktop's DOM/cookies and — the point of this guard — their
+# fetches carry `Origin: null`, a header the browser sets and no script may forge.
+# The desktop's own fetches carry the real same-origin value. That single
+# browser-enforced difference is what tells an app's request apart from a user's,
+# with no token plumbed onto the hundreds of desktop fetch sites (miss one and the
+# hole is back). A same-origin mutating request is the user; a cross-origin one is
+# refused unless it is an app reaching its own runtime with a valid app token.
+# ---------------------------------------------------------------------------
+
+_MUTATING = {"POST", "PUT", "DELETE", "PATCH"}
+
+
+def _is_app_runtime(path: str) -> bool:
+    """The only endpoints an app may reach, and the only ones that answer a
+    cross-origin (opaque-app) request. Everything else is the user's."""
+    return path == "/api/tool" \
+        or path in ("/api/apps/llm/stream", "/api/apps/llm/chat",
+                    "/api/apps/agent", "/api/apps/context") \
+        or (path.startswith("/api/apps/") and path.endswith(("/data", "/page")))
+
+
+def _request_origin(request: Request) -> str | None:
+    o = request.headers.get("origin")
+    if o:
+        return o
+    ref = request.headers.get("referer")            # some browsers omit Origin on same-origin
+    if ref:
+        u = urlsplit(ref)
+        return f"{u.scheme}://{u.netloc}" if u.netloc else None
+    return None
+
+
+def _same_origin(request: Request):
+    """True same-origin · False cross-origin (incl. opaque 'null') · None no origin
+    header at all, which is a non-browser client (curl, the TUI) with no ambient
+    cookie to abuse, so it is not a CSRF vector and is left to the auth gate."""
+    o = _request_origin(request)
+    if not o:
+        return None
+    if o == "null":
+        return False
+    return urlsplit(o).netloc == request.headers.get("host", "")
+
+
+def _valid_app_token(request: Request) -> bool:
+    tok = request.headers.get("x-app-token", "")
+    return bool(tok) and tok in state.get("app_tokens", {})
+
+
+def _cors_headers(request: Request) -> dict:
+    """Let the opaque app read its own runtime responses. The authority is the app
+    token, not the origin, so reflecting `null` is safe: a foreign site's sandboxed
+    iframe also sends `null` but holds no valid token and is refused before here."""
+    return {"Access-Control-Allow-Origin": request.headers.get("origin", "null"),
+            "Access-Control-Allow-Headers": "X-App-Token, Content-Type",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+            "Vary": "Origin"}
+
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    path, method = request.url.path, request.method
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    app_runtime = _is_app_runtime(path)
+    if method == "OPTIONS" and app_runtime:          # the opaque app's CORS preflight
+        return Response(status_code=204, headers=_cors_headers(request))
+    if method in _MUTATING and not path.startswith(REMOTE_OPEN_PATHS):
+        so = _same_origin(request)
+        if app_runtime:
+            # its own runtime: a valid app token, or the desktop itself (same-origin,
+            # e.g. an automation step running a tool as the user). A cross-origin
+            # request with no token is a foreign site or a tokenless app — refused.
+            if not (_valid_app_token(request) or so is True or so is None):
+                return JSONResponse({"error": "denied: this needs a valid app token "
+                                     "(cross-origin request)"}, status_code=403)
+        elif so is False:
+            # A cross-origin mutation of a non-runtime route is either an app trying
+            # to escape its sandbox or a cross-site forgery. Neither is the user.
+            return JSONResponse({"error": "denied: cross-origin request refused (apps "
+                                 "reach the OS only through appTool and its grants)"},
+                                status_code=403)
+    resp = await call_next(request)
+    if app_runtime and _same_origin(request) is False:
+        for k, v in _cors_headers(request).items():
+            resp.headers.setdefault(k, v)
+    return resp
 
 
 @app.middleware("http")

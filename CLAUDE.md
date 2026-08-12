@@ -330,6 +330,44 @@ New capabilities get their own **action**, not another `tool.use` string — `me
 `media.generate` and `space.write` exist because "may look at the gallery but may not bill
 my image provider" has to be expressible as one grant.
 
+## The security boundaries, and the two that are enforcement not architecture
+
+The PDP is the gate for *what a principal may do*. Three other boundaries decide *who a
+principal is* and *what it can reach outside the PDP*, and they are the ones a change is
+most likely to quietly break. Full audit and rationale in `docs/design/tenant-isolation.md`.
+
+- **An app is an opaque-origin iframe, and that is the whole app sandbox.** Apps are
+  served with `sandbox="allow-scripts allow-forms"` — deliberately WITHOUT
+  `allow-same-origin`. That makes their `fetch` carry `Origin: null` (a header the browser
+  sets and no script can forge) and stops them reading `window.parent`. `csrf_origin_guard`
+  refuses any cross-origin mutation of a normal `/api/*` route, so an app cannot POST
+  `/api/grants` or `/api/config`; it reaches the OS ONLY through the token-bearing runtime
+  (`/api/tool`, `/api/apps/*/data`, `/api/apps/context`, `/api/apps/llm/*`), which the PDP
+  then gates. **Putting `allow-same-origin` back on an app iframe silently removes the whole
+  boundary** — `tests/test_app_origin.py` fails if you do. Do not "simplify" the guard to a
+  token plumbed through the desktop's fetches: the point is that no desktop call has to
+  remember anything, because the browser stamps Origin for free.
+
+- **A WebSocket has no HTTP middleware, so it resolves the user by hand.** `resolve_user`
+  never runs for a socket; `_ws_user` reads the account from the signed cookie and every
+  turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
+  read the store first and set the user second would act as the machine, not the person.
+
+- **Accounts are a data boundary through the tools, enforced, not an OS boundary.** On a
+  machine with accounts, the file tools refuse another account's home (via `_tenant_deny`,
+  independent of the sandbox toggle) and `run_command`/the Terminal run in a per-account
+  `bwrap` jail with sibling homes tmpfs-blanked — failing CLOSED if no jail exists, because
+  a shell that can read another home is the whole isolation gone. What this does NOT defend
+  is a `bwrap` escape or an account with root/physical disk access; that is the deployment
+  choice (per-user uid / containers) in the design doc, and the docs say so rather than
+  overclaiming.
+
+- **The ledger is tamper-evident and can be fail-closed.** Every `audit` row carries the
+  acting `uid`, a `seq` and a `row_hash` chaining it to the previous row; `audit_verify()`
+  finds the first edit or deletion. `security.audit_fail_closed` refuses an ALLOW whose
+  ledger write failed. Nothing user-reachable may delete audit rows — a space-delete keeps
+  them, and factory-reset is loopback + admin only.
+
 ## Licensing: permissive only, and ask rather than ship
 
 What AgentOS **depends on**, it is effectively distributing, and that set must be
