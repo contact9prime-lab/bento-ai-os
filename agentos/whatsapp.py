@@ -280,15 +280,27 @@ class WhatsAppBridge(usersmod.Scoped):
             for change in (entry.get("changes") or []):
                 val = change.get("value") or {}
                 for msg in (val.get("messages") or []):
-                    mid = msg.get("id") or ""
-                    if mid and mid in self._seen:
-                        continue
-                    if mid:
-                        self._seen[mid] = time.time()
-                        if len(self._seen) > 500:
-                            cut = time.time() - 3600
-                            self._seen = {k: v for k, v in self._seen.items() if v > cut}
                     await self._one(msg, val)
+
+    def _fresh(self, mid: str) -> bool:
+        """First time this message id has been seen? Remember it if so.
+
+        This lives BELOW both transports, in `_one`, because both redeliver and only
+        one of them used to be guarded. Meta batches and retries; a linked device
+        re-emits `messages.upsert` when the socket reconnects. The guard sat in
+        `handle()` — the webhook path — so the Baileys transport, which calls `_one`
+        directly, had none: one sentence became two agent turns a minute apart, two
+        replies on the phone, and two charges for it.
+        """
+        if not mid:
+            return True                      # nothing to key on; let it through
+        if mid in self._seen:
+            return False
+        self._seen[mid] = time.time()
+        if len(self._seen) > 500:
+            cut = time.time() - 3600
+            self._seen = {k: v for k, v in self._seen.items() if v > cut}
+        return True
 
     def _profile_name(self, val: dict, wa_id: str) -> str:
         for c in (val.get("contacts") or []):
@@ -299,6 +311,11 @@ class WhatsAppBridge(usersmod.Scoped):
     async def _one(self, msg: dict, val: dict):
         wa_id = msg.get("from") or ""
         if not wa_id:
+            return
+        # Before anything with a side effect — a redelivered approval tap would
+        # otherwise answer the same question twice as surely as a redelivered
+        # sentence starts the same turn twice.
+        if not self._fresh(msg.get("id") or ""):
             return
         # A button tap answers a pending approval; it is not a new sentence.
         inter = msg.get("interactive") or {}

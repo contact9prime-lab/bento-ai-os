@@ -215,3 +215,113 @@ def test_the_approval_prompt_says_how_to_answer_it():
     p = wa_baileys.approval_prompt("run_command", "it wants to run rm")
     for token in ("1", "2", "3", "run_command"):
         assert token in p
+
+
+def test_a_reply_goes_back_to_the_address_it_came_from():
+    """WhatsApp now addresses many contacts by LID, which is not a phone number.
+
+    The bridge rebuilt the target as `<id>@s.whatsapp.net`, so a reply to a `…@lid`
+    sender went to an address nobody holds — accepted by the socket and delivered to
+    no one. Everything on this side looked healthy: the message arrived, the turn
+    ran, the ledger recorded a reply, and the phone stayed silent.
+    """
+    sent = []
+    t = _transport([])
+    t.state = "ready"
+
+    async def fake_write(obj):
+        sent.append(obj)
+        return True
+
+    t._write = fake_write
+    asyncio.run(t._inbound({"from": "34110747725849", "jid": "34110747725849@lid",
+                            "text": "Hi", "id": "A1"}))
+    asyncio.run(t.send("hello", "34110747725849"))
+    assert sent[-1]["to"] == "34110747725849@lid", \
+        f"replied to {sent[-1]['to']} — that address does not exist"
+
+
+def test_an_unseen_number_still_gets_the_plain_domain():
+    """The fallback stays: a number nobody has messaged from has no learned jid,
+    and appending the ordinary domain is the only thing left to try."""
+    sent = []
+    t = _transport([])
+    t.state = "ready"
+
+    async def fake_write(obj):
+        sent.append(obj)
+        return True
+
+    t._write = fake_write
+    asyncio.run(t.send("hello", "447700900123"))
+    assert sent[-1]["to"] == "447700900123"
+
+
+class _CountingStore(_Store):
+    """Records the first thing `_one` does with a message it accepts."""
+
+    def __init__(self):
+        self.upserts = []
+
+    def wa_upsert_chat(self, wa_id, name):
+        self.upserts.append(wa_id)
+        return {"allowed": 1, "msg_count": 5}
+
+    def wa_set_allowed(self, *a):
+        pass
+
+
+def test_a_redelivered_message_does_not_run_the_turn_twice():
+    """Both transports redeliver, and only one of them used to be guarded.
+
+    Meta batches and retries; a linked device re-emits `messages.upsert` when the
+    socket reconnects. The dedupe sat in `handle()` — the webhook path — so a
+    Baileys message, which reaches `_one` directly, had none: one sentence became
+    two agent turns a minute apart, two replies on the phone, and two charges.
+    """
+    async def bc(_):
+        pass
+
+    store = _CountingStore()
+    b = wamod.WhatsAppBridge(base_cfg(mode="baileys", owner_wa_id="91"), store, None, bc)
+    async def go():
+        await b._one({"from": "91", "id": "ABC123", "type": "text",
+                      "text": {"body": "hello"}}, {"contacts": []})
+
+    # The second call must stop before it touches anything: same id, same message.
+    try:
+        asyncio.run(go())
+    except Exception:
+        pass                     # a real turn needs a model; getting that far is the point
+    first = len(store.upserts)
+    try:
+        asyncio.run(go())
+    except Exception:
+        pass
+    assert first == 1, "the first delivery should have been processed"
+    assert len(store.upserts) == 1, "a redelivered id started a second turn"
+
+
+def test_the_freshness_guard_is_shared_by_both_transports():
+    """`_fresh` sits in `_one`, below the webhook and the linked device alike."""
+    async def bc(_):
+        pass
+
+    b = wamod.WhatsAppBridge(base_cfg(), _Store(), None, bc)
+    assert b._fresh("m1") is True
+    assert b._fresh("m1") is False
+    assert b._fresh("m2") is True
+    assert b._fresh("") is True and b._fresh("") is True   # nothing to key on
+
+
+def test_a_message_with_no_id_is_still_delivered():
+    """No id means nothing to key on — dropping it would lose real messages."""
+    got = []
+
+    async def on_message(msg, val):
+        got.append(msg)
+
+    t = wa_baileys.BaileysTransport(on_message=on_message)
+    asyncio.run(t._inbound({"from": "91", "text": "one"}))
+    asyncio.run(t._inbound({"from": "91", "text": "two"}))
+    assert len(got) == 2

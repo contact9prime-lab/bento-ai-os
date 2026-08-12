@@ -262,20 +262,33 @@ async function reviewManifest(aid){
    missing = [{label, run:async fn}] */
 function showConsent(manifest,missing,onApprove){
   const perms=(manifest&&manifest.permissions)||[];
+  /* Required items are deliberately locked — an app that cannot work without a
+     capability must not offer to start without it. What was wrong was saying
+     otherwise: the line promised "you can untick optional items" even when every
+     row was required, and a disabled checkbox inside a cursor:pointer label still
+     invites the click it will not answer. So the sentence follows the list, and a
+     locked row stops pretending to be a control. */
+  const optional=perms.filter(p=>!p.required).length;
+  const howTo=!perms.length?''
+    :optional?' You can untick optional items — and revoke anything later in Permissions.'
+    :' Every item here is required for this app to work, so it is all of it or none — '
+     +'and you can revoke it later in Permissions.';
   const shield='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--acc,#5eead4)"><path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z"/></svg>';
   const ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)';
   ov.innerHTML=`<div style="width:min(560px,92vw);max-height:82vh;overflow:auto;background:var(--glass,#171b22);border:1px solid var(--border,#232a35);border-radius:14px;padding:20px">
     <div style="display:flex;align-items:center;gap:10px">${shield}<b style="font-size:15px">${esc(manifest.name||'This app')} requests permission</b></div>
-    <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')} You can untick optional items — and revoke anything later in Permissions.</p>
-    ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-      <input type="checkbox" data-i="${i}" checked ${p.required?'disabled':''} style="margin-top:3px;accent-color:var(--acc,#5eead4)">
+    <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')}${howTo}</p>
+    ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:${p.required?'default':'pointer'}">
+      <input type="checkbox" data-i="${i}" checked ${p.required?'disabled title="required — this app cannot run without it"':''}
+        style="margin-top:3px;accent-color:var(--acc,#5eead4)${p.required?';opacity:.55':''}">
       <div class="grow"><div style="font-family:var(--mono);font-size:12.5px">${esc(p.action||'*')} · ${esc(p.resource||'*')}</div>
         <div class="mut" style="font-size:12px">${esc(p.reason||'')}${p.required?' · required':' · optional'}</div></div></label>`).join('')
       :'<p class="mut">No capabilities requested — this app only uses its own private data.</p>'}
     ${(missing&&missing.length)?'<label style="display:block;margin-top:12px">Missing prerequisites</label>'+missing.map((m,j)=>`<div class="item"><div class="grow">${esc(m.label)}</div><button class="prq" data-j="${j}">Install</button></div>`).join(''):''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-      <button class="c-cancel">Cancel</button><button class="c-ok save" style="margin:0">Grant selected</button></div>
+      <button class="c-cancel">Cancel</button><button class="c-ok save" style="margin:0">${
+        optional?'Grant selected':'Grant'}</button></div>
   </div>`;
   document.body.appendChild(ov);
   ov.querySelectorAll('.prq').forEach(b=>{b.onclick=async()=>{

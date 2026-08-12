@@ -291,3 +291,42 @@ def test_image_result_split_and_passthrough():
     assert path == "/tmp/x.png" and text == "screenshot saved to /tmp/x.png"
     text, path = _image_result("plain tool output")
     assert path == "" and text == "plain tool output"
+
+
+def test_every_schema_agrees_with_the_method_it_calls():
+    """A tool's schema is its contract with the model; the signature is the code.
+
+    `create_app` had `icon` in `required` while its own description said "leave
+    empty". A model that followed the description made a call the dispatcher could
+    not complete — `Toolbox.create_app() missing 1 required positional argument:
+    'icon'` — and it failed AFTER the app had been written, so the build looked
+    broken while the app existed. The two halves must agree in both directions:
+    anything the method needs must be required, and nothing may be required that the
+    method cannot accept.
+    """
+    import inspect
+
+    from agentos import tools as toolsmod
+
+    problems = []
+    for schema in toolsmod.TOOL_SCHEMAS:
+        fn = schema.get("function", schema)
+        name = fn.get("name")
+        params = fn.get("parameters") or {}
+        required = set(params.get("required") or [])
+        method = getattr(toolsmod.Toolbox, name, None)
+        if method is None:
+            problems.append(f"{name}: schema has no method")
+            continue
+        args = {k: v for k, v in inspect.signature(method).parameters.items()
+                if k != "self"}
+        needs = {k for k, v in args.items()
+                 if v.default is inspect.Parameter.empty
+                 and v.kind not in (v.VAR_POSITIONAL, v.VAR_KEYWORD)}
+        if (gap := needs - required):
+            problems.append(f"{name}: {sorted(gap)} have no default but are not "
+                            f"in the schema's required list")
+        if (extra := required - set(args)):
+            problems.append(f"{name}: schema requires {sorted(extra)}, "
+                            f"which the method does not accept")
+    assert not problems, "schema/signature disagreement:\n  " + "\n  ".join(problems)

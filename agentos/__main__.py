@@ -569,6 +569,15 @@ def doctor(fix: bool = False, session: bool = False):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/build/status", timeout=3) as r:
             _json.loads(r.read())
         ok(f"server responding on 127.0.0.1:{port}")
+    except urllib.error.HTTPError as e:
+        # An ANSWER, just not one this caller is allowed to read. `/api/build/status`
+        # needs a session, so on a machine with accounts doctor was accusing its own
+        # healthy server of being "another app" — the one check whose whole job is
+        # telling those two apart. Only a stranger fails to speak HTTP at all.
+        if e.code in (401, 403):
+            ok(f"server responding on 127.0.0.1:{port} (locked by this machine's accounts)")
+        else:
+            bad(f"port {port} answers HTTP {e.code} — something is there, but not a healthy AgentOS")
     except Exception:
         with socket.socket() as s:
             if s.connect_ex(("127.0.0.1", port)) == 0:

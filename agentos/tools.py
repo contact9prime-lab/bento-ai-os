@@ -1046,8 +1046,8 @@ class Toolbox(usersmod.Scoped):
         note = f" (ignored unknown keys: {', '.join(skipped)})" if skipped else ""
         return "updated: " + ", ".join(applied) + note
 
-    async def create_app(self, name: str, icon: str, description: str, html: str,
-                         permissions: str = "") -> str:
+    async def create_app(self, name: str, icon: str = "", description: str = "",
+                         html: str = "", permissions: str = "") -> str:
         """Create/update a UI app that appears on the AgentOS desktop (rendered in a window).
         `permissions` (JSON list of {action, resource, reason, required}) declares what the
         app needs at runtime — it becomes the manifest the user consents to."""
@@ -3070,7 +3070,11 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Concise app name shown under the desktop icon; reuse an existing name to update that app."},
-                "icon": {"type": "string", "description": "leave empty — the OS renders a clean monogram tile (the user dislikes emoji icons)"},
+                # Optional, and it has to BE optional: the description tells the model
+                # to leave it empty, so listing it under `required` made the documented
+                # correct call the one that crashed — "Toolbox.create_app() missing 1
+                # required positional argument: 'icon'", after the app had been written.
+                "icon": {"type": "string", "description": "optional — leave it out and the OS renders a clean monogram tile (the user dislikes emoji icons)"},
                 "description": {"type": "string", "description": "One line: what the app does (shown in the launcher and Store)."},
                 "html": {"type": "string", "description": "The complete self-contained HTML/CSS/JS for the app (fragment or full document)."},
                 "permissions": {"type": "string", "description":
@@ -3079,7 +3083,7 @@ TOOL_SCHEMAS = [
                     "[{\"action\":\"tool.use\",\"resource\":\"tool:system_info*\",\"reason\":\"show host stats\",\"required\":false}]. "
                     "The user consents to exactly this list; undeclared calls prompt at runtime."},
             },
-            "required": ["name", "icon", "description", "html"],
+            "required": ["name", "description", "html"],
         },
     },
     {

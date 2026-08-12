@@ -8,7 +8,9 @@ is a capability the user never granted.
 
 import asyncio
 import json
+import os
 import shutil
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -545,6 +547,9 @@ def test_the_source_note_states_the_two_load_bearing_rules():
 
 def test_a_missing_executor_offers_the_exact_command(monkeypatch):
     """'Not installed' on its own is a dead end wearing an honest sentence."""
+    # `claude_exe()` scans candidates itself now (it must pick the NEWEST of
+    # several installs), so "no claude" is expressed by there being none to rank.
+    monkeypatch.setattr(ex, "claude_candidates", list)
     monkeypatch.setattr(ex.shutil, "which", lambda n, **k: "" if n == "claude" else "/usr/bin/npm")
     info = ex.available()
     assert info["available"] is False
@@ -626,3 +631,84 @@ def test_the_child_gets_a_path_it_can_work_with(monkeypatch):
     env = executors.child_env()
     assert "/usr/bin" in env["PATH"]
     assert env["PATH"] != "/usr/bin", "the child's PATH must be the extended one"
+
+
+# ---------------------------------------------------------------------------
+# Which binary, and what happens when it refuses
+# ---------------------------------------------------------------------------
+
+def test_the_newest_cli_wins_when_several_are_installed(tmp_path, monkeypatch):
+    """Several Claude Code installs on one machine is normal, not exotic.
+
+    A Homebrew one from last year, the official installer's in `~/.local/bin`, and
+    `~/.claude/local/claude` after `claude migrate-installer`. `shutil.which` takes
+    whichever directory sorts first on PATH, and when that one predates the flags
+    this module builds the CLI exits on `error: unknown option '--tools'` before
+    doing any work — which reached a phone as "(done — no text output)" and left the
+    Soul panel waiting. The flags only ever grow, so newest is the only defensible
+    pick.
+    """
+    old, new = tmp_path / "old", tmp_path / "new"
+    for d, ver in ((old, "1.0.27"), (new, "2.1.228")):
+        d.mkdir()
+        exe = d / "claude"
+        exe.write_text(f"#!/bin/sh\necho '{ver} (Claude Code)'\n")
+        exe.chmod(0o755)
+
+    # old FIRST, exactly as Homebrew sits ahead of ~/.local/bin
+    import agentos.mcp_client as mcpc
+    monkeypatch.setattr(mcpc, "_extended_path", lambda: f"{old}{os.pathsep}{new}")
+    monkeypatch.setattr(ex, "EXTRA_CLAUDE_PATHS", ())   # ignore this machine's own
+    assert ex.claude_exe(refresh=True) == str(new / "claude")
+
+
+def test_a_cli_that_will_not_report_a_version_is_still_used(tmp_path, monkeypatch):
+    """Unreadable is not absent: one odd install must not read as 'not installed'."""
+    d = tmp_path / "only"
+    d.mkdir()
+    exe = d / "claude"
+    exe.write_text("#!/bin/sh\nexit 1\n")
+    exe.chmod(0o755)
+    import agentos.mcp_client as mcpc
+    monkeypatch.setattr(mcpc, "_extended_path", lambda: str(d))
+    monkeypatch.setattr(ex, "EXTRA_CLAUDE_PATHS", ())
+    assert ex.claude_exe(refresh=True) == str(exe)
+
+
+def test_a_failed_run_says_why_instead_of_going_quiet():
+    """Every surface turns "" into "(done — no text output)", which describes a run
+    that finished with nothing to add. A run that FAILED must not be indistinguishable
+    from one that succeeded quietly."""
+    async def go():
+        async def fake_run_task(text, env, sink, run):
+            await sink({"type": "error", "message": "error: unknown option '--tools'"})
+
+        import agentos.executors as ex
+        real, ex.run_task = ex.run_task, fake_run_task
+        try:
+            return await ex.forward("claude-code", "hi", {"executors": {}}, "/tmp")
+        finally:
+            ex.run_task = real
+
+    reply, _run = asyncio.run(go())
+    assert reply.startswith("[error]")
+    assert "--tools" in reply
+
+
+def test_text_still_wins_over_a_late_error():
+    """A denial note is appended as text alongside an error event; the words the
+    executor actually produced are the answer."""
+    async def go():
+        async def fake_run_task(text, env, sink, run):
+            await sink({"type": "text_delta", "text": "here is your answer"})
+            await sink({"type": "error", "message": "budget exceeded"})
+
+        import agentos.executors as ex
+        real, ex.run_task = ex.run_task, fake_run_task
+        try:
+            return await ex.forward("claude-code", "hi", {"executors": {}}, "/tmp")
+        finally:
+            ex.run_task = real
+
+    reply, _run = asyncio.run(go())
+    assert reply == "here is your answer"

@@ -52,15 +52,41 @@ function glyphTile(key,px,cls){
 }
 /* One place that turns a stored icon value into a tile, for anything that holds
    an app record rather than an app id (App Studio, the Store, import previews). */
+/* Is this icon string something we can draw AS TEXT in a tile?
+
+   An icon is an emoji or a short glyph. It is also model-supplied — the builder
+   writes it — so this has to hold for anything a model might put there, not for
+   what a well-behaved one would. Two things went wrong when it did not:
+
+   - A URL (`https://raw.githubusercontent.com/…/pill.svg`) was drawn as text at
+     half the tile height, so seventy characters ran out of a 28px box and across
+     the name field and the sidebar behind it.
+   - It was interpolated UNESCAPED into the desktop's own innerHTML — not the app's
+     sandboxed iframe, the parent page — so an icon of `<img src=x onerror=…>` ran
+     there. That is the boundary the whole app sandbox is built on.
+
+   Anything that is not a short, whitespace-free glyph falls back to the monogram,
+   which is what `create_app`'s own schema tells the model to want anyway. Remote
+   URLs are deliberately NOT fetched: an icon is not worth a request to somebody
+   else's server from the desktop, and it would break offline. */
+function iconGlyphOK(v){
+  if(!v||/\s/.test(v))return false;
+  if(/^[a-z][a-z0-9+.-]*:/i.test(v))return false;         // a URL or data: payload
+  // Code points, not UTF-16 units — and 8 rather than a tight 1-2, because a single
+  // visible emoji is often several: 👨‍👩‍👧‍👦 is seven joined by ZWJs, and flags and
+  // skin tones stack the same way. The URL check above is what actually keeps long
+  // strings out; this only stops a sentence being drawn as a glyph.
+  return [...v].length<=8;
+}
 function iconTile(icon,label,seed,px,cls){
   px=px||46;const v=String(icon||'').trim();
   if(v.startsWith('glyph:')){const t=glyphTile(v.slice(6),px,cls);if(t)return t}
-  const st=`width:${px}px;height:${px}px`;
-  if(v)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
-    `<span class="em" style="font-size:${Math.round(px*.5)}px">${v}</span></span>`;
+  const st=`width:${px}px;height:${px}px;overflow:hidden`;
+  if(iconGlyphOK(v))return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
+    `<span class="em" style="font-size:${Math.round(px*.5)}px">${esc(v)}</span></span>`;
   const ch=(String(label||seed||'?').trim().charAt(0)||'?').toUpperCase();
   return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
-    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${ch}</span></span>`;
+    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${esc(ch)}</span></span>`;
 }
 function appIcon(id,px,cls){
   px=px||46;

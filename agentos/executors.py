@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -204,13 +205,17 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     `run_task` directly.
     """
     collected: list[str] = []
+    errors: list[str] = []
 
     async def sink(ev: dict):
         if ev.get("type") == "text_delta":
             collected.append(ev.get("text", ""))
+        # Kept, not dropped. These surfaces have no event stream, so an error event
+        # nobody records is an error nobody ever sees — see the return below.
+        elif ev.get("type") == "error":
+            errors.append(str(ev.get("message") or "").strip())
         if emit:
             await emit(ev)
-
 
     env = envelope_from(cfg, workspace_default)
     env.session_id = session_id
@@ -219,7 +224,18 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     env.context = context_for(context)
     run = Run()
     await run_task(text, env, sink, run)
-    return "".join(collected), run
+    said = "".join(collected)
+    if said.strip():
+        return said, run
+    # Nothing was said. Every caller here turns "" into "(done — no text output)",
+    # which describes a run that finished quietly — so a run that FAILED read as one
+    # that succeeded and had nothing to add. That is how `error: unknown option
+    # '--tools'`, from a Claude Code too old for the flags this module builds,
+    # reached a phone as "(done — no text output)" for every message, with the one
+    # sentence naming the cause discarded on the way.
+    if errors:
+        return "[error] " + "; ".join(dict.fromkeys(e for e in errors if e)), run
+    return said, run
 
 
 # The copilot's context is written for the BUILT-IN agent and ends by naming
@@ -449,19 +465,89 @@ def source_note(root: str) -> str:
     )
 
 
-def claude_exe() -> str:
-    """Absolute path to the Claude Code CLI, found the way a GUI-launched process
-    has to look for it.
+def _version_of(exe: str) -> tuple:
+    """`(2, 1, 228)` from `claude --version`, or `()` if it will not say."""
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True,
+                             timeout=10).stdout
+    except Exception:
+        return ()
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", out or "")
+    return tuple(int(g) for g in m.groups()) if m else ()
 
-    `shutil.which("claude")` alone is wrong here and was reporting "not installed"
-    on a machine where it plainly was. The server is started by systemd (or a
-    macOS LaunchAgent), which does NOT source a login shell — so `~/.local/bin`,
-    where Claude Code installs itself, is simply absent from PATH. The user's own
-    terminal finds it; the service does not. `mcp_client._extended_path()` already
-    exists for exactly this failure and is what npx/uvx resolution uses.
+
+#: exe -> version, so the probe below costs one subprocess per binary per process.
+_EXE_CACHE: dict[str, tuple] = {}
+
+#: Installs that are NOT on PATH but are real. `claude migrate-installer` moves the
+#: CLI here and leaves a shim behind, so a machine can have a current one here and
+#: an ancient one on PATH.
+EXTRA_CLAUDE_PATHS = ("~/.claude/local/claude",)
+
+
+def claude_candidates() -> list[str]:
+    """Every Claude Code binary on this machine, in PATH order then the extras.
+
+    Its own function because it is the seam everything else is reasoned about
+    through: `claude_exe()` ranks these, and `available()` reports on their absence.
     """
     from .mcp_client import _extended_path
-    return shutil.which("claude", path=_extended_path()) or ""
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for d in (_extended_path() or "").split(os.pathsep):
+        if not d:
+            continue
+        p = os.path.join(d, "claude")
+        if p not in seen and os.path.isfile(p) and os.access(p, os.X_OK):
+            seen.add(p)
+            out.append(p)
+    for extra in EXTRA_CLAUDE_PATHS:
+        p = os.path.expanduser(extra)
+        if p not in seen and os.path.isfile(p) and os.access(p, os.X_OK):
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def claude_exe(refresh: bool = False) -> str:
+    """Absolute path to the NEWEST Claude Code CLI on this machine.
+
+    Two separate problems, and the second one hid behind the first for a while.
+
+    `shutil.which("claude")` alone reported "not installed" on machines where it
+    plainly was: the server is started by systemd (or a macOS LaunchAgent), which
+    does not source a login shell, so `~/.local/bin` — where Claude Code installs
+    itself — is absent from PATH. `mcp_client._extended_path()` exists for exactly
+    that and is what npx/uvx resolution uses.
+
+    But `which` returns the FIRST match, and having several of these is normal: a
+    Homebrew one from a year ago, the official installer's in `~/.local/bin`, and
+    `~/.claude/local/claude` from `claude migrate-installer`. Whichever directory
+    happens to sort first on PATH wins, and if that one is old enough the flags this
+    module builds — `--tools`, `--permission-mode`, `--max-budget-usd` — are simply
+    not options it has. The CLI then exits on `error: unknown option '--tools'`
+    before doing any work, which surfaced as WhatsApp answering "(done — no text
+    output)" and the Soul panel waiting forever. Nothing was wrong with the command;
+    it was being handed to a 2025 binary sitting in front of a current one.
+
+    So: ask each candidate its version and take the highest. Newest is the only
+    defensible answer — the flags only ever grow.
+    """
+    global _EXE_CACHE
+    if refresh:
+        _EXE_CACHE = {}
+    cands = claude_candidates()
+    if not cands:
+        return ""
+
+    for p in cands:
+        if p not in _EXE_CACHE:
+            _EXE_CACHE[p] = _version_of(p)
+    # A binary that will not report a version still counts as one that exists: it
+    # sorts last rather than being dropped, so a single unreadable install is used
+    # instead of reporting nothing installed at all.
+    return max(cands, key=lambda p: (_EXE_CACHE.get(p) or (0,), p))
 
 
 def available() -> dict:

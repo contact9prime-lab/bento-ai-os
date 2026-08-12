@@ -2946,15 +2946,41 @@ function glyphTile(key,px,cls){
 }
 /* One place that turns a stored icon value into a tile, for anything that holds
    an app record rather than an app id (App Studio, the Store, import previews). */
+/* Is this icon string something we can draw AS TEXT in a tile?
+
+   An icon is an emoji or a short glyph. It is also model-supplied — the builder
+   writes it — so this has to hold for anything a model might put there, not for
+   what a well-behaved one would. Two things went wrong when it did not:
+
+   - A URL (`https://raw.githubusercontent.com/…/pill.svg`) was drawn as text at
+     half the tile height, so seventy characters ran out of a 28px box and across
+     the name field and the sidebar behind it.
+   - It was interpolated UNESCAPED into the desktop's own innerHTML — not the app's
+     sandboxed iframe, the parent page — so an icon of `<img src=x onerror=…>` ran
+     there. That is the boundary the whole app sandbox is built on.
+
+   Anything that is not a short, whitespace-free glyph falls back to the monogram,
+   which is what `create_app`'s own schema tells the model to want anyway. Remote
+   URLs are deliberately NOT fetched: an icon is not worth a request to somebody
+   else's server from the desktop, and it would break offline. */
+function iconGlyphOK(v){
+  if(!v||/\s/.test(v))return false;
+  if(/^[a-z][a-z0-9+.-]*:/i.test(v))return false;         // a URL or data: payload
+  // Code points, not UTF-16 units — and 8 rather than a tight 1-2, because a single
+  // visible emoji is often several: 👨‍👩‍👧‍👦 is seven joined by ZWJs, and flags and
+  // skin tones stack the same way. The URL check above is what actually keeps long
+  // strings out; this only stops a sentence being drawn as a glyph.
+  return [...v].length<=8;
+}
 function iconTile(icon,label,seed,px,cls){
   px=px||46;const v=String(icon||'').trim();
   if(v.startsWith('glyph:')){const t=glyphTile(v.slice(6),px,cls);if(t)return t}
-  const st=`width:${px}px;height:${px}px`;
-  if(v)return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
-    `<span class="em" style="font-size:${Math.round(px*.5)}px">${v}</span></span>`;
+  const st=`width:${px}px;height:${px}px;overflow:hidden`;
+  if(iconGlyphOK(v))return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
+    `<span class="em" style="font-size:${Math.round(px*.5)}px">${esc(v)}</span></span>`;
   const ch=(String(label||seed||'?').trim().charAt(0)||'?').toUpperCase();
   return `<span class="aicon${cls?' '+cls:''}" style="${st};background:${tileBg(seed||label||'?')}">`+
-    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${ch}</span></span>`;
+    `<span class="em" style="font-size:${Math.round(px*.44)}px;font-weight:800;color:#fff">${esc(ch)}</span></span>`;
 }
 function appIcon(id,px,cls){
   px=px||46;
@@ -12410,20 +12436,33 @@ async function reviewManifest(aid){
    missing = [{label, run:async fn}] */
 function showConsent(manifest,missing,onApprove){
   const perms=(manifest&&manifest.permissions)||[];
+  /* Required items are deliberately locked — an app that cannot work without a
+     capability must not offer to start without it. What was wrong was saying
+     otherwise: the line promised "you can untick optional items" even when every
+     row was required, and a disabled checkbox inside a cursor:pointer label still
+     invites the click it will not answer. So the sentence follows the list, and a
+     locked row stops pretending to be a control. */
+  const optional=perms.filter(p=>!p.required).length;
+  const howTo=!perms.length?''
+    :optional?' You can untick optional items — and revoke anything later in Permissions.'
+    :' Every item here is required for this app to work, so it is all of it or none — '
+     +'and you can revoke it later in Permissions.';
   const shield='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--acc,#5eead4)"><path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z"/></svg>';
   const ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)';
   ov.innerHTML=`<div style="width:min(560px,92vw);max-height:82vh;overflow:auto;background:var(--glass,#171b22);border:1px solid var(--border,#232a35);border-radius:14px;padding:20px">
     <div style="display:flex;align-items:center;gap:10px">${shield}<b style="font-size:15px">${esc(manifest.name||'This app')} requests permission</b></div>
-    <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')} You can untick optional items — and revoke anything later in Permissions.</p>
-    ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-      <input type="checkbox" data-i="${i}" checked ${p.required?'disabled':''} style="margin-top:3px;accent-color:var(--acc,#5eead4)">
+    <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')}${howTo}</p>
+    ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:${p.required?'default':'pointer'}">
+      <input type="checkbox" data-i="${i}" checked ${p.required?'disabled title="required — this app cannot run without it"':''}
+        style="margin-top:3px;accent-color:var(--acc,#5eead4)${p.required?';opacity:.55':''}">
       <div class="grow"><div style="font-family:var(--mono);font-size:12.5px">${esc(p.action||'*')} · ${esc(p.resource||'*')}</div>
         <div class="mut" style="font-size:12px">${esc(p.reason||'')}${p.required?' · required':' · optional'}</div></div></label>`).join('')
       :'<p class="mut">No capabilities requested — this app only uses its own private data.</p>'}
     ${(missing&&missing.length)?'<label style="display:block;margin-top:12px">Missing prerequisites</label>'+missing.map((m,j)=>`<div class="item"><div class="grow">${esc(m.label)}</div><button class="prq" data-j="${j}">Install</button></div>`).join(''):''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-      <button class="c-cancel">Cancel</button><button class="c-ok save" style="margin:0">Grant selected</button></div>
+      <button class="c-cancel">Cancel</button><button class="c-ok save" style="margin:0">${
+        optional?'Grant selected':'Grant'}</button></div>
   </div>`;
   document.body.appendChild(ov);
   ov.querySelectorAll('.prq').forEach(b=>{b.onclick=async()=>{

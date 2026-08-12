@@ -119,3 +119,47 @@ def test_the_app_iframes_are_opaque_origin():
         for line in src.splitlines():
             if "/api/apps/" in line and "sandbox=" in line:
                 assert "allow-same-origin" not in line, f"{f}: app iframe regained allow-same-origin"
+
+
+# ---------------------------------------------------------------------------
+# The other direction: an app's METADATA is drawn by the desktop, not the iframe
+# ---------------------------------------------------------------------------
+
+def test_an_app_icon_can_never_become_markup_in_the_desktop():
+    """`iconTile()` draws an app's icon in the PARENT page, not the sandbox.
+
+    An icon is written by the builder model, so it has to be safe for anything a
+    model might emit — and it was interpolated raw into innerHTML. An icon of
+    `<img src=x onerror=…>` therefore executed in the desktop's own origin, which is
+    the boundary every other test in this file defends. The same hole drew a 70-char
+    icon URL as text across the app name and the sidebar behind it.
+
+    Read from source: the fix is that the value is escaped AND that anything which
+    is not a short glyph never reaches the text branch at all.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "agentos" / "ui" / "src" / "js"
+           / "01-app-icons.js").read_text()
+    tile = src[src.index("function iconTile("):]
+    tile = tile[:tile.index("\nfunction ", 1)]
+
+    assert "${esc(v)}" in tile, "the icon value must be escaped before innerHTML"
+    assert "${v}" not in tile, "a raw icon value still reaches innerHTML"
+    assert "iconGlyphOK(v)" in tile, "only a short, non-URL glyph may be drawn as text"
+    assert "overflow:hidden" in tile, "the tile must clip, whatever ends up inside it"
+
+
+def test_the_icon_guard_rejects_urls_and_markup():
+    """The rules `iconGlyphOK` encodes, asserted without a JS engine."""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "agentos" / "ui" / "src" / "js"
+           / "01-app-icons.js").read_text()
+    fn = src[src.index("function iconGlyphOK"):]
+    fn = fn[:fn.index("\nfunction ", 1)]
+
+    assert re.search(r"\\s", fn), "whitespace must disqualify a glyph"
+    assert "a-z0-9+.-" in fn, "a URL/data: scheme must disqualify a glyph"
+    assert "[...v].length" in fn, "length must be counted in code points, not UTF-16 units"

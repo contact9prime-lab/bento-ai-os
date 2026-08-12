@@ -154,6 +154,9 @@ class BaileysTransport:
         self.error = ""
         self.me = ""
         self._pending: dict[str, asyncio.Future] = {}
+        #: wa_id -> the full jid it really arrived from (`…@s.whatsapp.net` or
+        #: `…@lid`). See `send()`: the domain cannot be guessed from the id.
+        self._jids: dict[str, str] = {}
         self._stopping = False
 
     # -- lifecycle ----------------------------------------------------------
@@ -291,6 +294,10 @@ class BaileysTransport:
         wa_id = ev.get("from") or ""
         if not wa_id:
             return
+        # Learn the address before anything else can fail: this is the only place the
+        # real domain is ever visible, and `send()` cannot reconstruct it. See there.
+        if ev.get("jid"):
+            self._jids[wa_id] = ev["jid"]
         text = (ev.get("text") or "").strip()
         # A bare "1"/"2"/"3" is a button tap — but ONLY while something is actually
         # waiting to be answered. Without that check, texting "2" to your own agent
@@ -317,10 +324,31 @@ class BaileysTransport:
     # -- outbound -----------------------------------------------------------
 
     async def send(self, text: str, wa_id: str) -> str:
+        """Reply to the ADDRESS the message came from, not a reconstruction of it.
+
+        `wa_id` is the bare local part, because that is the shape the Cloud API uses
+        and `WhatsAppBridge` keys everything on it — the owner, the allow-list, the
+        chat rows. The bridge used to turn it back into a jid by appending
+        `@s.whatsapp.net`, which is right only while that guess happens to be the
+        right domain.
+
+        It is increasingly not. WhatsApp now addresses many contacts by **LID**
+        (`<id>@lid`, a privacy identifier that is not a phone number), and a reply to
+        `<lid-number>@s.whatsapp.net` goes to an address nobody holds: accepted by
+        the socket, delivered to no one. The channel looked perfect from this side —
+        the message arrived, the turn ran, the ledger recorded a reply — and the
+        phone stayed silent.
+
+        So remember the real jid per sender and send back to that. It is learned from
+        inbound traffic, which is also the only way a linked device ever obtains a
+        LID; the append stays as the fallback for a plain number nobody has messaged
+        from yet.
+        """
         if self.state != "ready":
             return (f"[error] the WhatsApp link is not connected "
                     f"({self.state}{': ' + self.error if self.error else ''})")
-        ok = await self._write({"type": "send", "to": wa_id, "text": text or "(empty)"})
+        to = self._jids.get(wa_id) or wa_id
+        ok = await self._write({"type": "send", "to": to, "text": text or "(empty)"})
         if not ok:
             return "[error] the WhatsApp bridge is not running"
         if self.store:
