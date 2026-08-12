@@ -49,14 +49,14 @@ function renderPlacedWidgets(){
     bar.classList.toggle('on',list.length>0);
     bar.innerHTML=list.map(w=>`<div class="barwidget"><div class="bw-h">${esc(apps[w.app_id].name)}
         <button onclick="setWidgetPlace('${esc(w.app_id)}','')" title="Unpin">✕</button></div>
-      <iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${esc((apps[w.app_id].widget_size)||'m')}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></div>`).join('');
+      <iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${esc((apps[w.app_id].widget_size)||'m')}" sandbox="allow-scripts allow-forms"></iframe></div>`).join('');
   }
   // menu bar: a thin always-visible readout
   const mb=$('#mbwidgets');
   if(mb){
     const list=WIDGETS.filter(w=>w.place==='menubar'&&apps[w.app_id]);
     mb.innerHTML=list.map(w=>`<iframe class="mbwidget" title="${esc(apps[w.app_id].name)}"
-      src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=s" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`).join('');
+      src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=s" sandbox="allow-scripts allow-forms"></iframe>`).join('');
   }
   if(typeof buildDeck==='function'&&$('#deck'))buildDeck();
 }
@@ -82,7 +82,7 @@ function createWidgetEl(a){
   const el=document.createElement('div');el.className='widget';el.dataset.app=a.id;
   el.innerHTML=`<div class="wgh"><span class="wgt">${esc(a.name)}</span>
     <button class="rf" title="refresh">⟳</button><button class="op" title="open in window">⤢</button><button class="x" title="unpin">✕</button></div>
-    <iframe src="/api/apps/${a.id}/page?surface=widget&size=${esc(a.widget_size||'m')}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+    <iframe src="/api/apps/${a.id}/page?surface=widget&size=${esc(a.widget_size||'m')}" sandbox="allow-scripts allow-forms"></iframe>`;
   const ifr=el.querySelector('iframe');
   el.querySelector('.rf').onclick=()=>{ifr.src='/api/apps/'+a.id+'/page?surface=widget&size='+(a.widget_size||'m')+'&t='+Date.now()};
   el.querySelector('.op').onclick=()=>openApp('ua_'+a.id);

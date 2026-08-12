@@ -170,3 +170,44 @@ def test_turning_it_off_is_possible_and_explicit(tmp_path):
     for _ in range(300):
         dec = p.decide_tool(APP, "fetch_url", {}, "safe", surface="gui")
     assert dec.effect != "deny"
+
+
+# ---------------------------------------------------------------------------
+# The drip: a loop paced to slip under the burst ceiling forever
+# ---------------------------------------------------------------------------
+
+def test_a_patient_loop_under_the_burst_limit_is_still_caught(pdp, monkeypatch):
+    """The burst ceiling only sees a tight loop. A loop that fetches twice a second
+    all night never fills a 20s window past 60 — but it is still hammering somebody
+    else's API, and the sustained ceiling is the only thing that sees it. Before
+    this ceiling existed, this loop ran forever."""
+    import agentos.policy as policy
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(policy.time, "time", lambda: clock["t"])
+    dec = None
+    for _ in range(400):                 # 2 calls/sec for 200s: 40 per 20s (< 60 burst)
+        dec = pdp.decide_tool(APP, "fetch_url", {}, "safe", surface="gui")
+        if dec.effect == "deny":
+            break
+        clock["t"] += 0.5
+    assert dec.effect == "deny" and dec.rule == "quarantined"
+    assert pdp.tripped, "the sustained ceiling did not tell anyone"
+    assert "does not let up" in pdp.tripped[0][1]["reason"]
+    # and it was NOT the burst ceiling that caught it
+    assert "tight loop" not in pdp.tripped[0][1]["reason"]
+
+
+def test_a_burst_then_quiet_is_not_a_drip(pdp, monkeypatch):
+    """A real dashboard bursts on refresh and then goes quiet. Over the long window
+    that averages out well under the sustained budget — it must not accumulate into
+    a hold across refreshes."""
+    import agentos.policy as policy
+    clock = {"t": 5000.0}
+    monkeypatch.setattr(policy.time, "time", lambda: clock["t"])
+    dec = None
+    for _ in range(8):                   # eight refreshes, 40s apart, 25 fetches each
+        for _ in range(25):
+            dec = pdp.decide_tool(APP, "fetch_url", {}, "safe", surface="gui")
+        clock["t"] += 40
+    assert dec.effect != "deny", "a bursty-but-quiet dashboard was held as a drip"
+    assert not pdp.tripped

@@ -144,7 +144,7 @@ async function loadUserApps(){
   });
   USERAPPS.forEach(a=>{
     APPS['ua_'+a.id]={id:'ua_'+a.id,title:a.name,icon:a.icon||'',w:640,h:520,desc:a.description||'user app',
-      render(body){body.innerHTML=`<iframe src="/api/apps/${a.id}/page" style="flex:1;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`}};
+      render(body){body.innerHTML=`<iframe src="/api/apps/${a.id}/page" style="flex:1;border:none;background:#0e1116" sandbox="allow-scripts allow-forms"></iframe>`}};
   });
   rebuildLaunchers();
   renderWidgets();

@@ -295,11 +295,11 @@ function studioShowPreview(){
     const d=WIDGET_SIZES[size]||WIDGET_SIZES.m;
     STUDIO.preview.innerHTML=`<div class="wgpreview"><div class="widget" style="position:relative;width:${d.w}px;height:${d.h}px">
         <div class="wgh"><span class="wgt">${esc((app&&app.name)||'')}</span><span class="mut" style="font-size:10.5px">${d.label} · ${d.w}×${d.h}</span></div>
-        <iframe src="/api/apps/${STUDIO.sel}/page?surface=widget&size=${size}&t=${Date.now()}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+        <iframe src="/api/apps/${STUDIO.sel}/page?surface=widget&size=${size}&t=${Date.now()}" sandbox="allow-scripts allow-forms"></iframe>
       </div></div>`;
     return;
   }
-  STUDIO.preview.innerHTML=`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+  STUDIO.preview.innerHTML=`<iframe src="/api/apps/${STUDIO.sel}/page?t=${Date.now()}" style="width:100%;height:100%;border:none;background:#0e1116" sandbox="allow-scripts allow-forms"></iframe>`;
 }
 /* ---- bottom panel: versions | permissions --------------------------------- */
 function studioPanel(){

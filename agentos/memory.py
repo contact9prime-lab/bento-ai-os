@@ -1,5 +1,6 @@
 """SQLite persistence: conversations, messages, long-term memories, scheduled tasks."""
 
+import hashlib
 import json
 import sqlite3
 import time
@@ -425,6 +426,8 @@ CREATE INDEX IF NOT EXISTS idx_assets_run ON assets(run_id);
 CREATE TABLE IF NOT EXISTS audit (
     id TEXT PRIMARY KEY,
     ts REAL,
+    uid TEXT DEFAULT '',              -- which ACCOUNT's principal acted (self-describing:
+                                      -- survives export/merge, where the file no longer says)
     principal_kind TEXT DEFAULT '',   -- user | app | subagent | workflow | system
     principal_id TEXT DEFAULT '',
     surface TEXT DEFAULT '',          -- the IO gate: gui | tui | telegram | api | task
@@ -440,6 +443,14 @@ CREATE TABLE IF NOT EXISTS audit (
     outcome TEXT DEFAULT '',          -- '' (decision only) | ok | error | denied | timeout
     detail TEXT DEFAULT '',           -- error text, or a short result note
     duration_ms INTEGER DEFAULT 0,
+    -- Tamper-evidence. seq is a per-database monotonic counter; row_hash chains each
+    -- decision to the one before it, so a deleted or edited row breaks the chain from
+    -- that point on and audit_verify() finds where. The hash covers the IMMUTABLE
+    -- decision fields only, not outcome/detail/duration — those are stamped later, on
+    -- purpose, by audit_finish.
+    seq INTEGER DEFAULT 0,
+    prev_hash TEXT DEFAULT '',
+    row_hash TEXT DEFAULT '',
     created_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts);
@@ -526,6 +537,14 @@ class Store:
         gcols = {r["name"] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
         if "surfaces" not in gcols:  # IO gates: pre-surface grants apply everywhere
             self.db.execute("ALTER TABLE grants ADD COLUMN surfaces TEXT DEFAULT '*'")
+        # Ledger hardening: the acting account, and the tamper-evident chain. Additive —
+        # pre-existing rows keep seq 0 / empty hashes and sit before the chain begins;
+        # audit_verify() treats seq>=1 as the chain and reports where it breaks.
+        aucols = {r["name"] for r in self.db.execute("PRAGMA table_info(audit)").fetchall()}
+        for col, ddl in (("uid", "TEXT DEFAULT ''"), ("seq", "INTEGER DEFAULT 0"),
+                         ("prev_hash", "TEXT DEFAULT ''"), ("row_hash", "TEXT DEFAULT ''")):
+            if col not in aucols:
+                self.db.execute(f"ALTER TABLE audit ADD COLUMN {col} {ddl}")
         # Spaces. Purely additive: every existing row defaults to '' (global), so an
         # untouched install reads back exactly as it did before — every memory and
         # every fact stays visible from every space. Nothing is moved, nothing is
@@ -899,25 +918,53 @@ class Store:
             out.append(d)
         return out
 
+    def _audit_head(self) -> tuple[int, str]:
+        """The (seq, row_hash) of the last chained row, cached. Seeded from the DB
+        once so a restart continues the chain instead of forking it."""
+        head = getattr(self, "_audit_head_cache", None)
+        if head is None:
+            row = self.db.execute(
+                "SELECT seq, row_hash FROM audit WHERE seq>0 ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+            head = (int(row["seq"]), row["row_hash"] or "") if row else (0, "")
+            self._audit_head_cache = head
+        return head
+
+    @staticmethod
+    def _audit_hash(prev_hash: str, fields: tuple) -> str:
+        # Immutable decision fields only — outcome/detail/duration are stamped later by
+        # audit_finish and are deliberately outside the chain.
+        payload = json.dumps([prev_hash, *fields], separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def audit_add(self, principal_kind: str = "", principal_id: str = "", surface: str = "",
                   action: str = "", resource: str = "", effect: str = "", rule: str = "",
                   risk: str = "", reason: str = "", space_id: str = "",
                   conversation_id: str = "", run_id: str = "", outcome: str = "",
-                  detail: str = "", duration_ms: int = 0) -> str:
-        """Record one access decision. Never raises: an audit write that fails must
-        not take a turn down with it, but it must also never fail silently, so the
-        failure goes to the operator log instead."""
+                  detail: str = "", duration_ms: int = 0, uid: str = "") -> str:
+        """Record one access decision, chained to the one before it. Never raises: an
+        audit write that fails must not take a turn down with it, but it must also
+        never fail silently, so the failure goes to the operator log — and the caller
+        learns of it by the returned id being '' (which is how fail-closed mode, if
+        enabled, refuses an unlogged action)."""
         aid = uuid.uuid4().hex[:12]
         now = time.time()
+        prev_seq, prev_hash = self._audit_head()
+        seq = prev_seq + 1
+        res, rea = resource[:500], reason[:500]
+        row_hash = self._audit_hash(prev_hash, (
+            seq, round(now, 6), uid, principal_kind, principal_id, surface, space_id or "",
+            conversation_id or "", run_id or "", action, res, effect, rule, risk, rea))
         try:
             self.db.execute(
-                "INSERT INTO audit (id, ts, principal_kind, principal_id, surface, space_id, "
-                "conversation_id, run_id, action, resource, effect, rule, risk, reason, "
-                "outcome, detail, duration_ms, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (aid, now, principal_kind, principal_id, surface, space_id or "",
-                 conversation_id or "", run_id or "", action, resource[:500], effect, rule,
-                 risk, reason[:500], outcome, detail[:1000], int(duration_ms), now))
+                "INSERT INTO audit (id, ts, uid, principal_kind, principal_id, surface, "
+                "space_id, conversation_id, run_id, action, resource, effect, rule, risk, "
+                "reason, outcome, detail, duration_ms, seq, prev_hash, row_hash, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (aid, now, uid, principal_kind, principal_id, surface, space_id or "",
+                 conversation_id or "", run_id or "", action, res, effect, rule,
+                 risk, rea, outcome, detail[:1000], int(duration_ms),
+                 seq, prev_hash, row_hash, now))
             self.db.commit()
         except Exception as e:  # pragma: no cover - defensive
             try:
@@ -928,7 +975,35 @@ class Store:
             except Exception:
                 pass
             return ""
+        self._audit_head_cache = (seq, row_hash)   # advance only after the row is committed
         return aid
+
+    def audit_verify(self, limit: int = 100000) -> dict:
+        """Walk the chain and report the first break, or that it is intact. A deleted
+        row leaves a seq gap; an edited immutable field makes its recomputed hash not
+        match what is stored, and every row after it inherits the wrong prev_hash."""
+        rows = self.db.execute(
+            "SELECT * FROM audit WHERE seq>0 ORDER BY seq ASC LIMIT ?", (limit,)).fetchall()
+        prev_hash, prev_seq, n = "", 0, 0
+        for r in rows:
+            n += 1
+            if prev_seq and r["seq"] != prev_seq + 1:
+                return {"ok": False, "reason": "sequence gap (a row was deleted)",
+                        "at_seq": r["seq"], "after_seq": prev_seq, "checked": n}
+            expect = self._audit_hash(r["prev_hash"] or "", (
+                r["seq"], round(r["ts"], 6), r["uid"] or "", r["principal_kind"] or "",
+                r["principal_id"] or "", r["surface"] or "", r["space_id"] or "",
+                r["conversation_id"] or "", r["run_id"] or "", r["action"] or "",
+                r["resource"] or "", r["effect"] or "", r["rule"] or "", r["risk"] or "",
+                r["reason"] or ""))
+            if (r["prev_hash"] or "") != prev_hash and prev_seq:
+                return {"ok": False, "reason": "broken link (a row was deleted or reordered)",
+                        "at_seq": r["seq"], "checked": n}
+            if expect != (r["row_hash"] or ""):
+                return {"ok": False, "reason": "row was altered after it was recorded",
+                        "at_seq": r["seq"], "checked": n}
+            prev_hash, prev_seq = r["row_hash"] or "", r["seq"]
+        return {"ok": True, "checked": n, "head_seq": prev_seq}
 
     def audit_finish(self, aid: str, outcome: str, detail: str = "", duration_ms: int = 0):
         """Stamp the result onto a decision already recorded. The decision itself is
@@ -1161,8 +1236,14 @@ class Store:
     #: what to do with a space's contents when it is deleted
     SPACE_CONTENTS = ("archive", "global", "delete")
     #: every table that carries a space_id, so no disposition can silently miss one
+    # The tables a space owns and a space-delete moves or removes. `audit` is
+    # deliberately NOT here: deleting a project must never erase the security record
+    # of what happened in it. The ledger is append-only by intent, so a space-delete
+    # archives/moves the work but the audit trail of it survives — otherwise
+    # "delete this space" is a one-click way to destroy evidence, reachable by
+    # anything that can call the route.
     _SPACED = ("memories", "kg_edges", "conversations", "logs", "fabric_runs",
-               "tasks", "assets", "timeline_events", "audit")
+               "tasks", "assets", "timeline_events")
 
     def delete_space(self, sid: str, contents: str = "archive") -> dict:
         """Deleting a space must never silently orphan what is in it, so the caller

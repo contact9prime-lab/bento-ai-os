@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
@@ -4193,7 +4194,7 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/grants"), ("DELETE", "/api/grants"),
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
     ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
-    ("DELETE", "/api/skills"), ("POST", "/api/factory-reset"),
+    ("DELETE", "/api/skills"), ("POST", "/api/setup/reset"), ("POST", "/api/factory-reset"),
     ("POST", "/api/power"), ("POST", "/api/store/mcp"), ("DELETE", "/api/mcp/registry"),
     # signing this machine's owner in or out of a third-party account is a user act;
     # the GET callback stays reachable because it is a browser redirect, not an API
@@ -4212,6 +4213,99 @@ SENSITIVE_FOR_APPS = (
     # user's decision to make, not something an app kicks off in the background
     ("POST", "/api/evals/run"),
 )
+
+
+# ---------------------------------------------------------------------------
+# App origin isolation (docs/design/tenant-isolation.md, Piece 1).
+#
+# Apps run in opaque-origin iframes (sandbox without allow-same-origin), so they
+# cannot read the desktop's DOM/cookies and — the point of this guard — their
+# fetches carry `Origin: null`, a header the browser sets and no script may forge.
+# The desktop's own fetches carry the real same-origin value. That single
+# browser-enforced difference is what tells an app's request apart from a user's,
+# with no token plumbed onto the hundreds of desktop fetch sites (miss one and the
+# hole is back). A same-origin mutating request is the user; a cross-origin one is
+# refused unless it is an app reaching its own runtime with a valid app token.
+# ---------------------------------------------------------------------------
+
+_MUTATING = {"POST", "PUT", "DELETE", "PATCH"}
+
+
+def _is_app_runtime(path: str) -> bool:
+    """The only endpoints an app may reach, and the only ones that answer a
+    cross-origin (opaque-app) request. Everything else is the user's."""
+    return path == "/api/tool" \
+        or path in ("/api/apps/llm/stream", "/api/apps/llm/chat",
+                    "/api/apps/agent", "/api/apps/context") \
+        or (path.startswith("/api/apps/") and path.endswith(("/data", "/page")))
+
+
+def _request_origin(request: Request) -> str | None:
+    o = request.headers.get("origin")
+    if o:
+        return o
+    ref = request.headers.get("referer")            # some browsers omit Origin on same-origin
+    if ref:
+        u = urlsplit(ref)
+        return f"{u.scheme}://{u.netloc}" if u.netloc else None
+    return None
+
+
+def _same_origin(request: Request):
+    """True same-origin · False cross-origin (incl. opaque 'null') · None no origin
+    header at all, which is a non-browser client (curl, the TUI) with no ambient
+    cookie to abuse, so it is not a CSRF vector and is left to the auth gate."""
+    o = _request_origin(request)
+    if not o:
+        return None
+    if o == "null":
+        return False
+    return urlsplit(o).netloc == request.headers.get("host", "")
+
+
+def _valid_app_token(request: Request) -> bool:
+    tok = request.headers.get("x-app-token", "")
+    return bool(tok) and tok in state.get("app_tokens", {})
+
+
+def _cors_headers(request: Request) -> dict:
+    """Let the opaque app read its own runtime responses. The authority is the app
+    token, not the origin, so reflecting `null` is safe: a foreign site's sandboxed
+    iframe also sends `null` but holds no valid token and is refused before here."""
+    return {"Access-Control-Allow-Origin": request.headers.get("origin", "null"),
+            "Access-Control-Allow-Headers": "X-App-Token, Content-Type",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+            "Vary": "Origin"}
+
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    path, method = request.url.path, request.method
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    app_runtime = _is_app_runtime(path)
+    if method == "OPTIONS" and app_runtime:          # the opaque app's CORS preflight
+        return Response(status_code=204, headers=_cors_headers(request))
+    if method in _MUTATING and not path.startswith(REMOTE_OPEN_PATHS):
+        so = _same_origin(request)
+        if app_runtime:
+            # its own runtime: a valid app token, or the desktop itself (same-origin,
+            # e.g. an automation step running a tool as the user). A cross-origin
+            # request with no token is a foreign site or a tokenless app — refused.
+            if not (_valid_app_token(request) or so is True or so is None):
+                return JSONResponse({"error": "denied: this needs a valid app token "
+                                     "(cross-origin request)"}, status_code=403)
+        elif so is False:
+            # A cross-origin mutation of a non-runtime route is either an app trying
+            # to escape its sandbox or a cross-site forgery. Neither is the user.
+            return JSONResponse({"error": "denied: cross-origin request refused (apps "
+                                 "reach the OS only through appTool and its grants)"},
+                                status_code=403)
+    resp = await call_next(request)
+    if app_runtime and _same_origin(request) is False:
+        for k, v in _cors_headers(request).items():
+            resp.headers.setdefault(k, v)
+    return resp
 
 
 @app.middleware("http")
@@ -5520,6 +5614,17 @@ async def api_audit_summary(since: float = 0.0):
     return state["store"].audit_summary(since=since)
 
 
+@app.get("/api/audit/verify")
+async def api_audit_verify():
+    """Walk the ledger's hash chain and report whether it is intact, or the first
+    seq where a row was altered, deleted or reordered. Admin-only: on a multi-user
+    machine, whether somebody's ledger has been tampered with is a machine-level
+    question, and the answer names how far the record can be trusted."""
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can verify the ledger"}, status_code=403)
+    return state["store"].audit_verify()
+
+
 @app.get("/api/memories")
 async def api_memories(scope: str = "", conversation_id: str = "", q: str = "",
                        space: str = ""):
@@ -5975,8 +6080,21 @@ async def api_onboarding_flow(body: dict):
 
 
 @app.post("/api/setup/reset")
-async def api_setup_reset(body: dict):
-    """Factory reset: wipe profile/data, reset config, re-arm the wizard."""
+async def api_setup_reset(body: dict, request: Request):
+    """Factory reset: wipe profile/data, reset config, re-arm the wizard.
+
+    Loopback-only and admin-only. This destroys everything — including, on a
+    multi-user machine, every account's home — so it is not something an app
+    (which renders inside the desktop and reaches the API same-origin) or a remote
+    session gets to trigger. The `SENSITIVE_FOR_APPS` guard blocks the app-referer
+    case; this is the belt to that suspenders, and it also stops a signed-in
+    executor from wiping the machine."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "a factory reset can only be run from the machine itself"},
+                            status_code=403)
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can factory-reset this machine"},
+                            status_code=403)
     if not (body or {}).get("confirm"):
         return JSONResponse({"error": "pass {\"confirm\": true}"}, status_code=400)
     from . import setup as setupmod
@@ -6968,13 +7086,37 @@ def _ws_authed(ws) -> bool:
     """Websockets do not pass through HTTP middleware, so the same gate is
     applied by hand here — a socket is a longer-lived and more capable channel
     than any REST call, and the terminal one is literally a shell."""
-    cfg = state["cfg"]
+    cfg = state.machine_cfg()
+    if usersmod.enabled():
+        # A machine with accounts is locked by them: only a valid signed session
+        # cookie gets a socket, whichever transport it arrived on. Loopback trust
+        # cannot survive multi-user for the same reason it cannot for HTTP — see
+        # _authed — so it is deliberately not consulted here.
+        return _ws_user(ws) is not None
     if not remotemod.enabled(cfg):
         return True
     if cfg["remote"].get("trust_loopback", True) and \
        remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
         return True
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+
+
+def _ws_user(ws) -> str | None:
+    """Which account this socket belongs to, from the SIGNED cookie only.
+
+    None means the cookie did not verify. The empty string is a real answer: a
+    single-user machine, where '' is the machine account and every turn runs as
+    it. This is the WebSocket half of the `resolve_user` middleware — the HTTP
+    middleware never runs for a socket, so a turn launched from the receive loop
+    would otherwise resolve `state["store"]` to the machine on a multi-user box,
+    quietly reading and writing the wrong person's memory, grants and ledger.
+    """
+    if not usersmod.enabled():
+        return ""
+    uid = remotemod.session_user(state.machine_cfg(), ws.cookies.get(remotemod.COOKIE, ""))
+    if uid is None or (uid and not usersmod.get(uid)):
+        return None
+    return uid or ""
 
 
 @app.websocket("/ws/vnc")
@@ -7059,25 +7201,46 @@ async def ws_terminal(ws: WebSocket):
     import struct
     import termios
 
+    # On a machine with accounts the Terminal is a real shell, so it is exactly the
+    # place the data boundary would leak: without a jail, whoever opened it could
+    # read every other account's home. So it fails closed — a jail per account, or
+    # no shell — and it opens in the acting account's own home, not the OS user's.
+    ws_uid = _ws_user(ws) or ""
+    from .tools import bwrap_argv, sandbox_conf, sandbox_mechanism
+    if usersmod.enabled():
+        if not sandbox_mechanism():
+            await ws.accept()
+            with contextlib.suppress(Exception):
+                await ws.send_text("This machine has accounts, so the Terminal must run in a "
+                                   "per-account jail — install bubblewrap to enable it.\r\n")
+                await ws.close()
+            return
+        home = os.path.realpath(str(usersmod.home_for(ws_uid)))
+        os.makedirs(home, exist_ok=True)
+        jail = bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
+                          hide=[os.path.realpath(str(usersmod.users_root()))])
+    else:
+        sandboxed, sb_root = sandbox_conf(state.machine_cfg())
+        if sandboxed:
+            Path(sb_root).mkdir(parents=True, exist_ok=True)
+        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"]) if sandboxed else None
+
     await ws.accept()
-    from .tools import bwrap_argv, sandbox_conf
-    sandboxed, sb_root = sandbox_conf(state["cfg"])
-    if sandboxed:
-        Path(sb_root).mkdir(parents=True, exist_ok=True)
     shell = os.environ.get("SHELL", "/bin/bash")
     pid, fd = pty.fork()
-    if pid == 0:  # child: become the user's shell (jailed to the sandbox root if enabled)
+    if pid == 0:  # child: become the user's shell, jailed to their own home
         env = dict(os.environ)
         env["TERM"] = "xterm-256color"
-        if sandboxed:
-            os.execvpe("bwrap", bwrap_argv(sb_root, ["/bin/bash", "-l"]), env)
+        if jail:
+            os.execvpe("bwrap", jail, env)
         try:
             os.chdir(os.path.expanduser("~"))
         except OSError:
             pass
         os.execvpe(shell, [shell, "-l"], env)
 
-    state["store"].log("system", f"terminal session opened (pid {pid})")
+    with usersmod.as_user(ws_uid):
+        state["store"].log("system", f"terminal session opened (pid {pid})")
     loop = asyncio.get_event_loop()
     out_q: asyncio.Queue = asyncio.Queue()
 
@@ -7177,6 +7340,7 @@ def _queue_add(cid: str, data: dict) -> dict:
             "surface": data.get("surface") or "gui",
             "origin": str(data.get("origin") or "user")[:40],
             "context": str(data.get("context") or "")[:4096],
+            "uid": data.get("uid", ""),   # the turn that flushes this must run as the same account
             "status": "queued", "reason": "", "at": time.time()}
     state["queues"].setdefault(cid, []).append(item)
     return item
@@ -7238,7 +7402,8 @@ async def _queue_flush(cid: str):
         state["queues"].pop(cid, None)
     data = {"text": item["text"], "images": item["images"], "model": item["model"],
             "surface": item["surface"], "origin": item["origin"],
-            "context": item["context"], "conversation_id": cid}
+            "context": item["context"], "conversation_id": cid,
+            "uid": item.get("uid", "")}
     state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
@@ -7248,6 +7413,14 @@ async def run_chat(cid: str, data: dict):
     """One chat turn, running as its own task — several conversations may run at
     once. Two guarantees on every exit path: the turn slot is released, and a
     terminal event reaches the UI."""
+    # Enter the owning account's context BEFORE the first `state["store"]` read:
+    # store/cfg/PDP all resolve through `users.current()`, so a turn that read them
+    # first and entered the context second would act as the machine, not the user.
+    with usersmod.as_user(data.get("uid", "")):
+        return await _run_chat(cid, data)
+
+
+async def _run_chat(cid: str, data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     turns = state["turns"]
     text = (data.get("text") or "").strip()
@@ -7904,6 +8077,11 @@ async def run_build(data: dict):
     """Agentic App Builder: an agent whose job is to build/refine a UI app via create_app,
     streamed live to App Studio with a preview. Exactly one terminal event
     (build_done / build_error) is emitted on every exit path."""
+    with usersmod.as_user(data.get("uid", "")):   # the app is built into the owner's store
+        return await _run_build(data)
+
+
+async def _run_build(data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     build = state["build"]
     bcast = state["broadcast"]
@@ -8345,6 +8523,12 @@ async def ws_endpoint(ws: WebSocket):
     state["clients"].add(ws)
     turns, build = state["turns"], state["build"]
 
+    # Which account owns this socket, from the signed cookie, resolved once. Every
+    # turn and build started below is stamped with it and runs inside
+    # `users.as_user(uid)` — create_task copies the CURRENT context, and the receive
+    # loop's context is not the user's because no HTTP middleware runs for a socket.
+    ws_uid = _ws_user(ws) or ""
+
     async def send(event: dict):
         with contextlib.suppress(Exception):
             await ws.send_text(json.dumps(event))
@@ -8412,11 +8596,13 @@ async def ws_endpoint(ws: WebSocket):
                     await send({"type": "conversation", "id": cid, "title": title,
                                 "origin": origin, "space_id": _space})
                 turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
+                data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
+                    data["uid"] = ws_uid
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
                 build["cancel_requested"] = True

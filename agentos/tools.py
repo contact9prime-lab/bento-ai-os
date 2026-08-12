@@ -154,18 +154,27 @@ def sandbox_conf(cfg: dict) -> tuple[bool, str]:
     return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
 
 
-def bwrap_argv(root: str, tail: list[str], chdir: str | None = None) -> list[str]:
-    """Jail: whole FS read-only, /home hidden, only `root` writable & visible in /home."""
-    return ["bwrap",
-            "--ro-bind", "/", "/",
-            "--tmpfs", "/home",
-            "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-            "--bind", root, root,
-            "--chdir", chdir or root,
-            "--setenv", "HOME", root,
-            "--setenv", "AGENTOS_SANDBOX", "1",
-            "--die-with-parent",
-            *tail]
+def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
+               hide: list[str] | None = None) -> list[str]:
+    """Jail: whole FS read-only, /home hidden, only `root` writable & visible.
+
+    `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
+    back in — this is how one account's home is hidden from another's shell. The
+    whole FS is bound read-only, so a bare jail can still READ everything; tmpfs'ing
+    the users root and then re-binding only this user's home is what turns "cannot
+    write outside my workspace" into "cannot even see another tenant's files".
+    """
+    argv = ["bwrap", "--ro-bind", "/", "/", "--tmpfs", "/home"]
+    for h in (hide or []):
+        argv += ["--tmpfs", h]              # order matters: blank the siblings first…
+    argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+             "--bind", root, root,          # …then this user's own home reappears
+             "--chdir", chdir or root,
+             "--setenv", "HOME", root,
+             "--setenv", "AGENTOS_SANDBOX", "1",
+             "--die-with-parent",
+             *tail]
+    return argv
 
 
 def _sandbox_exec_profile(root: str) -> str:
@@ -306,7 +315,26 @@ class Toolbox(usersmod.Scoped):
         p = Path(os.path.expanduser(str(path or "")))
         return p if p.is_absolute() else Path(self.cfg["workspace"]) / p
 
+    def _tenant_deny(self, path) -> str | None:
+        """On a machine with accounts, a tool may not touch a path outside the acting
+        account's own home — this is what stops one tenant's agent reading another's
+        memory, credentials or files. It applies whenever accounts exist, independent
+        of the Sandbox toggle: the sandbox is about jailing the SHELL, and cross-tenant
+        reads through the in-process file tools are a separate boundary that must hold
+        even with the sandbox off. A single-user machine has no second tenant to wall
+        off, so nothing changes there."""
+        if not usersmod.enabled():
+            return None
+        home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
+        rp = os.path.realpath(str(path))
+        if rp == home or rp.startswith(home + os.sep):
+            return None
+        return ("[denied] this belongs to another account on this machine. Each account's "
+                "files, memory and credentials are private to it.")
+
     def _sandbox_deny(self, path) -> str | None:
+        if (t := self._tenant_deny(path)):
+            return t
         enabled, root = sandbox_conf(self.cfg)
         if not enabled:
             return None
@@ -318,7 +346,30 @@ class Toolbox(usersmod.Scoped):
     async def run_command(self, command: str, cwd: str = "") -> str:
         enabled, root = sandbox_conf(self.cfg)
         argv = None
-        if enabled:
+        # Tenant jail. On a machine with accounts the shell must run inside the acting
+        # account's home with every other account's home blanked out, and — because a
+        # shell can read anything the jail leaves visible — it FAILS CLOSED: if no jail
+        # mechanism exists, the command is refused rather than run unconfined. A shell
+        # that can read /home/.agentos/users/<somebody-else> is the whole isolation
+        # gone, so "no jail" cannot mean "no walls".
+        if usersmod.enabled():
+            mech = sandbox_mechanism()
+            if not mech:
+                return ("[denied] this machine has accounts, so a command has to run in a "
+                        "per-account jail, and none is available here. Install bubblewrap "
+                        "(Linux) so each account's shell is confined to its own home.")
+            home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
+            os.makedirs(home, exist_ok=True)
+            workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else home
+            if not (workdir == home or workdir.startswith(home + os.sep)) or not os.path.isdir(workdir):
+                workdir = home
+            if mech == "bwrap":
+                argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
+                                  hide=[os.path.realpath(str(usersmod.users_root()))])
+            else:  # macOS: confine writes to the account's home (reads of siblings still open —
+                   # documented in docs/design/tenant-isolation.md as a bwrap-only guarantee)
+                argv = jail_argv(home, command, chdir=workdir)
+        elif enabled:
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else root
             if not (workdir == root or workdir.startswith(root + os.sep)) or not os.path.isdir(workdir):
                 workdir = root

@@ -188,9 +188,21 @@ were standing. `/api/remote/login` accepts the account password too, because a
 phone that added AgentOS to its home screen months ago has that URL cached and a
 404 there reads as "remote access broke".
 
-What signing in does **not** do is sandbox somebody from the machine. An executor
-has their own data, and still has the Terminal and the agent's shell. Accounts are
-about whose memory is whose, not about containing a hostile user.
+What signing in gets somebody is their own **data**, kept private from the other
+accounts. Through AgentOS's own surfaces that boundary holds even at the shell: the
+agent's file tools refuse another account's home, and `run_command` and the
+Terminal run inside a per-account `bwrap` jail — rooted at that account's home with
+every other account's home blanked out — or refuse to run if no jail is available
+(no jail cannot mean no walls). An executor cannot `cat` another account's memory
+through AgentOS.
+
+What that does **not** buy, and should not be claimed, is protection against an
+account that is actively hostile *and* has more than AgentOS gives it — a
+`bwrap`-escape exploit, or root / physical access to the disk. That is a
+deployment decision (a real per-user OS uid, or containers), laid out in
+`docs/design/tenant-isolation.md`. So: accounts are a real boundary for the tools
+this OS exposes; hardening the box underneath them against a resourceful insider
+is a deployment choice on top.
 
 ## From a terminal
 

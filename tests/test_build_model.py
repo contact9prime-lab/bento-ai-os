@@ -76,5 +76,5 @@ def test_salvage_ignores_prose_and_non_app_code():
 def test_builds_do_not_run_the_generic_unfinished_nudge():
     import inspect
     from agentos import server
-    src = inspect.getsource(server.run_build)
+    src = inspect.getsource(server._run_build)
     assert "nudge_unfinished = False" in src
