@@ -7107,25 +7107,46 @@ async def ws_terminal(ws: WebSocket):
     import struct
     import termios
 
+    # On a machine with accounts the Terminal is a real shell, so it is exactly the
+    # place the data boundary would leak: without a jail, whoever opened it could
+    # read every other account's home. So it fails closed — a jail per account, or
+    # no shell — and it opens in the acting account's own home, not the OS user's.
+    ws_uid = _ws_user(ws) or ""
+    from .tools import bwrap_argv, sandbox_conf, sandbox_mechanism
+    if usersmod.enabled():
+        if not sandbox_mechanism():
+            await ws.accept()
+            with contextlib.suppress(Exception):
+                await ws.send_text("This machine has accounts, so the Terminal must run in a "
+                                   "per-account jail — install bubblewrap to enable it.\r\n")
+                await ws.close()
+            return
+        home = os.path.realpath(str(usersmod.home_for(ws_uid)))
+        os.makedirs(home, exist_ok=True)
+        jail = bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
+                          hide=[os.path.realpath(str(usersmod.users_root()))])
+    else:
+        sandboxed, sb_root = sandbox_conf(state.machine_cfg())
+        if sandboxed:
+            Path(sb_root).mkdir(parents=True, exist_ok=True)
+        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"]) if sandboxed else None
+
     await ws.accept()
-    from .tools import bwrap_argv, sandbox_conf
-    sandboxed, sb_root = sandbox_conf(state["cfg"])
-    if sandboxed:
-        Path(sb_root).mkdir(parents=True, exist_ok=True)
     shell = os.environ.get("SHELL", "/bin/bash")
     pid, fd = pty.fork()
-    if pid == 0:  # child: become the user's shell (jailed to the sandbox root if enabled)
+    if pid == 0:  # child: become the user's shell, jailed to their own home
         env = dict(os.environ)
         env["TERM"] = "xterm-256color"
-        if sandboxed:
-            os.execvpe("bwrap", bwrap_argv(sb_root, ["/bin/bash", "-l"]), env)
+        if jail:
+            os.execvpe("bwrap", jail, env)
         try:
             os.chdir(os.path.expanduser("~"))
         except OSError:
             pass
         os.execvpe(shell, [shell, "-l"], env)
 
-    state["store"].log("system", f"terminal session opened (pid {pid})")
+    with usersmod.as_user(ws_uid):
+        state["store"].log("system", f"terminal session opened (pid {pid})")
     loop = asyncio.get_event_loop()
     out_q: asyncio.Queue = asyncio.Queue()
 

@@ -102,20 +102,42 @@ verified across every app.
 
 ---
 
-## Piece 2 — OS-level per-user isolation (the shell and the filesystem)
+## Piece 2 — per-user isolation of the shell and the filesystem
 
-`space_id` and the per-user directories isolate *data through the app layer*. They
-do **not** isolate the shell. The Terminal WebSocket opens a real host shell in the
-OS user's `$HOME` with the full environment, and `run_command` runs unsandboxed
-when `bwrap` is absent. So any executor can `cat ~/.agentos/users/<other>/agentos.db`
-and read another tenant's memory, tokens and grants directly — the PDP never sees
-it, and the ledger never records it. For *trusted co-workers* this is the
-documented, accepted boundary. For *mutually distrusting tenants* it is the
-headline gap: the isolation is real for data reached through the agent, and absent
-for data reached through a shell.
+**Status: the enforcement layer is done** (`agentos/tools.py`, `agentos/server.py`,
+`tests/test_tenant_isolation.py`). What a deployment still chooses is the strength
+of the jail underneath it (below).
 
-Closing it is a **deployment-model** change, and which option fits depends on how
-AgentOS is run — so this needs a decision, not just code:
+What now holds whenever accounts exist, verified against a running toolbox:
+
+- **The in-process file tools** (`read_file`, `write_file`, `list_dir`, and the
+  git / media-import / app-export paths that share `_sandbox_deny`) refuse any path
+  outside the acting account's home — **independent of the Sandbox toggle**. The
+  old confinement only applied with the sandbox on and only to the workspace;
+  cross-tenant reads through these tools were wide open with the sandbox off. Now
+  `_tenant_deny` gates all of them.
+- **`run_command` is jailed per account and fails closed.** On a machine with
+  accounts the shell runs in a `bwrap` jail rooted at the acting account's home
+  with the whole `users/` tree tmpfs-blanked and only that account's home bound
+  back — so a shell cannot even *see* another account's files, not merely not write
+  them. If no jail mechanism exists, the command is refused rather than run
+  unconfined: no jail cannot mean no walls.
+- **The Terminal WebSocket** opens the same per-account jail in that account's own
+  home (not the OS user's `$HOME`), or refuses if no jail is available.
+- **A single-user machine is untouched** — no second tenant to wall off, so the
+  agent still reads across the disk as before.
+
+The remaining choice is how strong the jail is against an account that is actively
+hostile and resourceful (a `bwrap` escape, or root/physical access). That is the
+deployment decision below; the enforcement above makes AgentOS's own tools honour
+the boundary regardless.
+
+### The jail strength (deployment choice)
+
+The enforcement above uses a `bwrap` jail, which is a strong boundary against a
+normal account but not an unbounded one — a kernel-level `bwrap` escape, or an
+account with root or physical access to the disk, is out of its scope. How much
+that matters depends on how AgentOS is run, and it is a decision, not just code:
 
 - **Per-user OS uid.** Each AgentOS account maps to a real Unix uid; the server
   drops privilege per request/turn (needs the server to start privileged, or a
@@ -147,7 +169,8 @@ real boundary.
 
 1. ✅ Contained fixes (done): WS user context, sustained rate, ledger
    hardening, space-delete / factory-reset audit-erasure.
-2. Piece 1, staged behind a flag with Playwright verification.
-3. `docs/users.md`: state the current boundary as "co-workers, not tenants" until
-   Piece 2 lands.
-4. Piece 2, per the deployment decision — bwrap-per-user by default.
+2. ✅ Piece 2 enforcement (done): the file tools, `run_command` and the Terminal
+   honour the per-account boundary and fail closed; `bwrap`-per-user is the
+   default jail. What remains is the deployment choice of jail strength above.
+3. Piece 1, staged behind a flag with Playwright verification — the last
+   verified-CRITICAL escape.
