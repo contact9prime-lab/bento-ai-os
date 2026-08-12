@@ -234,24 +234,51 @@ def send_notification(title: str, message: str = "") -> bool:
     return False
 
 
+def restart_method() -> str:
+    """Which mechanism `restart_service()` would use: 'launchagent', 'systemd' or
+    'process'. Split out so a caller can SAY which before it happens — the three are
+    different answers to "will it come back on its own?", and a restart that silently
+    re-execs a hand-started process looks identical to one a supervisor owns until
+    the next reboot proves otherwise."""
+    if IS_MAC and MAC_SERVER_PLIST.exists():
+        return "launchagent"
+    if not IS_MAC and not IS_WIN and SERVICE_FILE.exists():
+        active, _ = _run(["systemctl", "--user", "is-active", f"{APP_ID}.service"])
+        if active:
+            return "systemd"
+    return "process"
+
+
 def restart_service() -> str:
     """Restart the AgentOS server: via the platform service manager when installed and
     running, otherwise by re-exec'ing this process. Returns a short description."""
-    if IS_MAC and MAC_SERVER_PLIST.exists():
+    how = restart_method()
+    if how == "launchagent":
         ok, _ = _run(["launchctl", "kickstart", "-k",
                       f"gui/{os.getuid()}/{MAC_SERVER_LABEL}"])
         if ok:
             return "restarting the AgentOS LaunchAgent"
-    elif not IS_MAC and not IS_WIN and SERVICE_FILE.exists():
-        active, _ = _run(["systemctl", "--user", "is-active", f"{APP_ID}.service"])
-        if active:
-            _run(["systemctl", "--user", "restart", f"{APP_ID}.service"])
-            return "restarting the AgentOS systemd service"
+    elif how == "systemd":
+        _run(["systemctl", "--user", "restart", f"{APP_ID}.service"])
+        return "restarting the AgentOS systemd service"
     # not running under a service manager (dev run, `agentos serve` in a terminal,
-    # Windows) — re-exec this process after the HTTP response has flushed
+    # Windows) — re-exec this process after the HTTP response has flushed.
+    #
+    # Carry the address forward. This used to re-exec a bare `serve`, which reads the
+    # CONFIGURED port — so a server started with `--port 8402` came back on 8321,
+    # collided with whatever already held it, and exited 3. The restart looked
+    # successful from the outside (the request returned, the old process went away)
+    # and left nothing listening. `serve` publishes what it really bound, because the
+    # command line is the one thing an exec cannot recover on its own.
+    argv = [sys.executable, "-m", "agentos", "serve", "--no-browser"]
+    if (port := os.environ.get("AGENTOS_BOUND_PORT")):
+        argv += ["--port", port]
+    if (host := os.environ.get("AGENTOS_BOUND_HOST")):
+        argv += ["--host", host]
+
     def _reexec():
         time.sleep(1.0)
-        os.execv(sys.executable, [sys.executable, "-m", "agentos", "serve", "--no-browser"])
+        os.execv(sys.executable, argv)
     threading.Thread(target=_reexec, daemon=True).start()
     return "restarting the AgentOS process"
 

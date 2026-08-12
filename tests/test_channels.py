@@ -214,3 +214,29 @@ def test_a_config_pinned_to_a_removed_engine_still_answers(tmp_path, monkeypatch
 def test_the_migration_leaves_a_real_engine_alone():
     from agentos import config as cfgmod
     assert cfgmod.load_config().get("engine") in ("", None, "aria", "claude-code")
+
+
+def test_the_whatsapp_panel_only_ever_asks_for_a_real_transport():
+    """The mode strings in the UI must be the ones `channels.save` accepts.
+
+    "Scan a QR code instead" sent `link` for the life of the button. `save()` refused
+    it — `whatsapp mode is one of baileys, cloud` — and the panel discarded the reply
+    and redrew itself, so a rejected write was indistinguishable from a successful
+    one and the button silently did nothing.
+
+    Read out of the source rather than exercised through a browser, because the whole
+    failure was that nothing on either side objected: the API answered correctly, and
+    the only broken thing was the string one caller chose.
+    """
+    import re
+    from pathlib import Path
+
+    from agentos import whatsapp as wamod
+
+    src = (Path(__file__).resolve().parent.parent / "agentos" / "ui" / "src" / "js"
+           / "11a-whatsapp.js").read_text()
+    asked = set(re.findall(r"waSetMode\('([^']+)'\)", src))
+    assert asked, "no waSetMode call sites found — has the panel been rewritten?"
+    assert asked <= set(wamod.MODES), (
+        f"the panel asks for {sorted(asked - set(wamod.MODES))}, which "
+        f"channels.save() will refuse; valid modes are {list(wamod.MODES)}")

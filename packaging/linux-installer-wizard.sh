@@ -342,7 +342,10 @@ import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)
 EOF
   WHEEL=$(ls "$PAYLOAD"/agentos-*.whl 2>/dev/null | head -1)
   [ -n "$WHEEL" ] || fail "no wheel in the payload"
-  say "→ creating a private environment in $PREFIX…"
+  # `${PREFIX}` not `$PREFIX`: harmless on bash 5, fatal on macOS's bash 3.2 — and
+  # this file gets copied from when the next wizard is written. See the long note in
+  # macos-installer-wizard.sh.
+  say "→ creating a private environment in ${PREFIX}…"
   mkdir -p "$PREFIX"
   "$PY" -m venv --clear "$PREFIX/venv" || fail "venv creation failed (install python3-venv?)"
   say "→ installing AgentOS (this can take a minute)…"

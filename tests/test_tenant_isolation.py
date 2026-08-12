@@ -144,3 +144,49 @@ def test_a_single_user_machine_keeps_reading_across_the_disk(tmp_path, monkeypat
     tb = _box(_cfg(False), "")
     assert "ordinary file" in run(tb.read_file(str(f)))
     usersmod.reset_caches()
+
+
+def test_a_linked_whatsapp_device_belongs_to_one_account(two):
+    """The credentials follow the account, like everything else in a home.
+
+    `whatsapp` is in `users.USER_KEYS`, so the settings were already per-user — but
+    `wa_baileys.SESSION_DIR` was a module constant built from the MACHINE home at
+    import. Every account therefore shared one linked device: `paired()` answered
+    for the machine, and the second person to open the panel would have found
+    themselves already linked to the first one's phone.
+    """
+    from agentos import wa_baileys as wab
+
+    with usersmod.as_user(two[0]):
+        ada_dir = wab.session_dir()
+    with usersmod.as_user(two[1]):
+        bob_dir = wab.session_dir()
+
+    assert ada_dir != bob_dir
+    assert str(ada_dir).startswith(str(usersmod.home_for(two[0])))
+    assert str(bob_dir).startswith(str(usersmod.home_for(two[1])))
+
+
+def test_one_accounts_pairing_does_not_pair_the_other(two):
+    from agentos import wa_baileys as wab
+
+    with usersmod.as_user(two[0]):
+        d = wab.session_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "creds.json").write_text("{}")
+        assert wab.paired() is True
+    with usersmod.as_user(two[1]):
+        assert wab.paired() is False, "bob inherited ada's linked device"
+
+
+def test_the_machine_config_never_carries_whatsapp_settings():
+    """Why the startup resume has to run per account, asserted rather than assumed.
+
+    `machine_view()` strips the personal keys, so reading `mode()` off the machine
+    config gets the "cloud" default no matter what any account chose — which is
+    exactly how a linked account came back from a restart with no bridge running,
+    no error anywhere, and a panel still reporting it as linked.
+    """
+    stripped = usersmod.machine_view({"whatsapp": {"mode": "baileys"}, "port": 8321})
+    assert "whatsapp" not in stripped
+    assert stripped["port"] == 8321

@@ -294,6 +294,9 @@ CATALOG: dict[str, dict] = {
     "whatsapp-bridge": {
         "packages": {}, "method": "script", "licence": "MIT (Baileys)",
         "group": "optional", "for_session": False,
+        # `npm install --prefix agentos/wa_bridge` — the user's own files, in a
+        # directory AgentOS owns. sudo here would give them a root-owned node_modules.
+        "needs_root": False,
         "title": "WhatsApp Web bridge (Baileys)",
         "unlocks": "Message your agent on WhatsApp by scanning a QR code — no Meta "
                    "developer account, no public webhook and no 24-hour reply "
@@ -538,6 +541,28 @@ async def install(component_id: str) -> dict:
                            f"{unavailable_reason(comp)}."}
 
     cmd = " ".join(argv)
+
+    # Some installs are the user's own files, and asking for root is not merely
+    # unnecessary — it is wrong. The WhatsApp bridge is `npm install --prefix` into a
+    # directory inside AgentOS itself; the ladder below tried `sudo -n`, could not get
+    # it, and handed back `sudo npm install …`, which the card showed as a bare
+    # "install failed". Following that suggestion would have left a root-owned
+    # node_modules in the user's own tree for a command that never needed root.
+    #
+    # Opt IN, defaulting to root, so a new entry cannot quietly lose its escalation:
+    # a missing flag on something that installs a system package is a failed install,
+    # while a missing flag here was a wrongly-refused one.
+    if not comp.get("needs_root", True):
+        rc, out = await _run(argv, 900)
+        if rc == 0 and comp["detect"]():
+            _refresh_platform()
+            return {"ok": True, "message": f"{comp['title']} installed.",
+                    "command": cmd, "needs_terminal": False}
+        # No terminal hand-back: there is no privileged command to hand back, and
+        # printing one would send the user to do the wrong thing as root.
+        return {"ok": False, "needs_terminal": False, "command": cmd,
+                "message": out[-400:].strip() or f"{comp['title']} did not install."}
+
     manual = {"ok": False, "needs_terminal": True, "command": f"sudo {cmd}",
               "message": "Root access is needed — run this in the Terminal:"}
 

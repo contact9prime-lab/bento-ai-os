@@ -96,6 +96,24 @@ DEFAULTS = {
             "api_key": "",
             "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
         },
+        # DeepSeek and Moonshot (Kimi) are their own front doors rather than
+        # OpenRouter entries, because the reason to reach for either is usually price
+        # — routing the call through a broker gives that back. Both serve the plain
+        # OpenAI dialect, so `chat()` needs no new transport: the base URL and the key
+        # are the whole integration, which is exactly why leaving them out was a gap
+        # rather than a decision.
+        "deepseek": {
+            "enabled": False,
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "",
+            "models": ["deepseek-chat", "deepseek-reasoner"],
+        },
+        "moonshot": {  # Kimi. `kimi-k2` reasons and calls tools; the k1.5 line is older
+            "enabled": False,
+            "base_url": "https://api.moonshot.ai/v1",
+            "api_key": "",
+            "models": ["kimi-k2-0711-preview", "moonshot-v1-128k", "moonshot-v1-32k"],
+        },
     },
     # image generation: provider auto|google|openai|pollinations; model optional
     # (defaults: google → gemini-2.5-flash-image "nano banana", openai → gpt-image-1).
@@ -294,7 +312,12 @@ def load_config() -> dict:
     if not cfg["providers"]["google"]["api_key"]:
         cfg["providers"]["google"]["api_key"] = (os.environ.get("GOOGLE_API_KEY", "")
                                                  or os.environ.get("GEMINI_API_KEY", ""))
-    for name in ("anthropic", "openai", "openrouter", "google"):
+    if not cfg["providers"]["deepseek"]["api_key"]:
+        cfg["providers"]["deepseek"]["api_key"] = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not cfg["providers"]["moonshot"]["api_key"]:
+        cfg["providers"]["moonshot"]["api_key"] = (os.environ.get("MOONSHOT_API_KEY", "")
+                                                   or os.environ.get("KIMI_API_KEY", ""))
+    for name in ("anthropic", "openai", "openrouter", "google", "deepseek", "moonshot"):
         if cfg["providers"][name]["api_key"]:
             cfg["providers"][name]["enabled"] = True
     # backfill Gemini chat models for installs whose saved config predates them

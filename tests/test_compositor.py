@@ -9,9 +9,12 @@ smoke test against real sway is `agentos doctor` + the nested-session check.
 import asyncio
 import copy
 import json
+import shutil
 import socket
 import struct
+import tempfile
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -71,7 +74,20 @@ OUTPUTS = [{
 class FakeSway:
     """Serves the i3-ipc protocol from a unix socket; records every command."""
 
-    def __init__(self, sock_path, fail_commands=False):
+    def __init__(self, sock_path=None, fail_commands=False):
+        # It picks its OWN short path by default, because the caller getting this
+        # wrong is silent everywhere it is written and fatal where it is run: a
+        # unix socket path lives in `sun_path`, 108 bytes on Linux but **104 on
+        # macOS**, and pytest's `tmp_path` is already past that before the
+        # filename (`/private/var/folders/<20>/T/pytest-of-<user>/pytest-N/<test
+        # name>/`). Every test in this file errored on a Mac with "AF_UNIX path
+        # too long", which reads like sway support being Linux-only when nothing
+        # here needs a compositor at all. Owning the path is what stops the next
+        # test reintroducing it.
+        self._tmpdir = None
+        if sock_path is None:
+            self._tmpdir = tempfile.mkdtemp(prefix="swaytest")
+            sock_path = Path(self._tmpdir) / "s"
         self.path = str(sock_path)
         self.commands: list[str] = []
         self.fail_commands = fail_commands
@@ -145,11 +161,14 @@ class FakeSway:
         self._stop.set()
         self._thread.join(timeout=2)
         self._srv.close()
+        if self._tmpdir:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
 @pytest.fixture
-def sway(tmp_path):
-    fake = FakeSway(tmp_path / "sway.sock")
+def sway():
+    """No `tmp_path`: FakeSway picks its own short socket path. See its __init__."""
+    fake = FakeSway()
     yield fake
     fake.stop()
 
@@ -223,8 +242,8 @@ def test_configure_output_builds_one_command(client, sway):
     assert sway.commands == []
 
 
-def test_command_failure_surfaces_sways_error(tmp_path):
-    fake = FakeSway(tmp_path / "sway2.sock", fail_commands=True)
+def test_command_failure_surfaces_sways_error():
+    fake = FakeSway(fail_commands=True)
     try:
         c = comp.Compositor(sock=fake.path)
         with pytest.raises(comp.CompositorError, match="nope"):

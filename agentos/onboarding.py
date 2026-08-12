@@ -133,10 +133,24 @@ def _has_model(cfg: dict) -> tuple[bool, str]:
     return False, ""
 
 
+DEFAULT_NAME = "Aria"
+
+
+def _confirmed(cfg: dict) -> set:
+    return set((cfg.get("onboarding") or {}).get("confirmed") or [])
+
+
 def _named(cfg: dict) -> tuple[bool, str]:
     n = (cfg.get("agent_name") or "").strip()
-    # "Aria" is the shipped default, so it is not evidence that anybody chose it.
-    return (bool(n) and n != "Aria"), n
+    # "Aria" is the shipped default, so it is not evidence that anybody chose it —
+    # but it is a perfectly good name, and pressing Save on it IS choosing it. Config
+    # alone cannot tell "never touched" from "looked at it and kept it", which is the
+    # same blind spot `skipped` exists for, so it is recorded the same way.
+    #
+    # Without this the step was a dead end you could only leave by disliking the
+    # default: Save wrote the name, the probe still said todo, the arc did not
+    # advance, and nothing on screen said why.
+    return (bool(n) and (n != DEFAULT_NAME or "name" in _confirmed(cfg))), n
 
 
 def state(cfg: dict, store=None) -> dict:
@@ -283,6 +297,24 @@ def unskip(cfg: dict, step_id: str) -> dict:
     return {"ok": True, "skipped": ob["skipped"]}
 
 
+def confirm(cfg: dict, step_id: str) -> dict:
+    """Record that a step's CURRENT state is what the user wants.
+
+    The sibling of `skip`, for the opposite answer. `skip` says "not this, ever";
+    this says "yes, exactly what is already there" — and it is needed for the same
+    reason: some steps are satisfied by a value the machine cannot distinguish from
+    the one it shipped with.
+
+    Only the name step reads it today. Kept general rather than a `name_confirmed`
+    boolean because the shape recurs the moment any other step has a usable default.
+    """
+    if step_id not in BY_ID:
+        raise ValueError(f"no onboarding step '{step_id}'")
+    ob = cfg.setdefault("onboarding", {})
+    ob["confirmed"] = sorted(set(ob.get("confirmed") or []) | {step_id})
+    return {"ok": True, "confirmed": ob["confirmed"]}
+
+
 def restart(cfg: dict) -> dict:
     """Walk the whole arc again without wiping anything.
 
@@ -290,7 +322,12 @@ def restart(cfg: dict) -> dict:
     to change something and I do not remember where it lives", and answering that
     by deleting their memory would be a catastrophe with a friendly button.
     """
-    cfg.setdefault("onboarding", {})["skipped"] = []
+    ob = cfg.setdefault("onboarding", {})
+    ob["skipped"] = []
+    # Confirmations go too, for the same reason skips do: walking the arc again means
+    # being asked again. Leaving them would tick the name step from a decision made
+    # on a machine the user is now deliberately reconsidering.
+    ob["confirmed"] = []
     cfg["setup_complete"] = False
     return {"ok": True}
 

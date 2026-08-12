@@ -107,7 +107,15 @@ if [ "$UNATTENDED" = 0 ]; then
 fi
 
 # --- install -----------------------------------------------------------------
-say "→ creating a private environment in $PREFIX…"
+# BRACES ARE LOAD-BEARING HERE. macOS ships bash 3.2.57 — frozen in 2007, before
+# bash learned to parse variable names as characters rather than bytes. `"$PREFIX…"`
+# makes it swallow the ellipsis's UTF-8 bytes into the NAME, so it looks up
+# `PREFIX\xe2\x80\xa6`, finds nothing, and `set -u` aborts. This installer died on
+# exactly this line on every stock Mac, before the venv was ever created — and it
+# cannot show up on the builder's Linux box, where bash 5 gets it right.
+# Any `$VAR` touching a non-ASCII character needs `${VAR}`; tests/test_packaging_shell.py
+# fails the build if one comes back.
+say "→ creating a private environment in ${PREFIX}…"
 mkdir -p "$PREFIX"
 "$PY" -m venv --clear "$PREFIX/venv" || fail "could not create the Python environment"
 say "→ installing $APP (a minute or two)…"

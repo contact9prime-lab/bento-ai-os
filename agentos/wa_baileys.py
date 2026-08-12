@@ -47,11 +47,26 @@ import shutil
 import time
 from pathlib import Path
 
-from . import config as cfgmod
-
 BRIDGE_DIR = Path(__file__).resolve().parent / "wa_bridge"
-SESSION_DIR = cfgmod.AGENTOS_HOME / "whatsapp" / "session"
 NODE_MODULES = BRIDGE_DIR / "node_modules"
+
+
+def session_dir() -> Path:
+    """Where this ACCOUNT's linked device lives — resolved, never a constant.
+
+    It was `cfgmod.AGENTOS_HOME / "whatsapp" / "session"`, evaluated once at import,
+    and that is wrong twice on a machine with accounts. `whatsapp` is in
+    `users.USER_KEYS`, so the settings are per-user while the credentials were not:
+    every account shared one linked device, and `paired()` answered for the machine
+    rather than for the person asking. The second account to open the panel would
+    have found itself already linked to the first one's phone.
+
+    `home_for('')` is the machine home, so an install with no accounts keeps using
+    the exact directory it always used.
+    """
+    from . import users as usersmod
+    return usersmod.home_for(usersmod.current()) / "whatsapp" / "session"
+
 
 #: How long to wait for the first QR (or a restored session) before saying so.
 PAIR_TIMEOUT = 90.0
@@ -76,7 +91,7 @@ def installed() -> bool:
 def paired() -> bool:
     """A multi-file auth state exists, so a previous scan is still valid."""
     try:
-        return any(SESSION_DIR.glob("creds.json"))
+        return any(session_dir().glob("creds.json"))
     except OSError:
         return False
 
@@ -95,9 +110,10 @@ def why_not() -> str:
 def forget_session() -> bool:
     """Unlink: drop the stored device credentials so the next start asks for a scan."""
     import shutil as _sh
-    if not SESSION_DIR.exists():
+    d = session_dir()
+    if not d.exists():
         return False
-    _sh.rmtree(SESSION_DIR, ignore_errors=True)
+    _sh.rmtree(d, ignore_errors=True)
     return True
 
 
@@ -151,14 +167,15 @@ class BaileysTransport:
             return gap
         self._stopping = False
         self.state, self.error, self.qr = "starting", "", ""
-        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        sess = session_dir()
+        sess.mkdir(parents=True, exist_ok=True)
         try:
-            SESSION_DIR.chmod(0o700)      # a linked-device credential is a credential
+            sess.chmod(0o700)      # a linked-device credential is a credential
         except OSError:
             pass
         from .mcp_client import _extended_path
         env = {**os.environ, "PATH": _extended_path(),
-               "WA_SESSION_DIR": str(SESSION_DIR)}
+               "WA_SESSION_DIR": str(sess)}
         self.proc = await asyncio.create_subprocess_exec(
             node_path(), str(BRIDGE_DIR / "bridge.js"),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,

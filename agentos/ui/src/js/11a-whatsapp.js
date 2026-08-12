@@ -63,7 +63,7 @@ async function waPanel(){
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
     Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
-    <button class="endbtn" onclick="waSetMode('link')">Scan a QR code instead</button></div>`;
+    <button class="endbtn" onclick="waSetMode('baileys')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
       onclick="waTest()">Send me a test message</button>
@@ -152,9 +152,19 @@ function waLinkPanel(d){
       <small id="wa-link" class="mut"></small></div>${modeSwitch}`;
 }
 
+/* The transports are named `baileys` and `cloud` — the same strings `whatsapp.MODES`
+   validates against. Not `link`, which is what this sent for the life of the button:
+   the server answered `{ok:false, "whatsapp mode is one of baileys, cloud"}`, this
+   threw the answer away, and waPanel() redrew the identical panel. A rejected write
+   and a successful one looked exactly alike, so "Scan a QR code instead" simply did
+   nothing, with nowhere to find out why. Say it instead. */
 async function waSetMode(mode){
-  await fetch('/api/whatsapp',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({mode})});
+  try{
+    const r=await fetch('/api/whatsapp',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+    const d=await r.json();
+    if(!r.ok||d.ok===false)return toast(d.message||d.error||'could not switch');
+  }catch(e){return toast('could not reach the server')}
   waPanel();
 }
 async function waInstall(){
@@ -165,7 +175,18 @@ async function waInstall(){
       body:JSON.stringify({id:'whatsapp-bridge'})});
     const d=await r.json();
     if(!r.ok||d.error||d.ok===false){
-      if(out){out.textContent=d.error||d.detail||'install failed';out.className='warn'}return}
+      // `message` FIRST: components.install() puts the reason there — the npm output,
+      // or the command to run by hand — and error/detail are only set by the HTTP
+      // layer. Reading those two alone is why a real explanation ("Root access is
+      // needed", npm's own failure) arrived and was replaced with "install failed".
+      if(out){
+        out.textContent=d.error||d.detail||d.message||'install failed';
+        // A hand-back is not a failure, it is an instruction, and it is useless
+        // without the command it refers to.
+        if(d.needs_terminal&&d.command)out.textContent+='  '+d.command;
+        out.className='warn';
+      }
+      return}
     toast('WhatsApp bridge installed');
   }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}return}
   waPanel();

@@ -177,26 +177,47 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     return argv
 
 
-def _sandbox_exec_profile(root: str) -> str:
+def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
     """macOS SBPL: everything readable, but writes confined to `root` (+ tmp/dev/caches).
+
     Matches bubblewrap's security-relevant guarantee — the agent's shell cannot modify
     files outside the workspace — without hiding the rest of the FS (which would break
-    Homebrew/node tooling the command may legitimately read)."""
+    Homebrew/node tooling the command may legitimately read).
+
+    `hide` is the tenant boundary and is the one place reads are taken away: it names
+    directories whose contents this command may not READ, with `root` allowed back
+    afterwards. It mirrors bwrap's tmpfs-then-rebind trick, and the ordering is the
+    whole mechanism in both — **SBPL takes the LAST matching rule**, so the deny must
+    come first and the re-allow second. Swap them and the profile still loads, still
+    looks right, and silently grants everything it was written to refuse.
+
+    This used to be write-only on macOS, with sibling reads left open and a comment
+    pointing at the design doc. That is a fine thing to document on a single-user
+    machine and not on one with accounts, where reading `~/.agentos/users/<somebody
+    else>/agentos.db` is the entire isolation gone — so the shell now refuses it on
+    both operating systems, and `tests/test_tenant_isolation.py` asserts it on both.
+    """
     def esc(p):
         return p.replace("\\", "\\\\").replace('"', '\\"')
     writable = [root, "/tmp", "/private/tmp", "/private/var/tmp", "/dev/null",
                 "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
     subpaths = "\n  ".join(f'(subpath "{esc(p)}")' for p in writable)
-    return ("(version 1)\n"
+    prof = ("(version 1)\n"
             "(allow default)\n"
             "(deny file-write*)\n"
             f"(allow file-write*\n  {subpaths})\n"
             "(allow file-write-data (literal \"/dev/stdout\") (literal \"/dev/stderr\"))\n")
+    if hide:
+        for h in hide:
+            prof += f'(deny file-read* (subpath "{esc(h)}"))\n'
+        prof += f'(allow file-read* (subpath "{esc(root)}"))\n'   # …then this one back
+    return prof
 
 
-def sandbox_exec_argv(root: str, command: str, chdir: str | None = None) -> list[str]:
+def sandbox_exec_argv(root: str, command: str, chdir: str | None = None,
+                      hide: list[str] | None = None) -> list[str]:
     """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
-    prof = _sandbox_exec_profile(root)
+    prof = _sandbox_exec_profile(root, hide=hide)
     inner = f'cd {shlex.quote(chdir or root)} && {command}'
     return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
 
@@ -363,12 +384,15 @@ class Toolbox(usersmod.Scoped):
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else home
             if not (workdir == home or workdir.startswith(home + os.sep)) or not os.path.isdir(workdir):
                 workdir = home
+            # The same boundary on both, expressed in each jail's own vocabulary:
+            # blank the users root, then give this account's home back. bwrap does it
+            # with a tmpfs and a re-bind, sandbox-exec with a deny and a re-allow.
+            hide = [os.path.realpath(str(usersmod.users_root()))]
             if mech == "bwrap":
                 argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
-                                  hide=[os.path.realpath(str(usersmod.users_root()))])
-            else:  # macOS: confine writes to the account's home (reads of siblings still open —
-                   # documented in docs/design/tenant-isolation.md as a bwrap-only guarantee)
-                argv = jail_argv(home, command, chdir=workdir)
+                                  hide=hide)
+            else:
+                argv = sandbox_exec_argv(home, command, chdir=workdir, hide=hide)
         elif enabled:
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else root
             if not (workdir == root or workdir.startswith(root + os.sep)) or not os.path.isdir(workdir):

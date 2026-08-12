@@ -199,14 +199,34 @@ async def startup():
     # session, so resuming is silent and not resuming would look like it broke.
     # Reconnect only — never START a link nobody asked for. An unlinked machine
     # gets no child process at all.
-    async def _resume_whatsapp_link():
+    # It has to run ONCE PER ACCOUNT, because both things it reads are per-account.
+    # `whatsapp` is in `users.USER_KEYS`, so `machine_view()` strips it from the
+    # machine config — asking `mode(cfg)` there got the "cloud" default, the `if` was
+    # never true, and no linked account was ever resumed. Linking worked (that runs
+    # inside a signed-in request), so the channel paired happily and then went silent
+    # at the next restart, with nothing logged and the panel still reading "linked".
+    #
+    # `whatsapp` the local is the machine's bridge; each account has its own, which
+    # `state["whatsapp"]` returns inside `as_user`. Resuming through the local one
+    # would start a single bridge holding one person's device on everyone's behalf.
+    async def _resume_one(uid: str):
         try:
             from . import whatsapp as _wa
             from . import wa_baileys as _wab
-            if _wa.mode(cfg) == "baileys" and _wab.installed() and _wab.paired():
-                await whatsapp.start_link()
+            with usersmod.as_user(uid):
+                if (_wa.mode(state["cfg"]) == "baileys"
+                        and _wab.installed() and _wab.paired()):
+                    await state["whatsapp"].start_link()
         except Exception as e:
-            store.log("error", f"whatsapp link resume: {type(e).__name__}: {e}")
+            store.log("error", f"whatsapp link resume ({uid or 'machine'}): "
+                               f"{type(e).__name__}: {e}")
+
+    async def _resume_whatsapp_link():
+        # No accounts: '' is the machine itself, and home_for('') is the home this
+        # install has always used — one pass, exactly the old behaviour.
+        uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
+        for uid in uids:
+            await _resume_one(uid)
     asyncio.create_task(_resume_whatsapp_link())
     asyncio.create_task(scheduler.run_forever())
     asyncio.create_task(mcp.start())
@@ -713,6 +733,44 @@ async def api_changelog(limit: int = 5):
     from . import updates as updmod
     return {"version": updmod.current(),
             "entries": updmod.local_notes(max(1, min(20, limit)))}
+
+
+@app.post("/api/restart")
+async def api_restart(request: Request):
+    """Restart this server. Loopback only, and the caller is told HOW it restarted.
+
+    This exists because `bento restart` cannot do the job from outside. Where a
+    service manager owns the process the CLI could kickstart it directly — but the
+    common case, and the one that caused the bug this was written for, is a server
+    started by hand in a terminal. There is no supervisor to ask, and
+    `desktop.restart_service()` falls back to re-exec'ing THE CURRENT PROCESS: run
+    from the CLI that would fork a second server beside the stale one, both bound to
+    the same database, with the old one still holding the port. So the CLI asks the
+    running server to re-exec ITSELF, which is the process that fallback was written
+    for, and the one that actually needs replacing.
+
+    Loopback only, like `/api/update` and for a weaker version of the same reason: a
+    restart is not destructive, but dropping every open session and every in-flight
+    turn is not a thing a remote browser should be able to do to the machine.
+
+    The restart is scheduled after the response flushes, or the caller cannot tell
+    "it restarted" from "it died".
+    """
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "a restart can only be started from this machine"},
+                            status_code=403)
+    from . import desktop as desktopmod
+
+    async def _finish():
+        await state["broadcast"]({"type": "reload", "delay": 6000})
+        await asyncio.sleep(0.5)
+        desktopmod.restart_service()
+
+    state["store"].log("system", "restart requested")
+    asyncio.create_task(_finish())
+    # how, not just that: "restarting the AgentOS process" and "restarting the
+    # AgentOS LaunchAgent" are different answers to "will this survive a reboot?"
+    return {"ok": True, "how": desktopmod.restart_method()}
 
 
 @app.post("/api/update")
@@ -5727,14 +5785,18 @@ async def api_setup_state():
     cfg = state["cfg"]
     local = await providers.ollama_models(cfg["providers"]["ollama"]["base_url"])
     from . import desktop as desktopmod
+    from . import setup as setupmod
     return {
         "first_run": cfgmod.is_first_run(),
         "agent_name": cfg.get("agent_name", "Aria"),
         "autonomy": cfg.get("autonomy", "balanced"),
         "default_model": cfg.get("default_model", ""),
         "ollama_models": local,
-        "providers": {p: bool(cfg["providers"][p].get("api_key"))
-                      for p in ("anthropic", "openai", "openrouter")},
+        # Driven off setup.CLOUD_PROVIDERS, not a hand-written tuple: this dict is
+        # how a surface tells whether a provider already has a key, so a provider the
+        # picker offers but this loop omits reads as "no key" forever.
+        "providers": {p: bool(cfg["providers"].get(p, {}).get("api_key"))
+                      for p, _, _ in setupmod.CLOUD_PROVIDERS},
         "autostart_installed": desktopmod.autostart_installed(),
     }
 
@@ -5991,6 +6053,18 @@ async def api_onboarding_skip(body: dict):
     try:
         res = (onboardmod.unskip if (body or {}).get("undo")
                else onboardmod.skip)(state["cfg"], step)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    return {**res, **onboardmod.state(state["cfg"], state["store"])}
+
+
+@app.post("/api/onboarding/confirm")
+async def api_onboarding_confirm(body: dict):
+    """"What is already there is what I want" — see onboarding.confirm."""
+    step = str((body or {}).get("step") or "")
+    try:
+        res = onboardmod.confirm(state["cfg"], step)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(state["cfg"])

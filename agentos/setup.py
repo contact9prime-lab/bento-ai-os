@@ -10,6 +10,21 @@ from . import config as cfgmod
 #: the shell's fallback mesh, so choosing one writes config only (never a wallpaper.png)
 WALLPAPER_PRESETS = ("aurora", "dusk", "ember", "deep")
 
+#: (provider id, label, default model) for the cloud choice in the model step.
+#: The id is a key of cfg["providers"] and the string `providers.chat()` dispatches
+#: on. Kept beside `WALLPAPER_PRESETS` rather than inline in the prompt because the
+#: browser's version of this step (`OB_CLOUD` in 14b-onboarding.js) is a second copy
+#: — the TUI drifting behind the desktop is how `bento setup` over SSH ends up
+#: offering three providers while the desktop offers six.
+CLOUD_PROVIDERS = (
+    ("anthropic", "Anthropic (Claude)", "claude-sonnet-5"),
+    ("google", "Google (Gemini)", "gemini-2.5-flash"),
+    ("openai", "OpenAI", "gpt-4o"),
+    ("deepseek", "DeepSeek", "deepseek-chat"),
+    ("moonshot", "Moonshot (Kimi)", "kimi-k2-0711-preview"),
+    ("openrouter", "OpenRouter — many models, one key", "anthropic/claude-sonnet-4.5"),
+)
+
 
 def apply_setup(cfg: dict, choices: dict) -> dict:
     """Apply wizard choices to the live config and (optionally) install autostart.
@@ -168,14 +183,18 @@ def run_cli_wizard() -> None:
         if pick.lower() != "c" and pick.isdigit() and 1 <= int(pick) <= len(local):
             model = f"ollama/{local[int(pick) - 1]}"
     if not model:
-        print("\n  2/5  Cloud model — pick a provider:  1. Anthropic  2. OpenAI  3. OpenRouter")
-        prov = {"1": "anthropic", "2": "openai", "3": "openrouter"}.get(_ask("Provider", "1"), "anthropic")
+        # Same catalogue as the desktop's step, in the same order — a headless Pi
+        # over SSH must not offer a smaller menu than the browser does.
+        print("\n  2/5  Cloud model — pick a provider:")
+        for i, (_, label, _) in enumerate(CLOUD_PROVIDERS, 1):
+            print(f"       {i}. {label}")
+        pick = _ask("Provider", "1")
+        idx = int(pick) - 1 if pick.isdigit() and 1 <= int(pick) <= len(CLOUD_PROVIDERS) else 0
+        prov, _label, default_model = CLOUD_PROVIDERS[idx]
         key = _ask(f"{prov} API key")
         if key:
             prov_choices[prov] = {"api_key": key}
-            default_models = {"anthropic": "claude-sonnet-5", "openai": "gpt-4o",
-                              "openrouter": "anthropic/claude-sonnet-4.5"}
-            model = f"{prov}/{_ask('Model', default_models[prov])}"
+            model = f"{prov}/{_ask('Model', default_model)}"
         else:
             print("  (no key — you can add one later in Settings)")
 

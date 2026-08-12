@@ -51,6 +51,13 @@ def serve(host: str, port: int, open_browser: bool):
               f"  or headless: agentos remote --on --passphrase '<something long>'")
         sys.exit(4)
     os.environ["AGENTOS_BOUND_HOST"] = host
+    # The port this instance actually bound, which is not always the configured one:
+    # `--port` wins, and `desktop.restart_service()` re-execs `serve` with no memory
+    # of the command line it is replacing. Without this, restarting a server on any
+    # other port relaunched it on the default, where it either collided with whatever
+    # was there and exited 3, or quietly moved — and the update and snapshot-restore
+    # flows both end in that same re-exec.
+    os.environ["AGENTOS_BOUND_PORT"] = str(port)
     url = f"http://{host}:{port}"
     if not _port_free(host, port):
         # bail BEFORE the app's startup hook runs: a doomed instance must not spawn
@@ -1503,6 +1510,85 @@ def _since_secs(text: str) -> float:
         return 0.0
 
 
+def _pid_on_port(port: int) -> str:
+    """The pid listening on `port`, or '' — best effort, for a message only.
+
+    Never used to decide anything, only to save somebody a lookup, so every failure
+    path returns '' and the caller falls back to a sentence that needs no pid.
+    """
+    import shutil
+    import subprocess
+    if not (lsof := shutil.which("lsof")):
+        return ""
+    try:
+        out = subprocess.run([lsof, "-ti", f":{port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return ""
+    return (out.split() or [""])[0]
+
+
+def _restart_cli(args) -> int:
+    """`bento restart` — ask the running server to restart itself.
+
+    Deliberately NOT `desktop.restart_service()` called here. That function's last
+    resort is re-exec'ing the current process, which is right inside the server and
+    wrong in a CLI: it would leave the stale server holding the port and start a
+    second one beside it, sharing the database. The server is the only process that
+    can correctly replace the server, so this asks it to.
+
+    A server that is not running is not an error worth a traceback — it is somebody
+    who wanted AgentOS running, so say the command that starts it.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    from . import config as cfgmod
+
+    cfg = cfgmod.load_config()
+    port = args.port or cfg.get("port", 8321)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        req = urllib.request.Request(base + "/api/restart", method="POST")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            res = _json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # The one case this command cannot fix by itself, and the case it was
+            # written for: a server running code older than the route it is being
+            # asked for. Nothing on the wire can restart it, so print the two things
+            # needed to do it by hand rather than a bare 404 — which reads as "the
+            # restart failed" when the truth is "this server has never heard of it".
+            print(f"This server predates `bento restart` (no /api/restart on {base}),\n"
+                  "  which is itself a sign it is running old code. Stop it by hand:")
+            pid = _pid_on_port(port)
+            print(f"    kill {pid} && bento serve" if pid
+                  else "    stop the terminal running it, then:  bento serve")
+            return 1
+        print(f"✗ the server refused the restart: {e.code} {e.reason}")
+        return 1
+    except Exception:
+        # No server on the port. `_port_free` tells the two cases apart: something
+        # else holding it is a different problem from nothing holding it, and
+        # "start it with X" would be wrong advice for the first.
+        if _port_free("127.0.0.1", port):
+            print(f"AgentOS is not running on {base}.\n  start it:  bento serve")
+        else:
+            print(f"Something holds {base} but it is not answering as AgentOS.\n"
+                  f"  check it:  bento doctor")
+        return 1
+
+    how = (res or {}).get("how", "process")
+    print({
+        "launchagent": "✓ restarting — launchd owns the server, so it comes back by itself",
+        "systemd": "✓ restarting — systemd owns the server, so it comes back by itself",
+    }.get(how, "✓ restarting the server process (started by hand, so it is not "
+                "supervised — if it does not come back, run `bento serve`)"))
+    print(f"  {base}  — give it a few seconds")
+    return 0
+
+
 def _space_cli(args):
     from . import config as cfgmod
     from . import spaces as spacemod
@@ -1714,6 +1800,10 @@ def main():
     p_install.add_argument("--no-login", action="store_true",
                            help="don't open AgentOS automatically at login")
     sub.add_parser("uninstall", help="remove launcher + boot service")
+    p_restart = sub.add_parser("restart",
+                               help="restart the running AgentOS server (to load code changes)")
+    p_restart.add_argument("--port", type=int, default=0,
+                           help="port the server is on (default: the configured one)")
     p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
     # The installer is the one entry point that has to work BEFORE anything is
@@ -1917,6 +2007,8 @@ def main():
     elif args.cmd == "uninstall":
         from . import desktop
         desktop.uninstall()
+    elif args.cmd == "restart":
+        raise SystemExit(_restart_cli(args))
     elif args.cmd == "autostart":
         from . import desktop
         desktop.enable_login_app(not args.off)

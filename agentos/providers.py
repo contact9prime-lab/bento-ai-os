@@ -385,11 +385,16 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
             raise ProviderError("Google (Gemini) API key not set — add it in Settings.")
         # Gemini speaks an OpenAI-compatible dialect under /v1beta/openai
         gen = _chat_openai(openai_base(provider, p), p["api_key"], model, messages, tools, options)
-    elif provider in ("openai", "custom", "openrouter"):
+    elif provider in ("openai", "custom", "openrouter", "deepseek", "moonshot"):
         if provider == "custom" and not p.get("base_url"):
             raise ProviderError("Custom provider base URL not set — add it in Settings.")
-        if provider == "openrouter" and not p.get("api_key"):
-            raise ProviderError("OpenRouter API key not set — add it in Settings.")
+        # Name the provider the way the user chose it — somebody who picked "Kimi"
+        # has no idea what a "moonshot" is, and an error naming the wrong thing sends
+        # them looking in the wrong Settings row.
+        _KEYED = {"openrouter": "OpenRouter", "deepseek": "DeepSeek",
+                  "moonshot": "Moonshot (Kimi)"}
+        if provider in _KEYED and not p.get("api_key"):
+            raise ProviderError(f"{_KEYED[provider]} API key not set — add it in Settings.")
         # openai_base, not the raw setting: the URL that answers a turn has to be
         # the one the picker listed from, or a model you can see is one you cannot use.
         gen = _chat_openai(openai_base(provider, p), p.get("api_key", ""), model,

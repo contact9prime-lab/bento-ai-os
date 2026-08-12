@@ -24,9 +24,27 @@
    `var`, not `let` — concatenated bundle, and 14-docs-setup calls into it. */
 var OB={state:null,open:'',busy:false,done:null,host:null};
 
+/* State is state only if it HAS STEPS. A server older than these routes answers
+   404 with a JSON body, `{"detail":"Not Found"}` parses fine and is truthy, so the
+   old `if(!OB.state)` guard passed and `S.steps.map` threw halfway through building
+   the rail — leaving the rail and the pane both empty. A black window with no
+   sentence in it, for the one screen whose whole job is telling you what to do
+   next. Check the status and the shape, not just that something came back. */
 async function obLoad(){
-  try{OB.state=await (await fetch('/api/onboarding')).json()}catch(e){OB.state=null}
+  try{
+    const r=await fetch('/api/onboarding');
+    const d=r.ok?await r.json():null;
+    OB.state=(d&&Array.isArray(d.steps)&&d.steps.length)?d:null;
+  }catch(e){OB.state=null}
   return OB.state;
+}
+/* One sentence, both homes. The overwhelmingly likely cause is an AgentOS that was
+   updated while it was running, so say the thing that fixes it rather than "the
+   server did not answer". */
+function obUnavailableHTML(){
+  return '<p class="mut" style="padding:16px">Setup is unavailable — this server '
+    +'has no step list to show. If AgentOS was updated while it was running, '
+    +'restart it and open Setup again.</p>';
 }
 function obStep(id){return ((OB.state||{}).steps||[]).find(s=>s.id===id)}
 
@@ -54,12 +72,21 @@ function obHost(el,opts){
 async function obShow(opts){
   opts=opts||{};
   await obLoad();
-  if(!OB.state)return;
   let ov=$('#ob-wiz');
   if(!ov){
     ov=document.createElement('div');ov.id='ob-wiz';ov.className='wiz ob';
     document.body.appendChild(ov);
     Motion.run(ov,[{opacity:0},{opacity:1}],{duration:240,easing:EASE.out});
+  }
+  // Returning here used to leave "Run setup again" as a button that did nothing
+  // visible at all — the overlay is built first so there is something to say it in,
+  // and a way back out of it.
+  if(!OB.state){
+    ov.innerHTML='<div class="ob-stage"><div class="ob-pane">'+obUnavailableHTML()
+      +'<button class="ob-leave" id="ob-leave">Close</button></div></div>';
+    OB.host=ov;
+    ov.querySelector('#ob-leave').onclick=obClose;
+    return;
   }
   obHost(ov,{fromOverlay:true});
   OB.done=opts.onDone||obClose;
@@ -81,8 +108,7 @@ function obClose(){
 async function renderSetup(body,w){
   body.innerHTML='<div class="dim" style="padding:var(--sp-4)">…</div>';
   await obLoad();
-  if(!OB.state){body.innerHTML='<p class="mut" style="padding:16px">Setup is '
-    +'unavailable — the server did not answer.</p>';return}
+  if(!OB.state){body.innerHTML=obUnavailableHTML();return}
   body.classList.add('ob-inwin');
   obHost(body);
   // Two columns at 500px are two unreadable columns. Watched rather than measured
@@ -202,9 +228,19 @@ var OB_PANES={
 
   model:s=>`<div id="ob-model-box"><p class="mut">Reading what this machine can run…</p></div>`,
 
+  /* The box is EMPTY, with the fallback question as its placeholder. Two reasons:
+     the step's promise is one click to a real reply, so it must still work untouched
+     — an empty box sends nothing and the server asks its own question; and the
+     question then lives in exactly one place (the route), instead of a copy here
+     that drifts from the one non-browser callers get. */
   hello:s=>`<p class="mut">One question, answered by your model, through the whole
       agent — provider, key, model name and the tool loop. A green tick from an API
       would prove none of that.</p>
+    <label class="job-q" style="margin-top:10px"><span>Ask it anything</span>
+      <textarea id="ob-hello-q" rows="2" spellcheck="false"
+        placeholder="In two sentences: what can you do on this machine that a chat website cannot?"
+        style="width:100%;resize:vertical"></textarea>
+      <em>Leave it empty and it answers the question above.</em></label>
     <div class="job-go"><button class="wiz-next" id="ob-hello-go">Ask it something</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
 
@@ -257,6 +293,29 @@ var OB_PANES={
   account:s=>`<div id="ob-acct"><p class="mut">Reading the accounts…</p></div>`,
 };
 
+/* The cloud providers this step offers, in the order somebody scanning the list
+   would want them. `id` must match a key in cfg.providers — that string is what
+   `providers.chat()` dispatches on, so a typo here is a model that saves and then
+   cannot answer.
+
+   `model` is a real default rather than a placeholder: "needs an API key" is
+   already asking somebody to leave and come back with one, and asking them to also
+   know the exact model string is where this step was being abandoned. They can
+   still overwrite it. `where` is the page the key comes from, because that is the
+   next thing they have to find and every one of these is a different domain. */
+var OB_CLOUD=[
+  {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
+   where:'console.anthropic.com'},
+  {id:'google',label:'Google (Gemini)',model:'gemini-2.5-flash',
+   where:'aistudio.google.com'},
+  {id:'openai',label:'OpenAI',model:'gpt-4o',where:'platform.openai.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-chat',where:'platform.deepseek.com'},
+  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k2-0711-preview',
+   where:'platform.moonshot.ai'},
+  {id:'openrouter',label:'OpenRouter — many models, one key',
+   model:'anthropic/claude-sonnet-4.5',where:'openrouter.ai/keys'},
+];
+
 /* ---------- the wiring ---------- */
 var OB_WIRE={
   name(){
@@ -267,6 +326,13 @@ var OB_WIRE={
       obMsg('saving…');
       await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({agent_name:v})});
+      // Pressing Save IS the decision, including when the answer is the name it came
+      // with. The server cannot see that in the config — "Aria" saved deliberately
+      // and "Aria" never touched are the same two bytes — so say it happened. Without
+      // this the step stayed todo and the arc sat still, and the only way forward was
+      // to dislike the default.
+      await fetch('/api/onboarding/confirm',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({step:'name'})});
       await loadConfig();
       obMsg('saved','ok');
       obRefresh(true);
@@ -295,20 +361,31 @@ var OB_WIRE={
       <div class="job-q"><span>Or bring a cloud model</span>
         <div class="job-ways"><label class="job-way">
           <input type="radio" name="ob-model" value="cloud" ${local.length?'':'checked'}>
-          <b>Anthropic, OpenAI or OpenRouter</b><em>needs an API key</em></label></div></div>
+          <b>Claude, Gemini, GPT, DeepSeek, Kimi…</b><em>needs an API key</em></label></div></div>
       <div id="ob-cloud" style="display:none">
         <div class="row" style="gap:8px;margin-top:8px">
-          <select id="ob-prov">
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI</option>
-            <option value="openrouter">OpenRouter</option></select>
+          <select id="ob-prov">${OB_CLOUD.map(p=>
+            `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('')}</select>
           <input id="ob-key" placeholder="API key" style="flex:1"></div>
-        <input id="ob-cmodel" placeholder="model, e.g. claude-sonnet-5" style="width:100%;margin-top:6px">
+        <input id="ob-cmodel" style="width:100%;margin-top:6px">
+        <em class="mut" id="ob-prov-hint" style="display:block;margin-top:4px"></em>
       </div>
       <div class="job-go"><button class="wiz-next" id="ob-model-go">Use this model</button></div>`;
     const upd=()=>{const v=(document.querySelector('input[name=ob-model]:checked')||{}).value;
       $('#ob-cloud').style.display=v==='cloud'?'block':'none'};
     box.querySelectorAll('input[name=ob-model]').forEach(r=>r.onchange=upd);upd();
+    /* Follow the provider. The model box is only left alone once it has been typed
+       in — silently overwriting somebody's model when they change their mind about
+       the provider is worse than a stale default. */
+    const prov=$('#ob-prov'),cm=$('#ob-cmodel'),hint=$('#ob-prov-hint');
+    const provUpd=()=>{
+      const p=OB_CLOUD.find(x=>x.id===prov.value)||OB_CLOUD[0];
+      if(!cm.dataset.touched)cm.value=p.model;
+      cm.placeholder='model, e.g. '+p.model;
+      if(hint)hint.textContent='Key from '+p.where;
+    };
+    cm.oninput=()=>{cm.dataset.touched='1'};
+    prov.onchange=provUpd;provUpd();
     const inst=$('#ob-ollama');
     if(inst)inst.onclick=async()=>{
       const m=$('#ob-ollama-msg');inst.disabled=true;
@@ -341,13 +418,17 @@ var OB_WIRE={
   },
 
   hello(){
-    $('#ob-hello-go').onclick=async()=>{
-      const btn=$('#ob-hello-go'),out=$('#ob-reply');
+    const ask=async()=>{
+      const btn=$('#ob-hello-go'),out=$('#ob-reply'),q=$('#ob-hello-q');
+      const text=((q&&q.value)||'').trim();
       btn.disabled=true;btn.textContent='asking…';obMsg('');
       out.innerHTML='<div class="ob-think">thinking…</div>';
       try{
         const r=await fetch('/api/onboarding/hello',{method:'POST',
-          headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+          headers:{'Content-Type':'application/json'},
+          // only when there is one: an empty field must not send `text:""` and
+          // become a turn with no question in it
+          body:JSON.stringify(text?{text}:{})});
         const d=await r.json();
         if(!r.ok||d.error){
           out.innerHTML='';obMsg(d.error||'it could not answer','warn');return}
@@ -357,8 +438,18 @@ var OB_WIRE={
         // keep the reply on screen after the re-render — it is the payoff
         const o=$('#ob-reply');
         if(o)o.innerHTML=`<div class="ob-said"><b>${esc(d.model)}</b>${esc(d.reply)}</div>`;
+        // …and the question with it. obRender() rebuilds the pane from scratch, so
+        // without this "Ask it again" silently asks something else.
+        const q2=$('#ob-hello-q');
+        if(q2&&text)q2.value=text;
       }catch(e){out.innerHTML='';obMsg('could not reach the server','warn')}
       finally{btn.disabled=false;btn.textContent='Ask it again'}
+    };
+    $('#ob-hello-go').onclick=ask;
+    const q=$('#ob-hello-q');
+    // Enter inside a two-line box should make a new line; ⌘/Ctrl+Enter sends.
+    if(q)q.onkeydown=e=>{
+      if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();ask()}
     };
   },
 

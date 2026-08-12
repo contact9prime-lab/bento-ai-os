@@ -31,6 +31,15 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(session.cfgmod, "AGENTOS_HOME", tmp_path / "stage")
     monkeypatch.setattr(session, "_run", lambda cmd: (False, "disabled in tests"))
     monkeypatch.setattr(session, "_port", lambda: 9111)
+    # The login session only exists on Linux, and `install()`/`remove()` say so and
+    # return early anywhere else — which on a Mac silently turned the tests below
+    # into assertions about that one sentence. What they are actually about is the
+    # script generation and the removal bookkeeping, and none of that is
+    # kernel-dependent: everything it touches is redirected above. So state the
+    # platform the way the rest of this fixture states the paths, and the Linux
+    # session installer stays under test on whatever machine somebody runs `pytest`
+    # on. A test that asserts the non-Linux refusal should set this back to False.
+    monkeypatch.setattr(session, "IS_LINUX", True)
     return tmp_path
 
 
