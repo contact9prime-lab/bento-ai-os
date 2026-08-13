@@ -82,6 +82,20 @@ class Channel:
     # Where the *who* is configured, when it lives in another panel already
     reach_panel: str = ""
     note: str = ""
+    #: What the PERSON has to go and do, in order, before the fields above can be
+    #: filled in — and what happens after they press Save.
+    #:
+    #: The fields already carry a `help` line each, and that is the right size for
+    #: "which box is this"; it is the wrong size for "you must leave this app, talk
+    #: to a bot you have never heard of, and come back with a string". Telegram read
+    #: "Create a bot with @BotFather and paste its token", which assumes you know
+    #: that BotFather is a Telegram account, that you message it, that `/newbot`
+    #: exists, and that the pairing afterwards is a separate act.
+    #:
+    #: It lives HERE and not in the panel because `bento channels` in a terminal
+    #: needs the same instructions as the desktop, and two copies of a walkthrough
+    #: drift — with the terminal copy, which nobody demos, drifting first.
+    setup: list[str] = field(default_factory=list)
 
     @property
     def own_gate(self) -> bool:
@@ -98,7 +112,7 @@ class Channel:
         return {"id": self.id, "title": self.title, "what": self.what,
                 "reach": self.reach, "gate": self.gate, "builtin": self.builtin,
                 "reach_panel": self.reach_panel, "note": self.note,
-                "own_gate": self.own_gate,
+                "own_gate": self.own_gate, "setup": list(self.setup),
                 "fields": [f.as_dict() for f in self.fields]}
 
 
@@ -165,8 +179,23 @@ CATALOGUE: list[Channel] = [
              "coming back to you there.",
         reach="Only the chats you have paired. The first /start pairs you; "
               "everyone else is ignored.",
+        setup=[
+            "Open Telegram (phone or desktop) and search for **@BotFather** — it is "
+            "Telegram's own account for making bots, with a blue tick.",
+            "Send it **/newbot**. It asks for a display name (anything, e.g. Aria), "
+            "then a username, which must be unique and end in **bot** — "
+            "e.g. `aria_home_bot`.",
+            # Named for both faces. These lines are read in Settings AND by
+            # `bento channels` over SSH, where "paste it below" refers to nothing.
+            "It replies with a token that looks like `123456789:AAH...`. Copy the "
+            "whole line into **Bot token** and Save — or, in a terminal: "
+            "`bento channels telegram --set bot_token=… --on`.",
+            "Open a chat with YOUR new bot and send **/start**. That first /start is "
+            "what pairs you — after it, nobody else's messages are answered.",
+        ],
         fields=[Field("bot_token", "Bot token",
-                      "Create a bot with @BotFather and paste its token.",
+                      "The whole string from BotFather, digits and letters either "
+                      "side of the colon.",
                       secret=True, placeholder="123456:ABC-DEF…")],
     ),
     Channel(
@@ -182,6 +211,26 @@ CATALOGUE: list[Channel] = [
              "developer account and a public HTTPS address for the webhook, and it "
              "only allows free-form replies within 24 hours of your last message — "
              "so a scheduled job cannot speak first to a silent chat.",
+        setup=[
+            "**The short way — skip everything below.** *Scan a QR code instead* in "
+            "Settings → Channels, or `bento channels whatsapp --pair` in a terminal. "
+            "It links this machine as a WhatsApp Web device: no Meta account, no "
+            "webhook, no fields. It is unofficial, so prefer a spare number.",
+            "**The official way starts here.** Create a Meta developer account at "
+            "developers.facebook.com, then a new app of type *Business*, and add the "
+            "**WhatsApp** product to it.",
+            "That page gives you a test number and its **Phone number ID** — copy it "
+            "below. The temporary token beside it expires in 24 hours, so create a "
+            "System User in Business Settings and generate a **permanent** access "
+            "token with `whatsapp_business_messaging`.",
+            "**App secret** is under App settings → Basic. Invent any string for "
+            "**Verify token** — you will paste the same one into Meta in a moment.",
+            "Meta has to be able to reach this machine, so turn on a public tunnel "
+            "in Settings → Remote access. This card then shows the exact callback "
+            "URL to paste into WhatsApp → Configuration, with your verify token.",
+            "Finally, message the number from your phone once. That first message "
+            "pairs you; everyone else is told this machine is not theirs.",
+        ],
         fields=[
             Field("phone_number_id", "Phone number ID",
                   "Business API only. From the WhatsApp product page on "

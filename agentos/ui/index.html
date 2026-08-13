@@ -1120,6 +1120,27 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .chdot.warn{color:var(--warn,#fbbf24);border-color:color-mix(in srgb,var(--warn,#fbbf24) 40%,transparent);
   background:color-mix(in srgb,var(--warn,#fbbf24) 12%,transparent)}
 .pgroup.chan .ghint.mut{color:var(--dim2);padding-bottom:2px}
+/* The walkthrough. Open while the channel still needs something, folded away once
+   it works — so it teaches once and then stops taking up the card. */
+.chsteps{margin:2px 16px 10px;border:1px solid var(--line);border-radius:10px;
+  background:color-mix(in srgb,var(--bg4,#1a1f27) 55%,transparent)}
+.chsteps > summary{cursor:pointer;padding:8px 12px;font-size:var(--fs-sm);font-weight:600;
+  color:var(--dim);list-style:none}
+.chsteps > summary::-webkit-details-marker{display:none}
+/* The disclosure arrow, drawn rather than inherited: the default marker sits at a
+   different offset in every engine and this row has to line up with the card. */
+.chsteps > summary::before{content:'▸';display:inline-block;width:1em;
+  transition:transform var(--d-fast,.12s) var(--ease-out,ease)}
+.chsteps[open] > summary::before{transform:rotate(90deg)}
+.chsteps > summary:hover{color:var(--txt)}
+.chsteps ol{margin:0;padding:0 14px 12px 34px;display:flex;flex-direction:column;gap:8px}
+.chsteps li{font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+.chsteps li::marker{color:var(--acc);font-weight:700}
+/* md() wraps a single line in a <p>; inside a step that is a paragraph of one. */
+.chsteps li p{margin:0}
+.chsteps li strong{color:var(--txt);font-weight:600}
+.chsteps li code{font-size:.92em;padding:1px 5px;border-radius:5px;
+  background:var(--bg3,#11151b);color:var(--acc)}
 /* Which account pays for a delegated run — stated before the switch that starts one */
 .ghint.bill{padding-top:8px;font-weight:500}
 .ghint.bill.subscription{color:var(--ok,#4ade80)}
@@ -3925,6 +3946,7 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  const back=w._backToSetup;   // read before the teardown; acted on after it
   sessionSave();
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
@@ -3934,6 +3956,13 @@ function closeWin(w){
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
+  /* A window opened FROM somewhere goes back there when it closes. Setup's "Open it
+     in Settings instead" was a one-way door: you left the arc to paste a token and
+     landed on a desktop, with nothing saying the other steps were still waiting or
+     which one you had been on. The flag is set by whoever opened the window, so this
+     stays a property of that journey rather than of Settings — any panel can be
+     borrowed the same way. */
+  if(back&&typeof obShow==='function')obShow({step:back});
 }
 
 /* ---- drag with edge snapping: left/right halves, corners quarters, top maximizes ---- */
@@ -7892,11 +7921,25 @@ function chanCard(c){
     ? pRow('Available',`<span class="mut">always on</span>`,
         {desc:'This is how you reach the machine — it has no off switch here.',f:c.id+' always on'})
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
+     and paste its token" is a fine label for the BOX; it is not instructions, and it
+     assumes you know BotFather is a Telegram account you message, that /newbot
+     exists, and that pairing afterwards is a separate act nobody mentioned.
+     `status==='needs'` is the honest trigger: unfilled channels teach, a working one
+     folds itself away rather than nagging. */
+  const steps=(c.setup||[]).length?`<details class="chsteps" ${c.status==='needs'?'open':''}>
+      <summary>How to set this up — ${(c.setup||[]).length} steps</summary>
+      ${/* md() rather than a second inline-markdown pass: it escapes first, and it
+            is what renders **bold** and `code` everywhere else in the OS. The <p>
+            it wraps a single line in is styled flat below. */''}
+      <ol>${c.setup.map(s=>`<li>${md(s)}</li>`).join('')}</ol>
+    </details>`:'';
   return `<div class="pgroup chan" data-f="channel ${esc(c.id)} ${esc(c.title)}">
     <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span></h3>
     <div class="ghint">${esc(c.what)}</div>
     ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
+    ${steps}
     ${onoff}${posture}${fields}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
     ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
@@ -10378,10 +10421,18 @@ function obPane(pane,s){
   const pn=$('#ob-panel');
   // Most steps live in a Settings tab; accounts have an app of their own. Both are
   // "where this lives afterwards", which is the promise the button makes.
+  // Borrowed, not abandoned: the arc closes so the panel has the screen, and the
+  // window carries the step it came from so closing it brings the arc back —
+  // re-probed, so a token pasted over there returns with the step already ticked.
+  // Without it this was a one-way door onto a desktop, with nothing saying eight
+  // steps were still waiting or which one you had been on.
   if(pn)pn.onclick=()=>{
+    const from=s.id;
     obClose();
-    if(APPS[s.panel])return openApp(s.panel);
-    SETTAB=s.panel;localStorage.setItem('settab',s.panel);openApp('settings');
+    const w=APPS[s.panel]
+      ? openApp(s.panel)
+      : (SETTAB=s.panel, localStorage.setItem('settab',s.panel), openApp('settings'));
+    if(w)w._backToSetup=from;
   };
   if(OB_WIRE[s.id])OB_WIRE[s.id](s);
 }
@@ -10434,6 +10485,23 @@ var OB_PANES={
       <em>Leave it empty and it answers the question above.</em></label>
     <div class="job-go"><button class="wiz-next" id="ob-hello-go">Ask it something</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
+
+  /* Three suggestions, not a free text box with no floor. "Describe an app" in front
+     of somebody who has never seen this OS build one is a blank page; a sentence they
+     can press is a demonstration. The box is still there, seeded from whichever chip
+     they pick, because the thing being taught is that a sentence is the input. */
+  app:s=>`<p class="mut">Describe a small tool and the agent writes it — HTML, CSS and
+      JavaScript — then puts it on your desktop. It is the same builder you will use
+      later; this is just the first one.</p>
+    <div class="job-ways" id="ob-app-picks">
+      ${OB_APP_IDEAS.map((a,i)=>`<label class="job-way">
+        <input type="radio" name="ob-app" value="${i}" ${i?'':'checked'}>
+        <b>${esc(a.title)}</b><em>${esc(a.blurb)}</em></label>`).join('')}
+    </div>
+    <label class="job-q" style="margin-top:10px"><span>What should it do?</span>
+      <textarea id="ob-app-prompt" rows="2" spellcheck="false"></textarea>
+      <em>Edit it, or write your own — a sentence is enough.</em></label>
+    <div class="job-go"><button class="wiz-next" id="ob-app-go">Build it</button></div>`,
 
   agent:s=>`<p class="mut">A specialist is a persona plus a short list of tools. It is
       what flows delegate to, and what <code>@name</code> reaches in any chat.</p>
@@ -10494,6 +10562,24 @@ var OB_PANES={
    know the exact model string is where this step was being abandoned. They can
    still overwrite it. `where` is the page the key comes from, because that is the
    next thing they have to find and every one of these is a different domain. */
+/* Deliberately small, offline and useful on day one. Nothing here needs an API key,
+   a scraped site or a service to be signed into — a first build that fails because
+   the weather API wanted a key teaches the opposite of the intended lesson. */
+var OB_APP_IDEAS=[
+  {title:'A scratchpad that remembers',
+   blurb:'Notes that survive a reload, with a word count',
+   prompt:'A simple notes app: one big text area that saves what I type and reloads '
+     +'it next time, with a word and character count under it.'},
+  {title:'A countdown timer',
+   blurb:'Set minutes, watch it run, hear it finish',
+   prompt:'A countdown timer: I set the minutes, press start, and it counts down in '
+     +'big digits and makes a sound when it reaches zero.'},
+  {title:'A colour picker for my theme',
+   blurb:'Pick a colour, copy the hex',
+   prompt:'A colour tool: a picker, the hex and RGB values shown large, a button to '
+     +'copy the hex, and a row of the last few colours I picked.'},
+];
+
 var OB_CLOUD=[
   {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
    where:'console.anthropic.com'},
@@ -10656,6 +10742,37 @@ var OB_WIRE={
       }finally{b.disabled=false}
     };
     $('#ob-agent-studio').onclick=()=>{obClose();openApp('fabric')};
+  },
+
+  app(){
+    const box=$('#ob-app-prompt'),picks=$('#ob-app-picks');
+    const pick=()=>{
+      const i=+((document.querySelector('input[name=ob-app]:checked')||{}).value||0);
+      // Only while it is still one of ours: once they have typed, the chips stop
+      // overwriting it. Picking a different one after editing would silently throw
+      // their sentence away.
+      if(!box.dataset.touched)box.value=(OB_APP_IDEAS[i]||{}).prompt||'';
+    };
+    box.oninput=()=>{box.dataset.touched='1'};
+    if(picks)picks.querySelectorAll('input[name=ob-app]').forEach(r=>r.onchange=pick);
+    pick();
+    $('#ob-app-go').onclick=()=>{
+      const text=(box.value||'').trim();
+      if(!text)return obMsg('describe it in a sentence','warn');
+      /* Handed to App Studio rather than built from here. A build streams for a
+         minute or two with a log and a live preview, and that watching IS the
+         lesson — reproducing a thin version of it inside the arc would teach less
+         and be a second builder to keep true. The window carries the step back, so
+         closing Studio returns here with the step ticked. */
+      obClose();
+      const w=openApp('studio');
+      if(w)w._backToSetup='app';
+      // After render: the field does not exist until Studio has drawn itself.
+      setTimeout(()=>{
+        const p=$('#st-prompt');
+        if(p){p.value=text;p.focus()}
+      },220);
+    };
   },
 
   flow(){

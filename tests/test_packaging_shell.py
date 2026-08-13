@@ -119,3 +119,61 @@ def test_the_installer_asks_agentos_what_is_missing_rather_than_its_own_shell():
     # note explaining the trap has to be free to name the broken form.
     code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
     assert "command -v node" not in code, "a second, weaker copy of the Node check"
+
+
+# ---------------------------------------------------------------------------
+# The container image
+# ---------------------------------------------------------------------------
+
+DOCKERFILE = REPO / "Dockerfile"
+
+
+def test_the_image_does_not_pipe_curl_into_bash_at_runtime():
+    """The original was `CMD ["curl", url, "|", "bash"]`, which cannot work.
+
+    Exec-form CMD runs no shell, so `|` and `bash` went to curl as extra URLs —
+    the script was printed, never run. And it ran at container START, so the image
+    held nothing and every restart re-installed the world from `master`, meaning a
+    build told you nothing about the code you were sitting next to.
+    """
+    src = DOCKERFILE.read_text()
+    # Comments stripped: the note explaining the trap quotes the broken form, as
+    # in the shell checks above.
+    code = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    assert '"|"' not in code, "a pipe in exec form is an argument, not a pipe"
+    # Only the RUNTIME command. `curl … astral.sh/uv/install.sh | sh` at build time
+    # is how uv (and therefore Python) gets into the image at all — a blanket ban on
+    # the string would forbid the one line that has to be there.
+    # Unindented only: HEALTHCHECK's own `CMD curl …` is a continuation line, and it
+    # is *supposed* to curl — that is how the check checks.
+    runtime = [ln for ln in code.splitlines()
+               if ln.startswith(("ENTRYPOINT", "CMD"))]
+    assert runtime, "the image has no ENTRYPOINT or CMD"
+    joined = " ".join(runtime)
+    assert "curl" not in joined and "install.sh" not in joined, \
+        "the image builds the app at BUILD time; it must not install itself on start"
+
+
+def test_the_entrypoint_comes_from_the_build_context():
+    """It is packaging, not application code.
+
+    Taken from the cloned tree, `SOURCE=git REF=<older than the file>` built an
+    image that could not start — `[FATAL tini] exec …docker-entrypoint.sh failed`,
+    which says nothing about refs.
+    """
+    src = DOCKERFILE.read_text()
+    assert "COPY packaging/docker-entrypoint.sh" in src
+    assert "/opt/agentos/packaging/docker-entrypoint.sh" not in src.split("ENTRYPOINT")[-1]
+
+
+def test_both_source_modes_exist_and_are_separate_stages():
+    """A Dockerfile has no `if`, and a clone layered over a COPY would half-mix."""
+    src = DOCKERFILE.read_text()
+    assert "FROM base AS src-local" in src
+    assert "FROM base AS src-git" in src
+    assert "FROM src-${SOURCE}" in src
+
+
+def test_the_image_declares_what_is_inside_it():
+    src = DOCKERFILE.read_text()
+    assert "ai.bento.ref" in src and "ai.bento.source" in src

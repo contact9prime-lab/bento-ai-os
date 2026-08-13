@@ -27,6 +27,27 @@
 .chdot.warn{color:var(--warn,#fbbf24);border-color:color-mix(in srgb,var(--warn,#fbbf24) 40%,transparent);
   background:color-mix(in srgb,var(--warn,#fbbf24) 12%,transparent)}
 .pgroup.chan .ghint.mut{color:var(--dim2);padding-bottom:2px}
+/* The walkthrough. Open while the channel still needs something, folded away once
+   it works — so it teaches once and then stops taking up the card. */
+.chsteps{margin:2px 16px 10px;border:1px solid var(--line);border-radius:10px;
+  background:color-mix(in srgb,var(--bg4,#1a1f27) 55%,transparent)}
+.chsteps > summary{cursor:pointer;padding:8px 12px;font-size:var(--fs-sm);font-weight:600;
+  color:var(--dim);list-style:none}
+.chsteps > summary::-webkit-details-marker{display:none}
+/* The disclosure arrow, drawn rather than inherited: the default marker sits at a
+   different offset in every engine and this row has to line up with the card. */
+.chsteps > summary::before{content:'▸';display:inline-block;width:1em;
+  transition:transform var(--d-fast,.12s) var(--ease-out,ease)}
+.chsteps[open] > summary::before{transform:rotate(90deg)}
+.chsteps > summary:hover{color:var(--txt)}
+.chsteps ol{margin:0;padding:0 14px 12px 34px;display:flex;flex-direction:column;gap:8px}
+.chsteps li{font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+.chsteps li::marker{color:var(--acc);font-weight:700}
+/* md() wraps a single line in a <p>; inside a step that is a paragraph of one. */
+.chsteps li p{margin:0}
+.chsteps li strong{color:var(--txt);font-weight:600}
+.chsteps li code{font-size:.92em;padding:1px 5px;border-radius:5px;
+  background:var(--bg3,#11151b);color:var(--acc)}
 /* Which account pays for a delegated run — stated before the switch that starts one */
 .ghint.bill{padding-top:8px;font-weight:500}
 .ghint.bill.subscription{color:var(--ok,#4ade80)}

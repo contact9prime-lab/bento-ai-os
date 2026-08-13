@@ -21,7 +21,13 @@
 #      to mean "listening".
 #   7. doctor — last, so it reports on a machine that has actually run once.
 #
-# Flags:  --yes  answer yes to every optional install   --no-verify  skip step 5
+# Flags:
+#   --yes                     answer yes to every optional install
+#   --passphrase=SECRET       also make it reachable from your network (binds
+#                             0.0.0.0 and requires that passphrase to sign in).
+#                             Without this it listens on 127.0.0.1 only.
+#   --no-service              do not install the launcher/login service (containers, CI)
+#   --no-verify               skip the "prove it works" step
 set -e
 
 # The real, public, MIT-licensed repository — over HTTPS, which needs no
@@ -52,12 +58,20 @@ VERIFY=1
 SERVICE=1
 PROBE_PORT="${AGENTOS_PROBE_PORT:-8399}"
 
+# Reachable from other machines, decided here rather than discovered later.
+# 127.0.0.1 is the right default — the agent has a real shell, so an open port is an
+# open shell — but on a server you SSH'd into, loopback means "reachable by nothing",
+# and the way to change it (`bento remote --on`) is a sentence at the end that scrolls
+# past. Giving it a passphrase up front is the same decision, made where it is useful.
+PASSPHRASE="${AGENTOS_PASSPHRASE:-}"
+
 for a in "$@"; do
   case "$a" in
     --yes|-y) ASSUME_YES=1 ;;
     --no-verify) VERIFY=0 ;;
     --no-service) SERVICE=0 ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    --passphrase=*) PASSPHRASE="${a#--passphrase=}" ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
   esac
 done
 
@@ -160,15 +174,42 @@ PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export PATH
 command -v uv >/dev/null 2>&1 || die "uv installed but is not on PATH — open a new terminal and run this again"
 
-if [ -d "$DIR/.git" ]; then
+# A directory is only an install if the SOURCE is in it. `[ -d "$DIR/.git" ]` was
+# the test, and a `.git` with nothing beside it is exactly what an interrupted or
+# failed clone leaves behind — after which every later run took the "update" path,
+# failed to pull (a warning, not an error), and ran `uv sync` in a directory with
+# no pyproject.toml. The message the user then got was uv's:
+#
+#   error: No `pyproject.toml` found in current directory or any parent directory
+#
+# which names neither the broken clone nor the way out of it. Once a machine got
+# into that state it never left, because the thing that would fix it — cloning —
+# was the branch it could no longer reach.
+repo_ok() { [ -f "$1/pyproject.toml" ] && grep -q '"agentos' "$1/pyproject.toml" 2>/dev/null; }
+
+if [ -d "$DIR/.git" ] && repo_ok "$DIR"; then
   say "updating AgentOS in $DIR"
+  # A failed pull is survivable — local edits, a detached HEAD, no upstream — and
+  # the checkout is known good, so keep going with what is there.
   git -C "$DIR" pull --ff-only || warn "could not fast-forward — keeping what is there"
 else
+  if [ -e "$DIR" ]; then
+    if [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
+      rmdir "$DIR" 2>/dev/null || true
+    else
+      # Moved, never deleted: it is somebody's directory and it may hold work.
+      broken="$DIR.broken.$(date +%s 2>/dev/null || echo old)"
+      warn "$DIR exists but is not a usable AgentOS checkout"
+      warn "moving it to $broken and cloning fresh"
+      mv "$DIR" "$broken" || die "could not move $DIR aside — remove it and run this again"
+    fi
+  fi
   say "cloning AgentOS into $DIR"
   mkdir -p "$(dirname "$DIR")"
-  git clone "$REPO" "$DIR"
+  git clone "$REPO" "$DIR" || die "clone failed — check the network and try again"
 fi
 
+repo_ok "$DIR" || die "no AgentOS source in $DIR after cloning — remove it and run this again"
 cd "$DIR"
 say "installing dependencies (this fetches Python too, if needed)"
 uv sync || die "dependency install failed — the output above says why"
@@ -263,6 +304,79 @@ if command -v claude >/dev/null 2>&1; then
   case "$cver" in
     1.*) gap "the \`claude\` on your PATH is $cver — AgentOS will use a newer one if you have it; upgrade with: npm i -g @anthropic-ai/claude-code" ;;
   esac
+fi
+
+# ---------------------------------------------------------------------------
+# 3b. put `bento` on PATH.
+#
+# Everything this script prints at the end — `bento tui`, `bento setup`,
+# `bento doctor` — assumed a command that was never installed. The binaries live
+# in the repo's own .venv, which nothing is going to find, so the last line of a
+# successful install was advice you could not follow.
+#
+# A two-line shim rather than a symlink into .venv/bin: the venv's console script
+# hardcodes its interpreter path, so a symlink works but breaks silently the day
+# the repo moves. `uv run --project` re-resolves, and it also keeps working after
+# `uv sync` swaps the Python underneath.
+# ---------------------------------------------------------------------------
+BIN="$HOME/.local/bin"
+mkdir -p "$BIN"
+for cmd in bento agentos; do
+  cat > "$BIN/$cmd" <<SHIM
+#!/bin/sh
+# Installed by AgentOS's install.sh. Safe to delete; re-run the installer to restore.
+exec uv run --project "$DIR" $cmd "\$@"
+SHIM
+  chmod +x "$BIN/$cmd"
+done
+say "installed the 'bento' command (and 'agentos') in $BIN"
+
+# On PATH for the shell that will run them next? `command -v` answers for THIS
+# shell, which curl|bash gave us; the rc file is what answers for the next one.
+case ":$PATH:" in
+  *":$BIN:"*) ON_PATH=1 ;;
+  *) ON_PATH="" ;;
+esac
+if [ -z "$ON_PATH" ]; then
+  # Appended, and said out loud. A PATH line added silently to somebody's shell is
+  # the kind of thing they should be able to find later — hence the marker comment.
+  added=""
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    [ -f "$rc" ] || continue
+    if grep -q 'added by AgentOS installer' "$rc" 2>/dev/null; then
+      added="$added $rc(already)"
+      continue
+    fi
+    printf '\n# added by AgentOS installer\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$rc"
+    added="$added $rc"
+  done
+  if [ -n "$added" ]; then
+    say "added $BIN to your PATH in:$added"
+    gap "open a new terminal (or \`. ~/.bashrc\`) before \`bento\` works in this one"
+  else
+    gap "add this to your shell profile:  export PATH=\"\$HOME/.local/bin:\$PATH\""
+  fi
+  # This script's own remaining steps must not depend on the rc file it just wrote.
+  PATH="$BIN:$PATH"; export PATH
+fi
+
+# ---------------------------------------------------------------------------
+# 3c. reachable from elsewhere, if that was asked for.
+#
+# Before the launcher, so the service that starts below comes up already bound to
+# 0.0.0.0 rather than binding to loopback and needing a restart to move.
+# ---------------------------------------------------------------------------
+if [ -n "$PASSPHRASE" ]; then
+  say "turning on remote access (binding 0.0.0.0)"
+  if uv run bento remote --on --passphrase "$PASSPHRASE" --bind 0.0.0.0 >/dev/null 2>&1; then
+    ok "reachable from your network — sign in with that passphrase"
+    gap "this machine now answers on every interface. If it faces the internet, put it behind a tunnel or a firewall."
+  else
+    # Never a silent half-state: refusing is usually the passphrase being too short,
+    # and leaving it on loopback is the safe outcome to report.
+    warn "could not enable remote access — still loopback only"
+    gap "set it yourself:  bento remote --on --passphrase '<something long>'"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

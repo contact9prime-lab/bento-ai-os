@@ -187,10 +187,18 @@ function obPane(pane,s){
   const pn=$('#ob-panel');
   // Most steps live in a Settings tab; accounts have an app of their own. Both are
   // "where this lives afterwards", which is the promise the button makes.
+  // Borrowed, not abandoned: the arc closes so the panel has the screen, and the
+  // window carries the step it came from so closing it brings the arc back —
+  // re-probed, so a token pasted over there returns with the step already ticked.
+  // Without it this was a one-way door onto a desktop, with nothing saying eight
+  // steps were still waiting or which one you had been on.
   if(pn)pn.onclick=()=>{
+    const from=s.id;
     obClose();
-    if(APPS[s.panel])return openApp(s.panel);
-    SETTAB=s.panel;localStorage.setItem('settab',s.panel);openApp('settings');
+    const w=APPS[s.panel]
+      ? openApp(s.panel)
+      : (SETTAB=s.panel, localStorage.setItem('settab',s.panel), openApp('settings'));
+    if(w)w._backToSetup=from;
   };
   if(OB_WIRE[s.id])OB_WIRE[s.id](s);
 }
@@ -243,6 +251,23 @@ var OB_PANES={
       <em>Leave it empty and it answers the question above.</em></label>
     <div class="job-go"><button class="wiz-next" id="ob-hello-go">Ask it something</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
+
+  /* Three suggestions, not a free text box with no floor. "Describe an app" in front
+     of somebody who has never seen this OS build one is a blank page; a sentence they
+     can press is a demonstration. The box is still there, seeded from whichever chip
+     they pick, because the thing being taught is that a sentence is the input. */
+  app:s=>`<p class="mut">Describe a small tool and the agent writes it — HTML, CSS and
+      JavaScript — then puts it on your desktop. It is the same builder you will use
+      later; this is just the first one.</p>
+    <div class="job-ways" id="ob-app-picks">
+      ${OB_APP_IDEAS.map((a,i)=>`<label class="job-way">
+        <input type="radio" name="ob-app" value="${i}" ${i?'':'checked'}>
+        <b>${esc(a.title)}</b><em>${esc(a.blurb)}</em></label>`).join('')}
+    </div>
+    <label class="job-q" style="margin-top:10px"><span>What should it do?</span>
+      <textarea id="ob-app-prompt" rows="2" spellcheck="false"></textarea>
+      <em>Edit it, or write your own — a sentence is enough.</em></label>
+    <div class="job-go"><button class="wiz-next" id="ob-app-go">Build it</button></div>`,
 
   agent:s=>`<p class="mut">A specialist is a persona plus a short list of tools. It is
       what flows delegate to, and what <code>@name</code> reaches in any chat.</p>
@@ -303,6 +328,24 @@ var OB_PANES={
    know the exact model string is where this step was being abandoned. They can
    still overwrite it. `where` is the page the key comes from, because that is the
    next thing they have to find and every one of these is a different domain. */
+/* Deliberately small, offline and useful on day one. Nothing here needs an API key,
+   a scraped site or a service to be signed into — a first build that fails because
+   the weather API wanted a key teaches the opposite of the intended lesson. */
+var OB_APP_IDEAS=[
+  {title:'A scratchpad that remembers',
+   blurb:'Notes that survive a reload, with a word count',
+   prompt:'A simple notes app: one big text area that saves what I type and reloads '
+     +'it next time, with a word and character count under it.'},
+  {title:'A countdown timer',
+   blurb:'Set minutes, watch it run, hear it finish',
+   prompt:'A countdown timer: I set the minutes, press start, and it counts down in '
+     +'big digits and makes a sound when it reaches zero.'},
+  {title:'A colour picker for my theme',
+   blurb:'Pick a colour, copy the hex',
+   prompt:'A colour tool: a picker, the hex and RGB values shown large, a button to '
+     +'copy the hex, and a row of the last few colours I picked.'},
+];
+
 var OB_CLOUD=[
   {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
    where:'console.anthropic.com'},
@@ -465,6 +508,37 @@ var OB_WIRE={
       }finally{b.disabled=false}
     };
     $('#ob-agent-studio').onclick=()=>{obClose();openApp('fabric')};
+  },
+
+  app(){
+    const box=$('#ob-app-prompt'),picks=$('#ob-app-picks');
+    const pick=()=>{
+      const i=+((document.querySelector('input[name=ob-app]:checked')||{}).value||0);
+      // Only while it is still one of ours: once they have typed, the chips stop
+      // overwriting it. Picking a different one after editing would silently throw
+      // their sentence away.
+      if(!box.dataset.touched)box.value=(OB_APP_IDEAS[i]||{}).prompt||'';
+    };
+    box.oninput=()=>{box.dataset.touched='1'};
+    if(picks)picks.querySelectorAll('input[name=ob-app]').forEach(r=>r.onchange=pick);
+    pick();
+    $('#ob-app-go').onclick=()=>{
+      const text=(box.value||'').trim();
+      if(!text)return obMsg('describe it in a sentence','warn');
+      /* Handed to App Studio rather than built from here. A build streams for a
+         minute or two with a log and a live preview, and that watching IS the
+         lesson — reproducing a thin version of it inside the arc would teach less
+         and be a second builder to keep true. The window carries the step back, so
+         closing Studio returns here with the step ticked. */
+      obClose();
+      const w=openApp('studio');
+      if(w)w._backToSetup='app';
+      // After render: the field does not exist until Studio has drawn itself.
+      setTimeout(()=>{
+        const p=$('#st-prompt');
+        if(p){p.value=text;p.focus()}
+      },220);
+    };
   },
 
   flow(){

@@ -1,0 +1,14 @@
+# The build context is COPY'd into the image, so anything here is size and
+# rebuild churn. .venv is the big one: it is a host-built virtualenv with host
+# paths and absolutely must not shadow the one `uv sync` builds inside the image.
+.venv
+.git
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+agentos/wa_bridge/node_modules
+packaging/dist
+dist
+.playwright-mcp
+docs/screenshots

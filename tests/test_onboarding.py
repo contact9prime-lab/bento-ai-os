@@ -200,6 +200,7 @@ def test_everything_answered_counts_as_finished(store):
     # one — which is the whole reason the account step is optional.
     ob.skip(cfg, "account")
     store.create_conversation("hi")
+    store.save_app("Scratchpad", "", "notes that stay", "<p>notes</p>")
     store.save_subagent({"name": "mine"})
     flowsmod.save(store, {"name": "f", "mission": "m", "roster": ["mine"],
                           "permissions": {}})

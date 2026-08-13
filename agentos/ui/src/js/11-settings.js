@@ -638,11 +638,25 @@ function chanCard(c){
     ? pRow('Available',`<span class="mut">always on</span>`,
         {desc:'This is how you reach the machine — it has no off switch here.',f:c.id+' always on'})
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
+     and paste its token" is a fine label for the BOX; it is not instructions, and it
+     assumes you know BotFather is a Telegram account you message, that /newbot
+     exists, and that pairing afterwards is a separate act nobody mentioned.
+     `status==='needs'` is the honest trigger: unfilled channels teach, a working one
+     folds itself away rather than nagging. */
+  const steps=(c.setup||[]).length?`<details class="chsteps" ${c.status==='needs'?'open':''}>
+      <summary>How to set this up — ${(c.setup||[]).length} steps</summary>
+      ${/* md() rather than a second inline-markdown pass: it escapes first, and it
+            is what renders **bold** and `code` everywhere else in the OS. The <p>
+            it wraps a single line in is styled flat below. */''}
+      <ol>${c.setup.map(s=>`<li>${md(s)}</li>`).join('')}</ol>
+    </details>`:'';
   return `<div class="pgroup chan" data-f="channel ${esc(c.id)} ${esc(c.title)}">
     <h3>${esc(c.title)} <span class="chdot ${dot}">${esc(c.detail)}</span></h3>
     <div class="ghint">${esc(c.what)}</div>
     ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
+    ${steps}
     ${onoff}${posture}${fields}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
     ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and

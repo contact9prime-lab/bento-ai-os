@@ -80,6 +80,16 @@ STEPS: list[Step] = [
                "step that turns a configuration into a machine that works.",
          produces="a real reply, from your model, in front of you",
          panel="ai"),
+    # Third on purpose, right after the first real answer. Everything below it is
+    # about work the machine does WITHOUT you watching — an agent, a mission, a
+    # schedule — and none of that is a thing you can point at on a screen. An app is:
+    # it appears on the desktop, it is yours, and building one is the fastest way to
+    # learn that this OS writes its own software rather than only talking about it.
+    Step("app", "Build something you can open", icon="▦", needs=("model",),
+         blurb="Describe a small tool in a sentence and watch the agent write it — "
+               "it lands on your desktop as a real app you can open, keep and edit.",
+         produces="an app with your name on it, on the desktop",
+         panel="studio"),
     Step("agent", "Build a specialist", icon="◈", needs=("model",),
          blurb="A named agent with its own persona and its own short list of tools. "
                "This is the unit everything else is assembled from.",
@@ -174,6 +184,11 @@ def state(cfg: dict, store=None) -> dict:
             # Evidence, not a flag: a conversation exists because a turn happened.
             n = _count(store, "conversations")
             return ("done", f"{n} conversation{'' if n == 1 else 's'}") if n else ("todo", "")
+        if sid == "app":
+            # Evidence, like every other step: an app exists because one was built.
+            # Nothing ships pre-installed in `user_apps`, so any row here is theirs.
+            names = [a["name"] for a in _list(store, "list_apps") if a.get("name")]
+            return ("done", ", ".join(names[:3])) if names else ("todo", "")
         if sid == "agent":
             names = [s["name"] for s in _list(store, "list_subagents")
                      if not s.get("builtin")]
@@ -348,6 +363,55 @@ STARTER_AGENT = {
     "tools": ["fetch_url", "read_file", "list_dir", "recall", "kg_query", "save_report"],
     "max_steps": 14, "max_seconds": 420, "autonomy_cap": "balanced",
 }
+
+#: The app offered at the "build something you can open" step IN A TERMINAL.
+#:
+#: The desktop hands this step to App Studio and lets you watch the agent write the
+#: thing from a sentence, which is the better lesson. Over SSH there is no Studio and
+#: no preview to watch, so the terminal offers a real, finished app instead — it
+#: needs no model, no key and no network, and the step's promise ("an app with your
+#: name on it") is kept either way. That is the three-faces rule working: the same
+#: step, honestly different where the surface differs.
+STARTER_APP = {
+    "name": "Scratchpad",
+    "description": "Notes that survive a reload, with a word count.",
+    "html": """<style>
+  .sp{display:flex;flex-direction:column;gap:8px;height:100%;padding:12px;box-sizing:border-box}
+  .sp textarea{flex:1;width:100%;resize:none;font:14px/1.6 ui-monospace,monospace;
+    padding:12px;border-radius:10px;border:1px solid #2a3240;background:#12161d;color:#e6edf3}
+  .sp .bar{display:flex;gap:14px;font:12px system-ui;color:#8b97a8}
+</style>
+<div class="sp">
+  <textarea id="pad" placeholder="Type. It saves itself."></textarea>
+  <div class="bar"><span id="w">0 words</span><span id="c">0 characters</span>
+    <span id="s"></span></div>
+</div>
+<script>
+  const pad=document.getElementById('pad');
+  const count=()=>{const t=pad.value;
+    document.getElementById('w').textContent=(t.trim()?t.trim().split(/\\s+/).length:0)+' words';
+    document.getElementById('c').textContent=t.length+' characters'};
+  // appData is the app's own private store — nothing else on this machine reads it.
+  (async()=>{try{const d=await appData.get('note');pad.value=(d&&d.text)||''}catch(e){}
+    count()})();
+  let t=null;
+  pad.addEventListener('input',()=>{count();clearTimeout(t);
+    t=setTimeout(async()=>{try{await appData.set('note',{text:pad.value});
+      document.getElementById('s').textContent='saved'}catch(e){}},400)});
+</script>""",
+}
+
+
+def starter_app(store) -> dict:
+    """The app to create, under a name nothing else is using."""
+    d = dict(STARTER_APP)
+    base, n = d["name"], 2
+    existing = {a.get("name") for a in _list(store, "list_apps")}
+    while d["name"] in existing:
+        d["name"] = f"{base} {n}"
+        n += 1
+    return d
+
 
 #: The flow offered at the "give it a mission" step. Its roster is whatever the
 #: previous step created, so the two steps visibly connect.

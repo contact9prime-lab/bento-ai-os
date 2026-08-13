@@ -27,9 +27,15 @@ def test_lifecycle_module_exists():
 
 
 def test_closing_a_window_stops_its_ticks():
-    """Otherwise every app has to remember, and one that forgets leaks forever."""
+    """Otherwise every app has to remember, and one that forgets leaks forever.
+
+    Scoped to the whole function rather than its first 400 characters: that budget
+    was measuring how much COMMENT sits above the call, so explaining a line near
+    the top of closeWin failed a test about timer cleanup.
+    """
     wm = read("04-wm.js")
-    assert "stopWinTicks(w)" in wm.split("function closeWin")[1][:400]
+    body = wm.split("function closeWin")[1].split("\nfunction ")[0]
+    assert "stopWinTicks(w)" in body
 
 
 def test_visibility_changes_reapply_activity():

@@ -86,9 +86,21 @@ def test_a_blocked_step_says_what_it_is_waiting_for(machine, capsys):
 # Doing things
 # ---------------------------------------------------------------------------
 
+def n(step_id: str) -> str:
+    """The rail position of a step, looked up rather than counted by hand.
+
+    These tests type step NUMBERS, because that is what the terminal asks for. Hard
+    coding them means inserting a step anywhere in `onboarding.STEPS` silently
+    re-points every test after it at the wrong handler — and one of those mis-hits
+    left the loop asking for a step that never completed, so the suite hung rather
+    than failed.
+    """
+    return str(next(i for i, st in enumerate(ob.STEPS, 1) if st.id == step_id))
+
+
 def test_naming_it_writes_the_name(machine, monkeypatch):
     cfg, store = machine
-    drive(monkeypatch, ["1", "Bento", "q"])
+    drive(monkeypatch, [n("name"), "Bento", "q"])
     setup_tui.run(cfg, store)
     assert cfgmod.load_config()["agent_name"] == "Bento"
 
@@ -96,7 +108,7 @@ def test_naming_it_writes_the_name(machine, monkeypatch):
 def test_building_the_agent_creates_the_same_one_the_wizard_does(machine, monkeypatch):
     cfg, store = machine
     cfg["default_model"] = "ollama/x"
-    drive(monkeypatch, ["4", "y", "q"])
+    drive(monkeypatch, [n("agent"), "y", "q"])
     setup_tui.run(cfg, store)
     assert store.get_subagent(ob.STARTER_AGENT["name"])
 
@@ -111,7 +123,7 @@ def test_the_flow_step_refuses_before_there_is_an_agent(machine, monkeypatch, ca
 
 def test_skipping_is_remembered_and_offered_again(machine, monkeypatch):
     cfg, store = machine
-    drive(monkeypatch, ["s7", "q"])
+    drive(monkeypatch, ["s" + n("channel"), "q"])
     setup_tui.run(cfg, store)
     assert cfgmod.load_config()["onboarding"]["skipped"] == ["channel"]
     drive(monkeypatch, ["q"])
@@ -123,7 +135,7 @@ def test_skipping_is_remembered_and_offered_again(machine, monkeypatch):
 
 def test_a_required_step_cannot_be_skipped_here_either(machine, monkeypatch, capsys):
     cfg, store = machine
-    drive(monkeypatch, ["s2", "q"])
+    drive(monkeypatch, ["s" + n("model"), "q"])
     setup_tui.run(cfg, store)
     assert "cannot work without" in capsys.readouterr().out
 
@@ -148,7 +160,7 @@ def test_nonsense_is_answered_rather_than_crashed_on(machine, monkeypatch, capsy
 
 def test_creating_the_first_account_from_a_terminal(machine, monkeypatch):
     cfg, store = machine
-    drive(monkeypatch, ["9", "ada", "Ada Lovelace", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("account"), "ada", "Ada Lovelace", "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
     assert [u["name"] for u in usersmod.list_users()] == ["ada"]
     assert usersmod.check_password(usersmod.by_name("ada")["id"], "hunter2hunter")
@@ -159,7 +171,8 @@ def test_the_rest_of_the_session_belongs_to_the_account_just_made(machine, monke
     channels, theme — back into the MACHINE file that `adopt` just stripped, and
     hands it to the next person who signs up."""
     cfg, store = machine
-    drive(monkeypatch, ["1", "Bento", "9", "ada", "Ada", "s7", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("name"), "Bento", n("account"), "ada", "Ada",
+                        "s" + n("channel"), "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
     import json
     raw = json.loads(cfgmod.CONFIG_PATH.read_text())
@@ -173,7 +186,7 @@ def test_the_rest_of_the_session_belongs_to_the_account_just_made(machine, monke
 
 def test_the_account_step_ticks_once_somebody_exists(machine, monkeypatch):
     cfg, store = machine
-    drive(monkeypatch, ["9", "ada", "Ada", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("account"), "ada", "Ada", "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
     st = {s["id"]: s for s in ob.state(cfgmod.load_config(), store)["steps"]}
     assert st["account"]["status"] == "done" and st["account"]["detail"] == "ada"
@@ -181,7 +194,7 @@ def test_the_account_step_ticks_once_somebody_exists(machine, monkeypatch):
 
 def test_a_bad_username_is_refused_with_the_reason(machine, monkeypatch, capsys):
     cfg, store = machine
-    drive(monkeypatch, ["9", "Ada Lovelace!", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("account"), "Ada Lovelace!", "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
     assert "lowercase letters" in capsys.readouterr().out
     assert usersmod.list_users() == []
@@ -191,16 +204,16 @@ def test_leaving_the_username_blank_keeps_it_single_user(machine, monkeypatch):
     """A machine that stays single-user is a finished machine, and the step must
     not be a trap that turns accounts on because somebody pressed Enter."""
     cfg, store = machine
-    drive(monkeypatch, ["9", "", "q"])
+    drive(monkeypatch, [n("account"), "", "q"])
     setup_tui.run(cfg, store)
     assert usersmod.enabled() is False
 
 
 def test_the_second_account_is_an_executor_unless_asked_otherwise(machine, monkeypatch):
     cfg, store = machine
-    drive(monkeypatch, ["9", "ada", "Ada", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("account"), "ada", "Ada", "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
     usersmod.set_current("")
-    drive(monkeypatch, ["9", "bob", "Bob", "executor", "q"], ["hunter2hunter"])
+    drive(monkeypatch, [n("account"), "bob", "Bob", "executor", "q"], ["hunter2hunter"])
     setup_tui.run(cfgmod.load_config(), store)
     assert usersmod.by_name("bob")["role"] == "executor"

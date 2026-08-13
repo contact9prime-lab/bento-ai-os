@@ -279,6 +279,16 @@ def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool =
     print("  agentos tunnel --on [--public] [--provider tailscale] | --off")
 
 
+def _wrap_plain(text: str, indent: int, width: int = 78) -> str:
+    """Wrap to the terminal, continuation lines aligned under the first.
+
+    A four-step walkthrough printed as four unbroken lines is unreadable in an
+    80-column SSH session, which is the only place this view is really used.
+    """
+    import textwrap
+    return textwrap.fill(text, width=width, subsequent_indent=" " * indent).strip()
+
+
 def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                   sets: list | None = None):
     """Show or change the ways in.
@@ -299,6 +309,16 @@ def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                                           else f" (follows {c['posture_from']})")
             print(f"  {mark} {c['title']:<16} {c['detail']:<34} {trust}")
             print(f"      {c['reach']}")
+            # "needs Bot token" names the gap and not the way out of it, and this is
+            # the surface where that hurts most: a headless box has no Settings panel
+            # to go and read. Only for what is actually unconfigured — a working
+            # channel does not need reminding how it was set up.
+            if c["status"] == "needs" and c.get("setup"):
+                for i, line in enumerate(c["setup"], 1):
+                    # The registry marks emphasis for the desktop; a terminal wants
+                    # the words, not the asterisks.
+                    plain = line.replace("**", "").replace("`", "")
+                    print(f"        {i}. {_wrap_plain(plain, 11)}")
         print()
         print("  agentos channels <id> --on|--off --posture "
               f"{'|'.join(chmod.POSTURE_LABELS)}")

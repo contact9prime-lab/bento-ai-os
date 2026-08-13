@@ -201,6 +201,17 @@ def _step_agent(cfg, store) -> None:
     print(f"  ✓ @{d['name']} exists — call it by name from any chat")
 
 
+def _step_app(cfg, store) -> None:
+    d = ob.starter_app(store)
+    print(f"\n  {d['name']} — {d['description']}")
+    print("  It goes on the desktop like any other app, and you can rewrite it from "
+          "a sentence later in App Studio.")
+    if not _yes(f"Create {d['name']}?"):
+        return
+    store.save_app(d["name"], "", d["description"], d["html"], note="setup")
+    print(f"  ✓ {d['name']} exists — open it from the desktop or the launcher")
+
+
 def _step_flow(cfg, store) -> None:
     from . import flows as flowsmod
     roster = [s["name"] for s in store.list_subagents() if not s.get("builtin")]
@@ -375,6 +386,7 @@ def _step_account(cfg, store) -> None:
 
 HANDLERS = {
     "name": _step_name, "model": _step_model, "hello": _step_hello,
+    "app": _step_app,
     "agent": _step_agent, "flow": _step_flow, "schedule": _step_schedule,
     "channel": _step_channel, "look": _step_look, "account": _step_account,
 }

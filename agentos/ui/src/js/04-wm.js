@@ -274,6 +274,7 @@ function tileWin(w,where){
 }
 function closeWin(w){
   if(w.app.onClose&&w.app.onClose(w)===false)return;
+  const back=w._backToSetup;   // read before the teardown; acted on after it
   sessionSave();
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
@@ -283,6 +284,13 @@ function closeWin(w){
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}
   if(typeof deckAuto==='function')deckAuto();
   if(typeof buildDock==='function')buildDock();
+  /* A window opened FROM somewhere goes back there when it closes. Setup's "Open it
+     in Settings instead" was a one-way door: you left the arc to paste a token and
+     landed on a desktop, with nothing saying the other steps were still waiting or
+     which one you had been on. The flag is set by whoever opened the window, so this
+     stays a property of that journey rather than of Settings — any panel can be
+     borrowed the same way. */
+  if(back&&typeof obShow==='function')obShow({step:back});
 }
 
 /* ---- drag with edge snapping: left/right halves, corners quarters, top maximizes ---- */

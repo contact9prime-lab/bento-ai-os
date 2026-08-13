@@ -13,6 +13,10 @@ extend its own source code, and reach you on Telegram or WhatsApp.
 
 Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-time service.
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
 ![The Bento Box AI desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
 
 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the desktop
@@ -259,10 +263,51 @@ asking for it by name. [More →](docs/desktop.md#automations)
 
 ## Quickstart
 
+**One command, on macOS or Linux.** It installs everything — including Python, via `uv` — starts
+Bento, and then *proves it works* by asking the running server a question before it says "done".
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+Then open **http://127.0.0.1:8321**, or run `bento setup` for the same nine steps in a terminal.
+
+| you want | run |
+|---|---|
+| answer yes to every optional component | `… \| sh -s -- --yes` |
+| reach it from your laptop/phone (binds `0.0.0.0`) | `… \| sh -s -- --passphrase='something long'` |
+| no launcher or boot service (containers, CI) | `… \| sh -s -- --no-service` |
+
+It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
+was not there — open a new terminal afterwards).
+
+> **Reachable from other machines is a deliberate choice, not a default.** Bento listens on
+> `127.0.0.1` only until you give it a passphrase, because the agent has a real shell — an open
+> port here is an open shell. `bento remote --on --passphrase '…'` does the same thing later.
+
+<details>
+<summary><b>From a git checkout instead</b></summary>
+
 ```bash
 uv sync                 # install dependencies (or: pip install -e .)
 uv run bento            # start the server and open the desktop in your browser
 ```
+</details>
+
+<details>
+<summary><b>In Docker</b></summary>
+
+```bash
+docker build -t bento .
+docker run -d --name bento -p 8321:8321 -v bento-data:/data \
+  -e AGENTOS_PASSPHRASE='something long and unguessable' bento
+```
+
+A container has to bind `0.0.0.0` to be reachable at all, so the passphrase is required rather
+than optional — the entrypoint refuses to start unreachable *or* insecure and tells you which.
+Everything that would be lost lives in the `/data` volume. Build a specific branch with
+`--build-arg SOURCE=git --build-arg REF=my-branch`.
+</details>
 
 If **Ollama** is running, your local models are picked up automatically. Add cloud API keys under
 **Settings** if you want them. That's the whole setup.
