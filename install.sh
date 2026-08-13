@@ -44,13 +44,20 @@ REPO="${AGENTOS_REPO:-https://github.com/contact9prime-lab/bento-ai-os.git}"
 DIR="${AGENTOS_DIR:-$HOME/.local/src/agentic-os}"
 ASSUME_YES="${AGENTOS_YES:-}"
 VERIFY=1
+# Install the launcher, the login item and the boot service. Off is for the places
+# that have their own supervisor and must not gain a second one: containers, CI,
+# and testing this script — on macOS `launchctl bootstrap` registers into the real
+# GUI session no matter what HOME says, so a "sandboxed" run without this takes
+# over the port of the machine it was only meant to be tested on.
+SERVICE=1
 PROBE_PORT="${AGENTOS_PROBE_PORT:-8399}"
 
 for a in "$@"; do
   case "$a" in
     --yes|-y) ASSUME_YES=1 ;;
     --no-verify) VERIFY=0 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    --no-service) SERVICE=0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
   esac
 done
 
@@ -74,6 +81,28 @@ ask() {   # ask "question" -> 0 for yes. Non-interactive installs answer no.
   read -r a </dev/tty 2>/dev/null || return 1
   case "$a" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
+
+# ---------------------------------------------------------------------------
+# 0. is this script the right one for this machine?
+#
+# Ahead of the network check, because it is the one question that costs nothing
+# to ask and can save a download that was never going to help. It is deliberately
+# a coarse `uname` test and nothing more: the REAL capability detection is
+# osdetect, and that cannot run until the dependencies are installed. This is
+# only "does a POSIX install make sense here at all".
+# ---------------------------------------------------------------------------
+case "$(uname -s)" in
+  Linux|Darwin) ;;
+  MINGW*|MSYS*|CYGWIN*)
+    warn "this looks like Windows under a POSIX shell."
+    echo "   AgentOS has a native Windows installer — it sets up the service and"
+    echo "   the Start-menu entry, which this script cannot do from here:"
+    echo "     https://github.com/contact9prime-lab/bento-ai-os/releases"
+    die "wrong installer for this machine" ;;
+  *)
+    warn "unrecognised system: $(uname -s). Continuing, but only the browser"
+    warn "desktop and the TUI are likely to work." ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 1. the network, before anything that needs it
@@ -146,6 +175,50 @@ uv sync || die "dependency install failed — the output above says why"
 ok "dependencies ready"
 
 # ---------------------------------------------------------------------------
+# 2b. what THIS machine can do — asked of AgentOS, not decided here.
+#
+# `osdetect` already knows the distro, its package manager and whether a login
+# session is even possible, and `components.py` and the Settings panel both read
+# it. A second copy of that knowledge in shell is precisely the mistake the old
+# hardcoded apt block made: it drifted, and the half that drifted was the one
+# nobody was running. So this asks, and then only offers what came back.
+#
+# It is done HERE, immediately after the dependencies exist, because everything
+# below is a choice — and offering somebody a Wayland login session on a Mac, or
+# silently not mentioning it on Linux, are the same failure in two directions.
+# ---------------------------------------------------------------------------
+OS_ID=""; OS_PRETTY=""; OS_MANAGER=""; OS_SESSION=""; OS_WHY=""
+eval "$(uv run python - <<'PY' 2>/dev/null || true
+import shlex
+from agentos import osdetect
+d = osdetect.detect()
+for k, v in (("OS_ID", d.get("os") or ""),
+             ("OS_PRETTY", d.get("pretty") or ""),
+             ("OS_MANAGER", d.get("manager") or ""),
+             ("OS_SESSION", "1" if d.get("session_capable") else ""),
+             ("OS_WHY", d.get("why") or "")):
+    print("%s=%s" % (k, shlex.quote(str(v))))
+PY
+)"
+
+echo
+say "this machine: ${OS_PRETTY:-$(uname -s)}"
+if [ -n "$OS_MANAGER" ]; then
+  echo "   packages via ${OS_MANAGER}"
+else
+  echo "   no package manager AgentOS knows — optional components will be listed, not installed"
+fi
+echo "   ✓ the desktop, in a browser or an app window   (every OS)"
+echo "   ✓ the TUI — the whole OS in a terminal          (every OS)"
+if [ -n "$OS_SESSION" ]; then
+  echo "   ✓ AgentOS AS your login session                 (this OS can)"
+else
+  # Never silence. A capability that is missing says why, in a sentence.
+  echo "   – AgentOS as your login session: ${OS_WHY:-Linux only}"
+fi
+echo
+
+# ---------------------------------------------------------------------------
 # 3. hand off to the AgentOS installer
 #
 # This step used to live here as a hardcoded apt block: `command -v apt-get`,
@@ -195,8 +268,12 @@ fi
 # ---------------------------------------------------------------------------
 # 4. install the launcher
 # ---------------------------------------------------------------------------
-say "installing launcher + login service"
-uv run bento install || warn "the launcher/login step reported a problem — AgentOS still runs with 'bento'"
+if [ "$SERVICE" = 1 ]; then
+  say "installing launcher + login service"
+  uv run bento install || warn "the launcher/login step reported a problem — AgentOS still runs with 'bento'"
+else
+  say "skipping the launcher and login service (--no-service)"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. prove it. WHY THIS EXISTS:
@@ -257,7 +334,9 @@ PORT=$(uv run python -c 'from agentos import config as c; print(c.load_config().
 # locked is a running server, not a broken one.
 listening() { [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/api/platform" 2>/dev/null)" != "000" ]; }
 
-if listening; then
+if [ "$SERVICE" = 0 ]; then
+  say "not started (--no-service) — run it with: cd $DIR && uv run bento serve"
+elif listening; then
   ok "already serving on 127.0.0.1:${PORT}"
 else
   say "starting the service"
@@ -293,7 +372,11 @@ uv run bento doctor || true
 # done
 # ---------------------------------------------------------------------------
 echo
-ok "AgentOS is running."
+if [ "$SERVICE" = 1 ]; then
+  ok "AgentOS is running."
+else
+  ok "AgentOS is installed (nothing was started — --no-service)."
+fi
 echo "   open:       http://127.0.0.1:${PORT}"
 echo "   terminal:   bento tui          — the whole OS over SSH"
 echo "   set it up:  bento setup        — the same nine steps as the desktop"
@@ -303,7 +386,12 @@ echo "   check:      bento doctor"
 # Printed, never done — widening this is the user's decision, and it needs a
 # passphrase they choose.
 echo "   from your phone/laptop:  bento remote --on --passphrase '<something long>'"
-if [ "$(uname -s)" = "Linux" ] && command -v sway >/dev/null 2>&1; then
+# `session_capable`, not `command -v sway`. The old test asked whether a
+# compositor happened to be installed, so a Linux box that had simply not been
+# offered one yet was told nothing — the option existed and was never mentioned.
+# Whether the OS can host a login session at all is a different question, and it
+# is the one `osdetect` answers.
+if [ -n "$OS_SESSION" ]; then
   echo "   as your desktop:  bento install-session   (then pick AgentOS at login)"
 fi
 if [ -n "$GAPS" ]; then

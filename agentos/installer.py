@@ -299,13 +299,25 @@ def _offer_session(d: dict) -> None:
 def _summary(d: dict, manual: list[str]) -> None:
     print()
     _rule()
-    rows = components.catalog(session_only=True)
-    still = [r for r in rows if r["group"] == "required" and not r["installed"]]
-    if still:
-        print(f" {_c('warn')}Still missing for the session:{_c('r')} "
-              f"{', '.join(r['title'] for r in still)}")
+    # Both branches below are about the LOGIN SESSION, so neither is true on an OS
+    # that has none. "Still missing for the session: sway" is a to-do list nobody
+    # can act on, and "everything required for the session is present" is worse —
+    # it claims a thing that does not exist here is ready.
+    #
+    # And it says NOTHING here rather than repeating it: `_offer_session` has just
+    # printed the same sentence two lines up, with the useful half attached ("AgentOS
+    # runs here as an app window — `agentos serve`"). Saying it twice more is how a
+    # true sentence turns into noise people learn to skip.
+    if not d.get("session_capable"):
+        pass
     else:
-        print(f" {_c('ok')}Everything required for the AgentOS session is present.{_c('r')}")
+        rows = components.catalog(session_only=True)
+        still = [r for r in rows if r["group"] == "required" and not r["installed"]]
+        if still:
+            print(f" {_c('warn')}Still missing for the session:{_c('r')} "
+                  f"{', '.join(r['title'] for r in still)}")
+        else:
+            print(f" {_c('ok')}Everything required for the AgentOS session is present.{_c('r')}")
     if manual:
         print()
         print(f" {_c('b')}Run these as root to finish:{_c('r')}")
@@ -333,6 +345,30 @@ def run(session_only: bool = False, assume_yes: bool = False,
     d = _header()
     rows = components.catalog(session_only=session_only)
 
+    # A component for a session this OS cannot host is not "missing" — it is not a
+    # thing here at all. Listed anyway, macOS showed eleven of them, each repeating
+    # the same sentence, two of them under "Required — without these there is no
+    # session". That reads as a broken install on a machine that is working
+    # perfectly, and it buries Ollama and the WhatsApp bridge, which ARE installable.
+    #
+    # The header has already said why, once, in `d["why"]` — which is the honest
+    # shape: name the gap in a sentence, not eleven times in a list of things
+    # nobody can act on. `--session` is left alone: somebody who asked for the
+    # session list deserves to see it, empty or not.
+    if not session_only and not d.get("session_capable"):
+        rows = [r for r in rows if not r.get("for_session")]
+
+    # The same argument, one step further. What is left can still include entries
+    # with no route on this OS at all — ffmpeg and the rest are Linux package names
+    # with no macOS spelling in the catalogue — and each printed the session's
+    # "Wayland is Linux-only" sentence, which is not even the reason it is missing.
+    # A list of things nobody can act on, explained wrongly, is worse than a count.
+    absent = []
+    if not session_only:
+        actionable = [r for r in rows if r["available"] or r["installed"]]
+        absent = [r for r in rows if r not in actionable]
+        rows = actionable
+
     if not groups:
         groups = components.GROUPS
 
@@ -345,6 +381,26 @@ def run(session_only: bool = False, assume_yes: bool = False,
     print()
 
     selectable = _show(rows, groups)
+
+    # Counted, never silently dropped: the difference between "this OS does not
+    # have these" and "AgentOS forgot about them" is one line, and it is the line
+    # that stops somebody hunting for a component that was never coming.
+    if absent:
+        # Grouped BY REASON, not summarised in words of my own. On macOS that is one
+        # sentence covering all of them; on a distro missing a single package name it
+        # is that component's own explanation, which is the useful one. Writing a
+        # blanket "packages for other systems" here would have been false in the
+        # second case — the component is not for another system, it just has no name
+        # for this family yet.
+        by_reason: dict = {}
+        for r in absent:
+            by_reason.setdefault(r["reason"] or "no install route on this system", []) \
+                     .append(r["title"])
+        for reason, titles in by_reason.items():
+            print(f" {_c('dim')}"
+                  + _wrap(f"Not available here — {', '.join(sorted(titles))}: {reason}", 1)
+                  + f"{_c('r')}")
+        print()
 
     if not selectable:
         print(f" {_c('ok')}Nothing left to install.{_c('r')}")
