@@ -261,7 +261,7 @@ def restart_service() -> str:
     elif how == "systemd":
         _run(["systemctl", "--user", "restart", f"{APP_ID}.service"])
         return "restarting the AgentOS systemd service"
-    # not running under a service manager (dev run, `agentos serve` in a terminal,
+    # not running under a service manager (dev run, `bento serve` in a terminal,
     # Windows) — re-exec this process after the HTTP response has flushed.
     #
     # Carry the address forward. This used to re-exec a bare `serve`, which reads the
@@ -270,7 +270,14 @@ def restart_service() -> str:
     # successful from the outside (the request returned, the old process went away)
     # and left nothing listening. `serve` publishes what it really bound, because the
     # command line is the one thing an exec cannot recover on its own.
-    argv = [sys.executable, "-m", "agentos", "serve", "--no-browser"]
+    # `--if-running=fail` explicitly, never left to the tty default. This is an
+    # os.execv, so the replacement inherits THIS process's stdin — and a server
+    # started from a terminal has a real tty on it. Without the flag, a restart that
+    # raced the old socket's release would stop at an interactive "it is already
+    # running, what would you like to do?" prompt that nobody is watching, with the
+    # machine's only server gone. Failing there is right: the supervisor retries.
+    argv = [sys.executable, "-m", "agentos", "serve", "--no-browser",
+            "--if-running=fail"]
     if (port := os.environ.get("AGENTOS_BOUND_PORT")):
         argv += ["--port", port]
     if (host := os.environ.get("AGENTOS_BOUND_HOST")):
@@ -281,6 +288,360 @@ def restart_service() -> str:
         os.execv(sys.executable, argv)
     threading.Thread(target=_reexec, daemon=True).start()
     return "restarting the AgentOS process"
+
+
+# --- service control ------------------------------------------------------------------
+#
+# start / stop / restart / status / logs for the background server, on whichever
+# supervisor this machine actually has. There was no way to do any of it without
+# knowing that AgentOS is a systemd --user unit here and a LaunchAgent there — which
+# is exactly the knowledge a user should not need, and which the answers to
+# "how do I stop it?" were made of.
+#
+# Every function returns (ok, sentence). The sentence is the whole point: on a
+# machine with no supervisor these fall back to plain process control, and saying
+# which of the two just happened is the difference between "it will come back after
+# a reboot" and "it will not".
+
+def server_log() -> Path:
+    """Where the server's stdout/stderr goes when nothing else captures it.
+
+    Under AGENTOS_HOME, and resolved on every CALL rather than at import. That is
+    the same rule tests/conftest.py was written to enforce: `agentos.config`
+    resolves AGENTOS_HOME at import time, so a module-level `LOG_DIR = ... / "logs"`
+    is frozen against the real home and keeps writing there no matter what a test
+    or a packaged installer redirects afterwards.
+
+    Machine-level on purpose — this is the SERVER's output, which exists before any
+    account does and is shared by all of them.
+    """
+    return cfgmod.AGENTOS_HOME / "logs" / "server.log"
+
+
+def _systemd_ok() -> bool:
+    """Is there a systemd --user instance to talk to at all?
+
+    Over SSH without lingering, inside a container, or on a non-systemd distro
+    (Alpine, Void, Devuan) `systemctl --user` fails with "Failed to connect to bus".
+    That is not the service being stopped, and reporting it as such sends people
+    to restart a thing that was never installed.
+    """
+    if IS_MAC or IS_WIN or not shutil.which("systemctl"):
+        return False
+    ok, _ = _run(["systemctl", "--user", "is-system-running"])
+    if ok:
+        return True
+    # is-system-running exits non-zero for 'degraded' and 'starting', which are both
+    # working buses. Only a failure to reach the bus at all disqualifies it.
+    ok2, out = _run(["systemctl", "--user", "show", "--property=Version"])
+    return ok2 and "Version=" in out
+
+
+def service_manager() -> str:
+    """Which supervisor owns (or would own) the server here: 'systemd',
+    'launchagent', 'startup' (Windows Startup folder), or 'none'."""
+    if IS_MAC:
+        return "launchagent" if MAC_SERVER_PLIST.exists() else "none"
+    if IS_WIN:
+        return "startup" if WIN_SERVER_VBS.exists() else "none"
+    if SERVICE_FILE.exists() and _systemd_ok():
+        return "systemd"
+    return "none"
+
+
+def service_status() -> dict:
+    """Everything `bento service status` prints, gathered once.
+
+    `running` is what the supervisor believes; `answering` is what the port says.
+    They are deliberately separate — a unit that is 'active' while nothing answers
+    on the port is a real and common state (a crash loop inside RestartSec, a server
+    wedged during startup), and collapsing the two into one boolean is how that
+    state gets reported as healthy.
+    """
+    port = _port()
+    mgr = service_manager()
+    st = {"manager": mgr, "installed": autostart_installed(), "port": port,
+          "running": False, "enabled": None, "answering": _server_up(port),
+          "detail": "", "pid": ""}
+
+    if mgr == "systemd":
+        act, act_out = _run(["systemctl", "--user", "is-active", f"{APP_ID}.service"])
+        st["running"] = act
+        en, _ = _run(["systemctl", "--user", "is-enabled", f"{APP_ID}.service"])
+        st["enabled"] = en
+        st["detail"] = act_out or "inactive"
+        ok, out = _run(["systemctl", "--user", "show", f"{APP_ID}.service",
+                        "--property=MainPID", "--value"])
+        if ok and out.strip() not in ("", "0"):
+            st["pid"] = out.strip()
+    elif mgr == "launchagent":
+        ok, out = _run(["launchctl", "print", f"gui/{os.getuid()}/{MAC_SERVER_LABEL}"])
+        st["running"] = ok
+        st["enabled"] = MAC_SERVER_PLIST.exists()
+        for line in out.splitlines():
+            if line.strip().startswith("pid ="):
+                st["pid"] = line.split("=", 1)[1].strip()
+                st["running"] = True
+                break
+        st["detail"] = "loaded" if ok else "not loaded"
+    elif mgr == "startup":
+        st["enabled"] = True
+        st["running"] = st["answering"]
+        st["detail"] = "Startup-folder entry (starts at login; not supervised)"
+    else:
+        # No supervisor. The port is then the only evidence there is, and a server
+        # started by hand is a perfectly normal way to run AgentOS — say so rather
+        # than calling it "not installed".
+        st["running"] = st["answering"]
+        st["detail"] = ("running, but started by hand — nothing will restart it"
+                        if st["answering"] else "no service installed")
+    return st
+
+
+def _spawn_server(port: int) -> tuple[bool, str]:
+    """Start a detached `serve` when there is no supervisor to ask.
+
+    `start_new_session=True` is load-bearing: without it the server is in this
+    CLI's process group and dies with the terminal that ran `bento service start`,
+    which looks exactly like a server that crashed on startup.
+    """
+    log_path = server_log()
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log = open(log_path, "ab")
+        subprocess.Popen([sys.executable, "-m", "agentos", "serve",
+                          "--no-browser", "--if-running=fail", "--port", str(port)],
+                         stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                         start_new_session=True)
+    except Exception as e:
+        return False, f"could not start the server: {e}"
+    for _ in range(60):
+        if _server_up(port):
+            return True, (f"started (unsupervised — it will not come back after a "
+                          f"reboot; `bento service install` fixes that)\n"
+                          f"  log: {log_path}")
+        time.sleep(0.5)
+    return False, (f"started it, but nothing answered on port {port} within 30s.\n"
+                   f"  its output: {log_path}")
+
+
+def _wait_for(pred, seconds: float = 20.0) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if pred():
+            return True
+        time.sleep(0.4)
+    return pred()
+
+
+def service_start() -> tuple[bool, str]:
+    port = _port()
+    if _server_up(port):
+        return True, f"already running — http://127.0.0.1:{port}"
+    mgr = service_manager()
+    if mgr == "systemd":
+        ok, out = _run(["systemctl", "--user", "start", f"{APP_ID}.service"])
+        if not ok:
+            return False, f"systemd refused: {out}"
+        if _wait_for(lambda: _server_up(port)):
+            return True, f"started — http://127.0.0.1:{port}"
+        return False, ("systemd started the unit but nothing answers on port "
+                       f"{port}.\n  see why:  bento service logs")
+    if mgr == "launchagent":
+        ok, out = _mac_load_agent(MAC_SERVER_PLIST)
+        if not ok:
+            _run(["launchctl", "kickstart", f"gui/{os.getuid()}/{MAC_SERVER_LABEL}"])
+        if _wait_for(lambda: _server_up(port)):
+            return True, f"started — http://127.0.0.1:{port}"
+        return False, (f"launchd loaded the agent but nothing answers on port {port}.\n"
+                       f"  see why:  bento service logs")
+    return _spawn_server(port)
+
+
+def service_stop() -> tuple[bool, str]:
+    """Stop the server, whoever started it.
+
+    The port is checked AFTER the supervisor has been asked, because the two can
+    disagree: a hand-started server on a machine that also has a unit installed is
+    not stopped by `systemctl stop`, and reporting success there leaves the thing
+    the user wanted stopped still listening.
+    """
+    port = _port()
+    mgr = service_manager()
+    said = ""
+
+    # Nothing to stop is not a failure, and it must not read as one — but on a
+    # machine with a unit installed the unit is still asked, because "not currently
+    # listening" and "will not come up at the next login" are different states and
+    # `stop` is a request for the second.
+    if not _server_up(port) and mgr == "none":
+        return True, f"nothing is running on port {port}"
+
+    if mgr == "systemd":
+        ok, out = _run(["systemctl", "--user", "stop", f"{APP_ID}.service"])
+        said = "stopped the systemd service" if ok else f"systemd refused: {out}"
+    elif mgr == "launchagent":
+        # bootout, not `kickstart -k`: KeepAlive means launchd restarts it the
+        # instant it is merely killed, so a "stop" that only kills the process is
+        # a restart with extra steps.
+        _run(["launchctl", "bootout", f"gui/{os.getuid()}", str(MAC_SERVER_PLIST)])
+        said = "unloaded the LaunchAgent"
+    elif mgr == "startup":
+        said = "no supervisor on Windows — stopping the process directly"
+    else:
+        said = "no service installed — stopping the process directly"
+
+    if _wait_for(lambda: not _server_up(port), 15):
+        return True, said + f"; nothing is listening on {port} any more"
+
+    # Still up. Something owns the port that the supervisor does not.
+    pid = _listening_pid(port)
+    if not pid:
+        return False, (f"{said}, but port {port} is still held and no pid could be "
+                       f"found for it.\n  look:  bento doctor")
+    try:
+        os.kill(int(pid), 15)                       # SIGTERM — let it close its DB
+    except Exception as e:
+        return False, f"{said}, but could not signal pid {pid}: {e}"
+    if _wait_for(lambda: not _server_up(port), 15):
+        return True, f"{said}; stopped the process holding port {port} (pid {pid})"
+    return False, (f"{said}, but pid {pid} still holds port {port} after SIGTERM.\n"
+                   f"  force it:  kill -9 {pid}")
+
+
+def service_restart() -> tuple[bool, str]:
+    port = _port()
+    mgr = service_manager()
+    if mgr == "systemd":
+        ok, out = _run(["systemctl", "--user", "restart", f"{APP_ID}.service"])
+        if not ok:
+            return False, f"systemd refused: {out}"
+        if _wait_for(lambda: _server_up(port)):
+            return True, f"restarted — http://127.0.0.1:{port}"
+        return False, f"systemd restarted the unit but nothing answers on port {port}"
+    if mgr == "launchagent":
+        ok, out = _run(["launchctl", "kickstart", "-k",
+                        f"gui/{os.getuid()}/{MAC_SERVER_LABEL}"])
+        if not ok:
+            return False, f"launchctl refused: {out}"
+        if _wait_for(lambda: _server_up(port)):
+            return True, f"restarted — http://127.0.0.1:{port}"
+        return False, f"launchd restarted the agent but nothing answers on port {port}"
+    # Unsupervised: stop then start, in that order and checked in between. Not
+    # `restart_service()` — its fallback re-execs the CALLING process, which is
+    # correct inside the server and would here replace the CLI with a server.
+    stopped, why = service_stop()
+    if not stopped and _server_up(port):
+        return False, why
+    return _spawn_server(port)
+
+
+def _listening_pid(port: int) -> str:
+    """Pid listening on `port`, or ''. Used to stop a server no supervisor owns."""
+    if IS_WIN:
+        ok, out = _run(["netstat", "-ano", "-p", "TCP"])
+        if ok:
+            for line in out.splitlines():
+                f = line.split()
+                if len(f) >= 5 and f[0] == "TCP" and f[1].endswith(f":{port}") \
+                        and f[3].upper() == "LISTENING":
+                    return f[4]
+        return ""
+    if (lsof := shutil.which("lsof")):
+        ok, out = _run([lsof, "-ti", f":{port}", "-sTCP:LISTEN"])
+        if ok and out.strip():
+            return out.split()[0]
+    if (ss := shutil.which("ss")):
+        ok, out = _run([ss, "-lptnH", f"sport = :{port}"])
+        if ok and "pid=" in out:
+            return out.split("pid=", 1)[1].split(",", 1)[0]
+    return ""
+
+
+def service_logs(lines: int = 60, follow: bool = False) -> tuple[bool, str]:
+    """Hand the caller the right log command for this machine, and run it.
+
+    Returns (ok, message) when there is nothing to show; on success it has already
+    streamed to stdout, because following a log is not something to buffer.
+    """
+    mgr = service_manager()
+    if mgr == "systemd":
+        cmd = ["journalctl", "--user", "-u", f"{APP_ID}.service", "-n", str(lines)]
+        if follow:
+            cmd.append("-f")
+        try:
+            subprocess.run(cmd, check=False)
+            return True, ""
+        except KeyboardInterrupt:
+            return True, ""
+        except Exception as e:
+            return False, f"could not read the journal: {e}"
+
+    # launchd and the unsupervised path both write to the same file.
+    log_path = server_log()
+    if not log_path.exists():
+        hint = ""
+        if mgr == "launchagent":
+            hint = ("\n  This LaunchAgent predates AgentOS logging to a file. "
+                    "Re-run `bento service install` to add it,\n"
+                    "  or read the system log:  log show --predicate "
+                    f"'process == \"python\"' --last 10m")
+        return False, f"no log at {log_path}{hint}"
+    try:
+        if follow and shutil.which("tail"):
+            subprocess.run(["tail", "-n", str(lines), "-f", str(log_path)], check=False)
+            return True, ""
+        # Read it here rather than shelling out: Windows has no `tail`, and this is
+        # the one log path Windows actually uses.
+        tail = log_path.read_text(errors="replace").splitlines()[-lines:]
+        print("\n".join(tail))
+        if follow:
+            return True, f"\n(-f needs `tail`; showing the last {lines} lines instead)"
+        return True, ""
+    except KeyboardInterrupt:
+        return True, ""
+    except Exception as e:
+        return False, f"could not read {log_path}: {e}"
+
+
+def service_uninstall() -> tuple[bool, str]:
+    """Remove ONLY the background service, keeping the launcher, the icon and
+    everything in ~/.agentos.
+
+    Deliberately narrower than `bento uninstall`. "Stop this machine answering on
+    its own" and "remove AgentOS" are different requests, and the only way to make
+    the first one out of the second was to uninstall everything and reinstall the
+    half you wanted back.
+    """
+    port = _port()
+    removed = []
+    if IS_MAC:
+        if MAC_SERVER_PLIST.exists():
+            _run(["launchctl", "bootout", f"gui/{os.getuid()}", str(MAC_SERVER_PLIST)])
+            MAC_SERVER_PLIST.unlink()
+            removed.append(str(MAC_SERVER_PLIST))
+    elif IS_WIN:
+        if WIN_SERVER_VBS.exists():
+            WIN_SERVER_VBS.unlink()
+            removed.append(str(WIN_SERVER_VBS))
+    else:
+        if SERVICE_FILE.exists():
+            _run(["systemctl", "--user", "disable", "--now", f"{APP_ID}.service"])
+            SERVICE_FILE.unlink()
+            removed.append(str(SERVICE_FILE))
+            _run(["systemctl", "--user", "daemon-reload"])
+
+    if not removed:
+        return False, "no background service was installed"
+
+    # Disabling the unit does not always take the process with it (a hand-started
+    # server, or a launchd job whose bootout raced the unlink). Uninstalled but
+    # still listening is the worst of the three states, so close it out.
+    if _server_up(port):
+        service_stop()
+    return True, ("removed:\n    " + "\n    ".join(removed) +
+                  "\n  The launcher and ~/.agentos are untouched. "
+                  "Put it back with:  bento service install")
 
 
 # --- install / autostart --------------------------------------------------------------
@@ -320,6 +681,12 @@ exec "{python}" -m agentos app
 
     if autostart:
         MAC_SERVER_PLIST.parent.mkdir(parents=True, exist_ok=True)
+        # StandardOutPath/StandardErrorPath, because launchd otherwise sends both to
+        # /dev/null and a server that dies at startup leaves no evidence anywhere.
+        # This is what `bento service logs` reads on macOS; systemd gets the same
+        # thing free from the journal.
+        SERVER_LOG = server_log()
+        SERVER_LOG.parent.mkdir(parents=True, exist_ok=True)
         MAC_SERVER_PLIST.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -330,6 +697,8 @@ exec "{python}" -m agentos app
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key><string>{SERVER_LOG}</string>
+  <key>StandardErrorPath</key><string>{SERVER_LOG}</string>
 </dict></plist>
 """)
         ok, out = _mac_load_agent(MAC_SERVER_PLIST)

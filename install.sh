@@ -26,8 +26,21 @@
 #   --passphrase=SECRET       also make it reachable from your network (binds
 #                             0.0.0.0 and requires that passphrase to sign in).
 #                             Without this it listens on 127.0.0.1 only.
+#   --bind=ADDR               which interface to listen on once reachable
+#                             (default 0.0.0.0 — all of them). Needs --passphrase.
+#   --port=N                  the port to answer on (default 8321). Saved to the
+#                             config, so the boot service uses it too.
 #   --no-service              do not install the launcher/login service (containers, CI)
 #   --no-verify               skip the "prove it works" step
+#
+# NOTE ON PASSING FLAGS THROUGH curl: `curl … | sh --port=80` passes the flag to
+# `sh`, not to this script, and sh rejects it. The pipe gives the script no argv of
+# its own, so there has to be a `-s --` to say "the rest is for the script":
+#
+#   curl -fsSL <url> | sh -s -- --passphrase='<something long>' --bind=0.0.0.0 --port=80
+#
+# This is the single most common way the flags below are lost, and the error it
+# produces names sh rather than AgentOS.
 set -e
 
 # The real, public, MIT-licensed repository — over HTTPS, which needs no
@@ -64,6 +77,11 @@ PROBE_PORT="${AGENTOS_PROBE_PORT:-8399}"
 # and the way to change it (`bento remote --on`) is a sentence at the end that scrolls
 # past. Giving it a passphrase up front is the same decision, made where it is useful.
 PASSPHRASE="${AGENTOS_PASSPHRASE:-}"
+# Which interface and which port, decided here rather than discovered later. BIND is
+# only honoured together with a passphrase — see step 3c; that coupling is the whole
+# security argument and this script must not be the place it is loosened.
+BIND="${AGENTOS_BIND:-}"
+PORT_WANTED="${AGENTOS_PORT:-}"
 
 for a in "$@"; do
   case "$a" in
@@ -71,9 +89,33 @@ for a in "$@"; do
     --no-verify) VERIFY=0 ;;
     --no-service) SERVICE=0 ;;
     --passphrase=*) PASSPHRASE="${a#--passphrase=}" ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --bind=*) BIND="${a#--bind=}" ;;
+    --port=*) PORT_WANTED="${a#--port=}" ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
+    -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
 done
+
+case "$PORT_WANTED" in
+  ''|*[!0-9]*) [ -z "$PORT_WANTED" ] || { echo "--port must be a number" >&2; exit 2; } ;;
+esac
+
+# The PATH we INHERITED, before this script widens its own — captured here, at the
+# top, because it is the only honest answer to "will `bento` be found in the user's
+# next terminal?" and it is destroyed a hundred lines below.
+#
+# This is the bug that made a successful install print instructions nobody could
+# follow. Step 2 prepends $HOME/.local/bin unconditionally so that `uv` can be run
+# from here; the later "is $BIN on PATH?" test then examined that widened copy,
+# always matched, and skipped writing the PATH line to the user's shell rc. The
+# install said "installed the 'bento' command", the last lines said `bento tui`,
+# and a new terminal said `bento: command not found` — with nothing anywhere
+# admitting why. On Linux it is the normal case rather than an edge one: a GUI
+# terminal tab is a NON-login shell, so it reads .bashrc and never .profile, and
+# Ubuntu's stock ~/.local/bin snippet lives in .profile and is conditional on the
+# directory already existing when the shell started — which, on a first install,
+# it did not.
+ORIG_PATH="$PATH"
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!  %s\033[0m\n' "$*"; }
@@ -321,25 +363,69 @@ fi
 # ---------------------------------------------------------------------------
 BIN="$HOME/.local/bin"
 mkdir -p "$BIN"
+
+# The shim resolves `uv` by ABSOLUTE PATH, decided here, where we have just proven
+# one works. `exec uv run …` was the old line and it inherits this script's widened
+# PATH only by luck: it is correct for an interactive shell that can already find
+# `bento` in the same directory, and wrong everywhere PATH is not the user's —
+# a systemd unit, a cron line, a .desktop Exec=, a `sudo -u`. Each of those got
+# "uv: not found" from a command that is plainly installed.
+#
+# The `command -v` fallback is what keeps it working after `uv self update` moves
+# the binary, or after a distro package replaces it.
+UV_BIN="$(command -v uv 2>/dev/null || echo uv)"
 for cmd in bento agentos; do
   cat > "$BIN/$cmd" <<SHIM
 #!/bin/sh
 # Installed by AgentOS's install.sh. Safe to delete; re-run the installer to restore.
-exec uv run --project "$DIR" $cmd "\$@"
+UV="$UV_BIN"
+[ -x "\$UV" ] || UV="\$(command -v uv 2>/dev/null)"
+if [ -z "\$UV" ]; then
+  echo "$cmd: uv is missing — it is what runs AgentOS." >&2
+  echo "  reinstall it:  curl -fsSL https://astral.sh/uv/install.sh | sh" >&2
+  exit 127
+fi
+exec "\$UV" run --project "$DIR" $cmd "\$@"
 SHIM
   chmod +x "$BIN/$cmd"
 done
-say "installed the 'bento' command (and 'agentos') in $BIN"
 
-# On PATH for the shell that will run them next? `command -v` answers for THIS
-# shell, which curl|bash gave us; the rc file is what answers for the next one.
-case ":$PATH:" in
+# Prove the shim runs before telling anyone it exists. Everything below — the PATH
+# advice, the closing "terminal: bento tui" — is a claim about a command, and this
+# is the cheapest possible check that the claim is true.
+if "$BIN/bento" --help >/dev/null 2>&1; then
+  say "installed the 'bento' command (and 'agentos') in $BIN"
+else
+  warn "wrote $BIN/bento but it does not run — its output:"
+  "$BIN/bento" --help 2>&1 | head -n 5 | sed 's/^/     /'
+  gap "the 'bento' command is broken; run AgentOS with: cd $DIR && uv run bento"
+fi
+
+# On PATH for the shell that will run them next? Asked of $ORIG_PATH — the PATH we
+# were STARTED with — never of $PATH, which this script widened itself in step 2 and
+# which therefore always contains $BIN and always answers yes. See the note at the
+# top of the file: that one substitution is what silently disabled everything below.
+case ":$ORIG_PATH:" in
   *":$BIN:"*) ON_PATH=1 ;;
   *) ON_PATH="" ;;
 esac
 if [ -z "$ON_PATH" ]; then
   # Appended, and said out loud. A PATH line added silently to somebody's shell is
   # the kind of thing they should be able to find later — hence the marker comment.
+  #
+  # Which files: every rc that already exists, PLUS the one the user's login shell
+  # reads even if it does not exist yet. `[ -f "$rc" ] || continue` alone was not
+  # enough — a fresh Debian/Alpine/Arch account, a Docker image, or anyone whose
+  # shell is zsh with no ~/.zshrc got NOTHING written and no error, which is the
+  # same "installed but not found" this block exists to prevent.
+  case "${SHELL:-}" in
+    */zsh)  want="$HOME/.zshrc" ;;
+    */bash) want="$HOME/.bashrc" ;;
+    */fish) want="" ;;          # different syntax entirely; handled in the gap below
+    *)      want="$HOME/.profile" ;;
+  esac
+  [ -n "$want" ] && [ ! -f "$want" ] && : > "$want"
+
   added=""
   for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
     [ -f "$rc" ] || continue
@@ -356,26 +442,67 @@ if [ -z "$ON_PATH" ]; then
   else
     gap "add this to your shell profile:  export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
+  case "${SHELL:-}" in
+    */fish) gap "fish uses different syntax:  fish_add_path \$HOME/.local/bin" ;;
+  esac
   # This script's own remaining steps must not depend on the rc file it just wrote.
   PATH="$BIN:$PATH"; export PATH
 fi
 
 # ---------------------------------------------------------------------------
-# 3c. reachable from elsewhere, if that was asked for.
+# 3c. the address it answers on, if that was asked for.
 #
-# Before the launcher, so the service that starts below comes up already bound to
-# 0.0.0.0 rather than binding to loopback and needing a restart to move.
+# Before the launcher, so the service that starts below comes up already bound the
+# way it was asked for rather than binding to loopback and needing a restart to
+# move — and so the systemd unit / LaunchAgent bakes in the right port, which it
+# reads from the config at install time.
 # ---------------------------------------------------------------------------
+# The BIND is decided before the PORT on purpose. `bento remote --port` verifies the
+# port by really binding it, against whichever interface the config currently names —
+# and macOS refuses 127.0.0.1:80 to a non-root process while allowing 0.0.0.0:80, so
+# checking the port while the config still said loopback reported a refusal for a
+# setup that was two lines from working.
 if [ -n "$PASSPHRASE" ]; then
-  say "turning on remote access (binding 0.0.0.0)"
-  if uv run bento remote --on --passphrase "$PASSPHRASE" --bind 0.0.0.0 >/dev/null 2>&1; then
+  # 0.0.0.0 unless a specific interface was named. --bind ALONE is deliberately not
+  # enough: binding off loopback without a passphrase is refused by `serve` anyway
+  # (the agent has a real shell, so an open port is an open shell), and quietly
+  # accepting the flag here would teach that it works.
+  bind_to="${BIND:-0.0.0.0}"
+  say "turning on remote access (binding $bind_to)"
+  if uv run bento remote --on --passphrase "$PASSPHRASE" --bind "$bind_to" >/dev/null 2>&1; then
     ok "reachable from your network — sign in with that passphrase"
-    gap "this machine now answers on every interface. If it faces the internet, put it behind a tunnel or a firewall."
+    gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
   else
     # Never a silent half-state: refusing is usually the passphrase being too short,
     # and leaving it on loopback is the safe outcome to report.
     warn "could not enable remote access — still loopback only"
-    gap "set it yourself:  bento remote --on --passphrase '<something long>'"
+    gap "set it yourself:  bento remote --on --passphrase '<something long>' --bind $bind_to"
+  fi
+elif [ -n "$BIND" ]; then
+  warn "--bind=$BIND ignored: binding off loopback needs a passphrase."
+  warn "AgentOS hands whoever loads it a real shell, so an open port is an open shell."
+  gap "reachable from your network:  --passphrase='<something long>' --bind=$BIND"
+fi
+
+if [ -n "$PORT_WANTED" ]; then
+  say "setting the port to $PORT_WANTED"
+  # `bento remote --port` prints the refusal itself, having ASKED the kernel rather
+  # than assuming from the number. The rule of thumb everyone reaches for — "below
+  # 1024 needs root" — is true on Linux and false on macOS, and even on Linux it is
+  # only true until somebody lowers net.ipv4.ip_unprivileged_port_start, which
+  # containers routinely do. So the output is shown rather than a guess printed here.
+  if port_out="$(uv run bento remote --port "$PORT_WANTED" 2>&1)"; then
+    ok "port $PORT_WANTED"
+    case "$port_out" in
+      *"will not let AgentOS listen"*)
+        printf '%s\n' "$port_out" | sed -n '/will not let AgentOS listen/,$p' \
+          | grep -v '^remote access:\|^  binds:\|^  reach:' | sed 's/^/  /'
+        gap "port $PORT_WANTED needs the one-time step printed above before it will bind"
+        ;;
+    esac
+  else
+    warn "could not set the port — staying on the default"
+    gap "set it yourself:  bento remote --port $PORT_WANTED"
   fi
 fi
 
@@ -444,14 +571,24 @@ fi
 # checks the promise was kept, and starts it by hand when it was not.
 # ---------------------------------------------------------------------------
 PORT=$(uv run python -c 'from agentos import config as c; print(c.load_config().get("port") or 8321)' 2>/dev/null || echo 8321)
+# The address to PROBE, which is not always the address it BINDS. A server bound to
+# one specific interface (--bind=192.168.1.5) does not answer on 127.0.0.1 at all,
+# and probing loopback would report a perfectly healthy machine as "did not come up"
+# — then start a second copy beside the one that was already working. 0.0.0.0 and
+# loopback both answer on 127.0.0.1, so only a named interface changes the probe.
+PROBE_HOST=127.0.0.1
+case "$BIND" in
+  ''|0.0.0.0|::|127.0.0.1|localhost) ;;
+  *) PROBE_HOST="$BIND" ;;
+esac
 # Any HTTP answer counts, including 401: a machine with accounts is locked, and
 # locked is a running server, not a broken one.
-listening() { [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/api/platform" 2>/dev/null)" != "000" ]; }
+listening() { [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://${PROBE_HOST}:${PORT}/api/platform" 2>/dev/null)" != "000" ]; }
 
 if [ "$SERVICE" = 0 ]; then
   say "not started (--no-service) — run it with: cd $DIR && uv run bento serve"
 elif listening; then
-  ok "already serving on 127.0.0.1:${PORT}"
+  ok "already serving on ${PROBE_HOST}:${PORT}"
 else
   say "starting the service"
   case "$(uname -s)" in
@@ -461,7 +598,7 @@ else
   i=0
   while [ "$i" -lt 20 ] && ! listening; do i=$((i + 1)); sleep 1; done
   if listening; then
-    ok "serving on 127.0.0.1:${PORT}"
+    ok "serving on ${PROBE_HOST}:${PORT}"
   else
     # Not a failure of the install — step 5 already proved it runs. This is the
     # service manager, which is a different problem with a different fix.
@@ -491,10 +628,11 @@ if [ "$SERVICE" = 1 ]; then
 else
   ok "AgentOS is installed (nothing was started — --no-service)."
 fi
-echo "   open:       http://127.0.0.1:${PORT}"
+echo "   open:       http://${PROBE_HOST}:${PORT}"
 echo "   terminal:   bento tui          — the whole OS over SSH"
 echo "   set it up:  bento setup        — the same nine steps as the desktop"
 echo "   check:      bento doctor"
+echo "   service:    bento service status | start | stop | restart | logs | uninstall"
 # On a box you reach over SSH, loopback-only is the default and it is the right
 # default: the agent has a real shell, so an open port here is an open shell.
 # Printed, never done — widening this is the user's decision, and it needs a

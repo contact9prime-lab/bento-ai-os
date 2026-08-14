@@ -70,17 +70,102 @@ exceeds free VRAM will spill to CPU (slow) or fail. Remove unused models or choo
 The prebuilt package targets the Python version it was built against. On a different distribution or
 Python version, rebuild it there: `./packaging/build-deb.sh`.
 
+### `bento: command not found` after the curl install
+
+Installers before this fix wrote the `bento` shim into `~/.local/bin` but never added
+that directory to your shell's PATH — the installer's own check asked the PATH it had
+just widened for itself, so it always concluded the directory was already there. It
+printed `✓ AgentOS is installed` and then advice you could not follow.
+
+It bites hardest on Linux, because a graphical terminal tab is a **non-login** shell:
+it reads `~/.bashrc` and never `~/.profile`, and the stock Ubuntu/Debian `~/.local/bin`
+snippet lives in `~/.profile` and only fires if the directory already existed when the
+shell started — which, on a first install, it did not.
+
+Re-running the installer fixes it. To fix an existing machine by hand:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc
+exec $SHELL                                                # or open a new terminal
+bento --help
+```
+
+Fish uses different syntax: `fish_add_path ~/.local/bin`.
+
+Until then, AgentOS still runs from its checkout:
+`cd ~/.local/src/agentic-os && uv run bento …`
+
+### "AgentOS is already running" when you run `bento`
+
+Since this fix, `bento` checks first and asks rather than refusing:
+
+```
+▲ AgentOS is already running.
+    http://127.0.0.1:8321   (a systemd user service, pid 1841)
+
+  [o] open it in a browser                        (default)
+  [r] restart it
+  [p] leave it, and start a second one on port 8322
+  [q] quit, change nothing
+```
+
+Pick without being asked using `--if-running`: `open`, `port`, `restart`, `fail`.
+With no terminal to ask on — a systemd unit, cron, CI — it always behaves as `fail`,
+so nothing ever blocks on a prompt nobody is watching.
+
+**A second instance is not free.** Both would use the same `~/.agentos`: one database,
+two schedulers (every standing job fires twice), two Telegram/WhatsApp pollers on one
+account. For a genuinely separate instance, give it a separate home:
+`AGENTOS_HOME=~/.agentos-test bento serve --port 8322`.
+
+If the holder does not identify itself as AgentOS, Bento will not offer to stop it —
+it may be an unrelated program on that port. `bento doctor` says what it can.
+
+### "cannot listen on … " — a port the kernel refuses
+
+```
+✗ AgentOS cannot listen on 127.0.0.1:80.
+  The OS refused to let this process bind port 80.
+  Ports below 1024 are privileged, and AgentOS runs as you, not as root.
+```
+
+On Linux, allow it once (survives reboot):
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
+sudo sysctl --system
+```
+
+…or redirect the port and leave AgentOS unprivileged, or put nginx/caddy in front.
+Running the server as root is not advised — the agent has a real shell.
+
+This is checked by binding, never by the port number, because the usual rule of thumb
+is wrong: macOS grants `0.0.0.0:80` to any process while refusing `127.0.0.1:80`, and
+on Linux the threshold is tunable. If the address you asked for is refused but the
+wildcard would work, the message says so.
+
+### `uv: not found` from cron, systemd or a desktop launcher
+
+The shim runs AgentOS through `uv`. Older shims called it by bare name, so they only
+worked where PATH already had it — an interactive shell — and failed from anything
+with a minimal environment. Re-run the installer: the shim now bakes in the absolute
+path to `uv` and falls back to a PATH lookup if that ever moves.
+
 ### AgentOS didn't open at login
 
 Ensure autostart is enabled (`agentos autostart`), then **log out and back in** — the autostart entry
 runs at session start. The background server is separate and is managed by
-`systemctl --user … agentos`.
+`bento service` (`systemctl --user … agentos` underneath, on Linux).
 
 ### It's not responding
 
 ```bash
-systemctl --user status agentos      # running?
-systemctl --user restart agentos     # restart
-journalctl --user -u agentos -f      # watch logs
+bento service status     # running? at boot? is the port answering?
+bento service restart
+bento service logs -f    # the journal on Linux, the log file on macOS
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8321/   # should print 200
 ```
+
+If `status` says the supervisor has it running but the port is silent, that is a
+crash loop or a wedged startup rather than a stopped service — `bento service logs`
+is the next step, not another restart.

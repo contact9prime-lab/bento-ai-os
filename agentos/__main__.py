@@ -30,7 +30,188 @@ def _port_free(host: str, port: int) -> bool:
             return False
 
 
-def serve(host: str, port: int, open_browser: bool):
+def _holder(host: str, port: int) -> str:
+    """Who holds `port`: 'free', 'agentos', or 'foreign'.
+
+    The distinction decides whether stopping it may even be OFFERED. "Something is
+    listening" is not permission to kill it — a port collision is just as likely to
+    be somebody's dev server, and an installer that terminates it because the number
+    matched would be a far worse bug than the one it was solving.
+
+    Identification is by answer, not by pid or process name: a two-line JSON reply
+    that only this server produces. Two shapes count, and the second matters as much
+    as the first — a machine with accounts answers 401 to everything until you sign
+    in, and that is a RUNNING AgentOS, not a broken one.
+    """
+    if _port_free(host, port):
+        return "free"
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    probe = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    try:
+        with urllib.request.urlopen(f"http://{probe}:{port}/api/platform", timeout=4) as r:
+            body = _json.loads(r.read() or b"{}")
+        # keys only host.platform_state() produces
+        return "agentos" if {"mode", "sui_available"} <= set(body) else "foreign"
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            try:
+                return ("agentos" if _json.loads(e.read() or b"{}").get("login") == "/login"
+                        else "foreign")
+            except Exception:
+                return "foreign"
+        return "foreign"
+    except Exception:
+        # Holds the port but does not speak HTTP, or refused us. Not ours to touch.
+        return "foreign"
+
+
+def _next_free_port(host: str, start: int, span: int = 40) -> int:
+    """The first free port at or above `start`, or 0 if the whole span is taken."""
+    return next((p for p in range(start, start + span) if _port_free(host, p)), 0)
+
+
+def _second_instance_warning() -> str:
+    """What a second server on another port actually costs.
+
+    Not a scary noise: every item is something `startup()` unconditionally creates,
+    against `cfgmod.DB_PATH`, which is one file per AGENTOS_HOME and not per port.
+    Two schedulers fire every standing job twice; Telegram's getUpdates admits ONE
+    long-poller per bot token, so two of them take turns losing messages. Somebody
+    who wants a genuinely separate instance wants a separate home, and that is the
+    one line at the end.
+    """
+    return (
+        "  Both would share ~/.agentos: one database, two schedulers (every job\n"
+        "  fires twice), two Telegram/WhatsApp pollers on one account, two update\n"
+        "  watchers. Fine for a quick look; not something to leave running.\n"
+        "  A truly separate instance needs a separate home:\n"
+        "    AGENTOS_HOME=~/.agentos-test bento serve --port <n>")
+
+
+def _resolve_running_instance(host: str, port: int, url: str, mode: str,
+                              explicit_port: bool) -> int:
+    """A server already holds the port. Decide what this invocation does instead.
+
+    Returns the port to serve on, or raises SystemExit. Called before anything binds
+    or writes, because the old behaviour — print four suggestions and exit 3 — put
+    the whole decision on somebody who had just typed the most obvious command there
+    is, and made the commonest case (it is already running; show it to me) the one
+    thing the CLI would not do.
+
+    `mode` is --if-running. It defaults to `ask`, and `ask` degrades to `fail` with
+    no terminal to ask on: a service unit or a CI step must never block on a prompt,
+    and a boot that silently chose "restart" would be worse still.
+    """
+    from . import desktop
+
+    who = _holder(host, port)
+    if who == "free":                       # a race: it went away while we looked
+        return port
+
+    if who == "foreign":
+        # Never offer to stop this. We have no evidence it is ours.
+        alt = _next_free_port(host, port + 1)
+        print(f"Something holds {host}:{port}, and it did not answer as AgentOS.\n"
+              f"  It may be another program that happens to use this port.\n"
+              f"  AgentOS will not stop a process it cannot identify.\n"
+              f"  what it is:   bento doctor"
+              + (f"\n  free port:    bento serve --port {alt}" if alt else ""))
+        raise SystemExit(3)
+
+    st = desktop.service_status()
+    supervised = st["manager"] != "none"
+    owner = {"systemd": "a systemd user service", "launchagent": "a launchd LaunchAgent",
+             "startup": "a Windows Startup entry",
+             "none": "started by hand — nothing supervises it"}[st["manager"]]
+
+    if mode == "fail":
+        print(f"AgentOS is already running on {url} ({owner}).\n"
+              f"  open it:      {url}\n"
+              f"  details:      bento service status\n"
+              f"  restart it:   bento service restart\n"
+              f"  second one:   bento serve --port <other>   (see --if-running)")
+        raise SystemExit(3)
+
+    if mode == "open":
+        print(f"▲ AgentOS is already running — {url}")
+        webbrowser.open(url)
+        raise SystemExit(0)
+
+    if mode == "port":
+        alt = _next_free_port(host, port + 1)
+        if not alt:
+            print(f"AgentOS is running on {url} and no free port was found near it.")
+            raise SystemExit(3)
+        print(f"▲ already running on {port}; starting a second instance on {alt}")
+        print(_second_instance_warning())
+        return alt
+
+    if mode == "restart":
+        return _take_the_port(url, supervised, port, host)
+
+    # ---- ask ---------------------------------------------------------------
+    alt = _next_free_port(host, port + 1)
+    print(f"\n▲ AgentOS is already running.\n"
+          f"    {url}   ({owner}"
+          + (f", pid {st['pid']}" if st["pid"] else "") + ")\n")
+    print("  [o] open it in a browser                        (default)")
+    print(f"  [r] restart it{'' if supervised else ' — stop it and run here'}")
+    if alt:
+        print(f"  [p] leave it, and start a second one on port {alt}")
+    print("  [q] quit, change nothing")
+    try:
+        choice = input("  ? ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise SystemExit(3)
+
+    if choice in ("", "o", "open"):
+        print(f"  opening {url}")
+        webbrowser.open(url)
+        raise SystemExit(0)
+    if choice in ("r", "restart"):
+        return _take_the_port(url, supervised, port, host)
+    if choice in ("p", "port") and alt:
+        print(_second_instance_warning())
+        return alt
+    raise SystemExit(3)
+
+
+def _take_the_port(url: str, supervised: bool, port: int, host: str) -> int:
+    """`restart`: hand the port back, by whichever route keeps the promise the
+    machine is already making.
+
+    Where a supervisor owns the server, restarting THROUGH it is the honest answer
+    and this process then has nothing left to do — killing the unit so that a
+    foreground `serve` can take the port would silently downgrade a machine that
+    comes back after a reboot into one that does not. Where nothing supervises it,
+    the caller asked to run it here, so stop the old one and continue.
+    """
+    from . import desktop
+
+    if supervised:
+        ok, msg = desktop.service_restart()
+        print(("✓ " if ok else "✗ ") + msg)
+        print("  (its supervisor still owns it, so this terminal is free to close)")
+        raise SystemExit(0 if ok else 1)
+
+    ok, msg = desktop.service_stop()
+    if not ok:
+        print("✗ " + msg)
+        raise SystemExit(1)
+    print("✓ " + msg)
+    for _ in range(30):
+        if _port_free(host, port):
+            return port
+        time.sleep(0.5)
+    print(f"✗ port {port} did not come free after stopping the old server")
+    raise SystemExit(3)
+
+
+def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     import uvicorn
     from . import config as cfgmod
     from . import remote as remotemod
@@ -50,24 +231,43 @@ def serve(host: str, port: int, open_browser: bool):
               f"  Turn it on:  agentos serve   (then Settings → Remote access)\n"
               f"  or headless: agentos remote --on --passphrase '<something long>'")
         sys.exit(4)
+    # Resolve a collision BEFORE anything binds or writes. The old code bailed here
+    # too, and for the right reason — a doomed instance must not spawn MCP servers,
+    # the scheduler or the Telegram poller against the database the instance that
+    # actually owns the port is using. What it did not do was answer the question:
+    # it printed four suggestions and exited 3, leaving the commonest case (it is
+    # already running; show me) as the one thing the CLI would not do for you.
+    # Ask the kernel ONCE, and branch on what it actually said. `_port_free` collapses
+    # every bind failure into "not free", which sent a privileged port down the
+    # already-running path — where it was probed over HTTP, did not answer, and was
+    # reported as "something holds :80 that is not AgentOS". Nothing held it. The
+    # kernel had refused us, and the message pointed at an innocent bystander.
+    kind, why = _bind_problem(host, port)
+    if kind in ("denied", "no-such-address", "other"):
+        print(f"\n✗ AgentOS cannot listen on {host}:{port}.")
+        print(why)
+        sys.exit(4)
+
+    if kind == "taken":
+        mode = if_running
+        if mode == "ask" and not (sys.stdin.isatty() and sys.stdout.isatty()):
+            # No terminal to ask on. A systemd unit, a cron line or a CI step must
+            # never block on a prompt, and picking an action for them unasked is
+            # worse — `restart` from a boot script is a restart loop.
+            mode = "fail"
+        port = _resolve_running_instance(host, port, _display_url(host, port),
+                                         mode, explicit_port=bool(port))
+
     os.environ["AGENTOS_BOUND_HOST"] = host
     # The port this instance actually bound, which is not always the configured one:
-    # `--port` wins, and `desktop.restart_service()` re-execs `serve` with no memory
-    # of the command line it is replacing. Without this, restarting a server on any
-    # other port relaunched it on the default, where it either collided with whatever
-    # was there and exited 3, or quietly moved — and the update and snapshot-restore
-    # flows both end in that same re-exec.
+    # `--port` wins, `--if-running=port` moves it, and `desktop.restart_service()`
+    # re-execs `serve` with no memory of the command line it is replacing. Without
+    # this, restarting a server on any other port relaunched it on the default, where
+    # it either collided with whatever was there and exited 3, or quietly moved — and
+    # the update and snapshot-restore flows both end in that same re-exec.
     os.environ["AGENTOS_BOUND_PORT"] = str(port)
-    url = f"http://{host}:{port}"
-    if not _port_free(host, port):
-        # bail BEFORE the app's startup hook runs: a doomed instance must not spawn
-        # MCP servers / scheduler / telegram or write to the DB it shares with the
-        # instance that actually owns the port
-        print(f"AgentOS is already running (or something else holds {host}:{port}).\n"
-              f"  open it:            {url}\n"
-              f"  or stop the owner:  systemctl --user stop agentos   (if installed as a service)\n"
-              f"  or pick a port:     agentos serve --port <other>")
-        sys.exit(3)
+    # Never the bind host verbatim: 0.0.0.0 is not a clickable address.
+    url = _display_url(host, port)
     print(f"""
   ┌─────────────────────────────────────┐
   │   ▲ AgentOS                         │
@@ -1375,6 +1575,91 @@ def _job_cli(args):
         return
 
 
+def _bind_problem(host: str, port: int) -> tuple[str, str]:
+    """Can this process bind host:port, and if not, why — ASKED, not assumed.
+
+    ('', '') when it can. Otherwise (kind, explanation) where kind is 'denied',
+    'taken', 'no-such-address' or 'other'.
+
+    It really binds rather than reasoning from the port number, because the rule of
+    thumb is wrong on a machine somebody actually owns. "Below 1024 needs root" is
+    true on Linux and FALSE on macOS, which has let unprivileged processes bind low
+    TCP ports for years — so a `port < 1024` warning tells half our users their
+    install is broken when it is about to work perfectly. Linux itself is not fixed
+    either: `net.ipv4.ip_unprivileged_port_start` is tunable and containers routinely
+    ship it lowered, so even there the number does not decide. The kernel does, and
+    it will answer in a microsecond if asked.
+    """
+    import errno
+    import socket
+
+    fam = socket.AF_INET6 if ":" in host and host != "" else socket.AF_INET
+    try:
+        with socket.socket(fam, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+        return "", ""
+    except PermissionError:
+        lines = [f"  The OS refused to let this process bind port {port}."]
+        if port < 1024:
+            lines.append("  Ports below 1024 are privileged, and AgentOS runs as you,"
+                         " not as root.")
+        lines.append("  Ways out, cheapest first:")
+        if sys.platform.startswith("linux"):
+            lines += [
+                f"    · allow it for unprivileged processes (survives reboot):",
+                f"        echo 'net.ipv4.ip_unprivileged_port_start={port}' | "
+                f"sudo tee /etc/sysctl.d/50-agentos.conf",
+                f"        sudo sysctl --system",
+                f"    · or redirect {port} to an unprivileged port and leave AgentOS there:",
+                f"        sudo nft add rule inet nat prerouting tcp dport {port} redirect to :8321",
+                f"    · or put nginx/caddy in front of it",
+            ]
+        else:
+            lines += [
+                f"    · redirect {port} to an unprivileged port and leave AgentOS there",
+                f"    · or put a reverse proxy in front of it",
+            ]
+        lines.append("  Running the server as root is not advised: the agent has a"
+                     " real shell.")
+        # macOS refuses 127.0.0.1:80 to a non-root process and ALLOWS 0.0.0.0:80 —
+        # the privileged-port check is per-address there, not per-port. So the same
+        # port can be refused on loopback and granted on the wildcard, and somebody
+        # setting up a public server hits the refusal first, on the configuration
+        # they are about to change. Say so rather than let them conclude it is
+        # impossible.
+        if host not in ("0.0.0.0", "::", "") and not _bind_problem("0.0.0.0", port)[0]:
+            lines.append(f"  Note: this machine WILL allow port {port} on 0.0.0.0"
+                         f" (all interfaces), just not on {host}.")
+        return "denied", "\n".join(lines)
+    except OSError as e:
+        if e.errno in (errno.EADDRINUSE,):
+            return "taken", f"  {host}:{port} is already in use."
+        if e.errno in (errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT):
+            return "no-such-address", (
+                f"  {host} is not an address this machine holds, so nothing can listen"
+                f" on it.\n  0.0.0.0 listens on every interface; this machine's are:\n"
+                + "\n".join(f"    {a}" for a in _local_addresses(port)))
+        return "other", f"  {host}:{port} could not be bound: {e}"
+
+
+def _local_addresses(port: int) -> list[str]:
+    from . import remote as remotemod
+    return remotemod.lan_addresses(port) or [f"http://127.0.0.1:{port}"]
+
+
+def _display_url(host: str, port: int) -> str:
+    """A URL a person can actually click, for a host that may be a wildcard.
+
+    0.0.0.0 and :: are instructions to the kernel — "listen on everything" — not
+    addresses. Chrome and Safari either refuse http://0.0.0.0:8321 or silently
+    reinterpret it, so printing it as the way in (and handing it to
+    `webbrowser.open`) offers a link that does not work, on exactly the setup
+    somebody has just gone to the trouble of configuring.
+    """
+    return f"http://{'127.0.0.1' if host in ('0.0.0.0', '::', '') else host}:{port}"
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1384,6 +1669,26 @@ def _remote_cli(args):
     from . import remote as remotemod
     cfg = remotemod.sanitize_remote(cfgmod.load_config())
     r = cfg.setdefault("remote", {})
+
+    # The port lives at the top of config, not under `remote`, because it is the
+    # port on every surface — loopback included. It is settable HERE because this is
+    # the command about how the machine is reached, and until now the only way to
+    # change it for good was to edit config.json by hand: `serve --port` lasts one
+    # run, and the systemd unit bakes in whatever the config said at install time.
+    if args.port:
+        if not 1 <= args.port <= 65535:
+            print(f"port must be 1–65535, not {args.port}")
+            sys.exit(1)
+        cfg["port"] = args.port
+        # Saved either way — the setting is the user's to make, and a port that is
+        # merely busy right now is a perfectly good port to configure. But a bind the
+        # kernel will refuse is a service that never starts, and finding that out
+        # here beats finding it out from a unit in a restart loop.
+        kind, why = _bind_problem(remotemod.bind_host(cfg), args.port)
+        if kind == "denied":
+            print(f"! saved, but this machine will not let AgentOS listen on"
+                  f" {args.port} as things stand:")
+            print(why)
 
     pw = args.passphrase
     if args.on and not pw and not r.get("pass_hash"):
@@ -1406,9 +1711,18 @@ def _remote_cli(args):
         r["enabled"] = True
     if args.off:
         r["enabled"] = False
-    if args.on or args.off or pw or args.bind:
+    if args.on or args.off or pw or args.bind or args.port:
         remotemod.sanitize_remote(cfg)
         cfgmod.save_config(cfg)
+        # The unit/plist bakes the port into ExecStart, so a port change that only
+        # touched config.json would take effect for `bento serve` and silently not
+        # for the service — the two would then disagree about which port this
+        # machine answers on, which is the hardest kind of "it works for me".
+        if args.port:
+            from . import desktop
+            if desktop.autostart_installed():
+                print(f"  the boot service still starts the old port — "
+                      f"re-run `bento service install` to update it")
 
     st = remotemod.status(cfg)
     print(f"remote access: {'ON' if st['enabled'] else 'off'}"
@@ -1555,6 +1869,68 @@ def _pid_on_port(port: int) -> str:
     except Exception:
         return ""
     return (out.split() or [""])[0]
+
+
+def _service_cli(args) -> int:
+    """`bento service …` — the background server, on whatever supervisor this
+    machine has.
+
+    Everything here goes through `desktop.service_*`, which is where the systemd /
+    launchd / no-supervisor difference lives. This function only prints, and the
+    thing it works hardest to print is WHICH of the three just happened: "stopped"
+    means something different on a machine that will bring it back at boot than on
+    one that will not, and a user cannot see which they have from the outside.
+    """
+    from . import desktop
+
+    action = getattr(args, "action", "status")
+
+    if action == "status":
+        st = desktop.service_status()
+        mark = "✓" if st["answering"] else ("!" if st["running"] else "·")
+        where = {
+            "systemd": "systemd user service",
+            "launchagent": "launchd LaunchAgent",
+            "startup": "Windows Startup entry",
+            "none": "not installed as a service",
+        }[st["manager"]]
+        print(f"AgentOS background server")
+        print(f"  {mark} {st['detail']}")
+        print(f"  supervisor:  {where}"
+              + (f"  (pid {st['pid']})" if st["pid"] else ""))
+        if st["enabled"] is not None:
+            print(f"  at boot:     {'yes' if st['enabled'] else 'no'}")
+        print(f"  port {st['port']}:   "
+              + ("answering — http://127.0.0.1:%d" % st["port"] if st["answering"]
+                 else "nothing listening"))
+        # The disagreement is the interesting case, so name it rather than leaving
+        # two lines that quietly contradict each other.
+        if st["running"] and not st["answering"]:
+            print("\n  ! the supervisor thinks it is up but the port is silent —"
+                  "\n    that is a crash loop or a wedged startup:  bento service logs")
+        if not st["installed"] and st["answering"]:
+            print("\n  · started by hand, so a reboot loses it:  bento service install")
+        return 0 if st["answering"] else 1
+
+    if action == "install":
+        desktop.install(autostart=True, open_at_login=not args.no_login)
+        return 0
+
+    fn = {"start": desktop.service_start,
+          "stop": desktop.service_stop,
+          "restart": desktop.service_restart,
+          "uninstall": desktop.service_uninstall}.get(action)
+    if fn:
+        ok, msg = fn()
+        print(("✓ " if ok else "✗ ") + msg)
+        return 0 if ok else 1
+
+    if action == "logs":
+        ok, msg = desktop.service_logs(lines=args.lines, follow=args.follow)
+        if msg:
+            print(msg)
+        return 0 if ok else 1
+    return 2
 
 
 def _restart_cli(args) -> int:
@@ -1783,6 +2159,13 @@ def main():
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=0)
     p_serve.add_argument("--no-browser", action="store_true")
+    # What to do when one is already running. `ask` needs a terminal and falls back
+    # to `fail` without one — the unattended callers (the systemd unit, the
+    # LaunchAgent, CI) are exactly the ones for whom guessing would be worst.
+    p_serve.add_argument("--if-running", default="ask",
+                         choices=["ask", "open", "port", "restart", "fail"],
+                         help="one is already running: ask (default), open it, use "
+                              "another port, restart it, or fail")
 
     p_ask = sub.add_parser("ask", help="one-shot agent run in the terminal")
     p_ask.add_argument("prompt", nargs="+")
@@ -1829,6 +2212,22 @@ def main():
     p_install.add_argument("--no-login", action="store_true",
                            help="don't open AgentOS automatically at login")
     sub.add_parser("uninstall", help="remove launcher + boot service")
+    # The background server, from the terminal. This is the half of `install` that
+    # was missing: `bento install` put a systemd unit / LaunchAgent on the machine
+    # and then every later question about it — is it up, stop it, why did it die,
+    # take it off this box — had to be answered in systemctl and launchctl, which
+    # is asking the user to know which OS they are on to control their own agent.
+    p_svc = sub.add_parser("service",
+                           help="the background server: status, start, stop, restart, logs, uninstall")
+    p_svc.add_argument("action", nargs="?", default="status",
+                       choices=["status", "start", "stop", "restart",
+                                "install", "uninstall", "logs"])
+    p_svc.add_argument("--lines", "-n", type=int, default=60,
+                       help="logs: how many lines (default 60)")
+    p_svc.add_argument("--follow", "-f", action="store_true",
+                       help="logs: keep streaming")
+    p_svc.add_argument("--no-login", action="store_true",
+                       help="install: don't also open the AgentOS window at login")
     p_restart = sub.add_parser("restart",
                                help="restart the running AgentOS server (to load code changes)")
     p_restart.add_argument("--port", type=int, default=0,
@@ -1950,6 +2349,9 @@ def main():
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
     p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
+    p_remote.add_argument("--port", type=int, default=0,
+                          help="the port this machine answers on, saved to config "
+                               "(the service picks it up on `bento service install`)")
 
     # Every graphical capability needs a way in from a terminal too — a headless
     # Pi reached over SSH is a first-class way to run AgentOS, not an edge case.
@@ -2036,6 +2438,8 @@ def main():
     elif args.cmd == "uninstall":
         from . import desktop
         desktop.uninstall()
+    elif args.cmd == "service":
+        raise SystemExit(_service_cli(args))
     elif args.cmd == "restart":
         raise SystemExit(_restart_cli(args))
     elif args.cmd == "autostart":
@@ -2095,7 +2499,7 @@ def main():
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 0)
         no_browser = getattr(args, "no_browser", False)
-        serve(host, port, not no_browser)
+        serve(host, port, not no_browser, getattr(args, "if_running", "ask"))
 
 
 if __name__ == "__main__":

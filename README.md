@@ -276,7 +276,19 @@ Then open **http://127.0.0.1:8321**, or run `bento setup` for the same nine step
 |---|---|
 | answer yes to every optional component | `… \| sh -s -- --yes` |
 | reach it from your laptop/phone (binds `0.0.0.0`) | `… \| sh -s -- --passphrase='something long'` |
+| a specific interface | `… \| sh -s -- --passphrase='…' --bind=192.168.1.20` |
+| a specific port (saved, so the boot service uses it too) | `… \| sh -s -- --port=8080` |
+| a public server on `0.0.0.0:8080` | `… \| sh -s -- --passphrase='…' --bind=0.0.0.0 --port=8080` |
 | no launcher or boot service (containers, CI) | `… \| sh -s -- --no-service` |
+
+> **The `-s --` is not optional.** `curl … | sh --port=8080` hands the flag to `sh`, which
+> rejects it — the pipe leaves the script no arguments of its own. `-s --` says "the rest is
+> for the script".
+
+Ports below 1024 are refused to a non-root process on Linux (and to some addresses on macOS).
+Nothing guesses: `--port` tries the bind and, if the kernel says no, prints the `sysctl` line
+or the proxy option that fixes it. Later on, `bento remote --port 8080 --bind 0.0.0.0` does the
+same thing.
 
 It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
 was not there — open a new terminal afterwards).
@@ -377,11 +389,21 @@ The right native mechanism is used automatically: a `.desktop` launcher plus a *
 service** on Linux (with linger, so it starts at boot), an app bundle plus **LaunchAgents** on
 macOS, a Start Menu shortcut plus **Startup entries** on Windows.
 
+One set of commands drives all three — you should not have to know whether this box
+uses systemd or launchd to control your own agent:
+
 ```bash
-systemctl --user status agentos      # is it running?
-uv run bento uninstall               # remove launcher + service (your data stays)
-uv run bento app                     # open as a chromeless desktop window any time
+bento service status       # is it running, will it come back at boot, is the port answering
+bento service start        # …stop, restart
+bento service logs -f      # journalctl or the log file, whichever this machine uses
+bento service uninstall    # remove the background service only — launcher and data stay
+bento uninstall            # remove launcher + service (your data stays)
+bento app                  # open as a chromeless desktop window any time
 ```
+
+`bento service status` reports what the supervisor believes **and** whether the port
+answers, separately: a unit that is "active" while nothing is listening is a crash
+loop, and that is the state worth being able to see.
 
 ---
 
@@ -395,6 +417,9 @@ uv run bento app                     # open as a chromeless desktop window any t
 | `uv run bento tui` | the whole OS in a terminal (**TUI**) |
 | `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
 | `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
+| `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
+| `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
+| `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |
 | `uv run bento apps search \| install \| remove` | native applications, from a terminal |
 | `uv run bento remote --on --passphrase '…'` | reach this desktop from your phone |
 | `uv run bento remote-desktop --on` | the browser remote desktop (real screen, native apps) |

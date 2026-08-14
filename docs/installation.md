@@ -208,15 +208,88 @@ boot-to-AgentOS.
 
 ---
 
-## Managing the service
+## The address it answers on
 
-Once installed, AgentOS runs as a systemd **user** service:
+By default AgentOS listens on `127.0.0.1:8321`. Both halves are changeable, and both
+are saved to the config so the boot service uses them too:
 
 ```bash
-systemctl --user status agentos      # is it running?
-systemctl --user restart agentos     # restart (e.g. after changing settings on disk)
-systemctl --user stop agentos        # stop
-journalctl --user -u agentos -f      # follow logs
+bento remote --port 8080                                   # the port
+bento remote --on --passphrase '<long>' --bind 0.0.0.0     # every interface
+bento remote --on --passphrase '<long>' --bind 192.168.1.20  # one interface
+bento remote                                               # show what it is now
+```
+
+At install time, in one go:
+
+```bash
+curl -fsSL <url> | sh -s -- --passphrase='<long>' --bind=0.0.0.0 --port=8080
+```
+
+The `-s --` matters: `curl … | sh --port=8080` gives the flag to `sh`, not to the
+script, and `sh` rejects it.
+
+Three things this will not do quietly:
+
+- **Binding off loopback needs a passphrase.** `--bind` alone is refused, and so is
+  `bento serve --host 0.0.0.0` with remote access off. The agent has a real shell, so
+  an open port is an open shell — the lock is not optional.
+- **A port change does not reach the installed service by itself.** The unit and the
+  LaunchAgent bake the port into `ExecStart`, so re-run `bento service install` after
+  changing it. The CLI reminds you when a service is installed.
+- **A port the kernel refuses is reported, with the fix.** Below 1024 needs privilege
+  on Linux; the message prints the `sysctl` line, the redirect, and the proxy option.
+  It is decided by attempting the bind, not by the port number — macOS allows
+  `0.0.0.0:80` to any process and refuses `127.0.0.1:80`, so the rule of thumb is
+  wrong there in both directions.
+
+After a bind or port change, restart: `bento service restart`.
+
+## Already running?
+
+`bento` and `bento serve` check before starting, and — in a terminal — ask what you
+want instead of refusing:
+
+```
+  [o] open it in a browser        [r] restart it
+  [p] a second one on port 8322   [q] quit
+```
+
+`--if-running open|port|restart|fail` picks without asking. Without a terminal it
+always behaves as `fail`, so a unit or a CI step never blocks on a prompt.
+
+A second instance shares `~/.agentos` — one database, two schedulers, two Telegram
+pollers. Use `AGENTOS_HOME=~/.agentos-test bento serve --port 8322` for a real one.
+
+## Managing the service
+
+Use `bento service`. It talks to whichever supervisor this machine actually has —
+a systemd **user** unit on Linux, a **LaunchAgent** on macOS, a Startup entry on
+Windows — so the same commands work everywhere:
+
+```bash
+bento service status       # running? at boot? is the port answering?
+bento service start
+bento service stop
+bento service restart      # e.g. after changing settings on disk
+bento service logs -f      # follow logs
+bento service uninstall    # remove the service only; launcher and ~/.agentos stay
+```
+
+`status` reports the supervisor's opinion and the port separately, because they can
+disagree: a unit that is `active` while nothing answers is a crash loop inside
+`RestartSec`, and one boolean would call that healthy.
+
+On a machine where nothing is installed as a service, `start`/`stop` fall back to
+plain process control and say so — "started, unsupervised" is a different promise
+from "started" and you should be able to tell which you got.
+
+The underlying systemd commands still work, if you prefer them:
+
+```bash
+systemctl --user status agentos
+systemctl --user restart agentos
+journalctl --user -u agentos -f
 ```
 
 ---
