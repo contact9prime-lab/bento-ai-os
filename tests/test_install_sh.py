@@ -77,8 +77,49 @@ def test_a_shell_rc_is_created_when_none_exists():
     """`[ -f "$rc" ] || continue` over three fixed files writes nothing at all on a
     fresh Debian/Alpine/Arch account, or for anyone on zsh with no ~/.zshrc — the
     same silent "installed but not found", reached a different way."""
-    assert re.search(r'\[ ! -f "\$want" \] && : > "\$want"', SRC), (
+    assert re.search(r'for w in \$want; do\n\s*\[ -f "\$w" \] \|\| : > "\$w"', SRC), (
         "install.sh no longer creates the login shell's rc file when it is absent")
+
+
+def test_zsh_gets_zprofile_as_well_as_zshrc():
+    """`.zshrc` alone is not enough: zsh reads it for INTERACTIVE shells only.
+
+    A zsh user in a terminal is fine, but `ssh host 'bento service status'` is a
+    login, non-interactive shell — it reads .zshenv/.zprofile/.zlogin and never
+    .zshrc. So the command was still not found over SSH, which is exactly how a
+    headless machine gets driven. Found by a container test doing precisely that.
+    """
+    assert re.search(r'\*/zsh\)\s+want="\$HOME/\.zshrc \$HOME/\.zprofile"', SRC), (
+        "zsh's login shell is not covered — only its interactive one")
+    assert '"$HOME/.zprofile"' in SRC, ".zprofile is not in the list of files written"
+
+
+def test_the_source_line_names_the_rc_the_users_own_shell_reads():
+    """The message was hardcoded to `. ~/.bashrc`. zsh is the default shell on macOS
+    and common on Linux, so those users ran it, nothing changed, and had to work out
+    for themselves that they wanted ~/.zshrc.
+
+    A script cannot put a directory on the PATH of the shell that invoked it — the
+    export happens in a child and dies with it — so this really is the user's step.
+    All the more reason for it to be one correct line they can paste.
+    """
+    assert 'source $rc_now' in SRC or 'source %s' in SRC, (
+        "no `source <rc>` line is printed")
+    assert re.search(r'\*/zsh\)\s+rc_now="\$HOME/\.zshrc"', SRC), (
+        "the source line does not branch on the user's shell")
+    # Comments are exempt, as in tests/test_packaging_shell.py: the note recording
+    # this trap has to be allowed to quote the broken form it replaced.
+    code = "\n".join(ln for ln in LINES if not ln.strip().startswith("#"))
+    assert '. ~/.bashrc' not in code, "the hardcoded bashrc advice is back"
+
+
+def test_the_source_step_is_printed_outside_the_gaps_list():
+    """Every `bento …` line the installer prints is unreachable until this is done,
+    so it is a required step, not a gap. Buried in a list headed 'working, with these
+    gaps' it reads as optional."""
+    assert "SOURCE_ME" in SRC
+    assert re.search(r'if \[ -n "\$SOURCE_ME" \]; then', SRC), (
+        "the source step is no longer printed in the closing block")
 
 
 def test_fish_users_are_told_the_syntax_that_works_for_them():
@@ -161,6 +202,22 @@ def test_the_probe_follows_the_bind_address():
     assert "PROBE_HOST" in SRC
     assert re.search(r'listening\(\).*\$\{PROBE_HOST\}:\$\{PORT\}', SRC), (
         "the liveness probe no longer uses the address the server was bound to")
+
+
+def test_the_final_line_reports_what_was_found_not_what_was_attempted():
+    """`✓ AgentOS is running.` was printed whenever the service step had been TRIED.
+
+    On a box with no service manager to reach — a container, a non-systemd distro,
+    SSH with no user D-Bus — step 6 reported "the background service did not come up"
+    and then this line claimed it was running, four lines later, in the same output.
+    Both sentences on screen at once, and the false one last. That is precisely the
+    shape of lie step 5 of this installer exists to prevent.
+    """
+    assert re.search(r'^if \[ -n "\$RUNNING" \]; then\n\s*ok "AgentOS is running\."',
+                     SRC, re.M), (
+        "the closing 'AgentOS is running' is no longer conditional on anything "
+        "actually listening")
+    assert 'RUNNING=1' in SRC, "nothing ever records that the server came up"
 
 
 def test_the_curl_pipe_argument_trap_is_documented():

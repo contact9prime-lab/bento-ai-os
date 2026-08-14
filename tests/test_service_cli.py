@@ -198,6 +198,47 @@ def test_service_uninstall_leaves_the_launcher_and_the_data(tmp_path, monkeypatc
     assert "bento service install" in msg, "no way back is offered"
 
 
+# ------------------------------------------- install must not claim a start it got
+
+def test_install_verifies_the_server_answered_before_calling_it_started():
+    """`systemctl enable --now` exits 0 when systemd ACCEPTS the job, not when the
+    server binds. A unit whose ExecStart cannot bind — port 80 without privilege is
+    the everyday case — leaves systemctl returning 0 while the service dies, waits
+    RestartSec, and dies again.
+
+    That printed `✓ service enabled + started (http://127.0.0.1:80)` on a machine
+    where nothing would ever answer, and the next thing the user saw was `bento`
+    refusing to bind the very same port. Two contradictory claims, the false one
+    printed as the result.
+    """
+    import inspect
+    # Comments are stripped first: the note above the fix quotes the false line it
+    # replaced, and matching that instead of the code would make this test pass on
+    # the very code it exists to reject.
+    src = "\n".join(ln for ln in inspect.getsource(desktop._install_linux).splitlines()
+                    if not ln.strip().startswith("#"))
+    started = src.index("enabled + started")
+    guard = src.rindex("_wait_for", 0, started)
+    assert "_server_up" in src[guard:started], (
+        "the success line is printed without waiting for the port to answer")
+    assert "is-active" in src, "the failure branch does not say whether the unit died"
+
+
+def test_install_shows_the_journal_when_the_service_does_not_answer():
+    """'It did not come up' with no output is a dead end — the reason is one
+    journalctl away and the user should not have to know that."""
+    import inspect
+    assert "journalctl" in inspect.getsource(desktop._install_linux)
+
+
+def test_the_mac_launchagent_is_verified_the_same_way():
+    """`launchctl bootstrap` returning 0 means launchd took the job, not that the
+    server bound the port — the identical trap, one platform over."""
+    import inspect
+    src = inspect.getsource(desktop._install_mac)
+    assert "_wait_for" in src and "_server_up" in src
+
+
 # ------------------------------------------------------------------------ the logs
 
 def test_the_mac_launchagent_captures_its_own_output():

@@ -220,6 +220,17 @@ bento remote --on --passphrase '<long>' --bind 192.168.1.20  # one interface
 bento remote                                               # show what it is now
 ```
 
+Or through the settings file directly — `~/.agentos/config.json`, under `$AGENTOS_HOME`
+if you set one:
+
+```bash
+bento config port 8080             # same validation and the same service warning
+bento config remote.bind 0.0.0.0   # dotted paths reach nested settings
+bento config                       # the whole file, secrets masked (--raw shows them)
+bento config --path                # where it lives
+bento config --edit                # $EDITOR, with a rollback if you leave invalid JSON
+```
+
 At install time, in one go:
 
 ```bash

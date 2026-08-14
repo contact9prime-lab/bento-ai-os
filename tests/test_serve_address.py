@@ -201,6 +201,60 @@ def test_a_real_address_is_shown_as_itself():
     assert m._display_url("127.0.0.1", 8321) == "http://127.0.0.1:8321"
 
 
+def test_the_install_line_says_when_the_machine_is_on_the_network():
+    """`http://127.0.0.1:{port}` was hardcoded into the install and status output. On
+    a box configured to be reachable that is not false — loopback does answer — but it
+    is the one line somebody checks to find out whether their `bind` took effect, and
+    it read as "your setting was ignored"."""
+    from agentos import config as cfgmod
+    from agentos import desktop
+
+    cfg = cfgmod.load_config()
+    cfg["port"] = 8321
+    cfg.setdefault("remote", {}).update(
+        {"enabled": True, "bind": "0.0.0.0", "pass_hash": "x", "pass_salt": "y"})
+    cfgmod.save_config(cfg)
+
+    lines = desktop.where_it_answers(8321)
+    assert lines[0] == "http://127.0.0.1:8321", "loopback must stay first — it always works"
+    assert any("0.0.0.0" in ln for ln in lines[1:]), (
+        "a machine bound to every interface is still described as loopback-only")
+
+
+def test_a_bind_that_is_configured_but_not_in_use_says_so():
+    """`bind_host()` refuses to leave loopback without a lock, which is correct and
+    deliberate. But the setting still sits in config.json saying 0.0.0.0, and the only
+    way to find out which one won was to diff `cat config.json` against this line."""
+    from agentos import config as cfgmod
+    from agentos import desktop
+
+    cfg = cfgmod.load_config()
+    cfg.setdefault("remote", {}).update(
+        {"enabled": False, "bind": "0.0.0.0", "pass_hash": "", "pass_salt": ""})
+    cfgmod.save_config(cfg)
+
+    text = "\n".join(desktop.where_it_answers(8321))
+    assert "not in use" in text, "the ignored bind setting is still silent"
+    assert "bento remote --on" in text, "no way out is offered"
+
+
+def test_a_hostname_that_already_ends_in_local_gets_no_second_one(monkeypatch):
+    """macOS's gethostname() returns the mDNS name in full, so appending `.local`
+    produced `http://Someones-MacBook-Pro.local.local:8321` — an address that resolves
+    nowhere, printed as the way to reach the machine from a phone."""
+    import socket
+
+    from agentos import remote as remotemod
+
+    monkeypatch.setattr(socket, "gethostname", lambda: "Someones-MacBook-Pro.local")
+    got = remotemod.lan_addresses(8321)
+    assert not any(".local.local" in a for a in got), got
+    assert any(a.endswith("Someones-MacBook-Pro.local:8321") for a in got), got
+
+    monkeypatch.setattr(socket, "gethostname", lambda: "plainbox")
+    assert any(a.endswith("plainbox.local:8321") for a in remotemod.lan_addresses(8321))
+
+
 # ------------------------------------------------------------------- the --if-running flag
 
 def _serve_arg(dest: str):

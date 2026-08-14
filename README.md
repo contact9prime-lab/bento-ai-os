@@ -272,30 +272,103 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 Then open **http://127.0.0.1:8321**, or run `bento setup` for the same nine steps in a terminal.
 
-| you want | run |
-|---|---|
-| answer yes to every optional component | `… \| sh -s -- --yes` |
-| reach it from your laptop/phone (binds `0.0.0.0`) | `… \| sh -s -- --passphrase='something long'` |
-| a specific interface | `… \| sh -s -- --passphrase='…' --bind=192.168.1.20` |
-| a specific port (saved, so the boot service uses it too) | `… \| sh -s -- --port=8080` |
-| a public server on `0.0.0.0:8080` | `… \| sh -s -- --passphrase='…' --bind=0.0.0.0 --port=8080` |
-| no launcher or boot service (containers, CI) | `… \| sh -s -- --no-service` |
-
-> **The `-s --` is not optional.** `curl … | sh --port=8080` hands the flag to `sh`, which
-> rejects it — the pipe leaves the script no arguments of its own. `-s --` says "the rest is
-> for the script".
-
-Ports below 1024 are refused to a non-root process on Linux (and to some addresses on macOS).
-Nothing guesses: `--port` tries the bind and, if the kernel says no, prints the `sysctl` line
-or the proxy option that fixes it. Later on, `bento remote --port 8080 --bind 0.0.0.0` does the
-same thing.
-
 It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
 was not there — open a new terminal afterwards).
 
+### Installing it on a chosen address and port
+
+On a server you reach over SSH, `127.0.0.1:8321` means "reachable by nothing". Give the
+installer a passphrase and an address and it comes up ready, with the boot service already
+pointed at the right port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=0.0.0.0 --port=8080
+```
+
+That machine now answers on **every** interface at port 8080, and asks for that passphrase
+before it will do anything. Local use through `127.0.0.1:8080` is unchanged.
+
+The installer says which of the two it left you with — `AgentOS is running` only when something
+is genuinely listening. On a box with no service manager to hand (a container, a non-systemd
+distro, SSH with no user D-Bus) it says so instead, and `bento service start` finishes the job.
+
+One interface rather than all of them — a private VLAN, a Tailscale address:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=192.168.1.20 --port=8080
+```
+
+Just a different port, still loopback-only:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --port=8080
+```
+
+> **`-s --` is not optional.** `curl … | sh --port=8080` hands the flag to `sh`, which rejects
+> it — a piped script gets no arguments of its own. `-s --` means "the rest is for the script".
+> This is the single most common way these flags get lost, and the error names `sh`, so it
+> reads as a broken installer.
+
+**All the flags:**
+
+| flag | what it does |
+|---|---|
+| `--passphrase=SECRET` | require this to sign in, and allow binding off loopback |
+| `--bind=ADDR` | which interface to listen on (default `0.0.0.0`); needs `--passphrase` |
+| `--port=N` | which port (default `8321`); saved to the config, so the boot service uses it |
+| `--yes` | answer yes to every optional component |
+| `--no-service` | no launcher and no boot service (containers, CI) |
+| `--no-verify` | skip the "prove it works" step |
+
+### Changing it afterwards
+
+Everything above lives in **`~/.agentos/config.json`** (or under `$AGENTOS_HOME`), and
+`bento config` reads and writes it without you having to find it:
+
+```bash
+bento config                       # the whole file, secrets masked
+bento config port                  # one setting
+bento config port 8080             # change it
+bento config remote.bind 0.0.0.0   # dotted paths for nested settings
+bento config --path                # where the file is
+bento config --edit                # open it in $EDITOR — refuses to save invalid JSON
+```
+
+`bento remote` is the same settings with the reachability ones grouped together:
+
+```bash
+bento remote --on --passphrase 'something long' --bind 0.0.0.0   # the address
+bento remote --port 8080                                          # the port
+bento remote                                                      # what it is now
+```
+
+**A port change does not reach an installed boot service by itself** — the systemd unit
+and the LaunchAgent bake it into `ExecStart`. Both commands tell you when that applies:
+
+```bash
+bento service install && bento service restart
+```
+
 > **Reachable from other machines is a deliberate choice, not a default.** Bento listens on
 > `127.0.0.1` only until you give it a passphrase, because the agent has a real shell — an open
-> port here is an open shell. `bento remote --on --passphrase '…'` does the same thing later.
+> port here is an open shell. `--bind` on its own is refused for that reason, and so is
+> `bento serve --host 0.0.0.0` with remote access off.
+
+**About ports below 1024.** They are refused to a non-root process on Linux, and on macOS the
+refusal is per-address — it grants `0.0.0.0:80` and denies `127.0.0.1:80`. So nothing here
+guesses from the number: `--port` attempts the real bind and, if the kernel says no, prints the
+`sysctl` line, the redirect rule, or the proxy option that fixes it. On Linux, port 80 usually
+means one command:
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
+sudo sysctl --system
+```
+
+Running the server as root is not advised — the agent has a real shell.
 
 <details>
 <summary><b>From a git checkout instead</b></summary>
@@ -418,6 +491,7 @@ loop, and that is the state worth being able to see.
 | `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
 | `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
 | `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
+| `uv run bento config [key] [value]` | read or change `~/.agentos/config.json` (`--edit`, `--path`) |
 | `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
 | `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |
 | `uv run bento apps search \| install \| remove` | native applications, from a terminal |

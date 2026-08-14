@@ -292,6 +292,14 @@ def lan_addresses(port: int) -> list[str]:
         pass
     try:
         host = socket.gethostname()
+        # `.local` is APPENDED, so a hostname that already carries it must not get a
+        # second one. macOS's gethostname() returns the mDNS name in full — this
+        # produced `http://Someones-MacBook-Pro.local.local:8321`, an address that
+        # resolves nowhere, printed as the way to reach the machine from a phone.
+        # Strip any trailing dot too: a fully-qualified name may end in one.
+        host = (host or "").rstrip(".")
+        if host.endswith(".local"):
+            host = host[: -len(".local")]
         if host and not host.startswith("localhost"):
             out.append(f"http://{host}.local:{port}")
     except Exception:

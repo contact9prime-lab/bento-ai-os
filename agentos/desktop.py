@@ -102,6 +102,43 @@ def _port() -> int:
     return cfgmod.load_config().get("port", 8321)
 
 
+def where_it_answers(port: int) -> list[str]:
+    """Every address this machine really answers on, as lines to print.
+
+    `http://127.0.0.1:{port}` was hardcoded into the install and status output. On a
+    box configured for `bind: 0.0.0.0` that is not wrong — loopback does answer — but
+    it is the whole truth only on a loopback-only machine, and somebody who has just
+    set up a server to be reachable reads it as "my bind setting was ignored". It is
+    the one line they check to find out whether the thing they configured took effect.
+
+    Loopback comes first regardless, because it is the address that always works and
+    the one to click on the machine itself.
+    """
+    from . import config as cfgmod
+    from . import remote as remotemod
+
+    lines = [f"http://127.0.0.1:{port}"]
+    try:
+        cfg = cfgmod.load_config()
+        host = remotemod.bind_host(cfg)          # loopback unless remote is really on
+        if not remotemod.is_loopback(host):
+            lines.append(f"bound to {host} — also reachable at:")
+            lines += [f"  {a}" for a in remotemod.lan_addresses(port)]
+        elif not remotemod.is_loopback((cfg.get("remote") or {}).get("bind") or ""):
+            # A `bind` is configured and is NOT being used, because remote access is
+            # off. That is the correct, deliberate behaviour — `bind_host()` refuses
+            # to leave loopback without a lock — but the setting sitting in
+            # config.json says otherwise, and the only way to discover which one won
+            # was to compare `cat config.json` against this line and guess. Say it.
+            lines.append(f"loopback only — remote.bind is "
+                         f"{(cfg.get('remote') or {}).get('bind')}, but remote access "
+                         f"is off, so it is not in use")
+            lines.append("  turn it on:  bento remote --on --passphrase '<something long>'")
+    except Exception:
+        pass                                      # a display nicety must never break a start
+    return lines
+
+
 def _server_up(port: int) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.6):
@@ -702,8 +739,15 @@ exec "{python}" -m agentos app
 </dict></plist>
 """)
         ok, out = _mac_load_agent(MAC_SERVER_PLIST)
-        print(f"✓ LaunchAgent    {MAC_SERVER_PLIST} — server starts at login"
-              if ok else f"! LaunchAgent written but not loaded: {out}")
+        if not ok:
+            print(f"! LaunchAgent written but not loaded: {out}")
+        elif _wait_for(lambda: _server_up(port), 20):
+            print(f"✓ LaunchAgent    {MAC_SERVER_PLIST} — server starts at login")
+        else:
+            # Same trap as the systemd branch: `launchctl bootstrap` returning 0
+            # means launchd took the job, not that the server bound the port.
+            print(f"! LaunchAgent    loaded, but nothing is answering on port {port}")
+            print(f"      why:  bento service logs")
 
     if open_at_login:
         enable_login_app(True)
@@ -777,10 +821,31 @@ WantedBy=default.target
         print(f"✓ systemd unit   {SERVICE_FILE}")
         ok, out = _run(["systemctl", "--user", "daemon-reload"])
         ok2, out2 = _run(["systemctl", "--user", "enable", "--now", f"{APP_ID}.service"])
-        if ok and ok2:
-            print(f"✓ service        enabled + started (http://127.0.0.1:{port})")
-        else:
+        if not (ok and ok2):
             print(f"! service setup incomplete: {out or out2}")
+        else:
+            # `systemctl enable --now` exiting 0 means systemd ACCEPTED the job, not
+            # that the server came up. A unit whose ExecStart cannot bind — port 80
+            # without privilege is the everyday case — leaves systemctl returning 0
+            # while the service dies, retries on RestartSec, and dies again. This
+            # printed "✓ service enabled + started (http://127.0.0.1:80)" on a
+            # machine where nothing would ever answer, and the next thing the user
+            # saw was `bento` refusing to bind the very same port.
+            if _wait_for(lambda: _server_up(port), 20):
+                where = where_it_answers(port)
+                print(f"✓ service        enabled + started ({where[0]})")
+                for extra in where[1:]:
+                    print(f"                 {extra}")
+            else:
+                active, _ = _run(["systemctl", "--user", "is-active",
+                                  f"{APP_ID}.service"])
+                print(f"! service        enabled, but nothing is answering on port "
+                      f"{port}{' (the unit is not active)' if not active else ''}")
+                _, journal = _run(["journalctl", "--user", "-u", f"{APP_ID}.service",
+                                   "-n", "6", "--no-pager", "-o", "cat"])
+                for line in (journal or "").splitlines()[-6:]:
+                    print(f"      {line}")
+                print(f"      why:  bento service logs")
         # user services normally start at login; linger makes them start at boot
         lok, _ = _run(["loginctl", "enable-linger", os.environ.get("USER", "")])
         print("✓ boot start     linger enabled — server starts at boot, even before login"

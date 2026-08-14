@@ -116,6 +116,8 @@ esac
 # directory already existing when the shell started — which, on a first install,
 # it did not.
 ORIG_PATH="$PATH"
+# Set when a shell rc had to be edited, and printed as a required step at the end.
+SOURCE_ME=""
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!  %s\033[0m\n' "$*"; }
@@ -419,15 +421,25 @@ if [ -z "$ON_PATH" ]; then
   # shell is zsh with no ~/.zshrc got NOTHING written and no error, which is the
   # same "installed but not found" this block exists to prevent.
   case "${SHELL:-}" in
-    */zsh)  want="$HOME/.zshrc" ;;
+    # Two files for zsh, because its split is the one that bites: .zshrc covers the
+    # interactive terminal, .zprofile covers login (which is what SSH gives you).
+    */zsh)  want="$HOME/.zshrc $HOME/.zprofile" ;;
     */bash) want="$HOME/.bashrc" ;;
     */fish) want="" ;;          # different syntax entirely; handled in the gap below
     *)      want="$HOME/.profile" ;;
   esac
-  [ -n "$want" ] && [ ! -f "$want" ] && : > "$want"
+  for w in $want; do
+    [ -f "$w" ] || : > "$w"
+  done
 
+  # `.zprofile` is in this list because `.zshrc` is not enough on its own: zsh reads
+  # it for INTERACTIVE shells only. A zsh user typing in a terminal is fine, but
+  # `ssh host 'bento service status'` — a login, non-interactive shell — reads
+  # .zshenv/.zprofile/.zlogin and never .zshrc, so the command was still not found
+  # over SSH, which is exactly where a headless machine is driven from. bash has the
+  # mirror-image split and `.profile` already covers its login side.
   added=""
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.profile"; do
     [ -f "$rc" ] || continue
     if grep -q 'added by AgentOS installer' "$rc" 2>/dev/null; then
       added="$added $rc(already)"
@@ -438,7 +450,22 @@ if [ -z "$ON_PATH" ]; then
   done
   if [ -n "$added" ]; then
     say "added $BIN to your PATH in:$added"
-    gap "open a new terminal (or \`. ~/.bashrc\`) before \`bento\` works in this one"
+    # Name the file THIS user's shell actually reads. The message was hardcoded to
+    # `. ~/.bashrc`, which is wrong for the zsh users who are the default on macOS
+    # and common on Linux — they ran it, nothing changed, and the next step was to
+    # work out for themselves that they wanted ~/.zshrc. A script cannot source
+    # anything into the shell that invoked it (that is what makes this a gap and
+    # not a step), so the least it can do is print the exact line to paste.
+    case "${SHELL:-}" in
+      */zsh)  rc_now="$HOME/.zshrc" ;;
+      */bash) rc_now="$HOME/.bashrc" ;;
+      *)      rc_now="$HOME/.profile" ;;
+    esac
+    # Also carried to the closing block: it is the single next thing the user has to
+    # do, and a line buried in a list headed "working, with these gaps" is not where
+    # a required step belongs.
+    SOURCE_ME="$rc_now"
+    gap "\`bento\` is not on the PATH of THIS shell yet — see the line above the gaps"
   else
     gap "add this to your shell profile:  export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
@@ -585,10 +612,19 @@ esac
 # locked is a running server, not a broken one.
 listening() { [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://${PROBE_HOST}:${PORT}/api/platform" 2>/dev/null)" != "000" ]; }
 
+# Whether anything is actually listening when this script ends. The last lines used
+# to print "✓ AgentOS is running." whenever the service step had been ATTEMPTED —
+# so a box with no systemd (a container, a non-systemd distro, SSH with no user bus)
+# reported the service failing to come up in the middle and then claimed it was
+# running four lines later. Both sentences were on the screen at once. This variable
+# is the one that gets the last word.
+RUNNING=""
+
 if [ "$SERVICE" = 0 ]; then
   say "not started (--no-service) — run it with: cd $DIR && uv run bento serve"
 elif listening; then
   ok "already serving on ${PROBE_HOST}:${PORT}"
+  RUNNING=1
 else
   say "starting the service"
   case "$(uname -s)" in
@@ -599,10 +635,13 @@ else
   while [ "$i" -lt 20 ] && ! listening; do i=$((i + 1)); sleep 1; done
   if listening; then
     ok "serving on ${PROBE_HOST}:${PORT}"
+    RUNNING=1
   else
     # Not a failure of the install — step 5 already proved it runs. This is the
-    # service manager, which is a different problem with a different fix.
-    gap "the background service did not come up; start it yourself with: cd $DIR && uv run bento serve"
+    # service manager, which is a different problem with a different fix, and
+    # `bento service start` now performs it on whichever supervisor exists (or
+    # none, in which case it starts the server directly and says so).
+    gap "the background service did not come up; start it with: bento service start"
     warn "installed and working, but not running as a service yet"
   fi
 fi
@@ -623,12 +662,22 @@ uv run bento doctor || true
 # done
 # ---------------------------------------------------------------------------
 echo
-if [ "$SERVICE" = 1 ]; then
+# Reports what step 6 FOUND, not what it attempted. `[ "$SERVICE" = 1 ]` was the
+# test, so a machine where the service demonstrably failed to start was still told
+# "AgentOS is running" — the exact shape of lie this installer's step 5 exists to
+# prevent, printed by the last line of the same script.
+if [ -n "$RUNNING" ]; then
   ok "AgentOS is running."
+elif [ "$SERVICE" = 1 ]; then
+  ok "AgentOS is installed — but nothing is listening yet."
 else
   ok "AgentOS is installed (nothing was started — --no-service)."
 fi
-echo "   open:       http://${PROBE_HOST}:${PORT}"
+if [ -n "$RUNNING" ]; then
+  echo "   open:       http://${PROBE_HOST}:${PORT}"
+else
+  echo "   start it:   bento service start        — then http://${PROBE_HOST}:${PORT}"
+fi
 echo "   terminal:   bento tui          — the whole OS over SSH"
 echo "   set it up:  bento setup        — the same nine steps as the desktop"
 echo "   check:      bento doctor"
@@ -646,6 +695,18 @@ echo "   from your phone/laptop:  bento remote --on --passphrase '<something lon
 if [ -n "$OS_SESSION" ]; then
   echo "   as your desktop:  bento install-session   (then pick AgentOS at login)"
 fi
+# Last, and on its own, because every `bento …` line above is unreachable until it is
+# done — so it reads as the step that unlocks the rest, which is what it is. A script
+# cannot put a directory on the PATH of the shell that ran it: the export happens in a
+# child process and dies with it. So this really is the user's step, and the job here
+# is to make it one line they can paste, naming the file their own shell reads.
+if [ -n "$SOURCE_ME" ]; then
+  echo
+  printf '\033[36m▲ one step left — this shell has not got `bento` on its PATH yet:\033[0m\n'
+  printf '\033[1m     source %s\033[0m\n' "$SOURCE_ME"
+  echo "   (or just open a new terminal — new shells will pick it up by themselves)"
+fi
+
 if [ -n "$GAPS" ]; then
   echo
   warn "working, with these gaps:"

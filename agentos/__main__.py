@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -1660,6 +1662,196 @@ def _display_url(host: str, port: int) -> str:
     return f"http://{'127.0.0.1' if host in ('0.0.0.0', '::', '') else host}:{port}"
 
 
+# Keys whose VALUE must never be printed. Matched on the key name, anywhere in the
+# tree, deny-by-default — not an allowlist of known-secret paths.
+#
+# The allowlist is what /api/config does, and it has already drifted: it masks the
+# provider keys, the Telegram token and the GitHub token, and prints `remote.pass_hash`
+# and every MCP server's credentials in full. A name-pattern rule covers the provider
+# added next week without anybody remembering to come back here, and the cost of a
+# false positive is one `--raw` away.
+_SECRET_HINTS = ("key", "token", "secret", "password", "passphrase", "pass_hash",
+                 "pass_salt", "credential", "auth", "cookie", "session")
+
+
+def _looks_secret(key: str) -> bool:
+    k = key.lower()
+    return any(h in k for h in _SECRET_HINTS)
+
+
+def _redact(value, key: str = ""):
+    """A copy of `value` with anything secret-looking masked, preserving shape."""
+    if isinstance(value, dict):
+        return {k: ("•••" + str(v)[-4:] if _looks_secret(k) and isinstance(v, str) and v
+                    else _redact(v, k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(v, key) for v in value]
+    if _looks_secret(key) and isinstance(value, str) and value:
+        return "•••" + value[-4:]
+    return value
+
+
+def _dig(cfg: dict, path: str):
+    """Fetch a dotted path. Raises KeyError naming the part that was missing."""
+    cur = cfg
+    for i, part in enumerate(path.split(".")):
+        if not isinstance(cur, dict) or part not in cur:
+            raise KeyError(".".join(path.split(".")[:i + 1]))
+        cur = cur[part]
+    return cur
+
+
+def _plant(cfg: dict, path: str, value) -> None:
+    parts = path.split(".")
+    cur = cfg
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def _config_cli(args) -> int:
+    """`bento config` — read and change the settings file from a terminal.
+
+    The file has always been there (`~/.agentos/config.json`, or under AGENTOS_HOME),
+    but every documented way to change it was a GUI panel or a command that happened
+    to own one key — so "change the port" meant `bento remote --port`, which is
+    filed under remote access and is not where anybody looks. Editing the JSON by
+    hand works and is what people were doing; the failure mode is that a typo makes
+    the file unparseable and the server then will not start, with no clue which
+    edit did it. This validates before it writes.
+    """
+    import json as _json
+
+    from . import config as cfgmod
+
+    path = cfgmod.CONFIG_PATH
+    if args.path:
+        print(path)
+        return 0
+
+    if args.edit:
+        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "nano"
+        if not shutil.which(editor.split()[0]):
+            print(f"{editor} is not installed. Set $EDITOR, or edit {path} directly.")
+            return 1
+        # `load_config()` reads and merges defaults; it does NOT write. On a machine
+        # where nothing has saved yet there is no file to open, and $EDITOR on a
+        # missing path is a blank buffer — save an empty edit and the defaults are
+        # replaced by nothing. Materialise it first so what you see is what is live.
+        if not path.exists():
+            cfgmod.save_config(cfgmod.load_config())
+        before = path.read_text()
+        subprocess.run([*editor.split(), str(path)], check=False)
+        after = path.read_text() if path.exists() else ""
+        if after == before:
+            print("unchanged")
+            return 0
+        # The whole reason to wrap $EDITOR rather than tell people the path: a
+        # half-typed comma leaves a file the server cannot read, and the next thing
+        # it does is fail to start for a reason that names JSON, not the edit.
+        try:
+            _json.loads(after)
+        except Exception as e:
+            path.write_text(before)
+            print(f"✗ that left invalid JSON: {e}")
+            print(f"  your edit was NOT kept — {path} is back as it was.")
+            return 1
+        print(f"✓ saved {path}")
+        print("  restart to pick it up:  bento service restart")
+        return 0
+
+    cfg = cfgmod.load_config()
+
+    if not args.key:                                # show everything
+        print(_json.dumps(_redact(cfg) if not args.raw else cfg,
+                          indent=2, sort_keys=True, ensure_ascii=False))
+        if not args.raw:
+            print(f"\n  secrets masked; --raw shows them.  file: {path}", file=sys.stderr)
+        return 0
+
+    if args.value is None:                          # show one key
+        try:
+            got = _dig(cfg, args.key)
+        except KeyError as missing:
+            print(f"no such setting: {missing.args[0]}")
+            near = [k for k in cfg if args.key.split(".")[0] in k]
+            if near:
+                print(f"  did you mean: {', '.join(sorted(near))}")
+            return 1
+        got = got if args.raw else _redact(got, args.key.split(".")[-1])
+        print(got if isinstance(got, str)
+              else _json.dumps(got, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+
+    # set. JSON first so `true`, `8080` and `["a"]` arrive as the types they look
+    # like; anything else is the string it was typed as, which is what makes
+    # `bento config remote.bind 0.0.0.0` work without quoting rules.
+    try:
+        value = _json.loads(args.value)
+    except Exception:
+        value = args.value
+
+    if args.key == "port":
+        if not isinstance(value, int):
+            print(f"port must be a number, not {args.value!r}")
+            return 1
+        _set_port(cfg, value)
+    else:
+        _plant(cfg, args.key, value)
+
+    cfgmod.save_config(cfg)
+    shown = "•••" if _looks_secret(args.key.split(".")[-1]) else _json.dumps(value)
+    print(f"✓ {args.key} = {shown}")
+    if args.key == "port":
+        _port_change_epilogue(value)
+    else:
+        print("  restart to pick it up:  bento service restart")
+    return 0
+
+
+def _set_port(cfg: dict, port: int) -> None:
+    """Put `port` into cfg (NOT saved here) and say anything true about it.
+
+    One copy, called by both `bento remote --port` and `bento config port`, because
+    two commands that set the same key must not disagree about whether it is valid,
+    whether it can be bound, or whether the boot service still points at the old one.
+    A second copy is how one of them ends up silently skipping the service warning.
+    """
+    from . import remote as remotemod
+
+    if not 1 <= port <= 65535:
+        print(f"port must be 1–65535, not {port}")
+        sys.exit(1)
+    cfg["port"] = port
+    # Saved either way — the setting is the user's to make, and a port that is merely
+    # busy right now is a perfectly good port to configure. But a bind the kernel will
+    # refuse is a service that never starts, and finding that out here beats finding
+    # it out from a unit in a restart loop.
+    kind, why = _bind_problem(remotemod.bind_host(cfg), port)
+    if kind == "denied":
+        print(f"! saved, but this machine will not let AgentOS listen on {port} "
+              f"as things stand:")
+        print(why)
+
+
+def _port_change_epilogue(port: int) -> None:
+    """Said after the save, because the unit/plist bakes the port into ExecStart.
+
+    A port change that only touched config.json takes effect for `bento serve` and
+    silently not for the service, and the two then disagree about which port this
+    machine answers on — the hardest kind of "it works for me".
+    """
+    from . import desktop
+
+    if desktop.autostart_installed():
+        print("  the boot service still starts the old port — "
+              "update it with:  bento service install && bento service restart")
+
+
 def _remote_cli(args):
     """`agentos remote` — the headless equivalent of Settings → Remote access,
     for machines you only ever reach over SSH (a Pi, a server)."""
@@ -1676,19 +1868,7 @@ def _remote_cli(args):
     # change it for good was to edit config.json by hand: `serve --port` lasts one
     # run, and the systemd unit bakes in whatever the config said at install time.
     if args.port:
-        if not 1 <= args.port <= 65535:
-            print(f"port must be 1–65535, not {args.port}")
-            sys.exit(1)
-        cfg["port"] = args.port
-        # Saved either way — the setting is the user's to make, and a port that is
-        # merely busy right now is a perfectly good port to configure. But a bind the
-        # kernel will refuse is a service that never starts, and finding that out
-        # here beats finding it out from a unit in a restart loop.
-        kind, why = _bind_problem(remotemod.bind_host(cfg), args.port)
-        if kind == "denied":
-            print(f"! saved, but this machine will not let AgentOS listen on"
-                  f" {args.port} as things stand:")
-            print(why)
+        _set_port(cfg, args.port)
 
     pw = args.passphrase
     if args.on and not pw and not r.get("pass_hash"):
@@ -1714,15 +1894,8 @@ def _remote_cli(args):
     if args.on or args.off or pw or args.bind or args.port:
         remotemod.sanitize_remote(cfg)
         cfgmod.save_config(cfg)
-        # The unit/plist bakes the port into ExecStart, so a port change that only
-        # touched config.json would take effect for `bento serve` and silently not
-        # for the service — the two would then disagree about which port this
-        # machine answers on, which is the hardest kind of "it works for me".
         if args.port:
-            from . import desktop
-            if desktop.autostart_installed():
-                print(f"  the boot service still starts the old port — "
-                      f"re-run `bento service install` to update it")
+            _port_change_epilogue(args.port)
 
     st = remotemod.status(cfg)
     print(f"remote access: {'ON' if st['enabled'] else 'off'}"
@@ -1900,9 +2073,13 @@ def _service_cli(args) -> int:
               + (f"  (pid {st['pid']})" if st["pid"] else ""))
         if st["enabled"] is not None:
             print(f"  at boot:     {'yes' if st['enabled'] else 'no'}")
-        print(f"  port {st['port']}:   "
-              + ("answering — http://127.0.0.1:%d" % st["port"] if st["answering"]
-                 else "nothing listening"))
+        if st["answering"]:
+            where = desktop.where_it_answers(st["port"])
+            print(f"  port {st['port']}:   answering — {where[0]}")
+            for extra in where[1:]:
+                print(f"               {extra}")
+        else:
+            print(f"  port {st['port']}:   nothing listening")
         # The disagreement is the interesting case, so name it rather than leaving
         # two lines that quietly contradict each other.
         if st["running"] and not st["answering"]:
@@ -2344,6 +2521,23 @@ def main():
     p_user.add_argument("--wipe", action="store_true",
                         help="remove: also delete their home directory and everything in it")
 
+    # The settings file, from a terminal. It has always existed and every documented
+    # way to change it was a GUI panel or a command that happened to own one key —
+    # so "change the port" lived under `bento remote`, which is filed under remote
+    # access and is not where anybody looks for it.
+    p_cfg = sub.add_parser("config",
+                           help="show or change settings (~/.agentos/config.json)")
+    p_cfg.add_argument("key", nargs="?", default="",
+                       help="dotted, e.g. port, remote.bind, telegram.enabled "
+                            "(omit to show everything)")
+    p_cfg.add_argument("value", nargs="?", default=None,
+                       help="the new value (omit to just show it)")
+    p_cfg.add_argument("--raw", action="store_true",
+                       help="do not mask API keys, tokens and passphrase hashes")
+    p_cfg.add_argument("--path", action="store_true", help="print the file's location")
+    p_cfg.add_argument("--edit", action="store_true",
+                       help="open it in $EDITOR; refuses to save invalid JSON")
+
     p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -2466,6 +2660,8 @@ def main():
         _job_cli(args)
     elif args.cmd == "user":
         _user_cli(args)
+    elif args.cmd == "config":
+        raise SystemExit(_config_cli(args))
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":
