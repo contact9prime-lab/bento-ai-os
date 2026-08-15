@@ -167,9 +167,36 @@ esac
 # ---------------------------------------------------------------------------
 say "checking the network"
 net_ok=""
-for probe in https://astral.sh https://github.com; do
+# Ask about the hosts this install ACTUALLY uses, not two homepages. The list was
+# `astral.sh github.com`, and it had three faults that only appear on somebody
+# else's network:
+#
+#   · it asked astral.sh even when uv was already installed. That host exists to
+#     INSTALL uv, and step 2 below skips the download when uv is present — so the
+#     one probe that could veto the install was for something we did not need.
+#   · it asked github.com's HOMEPAGE rather than the git endpoint it clones from,
+#     so the probe and the operation it stands in for were different requests to
+#     different services.
+#   · it never asked PyPI, which `uv sync` genuinely cannot proceed without.
+#
+# And `curl -f` fails on any 4xx, so anything that answers a bare GET with 403 —
+# a corporate proxy, a CI network policy, a captive portal — made this abort an
+# install that would have worked, under a message telling the user to check their
+# wifi. Wrong diagnosis, and the one it hands out is unfalsifiable from where the
+# user is standing.
+probes="https://api.github.com https://pypi.org"
+command -v uv >/dev/null 2>&1 || probes="https://astral.sh $probes"
+for probe in $probes; do
   if curl -fsS -m 12 -o /dev/null "$probe" 2>/dev/null; then net_ok=1; break; fi
 done
+# A reachable git remote is proof by itself, and it is the only probe that tests
+# the URL actually about to be cloned — so an AGENTOS_REPO override is checked
+# rather than assumed. GIT_TERMINAL_PROMPT=0 because a repo git cannot see is a
+# CREDENTIAL PROMPT, not an error (the note at the top of this file is the whole
+# story), and a prompt here would hang an unattended install forever.
+if [ -z "$net_ok" ] && command -v git >/dev/null 2>&1; then
+  GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$REPO" >/dev/null 2>&1 && net_ok=1
+fi
 
 if [ -z "$net_ok" ]; then
   warn "no internet connection — everything below needs one."
