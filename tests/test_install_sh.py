@@ -239,3 +239,56 @@ def test_the_installer_proves_the_shim_runs_before_advertising_it():
     successful install. The command it prints at the end deserves the same bar."""
     assert re.search(r'if "\$BIN/bento" --help', SRC), (
         "install.sh announces the `bento` command without ever running it")
+
+
+# ------------------------------------------- 3. the network preflight must be honest
+#
+# This gate can only ever be wrong in one direction that matters. A false PASS
+# costs a clear error a few seconds later, from whichever step actually needed the
+# network. A false FAIL refuses the whole install and blames the user's wifi — and
+# it did, on every network whose proxy answers a bare GET with 403.
+
+def test_the_preflight_probes_the_package_index_it_installs_from():
+    """`uv sync` cannot proceed without PyPI, and the old probe list never asked."""
+    assert re.search(r'probes=".*pypi\.org', SRC), (
+        "the network preflight no longer probes PyPI, which is the one host the "
+        "dependency install genuinely requires")
+
+
+def test_the_preflight_does_not_veto_on_astral_when_uv_is_already_here():
+    """astral.sh exists to INSTALL uv. Probing it when uv is present lets a host we
+    have no use for decide the install cannot happen."""
+    guarded = _lineno(r'command -v uv .*\|\| probes=".*astral\.sh')
+    assert guarded, (
+        "astral.sh is probed unconditionally again — a machine that already has uv "
+        "is refused because a host it will never contact is unreachable")
+    unconditional = _lineno(r'^\s*for probe in .*astral\.sh')
+    assert not unconditional, (
+        f"line {unconditional} probes astral.sh unconditionally in the loop itself")
+
+
+def test_the_git_remote_is_accepted_as_proof_of_a_working_network():
+    """The clone is the one operation this script cannot skip, so a remote that
+    answers is better evidence than any homepage — and it is the only probe that
+    tests an AGENTOS_REPO override rather than assuming it."""
+    assert re.search(r'git ls-remote --heads "\$REPO"', SRC), (
+        "the git-remote fallback is gone; the preflight is back to judging the "
+        "network by hosts it does not clone from")
+
+
+def test_the_git_probe_cannot_hang_on_a_credential_prompt():
+    """A repo git cannot see is answered with a username prompt, not a 404 — the note
+    at the top of install.sh is that incident. Unattended, that prompt is a hang."""
+    assert re.search(r'GIT_TERMINAL_PROMPT=0 git ls-remote', SRC), (
+        "the git probe can prompt for credentials, which hangs a piped install")
+
+
+def test_the_git_fallback_runs_after_the_cheap_probes_not_before():
+    """Ordering: curl against a CDN is milliseconds, a git handshake is not. The
+    fallback is for when the cheap answer was wrong, so it must come second."""
+    curl_probe = _lineno(r'^\s*for probe in \$probes')
+    git_probe = _lineno(r'git ls-remote --heads "\$REPO"')
+    assert curl_probe and git_probe, "the preflight has changed shape"
+    assert curl_probe < git_probe, (
+        f"the git handshake on line {git_probe} runs before the cheap curl probes "
+        f"on line {curl_probe}, so every install pays for it")
