@@ -400,6 +400,10 @@ def prepare_build(workspace: str, name: str, existing_html: str = "") -> dict:
     way a person does instead — write the file, read it, run it back, fix it —
     for as many steps as it needs, because the app is a FILE the whole time
     rather than one enormous message it has to get right first try.
+
+    `spec` and `review` are files for the same reason the app is: a plan that
+    exists only in one turn's context is gone by the turn that should have built
+    against it, and a review nobody wrote down is a review nobody applied.
     """
     d = Path(build_dir(workspace, name))
     d.mkdir(parents=True, exist_ok=True)
@@ -409,24 +413,140 @@ def prepare_build(workspace: str, name: str, existing_html: str = "") -> dict:
     elif not path.exists():
         path.write_text("", encoding="utf-8")
     return {"dir": str(d), "path": str(path),
+            "spec": str(d / "SPEC.md"), "review": str(d / "REVIEW.md"),
             "before": path.read_text(encoding="utf-8", errors="replace")}
 
 
-def build_task(prompt: str, co: dict, persona: str) -> str:
-    """The brief handed to an executor building an AgentOS app."""
+def _deliverable(co: dict) -> str:
+    return (
+        f"You are building this app as a FILE: {co['path']}\n"
+        "One self-contained HTML document, all CSS and JS inline, no external assets.\n"
+        "AgentOS installs that file as the app, so the FILE is the deliverable —\n"
+        "nothing you print in chat is installed.\n"
+    )
+
+
+def plan_task(prompt: str, co: dict, persona: str, existing: bool = False) -> str:
+    """Stage 1 — decide what the app IS before any of it is written.
+
+    The persona already asks for a spec, "silently", inside the same turn that
+    builds. That is the one instruction a model reliably skips: there is nothing
+    to show for it and the build is right there. Making it a FILE makes skipping
+    it visible, and gives stage 3 something to review against other than its own
+    opinion of what the user probably wanted.
+    """
+    return (
+        f"{persona}\n\n"
+        "=== THIS TURN: SPEC ONLY. DO NOT WRITE THE APP. ===\n"
+        f"Write a short spec to {co['spec']} — markdown, well under 100 lines:\n"
+        "  1. What it is, in one sentence.\n"
+        "  2. DESKTOP SURFACE — the sections/cards, and every user action.\n"
+        "  3. WIDGET SURFACE — the ONE glanceable fact, and at most one action.\n"
+        "     It must be readable at S (260x170). Say what it shows when empty.\n"
+        "  4. DATA — the exact appData shape, as a JSON sketch. Name every field.\n"
+        "  5. AI — which of appLLM.stream / appChat / appAgent this app uses and\n"
+        "     for what. 'None' is not an answer; if nothing obvious fits, the app\n"
+        "     is missing a feature and you should say which one you are adding.\n"
+        "  6. LIVE DATA — any appTool calls, with the tool name and why.\n"
+        "  7. STATES — what empty, loading and error look like, per section.\n"
+        "  8. PERMISSIONS — the {action, resource, reason, required} list.\n"
+        + ("\nThis is a REFINEMENT of an app that already exists. Read the current\n"
+           f"{co['path']} FIRST and spec the change, not a rewrite from nothing.\n"
+           if existing else "")
+        + "\nIf the request is one line, fill in the obvious app around it — a spec that\n"
+          "only restates the request has done nothing. Then STOP; the next turn builds.\n\n"
+        f"=== WHAT THE USER ASKED FOR ===\n{prompt}\n"
+    )
+
+
+def build_task(prompt: str, co: dict, persona: str, spec: str = "") -> str:
+    """Stage 2 — build it. The brief handed to an executor building an AgentOS app."""
     return (
         f"{persona}\n\n"
         "=== HOW TO DELIVER IT HERE ===\n"
-        f"You are building this app as a FILE: {co['path']}\n"
-        "Write the complete app there — one self-contained HTML document, all CSS and\n"
-        "JS inline, no external assets. AgentOS installs that file as the app when you\n"
-        "finish, so the file IS the deliverable; nothing you print in chat is installed.\n"
-        "Work like an engineer, not a one-shot generator: write it, read it back, check\n"
-        "the JS for the mistakes listed above, and keep going until it is genuinely\n"
-        "finished and would survive a demo. Do not stop at a sketch or a TODO, and do\n"
-        "not ask whether to continue — finish it.\n\n"
-        f"=== WHAT TO BUILD ===\n{prompt}\n"
+        + _deliverable(co)
+        + "Work like an engineer, not a one-shot generator: write it, read it back, check\n"
+          "the JS for the mistakes listed above, and keep going until it is genuinely\n"
+          "finished and would survive a demo. Do not stop at a sketch or a TODO, and do\n"
+          "not ask whether to continue — finish it.\n"
+        + (f"\n=== BUILD EXACTLY THIS SPEC ===\nIt is also on disk at {co['spec']}.\n"
+           f"Every section of it must exist in the app. If you decide to depart from the\n"
+           f"spec, update the spec file too so the review reads the truth.\n\n{spec}\n"
+           if spec else "")
+        + f"\n=== WHAT THE USER ASKED FOR ===\n{prompt}\n"
     )
+
+
+def review_task(co: dict, persona: str, findings: str = "") -> str:
+    """Stage 3 — read the built app back adversarially, and write down what is wrong.
+
+    Deliberately does NOT fix anything. A turn asked to find and fix problems finds
+    the ones it already knows how to fix; splitting the two is what makes the search
+    honest. The mechanical findings are handed over as a floor, not a ceiling — they
+    are the defects a regex can see, and the point of this stage is the rest.
+    """
+    return (
+        f"{persona}\n\n"
+        "=== THIS TURN: REVIEW ONLY. CHANGE NOTHING. ===\n"
+        f"Read {co['path']} and, if it exists, {co['spec']}.\n"
+        f"Write your findings to {co['review']} as a markdown checklist.\n\n"
+        "Review it as the person who has to USE it tomorrow, not as its author:\n"
+        "  · Open it mentally at a cold start, with no saved data. What do you see?\n"
+        "    An empty pane with no guidance is a defect, not a state.\n"
+        "  · Pin it as a WIDGET at size S (260x170). Is the widget view the one fact\n"
+        "    worth glancing at, and does it fit without scrolling?\n"
+        "  · Every button: does it do something, and does the UI say when it worked?\n"
+        "  · Every async path: loading state, error state, and what happens when the\n"
+        "    tool returns something unexpected.\n"
+        "  · Does anything the spec promised not exist? Quote the spec line.\n"
+        "  · Read the JS as a parser would. Ids referenced that are never created,\n"
+        "    handlers naming undefined functions, await outside async.\n\n"
+        "For each finding write one line: the defect, then the concrete change.\n"
+        "If something is genuinely fine, do not pad the list — an honest short review\n"
+        "beats a long one. End the file with a line `VERDICT: ship` or `VERDICT: fix`.\n"
+        + (f"\n=== MECHANICAL CHECKS ALREADY FOUND THESE ===\n{findings}\n"
+           "They are real; include them. They are also only what a regex can see —\n"
+           "the reason a human reviews is everything below that line.\n" if findings else "")
+    )
+
+
+def fix_task(co: dict, persona: str, review: str = "", findings: str = "") -> str:
+    """Stage 4 — apply the review. Still the same file; still the deliverable."""
+    return (
+        f"{persona}\n\n"
+        "=== THIS TURN: FIX. ===\n"
+        + _deliverable(co)
+        + f"\nApply every finding in {co['review']} to {co['path']}.\n"
+          "Fix the app; do not rewrite it from scratch and do not lose working features.\n"
+          "When you are done, read the file back once more and confirm each finding is\n"
+          "actually addressed. Do not ask whether to continue — finish it.\n"
+        + (f"\n=== THE REVIEW ===\n{review}\n" if review else "")
+        + (f"\n=== MECHANICAL CHECKS ===\n{findings}\n" if findings else "")
+    )
+
+
+def read_side_file(co: dict, key: str, limit: int = 12_000) -> str:
+    """A stage's written output (`spec` / `review`), or '' if it never wrote one.
+
+    Empty is a normal answer, not an error: a stage that skipped its file is a stage
+    whose output the next one simply does without, and the build must not stop for it.
+    """
+    try:
+        text = Path(co[key]).read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        return ""
+    return text[:limit]
+
+
+def review_says_ship(review: str) -> bool:
+    """Did the review conclude there is nothing to fix?
+
+    Only an explicit `VERDICT: ship` counts. A missing verdict means the reviewer did
+    not follow the brief, and the safe reading of that is 'unknown', not 'fine' —
+    skipping the fix pass on a review nobody can parse is how a broken app ships
+    because the check malfunctioned.
+    """
+    return re.search(r"^\s*VERDICT:\s*ship\b", review or "", re.I | re.M) is not None
 
 
 def read_build(co: dict) -> tuple[str, str]:

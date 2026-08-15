@@ -213,6 +213,54 @@ def _take_the_port(url: str, supervised: bool, port: int, host: str) -> int:
     raise SystemExit(3)
 
 
+def _server_answers(port: int, timeout: float = 1.5) -> bool:
+    """Is the server up AND serving the desktop — not merely holding the port?
+
+    Uvicorn does not accept connections until the FastAPI startup hook has finished,
+    so a completed HTTP request means the whole stack is live: config, database,
+    routes. Anything under 500 counts, and 401 counts too — a machine with accounts
+    is locked, and locked is running.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform",
+                                    timeout=timeout) as r:
+            return r.status < 500
+    except urllib.error.HTTPError as e:
+        return e.code < 500
+    except Exception:
+        return False
+
+
+def _open_when_ready(url: str, port: int, timeout: float = 90.0) -> None:
+    """Open the browser once the server answers, in a thread — never on a timer.
+
+    This was `threading.Timer(1.2, …)`: open the browser 1.2 seconds from now and hope.
+    On the machine it was written on the server was up by then. On a first run — an
+    empty database to create, a cold import, a Pi — it is not, so the browser arrives
+    at a connection-refused page for a server that comes up two seconds later and
+    works perfectly. Nothing is broken and there is nothing to fix; the tab is just
+    wrong, and the user has to know to reload it.
+
+    A daemon thread because `uvicorn.run` owns the main one from here on. On timeout
+    it prints instead of opening: a tab showing an error is worse than no tab, because
+    it looks like a verdict on the server rather than on the waiting.
+    """
+    def wait():
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if _server_answers(port):
+                webbrowser.open(url)
+                return
+            time.sleep(0.25)
+        print(f"\n  (the server has not answered after {int(timeout)}s — not opening a "
+              f"browser at something that is not there yet.\n"
+              f"   it may still come up; then open {url})")
+
+    threading.Thread(target=wait, daemon=True).start()
+
+
 def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     import uvicorn
     from . import config as cfgmod
@@ -284,7 +332,7 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
             print(f"    {a}")
         print("  sign in with your passphrase; local use is unchanged.\n")
     if open_browser:
-        threading.Timer(1.2, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+        _open_when_ready(url, port)
     uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning")
 
 
@@ -2044,6 +2092,85 @@ def _pid_on_port(port: int) -> str:
     return (out.split() or [""])[0]
 
 
+def _update_cli(args) -> int:
+    """`bento update` — is there a newer version, and pull it.
+
+    Every part of this already existed in `agentos/updates.py`: the version check, the
+    safety gate, the fast-forward, the dependency sync, the test gate and the rollback.
+    What it did not have was a door from a terminal — it was reachable from the Settings
+    panel and from a background watcher, and nowhere else. On a headless box, which is
+    exactly where a standing install quietly falls behind, "update it" meant reading the
+    source to find out what the panel would have called.
+
+    Checking is the default and it changes nothing. Installing is `--apply`, because a
+    pull that rewrites the code answering the user's turns is not something to do
+    because they typed a bare verb.
+    """
+    from . import config as cfgmod
+    from . import updates as upd
+
+    cfg = cfgmod.load_config()
+    root = upd.install_dir()
+
+    print(f"AgentOS {upd.current()}")
+    print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
+    print(f"  branch:    {upd.conf(cfg).get('branch') or upd.DEFAULT_BRANCH}")
+
+    state = asyncio.run(upd.check(cfg, force=True))
+    cfgmod.save_config(cfg)          # check() stamps last_check on the conf dict
+
+    if state.get("error"):
+        print(f"\n✗ {state['error']}")
+        return 1
+    if not state.get("update_available"):
+        print(f"\n✓ up to date (latest published is {state.get('latest') or 'unknown'})")
+        return 0
+
+    print(f"\n▲ {state['latest']} is available (you have {upd.current()})")
+    for e in upd.entries(state.get("notes") or "", limit=3):
+        if e.get("title"):
+            print(f"\n  {e['title']}")
+        for line in (e.get("body") or "").splitlines()[:6]:
+            if line.strip():
+                print(f"    {line.strip()[:100]}")
+
+    # Whether it COULD be installed is worth saying even on a bare check: a machine
+    # with local edits or on the wrong branch will refuse at `--apply`, and finding
+    # that out now beats finding it out halfway through an upgrade you scheduled.
+    ok, why = upd.can_apply(cfg)
+    if not ok:
+        print(f"\n✗ cannot install it here: {why}")
+        return 1
+
+    if not getattr(args, "apply", False):
+        print(f"\n  install it:  bento update --apply")
+        return 0
+
+    print()
+    result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
+                                   log=lambda m: print(f"  {m}")))
+    if not result.get("ok"):
+        print(f"✗ {result.get('error')}")
+        return 1
+    if result.get("unchanged"):
+        print("✓ already at the newest commit — nothing changed")
+        return 0
+    print(f"✓ updated {result['from']} → {result['to']} "
+          f"({result['files']} files, now {result.get('version') or '?'})")
+
+    # An update that has not been loaded is a half-state: the files on disk and the
+    # process answering turns disagree, and nothing on screen says which one you are
+    # talking to. `apply()` deliberately leaves this to its caller — in the HTTP path
+    # the response has to reach the browser first. Here there is no such constraint.
+    if args.no_restart:
+        print("  load it:  bento service restart")
+        return 0
+    from . import desktop
+    started, msg = desktop.service_restart()
+    print(("✓ " if started else "✗ ") + msg)
+    return 0 if started else 1
+
+
 def _service_cli(args) -> int:
     """`bento service …` — the background server, on whatever supervisor this
     machine has.
@@ -2394,6 +2521,18 @@ def main():
     # and then every later question about it — is it up, stop it, why did it die,
     # take it off this box — had to be answered in systemctl and launchctl, which
     # is asking the user to know which OS they are on to control their own agent.
+    # Checking is the default and changes nothing; installing is an explicit flag.
+    # A bare verb must not rewrite the code that is answering the user's turns.
+    p_upd = sub.add_parser("update",
+                           help="check for a newer AgentOS, and pull it with --apply")
+    p_upd.add_argument("--apply", action="store_true",
+                       help="actually install it: fast-forward, sync deps, run the "
+                            "tests, restart")
+    p_upd.add_argument("--no-tests", action="store_true",
+                       help="skip the test gate (it is what rolls a bad update back)")
+    p_upd.add_argument("--no-restart", action="store_true",
+                       help="leave the restart to you")
+
     p_svc = sub.add_parser("service",
                            help="the background server: status, start, stop, restart, logs, uninstall")
     p_svc.add_argument("action", nargs="?", default="status",
@@ -2632,6 +2771,8 @@ def main():
     elif args.cmd == "uninstall":
         from . import desktop
         desktop.uninstall()
+    elif args.cmd == "update":
+        raise SystemExit(_update_cli(args))
     elif args.cmd == "service":
         raise SystemExit(_service_cli(args))
     elif args.cmd == "restart":

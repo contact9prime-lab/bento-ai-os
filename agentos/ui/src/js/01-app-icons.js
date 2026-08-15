@@ -39,6 +39,24 @@ const ICONS={
   settings:['#9CA3AF','#4B5563','<circle cx="12" cy="12" r="3.1"/><path d="M12 3.8v2.4M12 17.8v2.4M20.2 12h-2.4M6.2 12H3.8M17.8 6.2l-1.7 1.7M7.9 16.1l-1.7 1.7M17.8 17.8l-1.7-1.7M7.9 7.9 6.2 6.2"/>'],
   about:['#5EEAD4','#0D9488','<path d="M12 4.8 19.4 18.2H4.6Z"/><circle cx="12" cy="9.6" r="1" fill="#fff" stroke="none"/>'],
   docs:['#D9A66C','#A16207','<path d="M12 6.6C10.6 5.5 8.7 4.9 6.6 4.9c-.9 0-1.8.1-2.6.4v13c.8-.3 1.7-.4 2.6-.4 2.1 0 4 .6 5.4 1.7 1.4-1.1 3.3-1.7 5.4-1.7.9 0 1.8.1 2.6.4v-13c-.8-.3-1.7-.4-2.6-.4-2.1 0-4 .6-5.4 1.7Z"/><path d="M12 6.6v13"/>'],
+  /* The eight below are System apps that had no tile at all. `appIcon()` falls back
+     to `iconTile()`, so they were drawn either as a bare text glyph on a generated
+     gradient (⚙ ◎ ⛔ ▲ ◱ 🧪) or — for `permissions` and `train`, whose icon field is
+     empty — as a single monogram letter. Every one of them sits in the System group
+     of the deck, so the one screen where they all appear together was also the
+     screen where the inconsistency was most obvious. */
+  mission:['#818CF8','#3730A3','<circle cx="12" cy="12" r="7.8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6"/>'],
+  /* A display with its own controls, NOT another gear: `settings` is already a gear
+     and `control` is already bare sliders, so at 46px a third variation on either
+     reads as a duplicate of whichever it sits next to in the deck. Two gears was the
+     first attempt and became visual noise at tile size. */
+  syssettings:['#8B93A5','#3B4453','<rect x="3.2" y="4.8" width="17.6" height="12" rx="1.8"/><path d="M8.6 19.8h6.8M12 16.8v3"/><path d="M6.6 8.6h4.2m2.4 0h4.2M6.6 12.8h7.4m2.4 0h1.4"/><circle cx="12.2" cy="8.6" r="1.5"/><circle cx="15.2" cy="12.8" r="1.5"/>'],
+  permissions:['#F2B33D','#B45309','<circle cx="8.6" cy="10.2" r="3.4"/><path d="M11.4 12.4l7 7M16.6 17.6l1.6-1.6M18.9 15.3l1.5-1.5"/>'],
+  quarantine:['#FB7185','#9F1239','<circle cx="12" cy="12" r="7.8"/><path d="M6.5 6.5l11 11"/>'],
+  setup:['#5EEAD4','#0F766E','<path d="M6.2 20V4.6l10.2 3.2-10.2 3.2"/><path d="M6.2 4.6h.01"/><circle cx="17.6" cy="16.4" r="2.6"/><path d="M17.6 12.6v1M17.6 19.2v1M13.8 16.4h1M20.4 16.4h1"/>'],
+  users:['#38BDF8','#1E40AF','<circle cx="9" cy="9.2" r="2.9"/><path d="M3.6 18.6c.7-3 2.8-4.6 5.4-4.6s4.7 1.6 5.4 4.6"/><circle cx="16.8" cy="10.2" r="2.1"/><path d="M15.6 14.2c2.2.2 3.9 1.7 4.6 4.4"/>'],
+  train:['#C084FC','#6D28D9','<path d="M3.8 5.6 12 9.2l8.2-3.6L12 2Z"/><path d="M6.6 10.6v3.9c0 1.8 2.4 3.2 5.4 3.2s5.4-1.4 5.4-3.2v-3.9"/><path d="M20.2 5.6v6.2"/>'],
+  evals:['#4ADE80','#15803D','<path d="M9.6 3.4v5.2L5.2 17a2.4 2.4 0 0 0 2.1 3.6h9.4a2.4 2.4 0 0 0 2.1-3.6l-4.4-8.4V3.4"/><path d="M8.6 3.4h6.8"/><path d="M7.4 13.6h9.2"/>'],
 };
 /* A built app may choose one of the SAME glyph tiles the OS uses for itself, by
    storing `glyph:<key>` as its icon. That is the whole reason this is not an

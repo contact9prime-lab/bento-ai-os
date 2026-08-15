@@ -290,7 +290,17 @@ var FG={run:'',flow:'',nodes:new Map(),edges:[],art:new Map(),logs:[],dirty:fals
 
 function fgReset(runId,flow){
   FG={run:runId||'',flow:flow||'',nodes:new Map(),edges:[],art:new Map(),logs:[],
-      dirty:true,ended:false,sel:'',detail:new Map()};
+      dirty:true,ended:false,sel:'',detail:new Map(),think:null};
+}
+/* The agent's reasoning as ONE self-replacing line, never 300 log rows.
+   Thinking arrives as a stream of small deltas; pushed through fgLog it would evict
+   every real control-plane event from the 300-row buffer within seconds, which is a
+   worse panel than the empty one this fixes. The tail is what is useful live — where
+   the agent is NOW — so keep the end, not the beginning. */
+function fgThink(agent,text){
+  if(!FG.think||FG.think.agent!==agent)FG.think={agent:agent||'',text:'',t:Date.now()};
+  FG.think.text=(FG.think.text+(text||'')).slice(-600);
+  FG.think.t=Date.now();
 }
 function fgLog(level,text){
   FG.logs.push({t:Date.now(),level:level||'info',text:text||''});
@@ -298,7 +308,7 @@ function fgLog(level,text){
 }
 function fgApply(ev){
   if(!ev||!ev.event)return;
-  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1};
+  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1};
   if(!graphish[ev.event])return;
   if(ev.event!=='flow_start'&&ev.run_id&&FG.run&&ev.run_id!==FG.run)return; // another run
   switch(ev.event){
@@ -327,11 +337,14 @@ function fgApply(ev){
       const n=FG.nodes.get(ev.node_id);if(!n)break;
       n.status=ev.status;n.tokens=ev.tokens;n.fault=ev.fault;n.handle=ev.handle;
       n.child_run=ev.child_run;n.model=ev.model;n.approval='';
+      FG.think=null;   // it has acted; the reasoning that led here is now history
       fgLog(ev.status==='ok'?'info':'error',
             n.label+' · '+ev.status+(ev.fault?' · '+ev.fault:'')+(ev.handle?' → '+ev.handle:''));
       break;}
     case 'artifact':
       FG.art.set(ev.handle,ev);break;
+    case 'thinking':
+      fgThink(ev.agent||'',ev.text||'');break;
     case 'approval':{
       const n=FG.nodes.get(ev.node_id);if(n)n.approval=ev.state;
       fgLog(ev.state==='asked'?'warn':(ev.state==='allowed'?'info':'error'),
@@ -342,7 +355,7 @@ function fgApply(ev){
       fgLog(ev.level,ev.text);break;
     case 'flow_end':{
       const n=FG.nodes.get(FG.run);if(n){n.status=ev.status;n.tokens=ev.tokens}
-      FG.ended=true;
+      FG.ended=true;FG.think=null;
       fgLog(ev.status==='ok'?'info':'error','flow '+ev.status
         +(ev.delivered&&ev.delivered.length?' · delivered: '+ev.delivered.join(', '):'')
         +(ev.fault?' · '+ev.fault:''));
@@ -444,6 +457,16 @@ function fgPredictSvg(def){
       <text x="${MX+11}" y="${my+37}" fill="var(--dim,#8a94a6)" font-size="10">picks from ${roster.length} agent${roster.length===1?'':'s'} at run time</text></g>
     ${out}</svg>`;
 }
+/* The live reasoning line under the log. Dim and italic because it is not a record of
+   anything — it is replaced continuously and cleared the moment the agent acts. A flow
+   that thinks for a minute before its first tool call used to show an empty panel, which
+   reads exactly like a hang; this is the difference between "working" and "stuck". */
+function fgThinkRow(){
+  const t=FG.think;if(!t||!t.text)return '';
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--ln,#2a3040);
+    color:var(--dim,#8a94a6);font-style:italic;opacity:.85;white-space:pre-wrap">`
+    +`<span style="opacity:.7">${esc(t.agent||'agent')} is thinking · </span>${esc(t.text)}</div>`;
+}
 function fgLogRow(l){
   const c=l.level==='error'?'var(--err,#f87171)':l.level==='warn'?'var(--warn,#f59e0b)':'var(--dim,#8a94a6)';
   return `<div style="color:${c}"><span style="opacity:.6">${new Date(l.t).toLocaleTimeString()}</span> ${esc(l.text)}</div>`;
@@ -467,7 +490,8 @@ function fgPaint(){
   });
   all('.fg-log').forEach(log=>{
     const atBottom=log.scrollHeight-log.scrollTop-log.clientHeight<24;
-    log.innerHTML=FG.logs.map(fgLogRow).join('')||'<div class="mut">no control-plane events yet</div>';
+    log.innerHTML=(FG.logs.map(fgLogRow).join('')||'<div class="mut">no control-plane events yet</div>')
+      +fgThinkRow();
     if(atBottom)log.scrollTop=log.scrollHeight;
   });
   if(FG.run){

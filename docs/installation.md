@@ -272,6 +272,21 @@ always behaves as `fail`, so a unit or a CI step never blocks on a prompt.
 A second instance shares `~/.agentos` — one database, two schedulers, two Telegram
 pollers. Use `AGENTOS_HOME=~/.agentos-test bento serve --port 8322` for a real one.
 
+## Updating
+
+```bash
+bento update           # is there a newer version? changes nothing
+bento update --apply   # fast-forward, sync deps, run the tests, restart
+```
+
+`--apply` refuses on a checkout with uncommitted changes to tracked files, or on the
+wrong branch, and says which. It runs the test suite before keeping the new code and
+**rolls back** if it fails — `--no-tests` skips that gate, which is also what makes a
+bad update recoverable. `--no-restart` leaves loading it to you.
+
+A bare `bento update` never pulls. The same machinery backs Settings → Updates and the
+background check, so all three agree about what a version is.
+
 ## Managing the service
 
 Use `bento service`. It talks to whichever supervisor this machine actually has —

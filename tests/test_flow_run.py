@@ -281,3 +281,52 @@ def test_the_run_toolbox_passes_everything_else_through(tmp_path):
     assert "run_command" not in names, "the master plans; it does not act"
     assert proxy.risk_of("delegate", {}) == ("safe", "")
     assert proxy.risk_of("run_command", {"command": "rm -rf /"})[0] != "safe"
+
+
+# ---------------------------------------------------------------------------
+# Showing the work.
+#
+# `Agent` has always emitted `thinking_delta`, and `ui_emit` carried it to whichever
+# chat window happened to have started the flow. The RUN's own stream recorded only
+# tool steps — so the Flows app showed a list of tool names and nothing about why any
+# of them was chosen, and a flow that reasons for a minute before its first tool call
+# showed an empty panel that reads exactly like a hang.
+
+def test_the_run_stream_carries_the_agents_reasoning(tmp_path, monkeypatch):
+    cfg, store, cp, events = _world(tmp_path)
+    flow = _flow(store)
+    chat, _ = _script([
+        [{"type": "thinking", "text": "The mission names vendors, so recall first."},
+         _call("finish", {"summary": "done", "handles": []})],
+        [{"type": "text", "text": ""}],
+    ])
+    monkeypatch.setattr(providers, "chat", chat)
+    asyncio.run(cp.run_flow(flow, "vendor: acme", origin={"surface": "api"}))
+
+    think = [e for e in events
+             if e.get("type") == "fabric_event" and e.get("event") == "thinking"]
+    assert think, ("the run stream carries no reasoning — the Flows app can only show "
+                   "tool names, and a flow thinking before its first call looks hung")
+    assert any("recall first" in (e.get("text") or "") for e in think)
+    assert think[0].get("kind") == "thinking"
+
+
+def test_reasoning_is_not_persisted_to_the_run_log(tmp_path, monkeypatch):
+    """A live view, not a record. A flow that reasons for minutes would otherwise write
+    thousands of rows nobody reads back; what is worth keeping is already in `step`,
+    `artifact` and the ledger."""
+    cfg, store, cp, events = _world(tmp_path)
+    flow = _flow(store)
+    chat, _ = _script([
+        [{"type": "thinking", "text": "thinking out loud " * 20},
+         _call("finish", {"summary": "done", "handles": []})],
+        [{"type": "text", "text": ""}],
+    ])
+    monkeypatch.setattr(providers, "chat", chat)
+    res = asyncio.run(cp.run_flow(flow, "go", origin={"surface": "api"}))
+
+    stored = store.fabric_events_for(res["run_id"])
+    assert not [e for e in stored if e["type"] == "thinking"], (
+        "reasoning was written to the database; it is a live view only")
+    assert [e for e in stored if e["type"] in ("status", "step", "artifact")], \
+        "the events that ARE worth keeping stopped being kept"

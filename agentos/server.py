@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
+from . import appcheck
 from . import config as cfgmod
 from . import fabric as fabricmod
 from . import flows as flowsmod
@@ -3897,35 +3898,27 @@ PROCESS — work like a product team in one turn:
 """
 
 
+def _known_tool_names(toolbox=None) -> set[str]:
+    """Tool names an app may legitimately call, for the appTool check. Empty when the
+    toolbox is unavailable, which disables that one rule rather than inventing it."""
+    if toolbox is None:
+        return set()
+    try:
+        return {t["name"] for t in toolbox.schemas()}
+    except Exception:
+        return set()
+
+
 def _lint_app_html(html: str, toolbox=None) -> list[str]:
-    """Static checks on a built app: things that WILL break at runtime."""
-    import re
-    issues = []
-    for m in re.finditer(r"<(?:script|link|img|iframe)\b[^>]*?(?:src|href)\s*=\s*[\"'](https?://[^\"']+)",
-                         html, re.IGNORECASE):
-        issues.append(f"external asset will be blocked at runtime: {m.group(1)[:120]} — "
-                      "inline the code/style or embed the asset as a data: URI")
-    if toolbox is not None:
-        try:
-            known = {t["name"] for t in toolbox.schemas()}
-        except Exception:
-            known = set()
-        if known:
-            for m in re.finditer(r"appTool\(\s*['\"]([\w.-]+)['\"]", html):
-                if m.group(1) not in known:
-                    issues.append(f"appTool('{m.group(1)}') calls a tool that does not exist — "
-                                  "use a name from the API registry")
-    # layout smells that reliably produce broken-looking apps (the design-system
-    # contract bans them) — flagged so the repair pass rebuilds with .row/.cols/.card
-    if re.search(r"position\s*:\s*fixed", html, re.IGNORECASE):
-        issues.append("uses position:fixed — banned for app layout; restructure with the "
-                      "design-system .card/.row/.cols utilities")
-    if len(re.findall(r"position\s*:\s*absolute", html, re.IGNORECASE)) > 2:
-        issues.append("layout leans on position:absolute — banned; restructure with the "
-                      "design-system .card/.row/.cols utilities")
-    if re.search(r"writing-mode|text-orientation|rotate\(\s*-?9[05]", html, re.IGNORECASE):
-        issues.append("rotated/vertical text detected — banned; use a normal horizontal label")
-    return issues[:6]
+    """Static checks on a built app.
+
+    A thin wrapper now: the rules live in `agentos/appcheck.py`, because `executors.py`
+    needs them too and server.py already imports executors — a second copy over there
+    would drift, and the half that drifted would be whichever one nobody was demoing.
+
+    Keeps returning plain strings so the existing call sites and tests are unchanged.
+    """
+    return appcheck.check(html, _known_tool_names(toolbox)).lines()[:6]
 
 
 # ---- Approval broker (global): any surface can ask the user and await Allow/Deny ----
@@ -8395,20 +8388,69 @@ async def _run_build(data: dict):
 
             pulse = asyncio.create_task(epulse())
             relay_failed = ""
+            bpersona = persona_for("claude-code")
+
+            async def stage(label: str, task: str) -> str:
+                """One executor turn. Returns '' or the relay failure.
+
+                Each stage is its own turn on purpose. The persona already asked for
+                spec-then-build-then-fix "silently, in one turn", and that is exactly
+                the instruction a model drops: there is nothing to show for the spec
+                and the build is right there. Separate turns make each stage's output
+                a file that either exists or does not.
+
+                A stage that loses its stream is NOT a stage that failed — the work is
+                on disk. Note it and go on to the next one; only the file at the end
+                decides whether there is an app.
+                """
+                nonlocal relay_failed
+                await bcast({"type": "build_status", "message": label})
+                await bcast({"type": "build_text", "text": f"\n— {label} —\n"})
+                try:
+                    await execmod.run_task(task, env, erelay, run)
+                    return ""
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    relay_failed = f"{type(exc).__name__}: {exc}"
+                    store.log("error", f"executor stream failed ({label}): {relay_failed}"[:400])
+                    return relay_failed
+
             try:
-                await execmod.run_task(
-                    execmod.build_task(prompt, co, persona_for("claude-code")),
-                    env, erelay, run)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                # The FILE is the deliverable — `build_task` says so to the
-                # executor. Losing the stream is not losing the app, and throwing
-                # away a finished app.html because the pipe misbehaved is the
-                # expensive failure: the work is done and paid for, sitting on
-                # disk. Note it, then go and look.
-                relay_failed = f"{type(e).__name__}: {e}"
-                store.log("error", f"executor stream failed: {relay_failed}"[:400])
+                # 1. SPEC — decide what it is before writing any of it.
+                await stage("planning", execmod.plan_task(
+                    prompt, co, bpersona, existing=bool(existing)))
+                spec = execmod.read_side_file(co, "spec")
+                if not spec:
+                    await bcast({"type": "build_text",
+                                 "text": "(no spec was written — building from the "
+                                         "request directly)\n"})
+
+                # 2. BUILD — against that spec.
+                if not build.get("cancel_requested"):
+                    await stage("building", execmod.build_task(
+                        prompt, co, bpersona, spec=spec))
+
+                # 3. REVIEW — read it back adversarially, with the mechanical
+                #    findings handed over as a floor.
+                if not build.get("cancel_requested"):
+                    interim, _ = execmod.read_build(co)
+                    rep = appcheck.check(interim, _known_tool_names(toolbox))
+                    if interim:
+                        await stage("reviewing", execmod.review_task(
+                            co, bpersona, findings=rep.brief()))
+
+                # 4. FIX — apply the review, unless it said there is nothing to.
+                if not build.get("cancel_requested"):
+                    review = execmod.read_side_file(co, "review")
+                    interim, _ = execmod.read_build(co)
+                    rep = appcheck.check(interim, _known_tool_names(toolbox))
+                    if review and execmod.review_says_ship(review) and not rep.worth_fixing:
+                        await bcast({"type": "build_text",
+                                     "text": "\n— review says ship; nothing to fix —\n"})
+                    elif review or rep.worth_fixing:
+                        await stage("fixing", execmod.fix_task(
+                            co, bpersona, review=review, findings=rep.brief()))
             finally:
                 pulse.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

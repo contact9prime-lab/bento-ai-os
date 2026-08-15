@@ -311,6 +311,24 @@ class ControlPlane(usersmod.Scoped):
                                                   "ok": ev.get("ok", True)})
             elif ev["type"] == "error":
                 await self._emit(run_id, "fault", {"message": ev.get("message", "")[:500]})
+            elif ev["type"] in ("thinking_delta", "text_delta"):
+                # The agent's reasoning, into the RUN stream.
+                #
+                # It was already being produced — `Agent` emits it and `ui_emit` carried
+                # it to whichever chat window happened to have started the flow. The run
+                # itself recorded only tool steps, so the Flows app showed a list of tool
+                # names and nothing about why any of them was chosen. On a flow that
+                # thinks for a minute before its first tool call, that is a blank panel
+                # that reads exactly like a hang.
+                #
+                # persist=False, always: this is a live view, and a flow that reasons for
+                # minutes would otherwise write thousands of rows nobody reads back. The
+                # decisions worth keeping are already in `step`, `artifact` and the ledger.
+                await self._emit(run_id, "thinking",
+                                 {"agent": defn.get("name", ""),
+                                  "kind": ev["type"].replace("_delta", ""),
+                                  "text": (ev.get("text") or "")[:400]},
+                                 persist=False)
 
         async def headless_approver(_n, _a, _r, _offer=None):
             # no human inside a data plane: gated actions need effective 'full'
@@ -755,6 +773,16 @@ class ControlPlane(usersmod.Scoped):
             if ev["type"] == "error":
                 await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
                                                  "text": ev.get("message", "")[:240]})
+            elif ev["type"] in ("thinking_delta", "text_delta"):
+                # The MASTER's reasoning — see the matching relay in `run_subagent`.
+                # This one matters more: the master is what thinks before the first
+                # delegation, and that gap is the longest stretch in a flow with
+                # nothing on screen. persist=False for the same reason as there.
+                await self._emit(run_id, "thinking",
+                                 {"agent": "master", "node_id": run_id,
+                                  "kind": ev["type"].replace("_delta", ""),
+                                  "text": (ev.get("text") or "")[:400]},
+                                 persist=False)
 
         mission = flow.get("mission") or ""
         opening = mission if not raw else (

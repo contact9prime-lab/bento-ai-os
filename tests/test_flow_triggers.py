@@ -135,3 +135,67 @@ def test_message_and_webhook_triggers_get_no_task_row(tmp_path):
                                        {"kind": "webhook", "config": {}}]})
     assert not [t for t in store.list_tasks() if t["flow"] == "chatty"]
     assert len(store.flow_triggers("chatty")) == 2
+
+
+# --------------------------------------------------------------------------------------
+# The whole chain, in one test.
+#
+# Everything above verifies a link: `reconcile_triggers` writes a `tasks` row, and
+# `_run_task` starts a flow when a row names one. Nothing joined them, so the question
+# "I scheduled a workflow — does it actually run?" could not be answered by the suite.
+# It has four seams and each one is somebody's reasonable place to stop:
+#
+#   flows.save() → reconcile_triggers → tasks row → due_tasks() → _run_task → run_flow
+#
+# The seam most likely to rot silently is `due_tasks`: it filters on
+# `enabled=1 AND next_run IS NOT NULL AND next_run<=now`, and a flow trigger row that
+# ever stopped satisfying that filter would simply never fire — no error, no log, and
+# a flow card still showing its schedule.
+
+def test_a_scheduled_flow_travels_the_whole_way_from_save_to_run(sched):
+    """Save a flow with a clock, wind the clock forward, tick the scheduler once."""
+    import time
+
+    s, store, _ = sched
+    flow = _flow_with_cron(store, at="08:00")
+    assert flow["enabled"], "a saved flow with a trigger should be armed"
+
+    trigs = store.flow_triggers("digest")
+    assert len(trigs) == 1 and trigs[0]["task_id"], "no tasks row was created"
+
+    # The clock is a real column, so make it due the way time would.
+    # `list_tasks()` rather than a get-by-id: the Store has no get_task.
+    task = next(t for t in store.list_tasks() if t["id"] == trigs[0]["task_id"])
+    assert task["flow"] == "digest", "the task does not name the flow"
+    store.update_task(task["id"], next_run=time.time() - 1)
+
+    due = [t for t in store.due_tasks(time.time()) if t["id"] == task["id"]]
+    assert due, ("due_tasks() does not select the flow's task — it would never fire, "
+                 "with no error anywhere and the flow card still showing its schedule")
+
+    asyncio.run(s._run_task(due[0], origin="schedule"))
+    assert s.fabric.calls, "the scheduler did not start the flow"
+    assert s.fabric.calls[0][0] == "digest"
+    assert s.fabric.calls[0][2]["origin"]["surface"] == "task"
+
+
+def test_disabling_a_flow_takes_it_off_the_clock(sched):
+    """The declaration survives; the thing that fires does not. A disabled flow that
+    kept its task row would keep running — the one failure worse than not running."""
+    import time
+
+    s, store, _ = sched
+    _flow_with_cron(store)
+    tid = store.flow_triggers("digest")[0]["task_id"]
+
+    flowsmod.set_enabled(store, "digest", False)
+    assert not [t for t in store.list_tasks() if t["id"] == tid], \
+        "a disabled flow left its clock armed"
+    assert store.flow_triggers("digest"), "the trigger declaration was lost"
+    assert not [t for t in store.due_tasks(time.time() + 86400) if t.get("flow") == "digest"]
+
+    flowsmod.set_enabled(store, "digest", True)
+    again = store.flow_triggers("digest")[0]["task_id"]
+    assert again, "re-enabling did not re-arm the clock"
+    rearmed = next(t for t in store.list_tasks() if t["id"] == again)
+    assert rearmed["flow"] == "digest"
