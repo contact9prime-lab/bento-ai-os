@@ -141,6 +141,26 @@ told so. Every other number is told this machine is not theirs; you can allow on
 individually from the WhatsApp card. Approvals arrive as three reply buttons — Deny,
 Allow once, Allow & remember — and only the owner's taps count.
 
+**Allowing a number before it writes.** The card can only toggle a number that has
+already messaged you, so on its own it means a colleague has to be refused first and
+then found in a list. The **Also allow** field is the standing list, written in
+advance, and it works on both transports:
+
+```
+bento channels whatsapp --set 'allow=+44 7700 900123, +1 555 0100'
+```
+
+Write the number however it is printed — spaces, dashes, brackets and a leading `+`
+are all fine, and it still matches the bare digits WhatsApp actually delivers.
+
+**Every refusal is logged.** An unknown number reaching your agent used to leave a
+log line indistinguishable from a message that was answered. It is now recorded every
+time, with the number, what was sent and how many attempts it has made:
+
+```
+[whatsapp] refused Someone (999) — not paired and not on the allow-list
+```
+
 ## The 24-hour window
 
 This is WhatsApp's rule, not ours, and it is the one thing that will surprise you:

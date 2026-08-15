@@ -54,6 +54,7 @@ import time
 
 import httpx
 
+from . import channels as chanmod
 from . import config as cfgmod
 from .agent import Agent
 from . import users as usersmod
@@ -350,7 +351,27 @@ class WhatsAppBridge(usersmod.Scoped):
             await self.broadcast({"type": "whatsapp_chats"})
             return
 
+        # The standing allow-list, consulted before the refusal. A number the owner
+        # wrote down in advance is let in on its first message instead of being told
+        # no and waiting for somebody to find its row — see channels.preauthorised.
         if not chat.get("allowed"):
+            match = chanmod.preauthorised(conf(self.cfg), wa_id)
+            if match:
+                self.store.wa_set_allowed(wa_id, 1)
+                chat["allowed"] = 1
+                self.store.log("whatsapp", f"allowed {name} ({wa_id}) — on the allow-list",
+                               {"wa_id": wa_id, "matched": match})
+
+        if not chat.get("allowed"):
+            # A stranger reaching your agent is a security event, and it used to
+            # leave a log line indistinguishable from a message that was answered.
+            # "Has anyone else been trying to talk to it?" has to be answerable from
+            # the log alone, so this is recorded EVERY time — not only on the first
+            # message, which is all the reply below is rate-limited to.
+            self.store.log("whatsapp", f"refused {name} ({wa_id}) — not paired and not on "
+                                       f"the allow-list",
+                           {"wa_id": wa_id, "name": name,
+                            "msg_count": chat.get("msg_count") or 0, "text": text[:160]})
             if (chat.get("msg_count") or 0) <= 1:
                 await self.send("▲ This number reached an AgentOS machine, but it is not "
                                 "enabled. Its owner can allow it in Settings → Channels.",

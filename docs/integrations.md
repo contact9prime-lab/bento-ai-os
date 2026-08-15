@@ -57,6 +57,30 @@ agent. Connect more channels by adding the bot to a group (as a member) or to a 
 an admin) — new arrivals start blocked until you permit them in the app. (In groups, a bot only sees
 messages that mention it unless you disable privacy mode via BotFather.)
 
+**Letting somebody in before they write.** That toggle only exists once there is a row, and there is
+no row until somebody has messaged you — so on its own it means a colleague has to be turned away
+first and then found in a list. The **Also allow** field is the standing list, written in advance:
+`@usernames` or numeric chat ids, comma separated. Anyone named there is admitted on their first
+message. It is one field on the channel, so it is the same list in all three faces:
+
+```
+bento channels telegram --set 'allow=@bob, @sam'     # over SSH, no desktop needed
+bento channels telegram                              # read it back
+```
+
+**Everybody else is refused, and the refusal is written down.** A stranger messaging your bot used
+to leave a log line indistinguishable from a message that was answered, so *"has anyone else been
+trying to reach my agent?"* could not be answered from the record. Every refusal is now logged with
+who, what they sent, and how many times they have tried — every time, not only on the first message,
+because a sustained attempt that shows up once and then goes quiet is the case you most want to see:
+
+```
+[telegram] refused X (333) — not paired and not on the allow-list
+           {'chat_id': 333, 'username': '', 'msg_count': 2, 'text': 'hello?'}
+```
+
+Filter for them in the Logs app, or `bento logs --kind telegram`.
+
 **Telegram is an IO gate:** it is one of the permission framework's surfaces. Any grant can be scoped
 to `telegram` (or kept off it) in the Permissions app — a rule permitted on all surfaces flows
 everywhere; scoped rules only apply on their gates, and blocked IO is denied and logged. See
