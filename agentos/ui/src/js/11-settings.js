@@ -217,6 +217,15 @@ function setTab(body,all){
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    /* Accounts are a machine-level fact and this is where somebody looks for one,
+       so the row belongs here — but the app stays the single place they are
+       managed. A second roster in Settings would be two lists to keep true, and
+       the one nobody demos is the one that drifts. */
+    P.push(pGroup('Accounts',[
+      pRow('People on this machine','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Who can sign in, their role, and the folders and agents shared between them. AgentOS stays single-user until the first account is added — from then on it asks who you are, at the keyboard as well as from a phone.',
+         f:'users accounts people roles admin executor sign in multi-user shared folders'}),
+    ],{f:'users accounts multi-user'}));
     P.push(pGroup('Version',[
       pRow('This build','<span id="s-ver" class="mut">checking…</span>',
         {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
