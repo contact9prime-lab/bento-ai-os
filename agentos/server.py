@@ -703,6 +703,13 @@ async def api_shell_wake(body: dict | None = None):
     return {"ok": True, "did": done}
 
 
+def _pending_sync(cfg: dict) -> list:
+    """`updates.pending` from a worker thread. It is async only because it sits
+    beside `check()`; everything it does is subprocess work, so it runs here."""
+    from . import updates as updmod
+    return asyncio.run(updmod.pending(cfg, limit=15))
+
+
 @app.get("/api/update")
 async def api_update_status(check: bool = False):
     """What version this is, and whether there is a newer one.
@@ -725,7 +732,11 @@ async def api_update_status(check: bool = False):
     # The commits an update would bring. Only on an explicit check — `pending()`
     # fetches, and a status route that opens Settings instantly must not do
     # network work nobody asked for.
-    changes = await updmod.pending(cfg, limit=15) if check else []
+    # In a thread: pending() shells out to `git fetch`, which is a blocking
+    # subprocess of up to two minutes. Awaited directly it stalls the whole event
+    # loop — every other request, every WebSocket, every turn — and from the About
+    # panel that looks exactly like "check for updates does nothing".
+    changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
             "enabled": updmod.conf(cfg).get("enabled", True)}
