@@ -551,7 +551,8 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
     should be administered by someone who has one.
     """
     from . import config as cfgmod
-    from .tools import FOLDER_MODES, check_safe_folder, folder_problems, folder_shares
+    from .tools import (FOLDER_MODES, check_safe_folder, folder_problems,
+                        folder_risk, folder_shares)
 
     cfg = cfgmod.load_config()
 
@@ -562,6 +563,11 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         for sh in shares:
             who = ", ".join(sh["users"]) if sh["users"] else "everyone"
             print(f"  {sh['mode']:<3} {sh['path']:<44} {who}")
+            # The caution belongs in the LIST as well as at the moment of adding:
+            # whoever reviews what this machine has opened up is usually not the
+            # person who opened it.
+            if (risk := folder_risk(sh["path"], sh["mode"])):
+                print(f"      ⚠ {risk}")
         for entry, why in folder_problems(cfg):
             print(f"  !   {entry:<44} not in use — {why}")
 
@@ -587,6 +593,8 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         cfg.setdefault("sandbox", {})["folders"] = raw
         cfgmod.save_config(cfg)
         print(f"  shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}")
+        if (risk := folder_risk(p, mode)):
+            print(f"  ⚠ {risk}")
         return
     if action == "remove":
         p = os.path.realpath(os.path.expanduser(path or ""))
@@ -1021,10 +1029,13 @@ def doctor(fix: bool = False, session: bool = False):
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
-    from .tools import folder_problems, folder_shares
+    from .tools import folder_problems, folder_risk, folder_shares
     for sh in folder_shares(cfg):
         who = ", ".join(sh["users"]) if sh["users"] else "everyone"
-        ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
+        if (risk := folder_risk(sh["path"], sh["mode"])):
+            warn(f"safe folder {sh['mode']}: {sh['path']} ({who}) — {risk}")
+        else:
+            ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
     for entry, why in folder_problems(cfg):
         warn(f"safe folder not in use — {entry}: {why}")
     from . import trainforge as tfmod

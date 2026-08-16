@@ -17,7 +17,7 @@
 
    `var`, not `let`: one concatenated bundle, and the menu bar reads USERS at
    boot before this file's line is reached. See CLAUDE.md on the TDZ trap. */
-var USERS={me:null,list:[],roles:['admin','executor'],shared:[],busy:false};
+var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false};
 
 async function usersLoad(){
   try{
@@ -25,6 +25,7 @@ async function usersLoad(){
       fetch('/api/users').then(r=>r.ok?r.json():{users:[],me:{}}),
       fetch('/api/shared').then(r=>r.ok?r.json():{shared:[]}),
     ]);
+    await usersLoadFolders();
     USERS.me=u.me||{};USERS.list=u.users||[];USERS.roles=u.roles||USERS.roles;
     USERS.shared=s.shared||[];
   }catch(e){}
@@ -54,7 +55,7 @@ async function renderUsers(body,w){
   pb.innerHTML='<div class="dim">…</div>';
   await usersLoad();
   const me=USERS.me||{};
-  pb.innerHTML=(me.multiuser?usersRoster():usersOffer())+usersShareBox();
+  pb.innerHTML=(me.multiuser?usersRoster():usersOffer())+usersShareBox()+usersFolderBox();
   usersWire(pb,w);
 }
 
@@ -173,6 +174,92 @@ function usersShareBox(){
     ${items}</div>`;
 }
 
+
+/* ---- shared folders ---------------------------------------------------------
+   This lives HERE and not in Settings → Sandbox for the same reason the shared
+   library does: a folder shared with somebody is the same kind of fact as an
+   agent shared with somebody, and both belong next to the isolation they are the
+   exception to. Settings decides whether there is a jail at all; who may reach
+   through it is a question about people, and people are answered in this app.
+
+   The caution is the point of the redesign. A path typed into a text box gives
+   no hint that `/etc` read-write is a different act from `/data/reports`
+   read-write, and the moment to say so is while the choice is being made — not
+   in `doctor`, days later, when the agent has already had the access. */
+function usersFolderBox(){
+  const F=USERS.folders||{folders:[],problems:[],users:[],admin:true};
+  const accounts=F.users||[];
+  const who=s=>(s.users&&s.users.length)
+    ? s.users.map(u=>esc(u)).join(', ')
+    : '<em>everyone</em>';
+  const rows=(F.folders||[]).map((s,i)=>`
+    <div class="usr-share${s.risk?' warn':''}" data-f="${esc(s.path)}">
+      <span class="usr-kind">${s.mode==='ro'?'◔':'◉'}</span>
+      <span class="usr-who"><b>${esc(s.path)}</b>
+        <em>${s.mode==='ro'?'read only':'read &amp; write'} · ${who(s)}</em>
+        ${s.risk?`<em class="usr-warn">⚠ ${esc(s.risk)}</em>`:''}</span>
+      ${F.admin?`<button class="usr-fdel" data-i="${i}">Remove</button>`:''}
+    </div>`).join('');
+  const bad=(F.problems||[]).map(p=>`
+    <div class="usr-share warn"><span class="usr-kind">!</span>
+      <span class="usr-who"><b>${esc(p.entry)}</b><em class="usr-warn">not in use — ${esc(p.why)}</em></span>
+    </div>`).join('');
+  /* Checkboxes and not a text field: the accounts are a known list, and typing a
+     username that does not exist produces a share that silently reaches nobody. */
+  const picker=accounts.length?accounts.map(u=>
+    `<label class="usr-chk"><input type="checkbox" class="usr-fu" value="${esc(u.id)}">
+       ${esc(u.display)}</label>`).join('')
+    :'<span class="dim">everyone on this machine</span>';
+  const form=F.admin?`
+    <form id="usr-fform" class="usr-fform">
+      <input id="usr-fpath" placeholder="/data/reports" autocomplete="off" spellcheck="false">
+      <select id="usr-fmode">
+        <option value="ro">Read only</option>
+        <option value="rw">Read &amp; write</option>
+      </select>
+      <button type="submit">Share it</button>
+      <div class="usr-fwho"><span class="dim">with</span> ${picker}
+        <span class="dim">— none ticked means everyone</span></div>
+      <div id="usr-frisk" class="usr-warn" hidden></div>
+    </form>`:'';
+  return `<div class="usr-shared usr-folders">
+    <div class="usr-head"><span><b>Shared folders</b></span></div>
+    <p class="dim">Where the agent may work besides its own workspace — its file
+      tools, <b>and</b> the Terminal. Everything else stays read-only, and a folder
+      holding another account is refused outright.</p>
+    ${rows||'<p class="dim">Nothing shared. The agent works in its workspace only.</p>'}
+    ${bad}${form}</div>`;
+}
+
+/* Said while the choice is being made. `Read only` is the default in the select
+   above for the same reason: the safe answer should be the one you get by not
+   thinking about it. */
+function usersFolderRisk(pb){
+  const path=(pb.querySelector('#usr-fpath')||{}).value||'';
+  const mode=(pb.querySelector('#usr-fmode')||{}).value||'ro';
+  const box=pb.querySelector('#usr-frisk');
+  if(!box)return;
+  fetch('/api/folders/risk?path='+encodeURIComponent(path)+'&mode='+mode)
+    .then(r=>r.json()).then(d=>{
+      box.textContent=d.risk?('⚠ '+d.risk):'';
+      box.hidden=!d.risk;
+    }).catch(()=>{});
+}
+
+async function usersFolderSave(pb,w,folders){
+  const r=await fetch('/api/folders',{method:'PUT',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({folders})});
+  const d=await r.json().catch(()=>({}));
+  if(d.error){toast(d.error);return}
+  (d.refused||[]).forEach(x=>toast(`${x.entry}: ${x.why}`));
+  await usersLoadFolders();
+  renderUsers(w?w.el.querySelector('.wbody'):pb.closest('.wbody')||pb,w);
+}
+
+async function usersLoadFolders(){
+  try{USERS.folders=await (await fetch('/api/folders')).json();}catch(e){}
+}
+
 /* ---- wiring --------------------------------------------------------------- */
 
 function usersWire(pb,w){
@@ -180,6 +267,33 @@ function usersWire(pb,w){
   if(form)form.onsubmit=e=>{e.preventDefault();usersCreate(pb,w)};
   const out=pb.querySelector('#usr-signout');
   if(out)out.onclick=()=>usersSignOut();
+
+  /* shared folders */
+  const ff=pb.querySelector('#usr-fform');
+  if(ff){
+    const path=pb.querySelector('#usr-fpath'),mode=pb.querySelector('#usr-fmode');
+    let t;
+    const probe=()=>{clearTimeout(t);t=setTimeout(()=>usersFolderRisk(pb),250)};
+    if(path)path.oninput=probe;
+    if(mode)mode.onchange=probe;
+    ff.onsubmit=e=>{
+      e.preventDefault();
+      const p=(path.value||'').trim();
+      if(!p)return;
+      const users=[...pb.querySelectorAll('.usr-fu:checked')].map(c=>c.value);
+      const cur=((USERS.folders||{}).folders||[]).map(s2=>
+        ({path:s2.path,mode:s2.mode,users:s2.users}));
+      usersFolderSave(pb,w,cur.concat([{path:p,mode:mode.value,users}]));
+    };
+  }
+  pb.querySelectorAll('.usr-fdel').forEach(b=>{
+    b.onclick=()=>{
+      const cur=((USERS.folders||{}).folders||[]).map(s2=>
+        ({path:s2.path,mode:s2.mode,users:s2.users}));
+      cur.splice(+b.dataset.i,1);
+      usersFolderSave(pb,w,cur);
+    };
+  });
 
   pb.querySelectorAll('.usr-role').forEach(sel=>{
     sel.onchange=async()=>{

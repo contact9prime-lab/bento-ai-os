@@ -241,6 +241,58 @@ def check_safe_folder(path) -> tuple[str, str]:
     return p, ""
 
 
+# Directories where read-write access to the machine's own guts is almost never
+# what somebody meant, and where the damage is not "a file was overwritten" but
+# "this machine no longer boots" or "the agent rewrote its own permissions".
+# These are CAUTIONS, not refusals: it is the admin's machine, and an OS that
+# refuses a deliberate decision teaches people to stop reading its warnings. The
+# two hard refusals stay in check_safe_folder, and they are the two that would
+# break somebody ELSE'S isolation rather than your own.
+_SYSTEM_DIRS = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/var",
+                "/dev", "/proc", "/sys", "/root", "/System", "/Library",
+                "/Applications", "/private", "/opt")
+# Credentials are worth naming even for a read-only share: reading them is the
+# whole attack, and a shell history or an ssh key does not need to be written to
+# be lost.
+_SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".kube", ".docker", ".agentos")
+
+
+def folder_risk(path, mode: str = "rw") -> str:
+    """A sentence of caution about sharing this folder, or ''.
+
+    Never a refusal — `check_safe_folder` owns those. This is the difference
+    between a decision somebody made and a decision somebody made *knowing*, and
+    the two entries it exists for are a system directory shared read-write and a
+    home directory shared at all.
+    """
+    p = os.path.realpath(os.path.expanduser(str(path or "")))
+    if not p or p == os.sep:
+        return ""
+    home = os.path.realpath(os.path.expanduser("~"))
+    rw = str(mode or "rw").lower() != "ro"
+
+    for d in _SECRET_DIRS:
+        if os.path.basename(p) == d or f"{os.sep}{d}{os.sep}" in p + os.sep:
+            return (f"this holds credentials ({d}). Sharing it lets the agent read keys "
+                    f"and tokens it can then use anywhere — read-only does not help, "
+                    f"because reading them is the whole risk.")
+    # Home is checked BEFORE the system list, because on many machines the home
+    # directory IS one of them (/root), and "this is part of the operating system"
+    # is the wrong sentence for somebody who just shared their own home.
+    if p == home:
+        return ("this is your whole home directory, so it includes your keys, your "
+                "shell history and every other application's data — not just the "
+                "files you had in mind. Naming the actual folder is safer.")
+    if rw and _under_any(p, list(_SYSTEM_DIRS)):
+        return ("this is part of the operating system. Read-write, a mistaken command "
+                "can leave the machine unbootable — share it read-only unless you "
+                "specifically mean the agent to change the system.")
+    if rw and p.count(os.sep) == 1:
+        return ("this is a top-level directory, so it is much broader than it looks. "
+                "Read-write, everything under it can be changed.")
+    return ""
+
+
 def folder_shares(cfg: dict) -> list[dict]:
     """Every valid share, normalised: {path, mode, users}. Order preserved."""
     out: list[dict] = []

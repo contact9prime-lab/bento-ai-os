@@ -28,29 +28,6 @@ function pSecretReplace(id){
   const el=document.getElementById(id);if(el)el.focus();
 }
 const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="${esc(val==null?'':val)}" placeholder="${esc(ph||'')}">`;
-/* One value per line. A textarea rather than a comma list because these are
-   PATHS, and every separator that splits one is a folder that silently never
-   matches — a newline is the one character a path cannot contain. */
-const pArea=(id,val,ph,rows)=>`<textarea id="${id}" rows="${rows||3}" spellcheck="false" placeholder="${esc(ph||'')}">${esc(val==null?'':val)}</textarea>`;
-/* Safe folders, as text. The line is `mode who path`, and the PATH IS LAST and
-   takes the rest of the line — which is the whole reason for that order: a mode
-   and a user list never contain a space, and a folder very well may. A line that
-   is just a path is the older flat list and still means everyone, read-write. */
-function sbFoldersText(cfg){
-  return ((cfg.sandbox&&cfg.sandbox.folders)||[]).map(f=>{
-    if(typeof f==='string')return 'rw * '+f;
-    const who=(f.users&&f.users.length)?f.users.join(','):'*';
-    return `${f.mode==='ro'?'ro':'rw'} ${who} ${f.path||''}`;
-  }).join('\n');
-}
-function sbFoldersParse(text){
-  return (text||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
-    const m=l.match(/^(ro|rw)\s+(\S+)\s+(.+)$/i);
-    if(!m)return {path:l,mode:'rw',users:[]};          /* a bare path */
-    const who=m[2]==='*'?[]:m[2].split(',').map(s=>s.trim()).filter(Boolean);
-    return {path:m[3].trim(),mode:m[1].toLowerCase(),users:who};
-  }).filter(f=>f.path);
-}
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
@@ -199,7 +176,12 @@ function setTab(body,all){
          other places the agent may work — one per line, because a path may
          contain a comma and every separator that splits one is a folder that
          silently never matches. */
-      pRow('Safe folders',pArea('s-sb-folders',sbFoldersText(cfg),'rw * /data/reports\nro ada,bob /srv/archive',5),
+      /* Deliberately a pointer and not a second editor. Which folders are open
+         and WHO they are open to is one fact; two places to change it is two
+         places to disagree, and the copy nobody demos is the one that drifts.
+         Settings owns whether there is a jail; Users owns who reaches through it. */
+      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
         {stack:true,desc:'One share per line: mode (ro/rw), who (* for everyone, or accounts separated by commas), then the folder. The path comes LAST so it may contain spaces. Applies to the agent and the Terminal alike. Folders holding other accounts are refused; bento doctor names any entry that is not in use.',f:'sandbox safe folders share ro rw users data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
@@ -397,8 +379,9 @@ async function saveSettings(){
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
   if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
-  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim(),
-    folders:sbFoldersParse(val('s-sb-folders'))};
+  /* NOT folders: this page no longer edits them, and sending the key at all
+     would send an empty list and silently unshare everything. */
+  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
   if(val('s-taint')!==undefined)patch.security={taint:val('s-taint')};
   if(val('s-hist-compact')!==undefined)patch.history={compact:val('s-hist-compact')!=='off'};
   const providers={};
