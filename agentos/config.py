@@ -10,6 +10,11 @@ CONFIG_PATH = AGENTOS_HOME / "config.json"
 DB_PATH = AGENTOS_HOME / "agentos.db"
 SOUL_PATH = AGENTOS_HOME / "soul.md"
 
+# Which agents may answer. Named here rather than imported from executors.py,
+# because that module imports this one and the reverse would be a cycle; a test
+# asserts the two lists stay equal, which is the only thing that could drift.
+ENGINE_NAMES = ("aria", "claude-code", "hermes", "openclaw")
+
 DEFAULT_SOUL = """# Soul of this AgentOS
 
 I am the resident intelligence of this machine. I act, I remember, I learn.
@@ -330,8 +335,17 @@ def load_config() -> dict:
     # something that no longer exists is worse than clutter — it reads as a feature
     # that is merely switched off. `engine` is repaired rather than dropped, because
     # a machine pinned to a removed engine must still answer with something.
+    # The old Hermes CARRIER block (repo, engine_enabled, gateway targets) is still
+    # dead and still dropped: that shape was the removed gateway, and a key for a
+    # feature that no longer exists reads as one merely switched off. Hermes as an
+    # EXECUTOR is a different thing with a different contract — it answers this
+    # OS's turns, through this PDP, into this ledger — so the engine NAME is no
+    # longer rewritten here. `executors.resolve_engine` refuses an engine that is
+    # not installed at read time, which covers this case and the several the
+    # migration never could: uninstalled later, edited by hand, restored onto a
+    # machine that never had it.
     cfg.pop("hermes", None)
-    if cfg.get("engine") not in ("", None, "aria", "claude-code"):
+    if cfg.get("engine") not in ("", None) and cfg.get("engine") not in ENGINE_NAMES:
         cfg["engine"] = "aria"
     return cfg
 

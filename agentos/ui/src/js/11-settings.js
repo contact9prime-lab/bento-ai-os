@@ -339,7 +339,23 @@ async function paintModelPicker(refresh){
     `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
       `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
     +`</optgroup>`).join('');
-  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  /* Engines first, because choosing one is a different KIND of answer to
+     choosing a model: it changes which agent runs the turn, not which weights it
+     uses. Selecting Claude Code and then being shown a list of Anthropic API
+     models was the bug — the picker offered something that changed nothing,
+     because the executor brings its own model. An engine that is not installed
+     is still listed, greyed, carrying the reason: hidden reads as "this OS
+     cannot". */
+  const engOpts=(d.engines||[]).map(e=>{
+    const on=(d.engine||'')===e.id;
+    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
+                           :`${e.name} — ${e.reason||'not installed'}`;
+    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +engOpts+`</optgroup>`:'';
+  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
   // A model set in config that the providers no longer offer must stay visible
   // and selected, or opening Settings would silently look like something else
   // is answering.
@@ -358,6 +374,18 @@ async function paintModelPicker(refresh){
 }
 async function pickModel(id){
   if(!id)return;
+  /* Two different settings behind one control, because to the person choosing it
+     is one question: what answers me. `engine:` changes which agent runs the
+     turn; anything else is the model the built-in agent uses. */
+  if(id.indexOf('engine:')===0){
+    const eng=id.slice(7);
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({engine:eng})});
+    const d=await r.json().catch(()=>({}));
+    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
+    if(!d.error)await loadConfig();
+    return paintModelPicker();
+  }
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({default_model:id})});
   if(cfg)cfg.default_model=id;

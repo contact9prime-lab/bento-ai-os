@@ -2142,21 +2142,23 @@ async def api_models():
     """
     from . import executors as execmod
     cfg = state["cfg"]
-    engines = []
-
-    ex_conf = (cfg.get("executors") or {}).get("claude_code") or {}
-    if ex_conf.get("enabled"):
-        info = execmod.available()
-        env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
-        engines.append({
-            "id": "claude-code", "name": "Claude Code", "kind": "executor",
-            "available": bool(info.get("available")),
-            # an enabled-but-missing executor says why rather than sitting in the
-            # picker as a choice that fails on the first turn
-            "reason": info.get("reason", ""),
-            "detail": info.get("version", ""),
-            "envelope": env.describe(),
-        })
+    # Every executor this machine knows, from the roster — not just Claude Code,
+    # and not only when it happens to be enabled. The picker's job is to say what
+    # could answer here; an executor that is installed but switched off, or not
+    # installed at all, is a fact the user needs in order to choose, so it is
+    # listed with the reason rather than left out.
+    env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+    engines = [{
+        "id": r["id"], "name": r["title"], "kind": "executor",
+        "available": bool(r["installed"]),
+        # an executor that is missing says why rather than sitting in the picker
+        # as a choice that fails on the first turn
+        "reason": r["why_not"],
+        "detail": r["version"],
+        "licence": r["licence"],
+        "install": _component_offer(r["id"]),
+        "envelope": env.describe() if r["id"] == "claude-code" else {},
+    } for r in execmod.roster() if not r.get("builtin")]
 
     return {"models": await providers.available_models(cfg),
             "default": cfg.get("default_model", ""),
@@ -2287,7 +2289,32 @@ async def api_executors():
         "envelope": env.describe(),
         "billing": execmod.billing(),
         **info,
-    }]}
+    }],
+    # Every brain this machine could answer with, installed or not. The list
+    # above stays Claude-Code-shaped because it carries that executor's envelope
+    # (workspace, tools, budget) which the others do not have; this one is the
+    # roster the model picker, AI Providers and the onboarding brain step read,
+    # so none of them has to hardcode a name. A missing executor is REPORTED with
+    # what would install it — hidden reads as "this OS cannot".
+    "roster": [{**r, "install": _component_offer(r["id"])} for r in execmod.roster()],
+    "engine": execmod.resolve_engine(state["cfg"])}
+
+
+def _component_offer(executor_id: str) -> dict:
+    """The install offer for an executor, from the components catalogue.
+
+    Read from there rather than restated here, so the licence and the exact
+    command on the picker are the same ones the consent screen shows. An executor
+    with no component (OpenClaw) answers {} — used if present, never installed by
+    a command AgentOS cannot state truthfully.
+    """
+    from . import components as comps
+    for c in comps.catalog():
+        if c["id"] == executor_id:
+            return {"command": c["command"], "licence": c["licence"],
+                    "available": c["available"], "reason": c["reason"],
+                    "unlocks": c["unlocks"]}
+    return {}
 
 
 @app.put("/api/config")
@@ -2331,9 +2358,15 @@ async def api_put_config(patch: dict):
         want = str(patch["engine"] or "aria")
         # An engine this machine cannot actually reach would silently break every
         # surface at once, so refuse it here rather than at the first turn.
-        if want in ("claude-code",) and not execmod.available().get("available"):
-            return JSONResponse({"error": "Claude Code is not installed on this machine"},
-                                status_code=400)
+        # Asked of the roster rather than by name. Hardcoding "claude-code" here
+        # meant every executor added afterwards could be selected while missing,
+        # and the failure surfaced on the first turn instead of at the click.
+        if want != "aria":
+            info = execmod.probe(want)
+            if not info.get("installed"):
+                return JSONResponse(
+                    {"error": info.get("why_not") or f"{want} is not installed on this machine"},
+                    status_code=400)
         cfg["engine"] = want if want in execmod.ENGINES else "aria"
     if isinstance(patch.get("executors"), dict):
         from . import executors as execmod

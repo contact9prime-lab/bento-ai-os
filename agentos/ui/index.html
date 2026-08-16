@@ -2297,6 +2297,13 @@ body.glass-off .win{background:var(--bg)!important}
 .wbody.ob-inwin.narrow .ob-t em{display:none}
 .wbody.ob-inwin.narrow .ob-leave{margin:0;padding:0 var(--sp-2);white-space:nowrap}
 .wbody.ob-inwin.narrow .ob-leave:first-of-type{margin-top:0;padding-top:0}
+
+/* An executor that is not installed is shown, not hidden — greyed, with the
+   licence and the exact command that would install it. Hiding it reads as "this
+   OS cannot", when the truth is "you do not have it yet". */
+.job-way.is-off{opacity:.62}
+.job-way .ob-cmd{display:block;margin-top:6px;padding:5px 8px;border-radius:var(--r-sm);
+  background:var(--bg4);color:var(--dim);font-size:var(--fs-sm);overflow-wrap:anywhere}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -7678,7 +7685,23 @@ async function paintModelPicker(refresh){
     `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
       `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
     +`</optgroup>`).join('');
-  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  /* Engines first, because choosing one is a different KIND of answer to
+     choosing a model: it changes which agent runs the turn, not which weights it
+     uses. Selecting Claude Code and then being shown a list of Anthropic API
+     models was the bug — the picker offered something that changed nothing,
+     because the executor brings its own model. An engine that is not installed
+     is still listed, greyed, carrying the reason: hidden reads as "this OS
+     cannot". */
+  const engOpts=(d.engines||[]).map(e=>{
+    const on=(d.engine||'')===e.id;
+    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
+                           :`${e.name} — ${e.reason||'not installed'}`;
+    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +engOpts+`</optgroup>`:'';
+  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
   // A model set in config that the providers no longer offer must stay visible
   // and selected, or opening Settings would silently look like something else
   // is answering.
@@ -7697,6 +7720,18 @@ async function paintModelPicker(refresh){
 }
 async function pickModel(id){
   if(!id)return;
+  /* Two different settings behind one control, because to the person choosing it
+     is one question: what answers me. `engine:` changes which agent runs the
+     turn; anything else is the model the built-in agent uses. */
+  if(id.indexOf('engine:')===0){
+    const eng=id.slice(7);
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({engine:eng})});
+    const d=await r.json().catch(()=>({}));
+    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
+    if(!d.error)await loadConfig();
+    return paintModelPicker();
+  }
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({default_model:id})});
   if(cfg)cfg.default_model=id;
@@ -10744,7 +10779,28 @@ var OB_WIRE={
   async model(){
     const box=$('#ob-model-box');if(!box)return;
     let d={};try{d=await (await fetch('/api/setup')).json()}catch(e){}
+    let eng={engines:[]};try{eng=await (await fetch('/api/models')).json()}catch(e){}
     const local=(d.ollama_models||[]);
+    /* The third way to have a brain, and until now the only one this step never
+       mentioned: another agent already on the machine answers the turns. It
+       belongs HERE because "what will answer me" is one question, and finding out
+       afterwards that Claude Code was installed all along — from a Settings tab
+       nobody had reason to open yet — is the same gap as a capability that is
+       silently missing. Not installed is shown too, with the exact command and
+       the licence: hidden reads as "this OS cannot". */
+    const engines=(eng.engines||[]);
+    const engHtml=engines.length?`<div class="job-q"><span>Or let another agent answer</span>
+      <div class="job-ways">${engines.map(e=>{
+        const off=e.install||{};
+        return e.available
+          ? `<label class="job-way"><input type="radio" name="ob-model" value="engine:${esc(e.id)}">
+               <b>${esc(e.name)}</b><em>installed${e.detail?' · '+esc(e.detail):''}${
+                 e.licence?' · '+esc(e.licence):''} — it brings its own model</em></label>`
+          : `<label class="job-way is-off"><input type="radio" disabled>
+               <b>${esc(e.name)}</b><em>${esc(e.reason||'not installed')}${
+                 e.licence?' · '+esc(e.licence):''}</em>${off.command?
+                 `<code class="ob-cmd">${esc(off.command)}</code>`:''}</label>`;
+      }).join('')}</div></div>`:'';
     // Local first when there are any: it is free, private, and needs no key — the
     // honest default when the machine can already do it.
     box.innerHTML=`
@@ -10769,6 +10825,7 @@ var OB_WIRE={
         <input id="ob-cmodel" style="width:100%;margin-top:6px">
         <em class="mut" id="ob-prov-hint" style="display:block;margin-top:4px"></em>
       </div>
+      ${engHtml}
       <div class="job-go"><button class="wiz-next" id="ob-model-go">Use this model</button></div>`;
     const upd=()=>{const v=(document.querySelector('input[name=ob-model]:checked')||{}).value;
       $('#ob-cloud').style.display=v==='cloud'?'block':'none'};
@@ -10806,6 +10863,19 @@ var OB_WIRE={
               m=($('#ob-cmodel').value||'').trim();
         if(!k||!m)return obMsg('a key and a model name, please','warn');
         body={providers:{[p]:{api_key:k}},default_model:p+'/'+m};
+      }else if(v.indexOf('engine:')===0){
+        /* Choosing an agent is not choosing a model, so it is a different save:
+           /api/setup writes the model config, and the engine is what decides who
+           runs the turn at all. It also VALIDATES — an executor that vanished
+           between the page loading and the click is refused with the reason
+           rather than accepted into a machine that then fails on its first turn. */
+        obMsg('saving…');
+        const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({engine:v.slice(7)})});
+        const jd=await r.json().catch(()=>({}));
+        if(jd.error)return obMsg(jd.error,'warn');
+        await loadConfig();await loadModels();
+        obMsg('saved','ok');return obRefresh(true);
       }else if(v){body={default_model:v}}
       else return obMsg('pick one','warn');
       obMsg('saving…');

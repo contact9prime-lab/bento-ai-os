@@ -36,7 +36,19 @@ def test_catalog_entries_are_complete():
         assert row["group"] in components.GROUPS
         assert isinstance(row["installed"], bool)
         if row["available"]:
-            assert row["command"].startswith("sudo "), "the shown command must be runnable as-is"
+            # "Runnable as-is" cuts both ways, and only one of them used to be
+            # checked. A system package needs sudo; a component that installs into
+            # the user's OWN account (Claude Code, Hermes, the WhatsApp bridge)
+            # must not carry it, or the command on the consent screen — the one
+            # people copy — installs it for root instead of for them.
+            needs_root = components.CATALOG[row["id"]].get("needs_root", True)
+            if needs_root:
+                assert row["command"].startswith("sudo "), (
+                    f"{row['id']} installs system-wide; the shown command needs sudo")
+            else:
+                assert not row["command"].startswith("sudo "), (
+                    f"{row['id']} installs into the user's own account, so the shown "
+                    f"command must not be run as root")
         else:
             assert row["reason"], f"{row['id']} is unavailable without saying why"
 

@@ -152,7 +152,8 @@ class Run:
 #     picker exists to prevent.
 #
 # The UI states this rather than implying totality.
-ENGINES = ("aria", "claude-code")
+# Derived from the catalogue below, so adding an executor is one edit.
+ENGINES = ("aria", "claude-code", "hermes", "openclaw")
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
@@ -163,12 +164,20 @@ def resolve_engine(cfg: dict, requested: str = "") -> str:
     local override, not a fight with the machine setting. Otherwise the machine's
     own engine decides, so a forwarder stays a forwarder on every surface.
     """
-    if requested == "claude-code":
+    if requested and requested in ENGINES and requested != "aria":
         return requested
     if requested:                      # a real model id: the built-in agent
         return "aria"
     engine = str((cfg or {}).get("engine") or "aria")
-    return engine if engine in ENGINES else "aria"
+    if engine not in ENGINES or engine == "aria":
+        return "aria"
+    # Chosen but no longer here. An executor can be uninstalled, or the config can
+    # be edited by hand, or a machine can be restored onto different hardware —
+    # in every one of those the setting outlives the binary. Falling back to the
+    # built-in agent is the only answer that leaves the machine ANSWERING; the
+    # alternative is a turn that fails, on every surface at once, for a reason
+    # that is in a settings panel nobody is looking at.
+    return engine if probe(engine).get("installed") else "aria"
 
 
 def forwarding(cfg: dict) -> str:
@@ -670,6 +679,144 @@ def claude_exe(refresh: bool = False) -> str:
     return max(cands, key=lambda p: (_EXE_CACHE.get(p) or (0,), p))
 
 
+# Defined here rather than further down because the catalogue below reads it
+# at import time, not at call time.
+INSTALL_CMD = "curl -fsSL https://claude.ai/install.sh | bash"
+
+
+# ---------------------------------------------------------------------------
+# The roster: which brains this machine can actually answer with
+#
+# `available()` below reports on Claude Code and only Claude Code, because for a
+# long time it was the only executor. That shape leaked outward: every surface
+# that wanted to know "what can answer here" either hardcoded the name or asked a
+# boolean, so adding a second one meant editing each of them.
+#
+# This is the list, and every surface branches on it — the AI Providers panel, the
+# model picker, `bento doctor`, the onboarding brain step. An executor that is not
+# installed is REPORTED, never hidden: hidden reads as "this OS cannot", and the
+# whole point is that it can, once you install the thing.
+#
+# What each entry may claim is deliberately constrained. `install_cmd` is only set
+# where this repository already knows the real one — Claude Code's installer, and
+# the Hermes repo the previous integration cloned from. OpenClaw is probed and
+# used if present but NOT installed by us, because a fabricated install command is
+# a dead button, which is the one thing every honesty rule here forbids.
+# ---------------------------------------------------------------------------
+
+EXECUTOR_CATALOGUE = (
+    {
+        "id": "aria",
+        "title": "Aria — the built-in agent",
+        "what": "This OS's own agent loop, answering with whichever model you have "
+                "configured — local through Ollama, or a cloud provider.",
+        "builtin": True,
+        "licence": "",
+        "bins": (),
+    },
+    {
+        "id": "claude-code",
+        "title": "Claude Code",
+        "what": "Anthropic's coding agent as the engine. It signs in with your "
+                "Claude subscription — AgentOS never passes it an API key.",
+        "builtin": False,
+        "licence": "proprietary (Anthropic)",
+        "bins": ("claude",),
+        "install_cmd": INSTALL_CMD,
+        "install_note": "Installs the Claude Code CLI into your own account.",
+        "docs": "https://claude.com/claude-code",
+    },
+    {
+        "id": "hermes",
+        "title": "Hermes",
+        "what": "Nous Research's self-hosted assistant as the engine. It brings its "
+                "own model configuration and its own credentials, which AgentOS "
+                "neither reads nor writes.",
+        "builtin": False,
+        "licence": "MIT",
+        "bins": ("hermes",),
+        # The repository the previous integration cloned from. Kept because it is
+        # a fact this codebase already recorded, not one invented here.
+        "repo": "https://github.com/NousResearch/hermes-agent.git",
+        "install_note": "Clones Hermes (MIT) and installs its CLI into your account.",
+        "docs": "https://github.com/NousResearch/hermes-agent",
+    },
+    {
+        "id": "openclaw",
+        "title": "OpenClaw",
+        "what": "Used as the engine if you already have it. AgentOS detects the "
+                "`openclaw` CLI on your PATH.",
+        "builtin": False,
+        "licence": "MIT",
+        "bins": ("openclaw",),
+        # Deliberately no install_cmd. AgentOS does not ship an installer it cannot
+        # state truthfully, and an install button that runs a guess is worse than
+        # no button — see the honesty rules in CLAUDE.md.
+        "install_note": "",
+        "docs": "",
+    },
+)
+
+EXECUTORS_BY_ID = {e["id"]: e for e in EXECUTOR_CATALOGUE}
+
+
+def _find_bin(names: tuple) -> str:
+    """First executable of these names, resolved over the EXTENDED path.
+
+    `shutil.which` alone is the wrong question for a service started by systemd or
+    a LaunchAgent: neither sources a login shell, so ~/.local/bin — where most of
+    these install themselves — is simply absent. This is the same seam
+    `claude_exe()` documents at length, applied to every executor rather than one.
+    """
+    from .mcp_client import _extended_path
+
+    for d in (_extended_path() or "").split(os.pathsep):
+        if not d:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return p
+    return ""
+
+
+def probe(executor_id: str) -> dict:
+    """One executor: is it here, which version, and if not what would fix it."""
+    spec = EXECUTORS_BY_ID.get(executor_id)
+    if not spec:
+        return {"id": executor_id, "installed": False, "title": executor_id,
+                "why_not": f"no executor called {executor_id!r}"}
+    base = {"id": spec["id"], "title": spec["title"], "what": spec["what"],
+            "builtin": spec.get("builtin", False), "licence": spec.get("licence", ""),
+            "docs": spec.get("docs", ""), "install_cmd": spec.get("install_cmd", ""),
+            "install_note": spec.get("install_note", ""), "repo": spec.get("repo", "")}
+    if spec.get("builtin"):
+        return {**base, "installed": True, "path": "", "version": "", "why_not": ""}
+    # Claude Code keeps its own resolver: several copies on one machine is normal
+    # and the NEWEST has to win, which a first-match search would get wrong.
+    path = claude_exe() if spec["id"] == "claude-code" else _find_bin(spec["bins"])
+    if not path:
+        why = f"{spec['title']} is not installed on this machine."
+        if not spec.get("install_cmd") and not spec.get("repo"):
+            why += (" AgentOS can use it if you install it yourself — it does not "
+                    "ship an installer for it.")
+        return {**base, "installed": False, "path": "", "version": "", "why_not": why}
+    version = ""
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10)
+        version = (out.stdout or out.stderr or "").strip().splitlines()[0][:80]
+    except Exception:
+        # Present but unreadable still counts as present: the fix for "it will not
+        # report a version" is not "install it again".
+        version = ""
+    return {**base, "installed": True, "path": path, "version": version, "why_not": ""}
+
+
+def roster() -> list[dict]:
+    """Every executor this OS knows, installed or not, in offer order."""
+    return [probe(e["id"]) for e in EXECUTOR_CATALOGUE]
+
+
 def available() -> dict:
     """Is there an executor to delegate to on this machine?
 
@@ -705,7 +852,6 @@ def available() -> dict:
 
 # The official installer. Kept as data so the UI can show the exact command
 # before anything runs, and so there is one place to correct it.
-INSTALL_CMD = "curl -fsSL https://claude.ai/install.sh | bash"
 
 
 async def install(note=None) -> tuple[bool, str]:
