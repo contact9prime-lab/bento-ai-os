@@ -342,3 +342,20 @@ async function wizInstallOllama(){
   }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
   finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
 }
+
+/* A manual link is clickable wherever it is rendered, not only inside Docs. The
+   agent cites the manual in chat constantly, and a citation you cannot follow is
+   a footnote — the link rendered, looked like a link, and did nothing, because
+   the only handler was the one Docs attaches to its own body.
+
+   Delegated from the document so it covers markup added after load, which is
+   every chat reply. Docs' own per-element handler runs first (bubbling) and calls
+   preventDefault, so `defaultPrevented` is how in-app navigation avoids also
+   raising a window it is already inside. */
+document.addEventListener('click', e => {
+  const a = e.target.closest ? e.target.closest('a.doclink') : null;
+  if (!a || e.defaultPrevented) return;
+  e.preventDefault();
+  docsCur = (a.dataset.doc || '').split('#')[0].replace(/^(\.\.?\/)+/, '');
+  openApp('docs');
+});
