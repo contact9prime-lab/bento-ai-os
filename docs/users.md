@@ -31,7 +31,9 @@ they had just created would be theatre:
                        executors, sandbox, remote access, updates, components
   users.json           the registry: id, name, display, role, password hash (0600)
   session.key          the cookie signing key (0600)
-  shared/              the one place anything crosses between accounts
+  shared/              agents and apps crossing between accounts, as copies
+                       (the other crossing is a safe folder, shared live —
+                       an admin setting, per account, see below)
   users/<id>/          0700 — somebody's whole private world
     agentos.db         memory, KG, conversations, grants, flows, tasks, apps, audit
     config.json        their channels, MCP, credentials, look, spaces (0600)
@@ -114,11 +116,19 @@ is a preference; which providers exist and what their keys are is not.
 grants, flows, jobs, tasks, apps, the gallery, the soul, channels, MCP servers,
 credentials, the audit ledger.
 
-**Crossing over:** `shared/`, and only agents and apps, and only as a **copy**. A
-shared app that changed under the people using it would be a supply-chain problem
-living in a filesystem — and the publisher would not know they had shipped a
-change. Taking a copy renames on collision, so installing one never overwrites
-something of yours with the same name.
+**Crossing over:** two things cross, and they cross in opposite ways on purpose.
+
+The first is `shared/` — only agents and apps, and only as a **copy**. A shared app
+that changed under the people using it would be a supply-chain problem living in a
+filesystem, and the publisher would not know they had shipped a change. Taking a
+copy renames on collision, so installing one never overwrites something of yours
+with the same name.
+
+The second is a **safe folder**, and it is deliberately the other way round: it is
+shared *live*, not copied. That is the difference between code and data. A copy of
+an app is a safe version of it; a copy of the quarter's invoices is a stale second
+copy of the quarter's invoices, which is the problem rather than the fix. See
+[Safe folders](#safe-folders-the-agent-working-outside-its-own-home) below.
 
 Share from where the thing lives — an agent in Workflows, an app in App Studio:
 
@@ -172,6 +182,60 @@ And the isolation is visible: Ada's `market-watcher` is not in Bob's Workflows.
 
 ![Bob's Agents tab, showing only the three built-in specialists — researcher, validator and writer — and none of Ada's](screenshots/isolation-second-user-agents.png)
 
+## Safe folders: the agent working outside its own home
+
+Everything above is about what each account keeps to itself. This is the one
+deliberate hole in it, and it exists because the alternative was worse: the
+agent's file tools are jailed to the workspace, and nobody's data lives in the
+workspace, so "summarise last quarter's invoices" began with copying them in.
+
+A **safe folder** is an admin naming a directory the agent may work in, who it is
+for, and how much it carries:
+
+```
+bento folders                                             # who has what
+bento folders add /data/finance --mode rw --users ada
+bento folders add /srv/legal    --mode ro --users bob
+bento folders add /srv/common   --mode rw               # everyone
+```
+
+or in **Settings → Sandbox → Safe folders**, one share per line as `mode who path`.
+
+**It is the AI's access, not just yours.** These folders are what the agent itself
+reads and writes — `read_file`, `write_file`, `list_dir`, the git tools — and what
+`run_command` and the Terminal can reach. All of them, or none: a folder the agent
+can read but the Terminal cannot would be a difference nobody could explain, and
+a `ro` share the shell could write to would make the setting a lie.
+
+**And it is scoped per account.** A share names the accounts it is for, and the
+agent gets exactly the acting account's list — resolved from the same
+`users.current()` contextvar as everything else on this page, so a scheduled job
+running at 08:00 sees its owner's folders and not the machine's. Given the three
+shares above:
+
+| acting as | `/data/finance` | `/srv/legal` | `/srv/common` |
+|---|---|---|---|
+| **ada** | read + write | denied | read + write |
+| **bob** | denied | read only | read + write |
+
+An empty account list means everyone, which is also what a single-user machine
+always sees — there is nobody to distinguish there.
+
+**Only an admin can share one.** `sandbox` is a machine setting, so `/api/config`
+refuses a non-admin the whole key. That is the point rather than an accident:
+"which folders may I reach" is not a question you should be able to answer for
+yourself from your own account.
+
+**No share can ever be a way into another account.** The accounts root, a home
+inside it, or *any directory above it* is refused outright, with that reason — so
+naming `~/.agentos` or `/` cannot hand one account another's memory and
+credentials. The per-account boundary is still checked first and still wins:
+naming somebody's home directly does not open it. `bento doctor` lists every
+share, its mode and who it is for, plus any entry that was refused and why.
+
+This is the honest summary: **accounts are private by default, and a safe folder
+is the admin deciding, explicitly and per person, that one directory is not.**
+
 ## One sign-in, here and from anywhere
 
 Remote access needs a lock on the door. On a single-user machine that is a shared
@@ -194,7 +258,10 @@ agent's file tools refuse another account's home, and `run_command` and the
 Terminal run inside a per-account `bwrap` jail — rooted at that account's home with
 every other account's home blanked out — or refuse to run if no jail is available
 (no jail cannot mean no walls). An executor cannot `cat` another account's memory
-through AgentOS.
+through AgentOS. The one exception is a folder an admin has deliberately shared
+with them, which is the whole subject of [Safe
+folders](#safe-folders-the-agent-working-outside-its-own-home) above — and no
+share may be another account's home, so it never widens this.
 
 What that does **not** buy, and should not be claimed, is protection against an
 account that is actively hostile *and* has more than AgentOS gives it — a

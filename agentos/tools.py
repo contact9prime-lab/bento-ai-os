@@ -154,8 +154,152 @@ def sandbox_conf(cfg: dict) -> tuple[bool, str]:
     return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
 
 
+# --------------------------------------------------------------------------
+# Safe folders — the other places the agent may work, and who may work there
+#
+# The jail has one root and the root is the workspace, which is not where
+# anybody's data lives: the answer to "read last quarter's invoices" was to copy
+# them into the workspace first, which is not an answer, it is a chore that also
+# duplicates the data.
+#
+# A share is the admin saying "this folder, these people, this much". It is a
+# machine setting (`sandbox` is not in users.USER_KEYS), so only an admin can
+# write one — /api/config already refuses a non-admin the whole key — and that is
+# the point: sharing a folder with somebody else is not a thing you should be
+# able to do to yourself from your own account.
+#
+#   {"path": "/data/reports", "mode": "rw", "users": ["ada", "bob"]}
+#   {"path": "/srv/archive",  "mode": "ro", "users": []}      <- everyone
+#
+# An empty `users` means every account, which is also what a single-user machine
+# always sees. A bare string is the older flat list and still means "everyone,
+# read-write" — configs written before shares existed keep working untouched.
+#
+# `mode` is enforced in two places that must agree: the in-process file tools
+# (a write to a ro share is refused) and the shell jail (a ro share is bound
+# read-only). Enforcing it in one and not the other would mean `write_file` says
+# no and `run_command` says yes about the same folder.
+#
+# Refusals are returned, never swallowed. A folder silently ignored because it
+# was mistyped looks exactly like one the agent is refusing to use, and the user
+# is left retyping a path that was never the problem.
+# --------------------------------------------------------------------------
+
+FOLDER_MODES = ("ro", "rw")
+
+
+def _under_any(rp: str, roots: list[str]) -> bool:
+    """Is this real path inside any of these real roots?
+
+    Compared with a separator appended, never as a bare prefix: `/data-old`
+    starts with `/data` as a string and is a different directory.
+    """
+    return any(rp == r or rp.startswith(r + os.sep) for r in roots if r)
+
+
+def _as_share(raw) -> dict:
+    """One share from either shape, before validation.
+
+    A bare string is the flat list this setting used to be — kept meaning
+    "everyone, read-write" so an existing config is not quietly narrowed.
+    """
+    if isinstance(raw, str):
+        return {"path": raw, "mode": "rw", "users": []}
+    if not isinstance(raw, dict):
+        return {"path": "", "mode": "rw", "users": []}
+    users = raw.get("users") or []
+    if isinstance(users, str):                     # "ada, bob" from a text field
+        users = users.replace(",", " ").split()
+    mode = str(raw.get("mode") or "rw").strip().lower()
+    return {"path": str(raw.get("path") or ""),
+            # An unrecognised mode narrows to ro rather than widening to rw: a
+            # typo must not be the thing that grants write access to a share.
+            "mode": mode if mode in FOLDER_MODES else "ro",
+            "users": [str(u).strip() for u in users if str(u).strip()]}
+
+
+def check_safe_folder(path) -> tuple[str, str]:
+    """(normalised absolute path, reason it was refused). Exactly one is non-empty."""
+    raw = str(path or "").strip()
+    if not raw:
+        return "", ""
+    p = os.path.realpath(os.path.expanduser(raw))
+    if p == os.sep:
+        return "", ("/ is the whole machine — naming it here would switch the jail off "
+                    "without saying so. Turn the folder jail off in Settings if that is "
+                    "what you want.")
+    # The tenant boundary is not negotiable from here. `users/` holds every
+    # account's private home, so naming it — or ANY directory above it — would
+    # hand one account's agent the others' memory and credentials.
+    if usersmod.enabled():
+        ur = os.path.realpath(str(usersmod.users_root()))
+        if p == ur or p.startswith(ur + os.sep) or ur.startswith(p + os.sep):
+            return "", ("this holds the accounts on this machine, and each account's "
+                        "files, memory and credentials are private to it.")
+    if not os.path.isdir(p):
+        return "", "no such folder on this machine."
+    return p, ""
+
+
+def folder_shares(cfg: dict) -> list[dict]:
+    """Every valid share, normalised: {path, mode, users}. Order preserved."""
+    out: list[dict] = []
+    for raw in (cfg.get("sandbox") or {}).get("folders") or []:
+        sh = _as_share(raw)
+        p, _why = check_safe_folder(sh["path"])
+        if not p:
+            continue
+        # The same folder listed twice keeps the FIRST entry, so a later, wider
+        # line cannot quietly upgrade an earlier ro share to rw.
+        if any(o["path"] == p for o in out):
+            continue
+        out.append({**sh, "path": p})
+    return out
+
+
+def folder_problems(cfg: dict) -> list[tuple[str, str]]:
+    """(entry, why it is not being used) for every configured folder refused.
+
+    Surfaces call this so a rejected entry is stated rather than discovered by
+    the agent failing to reach a folder the settings page still lists.
+    """
+    bad = []
+    for raw in (cfg.get("sandbox") or {}).get("folders") or []:
+        sh = _as_share(raw)
+        if not sh["path"].strip():
+            continue
+        p, why = check_safe_folder(sh["path"])
+        if not p:
+            bad.append((sh["path"], why))
+    return bad
+
+
+def shares_for(cfg: dict, uid: str | None = None) -> list[dict]:
+    """The shares that apply to one account. `uid=None` means whoever is acting.
+
+    An empty `users` is everyone — including on a single-user machine, where
+    `current()` is '' and there is nobody to distinguish.
+    """
+    who = usersmod.current() if uid is None else uid
+    return [s for s in folder_shares(cfg) if not s["users"] or who in s["users"]]
+
+
+def safe_folders(cfg: dict, uid: str | None = None, write: bool = False) -> list[str]:
+    """Paths this account may read — or write, when `write` is set."""
+    return [s["path"] for s in shares_for(cfg, uid)
+            if s["mode"] == "rw" or not write]
+
+
+def folder_binds(cfg: dict, uid: str | None = None) -> tuple[list[str], list[str]]:
+    """(read-only paths, read-write paths) for the shell jail."""
+    mine = shares_for(cfg, uid)
+    return ([s["path"] for s in mine if s["mode"] == "ro"],
+            [s["path"] for s in mine if s["mode"] == "rw"])
+
+
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
-               hide: list[str] | None = None) -> list[str]:
+               hide: list[str] | None = None, extra: list[str] | None = None,
+               ro_extra: list[str] | None = None) -> list[str]:
     """Jail: whole FS read-only, /home hidden, only `root` writable & visible.
 
     `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
@@ -163,13 +307,29 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     whole FS is bound read-only, so a bare jail can still READ everything; tmpfs'ing
     the users root and then re-binding only this user's home is what turns "cannot
     write outside my workspace" into "cannot even see another tenant's files".
+
+    `extra` are shared folders bound WRITABLE, `ro_extra` the read-only ones. Both
+    come LAST, after the tmpfs'd `hide` list, for the same reason `root` does: a
+    bind is only visible if nothing blanks it afterwards. They have already been
+    refused if they sit at or above the accounts root, so re-binding them cannot
+    undo `hide`.
+
+    A read-only share MUST be --ro-bind here even though the whole filesystem is
+    already bound read-only: it may sit under /home, which is tmpfs'd away, and
+    without a bind of its own it would simply not exist inside the jail. Binding
+    it writable instead is the bug this argument exists to prevent — the file
+    tools would refuse a write the shell would happily perform.
     """
     argv = ["bwrap", "--ro-bind", "/", "/", "--tmpfs", "/home"]
     for h in (hide or []):
         argv += ["--tmpfs", h]              # order matters: blank the siblings first…
     argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-             "--bind", root, root,          # …then this user's own home reappears
-             "--chdir", chdir or root,
+             "--bind", root, root]          # …then this user's own home reappears
+    for e in (ro_extra or []):
+        argv += ["--ro-bind", e, e]         # …shared, but not to be written
+    for e in (extra or []):
+        argv += ["--bind", e, e]            # …and the ones shared read-write
+    argv += ["--chdir", chdir or root,
              "--setenv", "HOME", root,
              "--setenv", "AGENTOS_SANDBOX", "1",
              "--die-with-parent",
@@ -177,7 +337,9 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     return argv
 
 
-def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
+def _sandbox_exec_profile(root: str, hide: list[str] | None = None,
+                          extra: list[str] | None = None,
+                          ro_extra: list[str] | None = None) -> str:
     """macOS SBPL: everything readable, but writes confined to `root` (+ tmp/dev/caches).
 
     Matches bubblewrap's security-relevant guarantee — the agent's shell cannot modify
@@ -199,8 +361,8 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
     """
     def esc(p):
         return p.replace("\\", "\\\\").replace('"', '\\"')
-    writable = [root, "/tmp", "/private/tmp", "/private/var/tmp", "/dev/null",
-                "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
+    writable = [root, *(extra or []), "/tmp", "/private/tmp", "/private/var/tmp",
+                "/dev/null", "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
     subpaths = "\n  ".join(f'(subpath "{esc(p)}")' for p in writable)
     prof = ("(version 1)\n"
             "(allow default)\n"
@@ -210,25 +372,37 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
     if hide:
         for h in hide:
             prof += f'(deny file-read* (subpath "{esc(h)}"))\n'
-        prof += f'(allow file-read* (subpath "{esc(root)}"))\n'   # …then this one back
+        # …then this one back, and the safe folders with it. LAST rule wins, so
+        # these must follow the denies above — which is safe only because
+        # check_safe_folder has already refused anything at or above the accounts
+        # root, so none of them can re-open a home the deny just closed.
+        prof += f'(allow file-read* (subpath "{esc(root)}"))\n'
+        for e in [*(extra or []), *(ro_extra or [])]:
+            prof += f'(allow file-read* (subpath "{esc(e)}"))\n'
     return prof
 
 
 def sandbox_exec_argv(root: str, command: str, chdir: str | None = None,
-                      hide: list[str] | None = None) -> list[str]:
+                      hide: list[str] | None = None,
+                      extra: list[str] | None = None,
+                      ro_extra: list[str] | None = None) -> list[str]:
     """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
-    prof = _sandbox_exec_profile(root, hide=hide)
+    prof = _sandbox_exec_profile(root, hide=hide, extra=extra, ro_extra=ro_extra)
     inner = f'cd {shlex.quote(chdir or root)} && {command}'
     return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
 
 
-def jail_argv(root: str, command: str, chdir: str | None = None) -> list[str] | None:
+def jail_argv(root: str, command: str, chdir: str | None = None,
+              extra: list[str] | None = None,
+              ro_extra: list[str] | None = None) -> list[str] | None:
     """The right jail wrapper for this OS, or None if no mechanism is available."""
     mech = sandbox_mechanism()
     if mech == "bwrap":
-        return bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=chdir)
+        return bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=chdir,
+                          extra=extra, ro_extra=ro_extra)
     if mech == "sandbox-exec":
-        return sandbox_exec_argv(root, command, chdir=chdir)
+        return sandbox_exec_argv(root, command, chdir=chdir, extra=extra,
+                                 ro_extra=ro_extra)
     return None
 
 
@@ -336,7 +510,7 @@ class Toolbox(usersmod.Scoped):
         p = Path(os.path.expanduser(str(path or "")))
         return p if p.is_absolute() else Path(self.cfg["workspace"]) / p
 
-    def _tenant_deny(self, path) -> str | None:
+    def _tenant_deny(self, path, write: bool = False) -> str | None:
         """On a machine with accounts, a tool may not touch a path outside the acting
         account's own home — this is what stops one tenant's agent reading another's
         memory, credentials or files. It applies whenever accounts exist, independent
@@ -350,11 +524,19 @@ class Toolbox(usersmod.Scoped):
         rp = os.path.realpath(str(path))
         if rp == home or rp.startswith(home + os.sep):
             return None
+        # A safe folder is a deliberate machine-level decision that this directory
+        # is shared, and check_safe_folder has already refused anything at or above
+        # the accounts root — so it cannot be a way into somebody else's home. That
+        # proof is the only reason this boundary may be widened here at all.
+        if _under_any(rp, safe_folders(self.cfg, write=write)):
+            return None
         return ("[denied] this belongs to another account on this machine. Each account's "
                 "files, memory and credentials are private to it.")
 
-    def _sandbox_deny(self, path) -> str | None:
-        if (t := self._tenant_deny(path)):
+    def _sandbox_deny(self, path, write: bool = False) -> str | None:
+        """`write` is what makes a read-only share mean anything. A shared folder
+        the tools let you overwrite is not read-only, whatever the setting says."""
+        if (t := self._tenant_deny(path, write=write)):
             return t
         enabled, root = sandbox_conf(self.cfg)
         if not enabled:
@@ -362,7 +544,20 @@ class Toolbox(usersmod.Scoped):
         rp = os.path.realpath(str(path))
         if rp == root or rp.startswith(root + os.sep):
             return None
-        return f"[denied] sandbox mode: only paths inside {root} are accessible (see Settings → Sandbox)"
+        if _under_any(rp, safe_folders(self.cfg, write=write)):
+            return None
+        # A read-only share is the one case where the reason is not "you cannot go
+        # there" but "you cannot do THAT there", and saying the wrong one sends
+        # somebody to widen a setting that is already wide enough.
+        if write and _under_any(rp, safe_folders(self.cfg)):
+            return ("[denied] this folder is shared with you read-only. An admin can "
+                    "change it to read-write in Settings → Sandbox → Safe folders.")
+        # Name the folders that WOULD work. "Only paths inside <root>" was true and
+        # unhelpful the moment there was more than one place to be.
+        where = ", ".join([root] + safe_folders(self.cfg, write=write))
+        return (f"[denied] sandbox mode: only paths inside {where} are "
+                f"{'writable' if write else 'accessible'} "
+                f"(managed in Settings → Sandbox → Safe folders)")
 
     async def run_command(self, command: str, cwd: str = "") -> str:
         enabled, root = sandbox_conf(self.cfg)
@@ -388,17 +583,27 @@ class Toolbox(usersmod.Scoped):
             # blank the users root, then give this account's home back. bwrap does it
             # with a tmpfs and a re-bind, sandbox-exec with a deny and a re-allow.
             hide = [os.path.realpath(str(usersmod.users_root()))]
+            # The shared folders come back in after the blanking, so a command can
+            # reach them from inside the per-account jail. They cannot be a way out:
+            # check_safe_folder refuses anything at or above the accounts root.
+            ro_extra, extra = folder_binds(self.cfg)
+            if cwd and _under_any(os.path.realpath(os.path.expanduser(cwd)),
+                                  [*ro_extra, *extra]):
+                workdir = os.path.realpath(os.path.expanduser(cwd))
             if mech == "bwrap":
                 argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
-                                  hide=hide)
+                                  hide=hide, extra=extra, ro_extra=ro_extra)
             else:
-                argv = sandbox_exec_argv(home, command, chdir=workdir, hide=hide)
+                argv = sandbox_exec_argv(home, command, chdir=workdir, hide=hide,
+                                         extra=extra, ro_extra=ro_extra)
         elif enabled:
+            ro_extra, extra = folder_binds(self.cfg)
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else root
-            if not (workdir == root or workdir.startswith(root + os.sep)) or not os.path.isdir(workdir):
+            if not _under_any(workdir, [root, *ro_extra, *extra]) or not os.path.isdir(workdir):
                 workdir = root
             os.makedirs(root, exist_ok=True)
-            argv = jail_argv(root, command, chdir=workdir)  # bwrap on Linux, sandbox-exec on macOS
+            # bwrap on Linux, sandbox-exec on macOS
+            argv = jail_argv(root, command, chdir=workdir, extra=extra, ro_extra=ro_extra)
         if argv:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
@@ -440,7 +645,7 @@ class Toolbox(usersmod.Scoped):
 
     async def write_file(self, path: str, content: str) -> str:
         p = self._abs(path)
-        if (deny := self._sandbox_deny(p)):
+        if (deny := self._sandbox_deny(p, write=True)):
             return deny
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
@@ -1901,7 +2106,7 @@ class Toolbox(usersmod.Scoped):
 
     def _git_repo(self, path: str) -> tuple[str | None, str]:
         p = os.path.realpath(os.path.expanduser(path or self.cfg["workspace"]))
-        if (deny := self._sandbox_deny(Path(p))):
+        if (deny := self._sandbox_deny(Path(p), write=True)):
             return None, deny
         if not os.path.isdir(p):
             return None, f"[error] not a directory: {p}"
@@ -2095,7 +2300,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] no app named or id'd '{app}' — see list in the Apps/Studio UI"
         slug = re.sub(r"[^a-z0-9]+", "-", rec["name"].lower()).strip("-") or "agentos-app"
         proj = Path(os.path.expanduser(self.cfg["workspace"])) / "projects" / slug
-        if (deny := self._sandbox_deny(proj)):
+        if (deny := self._sandbox_deny(proj, write=True)):
             return deny
         proj.mkdir(parents=True, exist_ok=True)
         (proj / "index.html").write_text(rec["html"])

@@ -30,6 +30,7 @@ Three faces (per CLAUDE.md):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 # What a posture means, in the words the settings page shows.
@@ -177,8 +178,8 @@ CATALOGUE: list[Channel] = [
         id="telegram", title="Telegram", gate="telegram",
         what="The same conversation from your phone, with answers and approvals "
              "coming back to you there.",
-        reach="Only the chats you have paired. The first /start pairs you; "
-              "everyone else is ignored.",
+        reach="Only the chats you have paired or named below. The first /start "
+              "pairs you; everyone else is refused, and every refusal is logged.",
         setup=[
             "Open Telegram (phone or desktop) and search for **@BotFather** — it is "
             "Telegram's own account for making bots, with a blue tick.",
@@ -196,14 +197,21 @@ CATALOGUE: list[Channel] = [
         fields=[Field("bot_token", "Bot token",
                       "The whole string from BotFather, digits and letters either "
                       "side of the colon.",
-                      secret=True, placeholder="123456:ABC-DEF…")],
+                      secret=True, placeholder="123456:ABC-DEF…"),
+                Field("allow", "Also allow",
+                      "Anyone you name here may talk to the bot without waiting to "
+                      "be let in — @usernames or numeric chat ids, comma "
+                      "separated. Everybody else is still refused, and every "
+                      "refusal is written to the log.",
+                      required=False, placeholder="@bob, @sam")],
     ),
     Channel(
         id="whatsapp", title="WhatsApp", gate="whatsapp",
         what="The same conversation on WhatsApp — your agent, your memory, your "
              "tools, answering on the app you already have open.",
-        reach="Only the number you have paired. The first message pairs you; "
-              "everyone else is told this machine is not theirs.",
+        reach="Only the number you have paired or named below. The first message "
+              "pairs you; everyone else is told this machine is not theirs, and "
+              "every refusal is logged.",
         note="A message here reaches THIS agent, with your memory and permissions. "
              "Two ways to connect it, and they behave differently. The WhatsApp Web "
              "link needs nothing but a QR scan from your phone, but it is "
@@ -232,6 +240,14 @@ CATALOGUE: list[Channel] = [
             "pairs you; everyone else is told this machine is not theirs.",
         ],
         fields=[
+            # First, and with no "Business API only" caveat, because it is the one
+            # field here that means the same thing on both transports.
+            Field("allow", "Also allow",
+                  "Numbers that may message the agent without waiting to be let "
+                  "in, comma separated. Spaces, dashes and a leading + are all "
+                  "fine. Everybody else is still refused, and every refusal is "
+                  "written to the log.",
+                  required=False, placeholder="+44 7700 900123, +1 555 0100"),
             Field("phone_number_id", "Phone number ID",
                   "Business API only. From the WhatsApp product page on "
                   "developers.facebook.com.",
@@ -277,6 +293,81 @@ CATALOGUE: list[Channel] = [
 BY_ID = {c.id: c for c in CATALOGUE}
 
 
+# --------------------------------------------------------------------------
+# Who is allowed to speak, decided BEFORE they speak
+#
+# Both messenger channels pair with the first person who writes, and everybody
+# after that is refused. That is the right default and it is not enough on its
+# own: the only way to let a colleague in was to wait for them to be turned away
+# and then find their row in a list — so "let Bob talk to it" could not be done
+# until Bob had already been told no.
+#
+# This is the standing list, written in advance. It lives on the `allow` field of
+# the channel, so it is one definition and every face gets it for free: the
+# desktop card renders it, `bento channels telegram --set allow=…` sets it over
+# SSH, and the bridges below read the same string.
+#
+# Matching is deliberately forgiving about spelling and strict about identity. A
+# person writes a number as +44 7700 900123, 447700900123 or (044) 7700-900123
+# and means one number; WhatsApp delivers it as bare digits. A Telegram handle is
+# given with or without the @, and Telegram itself lowercases them. Normalising
+# both ends is what stops a correct entry silently never matching — the failure
+# mode here is invisible, because a list that matches nothing looks exactly like
+# a list nobody is on.
+# --------------------------------------------------------------------------
+
+_PHONEISH = re.compile(r"[+0-9 ()\-.]+")
+
+
+def norm_handle(handle: str) -> str:
+    """One spelling for a thing people write a dozen ways.
+
+    Numbers reduce to their digits; anything else to a lowercase, @-less name.
+    """
+    h = str(handle or "").strip().lower().lstrip("@")
+    if h and _PHONEISH.fullmatch(h):
+        return re.sub(r"[^0-9]", "", h)
+    return h
+
+
+def allow_list(conf: dict) -> list[str]:
+    """The standing allow-list for a channel, normalised.
+
+    Separated by commas, semicolons or newlines — NOT by spaces, because a phone
+    number contains spaces and is still one entry. `+44 7700 900123` split on
+    whitespace becomes three entries that match nothing, and a list that matches
+    nothing looks exactly like a list nobody is on. A run of names with no commas
+    is still split, since that is unambiguous once the phone-shaped ones are out.
+    """
+    raw = str((conf or {}).get("allow") or "")
+    out: list[str] = []
+    for part in re.split(r"[,;\n]+", raw):
+        part = part.strip()
+        if not part:
+            continue
+        pieces = [part] if _PHONEISH.fullmatch(part) else part.split()
+        out.extend(h for h in (norm_handle(p) for p in pieces) if h)
+    return out
+
+
+def preauthorised(conf: dict, *handles: str) -> str:
+    """The allow-list entry that matches any of `handles`, or ''.
+
+    Several are passed because a sender is known by more than one name and only
+    the owner decides which one they wrote down: a Telegram message carries both
+    a numeric chat id and (usually) a @username, and either is a reasonable thing
+    to have been given in advance.
+    """
+    wanted = allow_list(conf)
+    if not wanted:
+        return ""
+    for h in handles:
+        n = norm_handle(h)
+        if n and n in wanted:
+            return n
+    return ""
+
+
 def _missing(chan: Channel, conf: dict) -> list[str]:
     """Which required fields still have no value, by label.
 
@@ -308,6 +399,17 @@ def _conf(cfg: dict, chan: Channel) -> dict:
         from . import whatsapp as wamod
         conf = {**wamod.conf(cfg), **{k: v for k, v in conf.items() if v}}
     return conf
+
+
+def conf_of(cfg: dict, channel_id: str) -> dict:
+    """The effective settings for one channel, legacy blocks merged in.
+
+    The public way to ask, so a bridge reading its own allow-list gets the same
+    answer the settings page shows — including values written before this channel
+    had a registry block.
+    """
+    chan = BY_ID.get(channel_id)
+    return _conf(cfg, chan) if chan else {}
 
 
 def state(cfg: dict, store=None) -> list[dict]:

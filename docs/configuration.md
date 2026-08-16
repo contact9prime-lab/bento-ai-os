@@ -33,7 +33,7 @@ Override the config/data location with the `AGENTOS_HOME` environment variable.
 | `steer_triage_timeout` | seconds that decision may take before the message's wording decides instead (default `30`) |
 | `workspace` | the agent's working directory (default `~/AgentOS`) |
 | `port` | server port (default `8321`) |
-| `sandbox` | `{ enabled, root }` — the folder jail (see below) |
+| `sandbox` | `{ enabled, root, folders }` — the folder jail and the folders shared with each account (see below) |
 | `policies` | list of `{ action: "allow"｜"deny", match: "pattern *" }` rules |
 | `mcp_servers` | connected MCP tool servers |
 | `telegram` | `{ enabled, bot_token, owner_chat_id }` |
@@ -71,12 +71,79 @@ automatically. API keys can also come from environment variables — see [Models
 ## The sandbox
 
 ```json
-"sandbox": { "enabled": true, "root": "" }
+"sandbox": { "enabled": true, "root": "", "folders": [] }
 ```
 
 When enabled (and `bubblewrap` is installed), the agent's shell/file tools and the Terminal are
 confined to `root` (defaults to the workspace). Outside that folder the filesystem is read-only and
 other home directories are hidden. Turn it on/off and set the folder in **Settings → Sandbox**.
+
+### Safe folders
+
+`folders` is the list of **other** places the agent may work. The jail has one root and that root is
+the workspace, which is not where your data lives — so "summarise last quarter's invoices" used to
+begin with copying them into the workspace first. A share names the folder, how much access it
+carries, and who it is for:
+
+```json
+"folders": [
+  { "path": "/data/reports", "mode": "rw", "users": ["ada", "bob"] },
+  { "path": "/srv/archive",  "mode": "ro", "users": [] }
+]
+```
+
+- **`mode`** — `rw` (read and write) or `ro` (read only). An unrecognised value narrows to `ro`: a
+  typo must never be the thing that grants write access.
+- **`users`** — the accounts it is for. Empty means everyone, which is also what a single-user
+  machine always sees.
+- A bare string (`"/data/reports"`) is the older flat list and still means **everyone, read-write**,
+  so a config written before shares existed is not quietly narrowed.
+- The same folder listed twice keeps the **first** entry, so a later, wider line cannot silently
+  upgrade an `ro` share to `rw`.
+
+Sharing is an **admin** act — `sandbox` is a machine setting, and `/api/config` already refuses a
+non-admin the whole key.
+
+From a terminal, which is where a server's data folders usually have to be opened up:
+
+```
+bento folders                                             # what is shared, and with whom
+bento folders add /data/reports --mode rw --users ada,bob
+bento folders add /srv/archive  --mode ro                 # everyone, read-only
+bento folders remove /srv/archive
+```
+
+In **Settings → Sandbox → Safe folders**, one share per line as `mode who path` — the path comes
+**last** and takes the rest of the line, which is the whole reason for that order: a mode and a user
+list never contain a space, and a folder very well may.
+
+```
+rw * /data/reports
+ro ada,bob /srv/My Archive
+```
+
+A share is **the AI's access**, not only yours: these are the folders the agent's own tools reach —
+`read_file`, `write_file`, `list_dir`, the git tools — as well as `run_command` and the Terminal.
+`mode` is enforced in all of them (a read-only share is bound `--ro-bind` in the jail), because a
+folder `write_file` refuses and `run_command` writes to is a setting that lies.
+
+On a machine with accounts it is **scoped per account**: the agent gets exactly the acting account's
+shares, resolved from the same `users.current()` contextvar as everything else — so a scheduled job
+running at 08:00 sees its owner's folders, not the machine's. See
+[Users → Safe folders](users.md#safe-folders-the-agent-working-outside-its-own-home).
+
+Two entries are always refused, and `bento doctor` names any that are:
+
+- **`/`** — naming the whole machine would switch the jail off while the toggle still read *on*. If
+  that is what you want, turn the jail off and it will say so.
+- **Anything holding the accounts** (`~/.agentos/users`, a home inside it, or any directory above
+  it). `sandbox` is a machine setting rather than a personal one, so a safe folder is shared by every
+  account — which is exactly why this one cannot be named. Otherwise a single line here would undo
+  the directory isolation that keeps one account's memory and credentials away from another's. See
+  [Users](users.md) and [Tenant isolation](design/tenant-isolation.md).
+
+A folder that does not exist is refused too, with that reason — a mistyped path that was silently
+dropped looks exactly like a folder the agent is refusing to use.
 
 ---
 

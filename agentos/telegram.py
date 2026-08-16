@@ -13,6 +13,7 @@ import time
 
 import httpx
 
+from . import channels as chanmod
 from . import config as cfgmod
 from . import telegram_admin
 from .agent import Agent
@@ -142,7 +143,29 @@ class TelegramBridge(usersmod.Scoped):
             if text.startswith("/start"):
                 return  # welcome is enough for /start
 
+        # The standing allow-list, consulted before the refusal. Somebody the owner
+        # named in advance is let in on their first message rather than being told
+        # no and waiting for a human to find their row — see channels.preauthorised.
         if not chat["allowed"]:
+            match = chanmod.preauthorised(chanmod.conf_of(self.cfg, "telegram"),
+                                          username, str(chat_id))
+            if match:
+                self.store.tg_set_allowed(chat_id, 1)
+                chat["allowed"] = 1
+                self.store.log("telegram", f"allowed {title} ({chat_id}) — on the allow-list as "
+                                           f"{match}", {"chat_id": chat_id, "matched": match})
+
+        if not chat["allowed"]:
+            # A stranger reaching your agent is a security event, and until now it
+            # left a log line identical to a message that was answered. Whoever asks
+            # "has anyone else been trying to talk to it?" has to be able to answer
+            # from the log alone, so the refusal is recorded EVERY time — not only
+            # on the first message, which is all the reply below is rate-limited to.
+            self.store.log("telegram", f"refused {title} ({chat_id}) — not paired and not on "
+                                       f"the allow-list",
+                           {"chat_id": chat_id, "title": title, "username": username,
+                            "type": ctype, "msg_count": chat["msg_count"],
+                            "text": text[:160]})
             if chat["msg_count"] <= 1:
                 await self.send("▲ This chat is registered with AgentOS but not enabled yet. "
                                 "The owner can enable it in the Telegram app on the desktop.", chat_id)
