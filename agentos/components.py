@@ -291,6 +291,40 @@ CATALOG: dict[str, dict] = {
     #
     # The official Cloud API path stays available for anyone who wants a supported,
     # business-grade integration and is willing to pay its setup cost.
+    # ---- executors: the brains this machine can answer with -----------------
+    # Offered here rather than assumed, for the same reason as everything else in
+    # this catalogue: nothing installs without the licence and the exact command
+    # in view. OpenClaw is deliberately absent — AgentOS detects and uses it if
+    # you have it, but it does not ship an installer it cannot state truthfully,
+    # and an install button that runs a guess is a dead button.
+    "claude-code": {
+        "packages": {}, "method": "script", "licence": "proprietary (Anthropic)",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Claude Code (engine)",
+        "unlocks": "Answer with Anthropic's Claude Code instead of the built-in "
+                   "agent — in chat, in App Studio and in flows. It signs in with "
+                   "your Claude subscription; AgentOS never passes it an API key.",
+        "argv": lambda: _claude_code_argv(),
+        "detect": lambda: _executor_installed("claude-code"),
+        "why_unavailable": lambda: (
+            "" if (shutil.which("curl") or shutil.which("npm")) else
+            "curl is not installed, and the Claude Code installer needs it."),
+    },
+    "hermes": {
+        "packages": {}, "method": "script", "licence": "MIT",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Hermes (engine)",
+        "unlocks": "Answer with Nous Research's self-hosted assistant instead of "
+                   "the built-in agent. It brings its own model configuration and "
+                   "its own credentials, in ~/.hermes — AgentOS neither reads nor "
+                   "writes them. Clones the repository and builds its own "
+                   "virtualenv (a few minutes, one-time).",
+        "argv": lambda: _hermes_argv(),
+        "detect": lambda: _executor_installed("hermes"),
+        "why_unavailable": lambda: (
+            "" if (shutil.which("git") and shutil.which("python3")) else
+            "git and python3 are needed to build Hermes from source."),
+    },
     "whatsapp-bridge": {
         "packages": {}, "method": "script", "licence": "MIT (Baileys)",
         "group": "optional", "for_session": False,
@@ -323,6 +357,41 @@ CATALOG: dict[str, dict] = {
 
 #: Order the installer and the settings panel present groups in.
 GROUPS = ("required", "recommended", "optional")
+
+
+def _executor_installed(eid: str) -> bool:
+    from . import executors as execmod
+    return bool(execmod.probe(eid).get("installed"))
+
+
+def _claude_code_argv() -> list:
+    """Anthropic's own installer, run as the user — never with sudo.
+
+    It installs into ~/.local/bin under this account and signs in with a Claude
+    subscription; a root-owned copy would belong to nobody who uses it.
+    """
+    from . import executors as execmod
+    return ["/bin/bash", "-lc", execmod.INSTALL_CMD]
+
+
+HERMES_DIR = "~/.hermes/hermes-agent"
+
+
+def _hermes_argv() -> list:
+    """Clone Hermes (MIT) and put its CLI on this account's PATH.
+
+    The steps the previous integration documented, kept as one command so the
+    consent screen shows exactly what will run: clone, its OWN virtualenv (never
+    AgentOS's — Hermes pins its own dependencies), install, symlink.
+    """
+    repo = "https://github.com/NousResearch/hermes-agent.git"
+    d = HERMES_DIR
+    return ["/bin/bash", "-lc",
+            f"set -e; mkdir -p ~/.hermes ~/.local/bin; "
+            f"if [ -d {d}/.git ]; then git -C {d} pull --ff-only; "
+            f"else git clone --depth 1 {repo} {d}; fi; "
+            f"python3 -m venv {d}/.venv; {d}/.venv/bin/pip install -q -e {d}; "
+            f"ln -sf {d}/.venv/bin/hermes ~/.local/bin/hermes"]
 
 
 def _wa_bridge_installed() -> bool:
@@ -476,7 +545,15 @@ def catalog(session_only: bool = False) -> list[dict]:
             "installed": bool(c["detect"]()),
             "available": bool(argv),
             "reason": unavailable_reason(c),
-            "command": f"sudo {' '.join(argv)}" if argv else "",
+            # `sudo` only where root is genuinely needed. The installer at the
+            # bottom of this file has always honoured needs_root; this string —
+            # the one on the consent screen and the one people copy-paste — did
+            # not, so every user-scoped component was shown a command that would
+            # install it into root's account instead of theirs. Showing the wrong
+            # command is worse than showing none: the whole point of putting it in
+            # view is that it is what will run.
+            "command": ((f"sudo {' '.join(argv)}" if c.get("needs_root", True)
+                         else " ".join(argv)) if argv else ""),
         })
     order = {g: i for i, g in enumerate(GROUPS)}
     out.sort(key=lambda r: (order.get(r["group"], 9), r["title"]))

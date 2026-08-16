@@ -1266,6 +1266,130 @@ class Toolbox(usersmod.Scoped):
                 f"and applied live — {len(theme.get('v') or {})} color variables{extras}. "
                 f"To iterate further, call create_theme again with the SAME name and only the fields to change.")
 
+    # ---- machine verbs: the things Settings can do, sayable in a sentence ----
+    #
+    # Every one of these already had a Settings control and an HTTP route, and no
+    # way to ask for it. "Update bento" in chat could not work, so the answer was
+    # always "open Settings and click" — which on a headless box is no answer.
+    #
+    # Two rules hold for all of them, and neither is new machinery:
+    #
+    #   · ADMIN ONLY, from the same check /api/config uses. `sandbox`, `engine` and
+    #     the update are machine keys; a non-admin asking is refused with the reason
+    #     rather than silently doing nothing.
+    #   · Each gets its OWN ACTION (`system.update`, `folder.share`), never another
+    #     `tool.use` string, because "may restart my machine" and "may read a file"
+    #     have to be grantable apart — the rule the whole action vocabulary exists
+    #     for.
+
+    def _admin_only(self, what: str) -> str | None:
+        """'' when this principal may change the machine, else the refusal."""
+        if not usersmod.enabled():
+            return None                      # nobody to refuse
+        if usersmod.is_admin(usersmod.current()):
+            return None
+        return (f"[denied] only an admin can {what} on this machine. Your own "
+                f"agents, flows, channels and files are yours to change.")
+
+    async def update_agentos(self, apply: bool = False) -> str:
+        """Check for a new version of AgentOS, and optionally install it.
+        Checking changes nothing. `apply` pulls, verifies against the test suite and
+        rolls back if it fails — it does NOT restart; say so in the reply."""
+        if (deny := self._admin_only("update this machine")):
+            return deny
+        from . import config as cfgmod
+        from . import updates as updmod
+        if not apply:
+            state = await updmod.check(self.cfg, force=True)
+            cfgmod.save_config(self.cfg)
+            if state.get("error"):
+                return f"[error] {state['error']}"
+            if not state.get("update_available"):
+                return f"Up to date — {updmod.current()} is the newest published version."
+            waiting = await updmod.pending(self.cfg, limit=15)
+            lines = "\n".join(f"  {c['hash']}  {c['title']}" for c in waiting)
+            ok, why = updmod.can_apply(self.cfg)
+            return (f"{state['latest']} is available (you have {updmod.current()}).\n"
+                    + (f"{len(waiting)} change(s) waiting:\n{lines}\n" if waiting else "")
+                    + ("Say so and I will install it." if ok else f"It cannot be installed: {why}"))
+        res = await updmod.apply(self.cfg, run_tests=True)
+        if not res.get("ok"):
+            return f"[error] {res.get('error')}"
+        if res.get("unchanged"):
+            return "Already at the newest commit — nothing changed."
+        got = "\n".join(f"  {c['hash']}  {c['title']}" for c in (res.get("changes") or []))
+        return (f"Updated {res['from']} → {res['to']} ({res['files']} files, now "
+                f"{res.get('version') or '?'}).\n{got}\n"
+                f"It is on disk but not loaded — restart to run it (restart_agentos).")
+
+    async def share_folder(self, path: str, mode: str = "ro", users: str = "",
+                           remove: bool = False) -> str:
+        """Let the agent and the Terminal work in a folder outside the workspace.
+        `mode` is ro or rw; `users` is a comma-separated list of accounts ('' = everyone).
+        Set `remove` to stop sharing it."""
+        if (deny := self._admin_only("share folders")):
+            return deny
+        from . import config as cfgmod
+        cur = list((self.cfg.get("sandbox") or {}).get("folders") or [])
+        want = os.path.realpath(os.path.expanduser(str(path or "")))
+        if remove:
+            keep = [e for e in cur
+                    if os.path.realpath(os.path.expanduser(
+                        e if isinstance(e, str) else (e or {}).get("path") or "")) != want]
+            if len(keep) == len(cur):
+                return f"[error] {want} is not shared."
+            self.cfg.setdefault("sandbox", {})["folders"] = keep
+            cfgmod.save_config(self.cfg)
+            return f"No longer shared: {want}"
+        p, why = check_safe_folder(path)
+        # Refused at the point of decision, exactly as the UI and the CLI do —
+        # writing an entry the loader will drop is how a setting comes to list a
+        # folder nobody can use.
+        if not p:
+            return f"[denied] {why}"
+        if str(mode).lower() not in FOLDER_MODES:
+            return f"[error] mode is one of {', '.join(FOLDER_MODES)}"
+        who = [u.strip() for u in str(users or "").replace(",", " ").split() if u.strip()]
+        cur = [e for e in cur
+               if os.path.realpath(os.path.expanduser(
+                   e if isinstance(e, str) else (e or {}).get("path") or "")) != p]
+        cur.append({"path": p, "mode": str(mode).lower(), "users": who})
+        self.cfg.setdefault("sandbox", {})["folders"] = cur
+        cfgmod.save_config(self.cfg)
+        risk = folder_risk(p, mode)
+        return (f"Shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}."
+                + (f"\n⚠ {risk}" if risk else ""))
+
+    async def list_folders(self) -> str:
+        """Which folders the agent may work in besides its workspace, and who for."""
+        shares = folder_shares(self.cfg)
+        if not shares:
+            return "No shared folders — the agent works in its workspace only."
+        out = [f"{s['mode']}  {s['path']}  ({', '.join(s['users']) if s['users'] else 'everyone'})"
+               for s in shares]
+        for entry, why in folder_problems(self.cfg):
+            out.append(f"!   {entry} — not in use: {why}")
+        return "\n".join(out)
+
+    async def set_engine(self, engine: str) -> str:
+        """Choose which agent answers turns on this machine: aria, claude-code,
+        hermes or openclaw. An engine that is not installed is refused."""
+        if (deny := self._admin_only("change which agent answers")):
+            return deny
+        from . import config as cfgmod
+        from . import executors as execmod
+        want = str(engine or "aria").strip()
+        if want not in execmod.ENGINES:
+            return f"[error] engine is one of {', '.join(execmod.ENGINES)}"
+        if want != "aria":
+            info = execmod.probe(want)
+            if not info.get("installed"):
+                return f"[denied] {info.get('why_not')}"
+        self.cfg["engine"] = want
+        cfgmod.save_config(self.cfg)
+        return (f"This machine now answers with {want}."
+                if want != "aria" else "This machine now answers with its own agent.")
+
     async def configure_agentos(self, changes: str) -> str:
         """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
         from . import config as cfgmod
@@ -2082,6 +2206,14 @@ class Toolbox(usersmod.Scoped):
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
         if name == "configure_agentos":
             return "risky", "Changes AgentOS configuration (autonomy, policies, integrations)."
+        if name == "update_agentos":
+            return "risky", "Installs a new version of AgentOS itself."
+        if name == "share_folder":
+            return "risky", "Opens a folder outside the workspace to the agent and the Terminal."
+        if name == "set_engine":
+            return "risky", "Changes which agent answers every turn on this machine."
+        if name == "list_folders":
+            return "safe", ""
         if name == "create_theme":
             return "safe", ""
         if name == "create_app":
@@ -3301,6 +3433,39 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "update_agentos",
+        "description": ("Check whether a newer AgentOS is published, and optionally install "
+                        "it. Checking changes nothing; installing verifies against the test "
+                        "suite and rolls back on failure. Admin only."),
+        "parameters": {"type": "object", "properties": {
+            "apply": {"type": "boolean",
+                      "description": "install it (default false = just check)"}}},
+    }, {
+        "name": "share_folder",
+        "description": ("Let the agent and the Terminal read (and optionally write) a folder "
+                        "outside the workspace. Admin only. Folders holding other accounts "
+                        "are refused."),
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "the folder"},
+            "mode": {"type": "string", "enum": ["ro", "rw"],
+                     "description": "read-only (default) or read-write"},
+            "users": {"type": "string",
+                      "description": "accounts to share with, comma separated ('' = everyone)"},
+            "remove": {"type": "boolean", "description": "stop sharing it"}},
+                         "required": ["path"]},
+    }, {
+        "name": "list_folders",
+        "description": "Which folders the agent may work in besides its workspace, and who for.",
+        "parameters": {"type": "object", "properties": {}},
+    }, {
+        "name": "set_engine",
+        "description": ("Choose which agent answers turns on this machine: aria (built-in), "
+                        "claude-code, hermes or openclaw. Refused if it is not installed. "
+                        "Admin only."),
+        "parameters": {"type": "object", "properties": {
+            "engine": {"type": "string", "description": "aria | claude-code | hermes | openclaw"}},
+                         "required": ["engine"]},
+    }, {
         "name": "configure_agentos",
         "description": "Reconfigure AgentOS itself. Pass a JSON object with any of: agent_name, "
                        "default_model, autonomy ('paranoid'|'balanced'|'full'), max_steps, workspace, "

@@ -703,6 +703,13 @@ async def api_shell_wake(body: dict | None = None):
     return {"ok": True, "did": done}
 
 
+def _pending_sync(cfg: dict) -> list:
+    """`updates.pending` from a worker thread. It is async only because it sits
+    beside `check()`; everything it does is subprocess work, so it runs here."""
+    from . import updates as updmod
+    return asyncio.run(updmod.pending(cfg, limit=15))
+
+
 @app.get("/api/update")
 async def api_update_status(check: bool = False):
     """What version this is, and whether there is a newer one.
@@ -725,7 +732,11 @@ async def api_update_status(check: bool = False):
     # The commits an update would bring. Only on an explicit check — `pending()`
     # fetches, and a status route that opens Settings instantly must not do
     # network work nobody asked for.
-    changes = await updmod.pending(cfg, limit=15) if check else []
+    # In a thread: pending() shells out to `git fetch`, which is a blocking
+    # subprocess of up to two minutes. Awaited directly it stalls the whole event
+    # loop — every other request, every WebSocket, every turn — and from the About
+    # panel that looks exactly like "check for updates does nothing".
+    changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
             "enabled": updmod.conf(cfg).get("enabled", True)}
@@ -2131,21 +2142,23 @@ async def api_models():
     """
     from . import executors as execmod
     cfg = state["cfg"]
-    engines = []
-
-    ex_conf = (cfg.get("executors") or {}).get("claude_code") or {}
-    if ex_conf.get("enabled"):
-        info = execmod.available()
-        env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
-        engines.append({
-            "id": "claude-code", "name": "Claude Code", "kind": "executor",
-            "available": bool(info.get("available")),
-            # an enabled-but-missing executor says why rather than sitting in the
-            # picker as a choice that fails on the first turn
-            "reason": info.get("reason", ""),
-            "detail": info.get("version", ""),
-            "envelope": env.describe(),
-        })
+    # Every executor this machine knows, from the roster — not just Claude Code,
+    # and not only when it happens to be enabled. The picker's job is to say what
+    # could answer here; an executor that is installed but switched off, or not
+    # installed at all, is a fact the user needs in order to choose, so it is
+    # listed with the reason rather than left out.
+    env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+    engines = [{
+        "id": r["id"], "name": r["title"], "kind": "executor",
+        "available": bool(r["installed"]),
+        # an executor that is missing says why rather than sitting in the picker
+        # as a choice that fails on the first turn
+        "reason": r["why_not"],
+        "detail": r["version"],
+        "licence": r["licence"],
+        "install": _component_offer(r["id"]),
+        "envelope": env.describe() if r["id"] == "claude-code" else {},
+    } for r in execmod.roster() if not r.get("builtin")]
 
     return {"models": await providers.available_models(cfg),
             "default": cfg.get("default_model", ""),
@@ -2276,7 +2289,32 @@ async def api_executors():
         "envelope": env.describe(),
         "billing": execmod.billing(),
         **info,
-    }]}
+    }],
+    # Every brain this machine could answer with, installed or not. The list
+    # above stays Claude-Code-shaped because it carries that executor's envelope
+    # (workspace, tools, budget) which the others do not have; this one is the
+    # roster the model picker, AI Providers and the onboarding brain step read,
+    # so none of them has to hardcode a name. A missing executor is REPORTED with
+    # what would install it — hidden reads as "this OS cannot".
+    "roster": [{**r, "install": _component_offer(r["id"])} for r in execmod.roster()],
+    "engine": execmod.resolve_engine(state["cfg"])}
+
+
+def _component_offer(executor_id: str) -> dict:
+    """The install offer for an executor, from the components catalogue.
+
+    Read from there rather than restated here, so the licence and the exact
+    command on the picker are the same ones the consent screen shows. An executor
+    with no component (OpenClaw) answers {} — used if present, never installed by
+    a command AgentOS cannot state truthfully.
+    """
+    from . import components as comps
+    for c in comps.catalog():
+        if c["id"] == executor_id:
+            return {"command": c["command"], "licence": c["licence"],
+                    "available": c["available"], "reason": c["reason"],
+                    "unlocks": c["unlocks"]}
+    return {}
 
 
 @app.put("/api/config")
@@ -2320,9 +2358,15 @@ async def api_put_config(patch: dict):
         want = str(patch["engine"] or "aria")
         # An engine this machine cannot actually reach would silently break every
         # surface at once, so refuse it here rather than at the first turn.
-        if want in ("claude-code",) and not execmod.available().get("available"):
-            return JSONResponse({"error": "Claude Code is not installed on this machine"},
-                                status_code=400)
+        # Asked of the roster rather than by name. Hardcoding "claude-code" here
+        # meant every executor added afterwards could be selected while missing,
+        # and the failure surfaced on the first turn instead of at the click.
+        if want != "aria":
+            info = execmod.probe(want)
+            if not info.get("installed"):
+                return JSONResponse(
+                    {"error": info.get("why_not") or f"{want} is not installed on this machine"},
+                    status_code=400)
         cfg["engine"] = want if want in execmod.ENGINES else "aria"
     if isinstance(patch.get("executors"), dict):
         from . import executors as execmod
@@ -7668,6 +7712,18 @@ async def _run_chat(cid: str, data: dict):
                     env.context += execmod.app_checkout_note(checkout, env.tools)
                 elif app_id:
                     env.context += execmod.builtin_app_note(app_id, env.allow_source)
+            if not checkout:
+                # A plain chat turn. Give it somewhere to put an app if it is asked
+                # for one — an executor cannot call create_app, so without this the
+                # work lands in a scratch directory App Studio has never heard of,
+                # which is what "I built it and it is nowhere" was. The note is
+                # conditional and the file starts EMPTY, so a turn that was not an
+                # app build installs nothing.
+                try:
+                    checkout = execmod.new_app_checkout(env.workspace, text[:60])
+                    env.context += execmod.new_app_note(checkout)
+                except Exception:
+                    checkout = None
             run = execmod.Run()
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
                           "model": "claude-code", "executor": run}

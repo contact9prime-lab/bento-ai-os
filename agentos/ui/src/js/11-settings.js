@@ -171,18 +171,12 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* The jail has one root and nobody's data lives in it, so "read last
-         quarter's invoices" used to mean copying them in first. These are the
-         other places the agent may work — one per line, because a path may
-         contain a comma and every separator that splits one is a folder that
-         silently never matches. */
       /* Deliberately a pointer and not a second editor. Which folders are open
          and WHO they are open to is one fact; two places to change it is two
          places to disagree, and the copy nobody demos is the one that drifts.
          Settings owns whether there is a jail; Users owns who reaches through it. */
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-        {stack:true,desc:'One share per line: mode (ro/rw), who (* for everyone, or accounts separated by commas), then the folder. The path comes LAST so it may contain spaces. Applies to the agent and the Terminal alike. Folders holding other accounts are refused; bento doctor names any entry that is not in use.',f:'sandbox safe folders share ro rw users data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
@@ -223,6 +217,15 @@ function setTab(body,all){
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    /* Accounts are a machine-level fact and this is where somebody looks for one,
+       so the row belongs here — but the app stays the single place they are
+       managed. A second roster in Settings would be two lists to keep true, and
+       the one nobody demos is the one that drifts. */
+    P.push(pGroup('Accounts',[
+      pRow('People on this machine','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Who can sign in, their role, and the folders and agents shared between them. AgentOS stays single-user until the first account is added — from then on it asks who you are, at the keyboard as well as from a phone.',
+         f:'users accounts people roles admin executor sign in multi-user shared folders'}),
+    ],{f:'users accounts multi-user'}));
     P.push(pGroup('Version',[
       pRow('This build','<span id="s-ver" class="mut">checking…</span>',
         {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
@@ -336,7 +339,23 @@ async function paintModelPicker(refresh){
     `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
       `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
     +`</optgroup>`).join('');
-  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  /* Engines first, because choosing one is a different KIND of answer to
+     choosing a model: it changes which agent runs the turn, not which weights it
+     uses. Selecting Claude Code and then being shown a list of Anthropic API
+     models was the bug — the picker offered something that changed nothing,
+     because the executor brings its own model. An engine that is not installed
+     is still listed, greyed, carrying the reason: hidden reads as "this OS
+     cannot". */
+  const engOpts=(d.engines||[]).map(e=>{
+    const on=(d.engine||'')===e.id;
+    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
+                           :`${e.name} — ${e.reason||'not installed'}`;
+    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +engOpts+`</optgroup>`:'';
+  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
   // A model set in config that the providers no longer offer must stay visible
   // and selected, or opening Settings would silently look like something else
   // is answering.
@@ -355,6 +374,18 @@ async function paintModelPicker(refresh){
 }
 async function pickModel(id){
   if(!id)return;
+  /* Two different settings behind one control, because to the person choosing it
+     is one question: what answers me. `engine:` changes which agent runs the
+     turn; anything else is the model the built-in agent uses. */
+  if(id.indexOf('engine:')===0){
+    const eng=id.slice(7);
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({engine:eng})});
+    const d=await r.json().catch(()=>({}));
+    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
+    if(!d.error)await loadConfig();
+    return paintModelPicker();
+  }
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({default_model:id})});
   if(cfg)cfg.default_model=id;

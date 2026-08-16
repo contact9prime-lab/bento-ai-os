@@ -232,6 +232,40 @@ that bar — not proxied to something that cannot meet it.
 `tests/test_channels.py` enforces it, and also asserts the removed carrier surface is
 really gone rather than half-removed.
 
+## Executors: another agent may answer, and that is not the Hermes that was removed
+
+`engine` decides who runs a turn. `aria` is the built-in loop; anything else in
+`executors.ENGINES` hands the turn to an agent already installed on this machine
+— Claude Code, Hermes, OpenClaw. `executors.roster()` is the list and every
+surface reads it: the model picker, AI Providers, the onboarding brain step,
+`bento doctor`. None of them names an executor, so adding one is a catalogue
+entry rather than an edit in five places.
+
+**This is deliberately not the Hermes that was removed, and the difference is the
+same one the channel rule is built on.** The removed thing was a GATEWAY that
+carried messages out to another agent with its own memory, whose replies never
+reached this OS's grants, ledger or budgets. An executor answers *this* OS's
+turns, through this PDP, into this ledger — the bar the carrier failed. The old
+`hermes` config block (`repo`, `engine_enabled`) is still dropped on load,
+because that shape configured the gateway and nothing else.
+
+Three things that will bite whoever touches this next:
+
+- **An engine that is not installed must never be returned.** `resolve_engine`
+  probes before answering and falls back to `aria`. The setting outlives the
+  binary in more ways than a load-time migration can catch — uninstalled later,
+  edited by hand, a backup restored onto a machine that never had it — and a
+  machine answering with nothing fails on every surface at once.
+- **An executor is offered only if AgentOS can state its install truthfully.**
+  Claude Code and Hermes have entries in `components.py` with a real command and
+  their licence. OpenClaw is detected and used if present and has NO installer,
+  because a fabricated command is a dead button, which every honesty rule here
+  forbids. Say "you install it, I will use it" rather than guessing.
+- **Choosing an engine is not choosing a model.** The picker offers both because
+  to the person choosing it is one question, but an executor brings its own
+  model — offering Anthropic API models while Claude Code answers was a control
+  that changed nothing.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:

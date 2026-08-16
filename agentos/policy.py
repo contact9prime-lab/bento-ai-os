@@ -161,6 +161,18 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
         return "agent.write", f"agent:subagent/{args.get('name', '') or '*'}"
     if name == "list_flows":
         return "flow.read", "flow:*"
+    # Machine verbs get their own actions rather than another `tool.use` string.
+    # "May update my machine" and "may read a file" have to be grantable apart, or
+    # a grant written for one silently carries the other — which is the whole
+    # reason this vocabulary exists rather than a single tool name match.
+    if name == "update_agentos":
+        return "system.update", "system:agentos"
+    if name == "set_engine":
+        return "system.engine", f"engine:{args.get('engine', '') or '*'}"
+    if name == "share_folder":
+        return "folder.share", f"fs:{args.get('path', '') or '*'}"
+    if name == "list_folders":
+        return "folder.read", "fs:*"
     if name == "run_flow":
         return "agent.invoke", f"agent:flow/{args.get('flow', '') or '*'}"
     if name == "delegate":

@@ -388,7 +388,28 @@ var OB_WIRE={
   async model(){
     const box=$('#ob-model-box');if(!box)return;
     let d={};try{d=await (await fetch('/api/setup')).json()}catch(e){}
+    let eng={engines:[]};try{eng=await (await fetch('/api/models')).json()}catch(e){}
     const local=(d.ollama_models||[]);
+    /* The third way to have a brain, and until now the only one this step never
+       mentioned: another agent already on the machine answers the turns. It
+       belongs HERE because "what will answer me" is one question, and finding out
+       afterwards that Claude Code was installed all along — from a Settings tab
+       nobody had reason to open yet — is the same gap as a capability that is
+       silently missing. Not installed is shown too, with the exact command and
+       the licence: hidden reads as "this OS cannot". */
+    const engines=(eng.engines||[]);
+    const engHtml=engines.length?`<div class="job-q"><span>Or let another agent answer</span>
+      <div class="job-ways">${engines.map(e=>{
+        const off=e.install||{};
+        return e.available
+          ? `<label class="job-way"><input type="radio" name="ob-model" value="engine:${esc(e.id)}">
+               <b>${esc(e.name)}</b><em>installed${e.detail?' · '+esc(e.detail):''}${
+                 e.licence?' · '+esc(e.licence):''} — it brings its own model</em></label>`
+          : `<label class="job-way is-off"><input type="radio" disabled>
+               <b>${esc(e.name)}</b><em>${esc(e.reason||'not installed')}${
+                 e.licence?' · '+esc(e.licence):''}</em>${off.command?
+                 `<code class="ob-cmd">${esc(off.command)}</code>`:''}</label>`;
+      }).join('')}</div></div>`:'';
     // Local first when there are any: it is free, private, and needs no key — the
     // honest default when the machine can already do it.
     box.innerHTML=`
@@ -413,6 +434,7 @@ var OB_WIRE={
         <input id="ob-cmodel" style="width:100%;margin-top:6px">
         <em class="mut" id="ob-prov-hint" style="display:block;margin-top:4px"></em>
       </div>
+      ${engHtml}
       <div class="job-go"><button class="wiz-next" id="ob-model-go">Use this model</button></div>`;
     const upd=()=>{const v=(document.querySelector('input[name=ob-model]:checked')||{}).value;
       $('#ob-cloud').style.display=v==='cloud'?'block':'none'};
@@ -450,6 +472,19 @@ var OB_WIRE={
               m=($('#ob-cmodel').value||'').trim();
         if(!k||!m)return obMsg('a key and a model name, please','warn');
         body={providers:{[p]:{api_key:k}},default_model:p+'/'+m};
+      }else if(v.indexOf('engine:')===0){
+        /* Choosing an agent is not choosing a model, so it is a different save:
+           /api/setup writes the model config, and the engine is what decides who
+           runs the turn at all. It also VALIDATES — an executor that vanished
+           between the page loading and the click is refused with the reason
+           rather than accepted into a machine that then fails on its first turn. */
+        obMsg('saving…');
+        const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({engine:v.slice(7)})});
+        const jd=await r.json().catch(()=>({}));
+        if(jd.error)return obMsg(jd.error,'warn');
+        await loadConfig();await loadModels();
+        obMsg('saved','ok');return obRefresh(true);
       }else if(v){body={default_model:v}}
       else return obMsg('pick one','warn');
       obMsg('saving…');

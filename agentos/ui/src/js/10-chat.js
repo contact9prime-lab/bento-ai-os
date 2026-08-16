@@ -9,8 +9,13 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        <button id="modelchip" class="modelchip" title="Change this in Settings"
-          onclick="openModelSettings()">…</button>
+        ${/* A select, not a chip that sends you elsewhere. "What is answering me"
+              is the thing you change most often and it was the one control in this
+              bar you could not operate — it named the answer and then opened
+              Settings so you could change it there. Engines and models share the
+              dropdown because to the person choosing it is one question. */''}
+        <select id="modelchip" class="modelchip" title="What answers in this chat"
+          onchange="chatPickModel(this.value)"><option>…</option></select>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
           <option value="balanced">Balanced</option>
@@ -325,18 +330,46 @@ function paintModelChip(){
   const chip=$('#modelchip');if(!chip)return;
   const d=MODELS_STATE||{};
   const engine=(cfg&&cfg.engine)||d.engine||'aria';
-  if(engine&&engine!=='aria'){
-    const e=(d.engines||[]).find(x=>x.id===engine)||{};
-    chip.innerHTML=`${{'claude-code':'◈'}[engine]||'⇥'} ${esc(e.name||engine)}`;
-    chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
-    chip.classList.add('engine');
-    return;
-  }
-  const id=(cfg&&cfg.default_model)||d.default||'';
-  const m=(d.models||[]).find(x=>x.id===id);
-  chip.textContent=m?(m.name+(m.provider==='ollama'?' · local':'')):(id||'no model');
-  chip.title=(id||'no model set')+'\nChange it in Settings → AI providers';
-  chip.classList.remove('engine');
+  const curModel=(cfg&&cfg.default_model)||d.default||'';
+  /* Engines first: choosing one changes WHO answers, and an executor brings its
+     own model, so the model list below it stops applying. One that is not
+     installed stays in the list, disabled, carrying its reason — the same
+     contract as the picker in Settings, because they are the same question. */
+  const eng=(d.engines||[]).map(e=>
+    `<option value="engine:${esc(e.id)}"${engine===e.id?' selected':''}${
+      e.available?'':' disabled'}>${esc(e.name)}${
+      e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not installed')}</option>`).join('');
+  const groups={};
+  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
+  const mods=Object.keys(groups).sort().map(prov=>
+    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
+      `<option value="${esc(m.id)}"${engine==='aria'&&m.id===curModel?' selected':''}>${
+        esc(m.name)}</option>`).join('')+`</optgroup>`).join('');
+  chip.innerHTML=`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +eng+`</optgroup>`+mods;
+  /* A model that is set but no longer offered must stay visible and selected, or
+     the bar would quietly show something else answering. */
+  if(engine==='aria'&&curModel&&!(d.models||[]).some(m=>m.id===curModel))
+    chip.insertAdjacentHTML('beforeend',
+      `<option value="${esc(curModel)}" selected>${esc(curModel)} (not currently offered)</option>`);
+  chip.classList.toggle('engine',engine!=='aria');
+  chip.title=engine!=='aria'
+    ? ((d.engines||[]).find(x=>x.id===engine)||{}).detail||engine
+    : (curModel||'no model set');
+}
+/* The same two settings behind one control as Settings → AI providers. Kept as
+   its own function rather than reusing pickModel(): that one repaints the
+   Settings panel, which is not open here. */
+async function chatPickModel(v){
+  if(!v)return;
+  const body=v.indexOf('engine:')===0?{engine:v.slice(7)}:{default_model:v};
+  const r=await fetch('/api/config',{method:'PUT',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(d.error){toast(d.error);return paintModelChip()}
+  await loadConfig();await loadModels();
+  toast(v.indexOf('engine:')===0?('✓ '+v.slice(7)+' answers now'):'✓ model changed');
 }
 /* One place to change it, and the chip goes there rather than describing where. */
 function openModelSettings(){

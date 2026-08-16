@@ -198,8 +198,15 @@ def test_no_configured_channels_changes_nothing():
 
 # ------------------------------------------------- removal migration
 
-def test_a_config_pinned_to_a_removed_engine_still_answers(tmp_path, monkeypatch):
-    """A machine set to forward to Hermes must not be left answering with nothing."""
+def test_the_removed_carrier_block_is_still_dropped(tmp_path, monkeypatch):
+    """The old Hermes GATEWAY settings are dead and stay dead.
+
+    Hermes came back as an EXECUTOR — it answers this OS's turns, through this
+    PDP, into this ledger, which is the bar the carrier failed. Its old config
+    block is a different thing: `repo` and `engine_enabled` configured a gateway
+    that no longer exists, and a key for a removed feature reads as one merely
+    switched off.
+    """
     import json
     from agentos import config as cfgmod
     p = tmp_path / "config.json"
@@ -207,8 +214,29 @@ def test_a_config_pinned_to_a_removed_engine_still_answers(tmp_path, monkeypatch
                              "hermes": {"repo": "x", "engine_enabled": True}}))
     monkeypatch.setattr(cfgmod, "CONFIG_PATH", p)
     cfg = cfgmod.load_config()
-    assert cfg["engine"] == "aria"
     assert "hermes" not in cfg, "a setting for a removed feature reads as 'switched off'"
+
+
+def test_an_engine_that_is_not_installed_never_answers(tmp_path, monkeypatch):
+    """The guarantee the migration used to provide, now provided at read time.
+
+    Rewriting the config was only ever a load-time fix; an executor can also be
+    uninstalled afterwards, or the file edited by hand, or the machine restored
+    onto hardware that never had it. In every one of those the setting outlives
+    the binary, and a machine that answers with nothing — on every surface at
+    once — is the worst of the available failures.
+    """
+    from agentos import executors as execmod
+    monkeypatch.setattr(execmod, "probe", lambda eid: {"installed": False})
+    assert execmod.resolve_engine({"engine": "hermes"}) == "aria"
+
+
+def test_the_engine_lists_in_config_and_executors_agree():
+    """Two copies, because importing one from the other would be a cycle. This is
+    the only thing that could drift, so it is the thing that is asserted."""
+    from agentos import config as cfgmod
+    from agentos import executors as execmod
+    assert set(cfgmod.ENGINE_NAMES) == set(execmod.ENGINES)
 
 
 def test_the_migration_leaves_a_real_engine_alone():

@@ -683,6 +683,15 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   border:1px solid var(--line);cursor:pointer;max-width:230px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .modelchip:hover{color:var(--txt);border-color:var(--acc)}
+/* It is a <select> now. Keep the pill, drop the platform chrome that would make
+   it look like a form field in a toolbar of pills. */
+select.modelchip{appearance:none;-webkit-appearance:none;cursor:pointer;
+  padding-right:24px;max-width:min(42vw,300px);text-overflow:ellipsis;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 13px) calc(50% + 1px),calc(100% - 9px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+select.modelchip option{background:var(--bg2);color:var(--txt)}
 .modelchip.engine{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
 
 /* ---- Docs: ask the manual ----
@@ -2297,6 +2306,13 @@ body.glass-off .win{background:var(--bg)!important}
 .wbody.ob-inwin.narrow .ob-t em{display:none}
 .wbody.ob-inwin.narrow .ob-leave{margin:0;padding:0 var(--sp-2);white-space:nowrap}
 .wbody.ob-inwin.narrow .ob-leave:first-of-type{margin-top:0;padding-top:0}
+
+/* An executor that is not installed is shown, not hidden — greyed, with the
+   licence and the exact command that would install it. Hiding it reads as "this
+   OS cannot", when the truth is "you do not have it yet". */
+.job-way.is-off{opacity:.62}
+.job-way .ob-cmd{display:block;margin-top:6px;padding:5px 8px;border-radius:var(--r-sm);
+  background:var(--bg4);color:var(--dim);font-size:var(--fs-sm);overflow-wrap:anywhere}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -6950,8 +6966,13 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        <button id="modelchip" class="modelchip" title="Change this in Settings"
-          onclick="openModelSettings()">…</button>
+        ${/* A select, not a chip that sends you elsewhere. "What is answering me"
+              is the thing you change most often and it was the one control in this
+              bar you could not operate — it named the answer and then opened
+              Settings so you could change it there. Engines and models share the
+              dropdown because to the person choosing it is one question. */''}
+        <select id="modelchip" class="modelchip" title="What answers in this chat"
+          onchange="chatPickModel(this.value)"><option>…</option></select>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
           <option value="balanced">Balanced</option>
@@ -7266,18 +7287,46 @@ function paintModelChip(){
   const chip=$('#modelchip');if(!chip)return;
   const d=MODELS_STATE||{};
   const engine=(cfg&&cfg.engine)||d.engine||'aria';
-  if(engine&&engine!=='aria'){
-    const e=(d.engines||[]).find(x=>x.id===engine)||{};
-    chip.innerHTML=`${{'claude-code':'◈'}[engine]||'⇥'} ${esc(e.name||engine)}`;
-    chip.title=(e.envelope||e.detail||'')+'\nChange it in Settings → Executors';
-    chip.classList.add('engine');
-    return;
-  }
-  const id=(cfg&&cfg.default_model)||d.default||'';
-  const m=(d.models||[]).find(x=>x.id===id);
-  chip.textContent=m?(m.name+(m.provider==='ollama'?' · local':'')):(id||'no model');
-  chip.title=(id||'no model set')+'\nChange it in Settings → AI providers';
-  chip.classList.remove('engine');
+  const curModel=(cfg&&cfg.default_model)||d.default||'';
+  /* Engines first: choosing one changes WHO answers, and an executor brings its
+     own model, so the model list below it stops applying. One that is not
+     installed stays in the list, disabled, carrying its reason — the same
+     contract as the picker in Settings, because they are the same question. */
+  const eng=(d.engines||[]).map(e=>
+    `<option value="engine:${esc(e.id)}"${engine===e.id?' selected':''}${
+      e.available?'':' disabled'}>${esc(e.name)}${
+      e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not installed')}</option>`).join('');
+  const groups={};
+  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
+  const mods=Object.keys(groups).sort().map(prov=>
+    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
+      `<option value="${esc(m.id)}"${engine==='aria'&&m.id===curModel?' selected':''}>${
+        esc(m.name)}</option>`).join('')+`</optgroup>`).join('');
+  chip.innerHTML=`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +eng+`</optgroup>`+mods;
+  /* A model that is set but no longer offered must stay visible and selected, or
+     the bar would quietly show something else answering. */
+  if(engine==='aria'&&curModel&&!(d.models||[]).some(m=>m.id===curModel))
+    chip.insertAdjacentHTML('beforeend',
+      `<option value="${esc(curModel)}" selected>${esc(curModel)} (not currently offered)</option>`);
+  chip.classList.toggle('engine',engine!=='aria');
+  chip.title=engine!=='aria'
+    ? ((d.engines||[]).find(x=>x.id===engine)||{}).detail||engine
+    : (curModel||'no model set');
+}
+/* The same two settings behind one control as Settings → AI providers. Kept as
+   its own function rather than reusing pickModel(): that one repaints the
+   Settings panel, which is not open here. */
+async function chatPickModel(v){
+  if(!v)return;
+  const body=v.indexOf('engine:')===0?{engine:v.slice(7)}:{default_model:v};
+  const r=await fetch('/api/config',{method:'PUT',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(d.error){toast(d.error);return paintModelChip()}
+  await loadConfig();await loadModels();
+  toast(v.indexOf('engine:')===0?('✓ '+v.slice(7)+' answers now'):'✓ model changed');
 }
 /* One place to change it, and the chip goes there rather than describing where. */
 function openModelSettings(){
@@ -7510,18 +7559,12 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* The jail has one root and nobody's data lives in it, so "read last
-         quarter's invoices" used to mean copying them in first. These are the
-         other places the agent may work — one per line, because a path may
-         contain a comma and every separator that splits one is a folder that
-         silently never matches. */
       /* Deliberately a pointer and not a second editor. Which folders are open
          and WHO they are open to is one fact; two places to change it is two
          places to disagree, and the copy nobody demos is the one that drifts.
          Settings owns whether there is a jail; Users owns who reaches through it. */
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-        {stack:true,desc:'One share per line: mode (ro/rw), who (* for everyone, or accounts separated by commas), then the folder. The path comes LAST so it may contain spaces. Applies to the agent and the Terminal alike. Folders holding other accounts are refused; bento doctor names any entry that is not in use.',f:'sandbox safe folders share ro rw users data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
@@ -7562,6 +7605,15 @@ function setTab(body,all){
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    /* Accounts are a machine-level fact and this is where somebody looks for one,
+       so the row belongs here — but the app stays the single place they are
+       managed. A second roster in Settings would be two lists to keep true, and
+       the one nobody demos is the one that drifts. */
+    P.push(pGroup('Accounts',[
+      pRow('People on this machine','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Who can sign in, their role, and the folders and agents shared between them. AgentOS stays single-user until the first account is added — from then on it asks who you are, at the keyboard as well as from a phone.',
+         f:'users accounts people roles admin executor sign in multi-user shared folders'}),
+    ],{f:'users accounts multi-user'}));
     P.push(pGroup('Version',[
       pRow('This build','<span id="s-ver" class="mut">checking…</span>',
         {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
@@ -7675,7 +7727,23 @@ async function paintModelPicker(refresh){
     `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
       `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
     +`</optgroup>`).join('');
-  sel.innerHTML=opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`;
+  /* Engines first, because choosing one is a different KIND of answer to
+     choosing a model: it changes which agent runs the turn, not which weights it
+     uses. Selecting Claude Code and then being shown a list of Anthropic API
+     models was the bug — the picker offered something that changed nothing,
+     because the executor brings its own model. An engine that is not installed
+     is still listed, greyed, carrying the reason: hidden reads as "this OS
+     cannot". */
+  const engOpts=(d.engines||[]).map(e=>{
+    const on=(d.engine||'')===e.id;
+    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
+                           :`${e.name} — ${e.reason||'not installed'}`;
+    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
+    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
+    +engOpts+`</optgroup>`:'';
+  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
   // A model set in config that the providers no longer offer must stay visible
   // and selected, or opening Settings would silently look like something else
   // is answering.
@@ -7694,6 +7762,18 @@ async function paintModelPicker(refresh){
 }
 async function pickModel(id){
   if(!id)return;
+  /* Two different settings behind one control, because to the person choosing it
+     is one question: what answers me. `engine:` changes which agent runs the
+     turn; anything else is the model the built-in agent uses. */
+  if(id.indexOf('engine:')===0){
+    const eng=id.slice(7);
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({engine:eng})});
+    const d=await r.json().catch(()=>({}));
+    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
+    if(!d.error)await loadConfig();
+    return paintModelPicker();
+  }
   await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({default_model:id})});
   if(cfg)cfg.default_model=id;
@@ -10741,7 +10821,28 @@ var OB_WIRE={
   async model(){
     const box=$('#ob-model-box');if(!box)return;
     let d={};try{d=await (await fetch('/api/setup')).json()}catch(e){}
+    let eng={engines:[]};try{eng=await (await fetch('/api/models')).json()}catch(e){}
     const local=(d.ollama_models||[]);
+    /* The third way to have a brain, and until now the only one this step never
+       mentioned: another agent already on the machine answers the turns. It
+       belongs HERE because "what will answer me" is one question, and finding out
+       afterwards that Claude Code was installed all along — from a Settings tab
+       nobody had reason to open yet — is the same gap as a capability that is
+       silently missing. Not installed is shown too, with the exact command and
+       the licence: hidden reads as "this OS cannot". */
+    const engines=(eng.engines||[]);
+    const engHtml=engines.length?`<div class="job-q"><span>Or let another agent answer</span>
+      <div class="job-ways">${engines.map(e=>{
+        const off=e.install||{};
+        return e.available
+          ? `<label class="job-way"><input type="radio" name="ob-model" value="engine:${esc(e.id)}">
+               <b>${esc(e.name)}</b><em>installed${e.detail?' · '+esc(e.detail):''}${
+                 e.licence?' · '+esc(e.licence):''} — it brings its own model</em></label>`
+          : `<label class="job-way is-off"><input type="radio" disabled>
+               <b>${esc(e.name)}</b><em>${esc(e.reason||'not installed')}${
+                 e.licence?' · '+esc(e.licence):''}</em>${off.command?
+                 `<code class="ob-cmd">${esc(off.command)}</code>`:''}</label>`;
+      }).join('')}</div></div>`:'';
     // Local first when there are any: it is free, private, and needs no key — the
     // honest default when the machine can already do it.
     box.innerHTML=`
@@ -10766,6 +10867,7 @@ var OB_WIRE={
         <input id="ob-cmodel" style="width:100%;margin-top:6px">
         <em class="mut" id="ob-prov-hint" style="display:block;margin-top:4px"></em>
       </div>
+      ${engHtml}
       <div class="job-go"><button class="wiz-next" id="ob-model-go">Use this model</button></div>`;
     const upd=()=>{const v=(document.querySelector('input[name=ob-model]:checked')||{}).value;
       $('#ob-cloud').style.display=v==='cloud'?'block':'none'};
@@ -10803,6 +10905,19 @@ var OB_WIRE={
               m=($('#ob-cmodel').value||'').trim();
         if(!k||!m)return obMsg('a key and a model name, please','warn');
         body={providers:{[p]:{api_key:k}},default_model:p+'/'+m};
+      }else if(v.indexOf('engine:')===0){
+        /* Choosing an agent is not choosing a model, so it is a different save:
+           /api/setup writes the model config, and the engine is what decides who
+           runs the turn at all. It also VALIDATES — an executor that vanished
+           between the page loading and the click is refused with the reason
+           rather than accepted into a machine that then fails on its first turn. */
+        obMsg('saving…');
+        const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({engine:v.slice(7)})});
+        const jd=await r.json().catch(()=>({}));
+        if(jd.error)return obMsg(jd.error,'warn');
+        await loadConfig();await loadModels();
+        obMsg('saved','ok');return obRefresh(true);
       }else if(v){body={default_model:v}}
       else return obMsg('pick one','warn');
       obMsg('saving…');
