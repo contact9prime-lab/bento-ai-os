@@ -2179,6 +2179,71 @@ def _pid_on_port(port: int) -> str:
     return (out.split() or [""])[0]
 
 
+def _log_cli(args) -> int:
+    """`bento log` — everything you need when the desktop will not load.
+
+    There was already `bento service logs`, and it was the wrong shape for the
+    question people actually have. That verb tails ONE stream — the journal, or
+    server.log — and the failure it is most often reached for does not live in
+    either: a browser-side error leaves the server perfectly healthy and answering
+    200s, and an exception during a turn is recorded in the OS's own log table,
+    not on stderr. So somebody looking at a blank window read a clean journal and
+    concluded nothing was wrong.
+
+    This prints the three together, in the order you would want them: where things
+    are, then the process output, then what AgentOS itself recorded as an error.
+    """
+    from . import config as cfgmod
+    from . import desktop
+
+    cfg = cfgmod.load_config()
+    port = cfg.get("port", 8321)
+    mgr = desktop.service_manager() or "none (started by hand)"
+    path = desktop.server_log()
+
+    if not args.errors_only:
+        print("AgentOS logs")
+        print(f"  service:   {mgr}")
+        print(f"  file:      {path}{'' if path.exists() else '   (not written yet)'}")
+        print(f"  port:      {port}", end="")
+        try:
+            import urllib.request
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform", timeout=2)
+            print("   answering")
+        except Exception as e:
+            print(f"   NOT answering ({type(e).__name__})")
+        print()
+        print("── process output " + "─" * 44)
+        ok, msg = desktop.service_logs(lines=args.lines, follow=args.follow)
+        if not ok:
+            print(f"  {msg}")
+        if args.follow:
+            return 0                      # -f never returns until interrupted
+
+    # The half that is not on stderr. A turn that raised, a tool that was denied,
+    # a bridge that could not start: all recorded here, by the process that is
+    # still running fine as far as the OS is concerned.
+    print()
+    print("── what AgentOS recorded " + "─" * 37)
+    try:
+        from .memory import Store
+        store = Store(cfgmod.DB_PATH)
+    except Exception as e:
+        print(f"  could not open the database: {e}")
+        return 1
+    kinds = ("error",) if args.errors_only else ("error", "system")
+    rows = [r for k in kinds for r in store.list_logs(kind=k, limit=args.lines)]
+    rows.sort(key=lambda r: r.get("created_at") or 0)
+    if not rows:
+        print("  nothing recorded"
+              + ("" if args.errors_only else " — no errors and no system events"))
+        return 0
+    for r in rows[-args.lines:]:
+        when = time.strftime("%H:%M:%S", time.localtime(r.get("created_at") or 0))
+        print(f"  {when}  [{r.get('kind','')}] {(r.get('message') or '')[:150]}")
+    return 0
+
+
 def _update_cli(args) -> int:
     """`bento update` — is there a newer version, and pull it.
 
@@ -2676,6 +2741,12 @@ def main():
     p_sess.add_argument("--force", action="store_true",
                         help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
+    p_log = sub.add_parser("log", aliases=["logs"],
+                           help="the process log and everything AgentOS recorded as an error")
+    p_log.add_argument("-n", "--lines", type=int, default=60, help="how many lines (default 60)")
+    p_log.add_argument("-f", "--follow", action="store_true", help="keep streaming")
+    p_log.add_argument("--errors", dest="errors_only", action="store_true",
+                       help="only what AgentOS recorded as an error")
     p_fold = sub.add_parser("folders",
                             help="show or change the folders the agent may work in, and who may work there")
     p_fold.add_argument("action", nargs="?", default="", choices=["", "list", "add", "remove"],
@@ -2843,6 +2914,8 @@ def main():
         forward_cmd(args.engine)
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
+    elif args.cmd in ("log", "logs"):
+        raise SystemExit(_log_cli(args))
     elif args.cmd == "folders":
         folders_cmd(args.action, args.path, args.mode, args.users)
     elif args.cmd == "channels":

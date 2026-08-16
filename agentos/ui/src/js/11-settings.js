@@ -171,18 +171,12 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* The jail has one root and nobody's data lives in it, so "read last
-         quarter's invoices" used to mean copying them in first. These are the
-         other places the agent may work — one per line, because a path may
-         contain a comma and every separator that splits one is a folder that
-         silently never matches. */
       /* Deliberately a pointer and not a second editor. Which folders are open
          and WHO they are open to is one fact; two places to change it is two
          places to disagree, and the copy nobody demos is the one that drifts.
          Settings owns whether there is a jail; Users owns who reaches through it. */
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-        {stack:true,desc:'One share per line: mode (ro/rw), who (* for everyone, or accounts separated by commas), then the folder. The path comes LAST so it may contain spaces. Applies to the agent and the Terminal alike. Folders holding other accounts are refused; bento doctor names any entry that is not in use.',f:'sandbox safe folders share ro rw users data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
