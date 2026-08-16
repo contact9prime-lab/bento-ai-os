@@ -165,6 +165,16 @@ What now holds whenever accounts exist, verified against a running toolbox:
   home (not the OS user's `$HOME`), or refuses if no jail is available.
 - **A single-user machine is untouched** — no second tenant to wall off, so the
   agent still reads across the disk as before.
+- **Safe folders are the one deliberate opening, and they cannot widen this one.**
+  An admin may share a directory outside the homes with named accounts, `ro` or
+  `rw` (`sandbox.folders`; see [Users](../users.md) and
+  [Configuration](../configuration.md#safe-folders)). Three properties keep it
+  from becoming a hole: it is a machine setting, so only an admin writes it; the
+  accounts root, any home inside it and **any directory above it** are refused
+  outright, so no share can name its way into somebody's home; and the
+  per-account check still runs first, so naming a home directly does not open it.
+  The mode is enforced in the file tools *and* the jail (`--ro-bind`), because a
+  read-only share the shell could write to would be a setting that lies.
 
 The remaining choice is how strong the jail is against an account that is actively
 hostile and resourceful (a `bwrap` escape, or root/physical access). That is the

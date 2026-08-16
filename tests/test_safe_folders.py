@@ -277,3 +277,49 @@ def test_the_jail_binds_read_only_shares_read_only(tmp_path):
     argv = bwrap_argv("/home/x", ["/bin/bash"], extra=rw_paths, ro_extra=ro_paths)
     assert argv[argv.index(str(ro)) - 1] == "--ro-bind", argv
     assert argv[argv.index(str(rw)) - 1] == "--bind", argv
+
+
+@pytest.mark.asyncio
+async def test_the_agent_gets_the_acting_accounts_shares_via_the_contextvar(
+        tmp_path, monkeypatch):
+    """The guarantee as the agent actually experiences it.
+
+    Every other test here passes `uid=` by hand, which is not how a turn resolves
+    it: the agent's tools read `users.current()`, the same contextvar the store and
+    the config come through. Asserting only the explicit form would leave the wiring
+    untested — and a scheduled job that inherited the machine's shares instead of its
+    owner's would be exactly that bug, hours later and in the wrong home.
+    """
+    users_root = tmp_path / "agentos" / "users"
+    for u in ("ada", "bob"):
+        (users_root / u).mkdir(parents=True)
+    finance, legal = tmp_path / "finance", tmp_path / "legal"
+    finance.mkdir(); legal.mkdir()
+    (finance / "q3.csv").write_text("EMEA,120000")
+    (legal / "nda.txt").write_text("CONFIDENTIAL")
+
+    monkeypatch.setattr(usersmod, "enabled", lambda: True)
+    monkeypatch.setattr(usersmod, "users_root", lambda: users_root)
+    monkeypatch.setattr(usersmod, "home_for", lambda uid: users_root / uid)
+    # cfg_for() caches the composed config per uid, and the key is the uid alone —
+    # so a previous test's machine dict is still in there under "ada". Harmless in
+    # a running OS (one machine config per process) and lethal to a test that
+    # composes a different one.
+    usersmod._cfgs.clear()
+    monkeypatch.setattr(usersmod, "cfg_path_for", lambda uid: users_root / uid / "config.json")
+
+    cfg = _shared(tmp_path, [
+        {"path": str(finance), "mode": "rw", "users": ["ada"]},
+        {"path": str(legal), "mode": "ro", "users": ["bob"]}])
+    tb = Toolbox(cfg, None)
+
+    with usersmod.as_user("ada"):
+        assert "EMEA" in await tb.read_file(str(finance / "q3.csv"))
+        assert "[denied]" in await tb.read_file(str(legal / "nda.txt"))
+    with usersmod.as_user("bob"):
+        assert "CONFIDENTIAL" in await tb.read_file(str(legal / "nda.txt"))
+        assert "[denied]" in await tb.read_file(str(finance / "q3.csv"))
+        # …and the shell jail is built from the same answer, so the Terminal and
+        # the file tools cannot disagree about who this is.
+        ro_paths, rw_paths = folder_binds(cfg)
+        assert ro_paths == [str(legal)] and rw_paths == []

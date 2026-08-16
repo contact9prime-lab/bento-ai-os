@@ -122,9 +122,15 @@ rw * /data/reports
 ro ada,bob /srv/My Archive
 ```
 
-Shares apply to the file tools, `run_command` and the Terminal alike, and `mode` is enforced in all
-of them — a read-only share is bound `--ro-bind` in the jail, so it is not the case that `write_file`
-refuses and `run_command` succeeds on the same folder.
+A share is **the AI's access**, not only yours: these are the folders the agent's own tools reach —
+`read_file`, `write_file`, `list_dir`, the git tools — as well as `run_command` and the Terminal.
+`mode` is enforced in all of them (a read-only share is bound `--ro-bind` in the jail), because a
+folder `write_file` refuses and `run_command` writes to is a setting that lies.
+
+On a machine with accounts it is **scoped per account**: the agent gets exactly the acting account's
+shares, resolved from the same `users.current()` contextvar as everything else — so a scheduled job
+running at 08:00 sees its owner's folders, not the machine's. See
+[Users → Safe folders](users.md#safe-folders-the-agent-working-outside-its-own-home).
 
 Two entries are always refused, and `bento doctor` names any that are:
 
