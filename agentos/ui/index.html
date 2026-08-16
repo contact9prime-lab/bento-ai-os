@@ -2397,6 +2397,22 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-kind{flex:none;width:28px;height:28px;border-radius:var(--r-sm);display:flex;
   align-items:center;justify-content:center;background:var(--bg4);color:var(--dim)}
 
+/* Shared folders. A share that carries a caution is bordered rather than merely
+   annotated: the warning has to be visible in the LIST, not only at the moment
+   it was added, because the person reviewing what this machine has opened up is
+   usually not the person who opened it. */
+.usr-share.warn{border-color:var(--warn,#f59e0b);background:color-mix(in srgb,var(--warn,#f59e0b) 7%,var(--bg2))}
+.usr-warn{display:block;margin-top:3px;color:var(--warn,#f59e0b);font-size:var(--fs-sm);line-height:1.5}
+.usr-who{display:flex;flex-direction:column;flex:1 1 220px;min-width:0}
+.usr-who b{overflow-wrap:anywhere}
+.usr-fform{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;margin-top:var(--sp-3)}
+.usr-fform input[type=text],.usr-fform input:not([type]){flex:1 1 220px}
+.usr-fform #usr-fpath{flex:1 1 240px}
+.usr-fwho{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center;
+  font-size:var(--fs-sm);color:var(--dim)}
+.usr-chk{display:flex;align-items:center;gap:6px;color:var(--fg)}
+.usr-fdel{flex:none}
+
 @media (max-width:560px){
   .usr-row,.usr-share{gap:var(--sp-2)}
   .usr-pw,.usr-del{flex:1 1 auto}
@@ -2410,6 +2426,14 @@ body.glass-off .win{background:var(--bg)!important}
 .rm-lock b{color:var(--txt)}
 /* Its own line: inline mid-sentence, the button broke the paragraph around it. */
 .rm-lock .endbtn{display:block;margin-top:10px}
+
+/* The changelog on the update card: what is actually arriving, from git. Scrolls
+   rather than growing, because a machine that has fallen ten releases behind must
+   not push the Update button off the panel. */
+.upd-log{margin-top:8px;max-height:190px;overflow:auto;border:1px solid var(--hairline);
+  border-radius:var(--r-md);background:var(--bg2);padding:8px 10px;font-size:var(--fs-sm)}
+.upd-log div{padding:2px 0;line-height:1.5;overflow-wrap:anywhere}
+.upd-log code{color:var(--acc,#5eead4);margin-right:6px}
 </style>
 </head>
 <body>
@@ -2619,7 +2643,21 @@ function md(src){
   h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
   h=h.replace(/(?<![\w*])\*([^*\n]+)\*(?![\w*])/g,'<em>$1</em>');
   h=h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  h=h.replace(/\[([^\]]+)\]\(([\w][\w./-]*\.md(?:#[\w-]*)?)\)/g,'<a href="#" class="doclink" data-doc="$2">$1</a>');
+  /* Relative .md links navigate inside the Docs app. The leading `\.{0,2}\/?` is
+     load-bearing: the old pattern required a word character first, so `../users.md`
+     — the normal way a page in docs/design/ points back up — matched nothing and
+     rendered as literal text. A dead link in the manual is worse than no link,
+     because it reads as the manual being wrong about itself. */
+  h=h.replace(/\[([^\]]+)\]\(((?:\.{1,2}\/)*[\w][\w./-]*\.md(?:#[\w-]*)?)\)/g,'<a href="#" class="doclink" data-doc="$2">$1</a>');
+  /* Bare URLs, in docs and in every chat reply. The agent writes them constantly
+     and a URL you cannot click is the most obviously broken thing on a page.
+     Anything that is ALREADY a link — or code — is set aside first, or an href
+     ends up with a second href inside it. */
+  const links=[];
+  h=h.replace(/<a\b[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>/g,m=>{links.push(m);return '\x00A'+(links.length-1)+'\x00'});
+  h=h.replace(/(^|[\s(>])((?:https?:\/\/|www\.)[^\s<>()"']+[^\s<>()"'.,;:!?])/g,
+    (m,pre,u)=>pre+'<a href="'+(u.startsWith('www.')?'https://'+u:u)+'" target="_blank" rel="noopener">'+u+'</a>');
+  h=h.replace(/\x00A(\d+)\x00/g,(m,i)=>links[+i]);
   h=h.replace(/^#### (.+)$/gm,'<h4>$1</h4>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
   h=h.replace(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gm,'<hr>');
   h=h.replace(/((?:^&gt;.*\n?)+)/gm,m=>'<blockquote>'+m.replace(/^&gt; ?/gm,'').trim().replace(/\n/g,'<br>')+'</blockquote>');
@@ -7329,29 +7367,6 @@ function pSecretReplace(id){
   const el=document.getElementById(id);if(el)el.focus();
 }
 const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="${esc(val==null?'':val)}" placeholder="${esc(ph||'')}">`;
-/* One value per line. A textarea rather than a comma list because these are
-   PATHS, and every separator that splits one is a folder that silently never
-   matches — a newline is the one character a path cannot contain. */
-const pArea=(id,val,ph,rows)=>`<textarea id="${id}" rows="${rows||3}" spellcheck="false" placeholder="${esc(ph||'')}">${esc(val==null?'':val)}</textarea>`;
-/* Safe folders, as text. The line is `mode who path`, and the PATH IS LAST and
-   takes the rest of the line — which is the whole reason for that order: a mode
-   and a user list never contain a space, and a folder very well may. A line that
-   is just a path is the older flat list and still means everyone, read-write. */
-function sbFoldersText(cfg){
-  return ((cfg.sandbox&&cfg.sandbox.folders)||[]).map(f=>{
-    if(typeof f==='string')return 'rw * '+f;
-    const who=(f.users&&f.users.length)?f.users.join(','):'*';
-    return `${f.mode==='ro'?'ro':'rw'} ${who} ${f.path||''}`;
-  }).join('\n');
-}
-function sbFoldersParse(text){
-  return (text||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
-    const m=l.match(/^(ro|rw)\s+(\S+)\s+(.+)$/i);
-    if(!m)return {path:l,mode:'rw',users:[]};          /* a bare path */
-    const who=m[2]==='*'?[]:m[2].split(',').map(s=>s.trim()).filter(Boolean);
-    return {path:m[3].trim(),mode:m[1].toLowerCase(),users:who};
-  }).filter(f=>f.path);
-}
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
@@ -7500,7 +7515,12 @@ function setTab(body,all){
          other places the agent may work — one per line, because a path may
          contain a comma and every separator that splits one is a folder that
          silently never matches. */
-      pRow('Safe folders',pArea('s-sb-folders',sbFoldersText(cfg),'rw * /data/reports\nro ada,bob /srv/archive',5),
+      /* Deliberately a pointer and not a second editor. Which folders are open
+         and WHO they are open to is one fact; two places to change it is two
+         places to disagree, and the copy nobody demos is the one that drifts.
+         Settings owns whether there is a jail; Users owns who reaches through it. */
+      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
         {stack:true,desc:'One share per line: mode (ro/rw), who (* for everyone, or accounts separated by commas), then the folder. The path comes LAST so it may contain spaces. Applies to the agent and the Terminal alike. Folders holding other accounts are refused; bento doctor names any entry that is not in use.',f:'sandbox safe folders share ro rw users data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
@@ -7612,9 +7632,17 @@ async function paintVersion(check){
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
     // sentence, not a control that fails when pressed.
+    /* What is actually arriving, from git. "A new version is available" is not a
+       reason to restart the machine somebody is working on; the list of changes
+       is. CHANGELOG.md is still shown when there is one, but between releases it
+       says nothing, and the commits always do. */
+    const ch=(d.changes||[]).length?`<div class="upd-log">${
+      (d.changes||[]).slice(0,15).map(c=>
+        `<div><code>${esc(c.hash)}</code> ${esc(c.title)}</div>`).join('')}${
+      (d.changes||[]).length>15?`<div class="mut">…and ${d.changes.length-15} more</div>`:''}</div>`:'';
     el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
-                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn;
+                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn+ch;
   }else{
     el.innerHTML=`<b>${esc(d.current||'?')}</b> `
       +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;
@@ -7698,8 +7726,9 @@ async function saveSettings(){
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
   if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
-  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim(),
-    folders:sbFoldersParse(val('s-sb-folders'))};
+  /* NOT folders: this page no longer edits them, and sending the key at all
+     would send an empty list and silently unshare everything. */
+  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
   if(val('s-taint')!==undefined)patch.security={taint:val('s-taint')};
   if(val('s-hist-compact')!==undefined)patch.history={compact:val('s-hist-compact')!=='off'};
   const providers={};
@@ -10074,6 +10103,23 @@ async function wizInstallOllama(){
   }catch(e){const n=document.getElementById('wz-ollama-note');if(n)n.textContent='could not reach the server'}
   finally{if(btn){btn.disabled=false;btn.textContent='Install it for me'}}
 }
+
+/* A manual link is clickable wherever it is rendered, not only inside Docs. The
+   agent cites the manual in chat constantly, and a citation you cannot follow is
+   a footnote — the link rendered, looked like a link, and did nothing, because
+   the only handler was the one Docs attaches to its own body.
+
+   Delegated from the document so it covers markup added after load, which is
+   every chat reply. Docs' own per-element handler runs first (bubbling) and calls
+   preventDefault, so `defaultPrevented` is how in-app navigation avoids also
+   raising a window it is already inside. */
+document.addEventListener('click', e => {
+  const a = e.target.closest ? e.target.closest('a.doclink') : null;
+  if (!a || e.defaultPrevented) return;
+  e.preventDefault();
+  docsCur = (a.dataset.doc || '').split('#')[0].replace(/^(\.\.?\/)+/, '');
+  openApp('docs');
+});
 /* ================= jobs: give this machine something to do =================
    Two surfaces over one API (/api/jobs): the last beat of the first-run wizard,
    and a standing app you can come back to. They share `jobCards`/`jobForm` on
@@ -13761,7 +13807,7 @@ async function tunStop(){
 
    `var`, not `let`: one concatenated bundle, and the menu bar reads USERS at
    boot before this file's line is reached. See CLAUDE.md on the TDZ trap. */
-var USERS={me:null,list:[],roles:['admin','executor'],shared:[],busy:false};
+var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false};
 
 async function usersLoad(){
   try{
@@ -13769,6 +13815,7 @@ async function usersLoad(){
       fetch('/api/users').then(r=>r.ok?r.json():{users:[],me:{}}),
       fetch('/api/shared').then(r=>r.ok?r.json():{shared:[]}),
     ]);
+    await usersLoadFolders();
     USERS.me=u.me||{};USERS.list=u.users||[];USERS.roles=u.roles||USERS.roles;
     USERS.shared=s.shared||[];
   }catch(e){}
@@ -13798,7 +13845,7 @@ async function renderUsers(body,w){
   pb.innerHTML='<div class="dim">…</div>';
   await usersLoad();
   const me=USERS.me||{};
-  pb.innerHTML=(me.multiuser?usersRoster():usersOffer())+usersShareBox();
+  pb.innerHTML=(me.multiuser?usersRoster():usersOffer())+usersShareBox()+usersFolderBox();
   usersWire(pb,w);
 }
 
@@ -13917,6 +13964,92 @@ function usersShareBox(){
     ${items}</div>`;
 }
 
+
+/* ---- shared folders ---------------------------------------------------------
+   This lives HERE and not in Settings → Sandbox for the same reason the shared
+   library does: a folder shared with somebody is the same kind of fact as an
+   agent shared with somebody, and both belong next to the isolation they are the
+   exception to. Settings decides whether there is a jail at all; who may reach
+   through it is a question about people, and people are answered in this app.
+
+   The caution is the point of the redesign. A path typed into a text box gives
+   no hint that `/etc` read-write is a different act from `/data/reports`
+   read-write, and the moment to say so is while the choice is being made — not
+   in `doctor`, days later, when the agent has already had the access. */
+function usersFolderBox(){
+  const F=USERS.folders||{folders:[],problems:[],users:[],admin:true};
+  const accounts=F.users||[];
+  const who=s=>(s.users&&s.users.length)
+    ? s.users.map(u=>esc(u)).join(', ')
+    : '<em>everyone</em>';
+  const rows=(F.folders||[]).map((s,i)=>`
+    <div class="usr-share${s.risk?' warn':''}" data-f="${esc(s.path)}">
+      <span class="usr-kind">${s.mode==='ro'?'◔':'◉'}</span>
+      <span class="usr-who"><b>${esc(s.path)}</b>
+        <em>${s.mode==='ro'?'read only':'read &amp; write'} · ${who(s)}</em>
+        ${s.risk?`<em class="usr-warn">⚠ ${esc(s.risk)}</em>`:''}</span>
+      ${F.admin?`<button class="usr-fdel" data-i="${i}">Remove</button>`:''}
+    </div>`).join('');
+  const bad=(F.problems||[]).map(p=>`
+    <div class="usr-share warn"><span class="usr-kind">!</span>
+      <span class="usr-who"><b>${esc(p.entry)}</b><em class="usr-warn">not in use — ${esc(p.why)}</em></span>
+    </div>`).join('');
+  /* Checkboxes and not a text field: the accounts are a known list, and typing a
+     username that does not exist produces a share that silently reaches nobody. */
+  const picker=accounts.length?accounts.map(u=>
+    `<label class="usr-chk"><input type="checkbox" class="usr-fu" value="${esc(u.id)}">
+       ${esc(u.display)}</label>`).join('')
+    :'<span class="dim">everyone on this machine</span>';
+  const form=F.admin?`
+    <form id="usr-fform" class="usr-fform">
+      <input id="usr-fpath" placeholder="/data/reports" autocomplete="off" spellcheck="false">
+      <select id="usr-fmode">
+        <option value="ro">Read only</option>
+        <option value="rw">Read &amp; write</option>
+      </select>
+      <button type="submit">Share it</button>
+      <div class="usr-fwho"><span class="dim">with</span> ${picker}
+        <span class="dim">— none ticked means everyone</span></div>
+      <div id="usr-frisk" class="usr-warn" hidden></div>
+    </form>`:'';
+  return `<div class="usr-shared usr-folders">
+    <div class="usr-head"><span><b>Shared folders</b></span></div>
+    <p class="dim">Where the agent may work besides its own workspace — its file
+      tools, <b>and</b> the Terminal. Everything else stays read-only, and a folder
+      holding another account is refused outright.</p>
+    ${rows||'<p class="dim">Nothing shared. The agent works in its workspace only.</p>'}
+    ${bad}${form}</div>`;
+}
+
+/* Said while the choice is being made. `Read only` is the default in the select
+   above for the same reason: the safe answer should be the one you get by not
+   thinking about it. */
+function usersFolderRisk(pb){
+  const path=(pb.querySelector('#usr-fpath')||{}).value||'';
+  const mode=(pb.querySelector('#usr-fmode')||{}).value||'ro';
+  const box=pb.querySelector('#usr-frisk');
+  if(!box)return;
+  fetch('/api/folders/risk?path='+encodeURIComponent(path)+'&mode='+mode)
+    .then(r=>r.json()).then(d=>{
+      box.textContent=d.risk?('⚠ '+d.risk):'';
+      box.hidden=!d.risk;
+    }).catch(()=>{});
+}
+
+async function usersFolderSave(pb,w,folders){
+  const r=await fetch('/api/folders',{method:'PUT',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({folders})});
+  const d=await r.json().catch(()=>({}));
+  if(d.error){toast(d.error);return}
+  (d.refused||[]).forEach(x=>toast(`${x.entry}: ${x.why}`));
+  await usersLoadFolders();
+  renderUsers(w?w.el.querySelector('.wbody'):pb.closest('.wbody')||pb,w);
+}
+
+async function usersLoadFolders(){
+  try{USERS.folders=await (await fetch('/api/folders')).json();}catch(e){}
+}
+
 /* ---- wiring --------------------------------------------------------------- */
 
 function usersWire(pb,w){
@@ -13924,6 +14057,33 @@ function usersWire(pb,w){
   if(form)form.onsubmit=e=>{e.preventDefault();usersCreate(pb,w)};
   const out=pb.querySelector('#usr-signout');
   if(out)out.onclick=()=>usersSignOut();
+
+  /* shared folders */
+  const ff=pb.querySelector('#usr-fform');
+  if(ff){
+    const path=pb.querySelector('#usr-fpath'),mode=pb.querySelector('#usr-fmode');
+    let t;
+    const probe=()=>{clearTimeout(t);t=setTimeout(()=>usersFolderRisk(pb),250)};
+    if(path)path.oninput=probe;
+    if(mode)mode.onchange=probe;
+    ff.onsubmit=e=>{
+      e.preventDefault();
+      const p=(path.value||'').trim();
+      if(!p)return;
+      const users=[...pb.querySelectorAll('.usr-fu:checked')].map(c=>c.value);
+      const cur=((USERS.folders||{}).folders||[]).map(s2=>
+        ({path:s2.path,mode:s2.mode,users:s2.users}));
+      usersFolderSave(pb,w,cur.concat([{path:p,mode:mode.value,users}]));
+    };
+  }
+  pb.querySelectorAll('.usr-fdel').forEach(b=>{
+    b.onclick=()=>{
+      const cur=((USERS.folders||{}).folders||[]).map(s2=>
+        ({path:s2.path,mode:s2.mode,users:s2.users}));
+      cur.splice(+b.dataset.i,1);
+      usersFolderSave(pb,w,cur);
+    };
+  });
 
   pb.querySelectorAll('.usr-role').forEach(sel=>{
     sel.onchange=async()=>{

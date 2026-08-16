@@ -722,7 +722,11 @@ async def api_update_status(check: bool = False):
                "update_available": bool(c.get("last_seen")
                                         and updmod.is_newer(c["last_seen"], updmod.current())),
                "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
-    return {**res, "can_apply": ok, "blocked_reason": why,
+    # The commits an update would bring. Only on an explicit check — `pending()`
+    # fetches, and a status route that opens Settings instantly must not do
+    # network work nobody asked for.
+    changes = await updmod.pending(cfg, limit=15) if check else []
+    return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
             "enabled": updmod.conf(cfg).get("enabled", True)}
 
@@ -4241,6 +4245,9 @@ async def api_shell_result(body: dict):
 # capability access goes through /api/tool + grants, never around them
 SENSITIVE_FOR_APPS = (
     ("PUT", "/api/config"), ("PUT", "/api/mcp"), ("PUT", "/api/soul"),
+    # widening what the agent's own tools may reach is the last thing an app
+    # should be able to do on its own behalf
+    ("PUT", "/api/folders"),
     ("POST", "/api/apps"), ("DELETE", "/api/apps"), ("PUT", "/api/apps"),
     ("POST", "/api/grants"), ("DELETE", "/api/grants"),
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
@@ -5944,6 +5951,72 @@ async def api_users_delete(uid: str, wipe: bool = False):
 
 # ---- sharing: the one place data crosses between people --------------------
 
+@app.get("/api/folders")
+async def api_folders():
+    """The shared folders, who they are for, and what is worth pausing over.
+
+    Read by the Users app rather than Settings, because a folder shared with
+    somebody is the same kind of fact as an agent shared with somebody, and both
+    belong next to the isolation they are the exception to.
+    """
+    from .tools import folder_problems, folder_risk, folder_shares
+    cfg = state.machine_cfg()
+    shares = [{**s, "risk": folder_risk(s["path"], s["mode"])} for s in folder_shares(cfg)]
+    return {"folders": shares,
+            "problems": [{"entry": e, "why": w} for e, w in folder_problems(cfg)],
+            "users": [{"id": u["id"], "display": u.get("display") or u["id"]}
+                      for u in usersmod.list_users()],
+            "admin": usersmod.is_admin(usersmod.current()),
+            "multiuser": usersmod.enabled()}
+
+
+@app.put("/api/folders")
+async def api_folders_put(body: dict):
+    """Replace the share list. Admin only, and refused rather than silently
+    dropped — `sandbox` is a machine key, so a non-admin saving here would
+    otherwise appear to work and change nothing."""
+    from .tools import check_safe_folder, folder_risk
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can share folders on this machine"},
+                            status_code=403)
+    out, refused = [], []
+    for raw in (body or {}).get("folders") or []:
+        path = str((raw or {}).get("path") or "").strip()
+        if not path:
+            continue
+        p, why = check_safe_folder(path)
+        # Refuse at the point of decision. Storing an entry the loader will drop
+        # is how a settings page comes to list a folder nobody can use.
+        if not p:
+            refused.append({"entry": path, "why": why})
+            continue
+        mode = "ro" if str(raw.get("mode") or "rw").lower() != "rw" else "rw"
+        users = [str(u).strip() for u in (raw.get("users") or []) if str(u).strip()]
+        if not any(o["path"] == p for o in out):
+            out.append({"path": p, "mode": mode, "users": users})
+    cfg = state["cfg"]
+    cfg.setdefault("sandbox", {})["folders"] = out
+    cfgmod.save_config(cfg)
+    state["store"].log("system", f"shared folders updated ({len(out)})",
+                       {"folders": [f"{o['mode']} {o['path']}" for o in out]})
+    return {"ok": True, "folders": [{**o, "risk": folder_risk(o["path"], o["mode"])}
+                                    for o in out],
+            "refused": refused}
+
+
+@app.get("/api/folders/risk")
+async def api_folders_risk(path: str = "", mode: str = "ro"):
+    """What is worth pausing over about this folder, asked WHILE it is typed.
+
+    A read-only probe, so it is deliberately not admin-gated — it reveals nothing
+    a directory listing would not, and gating it would mean the warning appears
+    only after the save it exists to precede.
+    """
+    from .tools import check_safe_folder, folder_risk
+    p, why = check_safe_folder(path)
+    return {"risk": why or folder_risk(path, mode), "refused": bool(why and path.strip())}
+
+
 @app.get("/api/shared")
 async def api_shared(kind: str = ""):
     return {"shared": usersmod.shared(kind), "me": _me()}
@@ -7566,7 +7639,10 @@ async def _run_chat(cid: str, data: dict):
             if not avail.get("available"):
                 raise RuntimeError(avail.get("reason") or "Claude Code is not available")
             env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
-            env.session_id = state.get("exec_sessions", {}).get(cid, "")
+            # From the conversation row, not a dict on the server: a restart used to
+            # drop every chat's executor session, so a machine that had been running
+            # for a week came back with every conversation a stranger.
+            env.session_id = store.exec_session(cid)
             # The same per-surface context the built-in agent gets as extra_system.
             # Without it a delegated copilot turn arrived as a bare sentence with
             # no idea which app it was about — the executor is sanitizing it.
@@ -7616,7 +7692,7 @@ async def _run_chat(cid: str, data: dict):
             if run.session_id:
                 # Keep the executor's own session so the next turn in this chat is a
                 # continuation rather than a stranger with no memory of the last one.
-                state.setdefault("exec_sessions", {})[cid] = run.session_id
+                store.set_exec_session(cid, run.session_id)
             if checkout:
                 # Write the edit back as a new app version, and SAY so — a change
                 # that appears without a word is indistinguishable from a bug.

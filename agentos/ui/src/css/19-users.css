@@ -98,6 +98,22 @@
 .usr-kind{flex:none;width:28px;height:28px;border-radius:var(--r-sm);display:flex;
   align-items:center;justify-content:center;background:var(--bg4);color:var(--dim)}
 
+/* Shared folders. A share that carries a caution is bordered rather than merely
+   annotated: the warning has to be visible in the LIST, not only at the moment
+   it was added, because the person reviewing what this machine has opened up is
+   usually not the person who opened it. */
+.usr-share.warn{border-color:var(--warn,#f59e0b);background:color-mix(in srgb,var(--warn,#f59e0b) 7%,var(--bg2))}
+.usr-warn{display:block;margin-top:3px;color:var(--warn,#f59e0b);font-size:var(--fs-sm);line-height:1.5}
+.usr-who{display:flex;flex-direction:column;flex:1 1 220px;min-width:0}
+.usr-who b{overflow-wrap:anywhere}
+.usr-fform{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;margin-top:var(--sp-3)}
+.usr-fform input[type=text],.usr-fform input:not([type]){flex:1 1 220px}
+.usr-fform #usr-fpath{flex:1 1 240px}
+.usr-fwho{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center;
+  font-size:var(--fs-sm);color:var(--dim)}
+.usr-chk{display:flex;align-items:center;gap:6px;color:var(--fg)}
+.usr-fdel{flex:none}
+
 @media (max-width:560px){
   .usr-row,.usr-share{gap:var(--sp-2)}
   .usr-pw,.usr-del{flex:1 1 auto}
@@ -111,3 +127,11 @@
 .rm-lock b{color:var(--txt)}
 /* Its own line: inline mid-sentence, the button broke the paragraph around it. */
 .rm-lock .endbtn{display:block;margin-top:10px}
+
+/* The changelog on the update card: what is actually arriving, from git. Scrolls
+   rather than growing, because a machine that has fallen ten releases behind must
+   not push the Update button off the panel. */
+.upd-log{margin-top:8px;max-height:190px;overflow:auto;border:1px solid var(--hairline);
+  border-radius:var(--r-md);background:var(--bg2);padding:8px 10px;font-size:var(--fs-sm)}
+.upd-log div{padding:2px 0;line-height:1.5;overflow-wrap:anywhere}
+.upd-log code{color:var(--acc,#5eead4);margin-right:6px}

@@ -18,7 +18,14 @@ CREATE TABLE IF NOT EXISTS conversations (
     space_id TEXT DEFAULT '',    -- the space this conversation belongs to ('' = global)
     summary TEXT DEFAULT '',     -- rolling summary of the turns that no longer fit (history.py)
     summary_upto TEXT DEFAULT '',-- id of the last message the summary covers
-    summary_msgs INTEGER DEFAULT 0
+    summary_msgs INTEGER DEFAULT 0,
+    -- The external executor's own session id for this chat (Claude Code's
+    -- --resume handle). It lives HERE, on the row, rather than in a dict on the
+    -- server, for three reasons: it survives a restart, so a chat does not
+    -- quietly become a stranger; it is in the per-user database, so it is
+    -- isolated like everything else; and it is deleted with the conversation
+    -- instead of leaking.
+    exec_session TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
@@ -516,7 +523,8 @@ class Store:
         # the rolling summary of what no longer fits the context window (history.py)
         for col, ddl in (("summary", "TEXT DEFAULT ''"),
                          ("summary_upto", "TEXT DEFAULT ''"),   # last message id it covers
-                         ("summary_msgs", "INTEGER DEFAULT 0")):
+                         ("summary_msgs", "INTEGER DEFAULT 0"),
+                         ("exec_session", "TEXT DEFAULT ''")):
             if col not in ccols:
                 self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
         tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
@@ -809,7 +817,27 @@ class Store:
         self.db.commit()
 
     def clear_messages(self, cid: str):
+        """Wipe a conversation's turns — INCLUDING the executor's own session.
+
+        Leaving the session behind is the version of this that looks like it
+        worked: the transcript empties, the toast says "session cleared", and the
+        next turn resumes an external agent that still remembers everything. The
+        two have to be cleared together or "clear" means two different things
+        depending on which engine is answering.
+        """
         self.db.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+        self.db.execute("UPDATE conversations SET exec_session='' WHERE id=?", (cid,))
+        self.db.commit()
+
+    def exec_session(self, cid: str) -> str:
+        """The external executor's session id for this chat, or ''."""
+        row = self.db.execute("SELECT exec_session FROM conversations WHERE id=?",
+                              (cid,)).fetchone()
+        return (row["exec_session"] if row else "") or ""
+
+    def set_exec_session(self, cid: str, sid: str) -> None:
+        self.db.execute("UPDATE conversations SET exec_session=? WHERE id=?",
+                        (sid or "", cid))
         self.db.commit()
 
     # -- session rollup -------------------------------------------------------

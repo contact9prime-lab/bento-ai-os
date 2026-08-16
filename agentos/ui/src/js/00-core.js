@@ -87,7 +87,21 @@ function md(src){
   h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
   h=h.replace(/(?<![\w*])\*([^*\n]+)\*(?![\w*])/g,'<em>$1</em>');
   h=h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  h=h.replace(/\[([^\]]+)\]\(([\w][\w./-]*\.md(?:#[\w-]*)?)\)/g,'<a href="#" class="doclink" data-doc="$2">$1</a>');
+  /* Relative .md links navigate inside the Docs app. The leading `\.{0,2}\/?` is
+     load-bearing: the old pattern required a word character first, so `../users.md`
+     — the normal way a page in docs/design/ points back up — matched nothing and
+     rendered as literal text. A dead link in the manual is worse than no link,
+     because it reads as the manual being wrong about itself. */
+  h=h.replace(/\[([^\]]+)\]\(((?:\.{1,2}\/)*[\w][\w./-]*\.md(?:#[\w-]*)?)\)/g,'<a href="#" class="doclink" data-doc="$2">$1</a>');
+  /* Bare URLs, in docs and in every chat reply. The agent writes them constantly
+     and a URL you cannot click is the most obviously broken thing on a page.
+     Anything that is ALREADY a link — or code — is set aside first, or an href
+     ends up with a second href inside it. */
+  const links=[];
+  h=h.replace(/<a\b[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>/g,m=>{links.push(m);return '\x00A'+(links.length-1)+'\x00'});
+  h=h.replace(/(^|[\s(>])((?:https?:\/\/|www\.)[^\s<>()"']+[^\s<>()"'.,;:!?])/g,
+    (m,pre,u)=>pre+'<a href="'+(u.startsWith('www.')?'https://'+u:u)+'" target="_blank" rel="noopener">'+u+'</a>');
+  h=h.replace(/\x00A(\d+)\x00/g,(m,i)=>links[+i]);
   h=h.replace(/^#### (.+)$/gm,'<h4>$1</h4>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
   h=h.replace(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gm,'<hr>');
   h=h.replace(/((?:^&gt;.*\n?)+)/gm,m=>'<blockquote>'+m.replace(/^&gt; ?/gm,'').trim().replace(/\n/g,'<br>')+'</blockquote>');

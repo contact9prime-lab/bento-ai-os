@@ -551,7 +551,8 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
     should be administered by someone who has one.
     """
     from . import config as cfgmod
-    from .tools import FOLDER_MODES, check_safe_folder, folder_problems, folder_shares
+    from .tools import (FOLDER_MODES, check_safe_folder, folder_problems,
+                        folder_risk, folder_shares)
 
     cfg = cfgmod.load_config()
 
@@ -562,6 +563,11 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         for sh in shares:
             who = ", ".join(sh["users"]) if sh["users"] else "everyone"
             print(f"  {sh['mode']:<3} {sh['path']:<44} {who}")
+            # The caution belongs in the LIST as well as at the moment of adding:
+            # whoever reviews what this machine has opened up is usually not the
+            # person who opened it.
+            if (risk := folder_risk(sh["path"], sh["mode"])):
+                print(f"      ⚠ {risk}")
         for entry, why in folder_problems(cfg):
             print(f"  !   {entry:<44} not in use — {why}")
 
@@ -587,6 +593,8 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         cfg.setdefault("sandbox", {})["folders"] = raw
         cfgmod.save_config(cfg)
         print(f"  shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}")
+        if (risk := folder_risk(p, mode)):
+            print(f"  ⚠ {risk}")
         return
     if action == "remove":
         p = os.path.realpath(os.path.expanduser(path or ""))
@@ -1021,10 +1029,13 @@ def doctor(fix: bool = False, session: bool = False):
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
-    from .tools import folder_problems, folder_shares
+    from .tools import folder_problems, folder_risk, folder_shares
     for sh in folder_shares(cfg):
         who = ", ".join(sh["users"]) if sh["users"] else "everyone"
-        ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
+        if (risk := folder_risk(sh["path"], sh["mode"])):
+            warn(f"safe folder {sh['mode']}: {sh['path']} ({who}) — {risk}")
+        else:
+            ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
     for entry, why in folder_problems(cfg):
         warn(f"safe folder not in use — {entry}: {why}")
     from . import trainforge as tfmod
@@ -2210,6 +2221,16 @@ def _update_cli(args) -> int:
             if line.strip():
                 print(f"    {line.strip()[:100]}")
 
+    # The changelog nobody maintains by hand. CHANGELOG.md is a published release
+    # note and says nothing on a branch between releases, which is most of the
+    # time — so the commits themselves are the honest answer to "what am I about
+    # to install".
+    waiting = asyncio.run(upd.pending(cfg, limit=15))
+    if waiting:
+        print(f"\n  {len(waiting)} change{'s' if len(waiting) != 1 else ''} waiting:")
+        for c in waiting:
+            print(f"    {c['hash']}  {c['title'][:88]}")
+
     # Whether it COULD be installed is worth saying even on a bare check: a machine
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
@@ -2233,6 +2254,11 @@ def _update_cli(args) -> int:
         return 0
     print(f"✓ updated {result['from']} → {result['to']} "
           f"({result['files']} files, now {result.get('version') or '?'})")
+    # What actually landed. Printed after the fact as well as before it, because
+    # an unattended update (a watcher, a cron line) is one nobody read the preview
+    # of — this is the only place that machine's operator ever sees what changed.
+    for c in (result.get("changes") or []):
+        print(f"    {c['hash']}  {c['title'][:88]}")
 
     # An update that has not been loaded is a half-state: the files on disk and the
     # process answering turns disagree, and nothing on screen says which one you are

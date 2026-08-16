@@ -323,3 +323,47 @@ async def test_the_agent_gets_the_acting_accounts_shares_via_the_contextvar(
         # the file tools cannot disagree about who this is.
         ro_paths, rw_paths = folder_binds(cfg)
         assert ro_paths == [str(legal)] and rw_paths == []
+
+
+# ------------------------------------------------ cautions, and where they live
+
+def test_a_system_directory_read_write_is_cautioned():
+    """The case this exists for: /etc rw is a different act from /data rw, and a
+    path typed into a box gives no hint of that."""
+    assert "operating system" in toolsmod.folder_risk("/etc", "rw")
+
+
+def test_read_only_takes_the_caution_off_a_system_directory():
+    """The caution has to be actionable — it names read-only as the way out, so
+    read-only must actually be the quieter answer or the advice is noise."""
+    assert toolsmod.folder_risk("/etc", "ro") == ""
+
+
+def test_an_ordinary_data_folder_is_not_cautioned(tmp_path):
+    """A warning on everything is a warning on nothing."""
+    d = tmp_path / "reports"
+    d.mkdir()
+    assert toolsmod.folder_risk(str(d), "rw") == ""
+
+
+def test_a_home_directory_says_home_not_system(monkeypatch, tmp_path):
+    """On many machines HOME *is* a system directory (/root), and "this is part of
+    the operating system" is the wrong sentence for somebody sharing their own
+    home — so the home check runs first."""
+    monkeypatch.setenv("HOME", "/root")
+    assert "whole home directory" in toolsmod.folder_risk("/root", "rw")
+
+
+def test_credentials_are_cautioned_even_read_only():
+    """Reading an ssh key is the whole attack; it does not need to be written."""
+    for mode in ("ro", "rw"):
+        assert "credentials" in toolsmod.folder_risk("~/.ssh", mode)
+
+
+def test_a_caution_is_never_a_refusal(tmp_path):
+    """It is the admin's machine. An OS that refuses a deliberate decision teaches
+    people to stop reading its warnings — the two hard refusals are the two that
+    break somebody ELSE'S isolation, and they live in check_safe_folder."""
+    p, why = check_safe_folder("/etc")
+    assert p == "/etc" and not why
+    assert toolsmod.folder_risk("/etc", "rw")
