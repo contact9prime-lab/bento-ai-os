@@ -2221,6 +2221,16 @@ def _update_cli(args) -> int:
             if line.strip():
                 print(f"    {line.strip()[:100]}")
 
+    # The changelog nobody maintains by hand. CHANGELOG.md is a published release
+    # note and says nothing on a branch between releases, which is most of the
+    # time — so the commits themselves are the honest answer to "what am I about
+    # to install".
+    waiting = asyncio.run(upd.pending(cfg, limit=15))
+    if waiting:
+        print(f"\n  {len(waiting)} change{'s' if len(waiting) != 1 else ''} waiting:")
+        for c in waiting:
+            print(f"    {c['hash']}  {c['title'][:88]}")
+
     # Whether it COULD be installed is worth saying even on a bare check: a machine
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
@@ -2244,6 +2254,11 @@ def _update_cli(args) -> int:
         return 0
     print(f"✓ updated {result['from']} → {result['to']} "
           f"({result['files']} files, now {result.get('version') or '?'})")
+    # What actually landed. Printed after the fact as well as before it, because
+    # an unattended update (a watcher, a cron line) is one nobody read the preview
+    # of — this is the only place that machine's operator ever sees what changed.
+    for c in (result.get("changes") or []):
+        print(f"    {c['hash']}  {c['title'][:88]}")
 
     # An update that has not been loaded is a half-state: the files on disk and the
     # process answering turns disagree, and nothing on screen says which one you are

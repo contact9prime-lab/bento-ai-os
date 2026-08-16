@@ -127,3 +127,11 @@
 .rm-lock b{color:var(--txt)}
 /* Its own line: inline mid-sentence, the button broke the paragraph around it. */
 .rm-lock .endbtn{display:block;margin-top:10px}
+
+/* The changelog on the update card: what is actually arriving, from git. Scrolls
+   rather than growing, because a machine that has fallen ten releases behind must
+   not push the Update button off the panel. */
+.upd-log{margin-top:8px;max-height:190px;overflow:auto;border:1px solid var(--hairline);
+  border-radius:var(--r-md);background:var(--bg2);padding:8px 10px;font-size:var(--fs-sm)}
+.upd-log div{padding:2px 0;line-height:1.5;overflow-wrap:anywhere}
+.upd-log code{color:var(--acc,#5eead4);margin-right:6px}

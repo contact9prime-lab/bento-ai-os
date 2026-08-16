@@ -293,9 +293,17 @@ async function paintVersion(check){
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
     // sentence, not a control that fails when pressed.
+    /* What is actually arriving, from git. "A new version is available" is not a
+       reason to restart the machine somebody is working on; the list of changes
+       is. CHANGELOG.md is still shown when there is one, but between releases it
+       says nothing, and the commits always do. */
+    const ch=(d.changes||[]).length?`<div class="upd-log">${
+      (d.changes||[]).slice(0,15).map(c=>
+        `<div><code>${esc(c.hash)}</code> ${esc(c.title)}</div>`).join('')}${
+      (d.changes||[]).length>15?`<div class="mut">…and ${d.changes.length-15} more</div>`:''}</div>`:'';
     el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
-                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn;
+                   :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn+ch;
   }else{
     el.innerHTML=`<b>${esc(d.current||'?')}</b> `
       +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;

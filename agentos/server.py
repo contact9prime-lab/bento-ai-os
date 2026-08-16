@@ -722,7 +722,11 @@ async def api_update_status(check: bool = False):
                "update_available": bool(c.get("last_seen")
                                         and updmod.is_newer(c["last_seen"], updmod.current())),
                "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
-    return {**res, "can_apply": ok, "blocked_reason": why,
+    # The commits an update would bring. Only on an explicit check — `pending()`
+    # fetches, and a status route that opens Settings instantly must not do
+    # network work nobody asked for.
+    changes = await updmod.pending(cfg, limit=15) if check else []
+    return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
             "enabled": updmod.conf(cfg).get("enabled", True)}
 

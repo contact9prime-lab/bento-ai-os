@@ -248,6 +248,59 @@ async def _notes(branch: str) -> str:
 
 # ------------------------------------------------------------------- the install
 
+def commits(a: str, b: str, limit: int = 20, root: Path | None = None) -> list[dict]:
+    """The commits between two revisions, newest first.
+
+    The changelog nobody has to remember to write. CHANGELOG.md is still read for
+    the published release notes, but it is a file somebody maintains by hand, so
+    on any branch that is not a tagged release it says nothing about what is
+    actually arriving. Git already knows.
+
+    Merges are skipped: a merge commit's subject is "Merge pull request #11",
+    which is true and tells you nothing about what changed. The commits it brought
+    in are in the range anyway.
+    """
+    root = root or install_dir()
+    if not root or not a or not b or a == b:
+        return []
+    sep, rec = "\x1f", "\x1e"
+    ok, out = _run(["git", "log", "--no-merges", f"-{max(1, int(limit))}",
+                    f"--pretty=format:%h{sep}%s{sep}%an{sep}%ct{rec}", f"{a}..{b}"],
+                   cwd=root)
+    if not ok:
+        return []
+    rows = []
+    for chunk in out.split(rec):
+        parts = chunk.strip().strip("\n").split(sep)
+        if len(parts) < 4 or not parts[0]:
+            continue
+        try:
+            when = int(parts[3])
+        except ValueError:
+            when = 0
+        # The subject only. A body in this repo runs to forty lines of reasoning,
+        # which is right in `git log` and wrong in a list of what an update brings.
+        rows.append({"hash": parts[0], "title": parts[1][:160],
+                     "author": parts[2][:60], "at": when})
+    return rows
+
+
+async def pending(cfg: dict, limit: int = 20) -> list[dict]:
+    """What an update WOULD bring, straight from the branch it would pull.
+
+    Fetches, because "what is waiting for me" cannot be answered from a checkout
+    that has not looked. It never merges — this is the read half, and it stays
+    safe to call from a status route.
+    """
+    root = install_dir()
+    if not root:
+        return []
+    branch = conf(cfg).get("branch") or DEFAULT_BRANCH
+    if not _run(["git", "fetch", "origin", branch], cwd=root, timeout=120)[0]:
+        return []
+    return commits("HEAD", f"origin/{branch}", limit=limit, root=root)
+
+
 async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
     """Pull, sync dependencies, verify, and report what to do next.
 
@@ -309,7 +362,11 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
             return rollback(f"the new version fails its own tests: {out[-300:]}")
 
     after = _run(["git", "rev-parse", "HEAD"], cwd=root)[1].strip()
+    # What was actually pulled, from git rather than from a file somebody has to
+    # remember to write. Computed AFTER the merge, so it describes what landed
+    # rather than what was expected to.
     return {"ok": True, "from": before[:8], "to": after[:8],
+            "changes": commits(before, after, limit=20, root=root),
             "version": _version_on_disk(root) or current(),
             "unchanged": after == before,
             "files": len(changed)}
