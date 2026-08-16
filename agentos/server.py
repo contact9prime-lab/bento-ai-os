@@ -7273,11 +7273,11 @@ async def ws_terminal(ws: WebSocket):
     # read every other account's home. So it fails closed — a jail per account, or
     # no shell — and it opens in the acting account's own home, not the OS user's.
     ws_uid = _ws_user(ws) or ""
-    from .tools import bwrap_argv, safe_folders, sandbox_conf, sandbox_mechanism
+    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
     # The same safe folders the agent's own tools use. The Terminal is the other
     # half of "the agent may work here" — a folder the agent can read and the
     # Terminal cannot is a difference nobody can explain from the outside.
-    sb_extra = safe_folders(state.machine_cfg())
+    sb_ro, sb_extra = folder_binds(state.machine_cfg(), ws_uid or None)
     if usersmod.enabled():
         if not sandbox_mechanism():
             await ws.accept()
@@ -7290,12 +7290,13 @@ async def ws_terminal(ws: WebSocket):
         os.makedirs(home, exist_ok=True)
         jail = bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
                           hide=[os.path.realpath(str(usersmod.users_root()))],
-                          extra=sb_extra)
+                          extra=sb_extra, ro_extra=sb_ro)
     else:
         sandboxed, sb_root = sandbox_conf(state.machine_cfg())
         if sandboxed:
             Path(sb_root).mkdir(parents=True, exist_ok=True)
-        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra) if sandboxed else None
+        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra,
+                          ro_extra=sb_ro) if sandboxed else None
 
     await ws.accept()
     shell = os.environ.get("SHELL", "/bin/bash")

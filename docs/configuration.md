@@ -33,7 +33,7 @@ Override the config/data location with the `AGENTOS_HOME` environment variable.
 | `steer_triage_timeout` | seconds that decision may take before the message's wording decides instead (default `30`) |
 | `workspace` | the agent's working directory (default `~/AgentOS`) |
 | `port` | server port (default `8321`) |
-| `sandbox` | `{ enabled, root }` — the folder jail (see below) |
+| `sandbox` | `{ enabled, root, folders }` — the folder jail and the folders shared with each account (see below) |
 | `policies` | list of `{ action: "allow"｜"deny", match: "pattern *" }` rules |
 | `mcp_servers` | connected MCP tool servers |
 | `telegram` | `{ enabled, bot_token, owner_chat_id }` |
@@ -80,18 +80,51 @@ other home directories are hidden. Turn it on/off and set the folder in **Settin
 
 ### Safe folders
 
-`folders` is the list of **other** places the agent may read and write. The jail has one root and
-that root is the workspace, which is not where your data lives — so "summarise last quarter's
-invoices" used to begin with copying them into the workspace first. Naming the folder is the
-alternative:
+`folders` is the list of **other** places the agent may work. The jail has one root and that root is
+the workspace, which is not where your data lives — so "summarise last quarter's invoices" used to
+begin with copying them into the workspace first. A share names the folder, how much access it
+carries, and who it is for:
+
+```json
+"folders": [
+  { "path": "/data/reports", "mode": "rw", "users": ["ada", "bob"] },
+  { "path": "/srv/archive",  "mode": "ro", "users": [] }
+]
+```
+
+- **`mode`** — `rw` (read and write) or `ro` (read only). An unrecognised value narrows to `ro`: a
+  typo must never be the thing that grants write access.
+- **`users`** — the accounts it is for. Empty means everyone, which is also what a single-user
+  machine always sees.
+- A bare string (`"/data/reports"`) is the older flat list and still means **everyone, read-write**,
+  so a config written before shares existed is not quietly narrowed.
+- The same folder listed twice keeps the **first** entry, so a later, wider line cannot silently
+  upgrade an `ro` share to `rw`.
+
+Sharing is an **admin** act — `sandbox` is a machine setting, and `/api/config` already refuses a
+non-admin the whole key.
+
+From a terminal, which is where a server's data folders usually have to be opened up:
 
 ```
-bento config sandbox.folders '["/data/reports", "/srv/shared"]'
+bento folders                                             # what is shared, and with whom
+bento folders add /data/reports --mode rw --users ada,bob
+bento folders add /srv/archive  --mode ro                 # everyone, read-only
+bento folders remove /srv/archive
 ```
 
-or one per line in **Settings → Sandbox → Safe folders**. They apply to the file tools, `run_command`
-and the Terminal alike — a folder the agent can read but the Terminal cannot would be a difference
-nobody could explain.
+In **Settings → Sandbox → Safe folders**, one share per line as `mode who path` — the path comes
+**last** and takes the rest of the line, which is the whole reason for that order: a mode and a user
+list never contain a space, and a folder very well may.
+
+```
+rw * /data/reports
+ro ada,bob /srv/My Archive
+```
+
+Shares apply to the file tools, `run_command` and the Terminal alike, and `mode` is enforced in all
+of them — a read-only share is bound `--ro-bind` in the jail, so it is not the case that `write_file`
+refuses and `run_command` succeeds on the same folder.
 
 Two entries are always refused, and `bento doctor` names any that are:
 

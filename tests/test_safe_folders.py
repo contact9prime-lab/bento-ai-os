@@ -28,7 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agentos import tools as toolsmod                      # noqa: E402
 from agentos import users as usersmod                      # noqa: E402
 from agentos.tools import (Toolbox, bwrap_argv, check_safe_folder,  # noqa: E402
-                           safe_folder_problems, safe_folders)
+                           folder_binds, folder_problems, folder_shares,
+                           safe_folders)
 
 
 def _cfg(tmp_path, folders):
@@ -92,7 +93,7 @@ def test_a_refused_entry_is_reportable_rather_than_silently_dropped(tmp_path):
     """Silently ignoring it means retyping a path that was never the problem."""
     cfg = _cfg(tmp_path, ["/", str(tmp_path / "ghost")])
     assert safe_folders(cfg) == []
-    bad = dict(safe_folder_problems(cfg))
+    bad = dict(folder_problems(cfg))
     assert set(bad) == {"/", str(tmp_path / "ghost")}
     assert all(v for v in bad.values()), "a refusal with no reason is not a report"
 
@@ -180,3 +181,99 @@ def test_the_macos_profile_allows_the_safe_folders_after_the_denies():
         "deny wins and the folder is unreadable from the shell:\n" + prof)
     # …and it is writable, which is the other half of "may work here".
     assert '(subpath "/data")' in prof.split("(allow file-write*")[1][:400], prof
+
+
+# ------------------------------------------- shares: who, and how much
+
+def _shared(tmp_path, entries):
+    ws = tmp_path / "workspace"
+    ws.mkdir(exist_ok=True)
+    return {"workspace": str(ws), "autonomy": "balanced", "policies": [],
+            "default_model": "m",
+            "sandbox": {"enabled": True, "root": str(ws), "folders": entries}}
+
+
+@pytest.mark.asyncio
+async def test_a_read_only_share_can_be_read_and_not_written(tmp_path):
+    """The whole point of the mode. A ro share the tools let you overwrite is not
+    read-only, whatever the setting says."""
+    ro = tmp_path / "reference"
+    ro.mkdir()
+    (ro / "g.txt").write_text("reference")
+    tb = Toolbox(_shared(tmp_path, [{"path": str(ro), "mode": "ro", "users": []}]), None)
+    assert "reference" in await tb.read_file(str(ro / "g.txt"))
+    out = await tb.write_file(str(ro / "new.txt"), "x")
+    assert "[denied]" in out
+    assert not (ro / "new.txt").exists(), "a read-only share was written to"
+
+
+@pytest.mark.asyncio
+async def test_the_read_only_refusal_says_which_problem_it_is(tmp_path):
+    """"You cannot go there" and "you cannot do THAT there" send somebody to two
+    different settings, and one of them is already correct."""
+    ro = tmp_path / "reference"
+    ro.mkdir()
+    tb = Toolbox(_shared(tmp_path, [{"path": str(ro), "mode": "ro", "users": []}]), None)
+    out = await tb.write_file(str(ro / "new.txt"), "x")
+    assert "read-only" in out, out
+
+
+def test_a_share_names_the_accounts_it_is_for(tmp_path, monkeypatch):
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    cfg = _shared(tmp_path, [{"path": str(mine), "mode": "rw", "users": ["bob"]}])
+    monkeypatch.setattr(usersmod, "enabled", lambda: True)
+    monkeypatch.setattr(usersmod, "users_root", lambda: tmp_path / "nowhere")
+    assert safe_folders(cfg, uid="bob") == [str(mine)]
+    assert safe_folders(cfg, uid="ada") == [], "a share reached an account it does not name"
+
+
+def test_an_empty_user_list_means_everyone(tmp_path):
+    """Including on a single-user machine, where current() is '' and there is
+    nobody to distinguish."""
+    shared = tmp_path / "all"
+    shared.mkdir()
+    cfg = _shared(tmp_path, [{"path": str(shared), "mode": "rw", "users": []}])
+    for who in ("", "ada", "bob"):
+        assert safe_folders(cfg, uid=who) == [str(shared)]
+
+
+def test_the_old_flat_list_still_means_everyone_read_write(tmp_path):
+    """Configs written before shares existed must not be quietly narrowed."""
+    d = tmp_path / "legacy"
+    d.mkdir()
+    cfg = _shared(tmp_path, [str(d)])
+    assert safe_folders(cfg, write=True) == [str(d)]
+    assert folder_shares(cfg)[0]["users"] == []
+
+
+def test_an_unrecognised_mode_narrows_rather_than_widens(tmp_path):
+    """A typo must not be the thing that grants write access."""
+    d = tmp_path / "typo"
+    d.mkdir()
+    cfg = _shared(tmp_path, [{"path": str(d), "mode": "read-write", "users": []}])
+    assert folder_shares(cfg)[0]["mode"] == "ro"
+    assert safe_folders(cfg, write=True) == []
+
+
+def test_a_second_entry_cannot_widen_an_earlier_one(tmp_path):
+    """Two lines for one folder keep the first, so a later rw cannot silently
+    upgrade an ro share somebody wrote deliberately."""
+    d = tmp_path / "twice"
+    d.mkdir()
+    cfg = _shared(tmp_path, [{"path": str(d), "mode": "ro", "users": []},
+                             {"path": str(d), "mode": "rw", "users": []}])
+    assert [s["mode"] for s in folder_shares(cfg)] == ["ro"]
+
+
+def test_the_jail_binds_read_only_shares_read_only(tmp_path):
+    """The mode has to mean the same thing at the shell as in the file tools, or
+    write_file says no and run_command says yes about the same folder."""
+    ro, rw = tmp_path / "ro", tmp_path / "rw"
+    ro.mkdir(); rw.mkdir()
+    cfg = _shared(tmp_path, [{"path": str(ro), "mode": "ro", "users": []},
+                             {"path": str(rw), "mode": "rw", "users": []}])
+    ro_paths, rw_paths = folder_binds(cfg)
+    argv = bwrap_argv("/home/x", ["/bin/bash"], extra=rw_paths, ro_extra=ro_paths)
+    assert argv[argv.index(str(ro)) - 1] == "--ro-bind", argv
+    assert argv[argv.index(str(rw)) - 1] == "--bind", argv

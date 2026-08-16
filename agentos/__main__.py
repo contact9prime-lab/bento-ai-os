@@ -539,6 +539,73 @@ def _wrap_plain(text: str, indent: int, width: int = 78) -> str:
     return textwrap.fill(text, width=width, subsequent_indent=" " * indent).strip()
 
 
+def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
+    """Show or change the folders the agent may work in, and who may work there.
+
+    The TUI face of Settings → Sandbox → Safe folders. It matters most exactly
+    where there is no settings window: the server nobody logs into is the one
+    whose data folders somebody has to open up over SSH.
+
+    Sharing is an ADMIN act — /api/config already refuses a non-admin the whole
+    `sandbox` key — and this writes the same setting, so a machine with accounts
+    should be administered by someone who has one.
+    """
+    from . import config as cfgmod
+    from .tools import FOLDER_MODES, check_safe_folder, folder_problems, folder_shares
+
+    cfg = cfgmod.load_config()
+
+    def _show():
+        shares = folder_shares(cfg)
+        if not shares:
+            print("  no shared folders — the agent works in the workspace only")
+        for sh in shares:
+            who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+            print(f"  {sh['mode']:<3} {sh['path']:<44} {who}")
+        for entry, why in folder_problems(cfg):
+            print(f"  !   {entry:<44} not in use — {why}")
+
+    if action in ("", "list"):
+        _show()
+        print("\n  bento folders add /data/reports --mode ro --users ada,bob")
+        return
+
+    raw = list((cfg.get("sandbox") or {}).get("folders") or [])
+    if action == "add":
+        if not path:
+            print("  which folder? e.g. bento folders add /data/reports"); return
+        p, why = check_safe_folder(path)
+        # Refuse at the point of decision. Writing an entry that the loader will
+        # drop is how a setting comes to list a folder nobody can use.
+        if not p:
+            print(f"  refused: {why}"); return
+        if mode not in FOLDER_MODES:
+            print(f"  mode is one of {', '.join(FOLDER_MODES)}"); return
+        who = [u.strip() for u in (users or "").replace(",", " ").split() if u.strip()]
+        raw = [r for r in raw if _folder_path_of(r) != p]      # replace, never duplicate
+        raw.append({"path": p, "mode": mode, "users": who})
+        cfg.setdefault("sandbox", {})["folders"] = raw
+        cfgmod.save_config(cfg)
+        print(f"  shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}")
+        return
+    if action == "remove":
+        p = os.path.realpath(os.path.expanduser(path or ""))
+        keep = [r for r in raw if _folder_path_of(r) != p]
+        if len(keep) == len(raw):
+            print(f"  not shared: {p}"); return
+        cfg.setdefault("sandbox", {})["folders"] = keep
+        cfgmod.save_config(cfg)
+        print(f"  no longer shared: {p}")
+        return
+    print("  usage: bento folders [list|add|remove] [PATH] [--mode ro|rw] [--users a,b]")
+
+
+def _folder_path_of(entry) -> str:
+    """The real path of a configured entry, in either shape."""
+    raw = entry if isinstance(entry, str) else (entry or {}).get("path") or ""
+    return os.path.realpath(os.path.expanduser(str(raw)))
+
+
 def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                   sets: list | None = None):
     """Show or change the ways in.
@@ -954,10 +1021,11 @@ def doctor(fix: bool = False, session: bool = False):
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
-    from .tools import safe_folder_problems, safe_folders
-    if (folders := safe_folders(cfg)):
-        ok(f"safe folders: {', '.join(folders)}")
-    for entry, why in safe_folder_problems(cfg):
+    from .tools import folder_problems, folder_shares
+    for sh in folder_shares(cfg):
+        who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+        ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
+    for entry, why in folder_problems(cfg):
         warn(f"safe folder not in use — {entry}: {why}")
     from . import trainforge as tfmod
     tf = tfmod.conf(cfg)
@@ -2582,6 +2650,14 @@ def main():
     p_sess.add_argument("--force", action="store_true",
                         help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
+    p_fold = sub.add_parser("folders",
+                            help="show or change the folders the agent may work in, and who may work there")
+    p_fold.add_argument("action", nargs="?", default="", choices=["", "list", "add", "remove"],
+                        help="omit to list")
+    p_fold.add_argument("path", nargs="?", default="", help="the folder")
+    p_fold.add_argument("--mode", default="rw", help="ro (read-only) or rw (read-write)")
+    p_fold.add_argument("--users", default="",
+                        help="accounts to share with, comma separated (omit for everyone)")
     p_chan = sub.add_parser("channels", help="show or change the ways in (this window, terminal, remote, API, Telegram…) and how far each is trusted")
     p_chan.add_argument("channel", nargs="?", default="", help="channel id (omit to list them all)")
     p_chan.add_argument("--on", action="store_true", help="switch this channel on")
@@ -2741,6 +2817,8 @@ def main():
         forward_cmd(args.engine)
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
+    elif args.cmd == "folders":
+        folders_cmd(args.action, args.path, args.mode, args.users)
     elif args.cmd == "channels":
         channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
     elif args.cmd == "delegate":
