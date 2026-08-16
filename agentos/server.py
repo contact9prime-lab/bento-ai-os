@@ -7712,6 +7712,18 @@ async def _run_chat(cid: str, data: dict):
                     env.context += execmod.app_checkout_note(checkout, env.tools)
                 elif app_id:
                     env.context += execmod.builtin_app_note(app_id, env.allow_source)
+            if not checkout:
+                # A plain chat turn. Give it somewhere to put an app if it is asked
+                # for one — an executor cannot call create_app, so without this the
+                # work lands in a scratch directory App Studio has never heard of,
+                # which is what "I built it and it is nowhere" was. The note is
+                # conditional and the file starts EMPTY, so a turn that was not an
+                # app build installs nothing.
+                try:
+                    checkout = execmod.new_app_checkout(env.workspace, text[:60])
+                    env.context += execmod.new_app_note(checkout)
+                except Exception:
+                    checkout = None
             run = execmod.Run()
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
                           "model": "claude-code", "executor": run}

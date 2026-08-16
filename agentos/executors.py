@@ -350,6 +350,44 @@ def checkout_app(store, app_id: str, workspace: str) -> dict | None:
             "dir": str(d), "before": before}
 
 
+def new_app_checkout(workspace: str, title: str) -> dict:
+    """A place for an executor to build a NEW AgentOS app, in one known file.
+
+    The gap this closes: an executor is told, correctly, that it cannot use
+    AgentOS's own tools — `create_app` included — so a chat turn asking one to
+    "build me an app" produced .py files in a scratch directory and nothing that
+    App Studio had ever heard of. The work happened; it just landed somewhere the
+    OS does not look.
+
+    A checkout with no app behind it is the answer: same shape `checkout_app`
+    returns, so `commit_app` saves it the same way, but `app_id` is empty and the
+    save creates the app instead of versioning one. The executor keeps only
+    filesystem tools — which is the point — and the file IS the interface.
+    """
+    name = (str(title or "").strip() or "New app")[:60]
+    co = prepare_build(workspace, name)
+    return {"app_id": "", "name": name, "icon": "", "description": "",
+            "path": co["path"], "dir": co["dir"], "before": co["before"]}
+
+
+def new_app_note(co: dict) -> str:
+    """Told to the executor, so building an app is a thing it CAN do.
+
+    Deliberately conditional — "if you were asked to build one". Most turns are
+    not, and an instruction that reads as "write an app" would have every
+    question answered with a file nobody wanted.
+    """
+    return (
+        f"\n\nIf — and only if — this turn asks you to build or change an AgentOS "
+        f"desktop app, write the complete app to:\n  {co['path']}\n"
+        f"One self-contained HTML file: markup, CSS and JavaScript together, no "
+        f"build step and no external assets. AgentOS installs it as an app when "
+        f"you finish, and says so in the chat. Leave the file empty for any other "
+        f"kind of request — an empty file means 'this was not an app build', and "
+        f"nothing is installed."
+    )
+
+
 def app_checkout_note(co: dict, tools: tuple[str, ...]) -> str:
     """What to tell the executor about the app now sitting in its workspace."""
     can_write = any(t in tools for t in ("Write", "Edit"))
@@ -384,7 +422,11 @@ def commit_app(store, co: dict, note: str = "") -> tuple[bool, str]:
                        note or "edited by Claude Code")
     except Exception as exc:
         return False, f"could not save the app: {exc}"
-    return True, f"saved “{co['name']}” as a new version"
+    # "a new version" is true for a checkout of an existing app and false for one
+    # the executor has just built — and the difference is exactly what the reader
+    # needs to know: whether there is now something new on their desktop.
+    return True, (f"saved “{co['name']}” as a new version" if co.get("app_id")
+                  else f"installed “{co['name']}” — it is on your desktop and in App Studio")
 
 
 BUILD_DIRNAME = "builds"
