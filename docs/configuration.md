@@ -71,12 +71,40 @@ automatically. API keys can also come from environment variables — see [Models
 ## The sandbox
 
 ```json
-"sandbox": { "enabled": true, "root": "" }
+"sandbox": { "enabled": true, "root": "", "folders": [] }
 ```
 
 When enabled (and `bubblewrap` is installed), the agent's shell/file tools and the Terminal are
 confined to `root` (defaults to the workspace). Outside that folder the filesystem is read-only and
 other home directories are hidden. Turn it on/off and set the folder in **Settings → Sandbox**.
+
+### Safe folders
+
+`folders` is the list of **other** places the agent may read and write. The jail has one root and
+that root is the workspace, which is not where your data lives — so "summarise last quarter's
+invoices" used to begin with copying them into the workspace first. Naming the folder is the
+alternative:
+
+```
+bento config sandbox.folders '["/data/reports", "/srv/shared"]'
+```
+
+or one per line in **Settings → Sandbox → Safe folders**. They apply to the file tools, `run_command`
+and the Terminal alike — a folder the agent can read but the Terminal cannot would be a difference
+nobody could explain.
+
+Two entries are always refused, and `bento doctor` names any that are:
+
+- **`/`** — naming the whole machine would switch the jail off while the toggle still read *on*. If
+  that is what you want, turn the jail off and it will say so.
+- **Anything holding the accounts** (`~/.agentos/users`, a home inside it, or any directory above
+  it). `sandbox` is a machine setting rather than a personal one, so a safe folder is shared by every
+  account — which is exactly why this one cannot be named. Otherwise a single line here would undo
+  the directory isolation that keeps one account's memory and credentials away from another's. See
+  [Users](users.md) and [Tenant isolation](design/tenant-isolation.md).
+
+A folder that does not exist is refused too, with that reason — a mistyped path that was silently
+dropped looks exactly like a folder the agent is refusing to use.
 
 ---
 

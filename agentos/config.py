@@ -197,7 +197,10 @@ DEFAULTS = {
     # folder jail: agent commands, file tools, and the Terminal are confined to
     # `root` (defaults to the workspace) via bubblewrap — everything else is
     # read-only and other files in /home are hidden entirely.
-    "sandbox": {"enabled": True, "root": ""},
+    # `folders` are the other places the agent may read and write, named by the
+    # user. Seeded empty and explicit, so the key exists to be discovered in the
+    # file rather than only in the settings page.
+    "sandbox": {"enabled": True, "root": "", "folders": []},
     # GitHub integration (Ship pillar): a fine-grained PAT used by the git_* tools
     # to create repos and push over HTTPS. The token stays in config + env — it is
     # never placed in command lines, remotes, or tool output.

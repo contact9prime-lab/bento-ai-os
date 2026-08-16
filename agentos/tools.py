@@ -154,8 +154,86 @@ def sandbox_conf(cfg: dict) -> tuple[bool, str]:
     return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
 
 
+# --------------------------------------------------------------------------
+# Safe folders — the other places the agent may work
+#
+# The jail has one root, and the root is the workspace. That is the right default
+# and it is not where anybody's data lives: the answer to "read last quarter's
+# invoices" was to copy them into the workspace first, which is not an answer, it
+# is a chore that also duplicates the data.
+#
+# A safe folder is the user saying "this one too". It is a machine setting rather
+# than a personal one (`sandbox` is not in users.USER_KEYS), so on a machine with
+# accounts it names a genuinely SHARED area that every account's agent may use —
+# which is why the validation below is load-bearing rather than cosmetic: it is
+# the only thing standing between "let the agent read /data" and "let one account
+# read another's home by naming its parent".
+#
+# Refusals are returned, never swallowed. A folder that is silently ignored
+# because it was mistyped looks exactly like a folder the agent is refusing to
+# use, and the user is left retyping a path that was never the problem.
+# --------------------------------------------------------------------------
+
+def _under_any(rp: str, roots: list[str]) -> bool:
+    """Is this real path inside any of these real roots?
+
+    Compared with a separator appended, never as a bare prefix: `/data-old` starts
+    with `/data` as a string and is a different directory.
+    """
+    return any(rp == r or rp.startswith(r + os.sep) for r in roots if r)
+
+
+def check_safe_folder(path) -> tuple[str, str]:
+    """(normalised absolute path, reason it was refused). Exactly one is non-empty."""
+    raw = str(path or "").strip()
+    if not raw:
+        return "", ""
+    p = os.path.realpath(os.path.expanduser(raw))
+    if p == os.sep:
+        return "", ("/ is the whole machine — naming it here would switch the jail off "
+                    "without saying so. Turn the folder jail off in Settings if that is "
+                    "what you want.")
+    # The tenant boundary is not negotiable from here. `users/` holds every
+    # account's private home, so naming it — or ANY directory above it — would
+    # hand one account's agent the others' memory and credentials.
+    if usersmod.enabled():
+        ur = os.path.realpath(str(usersmod.users_root()))
+        if p == ur or p.startswith(ur + os.sep) or ur.startswith(p + os.sep):
+            return "", ("this holds the accounts on this machine, and each account's "
+                        "files, memory and credentials are private to it.")
+    if not os.path.isdir(p):
+        return "", "no such folder on this machine."
+    return p, ""
+
+
+def safe_folders(cfg: dict) -> list[str]:
+    """The extra roots the agent may read and write, validated. Order preserved."""
+    out: list[str] = []
+    for raw in (cfg.get("sandbox") or {}).get("folders") or []:
+        p, _why = check_safe_folder(raw)
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
+def safe_folder_problems(cfg: dict) -> list[tuple[str, str]]:
+    """(entry, why it is not being used) for every configured folder that is refused.
+
+    Surfaces call this so a rejected entry is stated rather than discovered by the
+    agent failing to reach a folder the settings page still lists.
+    """
+    bad = []
+    for raw in (cfg.get("sandbox") or {}).get("folders") or []:
+        if not str(raw or "").strip():
+            continue
+        p, why = check_safe_folder(raw)
+        if not p:
+            bad.append((str(raw), why))
+    return bad
+
+
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
-               hide: list[str] | None = None) -> list[str]:
+               hide: list[str] | None = None, extra: list[str] | None = None) -> list[str]:
     """Jail: whole FS read-only, /home hidden, only `root` writable & visible.
 
     `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
@@ -163,13 +241,20 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     whole FS is bound read-only, so a bare jail can still READ everything; tmpfs'ing
     the users root and then re-binding only this user's home is what turns "cannot
     write outside my workspace" into "cannot even see another tenant's files".
+
+    `extra` are the user's safe folders, bound writable alongside `root`. They come
+    LAST, after the tmpfs'd `hide` list, for the same reason `root` does: a bind is
+    only visible if nothing blanks it afterwards. They have already been refused if
+    they sit at or above the accounts root, so re-binding them cannot undo `hide`.
     """
     argv = ["bwrap", "--ro-bind", "/", "/", "--tmpfs", "/home"]
     for h in (hide or []):
         argv += ["--tmpfs", h]              # order matters: blank the siblings first…
     argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-             "--bind", root, root,          # …then this user's own home reappears
-             "--chdir", chdir or root,
+             "--bind", root, root]          # …then this user's own home reappears
+    for e in (extra or []):
+        argv += ["--bind", e, e]            # …and the folders the user opened up
+    argv += ["--chdir", chdir or root,
              "--setenv", "HOME", root,
              "--setenv", "AGENTOS_SANDBOX", "1",
              "--die-with-parent",
@@ -177,7 +262,8 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     return argv
 
 
-def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
+def _sandbox_exec_profile(root: str, hide: list[str] | None = None,
+                          extra: list[str] | None = None) -> str:
     """macOS SBPL: everything readable, but writes confined to `root` (+ tmp/dev/caches).
 
     Matches bubblewrap's security-relevant guarantee — the agent's shell cannot modify
@@ -199,8 +285,8 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
     """
     def esc(p):
         return p.replace("\\", "\\\\").replace('"', '\\"')
-    writable = [root, "/tmp", "/private/tmp", "/private/var/tmp", "/dev/null",
-                "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
+    writable = [root, *(extra or []), "/tmp", "/private/tmp", "/private/var/tmp",
+                "/dev/null", "/dev/dtracehelper", os.path.expanduser("~/Library/Caches")]
     subpaths = "\n  ".join(f'(subpath "{esc(p)}")' for p in writable)
     prof = ("(version 1)\n"
             "(allow default)\n"
@@ -210,25 +296,33 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None) -> str:
     if hide:
         for h in hide:
             prof += f'(deny file-read* (subpath "{esc(h)}"))\n'
-        prof += f'(allow file-read* (subpath "{esc(root)}"))\n'   # …then this one back
+        # …then this one back, and the safe folders with it. LAST rule wins, so
+        # these must follow the denies above — which is safe only because
+        # check_safe_folder has already refused anything at or above the accounts
+        # root, so none of them can re-open a home the deny just closed.
+        prof += f'(allow file-read* (subpath "{esc(root)}"))\n'
+        for e in (extra or []):
+            prof += f'(allow file-read* (subpath "{esc(e)}"))\n'
     return prof
 
 
 def sandbox_exec_argv(root: str, command: str, chdir: str | None = None,
-                      hide: list[str] | None = None) -> list[str]:
+                      hide: list[str] | None = None,
+                      extra: list[str] | None = None) -> list[str]:
     """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
-    prof = _sandbox_exec_profile(root, hide=hide)
+    prof = _sandbox_exec_profile(root, hide=hide, extra=extra)
     inner = f'cd {shlex.quote(chdir or root)} && {command}'
     return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
 
 
-def jail_argv(root: str, command: str, chdir: str | None = None) -> list[str] | None:
+def jail_argv(root: str, command: str, chdir: str | None = None,
+              extra: list[str] | None = None) -> list[str] | None:
     """The right jail wrapper for this OS, or None if no mechanism is available."""
     mech = sandbox_mechanism()
     if mech == "bwrap":
-        return bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=chdir)
+        return bwrap_argv(root, ["/bin/bash", "-lc", command], chdir=chdir, extra=extra)
     if mech == "sandbox-exec":
-        return sandbox_exec_argv(root, command, chdir=chdir)
+        return sandbox_exec_argv(root, command, chdir=chdir, extra=extra)
     return None
 
 
@@ -350,6 +444,12 @@ class Toolbox(usersmod.Scoped):
         rp = os.path.realpath(str(path))
         if rp == home or rp.startswith(home + os.sep):
             return None
+        # A safe folder is a deliberate machine-level decision that this directory
+        # is shared, and check_safe_folder has already refused anything at or above
+        # the accounts root — so it cannot be a way into somebody else's home. That
+        # proof is the only reason this boundary may be widened here at all.
+        if _under_any(rp, safe_folders(self.cfg)):
+            return None
         return ("[denied] this belongs to another account on this machine. Each account's "
                 "files, memory and credentials are private to it.")
 
@@ -362,7 +462,14 @@ class Toolbox(usersmod.Scoped):
         rp = os.path.realpath(str(path))
         if rp == root or rp.startswith(root + os.sep):
             return None
-        return f"[denied] sandbox mode: only paths inside {root} are accessible (see Settings → Sandbox)"
+        if _under_any(rp, safe_folders(self.cfg)):
+            return None
+        # Name the folders that WOULD work. "Only paths inside <root>" was true and
+        # unhelpful the moment there was more than one place to be.
+        extra = safe_folders(self.cfg)
+        where = ", ".join([root] + extra)
+        return (f"[denied] sandbox mode: only paths inside {where} are accessible "
+                f"(add more in Settings → Sandbox → Safe folders)")
 
     async def run_command(self, command: str, cwd: str = "") -> str:
         enabled, root = sandbox_conf(self.cfg)
@@ -388,17 +495,26 @@ class Toolbox(usersmod.Scoped):
             # blank the users root, then give this account's home back. bwrap does it
             # with a tmpfs and a re-bind, sandbox-exec with a deny and a re-allow.
             hide = [os.path.realpath(str(usersmod.users_root()))]
+            # The shared folders come back in after the blanking, so a command can
+            # reach them from inside the per-account jail. They cannot be a way out:
+            # check_safe_folder refuses anything at or above the accounts root.
+            extra = safe_folders(self.cfg)
+            if cwd and _under_any(os.path.realpath(os.path.expanduser(cwd)), extra):
+                workdir = os.path.realpath(os.path.expanduser(cwd))
             if mech == "bwrap":
                 argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
-                                  hide=hide)
+                                  hide=hide, extra=extra)
             else:
-                argv = sandbox_exec_argv(home, command, chdir=workdir, hide=hide)
+                argv = sandbox_exec_argv(home, command, chdir=workdir, hide=hide,
+                                         extra=extra)
         elif enabled:
+            extra = safe_folders(self.cfg)
             workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else root
-            if not (workdir == root or workdir.startswith(root + os.sep)) or not os.path.isdir(workdir):
+            if not (workdir == root or _under_any(workdir, [root, *extra])) or not os.path.isdir(workdir):
                 workdir = root
             os.makedirs(root, exist_ok=True)
-            argv = jail_argv(root, command, chdir=workdir)  # bwrap on Linux, sandbox-exec on macOS
+            # bwrap on Linux, sandbox-exec on macOS
+            argv = jail_argv(root, command, chdir=workdir, extra=extra)
         if argv:
             proc = await asyncio.create_subprocess_exec(
                 *argv,

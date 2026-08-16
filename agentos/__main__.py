@@ -951,6 +951,14 @@ def doctor(fix: bool = False, session: bool = False):
         warn("bubblewrap missing — sandbox falls back to unjailed commands (install: apt install bubblewrap)")
     else:
         warn("no sandbox mechanism found — shell commands run unjailed")
+    # Safe folders, and — the point of saying anything here — the ones that are
+    # configured but not being used. A folder silently dropped for a typo looks
+    # exactly like one the agent is refusing to touch.
+    from .tools import safe_folder_problems, safe_folders
+    if (folders := safe_folders(cfg)):
+        ok(f"safe folders: {', '.join(folders)}")
+    for entry, why in safe_folder_problems(cfg):
+        warn(f"safe folder not in use — {entry}: {why}")
     from . import trainforge as tfmod
     tf = tfmod.conf(cfg)
     if tf["path"]:

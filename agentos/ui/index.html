@@ -7329,6 +7329,10 @@ function pSecretReplace(id){
   const el=document.getElementById(id);if(el)el.focus();
 }
 const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="${esc(val==null?'':val)}" placeholder="${esc(ph||'')}">`;
+/* One value per line. A textarea rather than a comma list because these are
+   PATHS, and every separator that splits one is a folder that silently never
+   matches — a newline is the one character a path cannot contain. */
+const pArea=(id,val,ph,rows)=>`<textarea id="${id}" rows="${rows||3}" spellcheck="false" placeholder="${esc(ph||'')}">${esc(val==null?'':val)}</textarea>`;
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
@@ -7472,6 +7476,13 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
+      /* The jail has one root and nobody's data lives in it, so "read last
+         quarter's invoices" used to mean copying them in first. These are the
+         other places the agent may work — one per line, because a path may
+         contain a comma and every separator that splits one is a folder that
+         silently never matches. */
+      pRow('Safe folders',pArea('s-sb-folders',((cfg.sandbox&&cfg.sandbox.folders)||[]).join('\n'),'/data/reports\n/srv/shared'),
+        {stack:true,desc:'Extra folders the agent and the Terminal may read and write, one per line. Everything else stays read-only. Folders holding other accounts are refused.',f:'sandbox safe folders extra data access'}),
     ],{f:'sandbox security'}));
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
@@ -7668,7 +7679,8 @@ async function saveSettings(){
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
   if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
-  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
+  if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim(),
+    folders:(val('s-sb-folders')||'').split('\n').map(s=>s.trim()).filter(Boolean)};
   if(val('s-taint')!==undefined)patch.security={taint:val('s-taint')};
   if(val('s-hist-compact')!==undefined)patch.history={compact:val('s-hist-compact')!=='off'};
   const providers={};
