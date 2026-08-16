@@ -7635,7 +7635,10 @@ async def _run_chat(cid: str, data: dict):
             if not avail.get("available"):
                 raise RuntimeError(avail.get("reason") or "Claude Code is not available")
             env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
-            env.session_id = state.get("exec_sessions", {}).get(cid, "")
+            # From the conversation row, not a dict on the server: a restart used to
+            # drop every chat's executor session, so a machine that had been running
+            # for a week came back with every conversation a stranger.
+            env.session_id = store.exec_session(cid)
             # The same per-surface context the built-in agent gets as extra_system.
             # Without it a delegated copilot turn arrived as a bare sentence with
             # no idea which app it was about — the executor is sanitizing it.
@@ -7685,7 +7688,7 @@ async def _run_chat(cid: str, data: dict):
             if run.session_id:
                 # Keep the executor's own session so the next turn in this chat is a
                 # continuation rather than a stranger with no memory of the last one.
-                state.setdefault("exec_sessions", {})[cid] = run.session_id
+                store.set_exec_session(cid, run.session_id)
             if checkout:
                 # Write the edit back as a new app version, and SAY so — a change
                 # that appears without a word is indistinguishable from a bug.
