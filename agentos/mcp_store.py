@@ -147,22 +147,55 @@ def _load_index() -> dict:
     return _index
 
 
-def release_if_idle(now: float | None = None) -> int:
+def release_if_idle(now: float | None = None, idle: float | None = None,
+                    discard: bool = False) -> int:
     """Let the catalogue go if nobody has searched for a while.
 
     Returns how many servers were dropped, so the caller can say it happened.
-    The file stays; `_load_index()` reads it back the next time somebody looks.
-    A machine that opened the MCP Store once should not carry 35 MB for it until
-    the next reboot.
+    Normally the FILE stays and `_load_index()` reads it back the next time
+    somebody looks — a machine that opened the MCP Store once should not carry
+    35 MB for it until the next reboot.
+
+    `discard=True` is light mode: the file goes too. The catalogue then exists
+    only while somebody is actually shopping for servers, which is the trade a
+    small machine wants — 11.9 MB of card and 35 MB of RAM back, at the price of
+    downloading it again next time.
     """
     global _index
-    if _index is None or _syncing:
+    if _syncing:
         return 0
-    if (now or time.monotonic()) - _touched < IDLE_RELEASE:
+    quiet = (now or time.monotonic()) - _touched >= (IDLE_RELEASE if idle is None else idle)
+    if not quiet:
         return 0
-    n = len(_index.get("servers") or ())
+    n = len(((_index or {}).get("servers")) or ())
     _index = None
+    if discard:
+        try:
+            INDEX_PATH.unlink()
+        except OSError:
+            pass
     return n
+
+
+def housekeeping(cfg: dict | None = None) -> str:
+    """The maintenance pass's MCP half, decided by the profile in force.
+
+    Returns a sentence when something was actually let go, so the machine can say
+    it in the log rather than doing it silently — a 12 MB file disappearing is
+    worth being able to find an explanation for.
+    """
+    from . import profile as profmod
+
+    eff = profmod.settings(cfg or {})
+    lite = eff["mcp_cache"] == "discard"
+    had_file = INDEX_PATH.exists()
+    n = release_if_idle(idle=eff["mcp_idle_release"], discard=lite)
+    if not n and not (lite and had_file and not INDEX_PATH.exists()):
+        return ""
+    if lite:
+        return (f"light mode: released the MCP catalogue ({n} servers) and deleted its "
+                f"cache — the next search fetches it again")
+    return f"released the MCP catalogue from memory ({n} servers), the cache stays"
 
 
 def _publish(idx: dict) -> None:
@@ -187,7 +220,7 @@ def index_status() -> dict:
             "syncing": _syncing, "updated_at": idx.get("updated_at", 0)}
 
 
-def ensure_index(store=None, only_refresh: bool = False) -> bool:
+def ensure_index(store=None, only_refresh: bool = False, cfg: dict | None = None) -> bool:
     """Kick off a background catalog sync if the index is missing, incomplete, or
     stale. Returns True when a sync was started. Safe to call on every search.
 
@@ -199,6 +232,12 @@ def ensure_index(store=None, only_refresh: bool = False) -> bool:
     if _syncing:
         return False
     if only_refresh:
+        # Light mode keeps no catalogue at rest, so there is nothing to keep up to
+        # date: refreshing at boot would download 11.9 MB onto a machine whose
+        # whole profile says not to. A search still syncs it on the spot.
+        from . import profile as profmod
+        if profmod.settings(cfg or {})["mcp_cache"] == "discard":
+            return False
         # Decided from the FILE, deliberately: parsing it to find out whether it
         # needs refreshing would allocate the whole 35 MB at boot, which is the
         # cost this path exists to avoid. mtime is the honest proxy for

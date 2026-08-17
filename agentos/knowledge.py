@@ -455,10 +455,9 @@ async def run_maintenance(cfg: dict, store, broadcast=None, force: bool = False)
         # occasionally. Let it go when nobody has searched for a while; the file
         # stays and the next search reads it back.
         from . import mcp_store as mcp_storemod
-        n = mcp_storemod.release_if_idle()
-        if n:
-            store.log("system", f"released the MCP catalogue from memory ({n} servers, "
-                                f"unused for {int(mcp_storemod.IDLE_RELEASE / 60)} min)")
+        said = mcp_storemod.housekeeping(cfg)
+        if said:
+            store.log("system", said)
     except Exception:
         pass
     try:

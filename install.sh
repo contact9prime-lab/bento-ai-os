@@ -30,6 +30,10 @@
 #                             (default 0.0.0.0 — all of them). Needs --passphrase.
 #   --port=N                  the port to answer on (default 8321). Saved to the
 #                             config, so the boot service uses it too.
+#   --lite                    footprint profile for a small machine (a Pi): the MCP
+#                             catalogue is fetched while you search and deleted
+#                             when you stop, and telemetry is kept 7 days rather
+#                             than 30. `bento profile` shows or changes it later.
 #   --no-service              do not install the launcher/login service (containers, CI)
 #   --no-verify               skip the "prove it works" step
 #
@@ -82,6 +86,10 @@ PASSPHRASE="${AGENTOS_PASSPHRASE:-}"
 # security argument and this script must not be the place it is loosened.
 BIND="${AGENTOS_BIND:-}"
 PORT_WANTED="${AGENTOS_PORT:-}"
+# Light mode, decided here rather than discovered after the first SD card fills.
+# Empty means "let the machine decide" — the profile resolves from RAM on first
+# run and writes down what it chose.
+PROFILE="${AGENTOS_PROFILE:-}"
 
 for a in "$@"; do
   case "$a" in
@@ -91,6 +99,8 @@ for a in "$@"; do
     --passphrase=*) PASSPHRASE="${a#--passphrase=}" ;;
     --bind=*) BIND="${a#--bind=}" ;;
     --port=*) PORT_WANTED="${a#--port=}" ;;
+    --lite) PROFILE=lite ;;
+    --full) PROFILE=full ;;
     -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
@@ -557,6 +567,20 @@ if [ -n "$PORT_WANTED" ]; then
   else
     warn "could not set the port — staying on the default"
     gap "set it yourself:  bento remote --port $PORT_WANTED"
+  fi
+fi
+
+# The footprint profile. Set before the first run, so a small machine never even
+# fetches the 12 MB MCP catalogue it is not going to keep. Left alone otherwise:
+# the server resolves "auto" from this machine's RAM on its first boot and writes
+# down what it chose, which `bento profile` then reports.
+if [ -n "$PROFILE" ]; then
+  say "setting the footprint profile to $PROFILE"
+  if prof_out="$(uv run bento profile "$PROFILE" 2>&1)"; then
+    printf '%s\n' "$prof_out" | sed -n '1p' | sed 's/^/  /'
+  else
+    warn "could not set the profile — the machine will decide on first run"
+    gap "set it yourself:  bento profile $PROFILE"
   fi
 fi
 

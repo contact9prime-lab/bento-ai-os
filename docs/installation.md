@@ -284,6 +284,25 @@ assumed. On a warm install with no browser attached:
 | a turn | ~0.13 s of CPU, ~1.6 kB of database |
 | after 1,300 turns | RSS settles at ~120 MB and stays there |
 
+### Light mode
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh -s -- --lite
+bento profile            # what this machine is doing, and what it is keeping
+bento profile lite       # switch later; the MCP cache is deleted on the spot
+```
+
+`--lite` is the Pi profile. The one behaviour it changes is the expensive one: the
+MCP catalogue is **fetched while you search and deleted when you stop**, so
+nothing is kept at rest — a search costs a download instead of 12 MB of card and
+35 MB of RAM. Telemetry is kept 7 days rather than 30. Nothing else changes: same
+features, same tools, same agent.
+
+Left alone, the profile is `auto`: the server decides from the machine on first
+run (≤ 2 GB of RAM → lite) and **writes down what it decided**, so it shows up as
+an ordinary `profile` key in `config.json` and in `bento doctor` rather than as
+behaviour you cannot see. Settings → System → Footprint is the same switch.
+
 Three standing costs are deliberately **not** paid unless you use the thing:
 
 - **The MCP catalogue** is 21,811 servers — 11.9 MB of JSON, +35 MB of RSS once

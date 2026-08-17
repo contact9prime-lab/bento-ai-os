@@ -215,3 +215,84 @@ def test_a_prune_actually_gives_the_disk_back(tmp_path):
     before = s.db_bytes()
     assert s.prune()["logs"] == 4000
     assert s.db_bytes() < before
+
+
+# --- light mode ------------------------------------------------------------
+#
+# The Pi switch. A profile that could only be READ would be a second, invisible
+# configuration; a profile that deleted things it had not said it would delete
+# would be worse. So: it writes ordinary keys, it says what it does, and the one
+# behaviour it owns — whether the MCP catalogue survives your search — is asserted
+# against the real file.
+
+from agentos import profile as profmod                      # noqa: E402
+
+
+def test_a_profile_writes_ordinary_settings_rather_than_hiding_them():
+    cfg = {}
+    ok, said = profmod.apply(cfg, "lite")
+    assert ok and "lite" in said
+    assert cfg["profile"] == "lite"
+    assert cfg["retention"]["logs_days"] == 7, "the profile must SET the keys it implies"
+    profmod.apply(cfg, "full")
+    assert cfg["retention"]["logs_days"] == 30
+
+
+def test_auto_decides_from_the_machine_and_says_which(monkeypatch):
+    monkeypatch.setattr(profmod, "machine",
+                        lambda: {"ram_mb": 1024, "cores": 4, "arch": "aarch64",
+                                 "board": "Raspberry Pi 3 Model B"})
+    assert profmod.resolve({"profile": "auto"}) == "lite"
+    d = profmod.describe({"profile": "auto"})
+    assert "lite" in d and "Raspberry Pi" in d
+    monkeypatch.setattr(profmod, "machine",
+                        lambda: {"ram_mb": 16000, "cores": 8, "arch": "x86_64", "board": ""})
+    assert profmod.resolve({"profile": "auto"}) == "full"
+
+
+def test_an_explicit_profile_beats_the_hardware(monkeypatch):
+    """Somebody who asked for light mode on a big machine meant it."""
+    monkeypatch.setattr(profmod, "machine",
+                        lambda: {"ram_mb": 64000, "cores": 16, "arch": "x86_64", "board": ""})
+    assert profmod.resolve({"profile": "lite"}) == "lite"
+
+
+def test_an_unknown_profile_is_refused():
+    ok, msg = profmod.apply({}, "turbo")
+    assert not ok and "one of" in msg
+
+
+def test_light_mode_deletes_the_catalogue_when_searching_stops(index):
+    index.write_text(json.dumps({"updated_at": time.time(), "complete": True,
+                                 "servers": [{"registry_name": f"s{i}"} for i in range(100)]}))
+    mcp._load_index()
+    cfg = {"profile": "lite"}
+    assert mcp.housekeeping(cfg) == "", "a search in flight must not lose its catalogue"
+    mcp._touched -= profmod.EFFECTS["lite"]["mcp_idle_release"] + 1
+    said = mcp.housekeeping(cfg)
+    assert "light mode" in said and "deleted" in said
+    assert not index.exists(), "light mode keeps nothing at rest"
+    assert mcp._index is None
+
+
+def test_full_mode_keeps_the_file_and_only_frees_the_memory(index):
+    index.write_text(json.dumps({"updated_at": time.time(), "complete": True,
+                                 "servers": [{"registry_name": "s"}]}))
+    mcp._load_index()
+    cfg = {"profile": "full"}
+    mcp._touched -= profmod.EFFECTS["full"]["mcp_idle_release"] + 1
+    said = mcp.housekeeping(cfg)
+    assert "cache stays" in said
+    assert index.exists(), "full mode paid for that file; it must not be thrown away"
+    assert mcp._index is None
+
+
+def test_light_mode_never_downloads_a_catalogue_at_boot(index, monkeypatch):
+    """A stale file from a previous full-mode run must not trigger a 12 MB fetch
+    on a machine whose whole profile says not to keep one."""
+    index.write_text(json.dumps({"updated_at": 0, "complete": True,
+                                 "servers": [{"registry_name": "s"}]}))
+    started = []
+    monkeypatch.setattr(mcp.asyncio, "create_task", lambda c: started.append(c))
+    assert mcp.ensure_index(only_refresh=True, cfg={"profile": "lite"}) is False
+    assert not started

@@ -532,6 +532,13 @@ is three standing costs paid by machines that were not using the feature.
   `forget_probes()` is called on the way out of any install. Uncached it cost
   1.2s per `/api/executors` call, and the chat header, Settings and the wizard
   all ask.
+- **Light mode is a PROFILE, and a profile writes settings rather than hiding
+  them.** `profile.apply()` puts the retention numbers into config where
+  `bento config` can argue with them; the one thing it owns live is whether the
+  MCP catalogue survives a search (`mcp_store.housekeeping`). `auto` resolves
+  from RAM on first run and then records what it chose — a machine that behaves
+  differently after a RAM upgrade, with nothing on screen saying why, is the
+  thing this shape exists to avoid.
 - **Everything that grows needs a ceiling.** `memory.Store.prune()` drops logs
   and flow events past 30 days and usage past a year, then checkpoints the WAL so
   the disk comes back. It must never touch `audit` (hash-chained — deleting rows

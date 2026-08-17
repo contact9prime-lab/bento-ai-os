@@ -361,8 +361,22 @@ async def startup():
     # Refresh a catalogue this machine already has; never fetch one it has not
     # asked for. Opening the MCP Store (or any search) syncs it on the spot —
     # see `ensure_index`, which every search path already calls.
-    mcp_storemod.ensure_index(store, only_refresh=True)
+    mcp_storemod.ensure_index(store, only_refresh=True, cfg=cfg)
     store.log("system", "AgentOS started")
+
+    # Decide the footprint profile ONCE and write down what was decided. `auto` on
+    # every boot would mean a machine that behaves differently after a RAM upgrade
+    # with nothing on screen saying why; this leaves an ordinary config key, and
+    # `bento profile` can argue with it.
+    if str(cfg.get("profile") or "auto") == "auto":
+        from . import profile as profmod
+        first = cfgmod.is_first_run()
+        ok, said = profmod.apply(cfg, profmod.resolve(cfg))
+        if ok:
+            if first:
+                cfg["setup_complete"] = False     # same trap as the model below
+            cfgmod.save_config(cfg)
+            store.log("system", f"profile: {said}")
 
     # pick a default model if none is set — but don't let this first write of
     # config.json disarm the setup wizard on a brand-new install
@@ -2180,6 +2194,24 @@ async def api_models():
             "engine": execmod.resolve_engine(cfg)}
 
 
+@app.get("/api/profile")
+async def api_profile():
+    """What this machine has decided to keep, and what it is keeping right now."""
+    from . import mcp_store as mcpmod
+    from . import profile as profmod
+    cfg = state["cfg"]
+    try:
+        cached = mcpmod.INDEX_PATH.stat().st_size
+    except OSError:
+        cached = 0
+    return {"profile": cfg.get("profile", "auto"),
+            "resolved": profmod.resolve(cfg),
+            "description": profmod.describe(cfg),
+            "machine": profmod.machine(),
+            "retention": cfg.get("retention", {}),
+            "mcp_cache_bytes": cached}
+
+
 @app.get("/api/brains")
 async def api_brains(refresh: bool = False):
     """Who can answer here, and what each of them can run.
@@ -2416,6 +2448,22 @@ async def api_put_config(patch: dict):
         for k in localeinfo.FIELDS:
             if k in patch["locale"]:
                 lo[k] = str(patch["locale"][k] or "")[:64]
+    if "profile" in patch:
+        # Through profile.apply(), never a bare key write: the profile's job is to
+        # SET the ordinary keys (retention, and what the MCP cache does), and a
+        # config that recorded "lite" without them would be a label with no effect.
+        from . import profile as profmod
+        ok_p, said = profmod.apply(cfg, str(patch["profile"] or "auto"))
+        if not ok_p:
+            return JSONResponse({"error": said}, status_code=400)
+        state["store"].log("system", f"profile: {said}")
+        # Somebody switching to light mode is usually asking for the space back
+        # NOW, not at the next maintenance pass half an hour from now. It still
+        # waits for a search in flight to finish — see `release_if_idle`.
+        from . import mcp_store as mcpmod
+        freed = await asyncio.to_thread(mcpmod.housekeeping, cfg)
+        if freed:
+            state["store"].log("system", freed)
     if "engine" in patch:
         from . import executors as execmod
         want = str(patch["engine"] or "aria")

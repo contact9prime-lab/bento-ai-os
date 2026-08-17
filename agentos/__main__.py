@@ -482,6 +482,53 @@ def forward_cmd(engine: str | None):
     print("  a running server picks this up on its next turn")
 
 
+def profile_cmd(want: str | None):
+    """Show or set the footprint profile — the Pi switch.
+
+    The TUI face of it, and the one the installer calls for `--lite`. Printing
+    what it changes rather than just the word: a profile whose effects are not on
+    screen is a machine behaving differently for reasons nobody can see.
+    """
+    from . import config as cfgmod
+    from . import mcp_store as mcpmod
+    from . import profile as profmod
+
+    cfg = cfgmod.load_config()
+    if not want:
+        print(f"profile: {profmod.describe(cfg)}")
+        m = profmod.machine()
+        print(f"  machine:   {m['ram_mb']} MB RAM · {m['cores']} cores · {m['arch']}"
+              + (f" · {m['board']}" if m["board"] else ""))
+        try:
+            size = mcpmod.INDEX_PATH.stat().st_size
+            print(f"  MCP cache: {size // 1024} kB at {mcpmod.INDEX_PATH}")
+        except OSError:
+            print("  MCP cache: nothing on disk")
+        print()
+        print("  bento profile lite   # fetch the MCP catalogue only while you search")
+        print("  bento profile full   # keep it, refresh it daily")
+        print("  bento profile auto   # decide from this machine")
+        return
+    ok, msg = profmod.apply(cfg, want)
+    if not ok:
+        print(msg)
+        raise SystemExit(2)
+    cfgmod.save_config(cfg)
+    print(f"profile: {msg}")
+    # Light mode means nothing kept, so the cache goes NOW rather than at the next
+    # maintenance pass — somebody switching to lite on a full SD card is asking
+    # for the space back today.
+    if profmod.settings(cfg)["mcp_cache"] == "discard":
+        try:
+            size = mcpmod.INDEX_PATH.stat().st_size
+            mcpmod.INDEX_PATH.unlink()
+            print(f"  deleted the MCP catalogue cache ({size // 1024} kB) — "
+                  f"the next search fetches it again")
+        except OSError:
+            pass
+    print("  a running server picks this up on its next maintenance pass")
+
+
 def brain_cmd(executor: str | None, model: str | None):
     """Read or set the brain: which executor answers, and which of ITS models.
 
@@ -1050,6 +1097,14 @@ def doctor(fix: bool = False, session: bool = False):
                 todo("set OLLAMA_HOST=127.0.0.1: edit /etc/systemd/system/ollama.service.d/*.conf "
                      "(or `launchctl setenv` on macOS), then restart ollama")
                 break
+
+    # 3a. The profile — what this machine has decided to keep. On a Pi it is the
+    # line that explains why the MCP Store is slower and the database smaller.
+    try:
+        from . import profile as profmod
+        ok(f"profile {profmod.describe(cfg)}")
+    except Exception as exc:
+        warn(f"could not read the profile: {exc}")
 
     # 3b. The brain. "What will answer a turn here" is the first thing to check on
     # a headless box, and it was the one thing this report did not say — a machine
@@ -2780,6 +2835,11 @@ def main():
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
+    p_prof = sub.add_parser("profile", help="footprint profile — lite keeps nothing "
+                                            "it is not using (for a Pi)")
+    p_prof.add_argument("profile", nargs="?", choices=["auto", "full", "lite"],
+                        help="omit to show what this machine is doing now")
+
     p_brain = sub.add_parser("brain", help="which executor answers and which of its models "
                                           "(omit everything to list what could)")
     # No `choices=`: the executors are a probe of this machine, and a hardcoded
@@ -3041,6 +3101,8 @@ def main():
         forward_cmd(args.engine)
     elif args.cmd == "brain":
         brain_cmd(args.executor, args.model)
+    elif args.cmd == "profile":
+        profile_cmd(args.profile)
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd in ("log", "logs"):
