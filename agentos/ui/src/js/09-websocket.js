@@ -191,7 +191,7 @@ function handle(ev){
       if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
       currentConv=ev.id; loadConvs(); break;}
     case 'executor_install':
-      if(typeof execInstallLine==='function')execInstallLine(d);
+      if(typeof execInstallLine==='function')execInstallLine(ev);
       break;
     case 'engine_info':{
       // A forwarded run reporting who it is and what it woke up on. Relabel the
@@ -234,6 +234,8 @@ function handle(ev){
     case 'tool_start':{
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
+      // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
+      if(ev.call_id)TOOL_ARGS[ev.call_id]=ev.args||{};
       const detail=ev.detail||actDetail(ev.name,ev.args);
       // A card headed `Read {"file_path":"/home/p/proj/agent.py"}` makes the
       // reader parse JSON to learn it is reading agent.py. Show the words; the
@@ -266,6 +268,9 @@ function handle(ev){
         new RegExp(`class="tstat run" data-b="${reEsc(ev.call_id)}"([^>]*)>running`),
         `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`);
       if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
+      // A turn that MADE something offers the door to it, in whichever surface
+      // is showing the turn — chat feed, omnibar card, copilot panel.
+      if(typeof handoffEmit==='function')handoffEmit(ev,_cid,_sk,_cur);
       if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');
@@ -363,7 +368,7 @@ function handle(ev){
     case 'update_progress': updateProgress(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
-    case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'config': loadConfig().then(()=>{loadModels();loadBrains()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':
       // The pairing code rotates every ~20 seconds. A card left showing a stale QR
       // is a code that silently will not scan, so it follows the bridge's events
@@ -413,7 +418,7 @@ function handle(ev){
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
-    case 'models': refreshApp('models'); loadModels(); break;
+    case 'models': refreshApp('models'); loadModels(); loadBrains(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);
       if(ev.done){refreshApp('models');toast(''+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
     case 'telegram_in':{

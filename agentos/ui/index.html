@@ -591,6 +591,20 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .body strong{color:#fff}
 
 .tool{border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);margin:0 0 12px;overflow:hidden;font-size:var(--fs-md)}
+/* ---- handoff: the chat made something, and this is the door to it ----
+   Accent-edged rather than another grey card: it is the one row in a feed of
+   process that is an INVITATION, and it has to read differently from the tool
+   cards it sits among. */
+.handoff{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border:1px solid var(--acc);border-left-width:3px;border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--acc) 8%,var(--bg2));
+  padding:8px 10px;margin:0 0 12px;font-size:var(--fs-md)}
+.handoff .ho-what{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.handoff .ho-note{color:var(--dim);font-size:var(--fs-sm);min-width:0}
+.handoff .ho-go{margin-left:auto;flex:none;border:1px solid var(--acc);
+  background:transparent;color:var(--acc);border-radius:var(--r-sm);
+  padding:4px 10px;cursor:pointer;font-size:var(--fs-sm)}
+.handoff .ho-go:hover{background:var(--acc);color:var(--bg)}
 .tool .head{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;user-select:none}
 .tool .head:hover{background:var(--bg3)}
 .tool .tname2{font-family:var(--mono);font-weight:600;color:var(--acc)}
@@ -1503,6 +1517,10 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2));animation:obusy 1s ease-in-out infinite}
 .mf-working .mft{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mf-working .mfc{margin-left:auto;flex:none;font-size:var(--fs-xs);opacity:.7;font-variant-numeric:tabular-nums}
+/* Waiting its turn is not working. The orb stops pulsing, because a spinner on
+   something that has not started is the animation telling the opposite story. */
+.mf-working.queued .mfo{animation:none;background:var(--dim);opacity:.5}
+.mf-working.queued .mft{opacity:.8;font-style:italic}
 
 /* ---- copilot panel inside windows ---- */
 .win .wmain{flex:1;min-height:0;display:flex}
@@ -2474,10 +2492,10 @@ body.glass-off .win{background:var(--bg)!important}
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
-    <!-- Forwarding is never silent: when this machine answers as another agent,
-         it says so in the menu bar on every surface, and clicking opens the
-         setting that turns it off. -->
-    <button id="fwdchip" hidden onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')"></button>
+    <!-- The brain, always stated: which executor answers and which model it
+         runs on. Forwarding to another agent is never silent, and neither is
+         the ordinary case — clicking opens the one place that changes it. -->
+    <button id="fwdchip" hidden onclick="openModelSettings()"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
@@ -4236,7 +4254,13 @@ function agentTurn(o){
     TURN_QUEUE.push(o);
     if(o.sink){
       if(o.sink.start)o.sink.start();
-      if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
+      // Queued, and it has to SAY queued. The row is marked so the shared ticker
+      // leaves it alone: the activity record belongs to the turn that is
+      // running, so painting it here made a waiting card claim the other turn's
+      // step — two cards showing "reading a file · 30s" while one of them had
+      // not started at all.
+      if(o.sink.queued)o.sink.queued(`waiting for the turn in front of it to finish`);
+      else if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
     }
     // never a dead end: the caller can offer "stop what's running and send this now"
     if(o.onQueued)o.onQueued(()=>{
@@ -4280,12 +4304,17 @@ function mfPaint(){
   document.querySelectorAll('.mf-working').forEach(el=>{
     const cid=el.dataset.cid;
     const t=el.querySelector('.mft'), c=el.querySelector('.mfc');
-    if(t&&typeof actText==='function'&&ACT[cid])t.textContent=actText(cid);
+    // A queued row is not this conversation's live turn — the record belongs to
+    // the one running ahead of it, so borrowing its sentence is a lie with a
+    // clock on it. Its own wait is still timed, from its own t0.
+    const q=el.dataset.queued==='1';
+    if(t&&!q&&typeof actText==='function'&&ACT[cid])t.textContent=actText(cid);
     // Before turn_start there is no record yet, so the row keeps its own clock:
     // the seconds between pressing send and the server answering are the ones
     // that felt like nothing had happened.
-    if(c)c.textContent=(typeof actClock==='function'&&ACT[cid])?actClock(cid)
+    if(c)c.textContent=(!q&&typeof actClock==='function'&&ACT[cid])?actClock(cid)
       :(el.dataset.t0?actDur(Date.now()-(+el.dataset.t0)):'');
+    if(q)return;
     // While a tool card is open right above it, the card IS the live line — two
     // copies of "running npm test · 12s" in a 300px panel is noise, not progress.
     el.classList.toggle('quiet',!!(ACT[cid]&&ACT[cid].phase==='tool'));
@@ -4307,7 +4336,17 @@ function miniFeed(box,opts){
     // then again on the server's turn_start. The second call must not wipe the
     // row and restart its clock — it only learns the conversation id.
     start(ev){
-      if(working&&working.isConnected){bind(ev);mfPaint();return}
+      if(working&&working.isConnected){
+        bind(ev);
+        // `ev` means the send really happened — a row that had been marked
+        // queued stops saying so here, or it would still read "queued" while
+        // the answer streamed underneath it.
+        if(ev&&working.dataset.queued==='1'){
+          working.dataset.queued='';working.classList.remove('queued');
+          working.dataset.t0=Date.now();
+          working.querySelector('.mft').textContent='sent — waking the agent';
+        }
+        mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
       working=document.createElement('div');working.className='mf-working';
@@ -4317,7 +4356,15 @@ function miniFeed(box,opts){
       actSync();          // the row has its own clock now — start the ticker for it
     },
     status(ev){bind(ev);
-      if(working&&ev.message)working.querySelector('.mft').textContent=ev.message},
+      if(working&&ev.message){working.dataset.queued='';working.querySelector('.mft').textContent=ev.message}},
+    /* A turn that has not started yet. Its own line, its own clock, and out of
+       the shared ticker's reach until the server actually starts it. */
+    queued(msg){
+      if(!working)return;
+      working.dataset.queued='1';
+      working.classList.add('queued');
+      working.querySelector('.mft').textContent='queued — '+msg;
+    },
     thinking(t){
       // answer surfaces (cards) stay clean: the reasoning trace only says "thinking…"
       if(opts.showThinking===false){
@@ -4352,6 +4399,14 @@ function miniFeed(box,opts){
       if(opts.onTool)opts.onTool(ev);
     },
     approval(apBox){box.insertBefore(apBox,working);scroll();return true},
+    /* Built something? The door to it, right here — a card on the desktop is
+       often the only place the turn is visible at all. */
+    handoff(h){
+      if(typeof handoffChip!=='function')return;
+      const chip=handoffChip(h);
+      if(working&&working.isConnected)box.insertBefore(chip,working);else box.appendChild(chip);
+      scroll();
+    },
     error(ev){
       clearWorking();
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
@@ -6657,7 +6712,7 @@ function handle(ev){
       if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
       currentConv=ev.id; loadConvs(); break;}
     case 'executor_install':
-      if(typeof execInstallLine==='function')execInstallLine(d);
+      if(typeof execInstallLine==='function')execInstallLine(ev);
       break;
     case 'engine_info':{
       // A forwarded run reporting who it is and what it woke up on. Relabel the
@@ -6700,6 +6755,8 @@ function handle(ev){
     case 'tool_start':{
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
+      // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
+      if(ev.call_id)TOOL_ARGS[ev.call_id]=ev.args||{};
       const detail=ev.detail||actDetail(ev.name,ev.args);
       // A card headed `Read {"file_path":"/home/p/proj/agent.py"}` makes the
       // reader parse JSON to learn it is reading agent.py. Show the words; the
@@ -6732,6 +6789,9 @@ function handle(ev){
         new RegExp(`class="tstat run" data-b="${reEsc(ev.call_id)}"([^>]*)>running`),
         `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`);
       if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
+      // A turn that MADE something offers the door to it, in whichever surface
+      // is showing the turn — chat feed, omnibar card, copilot panel.
+      if(typeof handoffEmit==='function')handoffEmit(ev,_cid,_sk,_cur);
       if(!_cur)break;
       const card=$('#tc-'+ev.call_id);
       if(card){const st=card.querySelector('.tstat');
@@ -6829,7 +6889,7 @@ function handle(ev){
     case 'update_progress': updateProgress(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
-    case 'config': loadConfig().then(()=>{loadModels()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
+    case 'config': loadConfig().then(()=>{loadModels();loadBrains()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':
       // The pairing code rotates every ~20 seconds. A card left showing a stale QR
       // is a code that silently will not scan, so it follows the bridge's events
@@ -6879,7 +6939,7 @@ function handle(ev){
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
-    case 'models': refreshApp('models'); loadModels(); break;
+    case 'models': refreshApp('models'); loadModels(); loadBrains(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);
       if(ev.done){refreshApp('models');toast(''+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
     case 'telegram_in':{
@@ -6966,12 +7026,15 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        ${/* A select, not a chip that sends you elsewhere. "What is answering me"
-              is the thing you change most often and it was the one control in this
-              bar you could not operate — it named the answer and then opened
-              Settings so you could change it there. Engines and models share the
-              dropdown because to the person choosing it is one question. */''}
-        <select id="modelchip" class="modelchip" title="What answers in this chat"
+        ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
+              holding both — engines in an optgroup above the models — could show
+              Claude Code chosen and a Gemini model selected underneath it, which
+              is two answers to the same question disagreeing on screen. The
+              second list belongs to the first: choosing an executor narrows it
+              to the models that executor can actually wake up. */''}
+        <select id="execchip" class="modelchip" title="Which brain answers here"
+          onchange="chatPickExecutor(this.value)"><option>…</option></select>
+        <select id="modelchip" class="modelchip" title="Which model it runs on"
           onchange="chatPickModel(this.value)"><option>…</option></select>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
@@ -7010,14 +7073,13 @@ function renderChat(body){
   const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
   tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
-  /* The model/engine is chosen in Settings and nowhere else. A per-chat picker
-     meant the same machine answered as different agents depending on which
-     window you happened to be in, and background work (tasks, Telegram, the API)
-     could never see that choice at all — so "what is this machine running on"
-     had no single answer. The chip states it and opens the one place to change
-     it. Kept as a var so the old onchange path has nothing to bind to. */
+  /* The brain is the machine's, not this window's. A per-chat picker meant the
+     same machine answered as a different agent depending on which window you
+     happened to be in, and background work (tasks, Telegram, the API) could
+     never see that choice at all — so "what is this machine running on" had no
+     single answer. These two selects change it for everything, everywhere. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
-  loadModels();loadConfig();loadConvs();
+  loadModels();loadBrains();loadConfig();loadConvs();
   restoreDraft();
   if(currentConv)openConv(currentConv);else showWelcome();
   setRunning(RUNNING.has(currentConv));
@@ -7279,59 +7341,100 @@ async function loadModels(){
   try{
     const d=await (await fetch('/api/models')).json();
     MODELS_STATE=d;
-    paintModelChip();
+    paintBrainChips();
   }catch(e){}
 }
+/* The old name, kept because four other files repaint "the model chip" after
+   changing something. It is the same paint; there are just two selects now. */
+function paintModelChip(){paintBrainChips()}
 var MODELS_STATE={};
-function paintModelChip(){
-  const chip=$('#modelchip');if(!chip)return;
-  const d=MODELS_STATE||{};
-  const engine=(cfg&&cfg.engine)||d.engine||'aria';
-  const curModel=(cfg&&cfg.default_model)||d.default||'';
-  /* Engines first: choosing one changes WHO answers, and an executor brings its
-     own model, so the model list below it stops applying. One that is not
-     installed stays in the list, disabled, carrying its reason — the same
-     contract as the picker in Settings, because they are the same question. */
-  const eng=(d.engines||[]).map(e=>
-    `<option value="engine:${esc(e.id)}"${engine===e.id?' selected':''}${
-      e.available?'':' disabled'}>${esc(e.name)}${
-      e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not installed')}</option>`).join('');
-  const groups={};
-  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
-  const mods=Object.keys(groups).sort().map(prov=>
-    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
-      `<option value="${esc(m.id)}"${engine==='aria'&&m.id===curModel?' selected':''}>${
-        esc(m.name)}</option>`).join('')+`</optgroup>`).join('');
-  chip.innerHTML=`<optgroup label="Engines — another agent answers">`
-    +`<option value="engine:aria"${engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
-    +eng+`</optgroup>`+mods;
-  /* A model that is set but no longer offered must stay visible and selected, or
-     the bar would quietly show something else answering. */
-  if(engine==='aria'&&curModel&&!(d.models||[]).some(m=>m.id===curModel))
-    chip.insertAdjacentHTML('beforeend',
-      `<option value="${esc(curModel)}" selected>${esc(curModel)} (not currently offered)</option>`);
-  chip.classList.toggle('engine',engine!=='aria');
-  chip.title=engine!=='aria'
-    ? ((d.engines||[]).find(x=>x.id===engine)||{}).detail||engine
-    : (curModel||'no model set');
+/* ---- the brain: one executor, one of ITS models ----------------------------
+   `/api/brains` is the single answer to "what can answer here" — local
+   providers, cloud providers and other installed agents in one list, each
+   owning the models it can wake up. Every surface paints from this: these two
+   selects, the menu-bar chip, Settings → AI providers, the wizard. Kept in a
+   `var` because the bundle is one script and 09- reaches it. */
+var BRAINS={executors:[],current:{executor:'',model:''}};
+async function loadBrains(){
+  try{
+    const d=await (await fetch('/api/brains')).json();
+    if(d&&d.executors)BRAINS=d;
+  }catch(e){}
+  paintBrainChips();paintForwardChip();
 }
-/* The same two settings behind one control as Settings → AI providers. Kept as
-   its own function rather than reusing pickModel(): that one repaints the
-   Settings panel, which is not open here. */
-async function chatPickModel(v){
-  if(!v)return;
-  const body=v.indexOf('engine:')===0?{engine:v.slice(7)}:{default_model:v};
-  const r=await fetch('/api/config',{method:'PUT',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+function curExecutor(){
+  return (BRAINS.executors||[]).find(e=>e.id===(BRAINS.current||{}).executor)||null;
+}
+function paintBrainChips(){
+  const ex=$('#execchip'),md=$('#modelchip');
+  const cur=BRAINS.current||{},list=BRAINS.executors||[];
+  if(ex){
+    /* Two groups because they are two kinds of brain: a provider answers
+       through Aria's own loop, an agent replaces it. One that is not installed
+       stays in the list, disabled, carrying the reason — hidden reads as "this
+       OS cannot", and it can, once the thing is there. */
+    const grp=(label,kind)=>{
+      const items=list.filter(e=>e.kind===kind);
+      if(!items.length)return '';
+      return `<optgroup label="${esc(label)}">`+items.map(e=>
+        `<option value="${esc(e.id)}"${e.id===cur.executor?' selected':''}${e.available?'':' disabled'}>`
+        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not available'))
+        +`</option>`).join('')+`</optgroup>`;
+    };
+    /* Nothing chosen yet is its own state and has to be visible: without a
+       placeholder the browser shows the first option, which reads as a machine
+       already set to something it is not. */
+    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    ex.innerHTML=none+grp('Models — answered by '+agentName(),'provider')
+                +grp('Agents — they answer instead','agent');
+    const sel=curExecutor();
+    ex.classList.toggle('engine',!!(sel&&sel.kind==='agent'));
+    ex.title=sel?(sel.what||sel.name):'nothing can answer here yet';
+  }
+  if(md){
+    const sel=curExecutor();
+    const mods=(sel&&sel.models)||[];
+    md.innerHTML=mods.length
+      ? mods.map(m=>`<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
+      : `<option value="">— no model —</option>`;
+    /* A model that is set but no longer offered stays visible and selected, or
+       the bar would quietly show something else answering. */
+    if(cur.model&&!mods.some(m=>m.id===cur.model))
+      md.insertAdjacentHTML('beforeend',
+        `<option value="${esc(cur.model)}" selected>${esc(cur.model)} (not currently offered)</option>`);
+    md.disabled=!mods.length;
+    md.title=(sel&&sel.kind==='agent')
+      ?'Which model to ask '+(sel.name||'it')+' for. It brings its own account.'
+      :(cur.model||'no model set');
+  }
+}
+/* One write for both, because they are one decision — see executors.set_brain. */
+async function setBrain(executor,model){
+  const r=await fetch('/api/brain',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({executor:executor,model:model||''})});
   const d=await r.json().catch(()=>({}));
-  if(d.error){toast(d.error);return paintModelChip()}
+  if(!r.ok||d.error){toast(d.error||'could not change the brain');await loadBrains();return false}
+  BRAINS={executors:d.executors||[],current:d.current||{},engine:d.engine};
   await loadConfig();await loadModels();
-  toast(v.indexOf('engine:')===0?('✓ '+v.slice(7)+' answers now'):'✓ model changed');
+  paintBrainChips();
+  toast('✓ '+(d.message||'brain changed'));
+  return true;
+}
+async function chatPickExecutor(v){
+  if(!v)return;
+  const ex=(BRAINS.executors||[]).find(e=>e.id===v);
+  // its own remembered model, not the one the previous executor was on
+  await setBrain(v,ex?ex.model:'');
+}
+async function chatPickModel(v){
+  const cur=(BRAINS.current||{}).executor;
+  if(!cur)return;
+  await setBrain(cur,v);
 }
 /* One place to change it, and the chip goes there rather than describing where. */
 function openModelSettings(){
-  const engine=(cfg&&cfg.engine)||'aria';
-  SETTAB=engine!=='aria'?'executors':'ai';
+  const ex=curExecutor();
+  SETTAB=(ex&&ex.kind==='agent')?'executors':'ai';
   try{localStorage.setItem('settab',SETTAB)}catch(e){}
   openApp('settings');
 }
@@ -7344,25 +7447,30 @@ async function loadConfig(){
   paintForwardChip();
   paintModelChip();
 }
-/* A machine set to forward is answering as somebody else. That is a big enough
-   change of behaviour that it belongs in the chrome, not buried in Settings —
-   otherwise a reply that isn't from your own agent looks like your own agent. */
+/* The top bar states the brain — executor and model — because that is the one
+   fact that changes what every reply on this machine is. It used to appear only
+   when the machine forwarded to another agent, which meant the common case (a
+   provider and a model) had no answer on screen at all, and a reply that wasn't
+   from your own agent looked exactly like one that was. */
 function paintForwardChip(){
   const chip=$('#fwdchip');if(!chip)return;
-  const engine=(cfg&&cfg.engine)||'aria';
-  const on=engine!=='aria';
-  chip.hidden=!on;
-  if(!on)return;
-  const name=engine==='claude-code'?'Claude Code':engine;
-  // The model rides on the chip too, so "what is this running on" is answered by
-  // looking up rather than by asking. It is filled in the first time a forwarded
-  // turn reports it — before that the engine name alone is all we honestly know.
-  const model=(FWD_MODEL[engine]||'').replace(/^claude-/,'');
-  chip.innerHTML='⇥ '+esc(name)+(model?'<span class="fwdmdl">'+esc(model)+'</span>':'');
-  chip.title='This machine is forwarding every request to '+name
-    +(model?' · running on '+FWD_MODEL[engine]:'')
-    +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+  const ex=curExecutor(),cur=BRAINS.current||{};
+  if(!ex){chip.hidden=true;return}
+  chip.hidden=false;
+  const agent=ex.kind==='agent';
+  // For an agent executor the model it actually woke up on is reported back by
+  // the run itself (engine_info) — better than the alias we asked for, so it
+  // wins once it is known.
+  const model=(agent?(FWD_MODEL[ex.id]||cur.model||'default'):(cur.model||'no model'))
+    .replace(/^(claude-|ollama\/|anthropic\/|openai\/|google\/|openrouter\/|custom\/)/,'');
+  const name=ex.name.split('—')[0].trim();
+  chip.innerHTML=(agent?'⇥ ':'▲ ')+esc(name)+'<span class="fwdmdl">'+esc(model)+'</span>';
+  chip.title=(agent
+      ?'Every turn on this machine is answered by '+name
+        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+      :((cfg&&cfg.agent_name)||'Aria')+' answers, running on '+(cur.model||'no model yet'))
     +'. Click to change it.';
+  chip.classList.toggle('engine',agent);
 }
 
 
@@ -7385,6 +7493,95 @@ function msgWho(meta){
     ||((meta&&meta.steps||[]).find(s=>s&&s.type==='executor')||{}).name||'';
   const model=(meta&&(meta.engine_model||meta.model))||'';
   return engineLabel(engine,model);
+}
+/* ================= handoffs: the chat is where things get MADE =================
+   Asking for an app in chat already built one, and asking for a workflow already
+   wrote one — but the thing then existed somewhere you had to know to go and
+   look. So the OS's three creative surfaces sat next to each other unconnected:
+   the prompt bar hands its question to the chat, the chat builds an app or a
+   flow, and nothing on screen joined them up.
+
+   This is that seam, and it is derived from the stream rather than announced by
+   the server: `tool_end` says a tool finished, and if that tool was one that
+   CREATES something, the surface offers the door to it. One place, so every
+   surface with a live feed — the Chat window, the omnibar card, a copilot panel
+   — gets the same button for free.
+
+   `tool_end` carries no arguments (see agent.py), so the names are remembered
+   from `tool_start` and consumed here. */
+
+var TOOL_ARGS={};        // call_id -> args, from tool_start
+var HANDOFF_SEEN={};     // conversation_id -> last handoff key, so a retry is not two chips
+
+/* Which tools make something, and where that something lives. A tool NOT in
+   here is deliberately not a handoff: `read_file` produced no artefact, and a
+   button offering to "open" one would be an invention. */
+function handoffFor(name,args){
+  args=args||{};
+  const nm=String(args.name||'').trim();
+  switch(name){
+    case 'create_app':
+      return {app:'studio',label:'Open in App Studio',
+              what:nm||'the app',note:'built here — edit, rebuild or publish it there'};
+    case 'export_app_to_git':
+      return {app:'studio',label:'Open in App Studio',what:nm||'the app',note:'exported'};
+    case 'create_flow':
+      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+              note:'drafted and switched OFF — Enable is what grants it anything'};
+    case 'enable_flow':
+      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+              note:args.enabled===false?'switched off':'switched on'};
+    case 'save_automation':
+      return {app:'automations',label:'Open in Automations',what:nm||'the routine',note:''};
+    case 'schedule_task':
+      return {app:'tasks',label:'Open in Scheduler',
+              what:String(args.prompt||'the task').slice(0,60),note:'it runs on its own from now on'};
+    default:
+      return null;
+  }
+}
+/* Opening it means SHOWING the thing, not the app that contains it. A button
+   that lands you in App Studio with nothing selected is a redirection, not a
+   handoff. */
+function handoffOpen(h){
+  if(h.app==='studio'){
+    const hit=(typeof USERAPPS!=='undefined'?USERAPPS:[]).find(a=>a.name===h.what);
+    if(hit&&typeof STUDIO!=='undefined')STUDIO.sel=hit.id;
+    openApp('studio');refreshApp('studio');return;
+  }
+  if(h.app==='fabric'){
+    if(typeof FLOW_FOCUS!=='undefined')FLOW_FOCUS=h.what;
+    if(typeof fabTab!=='undefined')fabTab='flows';
+    openApp('fabric');refreshApp('fabric');return;
+  }
+  openApp(h.app);refreshApp(h.app);
+}
+function handoffChip(h){
+  const el=document.createElement('div');
+  el.className='handoff';
+  el.innerHTML=`<span class="ho-what"></span><span class="ho-note"></span>`
+    +`<button class="ho-go"></button>`;
+  el.querySelector('.ho-what').textContent=h.what;
+  el.querySelector('.ho-note').textContent=h.note||'';
+  const b=el.querySelector('.ho-go');
+  b.textContent=h.label;
+  b.onclick=()=>handoffOpen(h);
+  return el;
+}
+/* Called from the tool_end handler for every surface. `cid` dedupes: a flow that
+   is written and then enabled in the same turn is one thing, and two chips for
+   it read as two flows. */
+function handoffEmit(ev,cid,sink,inChat){
+  if(!ev.ok)return;
+  const h=handoffFor(ev.name,TOOL_ARGS[ev.call_id]);
+  delete TOOL_ARGS[ev.call_id];
+  if(!h)return;
+  const key=h.app+':'+h.what;
+  if(HANDOFF_SEEN[cid||'']===key)return;
+  HANDOFF_SEEN[cid||'']=key;
+  if(sink&&sink.handoff)sink.handoff(h);
+  if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
+    curBody.parentNode.insertBefore(handoffChip(h),curBody);
 }
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
@@ -7479,12 +7676,13 @@ function setTab(body,all){
     P.push(pGroup('Answering', [
       pRow('This machine answers with',
         `<span class="s-modelrow">
+           <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
            <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
            <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
            <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
          </span>`,
-        {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
-         f:'model default answers with picker which model refresh available'}),
+        {desc:'Who answers, then what it runs on — a provider through '+esc((cfg.agent_name||'Aria'))+', or another agent installed here. Every surface uses it: chat, the prompt bar, copilot panels, Telegram, scheduled jobs. It applies on the spot.',
+         f:'model default answers with picker which model refresh available executor engine brain'}),
       pRow('Available', '<span id="s-model-count" class="mut">…</span>',
         {desc:'Fetched from each enabled provider, not a list typed into config. Refresh after pulling a model or adding a key.',
          f:'available models count refresh providers'}),
@@ -7519,13 +7717,17 @@ function setTab(body,all){
   if(want('executors')){
     P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
     P.push(pGroup('Forward everything',[
-      pRow('This machine answers with',pSelect('s-engine',[
-          ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
-          ['claude-code','Claude Code']],cfg.engine||'aria'),
+      /* Filled from the roster by renderExecutors below, not written out here.
+         This list was hardcoded to aria + claude-code, so every executor added
+         afterwards was invisible in the one panel named after them — and which
+         brains exist is a probe, not part of cfg. */
+      pRow('This machine answers with',
+        `<select id="s-engine" onchange="pickEngine(this.value)"><option value="${esc(cfg.engine||'aria')}">checking…</option></select>`,
         {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
          f:'forward everything engine forwarder proxy relay'}),
     ],{f:'forwarding engine'}));
     P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-offers"></div>`);
     setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
   }
   if(want('channels')){
@@ -7708,77 +7910,77 @@ async function updateNow(btn){
     if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
   }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
 }
+/* The same two coupled selects as the chat header, painted from the same
+   `/api/brains` state — executor, then one of ITS models. It used to be one
+   select with engines in an optgroup above the models, and both halves marked
+   their own selection: with Claude Code as the engine and a Gemini model still
+   in config, TWO options carried `selected` and the browser kept the last one,
+   so the control read "gemini" while the machine forwarded to Claude Code. */
 async function paintModelPicker(refresh){
-  const sel=document.getElementById('s-model'); if(!sel)return;
+  const sel=document.getElementById('s-model'),ex=document.getElementById('s-brain');
+  if(!sel&&!ex)return;
   const btn=document.getElementById('s-model-refresh');
   const count=document.getElementById('s-model-count');
   if(refresh&&btn){btn.disabled=true;btn.textContent='↻ Asking…'}
   if(refresh&&count)count.textContent='asking each provider…';
-  let d={models:[],default:'',engines:[]};
   // A refresh is a real round trip to every enabled provider, so it is asked for
   // rather than done on every repaint — a Settings tab that stalled behind three
   // network calls would be worse than a list that is a minute old.
-  try{d=await (await fetch('/api/models'+(refresh?'?t='+Date.now():''))).json()}catch(e){}
+  try{
+    const d=await (await fetch('/api/brains'+(refresh?'?t='+Date.now():''))).json();
+    if(d&&d.executors)BRAINS=d;
+  }catch(e){}
   if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}
-  const cur=(cfg&&cfg.default_model)||d.default||'';
-  const groups={};
-  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
-  const opts=Object.keys(groups).sort().map(prov=>
-    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
-      `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
-    +`</optgroup>`).join('');
-  /* Engines first, because choosing one is a different KIND of answer to
-     choosing a model: it changes which agent runs the turn, not which weights it
-     uses. Selecting Claude Code and then being shown a list of Anthropic API
-     models was the bug — the picker offered something that changed nothing,
-     because the executor brings its own model. An engine that is not installed
-     is still listed, greyed, carrying the reason: hidden reads as "this OS
-     cannot". */
-  const engOpts=(d.engines||[]).map(e=>{
-    const on=(d.engine||'')===e.id;
-    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
-                           :`${e.name} — ${e.reason||'not installed'}`;
-    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
-  }).join('');
-  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
-    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
-    +engOpts+`</optgroup>`:'';
-  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
-  // A model set in config that the providers no longer offer must stay visible
-  // and selected, or opening Settings would silently look like something else
-  // is answering.
-  if(cur&&!(d.models||[]).some(m=>m.id===cur))
-    sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
-  // What was actually found, per provider — the answer to "did adding that key
+  const list=BRAINS.executors||[],cur=BRAINS.current||{};
+  if(ex){
+    const grp=(label,kind)=>{
+      const items=list.filter(e=>e.kind===kind);
+      if(!items.length)return '';
+      return `<optgroup label="${esc(label)}">`+items.map(e=>
+        `<option value="${esc(e.id)}"${e.id===cur.executor?' selected':''}${e.available?'':' disabled'}>`
+        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not available'))
+        +'</option>').join('')+'</optgroup>';
+    };
+    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    ex.innerHTML=none+grp('Models — answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+                +grp('Agents — they answer instead','agent');
+  }
+  const chosen=list.find(e=>e.id===cur.executor);
+  if(sel){
+    const mods=(chosen&&chosen.models)||[];
+    sel.innerHTML=mods.length?mods.map(m=>
+      `<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
+      :`<option value="">no models — add a key below, or pull one in Model Manager</option>`;
+    // A model set in config that the providers no longer offer must stay visible
+    // and selected, or opening Settings would silently look like something else
+    // is answering.
+    if(cur.model&&!mods.some(m=>m.id===cur.model))
+      sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur.model)}" selected>${esc(cur.model)} (not currently offered)</option>`);
+    sel.disabled=!mods.length;
+  }
+  // What was actually found, per executor — the answer to "did adding that key
   // work?" and "did my pull land?", which the picker alone cannot give.
   if(count){
-    const n=(d.models||[]).length;
-    const per=Object.keys(groups).sort().map(k=>`${esc(k)} ${groups[k].length}`).join(' · ');
-    const eng=(d.engines||[]).filter(e=>e.available).map(e=>esc(e.name));
+    const provs=list.filter(e=>e.kind==='provider'&&e.available);
+    const n=provs.reduce((s,e)=>s+e.models.length,0);
+    const per=provs.map(e=>`${esc(e.id)} ${e.models.length}`).join(' · ');
+    const agents=list.filter(e=>e.kind==='agent'&&e.available).map(e=>esc(e.name));
     count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'} — ${per}`
                      :`none found — enable a provider below, or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
-    if(eng.length)count.innerHTML+=` · engines: ${eng.join(', ')}`;
+    count.innerHTML+=agents.length?` · agents here: ${agents.join(', ')}`
+      :` · no other agent installed — see <a href="#" onclick="SETTAB='executors';localStorage.setItem('settab','executors');refreshApp('settings');return false">Executors</a>`;
   }
 }
-async function pickModel(id){
+async function pickExecutor(id){
   if(!id)return;
-  /* Two different settings behind one control, because to the person choosing it
-     is one question: what answers me. `engine:` changes which agent runs the
-     turn; anything else is the model the built-in agent uses. */
-  if(id.indexOf('engine:')===0){
-    const eng=id.slice(7);
-    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({engine:eng})});
-    const d=await r.json().catch(()=>({}));
-    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
-    if(!d.error)await loadConfig();
-    return paintModelPicker();
-  }
-  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({default_model:id})});
-  if(cfg)cfg.default_model=id;
-  toast('answering with '+id);
-  loadModels();paintModelChip();refreshApp('models');
+  const ex=(BRAINS.executors||[]).find(e=>e.id===id);
+  if(await setBrain(id,ex?ex.model:''))paintModelPicker();
+  if(typeof paintEngineSelect==='function'&&document.getElementById('s-engine'))renderExecutors();
+}
+async function pickModel(id){
+  const cur=(BRAINS.current||{}).executor;
+  if(!cur)return;
+  if(await setBrain(cur,id)){paintModelPicker();refreshApp('models')}
 }
 async function saveSettings(){
   // only the open category is in the DOM, so save exactly what is on screen —
@@ -7825,7 +8027,10 @@ async function saveSettings(){
   const ght=(val('s-gh-token')||'').trim();
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
-  if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  /* `s-engine` is NOT read here: it applies the moment it changes, through
+     /api/brain, so the executor and its model are written together. Sending it
+     again with the page-wide Save is a second writer for one setting, and the
+     one that wins is whichever ran last. */
   if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
@@ -7954,8 +8159,41 @@ async function renderExecutors(){
   const box=document.getElementById('exec-list');if(!box)return;
   var d=null;
   try{d=await (await fetch('/api/executors')).json()}catch(e){}
+  /* The engine list, from the roster. Every executor this OS knows appears —
+     installed or not — because a brain you could have is a fact you need in
+     order to choose, and hiding it reads as "this OS cannot". */
+  paintEngineSelect(d);
+  /* A card per executor that is NOT installed, with its licence and the exact
+     command. Rendered before the Claude Code detail below so the offers are not
+     buried under one executor's tool checkboxes. */
+  const offers=((d&&d.roster)||[]).filter(r=>!r.builtin&&!r.installed).map(r=>{
+    const off=r.install||{};
+    /* Same card shape as a channel: a heading that reads as a name, the licence
+       as a chip, and the prose in `.ghint` — bare <p>s collided with the
+       small-caps group heading and the three lines overlapped. */
+    return `<div class="pgroup chan" data-f="install executor ${esc(r.id)}">
+      <h3>${esc(r.title)} <span class="chdot">${esc(r.licence||'licence unknown')}</span></h3>
+      <div class="ghint">${esc(r.what||'')}</div>
+      <div class="ghint mut">${esc(r.why_not||'not installed')}</div>
+      ${off.command?pRow('Install it',
+          `<button class="endbtn" onclick="execInstallComponent('${esc(r.id)}',this)">Install ${esc(r.title)}</button>`,
+          {desc:`Runs: <code>${esc(off.command)}</code>${off.licence?' · '+esc(off.licence):''}${
+             off.available?'':' — '+esc(off.reason||'not available here')}`,
+           f:'install '+esc(r.id)})
+        :`<div class="ghint mut">AgentOS does not ship an installer for this one — install
+            it yourself and it will be detected and offered here.</div>`}
+      ${r.docs?`<div class="ghint"><button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Read the docs</button></div>`:''}
+    </div>`;
+  }).join('');
+  /* Into their own container, replaced rather than appended: `insertAdjacentHTML`
+     on the panel put a second copy of every offer on screen each time this
+     re-ran (and it re-runs after an install, which is exactly when somebody is
+     looking at it). */
+  const obox=document.getElementById('exec-offers');
+  if(obox)obox.innerHTML=offers;
   const ex=d&&(d.executors||[]).find(e=>e.id==='claude_code');
-  if(!ex){box.innerHTML='<h3>Claude Code</h3><p class="mut">could not read executors</p>';return}
+  if(!ex){box.innerHTML=obox?'<p class="mut">could not read executors</p>'
+                            :(offers||'<p class="mut">could not read executors</p>');return}
   if(!ex.available){
     /* "Not installed" used to end here, which is a dead end wearing an honest
        sentence. The exact command is shown before anything runs, and the button
@@ -8019,6 +8257,56 @@ async function renderExecutors(){
 
 /* Installing is a visible act: the command was shown, the output streams here,
    and the panel re-probes when it finishes rather than claiming success. */
+/* One list, three places it is rendered — here, in AI providers and in Chat. All
+   three read /api/executors or /api/models, so none of them names an executor. */
+function paintEngineSelect(d){
+  const sel=document.getElementById('s-engine'); if(!sel)return;
+  const cur=(cfg&&cfg.engine)||'aria';
+  const rows=((d&&d.roster)||[]);
+  if(!rows.length)return;                       // leave "checking…" rather than lie
+  sel.innerHTML=rows.map(r=>{
+    const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
+      :r.installed?(r.title+(r.version?' · '+r.version:''))
+      :(r.title+' — '+(r.why_not||'not installed'));
+    return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${
+      r.installed?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+}
+
+/* Choosing here goes through /api/brain like every other brain change, so the
+   model that executor should run on is written in the same breath. "aria" means
+   "stop forwarding": the machine goes back to answering with whichever provider
+   model it was last on, which is the only reading of that choice that leaves it
+   ABLE to answer. */
+async function pickEngine(id){
+  if(!id)return;
+  const list=BRAINS.executors||[];
+  const target=id==='aria'
+    ? (list.find(e=>e.kind==='provider'&&e.id===(BRAINS.current||{}).executor)
+       ||list.find(e=>e.kind==='provider'&&e.available))
+    : list.find(e=>e.id===id);
+  if(!target)return toast(id==='aria'
+    ?'no provider model to fall back to — add a key or pull one first'
+    :'that executor is not on this machine');
+  if(await setBrain(target.id,target.model)){renderExecutors();paintModelPicker()}
+}
+
+/* Install any executor from the components catalogue. `execInstall` below is the
+   Claude-Code-specific path that predates the roster and still serves its card;
+   this one takes the id, so a new executor needs no new function. */
+async function execInstallComponent(id,btn){
+  const was=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  try{
+    const r=await fetch('/api/components/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    toast(d.ok?('✓ '+(d.message||'installed')):(d.message||'could not install'));
+    if(d.ok){await loadModels();renderExecutors()}
+  }catch(e){toast('could not reach the server')}
+  finally{if(btn){btn.disabled=false;btn.textContent=was}}
+}
+
 async function execInstall(){
   const btn=document.getElementById('exec-inst'), log=document.getElementById('exec-instlog');
   if(btn){btn.disabled=true;btn.textContent='Installing…'}
@@ -10821,7 +11109,13 @@ var OB_WIRE={
   async model(){
     const box=$('#ob-model-box');if(!box)return;
     let d={};try{d=await (await fetch('/api/setup')).json()}catch(e){}
-    let eng={engines:[]};try{eng=await (await fetch('/api/models')).json()}catch(e){}
+    // From the same brain list every other surface reads, so "another agent
+    // could answer" says the same thing here as in Settings and in Chat.
+    await loadBrains();
+    const eng={engines:(BRAINS.executors||[]).filter(e=>e.kind==='agent')
+      .map(e=>({id:e.id,name:e.name,available:e.available,reason:e.reason,
+                detail:e.detail,licence:e.licence,
+                install:e.install_cmd?{command:e.install_cmd}:null}))};
     const local=(d.ollama_models||[]);
     /* The third way to have a brain, and until now the only one this step never
        mentioned: another agent already on the machine answers the turns. It
@@ -10912,11 +11206,18 @@ var OB_WIRE={
            between the page loading and the click is refused with the reason
            rather than accepted into a machine that then fails on its first turn. */
         obMsg('saving…');
-        const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({engine:v.slice(7)})});
+        /* Through /api/brain, like every other brain change: the executor and
+           the model it should run on are one write. It also VALIDATES — an
+           executor that vanished between the page loading and the click is
+           refused with the reason rather than accepted into a machine that then
+           fails on its first turn. */
+        const eid=v.slice(7);
+        const known=(BRAINS.executors||[]).find(x=>x.id===eid);
+        const r=await fetch('/api/brain',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({executor:eid,model:known?known.model:''})});
         const jd=await r.json().catch(()=>({}));
         if(jd.error)return obMsg(jd.error,'warn');
-        await loadConfig();await loadModels();
+        await loadConfig();await loadModels();await loadBrains();
         obMsg('saved','ok');return obRefresh(true);
       }else if(v){body={default_model:v}}
       else return obMsg('pick one','warn');
@@ -16286,12 +16587,26 @@ function omniRun(i){
 /* palIntentAsync (model-classified fallback) appends into whichever list is live */
 function palRenderList(){omniPaint()}
 
+/* The bar's own thread — "◉ Desktop" in Chat's sidebar.
+   It is CREATED here rather than waited for. The turn you type can sit queued
+   behind another one for half a minute, and while it did there was no
+   conversation anywhere: the sidebar showed nothing, "Open in Chat" landed on
+   whatever was open before, and the bar looked like it had swallowed the
+   question. A thread that exists the moment you press Enter is the difference
+   between a prompt bar and a text field that maybe did something. */
 async function omniThread(){
   if(OMNI.cid)return OMNI.cid;
   try{
     const d=await (await fetch('/api/conversations')).json();
     const hit=(d.conversations||[]).find(c=>c.origin==='omni');
     if(hit)OMNI.cid=hit.id;
+  }catch(e){}
+  if(!OMNI.cid)try{
+    const r=await fetch('/api/conversations',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin:'omni',title:'◉ Desktop',surface:'gui'})});
+    const d=await r.json();
+    if(d&&d.id){OMNI.cid=d.id;if(typeof loadConvs==='function')loadConvs()}
   }catch(e){}
   return OMNI.cid;
 }
@@ -16377,6 +16692,9 @@ async function omniAsk(q){
     context:omniContext(),sink,onCid:id=>{OMNI.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
+      // Only one stop on a card that has not started: "Stop" would kill the turn
+      // running AHEAD of this one, which is what the button below says properly.
+      stopBtn.style.display='none';
       if(tools.querySelector('.oc-stop'))return;
       const b=document.createElement('button');b.className='oc-stop';b.textContent='Stop current & send';
       b.onclick=()=>{b.disabled=true;b.textContent='stopping…';stop()};
@@ -17034,7 +17352,7 @@ connect();
   const t0=performance.now();
   try{
     await Promise.race([
-      Promise.allSettled([loadPlatform(),loadConfig(),checkSetup()]),
+      Promise.allSettled([loadPlatform(),loadConfig(),loadBrains(),checkSetup()]),
       new Promise(r=>setTimeout(r,8000)),
     ]);
   }catch(e){}

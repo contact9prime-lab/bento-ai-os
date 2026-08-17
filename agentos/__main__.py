@@ -482,6 +482,59 @@ def forward_cmd(engine: str | None):
     print("  a running server picks this up on its next turn")
 
 
+def brain_cmd(executor: str | None, model: str | None):
+    """Read or set the brain: which executor answers, and which of ITS models.
+
+    The TUI face of Settings → AI providers. `bento forward` remains the narrow
+    "answer as another agent" switch; this is the whole choice, and it is the one
+    that matters on a headless box — over SSH there is no picker and no chip, so
+    the list prints what could answer, what it would run on, and why anything
+    missing is missing.
+    """
+    import asyncio as _aio
+
+    from . import config as cfgmod
+    from . import executors as execmod
+    from . import providers as provmod
+
+    cfg = cfgmod.load_config()
+    try:
+        models = _aio.run(provmod.available_models(cfg))
+    except Exception as exc:                       # a provider that cannot be asked
+        print(f"(could not ask every provider: {exc})")
+        models = []
+    state = execmod.brains(cfg, models)
+    cur = state["current"]
+
+    if not executor:
+        print(f"answering with: {cur['executor'] or '(nothing set)'}"
+              + (f" · {cur['model']}" if cur["model"] else ""))
+        print()
+        for e in state["executors"]:
+            mark = "▸" if e["id"] == cur["executor"] else " "
+            head = f" {mark} {e['id']:<12} {e['name']}"
+            print(head + (f"  [{e['detail']}]" if e["detail"] else ""))
+            if not e["available"]:
+                print(f"      {e['reason']}")
+                if e["install_cmd"]:
+                    print(f"      install: {e['install_cmd']}")
+                continue
+            names = ", ".join(m["id"] or "(its own default)" for m in e["models"][:8])
+            print(f"      models: {names}"
+                  + (f" … +{len(e['models']) - 8}" if len(e["models"]) > 8 else ""))
+        print()
+        print("set it with:  bento brain <executor> [model]")
+        return
+
+    ok, msg = execmod.set_brain(cfg, executor, model or "", models)
+    if not ok:
+        print(msg)
+        raise SystemExit(1)
+    cfgmod.save_config(cfg)
+    print(f"answering with {msg}")
+    print("  a running server picks this up on its next turn")
+
+
 def tunnel_cmd(on: bool, off: bool, public: bool, provider: str, install: bool = False):
     """Show or change how this machine is reached from elsewhere.
 
@@ -997,6 +1050,28 @@ def doctor(fix: bool = False, session: bool = False):
                 todo("set OLLAMA_HOST=127.0.0.1: edit /etc/systemd/system/ollama.service.d/*.conf "
                      "(or `launchctl setenv` on macOS), then restart ollama")
                 break
+
+    # 3b. The brain. "What will answer a turn here" is the first thing to check on
+    # a headless box, and it was the one thing this report did not say — a machine
+    # with no reachable model looks healthy in every other line.
+    try:
+        import asyncio as _aio
+
+        from . import executors as _exec
+        from . import providers as _prov
+        _models = _aio.run(_prov.available_models(cfg))
+        _brain = _exec.brains(cfg, _models)
+        _cur, _ex = _brain["current"], None
+        _ex = next((e for e in _brain["executors"] if e["id"] == _cur["executor"]), None)
+        if _ex and _ex["available"]:
+            ok(f"answering with {_ex['name']} · {_cur['model'] or 'its own default'}")
+        elif _ex:
+            bad(f"set to answer with {_ex['name']}, which cannot: {_ex['reason']}")
+        else:
+            warn("no brain set — nothing can answer a turn yet")
+            todo("bento brain            # what could answer, and what would fix it")
+    except Exception as exc:
+        warn(f"could not work out what answers turns here: {exc}")
 
     # 4. DB
     try:
@@ -2662,6 +2737,15 @@ def main():
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
+    p_brain = sub.add_parser("brain", help="which executor answers and which of its models "
+                                          "(omit everything to list what could)")
+    # No `choices=`: the executors are a probe of this machine, and a hardcoded
+    # list here is how `bento forward` ended up unable to name Hermes or OpenClaw.
+    p_brain.add_argument("executor", nargs="?", help="ollama | openai | anthropic | google | "
+                                                    "openrouter | custom | claude-code | hermes | "
+                                                    "openclaw | aria")
+    p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default")
+
     p_del = sub.add_parser("delegate", help="hand a task to an executor (Claude Code) and stream it here")
     p_del.add_argument("prompt", nargs="+")
     p_del.add_argument("--dir", default=None, help="the only folder it may touch (default: the configured workspace)")
@@ -2912,6 +2996,8 @@ def main():
         usage_cmd(args)
     elif args.cmd == "forward":
         forward_cmd(args.engine)
+    elif args.cmd == "brain":
+        brain_cmd(args.executor, args.model)
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd in ("log", "logs"):

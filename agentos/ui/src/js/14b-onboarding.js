@@ -388,7 +388,13 @@ var OB_WIRE={
   async model(){
     const box=$('#ob-model-box');if(!box)return;
     let d={};try{d=await (await fetch('/api/setup')).json()}catch(e){}
-    let eng={engines:[]};try{eng=await (await fetch('/api/models')).json()}catch(e){}
+    // From the same brain list every other surface reads, so "another agent
+    // could answer" says the same thing here as in Settings and in Chat.
+    await loadBrains();
+    const eng={engines:(BRAINS.executors||[]).filter(e=>e.kind==='agent')
+      .map(e=>({id:e.id,name:e.name,available:e.available,reason:e.reason,
+                detail:e.detail,licence:e.licence,
+                install:e.install_cmd?{command:e.install_cmd}:null}))};
     const local=(d.ollama_models||[]);
     /* The third way to have a brain, and until now the only one this step never
        mentioned: another agent already on the machine answers the turns. It
@@ -479,11 +485,18 @@ var OB_WIRE={
            between the page loading and the click is refused with the reason
            rather than accepted into a machine that then fails on its first turn. */
         obMsg('saving…');
-        const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({engine:v.slice(7)})});
+        /* Through /api/brain, like every other brain change: the executor and
+           the model it should run on are one write. It also VALIDATES — an
+           executor that vanished between the page loading and the click is
+           refused with the reason rather than accepted into a machine that then
+           fails on its first turn. */
+        const eid=v.slice(7);
+        const known=(BRAINS.executors||[]).find(x=>x.id===eid);
+        const r=await fetch('/api/brain',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({executor:eid,model:known?known.model:''})});
         const jd=await r.json().catch(()=>({}));
         if(jd.error)return obMsg(jd.error,'warn');
-        await loadConfig();await loadModels();
+        await loadConfig();await loadModels();await loadBrains();
         obMsg('saved','ok');return obRefresh(true);
       }else if(v){body={default_model:v}}
       else return obMsg('pick one','warn');

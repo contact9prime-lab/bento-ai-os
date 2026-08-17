@@ -2,10 +2,35 @@
 
 ---
 
+## The brain: an executor and one of its models
+
+Two dropdowns, next to each other in the chat window and in **Settings → AI providers**. The first
+is the **executor** — who answers; the second lists only the models that executor can actually run.
+The menu bar states the pair at all times, so "what is this machine running on" never needs asking.
+
+| Executor | Who answers | Models offered |
+|---|---|---|
+| **Ollama** | the built-in agent, on your own machine | whatever you have pulled |
+| **Anthropic · OpenAI · Google · OpenRouter** | the built-in agent, over that API | pinned + whatever the provider lists |
+| **llama.cpp / LM Studio / vLLM** | the built-in agent, via the custom OpenAI-compatible URL | whatever you pinned |
+| **Claude Code** | Anthropic's CLI, on your Claude subscription | `opus`, `sonnet`, `haiku`, or its own default |
+| **Hermes · OpenClaw** | that agent, with its own configuration | its own |
+
+Picking an agent as the executor makes this machine forward every turn a person starts — chat, the
+prompt bar, copilot panels, Telegram, the API, scheduled turns. Apps and App Studio keep using the
+built-in agent, because they depend on its tools. Each executor remembers its own model, so
+switching away and back does not lose the choice.
+
+Headless? `bento brain` prints the same list — what could answer, what it would run on, and what
+would fix anything missing — and `bento brain <executor> [model]` sets it. `bento doctor` reports
+the pair as one of its checks. In chat, an admin can just say *"answer with Claude Code on opus"*.
+
+---
+
 ## Model providers
 
 Configure providers in **Settings**. AgentOS works with local and cloud models, and you can switch
-between them from the chat window's model dropdown at any time.
+between them from the chat window's dropdowns at any time.
 
 | Provider | Notes |
 |---|---|

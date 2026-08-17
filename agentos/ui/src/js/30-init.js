@@ -82,7 +82,7 @@ connect();
   const t0=performance.now();
   try{
     await Promise.race([
-      Promise.allSettled([loadPlatform(),loadConfig(),checkSetup()]),
+      Promise.allSettled([loadPlatform(),loadConfig(),loadBrains(),checkSetup()]),
       new Promise(r=>setTimeout(r,8000)),
     ]);
   }catch(e){}

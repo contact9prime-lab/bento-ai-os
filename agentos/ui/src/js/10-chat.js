@@ -9,12 +9,15 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
-        ${/* A select, not a chip that sends you elsewhere. "What is answering me"
-              is the thing you change most often and it was the one control in this
-              bar you could not operate — it named the answer and then opened
-              Settings so you could change it there. Engines and models share the
-              dropdown because to the person choosing it is one question. */''}
-        <select id="modelchip" class="modelchip" title="What answers in this chat"
+        ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
+              holding both — engines in an optgroup above the models — could show
+              Claude Code chosen and a Gemini model selected underneath it, which
+              is two answers to the same question disagreeing on screen. The
+              second list belongs to the first: choosing an executor narrows it
+              to the models that executor can actually wake up. */''}
+        <select id="execchip" class="modelchip" title="Which brain answers here"
+          onchange="chatPickExecutor(this.value)"><option>…</option></select>
+        <select id="modelchip" class="modelchip" title="Which model it runs on"
           onchange="chatPickModel(this.value)"><option>…</option></select>
         <select id="autosel" title="Autonomy">
           <option value="paranoid">Paranoid</option>
@@ -53,14 +56,13 @@ function renderChat(body){
   const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
   tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
-  /* The model/engine is chosen in Settings and nowhere else. A per-chat picker
-     meant the same machine answered as different agents depending on which
-     window you happened to be in, and background work (tasks, Telegram, the API)
-     could never see that choice at all — so "what is this machine running on"
-     had no single answer. The chip states it and opens the one place to change
-     it. Kept as a var so the old onchange path has nothing to bind to. */
+  /* The brain is the machine's, not this window's. A per-chat picker meant the
+     same machine answered as a different agent depending on which window you
+     happened to be in, and background work (tasks, Telegram, the API) could
+     never see that choice at all — so "what is this machine running on" had no
+     single answer. These two selects change it for everything, everywhere. */
   $('#autosel').onchange=()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:$('#autosel').value})});
-  loadModels();loadConfig();loadConvs();
+  loadModels();loadBrains();loadConfig();loadConvs();
   restoreDraft();
   if(currentConv)openConv(currentConv);else showWelcome();
   setRunning(RUNNING.has(currentConv));
@@ -322,59 +324,100 @@ async function loadModels(){
   try{
     const d=await (await fetch('/api/models')).json();
     MODELS_STATE=d;
-    paintModelChip();
+    paintBrainChips();
   }catch(e){}
 }
+/* The old name, kept because four other files repaint "the model chip" after
+   changing something. It is the same paint; there are just two selects now. */
+function paintModelChip(){paintBrainChips()}
 var MODELS_STATE={};
-function paintModelChip(){
-  const chip=$('#modelchip');if(!chip)return;
-  const d=MODELS_STATE||{};
-  const engine=(cfg&&cfg.engine)||d.engine||'aria';
-  const curModel=(cfg&&cfg.default_model)||d.default||'';
-  /* Engines first: choosing one changes WHO answers, and an executor brings its
-     own model, so the model list below it stops applying. One that is not
-     installed stays in the list, disabled, carrying its reason — the same
-     contract as the picker in Settings, because they are the same question. */
-  const eng=(d.engines||[]).map(e=>
-    `<option value="engine:${esc(e.id)}"${engine===e.id?' selected':''}${
-      e.available?'':' disabled'}>${esc(e.name)}${
-      e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not installed')}</option>`).join('');
-  const groups={};
-  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
-  const mods=Object.keys(groups).sort().map(prov=>
-    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
-      `<option value="${esc(m.id)}"${engine==='aria'&&m.id===curModel?' selected':''}>${
-        esc(m.name)}</option>`).join('')+`</optgroup>`).join('');
-  chip.innerHTML=`<optgroup label="Engines — another agent answers">`
-    +`<option value="engine:aria"${engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
-    +eng+`</optgroup>`+mods;
-  /* A model that is set but no longer offered must stay visible and selected, or
-     the bar would quietly show something else answering. */
-  if(engine==='aria'&&curModel&&!(d.models||[]).some(m=>m.id===curModel))
-    chip.insertAdjacentHTML('beforeend',
-      `<option value="${esc(curModel)}" selected>${esc(curModel)} (not currently offered)</option>`);
-  chip.classList.toggle('engine',engine!=='aria');
-  chip.title=engine!=='aria'
-    ? ((d.engines||[]).find(x=>x.id===engine)||{}).detail||engine
-    : (curModel||'no model set');
+/* ---- the brain: one executor, one of ITS models ----------------------------
+   `/api/brains` is the single answer to "what can answer here" — local
+   providers, cloud providers and other installed agents in one list, each
+   owning the models it can wake up. Every surface paints from this: these two
+   selects, the menu-bar chip, Settings → AI providers, the wizard. Kept in a
+   `var` because the bundle is one script and 09- reaches it. */
+var BRAINS={executors:[],current:{executor:'',model:''}};
+async function loadBrains(){
+  try{
+    const d=await (await fetch('/api/brains')).json();
+    if(d&&d.executors)BRAINS=d;
+  }catch(e){}
+  paintBrainChips();paintForwardChip();
 }
-/* The same two settings behind one control as Settings → AI providers. Kept as
-   its own function rather than reusing pickModel(): that one repaints the
-   Settings panel, which is not open here. */
-async function chatPickModel(v){
-  if(!v)return;
-  const body=v.indexOf('engine:')===0?{engine:v.slice(7)}:{default_model:v};
-  const r=await fetch('/api/config',{method:'PUT',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+function curExecutor(){
+  return (BRAINS.executors||[]).find(e=>e.id===(BRAINS.current||{}).executor)||null;
+}
+function paintBrainChips(){
+  const ex=$('#execchip'),md=$('#modelchip');
+  const cur=BRAINS.current||{},list=BRAINS.executors||[];
+  if(ex){
+    /* Two groups because they are two kinds of brain: a provider answers
+       through Aria's own loop, an agent replaces it. One that is not installed
+       stays in the list, disabled, carrying the reason — hidden reads as "this
+       OS cannot", and it can, once the thing is there. */
+    const grp=(label,kind)=>{
+      const items=list.filter(e=>e.kind===kind);
+      if(!items.length)return '';
+      return `<optgroup label="${esc(label)}">`+items.map(e=>
+        `<option value="${esc(e.id)}"${e.id===cur.executor?' selected':''}${e.available?'':' disabled'}>`
+        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not available'))
+        +`</option>`).join('')+`</optgroup>`;
+    };
+    /* Nothing chosen yet is its own state and has to be visible: without a
+       placeholder the browser shows the first option, which reads as a machine
+       already set to something it is not. */
+    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    ex.innerHTML=none+grp('Models — answered by '+agentName(),'provider')
+                +grp('Agents — they answer instead','agent');
+    const sel=curExecutor();
+    ex.classList.toggle('engine',!!(sel&&sel.kind==='agent'));
+    ex.title=sel?(sel.what||sel.name):'nothing can answer here yet';
+  }
+  if(md){
+    const sel=curExecutor();
+    const mods=(sel&&sel.models)||[];
+    md.innerHTML=mods.length
+      ? mods.map(m=>`<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
+      : `<option value="">— no model —</option>`;
+    /* A model that is set but no longer offered stays visible and selected, or
+       the bar would quietly show something else answering. */
+    if(cur.model&&!mods.some(m=>m.id===cur.model))
+      md.insertAdjacentHTML('beforeend',
+        `<option value="${esc(cur.model)}" selected>${esc(cur.model)} (not currently offered)</option>`);
+    md.disabled=!mods.length;
+    md.title=(sel&&sel.kind==='agent')
+      ?'Which model to ask '+(sel.name||'it')+' for. It brings its own account.'
+      :(cur.model||'no model set');
+  }
+}
+/* One write for both, because they are one decision — see executors.set_brain. */
+async function setBrain(executor,model){
+  const r=await fetch('/api/brain',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({executor:executor,model:model||''})});
   const d=await r.json().catch(()=>({}));
-  if(d.error){toast(d.error);return paintModelChip()}
+  if(!r.ok||d.error){toast(d.error||'could not change the brain');await loadBrains();return false}
+  BRAINS={executors:d.executors||[],current:d.current||{},engine:d.engine};
   await loadConfig();await loadModels();
-  toast(v.indexOf('engine:')===0?('✓ '+v.slice(7)+' answers now'):'✓ model changed');
+  paintBrainChips();
+  toast('✓ '+(d.message||'brain changed'));
+  return true;
+}
+async function chatPickExecutor(v){
+  if(!v)return;
+  const ex=(BRAINS.executors||[]).find(e=>e.id===v);
+  // its own remembered model, not the one the previous executor was on
+  await setBrain(v,ex?ex.model:'');
+}
+async function chatPickModel(v){
+  const cur=(BRAINS.current||{}).executor;
+  if(!cur)return;
+  await setBrain(cur,v);
 }
 /* One place to change it, and the chip goes there rather than describing where. */
 function openModelSettings(){
-  const engine=(cfg&&cfg.engine)||'aria';
-  SETTAB=engine!=='aria'?'executors':'ai';
+  const ex=curExecutor();
+  SETTAB=(ex&&ex.kind==='agent')?'executors':'ai';
   try{localStorage.setItem('settab',SETTAB)}catch(e){}
   openApp('settings');
 }
@@ -387,25 +430,30 @@ async function loadConfig(){
   paintForwardChip();
   paintModelChip();
 }
-/* A machine set to forward is answering as somebody else. That is a big enough
-   change of behaviour that it belongs in the chrome, not buried in Settings —
-   otherwise a reply that isn't from your own agent looks like your own agent. */
+/* The top bar states the brain — executor and model — because that is the one
+   fact that changes what every reply on this machine is. It used to appear only
+   when the machine forwarded to another agent, which meant the common case (a
+   provider and a model) had no answer on screen at all, and a reply that wasn't
+   from your own agent looked exactly like one that was. */
 function paintForwardChip(){
   const chip=$('#fwdchip');if(!chip)return;
-  const engine=(cfg&&cfg.engine)||'aria';
-  const on=engine!=='aria';
-  chip.hidden=!on;
-  if(!on)return;
-  const name=engine==='claude-code'?'Claude Code':engine;
-  // The model rides on the chip too, so "what is this running on" is answered by
-  // looking up rather than by asking. It is filled in the first time a forwarded
-  // turn reports it — before that the engine name alone is all we honestly know.
-  const model=(FWD_MODEL[engine]||'').replace(/^claude-/,'');
-  chip.innerHTML='⇥ '+esc(name)+(model?'<span class="fwdmdl">'+esc(model)+'</span>':'');
-  chip.title='This machine is forwarding every request to '+name
-    +(model?' · running on '+FWD_MODEL[engine]:'')
-    +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+  const ex=curExecutor(),cur=BRAINS.current||{};
+  if(!ex){chip.hidden=true;return}
+  chip.hidden=false;
+  const agent=ex.kind==='agent';
+  // For an agent executor the model it actually woke up on is reported back by
+  // the run itself (engine_info) — better than the alias we asked for, so it
+  // wins once it is known.
+  const model=(agent?(FWD_MODEL[ex.id]||cur.model||'default'):(cur.model||'no model'))
+    .replace(/^(claude-|ollama\/|anthropic\/|openai\/|google\/|openrouter\/|custom\/)/,'');
+  const name=ex.name.split('—')[0].trim();
+  chip.innerHTML=(agent?'⇥ ':'▲ ')+esc(name)+'<span class="fwdmdl">'+esc(model)+'</span>';
+  chip.title=(agent
+      ?'Every turn on this machine is answered by '+name
+        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
+      :((cfg&&cfg.agent_name)||'Aria')+' answers, running on '+(cur.model||'no model yet'))
     +'. Click to change it.';
+  chip.classList.toggle('engine',agent);
 }
 
 

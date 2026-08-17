@@ -859,6 +859,195 @@ def roster() -> list[dict]:
     return [probe(e["id"]) for e in EXECUTOR_CATALOGUE]
 
 
+# ---------------------------------------------------------------------------
+# Brains: an executor OWNS its models, and that is one question, not two
+#
+# For a long time the OS asked twice. "Engine" chose which agent answers and
+# lived here; "default model" chose which weights it woke up on and lived in
+# providers.py. Two controls, two lists, and nothing tying them together — so
+# the picker could show Claude Code selected as the engine and a Gemini model
+# selected underneath it, which is not a configuration, it is two answers to
+# the same question disagreeing on screen.
+#
+# The shape below is the one people arrive with: pick who answers, then pick
+# what it runs on. A cloud provider and another agent are the same KIND of
+# choice — Ollama with `qwen3` and Claude Code with `opus` are both "this is
+# the brain" — so they are one list, and the models hang off the executor that
+# can actually run them. `brains()` is pure (it is handed the model list) so
+# the TUI, `bento doctor` and the wizard can all read it without HTTP.
+# ---------------------------------------------------------------------------
+
+# The providers that can answer a turn through the built-in agent. `engine`
+# stays "aria" for every one of them: Aria is the loop, the provider is the
+# brain it borrows. Names are what the user sees in the picker.
+PROVIDER_EXECUTORS = (
+    ("ollama", "Ollama — local",
+     "Models running on this machine through Ollama. Private, free, no key."),
+    ("anthropic", "Anthropic — cloud",
+     "Claude models over Anthropic's API, billed per token against your key."),
+    ("openai", "OpenAI — cloud",
+     "GPT models over OpenAI's API, billed per token against your key."),
+    ("google", "Google Gemini — cloud",
+     "Gemini models over Google's API. A free key comes from aistudio.google.com."),
+    ("openrouter", "OpenRouter — cloud",
+     "One key, hundreds of models, billed per token."),
+    ("custom", "llama.cpp / LM Studio / vLLM",
+     "Whatever the custom base URL points at — anything speaking the OpenAI API."),
+)
+
+# What an agent executor may be asked to run on.
+#
+# Claude Code has no listing command, so this is NOT a catalogue fetched from
+# it: it is the set of aliases the CLI documents, plus the honest empty choice
+# meaning "whatever it is signed in to use". Which weights an alias resolves to
+# is the CLI's business and changes without us — and it does not have to be
+# guessed here, because a forwarded run reports the real model back
+# (`engine_info`) and that is what the chip shows.
+AGENT_MODELS = {
+    "claude-code": (("", "whatever Claude Code is set to"),
+                    ("opus", "opus"), ("sonnet", "sonnet"), ("haiku", "haiku")),
+}
+# Anything not listed above brings its own model configuration and AgentOS does
+# not pretend to know it. One honest choice rather than an invented list.
+AGENT_MODELS_DEFAULT = (("", "whatever it is configured to use"),)
+
+
+def _exec_conf_key(engine: str) -> str:
+    """The config key for an executor's own settings (`claude-code` → `claude_code`)."""
+    return str(engine or "").replace("-", "_")
+
+
+def executor_model(cfg: dict, engine: str) -> str:
+    """The model an agent executor was told to use ("" = its own default)."""
+    conf = ((cfg or {}).get("executors") or {}).get(_exec_conf_key(engine)) or {}
+    return str(conf.get("model") or "")
+
+
+def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
+    """Everything that can answer a turn here, grouped by the executor that runs it.
+
+    `models` is what `providers.available_models` returned — passed in rather
+    than fetched, because this has to be callable from the TUI and the doctor,
+    and because one HTTP route should not do two probes of the same thing.
+    """
+    cfg = cfg or {}
+    default_model = str(cfg.get("default_model") or "")
+    engine = engine or resolve_engine(cfg)
+    by_prov: dict[str, list[dict]] = {}
+    for m in models or []:
+        by_prov.setdefault(str(m.get("provider") or ""), []).append(
+            {"id": m.get("id", ""), "name": m.get("name") or m.get("id", "")})
+
+    out: list[dict] = []
+    for pid, name, what in PROVIDER_EXECUTORS:
+        mods = by_prov.pop(pid, [])
+        out.append({
+            "id": pid, "name": name, "what": what,
+            "kind": "provider", "engine": "aria", "provider": pid,
+            "available": bool(mods),
+            # Not "unavailable": the sentence that would fix it. An executor with
+            # no models is a key that has not been pasted, not a missing feature.
+            # The sentence that would fix it, and it has to read the same over SSH
+            # as it does in the panel — a TUI told to "click Settings" is a dead end.
+            "reason": "" if mods else (
+                "Nothing here yet — Ollama is not running, or has no models pulled."
+                if pid == "ollama" else
+                "No model here yet — switch it on and add a key (AI providers, "
+                "or `bento config`)." if pid != "custom" else
+                "No model here yet — point the custom base URL at a server and "
+                "list its models (AI providers, or `bento config`)."),
+            "detail": f"{len(mods)} model{'' if len(mods) == 1 else 's'}" if mods else "",
+            "licence": "", "install_cmd": "", "install_note": "", "docs": "",
+            "models": mods,
+            # Each executor remembers its own model, so switching to another one
+            # and back does not lose the choice that was already made.
+            "model": (default_model if any(m["id"] == default_model for m in mods)
+                      else (mods[0]["id"] if mods else "")),
+        })
+    # A provider we have no entry for (added later, or hand-written into config)
+    # must still be reachable — the picker's job is to list what can answer.
+    for pid, mods in sorted(by_prov.items()):
+        if not pid:
+            continue
+        out.append({"id": pid, "name": pid, "what": "", "kind": "provider",
+                    "engine": "aria", "provider": pid, "available": True,
+                    "reason": "", "detail": f"{len(mods)} models", "licence": "",
+                    "install_cmd": "", "install_note": "", "docs": "",
+                    "models": mods,
+                    "model": (default_model if any(m["id"] == default_model for m in mods)
+                              else mods[0]["id"])})
+
+    # Walked from the catalogue rather than from `roster()`'s rows, so a probe that
+    # answers with less than a full record (a stub, a future field) still yields a
+    # usable entry instead of a KeyError in the one list every surface reads.
+    for spec in EXECUTOR_CATALOGUE:
+        if spec.get("builtin"):
+            continue                      # Aria is the loop, not a brain to pick
+        r = probe(spec["id"])
+        choices = AGENT_MODELS.get(spec["id"], AGENT_MODELS_DEFAULT)
+        out.append({
+            "id": spec["id"], "name": r.get("title") or spec["title"],
+            "what": r.get("what", spec.get("what", "")),
+            "kind": "agent", "engine": spec["id"], "provider": "",
+            "available": bool(r.get("installed")),
+            "reason": r.get("why_not", ""),
+            "detail": r.get("version", ""),
+            "licence": r.get("licence", spec.get("licence", "")),
+            "install_cmd": r.get("install_cmd", spec.get("install_cmd", "")),
+            "install_note": r.get("install_note", spec.get("install_note", "")),
+            "docs": r.get("docs", spec.get("docs", "")),
+            "models": [{"id": i, "name": n} for i, n in choices],
+            "model": executor_model(cfg, spec["id"]),
+        })
+
+    if engine != "aria":
+        cur_exec, cur_model = engine, executor_model(cfg, engine)
+    else:
+        cur_exec = default_model.split("/", 1)[0] if "/" in default_model else ""
+        cur_model = default_model
+        if not any(e["id"] == cur_exec for e in out):
+            # No model set yet, or one whose provider is gone: name the first
+            # executor that could actually answer rather than showing nothing.
+            first = next((e for e in out if e["available"] and e["kind"] == "provider"), None)
+            cur_exec = first["id"] if first else ""
+            cur_model = first["model"] if first else cur_model
+    return {"executors": out, "current": {"executor": cur_exec, "model": cur_model},
+            "engine": engine}
+
+
+def set_brain(cfg: dict, executor: str, model: str,
+              models: list[dict]) -> tuple[bool, str]:
+    """Point this machine at one executor and one of ITS models, in one write.
+
+    One call, because they are one decision. Two round trips is how a machine
+    ends up forwarding to Claude Code with a Gemini model recorded underneath.
+    Mutates `cfg`; the caller saves.
+    """
+    executor = str(executor or "").strip()
+    model = str(model or "").strip()[:120]
+    state = brains(cfg, models)
+    ex = next((e for e in state["executors"] if e["id"] == executor), None)
+    if not ex:
+        return False, f"no executor called {executor!r} on this machine"
+    if not ex["available"]:
+        return False, ex["reason"] or f"{ex['name']} cannot answer on this machine yet"
+    offered = [m["id"] for m in ex["models"]]
+    if model and model not in offered:
+        return False, f"{ex['name']} does not offer {model!r}"
+    if ex["kind"] == "agent":
+        cfg["engine"] = ex["engine"]
+        cfg.setdefault("executors", {}).setdefault(_exec_conf_key(ex["engine"]), {})["model"] = model
+        # A bare "<name> · <model>" phrase, framed by whoever is speaking: the CLI
+        # says "answering with …", the toast prefixes a tick, the ledger logs it.
+        return True, f"{ex['name']}" + (f" · {model}" if model else " · its own default")
+    # A provider answers through the built-in loop, so choosing one is also
+    # choosing to stop forwarding — otherwise picking a model would change
+    # nothing, which was the bug this whole shape exists to remove.
+    cfg["engine"] = "aria"
+    cfg["default_model"] = model or (offered[0] if offered else "")
+    return True, f"{ex['name']} · {cfg['default_model']}"
+
+
 def available() -> dict:
     """Is there an executor to delegate to on this machine?
 

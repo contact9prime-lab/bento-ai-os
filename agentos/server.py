@@ -2167,6 +2167,50 @@ async def api_models():
             "engine": execmod.resolve_engine(cfg)}
 
 
+@app.get("/api/brains")
+async def api_brains():
+    """Who can answer here, and what each of them can run.
+
+    One list: local providers, cloud providers and other agents, each owning the
+    models it can actually wake up. Every surface that asks "what is this
+    machine's brain" reads this — the chat header, the menu-bar chip, Settings,
+    the wizard — so the answer cannot differ between two of them.
+    """
+    from . import executors as execmod
+    cfg = state["cfg"]
+    models = await providers.available_models(cfg)
+    # `brains()` probes the roster, and a probe runs `--version` on real
+    # binaries. Awaiting that on the event loop is how the update check froze
+    # the whole server, so it goes to a thread.
+    return await asyncio.to_thread(execmod.brains, cfg, models)
+
+
+@app.put("/api/brain")
+async def api_set_brain(body: dict):
+    """Choose the executor AND its model in one write."""
+    from . import executors as execmod
+    cfg = state["cfg"]
+    executor = str((body or {}).get("executor") or "")
+    model = str((body or {}).get("model") or "")
+    models = await providers.available_models(cfg)
+    state_now = await asyncio.to_thread(execmod.brains, cfg, models)
+    ex = next((e for e in state_now["executors"] if e["id"] == executor), None)
+    # Forwarding to another agent reconfigures the MACHINE — every surface, for
+    # everyone on it — while a provider model is each person's own choice
+    # (`users.USER_KEYS`). So the admin check is on the kind, not on the route.
+    if ex and ex["kind"] == "agent" and usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change which agent answers "
+                                      "on this machine"}, status_code=403)
+    ok, msg = await asyncio.to_thread(execmod.set_brain, cfg, executor, model, models)
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    cfgmod.save_config(cfg)
+    state["store"].log("system", f"brain: {msg}")
+    await state["broadcast"]({"type": "config"})
+    out = await asyncio.to_thread(execmod.brains, cfg, models)
+    return {"ok": True, "message": msg, **out}
+
+
 @app.get("/api/config")
 async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
@@ -2450,6 +2494,32 @@ async def api_put_config(patch: dict):
 @app.get("/api/conversations")
 async def api_conversations():
     return {"conversations": state["store"].list_conversations()}
+
+
+@app.post("/api/conversations")
+async def api_new_conversation(body: dict | None = None):
+    """Open an empty thread up front.
+
+    The omnibar needs this: its turn can sit queued behind another one for
+    thirty seconds, and until the server answered there was no conversation to
+    show, so "Open in Chat" landed somewhere else and the sidebar looked as if
+    nothing had been asked. A thread that exists from the moment you press
+    Enter is the whole difference between a bar that reports and one that eats
+    what you typed.
+    """
+    from . import spaces as spacemod
+    from .policy import SURFACES
+    b = body or {}
+    origin = str(b.get("origin") or "user")[:40]
+    title = str(b.get("title") or "New chat")[:200]
+    surface = b.get("surface") if b.get("surface") in SURFACES else "gui"
+    # The space is the surface's active one, exactly as the socket does it — the
+    # conversation decides the turn's space, so it has to be decided here too.
+    space = str(b.get("space_id") or "") or spacemod.active_for(state["cfg"], surface)
+    cid = state["store"].create_conversation(title, origin=origin, space_id=space)
+    await state["broadcast"]({"type": "conversation", "id": cid, "title": title,
+                              "origin": origin, "space_id": space})
+    return {"id": cid, "title": title, "origin": origin, "space_id": space}
 
 
 @app.get("/api/conversations/{cid}")
