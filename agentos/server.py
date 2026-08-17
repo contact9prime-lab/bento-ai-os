@@ -725,9 +725,19 @@ async def api_update_status(check: bool = False):
         cfgmod.save_config(cfg)
     else:
         c = updmod.conf(cfg)
+        behind = int(c.get("last_behind") or 0)
         res = {"current": updmod.current(), "latest": c.get("last_seen", ""),
-               "update_available": bool(c.get("last_seen")
-                                        and updmod.is_newer(c["last_seen"], updmod.current())),
+               # Both halves of the last check, not just the version: a machine
+               # that was eight commits behind an hour ago must not open Settings
+               # saying "up to date".
+               "update_available": bool(behind or (c.get("last_seen")
+                                        and updmod.is_newer(c["last_seen"], updmod.current()))),
+               "behind": behind, "ahead": 0,
+               "on_branch": c.get("last_on_branch", ""),
+               "tracks": c.get("branch") or updmod.DEFAULT_BRANCH,
+               "mismatch": bool(c.get("last_on_branch")
+                                and c.get("last_on_branch") != (c.get("branch")
+                                                                or updmod.DEFAULT_BRANCH)),
                "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
     # The commits an update would bring. Only on an explicit check — `pending()`
     # fetches, and a status route that opens Settings instantly must not do

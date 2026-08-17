@@ -309,12 +309,29 @@ async function paintVersion(check){
       (d.changes||[]).slice(0,15).map(c=>
         `<div><code>${esc(c.hash)}</code> ${esc(c.title)}</div>`).join('')}${
       (d.changes||[]).length>15?`<div class="mut">…and ${d.changes.length-15} more</div>`:''}</div>`:'';
-    el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+    /* Two different pieces of news, and they used to be printed as one:
+       "0.2.0 → 0.2.0 available" is what a machine says when it is behind by
+       COMMITS and the version file has not moved. The version bump is a release;
+       the commits are the code. */
+    const bumped=d.latest&&d.latest!==d.current;
+    const n=d.behind||0;
+    const head=bumped
+      ? `<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+      : `<b>${esc(d.current)}</b> <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
+        +` <span class="mut">on ${esc(d.tracks||'')}</span>`;
+    el.innerHTML=head
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
                    :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn+ch;
   }else{
+    /* "Up to date" has to say up to date WITH WHAT. A checkout sitting on another
+       branch is the commonest reason a push seems to have no effect, and it was
+       invisible here: the panel compared against a branch this copy is not on and
+       reported the good news. */
+    const where=d.mismatch
+      ? `up to date with ${esc(d.tracks||'')} — this copy is on ${esc(d.on_branch||'another branch')}`
+      : (d.latest?`up to date with ${esc(d.tracks||'')}`:'not checked yet');
     el.innerHTML=`<b>${esc(d.current||'?')}</b> `
-      +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;
+      +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn;
   }
 }
 async function updateNow(btn){

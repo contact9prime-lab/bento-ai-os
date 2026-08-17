@@ -524,6 +524,36 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 
 ---
 
+## "Up to date" is a claim about the CODE, not about a file
+
+`updates.check()` has two sources and needs both. `agentos/VERSION` is written by
+hand at a release, so between releases it does not move — a machine could be
+twenty commits behind the branch it tracks and be told, truthfully about the file
+and uselessly about the code, that there was nothing new. That is exactly what was
+reported. `updates.git_state()` asks git: which branch this copy is on, which one
+updates track, how far behind, and which commits.
+
+Four things that have to stay true:
+
+- **Either source may say yes.** The version file is all a pip/wheel install has;
+  git is the only thing that knows about commits between releases. `behind > 0` is
+  an update even when the version is identical.
+- **Both halves report even when one fails.** An unreachable version file and an
+  unfetchable remote are different sentences, and either alone still leaves a
+  usable answer — bailing on the first one is how a network blip became "up to
+  date".
+- **The count and the list must agree.** `commits()` drops merges, so a checkout
+  two merge commits behind said "2 changes waiting" above an empty list; it now
+  falls back to showing the merges. A number with nothing under it reads as the
+  updater being broken.
+- **Announce-once is keyed on the MARK, not the version** (`version@newest-hash`),
+  and so is Skip. Keyed on the version, a version announced or skipped once
+  silenced every commit that ever landed under it — a decline that quietly became
+  "never update this machine again".
+
+Say what it is up to date WITH. A checkout sitting on another branch is the
+commonest reason a push looks like it did nothing, and every surface now names it.
+
 ## Honesty rules
 
 - A capability that is missing reports **why**, in a sentence, plus the component

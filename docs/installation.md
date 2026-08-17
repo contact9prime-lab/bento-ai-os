@@ -284,8 +284,24 @@ wrong branch, and says which. It runs the test suite before keeping the new code
 **rolls back** if it fails — `--no-tests` skips that gate, which is also what makes a
 bad update recoverable. `--no-restart` leaves loading it to you.
 
-A bare `bento update` never pulls. The same machinery backs Settings → Updates and the
-background check, so all three agree about what a version is.
+A bare `bento update` never pulls. The same machinery backs Settings → Updates, the
+About panel and the background check, so all four agree about what is waiting.
+
+**Two sources, because they answer for different installs.** `agentos/VERSION` is
+published at a release and is the only thing a pip/wheel copy can compare against.
+The checkout's own git is the only thing that knows about commits BETWEEN releases —
+and that is most of the time. So a report looks like one of:
+
+```
+▲ 0.4.0 is available (you have 0.3.0)              # a release
+▲ 8 changes waiting on origin/master — same version (0.3.0), newer code
+✓ up to date with origin/master (published version 0.3.0)
+```
+
+If a push of yours never seems to arrive, the first line of `bento update` is the
+usual answer: it prints the branch this checkout is **on** and the branch updates
+**track**. Commits pushed to any other branch will never show up here, and your own
+unpushed commits are reported as `ahead`.
 
 ## Managing the service
 

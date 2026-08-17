@@ -1,5 +1,55 @@
 # Changelog
 
+### 0.3.0 — several people, more places to work, and one brain to choose (2026-08-17)
+
+**Several people on one machine.** Accounts are isolated by DIRECTORY, not by a
+WHERE clause: each has its own `~/.agentos/users/<id>/` with its own database,
+config, workspace and assets. Two files cannot leak into each other, which is the
+whole argument — one forgotten filter among ~250 query sites would be somebody
+reading a colleague's memory. Sign-in is one signed cookie everywhere (desktop,
+phone, API), the tools refuse another account's home, and `run_command` and the
+Terminal run in a per-account jail that fails closed if it cannot be built. A
+machine with no accounts keeps using exactly the files it always used.
+
+**The agent can work in more places, and an admin decides which.** Safe folders
+are shares: a path, who it is for, and whether it carries read or read/write. They
+are allocated in the Users app, and adding a root as writable says what that
+means before you agree to it. `bento folders` is the same thing over SSH.
+
+**A stranger reaching a channel is recorded, and can be let in.** An unregistered
+Telegram or WhatsApp sender is logged with who they were and what they wanted
+rather than silently dropped, and an allow-list lets specific people talk to the
+bot without making the channel public.
+
+**The brain is one choice.** Which executor answers and which of ITS models it
+runs on, in one control and one write — local providers, cloud providers, Claude
+Code, Hermes, OpenClaw, each carrying the models it can actually wake up. The top
+bar states the pair at all times. An executor that is not installed is listed with
+its licence and, where AgentOS knows a truthful command, an offer to install it.
+`bento brain` is the headless face; `bento doctor` reports the pair.
+
+**The surfaces are stitched.** The prompt bar's thread is a real conversation from
+the moment you press Enter — visible in Chat, openable, and honest about waiting
+its turn. A turn that builds an app or writes a workflow offers the door to it in
+App Studio or Workflows, and the button selects the thing rather than dropping you
+in an empty app.
+
+**Updates tell the truth.** "Up to date" used to be a claim about a version file
+somebody edits at a release, so a machine could sit twenty commits behind the
+branch it tracks and be told there was nothing new. The check now asks git as
+well: how far behind, which commits, which branch this copy is actually on. The
+ledger of what arrived comes from the commits themselves.
+
+**Everything a principal does is in the ledger, and the ledger can be
+fail-closed.** Audit rows are hash-chained with the acting account, `audit_verify()`
+finds the first edit or deletion, and nothing user-reachable deletes them. Apps run
+in opaque-origin iframes so an app's `fetch` cannot forge the desktop's origin, and
+a rate ceiling now catches a patient loop as well as a tight one.
+
+**Findable failures.** `bento log` prints the OS-level log for the Bento process
+with its errors, and the desktop bundle is parse-checked in CI — one syntax error
+used to take the whole desktop out while the server and the tests looked healthy.
+
 ### 0.2.0 — it tells you what it is doing, and it keeps up to date (2026-08-10)
 
 **You can see what it is waiting on.** Every surface that showed a turn in

@@ -2339,33 +2339,55 @@ def _update_cli(args) -> int:
     cfg = cfgmod.load_config()
     root = upd.install_dir()
 
-    print(f"AgentOS {upd.current()}")
-    print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
-    print(f"  branch:    {upd.conf(cfg).get('branch') or upd.DEFAULT_BRANCH}")
-
     state = asyncio.run(upd.check(cfg, force=True))
     cfgmod.save_config(cfg)          # check() stamps last_check on the conf dict
 
+    print(f"AgentOS {upd.current()}")
+    print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
+    print(f"  branch:    {state.get('on_branch') or '(unknown)'}"
+          + (f"  → updates track '{state.get('tracks')}'"
+             if state.get("mismatch") else "  (the branch updates track)"))
+    if state.get("ahead"):
+        # Somebody's own commits. Worth naming: it is the other half of "I pushed
+        # and nothing happened" — the code is here, it is just not upstream.
+        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on "
+              f"origin/{state.get('tracks')}")
+
+    # An error is not a reason to stop reporting: the version file may be
+    # unreachable while git knows exactly how far behind this copy is, and vice
+    # versa. Print what is known, then the failure.
     if state.get("error"):
-        print(f"\n✗ {state['error']}")
-        return 1
+        print(f"\n! {state['error']}")
+
     if not state.get("update_available"):
-        print(f"\n✓ up to date (latest published is {state.get('latest') or 'unknown'})")
-        return 0
+        if state.get("mismatch"):
+            print(f"\n✓ up to date with origin/{state.get('tracks')} — but this checkout is "
+                  f"on '{state.get('on_branch')}', so commits you pushed to another branch "
+                  f"will never show up here")
+        else:
+            print(f"\n✓ up to date with origin/{state.get('tracks')} "
+                  f"(published version {state.get('latest') or 'unknown'})")
+        return 0 if not state.get("error") else 1
 
-    print(f"\n▲ {state['latest']} is available (you have {upd.current()})")
-    for e in upd.entries(state.get("notes") or "", limit=3):
-        if e.get("title"):
-            print(f"\n  {e['title']}")
-        for line in (e.get("body") or "").splitlines()[:6]:
-            if line.strip():
-                print(f"    {line.strip()[:100]}")
+    # Two different pieces of news. A version bump is a release; commits waiting on
+    # the tracked branch are the code, and between releases only the second moves —
+    # printing "0.2.0 is available (you have 0.2.0)" is how this said nothing.
+    if state.get("latest") and upd.is_newer(state["latest"], upd.current()):
+        print(f"\n▲ {state['latest']} is available (you have {upd.current()})")
+        for e in upd.entries(state.get("notes") or "", limit=3):
+            if e.get("title"):
+                print(f"\n  {e['title']}")
+            for line in (e.get("body") or "").splitlines()[:6]:
+                if line.strip():
+                    print(f"    {line.strip()[:100]}")
+    else:
+        n = state.get("behind") or 0
+        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on origin/"
+              f"{state.get('tracks')} — same version ({upd.current()}), newer code")
 
-    # The changelog nobody maintains by hand. CHANGELOG.md is a published release
-    # note and says nothing on a branch between releases, which is most of the
-    # time — so the commits themselves are the honest answer to "what am I about
-    # to install".
-    waiting = asyncio.run(upd.pending(cfg, limit=15))
+    # The changelog nobody maintains by hand: the commits themselves, already
+    # fetched by the check rather than fetched a second time here.
+    waiting = state.get("commits") or []
     if waiting:
         print(f"\n  {len(waiting)} change{'s' if len(waiting) != 1 else ''} waiting:")
         for c in waiting:
