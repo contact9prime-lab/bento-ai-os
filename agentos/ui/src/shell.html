@@ -19,10 +19,10 @@
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
-    <!-- Forwarding is never silent: when this machine answers as another agent,
-         it says so in the menu bar on every surface, and clicking opens the
-         setting that turns it off. -->
-    <button id="fwdchip" hidden onclick="openApp('settings');SETTAB='executors';localStorage.setItem('settab','executors')"></button>
+    <!-- The brain, always stated: which executor answers and which model it
+         runs on. Forwarding to another agent is never silent, and neither is
+         the ordinary case — clicking opens the one place that changes it. -->
+    <button id="fwdchip" hidden onclick="openModelSettings()"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
     <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>

@@ -129,12 +129,26 @@ function omniRun(i){
 /* palIntentAsync (model-classified fallback) appends into whichever list is live */
 function palRenderList(){omniPaint()}
 
+/* The bar's own thread — "◉ Desktop" in Chat's sidebar.
+   It is CREATED here rather than waited for. The turn you type can sit queued
+   behind another one for half a minute, and while it did there was no
+   conversation anywhere: the sidebar showed nothing, "Open in Chat" landed on
+   whatever was open before, and the bar looked like it had swallowed the
+   question. A thread that exists the moment you press Enter is the difference
+   between a prompt bar and a text field that maybe did something. */
 async function omniThread(){
   if(OMNI.cid)return OMNI.cid;
   try{
     const d=await (await fetch('/api/conversations')).json();
     const hit=(d.conversations||[]).find(c=>c.origin==='omni');
     if(hit)OMNI.cid=hit.id;
+  }catch(e){}
+  if(!OMNI.cid)try{
+    const r=await fetch('/api/conversations',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin:'omni',title:'◉ Desktop',surface:'gui'})});
+    const d=await r.json();
+    if(d&&d.id){OMNI.cid=d.id;if(typeof loadConvs==='function')loadConvs()}
   }catch(e){}
   return OMNI.cid;
 }
@@ -220,6 +234,9 @@ async function omniAsk(q){
     context:omniContext(),sink,onCid:id=>{OMNI.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
+      // Only one stop on a card that has not started: "Stop" would kill the turn
+      // running AHEAD of this one, which is what the button below says properly.
+      stopBtn.style.display='none';
       if(tools.querySelector('.oc-stop'))return;
       const b=document.createElement('button');b.className='oc-stop';b.textContent='Stop current & send';
       b.onclick=()=>{b.disabled=true;b.textContent='stopping…';stop()};

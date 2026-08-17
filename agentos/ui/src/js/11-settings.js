@@ -91,12 +91,13 @@ function setTab(body,all){
     P.push(pGroup('Answering', [
       pRow('This machine answers with',
         `<span class="s-modelrow">
+           <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
            <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
            <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
            <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
          </span>`,
-        {desc:'Every surface uses it — chat, the prompt bar, copilot panels, Telegram, scheduled jobs. Changing it here takes effect immediately.',
-         f:'model default answers with picker which model refresh available'}),
+        {desc:'Who answers, then what it runs on — a provider through '+esc((cfg.agent_name||'Aria'))+', or another agent installed here. Every surface uses it: chat, the prompt bar, copilot panels, Telegram, scheduled jobs. It applies on the spot.',
+         f:'model default answers with picker which model refresh available executor engine brain'}),
       pRow('Available', '<span id="s-model-count" class="mut">…</span>',
         {desc:'Fetched from each enabled provider, not a list typed into config. Refresh after pulling a model or adding a key.',
          f:'available models count refresh providers'}),
@@ -131,13 +132,17 @@ function setTab(body,all){
   if(want('executors')){
     P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
     P.push(pGroup('Forward everything',[
-      pRow('This machine answers with',pSelect('s-engine',[
-          ['aria',(cfg.agent_name||'Aria')+' (the built-in agent)'],
-          ['claude-code','Claude Code']],cfg.engine||'aria'),
+      /* Filled from the roster by renderExecutors below, not written out here.
+         This list was hardcoded to aria + claude-code, so every executor added
+         afterwards was invisible in the one panel named after them — and which
+         brains exist is a probe, not part of cfg. */
+      pRow('This machine answers with',
+        `<select id="s-engine" onchange="pickEngine(this.value)"><option value="${esc(cfg.engine||'aria')}">checking…</option></select>`,
         {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
          f:'forward everything engine forwarder proxy relay'}),
     ],{f:'forwarding engine'}));
     P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-offers"></div>`);
     setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
   }
   if(want('channels')){
@@ -320,77 +325,77 @@ async function updateNow(btn){
     if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
   }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
 }
+/* The same two coupled selects as the chat header, painted from the same
+   `/api/brains` state — executor, then one of ITS models. It used to be one
+   select with engines in an optgroup above the models, and both halves marked
+   their own selection: with Claude Code as the engine and a Gemini model still
+   in config, TWO options carried `selected` and the browser kept the last one,
+   so the control read "gemini" while the machine forwarded to Claude Code. */
 async function paintModelPicker(refresh){
-  const sel=document.getElementById('s-model'); if(!sel)return;
+  const sel=document.getElementById('s-model'),ex=document.getElementById('s-brain');
+  if(!sel&&!ex)return;
   const btn=document.getElementById('s-model-refresh');
   const count=document.getElementById('s-model-count');
   if(refresh&&btn){btn.disabled=true;btn.textContent='↻ Asking…'}
   if(refresh&&count)count.textContent='asking each provider…';
-  let d={models:[],default:'',engines:[]};
   // A refresh is a real round trip to every enabled provider, so it is asked for
   // rather than done on every repaint — a Settings tab that stalled behind three
   // network calls would be worse than a list that is a minute old.
-  try{d=await (await fetch('/api/models'+(refresh?'?t='+Date.now():''))).json()}catch(e){}
+  try{
+    const d=await (await fetch('/api/brains'+(refresh?'?t='+Date.now():''))).json();
+    if(d&&d.executors)BRAINS=d;
+  }catch(e){}
   if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}
-  const cur=(cfg&&cfg.default_model)||d.default||'';
-  const groups={};
-  (d.models||[]).forEach(m=>{(groups[m.provider]=groups[m.provider]||[]).push(m)});
-  const opts=Object.keys(groups).sort().map(prov=>
-    `<optgroup label="${esc(prov)}">`+groups[prov].map(m=>
-      `<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')
-    +`</optgroup>`).join('');
-  /* Engines first, because choosing one is a different KIND of answer to
-     choosing a model: it changes which agent runs the turn, not which weights it
-     uses. Selecting Claude Code and then being shown a list of Anthropic API
-     models was the bug — the picker offered something that changed nothing,
-     because the executor brings its own model. An engine that is not installed
-     is still listed, greyed, carrying the reason: hidden reads as "this OS
-     cannot". */
-  const engOpts=(d.engines||[]).map(e=>{
-    const on=(d.engine||'')===e.id;
-    const label=e.available?`${e.name}${e.detail?' · '+e.detail:''}`
-                           :`${e.name} — ${e.reason||'not installed'}`;
-    return `<option value="engine:${esc(e.id)}"${on?' selected':''}${e.available?'':' disabled'}>${esc(label)}</option>`;
-  }).join('');
-  const engGroup=engOpts?`<optgroup label="Engines — another agent answers">`
-    +`<option value="engine:aria"${!(d.engine||'')||d.engine==='aria'?' selected':''}>Aria — the built-in agent</option>`
-    +engOpts+`</optgroup>`:'';
-  sel.innerHTML=engGroup+(opts||`<option value="">no models — add a key above, or pull one in Model Manager</option>`);
-  // A model set in config that the providers no longer offer must stay visible
-  // and selected, or opening Settings would silently look like something else
-  // is answering.
-  if(cur&&!(d.models||[]).some(m=>m.id===cur))
-    sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur)}" selected>${esc(cur)} (not currently offered)</option>`);
-  // What was actually found, per provider — the answer to "did adding that key
+  const list=BRAINS.executors||[],cur=BRAINS.current||{};
+  if(ex){
+    const grp=(label,kind)=>{
+      const items=list.filter(e=>e.kind===kind);
+      if(!items.length)return '';
+      return `<optgroup label="${esc(label)}">`+items.map(e=>
+        `<option value="${esc(e.id)}"${e.id===cur.executor?' selected':''}${e.available?'':' disabled'}>`
+        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not available'))
+        +'</option>').join('')+'</optgroup>';
+    };
+    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    ex.innerHTML=none+grp('Models — answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+                +grp('Agents — they answer instead','agent');
+  }
+  const chosen=list.find(e=>e.id===cur.executor);
+  if(sel){
+    const mods=(chosen&&chosen.models)||[];
+    sel.innerHTML=mods.length?mods.map(m=>
+      `<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
+      :`<option value="">no models — add a key below, or pull one in Model Manager</option>`;
+    // A model set in config that the providers no longer offer must stay visible
+    // and selected, or opening Settings would silently look like something else
+    // is answering.
+    if(cur.model&&!mods.some(m=>m.id===cur.model))
+      sel.insertAdjacentHTML('afterbegin',`<option value="${esc(cur.model)}" selected>${esc(cur.model)} (not currently offered)</option>`);
+    sel.disabled=!mods.length;
+  }
+  // What was actually found, per executor — the answer to "did adding that key
   // work?" and "did my pull land?", which the picker alone cannot give.
   if(count){
-    const n=(d.models||[]).length;
-    const per=Object.keys(groups).sort().map(k=>`${esc(k)} ${groups[k].length}`).join(' · ');
-    const eng=(d.engines||[]).filter(e=>e.available).map(e=>esc(e.name));
+    const provs=list.filter(e=>e.kind==='provider'&&e.available);
+    const n=provs.reduce((s,e)=>s+e.models.length,0);
+    const per=provs.map(e=>`${esc(e.id)} ${e.models.length}`).join(' · ');
+    const agents=list.filter(e=>e.kind==='agent'&&e.available).map(e=>esc(e.name));
     count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'} — ${per}`
                      :`none found — enable a provider below, or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
-    if(eng.length)count.innerHTML+=` · engines: ${eng.join(', ')}`;
+    count.innerHTML+=agents.length?` · agents here: ${agents.join(', ')}`
+      :` · no other agent installed — see <a href="#" onclick="SETTAB='executors';localStorage.setItem('settab','executors');refreshApp('settings');return false">Executors</a>`;
   }
 }
-async function pickModel(id){
+async function pickExecutor(id){
   if(!id)return;
-  /* Two different settings behind one control, because to the person choosing it
-     is one question: what answers me. `engine:` changes which agent runs the
-     turn; anything else is the model the built-in agent uses. */
-  if(id.indexOf('engine:')===0){
-    const eng=id.slice(7);
-    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({engine:eng})});
-    const d=await r.json().catch(()=>({}));
-    toast(d.error||(eng==='aria'?'✓ answering with the built-in agent':'✓ answering with '+eng));
-    if(!d.error)await loadConfig();
-    return paintModelPicker();
-  }
-  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({default_model:id})});
-  if(cfg)cfg.default_model=id;
-  toast('answering with '+id);
-  loadModels();paintModelChip();refreshApp('models');
+  const ex=(BRAINS.executors||[]).find(e=>e.id===id);
+  if(await setBrain(id,ex?ex.model:''))paintModelPicker();
+  if(typeof paintEngineSelect==='function'&&document.getElementById('s-engine'))renderExecutors();
+}
+async function pickModel(id){
+  const cur=(BRAINS.current||{}).executor;
+  if(!cur)return;
+  if(await setBrain(cur,id)){paintModelPicker();refreshApp('models')}
 }
 async function saveSettings(){
   // only the open category is in the DOM, so save exactly what is on screen —
@@ -437,7 +442,10 @@ async function saveSettings(){
   const ght=(val('s-gh-token')||'').trim();
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
-  if(val('s-engine')!==undefined)patch.engine=val('s-engine');
+  /* `s-engine` is NOT read here: it applies the moment it changes, through
+     /api/brain, so the executor and its model are written together. Sending it
+     again with the page-wide Save is a second writer for one setting, and the
+     one that wins is whichever ran last. */
   if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
@@ -566,8 +574,41 @@ async function renderExecutors(){
   const box=document.getElementById('exec-list');if(!box)return;
   var d=null;
   try{d=await (await fetch('/api/executors')).json()}catch(e){}
+  /* The engine list, from the roster. Every executor this OS knows appears —
+     installed or not — because a brain you could have is a fact you need in
+     order to choose, and hiding it reads as "this OS cannot". */
+  paintEngineSelect(d);
+  /* A card per executor that is NOT installed, with its licence and the exact
+     command. Rendered before the Claude Code detail below so the offers are not
+     buried under one executor's tool checkboxes. */
+  const offers=((d&&d.roster)||[]).filter(r=>!r.builtin&&!r.installed).map(r=>{
+    const off=r.install||{};
+    /* Same card shape as a channel: a heading that reads as a name, the licence
+       as a chip, and the prose in `.ghint` — bare <p>s collided with the
+       small-caps group heading and the three lines overlapped. */
+    return `<div class="pgroup chan" data-f="install executor ${esc(r.id)}">
+      <h3>${esc(r.title)} <span class="chdot">${esc(r.licence||'licence unknown')}</span></h3>
+      <div class="ghint">${esc(r.what||'')}</div>
+      <div class="ghint mut">${esc(r.why_not||'not installed')}</div>
+      ${off.command?pRow('Install it',
+          `<button class="endbtn" onclick="execInstallComponent('${esc(r.id)}',this)">Install ${esc(r.title)}</button>`,
+          {desc:`Runs: <code>${esc(off.command)}</code>${off.licence?' · '+esc(off.licence):''}${
+             off.available?'':' — '+esc(off.reason||'not available here')}`,
+           f:'install '+esc(r.id)})
+        :`<div class="ghint mut">AgentOS does not ship an installer for this one — install
+            it yourself and it will be detected and offered here.</div>`}
+      ${r.docs?`<div class="ghint"><button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Read the docs</button></div>`:''}
+    </div>`;
+  }).join('');
+  /* Into their own container, replaced rather than appended: `insertAdjacentHTML`
+     on the panel put a second copy of every offer on screen each time this
+     re-ran (and it re-runs after an install, which is exactly when somebody is
+     looking at it). */
+  const obox=document.getElementById('exec-offers');
+  if(obox)obox.innerHTML=offers;
   const ex=d&&(d.executors||[]).find(e=>e.id==='claude_code');
-  if(!ex){box.innerHTML='<h3>Claude Code</h3><p class="mut">could not read executors</p>';return}
+  if(!ex){box.innerHTML=obox?'<p class="mut">could not read executors</p>'
+                            :(offers||'<p class="mut">could not read executors</p>');return}
   if(!ex.available){
     /* "Not installed" used to end here, which is a dead end wearing an honest
        sentence. The exact command is shown before anything runs, and the button
@@ -631,6 +672,56 @@ async function renderExecutors(){
 
 /* Installing is a visible act: the command was shown, the output streams here,
    and the panel re-probes when it finishes rather than claiming success. */
+/* One list, three places it is rendered — here, in AI providers and in Chat. All
+   three read /api/executors or /api/models, so none of them names an executor. */
+function paintEngineSelect(d){
+  const sel=document.getElementById('s-engine'); if(!sel)return;
+  const cur=(cfg&&cfg.engine)||'aria';
+  const rows=((d&&d.roster)||[]);
+  if(!rows.length)return;                       // leave "checking…" rather than lie
+  sel.innerHTML=rows.map(r=>{
+    const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
+      :r.installed?(r.title+(r.version?' · '+r.version:''))
+      :(r.title+' — '+(r.why_not||'not installed'));
+    return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${
+      r.installed?'':' disabled'}>${esc(label)}</option>`;
+  }).join('');
+}
+
+/* Choosing here goes through /api/brain like every other brain change, so the
+   model that executor should run on is written in the same breath. "aria" means
+   "stop forwarding": the machine goes back to answering with whichever provider
+   model it was last on, which is the only reading of that choice that leaves it
+   ABLE to answer. */
+async function pickEngine(id){
+  if(!id)return;
+  const list=BRAINS.executors||[];
+  const target=id==='aria'
+    ? (list.find(e=>e.kind==='provider'&&e.id===(BRAINS.current||{}).executor)
+       ||list.find(e=>e.kind==='provider'&&e.available))
+    : list.find(e=>e.id===id);
+  if(!target)return toast(id==='aria'
+    ?'no provider model to fall back to — add a key or pull one first'
+    :'that executor is not on this machine');
+  if(await setBrain(target.id,target.model)){renderExecutors();paintModelPicker()}
+}
+
+/* Install any executor from the components catalogue. `execInstall` below is the
+   Claude-Code-specific path that predates the roster and still serves its card;
+   this one takes the id, so a new executor needs no new function. */
+async function execInstallComponent(id,btn){
+  const was=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Installing…'}
+  try{
+    const r=await fetch('/api/components/install',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    toast(d.ok?('✓ '+(d.message||'installed')):(d.message||'could not install'));
+    if(d.ok){await loadModels();renderExecutors()}
+  }catch(e){toast('could not reach the server')}
+  finally{if(btn){btn.disabled=false;btn.textContent=was}}
+}
+
 async function execInstall(){
   const btn=document.getElementById('exec-inst'), log=document.getElementById('exec-instlog');
   if(btn){btn.disabled=true;btn.textContent='Installing…'}

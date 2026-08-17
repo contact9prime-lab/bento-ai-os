@@ -261,10 +261,65 @@ Three things that will bite whoever touches this next:
   their licence. OpenClaw is detected and used if present and has NO installer,
   because a fabricated command is a dead button, which every honesty rule here
   forbids. Say "you install it, I will use it" rather than guessing.
-- **Choosing an engine is not choosing a model.** The picker offers both because
-  to the person choosing it is one question, but an executor brings its own
-  model — offering Anthropic API models while Claude Code answers was a control
-  that changed nothing.
+- **An executor OWNS its models.** See the next section: one picker, and the model
+  list belongs to whatever is answering.
+
+## The brain is one choice: an executor and one of ITS models
+
+`executors.brains(cfg, models)` is the whole list — local providers, cloud
+providers and other installed agents, each carrying the models it can actually
+wake up — and `set_brain(cfg, executor, model, models)` is the only way to
+change it. `/api/brains` and `PUT /api/brain` are those two functions over HTTP;
+the chat header, the menu-bar chip, Settings → AI providers, the wizard's brain
+step and the `set_engine` verb all read and write through them, so there is one
+answer to "what is this machine running on" and one place it is decided.
+
+It was two questions for a long time, and they disagreed on screen: `engine`
+lived in this module, `default_model` lived in providers, and the picker showed
+both in one dropdown. With Claude Code as the engine and a Gemini model still in
+config, TWO options carried `selected` and the browser kept the last one — so
+the control read "gemini" while the machine forwarded to Claude Code.
+
+Four things that have to stay true:
+
+- **One write, not two.** `set_brain` sets `engine` AND the model in the same
+  call. Choosing a provider also sets `engine="aria"`, because otherwise picking
+  a model changes nothing while a forwarder is on — the original bug.
+- **Each executor remembers its own model.** A provider's is `default_model`; an
+  agent's is `cfg["executors"][<id with _>]["model"]`. Switching away and back
+  must not lose the choice already made.
+- **The model list is validated against the executor.** `Claude Code does not
+  offer 'google/gemini-3.1-pro'` is refused at the write as well as in the
+  picker, so no config edit or verb can recreate the mismatch.
+- **`brains()` is pure** — it is handed the model list. That is what lets the
+  TUI, `bento doctor` and the wizard read the same catalogue without HTTP, and
+  keeps one route from probing providers twice.
+
+An agent executor's model list is the aliases its CLI documents plus the honest
+empty choice ("whatever it is set to"). AgentOS does not fetch or invent a
+catalogue for it; what the run actually woke up on comes back from the run
+itself (`engine_info`) and that is what the chip shows.
+
+## The three surfaces are stitched: bar → chat → Studio / Workflows
+
+The prompt bar asks, the chat answers, and what the answer BUILT lives in
+another app. Those seams are code, and each one was reported as "this makes no
+sense" when it was missing:
+
+- **The bar's thread exists before the send.** `omniThread()` creates the
+  `origin:'omni'` conversation (POST `/api/conversations`) rather than waiting
+  for the server to name one. A turn can sit queued for half a minute, and until
+  it existed the sidebar showed nothing and "Open in Chat" landed elsewhere.
+- **A queued turn says queued.** `miniFeed.queued()` marks the row, and
+  `mfPaint` skips it: the activity record belongs to the turn running AHEAD of
+  it, so painting it there made a waiting card claim another turn's step.
+- **A turn that MAKES something offers the door to it.** `10a-handoff.js` maps
+  the creating tools (`create_app`, `create_flow`, `enable_flow`,
+  `save_automation`, `schedule_task`) to the app that owns the result, and the
+  button selects the thing rather than just opening the app. It is derived from
+  `tool_end` in the stream, so every live surface — Chat, the omnibar card, a
+  copilot panel — gets it from one place. A tool that is not in that map
+  deliberately gets NO handoff: an invented door is worse than no door.
 
 ## WhatsApp is one channel with two transports
 

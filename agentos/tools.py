@@ -1371,24 +1371,50 @@ class Toolbox(usersmod.Scoped):
             out.append(f"!   {entry} — not in use: {why}")
         return "\n".join(out)
 
-    async def set_engine(self, engine: str) -> str:
-        """Choose which agent answers turns on this machine: aria, claude-code,
-        hermes or openclaw. An engine that is not installed is refused."""
+    async def set_engine(self, engine: str, model: str = "") -> str:
+        """Choose the brain: an executor and one of ITS models, in one write.
+
+        `engine` is an executor id — a provider (ollama, openai, anthropic,
+        google, openrouter, custom) or another agent installed here (claude-code,
+        hermes, openclaw). "aria" means "go back to answering with a provider",
+        which is the only reading of it that leaves the machine able to answer.
+        Goes through `executors.set_brain`, the same one place the UI writes
+        through, so a model can never end up recorded against an executor that
+        cannot run it.
+        """
         if (deny := self._admin_only("change which agent answers")):
             return deny
         from . import config as cfgmod
         from . import executors as execmod
-        want = str(engine or "aria").strip()
-        if want not in execmod.ENGINES:
-            return f"[error] engine is one of {', '.join(execmod.ENGINES)}"
-        if want != "aria":
-            info = execmod.probe(want)
-            if not info.get("installed"):
-                return f"[denied] {info.get('why_not')}"
-        self.cfg["engine"] = want
+        from . import providers as provmod
+        want = str(engine or "").strip()
+        try:
+            models = await provmod.available_models(self.cfg)
+        except Exception:
+            # A provider that cannot be asked must not stop somebody switching to
+            # an agent executor — the two are independent, and this verb is often
+            # the way out of a broken provider setup.
+            models = []
+        state = execmod.brains(self.cfg, models)
+        if want in ("aria", "", "built-in", "builtin"):
+            # the provider it is already on, else the first one that could answer
+            pick = next((e for e in state["executors"]
+                         if e["kind"] == "provider" and e["id"] == state["current"]["executor"]), None) \
+                or next((e for e in state["executors"]
+                         if e["kind"] == "provider" and e["available"]), None)
+            if not pick:
+                return ("[error] no provider model to answer with — add a key or pull "
+                        "one first, then ask again")
+            want, model = pick["id"], model or pick["model"]
+        ok, msg = execmod.set_brain(self.cfg, want, model, models)
+        if not ok:
+            offered = ", ".join(e["id"] for e in state["executors"] if e["available"])
+            # A name that is not an executor is a bad argument; one that is real
+            # but not here is a refusal. Different fixes, so different prefixes.
+            tag = "[error]" if msg.startswith("no executor") else "[denied]"
+            return f"{tag} {msg}" + (f" — available here: {offered}" if offered else "")
         cfgmod.save_config(self.cfg)
-        return (f"This machine now answers with {want}."
-                if want != "aria" else "This machine now answers with its own agent.")
+        return f"This machine now answers with {msg}."
 
     async def configure_agentos(self, changes: str) -> str:
         """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
@@ -3459,11 +3485,18 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {}},
     }, {
         "name": "set_engine",
-        "description": ("Choose which agent answers turns on this machine: aria (built-in), "
-                        "claude-code, hermes or openclaw. Refused if it is not installed. "
-                        "Admin only."),
+        "description": ("Choose the brain for this machine: which executor answers and which "
+                        "of its models it runs on. An executor is a provider (ollama, openai, "
+                        "anthropic, google, openrouter, custom) or another agent installed "
+                        "here (claude-code, hermes, openclaw); 'aria' means answer with a "
+                        "provider again. Refused if it is not available here. Admin only."),
         "parameters": {"type": "object", "properties": {
-            "engine": {"type": "string", "description": "aria | claude-code | hermes | openclaw"}},
+            "engine": {"type": "string", "description": "executor id: ollama | openai | anthropic | "
+                                                        "google | openrouter | custom | claude-code | "
+                                                        "hermes | openclaw | aria"},
+            "model": {"type": "string", "description": "one of THAT executor's models "
+                                                       "(e.g. ollama/qwen3, or opus for claude-code); "
+                                                       "empty means its own default"}},
                          "required": ["engine"]},
     }, {
         "name": "configure_agentos",

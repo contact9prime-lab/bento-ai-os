@@ -81,6 +81,10 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2));animation:obusy 1s ease-in-out infinite}
 .mf-working .mft{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mf-working .mfc{margin-left:auto;flex:none;font-size:var(--fs-xs);opacity:.7;font-variant-numeric:tabular-nums}
+/* Waiting its turn is not working. The orb stops pulsing, because a spinner on
+   something that has not started is the animation telling the opposite story. */
+.mf-working.queued .mfo{animation:none;background:var(--dim);opacity:.5}
+.mf-working.queued .mft{opacity:.8;font-style:italic}
 
 /* ---- copilot panel inside windows ---- */
 .win .wmain{flex:1;min-height:0;display:flex}

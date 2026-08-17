@@ -90,6 +90,20 @@
 .body strong{color:#fff}
 
 .tool{border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);margin:0 0 12px;overflow:hidden;font-size:var(--fs-md)}
+/* ---- handoff: the chat made something, and this is the door to it ----
+   Accent-edged rather than another grey card: it is the one row in a feed of
+   process that is an INVITATION, and it has to read differently from the tool
+   cards it sits among. */
+.handoff{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border:1px solid var(--acc);border-left-width:3px;border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--acc) 8%,var(--bg2));
+  padding:8px 10px;margin:0 0 12px;font-size:var(--fs-md)}
+.handoff .ho-what{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.handoff .ho-note{color:var(--dim);font-size:var(--fs-sm);min-width:0}
+.handoff .ho-go{margin-left:auto;flex:none;border:1px solid var(--acc);
+  background:transparent;color:var(--acc);border-radius:var(--r-sm);
+  padding:4px 10px;cursor:pointer;font-size:var(--fs-sm)}
+.handoff .ho-go:hover{background:var(--acc);color:var(--bg)}
 .tool .head{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;user-select:none}
 .tool .head:hover{background:var(--bg3)}
 .tool .tname2{font-family:var(--mono);font-weight:600;color:var(--acc)}

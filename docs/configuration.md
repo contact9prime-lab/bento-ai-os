@@ -20,12 +20,36 @@ Override the config/data location with the `AGENTOS_HOME` environment variable.
 
 ---
 
+## Choosing the brain
+
+Who answers and what it runs on is **one** choice, made in Settings → AI
+providers (or the two selects in the chat header, or `set_engine` in chat if you
+are an admin). The first select is the executor — a local provider, a cloud
+provider, or another agent already installed on this machine — and the second
+lists only the models that executor can actually run:
+
+| Executor | What it is | Models offered |
+|---|---|---|
+| Ollama | local models on this machine | whatever is pulled |
+| Anthropic / OpenAI / Google / OpenRouter | cloud APIs, billed per token | pinned + whatever the provider lists |
+| llama.cpp / LM Studio / vLLM | the `custom` OpenAI-compatible base URL | whatever you pinned |
+| Claude Code | Anthropic's CLI answers the turn, on your subscription | `opus`, `sonnet`, `haiku`, or its own default |
+| Hermes / OpenClaw | another installed agent answers the turn | its own configuration |
+
+Picking a provider writes `engine: "aria"` and `default_model`; picking an agent
+writes `engine` and that executor's own `model`. Each remembers its own model, so
+switching away and back does not lose the choice. An executor that is not
+installed is still listed, with the reason and — where AgentOS knows a truthful
+command — the exact install command in Settings → Executors.
+
 ## `config.json` keys
 
 | Key | Meaning |
 |---|---|
 | `providers` | model providers — `ollama`, `anthropic`, `openai`, `openrouter`, `custom` (each with `enabled`, `base_url`, `api_key`, `models`) |
-| `default_model` | the active model id, e.g. `ollama/qwen3.5:9b` |
+| `default_model` | the model the built-in agent answers with, e.g. `ollama/qwen3.5:9b`. Its provider is the "executor" the picker shows |
+| `engine` | which executor answers: `aria` (the built-in loop, running `default_model`) or another agent installed here — `claude-code`, `hermes`, `openclaw` |
+| `executors` | per-executor settings, e.g. `{ claude_code: { enabled, workspace, model, tools, budget_usd, allow_source } }`. `model` is the model THAT executor is asked for |
 | `agent_name` | what the agent calls itself (default **Aria**) |
 | `autonomy` | `paranoid` \| `balanced` \| `full` |
 | `max_steps` | maximum tool steps per turn |

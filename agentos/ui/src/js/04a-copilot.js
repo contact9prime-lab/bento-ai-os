@@ -34,7 +34,13 @@ function agentTurn(o){
     TURN_QUEUE.push(o);
     if(o.sink){
       if(o.sink.start)o.sink.start();
-      if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
+      // Queued, and it has to SAY queued. The row is marked so the shared ticker
+      // leaves it alone: the activity record belongs to the turn that is
+      // running, so painting it here made a waiting card claim the other turn's
+      // step — two cards showing "reading a file · 30s" while one of them had
+      // not started at all.
+      if(o.sink.queued)o.sink.queued(`waiting for the turn in front of it to finish`);
+      else if(o.sink.status)o.sink.status({message:`queued — ${agentName()} is finishing something`});
     }
     // never a dead end: the caller can offer "stop what's running and send this now"
     if(o.onQueued)o.onQueued(()=>{
@@ -78,12 +84,17 @@ function mfPaint(){
   document.querySelectorAll('.mf-working').forEach(el=>{
     const cid=el.dataset.cid;
     const t=el.querySelector('.mft'), c=el.querySelector('.mfc');
-    if(t&&typeof actText==='function'&&ACT[cid])t.textContent=actText(cid);
+    // A queued row is not this conversation's live turn — the record belongs to
+    // the one running ahead of it, so borrowing its sentence is a lie with a
+    // clock on it. Its own wait is still timed, from its own t0.
+    const q=el.dataset.queued==='1';
+    if(t&&!q&&typeof actText==='function'&&ACT[cid])t.textContent=actText(cid);
     // Before turn_start there is no record yet, so the row keeps its own clock:
     // the seconds between pressing send and the server answering are the ones
     // that felt like nothing had happened.
-    if(c)c.textContent=(typeof actClock==='function'&&ACT[cid])?actClock(cid)
+    if(c)c.textContent=(!q&&typeof actClock==='function'&&ACT[cid])?actClock(cid)
       :(el.dataset.t0?actDur(Date.now()-(+el.dataset.t0)):'');
+    if(q)return;
     // While a tool card is open right above it, the card IS the live line — two
     // copies of "running npm test · 12s" in a 300px panel is noise, not progress.
     el.classList.toggle('quiet',!!(ACT[cid]&&ACT[cid].phase==='tool'));
@@ -105,7 +116,17 @@ function miniFeed(box,opts){
     // then again on the server's turn_start. The second call must not wipe the
     // row and restart its clock — it only learns the conversation id.
     start(ev){
-      if(working&&working.isConnected){bind(ev);mfPaint();return}
+      if(working&&working.isConnected){
+        bind(ev);
+        // `ev` means the send really happened — a row that had been marked
+        // queued stops saying so here, or it would still read "queued" while
+        // the answer streamed underneath it.
+        if(ev&&working.dataset.queued==='1'){
+          working.dataset.queued='';working.classList.remove('queued');
+          working.dataset.t0=Date.now();
+          working.querySelector('.mft').textContent='sent — waking the agent';
+        }
+        mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
       working=document.createElement('div');working.className='mf-working';
@@ -115,7 +136,15 @@ function miniFeed(box,opts){
       actSync();          // the row has its own clock now — start the ticker for it
     },
     status(ev){bind(ev);
-      if(working&&ev.message)working.querySelector('.mft').textContent=ev.message},
+      if(working&&ev.message){working.dataset.queued='';working.querySelector('.mft').textContent=ev.message}},
+    /* A turn that has not started yet. Its own line, its own clock, and out of
+       the shared ticker's reach until the server actually starts it. */
+    queued(msg){
+      if(!working)return;
+      working.dataset.queued='1';
+      working.classList.add('queued');
+      working.querySelector('.mft').textContent='queued — '+msg;
+    },
     thinking(t){
       // answer surfaces (cards) stay clean: the reasoning trace only says "thinking…"
       if(opts.showThinking===false){
@@ -150,6 +179,14 @@ function miniFeed(box,opts){
       if(opts.onTool)opts.onTool(ev);
     },
     approval(apBox){box.insertBefore(apBox,working);scroll();return true},
+    /* Built something? The door to it, right here — a card on the desktop is
+       often the only place the turn is visible at all. */
+    handoff(h){
+      if(typeof handoffChip!=='function')return;
+      const chip=handoffChip(h);
+      if(working&&working.isConnected)box.insertBefore(chip,working);else box.appendChild(chip);
+      scroll();
+    },
     error(ev){
       clearWorking();
       const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
