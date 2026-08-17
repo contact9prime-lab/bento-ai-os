@@ -442,6 +442,17 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
   read the store first and set the user second would act as the machine, not the person.
 
+- **A WebSocket has no HTTP middleware, so it checks its ORIGIN by hand too.** The same
+  reason `csrf_origin_guard` cannot see it. A browser attaches the site's cookies to a
+  cross-origin WS handshake and the same-origin policy does not stop a foreign page opening
+  one — so without a check, a page on the open web could open `ws://localhost/ws/terminal`
+  and, because `_ws_authed` trusts loopback on a default single-user box, be handed a shell.
+  That is Cross-Site WebSocket Hijacking, and on this OS it is RCE. Every socket now passes
+  ONE gate, `_ws_reject`, which refuses a cross-origin (or `null`) Origin *before* auth;
+  an absent Origin is a non-browser client with no cookie jar and is allowed, mirroring
+  `_same_origin`. Having one gate is the point — a new socket must not be able to forget
+  the check, and one of these sockets is a shell. `tests/test_ws_origin.py` pins it.
+
 - **Accounts are a data boundary through the tools, enforced, not an OS boundary.** On a
   machine with accounts, the file tools refuse another account's home (via `_tenant_deny`,
   independent of the sandbox toggle) and `run_command`/the Terminal run in a per-account

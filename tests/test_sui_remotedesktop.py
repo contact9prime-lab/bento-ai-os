@@ -150,7 +150,14 @@ def test_relay_and_install_are_gated():
     # security model, and the check is "the gate is in this handler", not "in the
     # first N characters of it"
     relay = server.split('@app.websocket("/ws/vnc")')[1][:2400]
-    assert "_ws_authed(ws)" in relay, "the relay is a full remote desktop; it must be gated"
+    # Every socket now passes ONE gate, `_ws_reject`, which does the cross-origin
+    # refusal (CSWSH) BEFORE the auth check — see test_ws_origin.py. That gate
+    # calls `_ws_authed` internally, so the relay is still authenticated and now
+    # also origin-guarded; asserting the gate call is the current contract.
+    assert "_ws_reject(ws)" in relay, "the relay is a full remote desktop; it must be gated"
+    gate = server.split("async def _ws_reject")[1][:1200]
+    assert "_ws_origin_ok(ws)" in gate and "_ws_authed(ws)" in gate, \
+        "the WS gate must refuse cross-origin AND unauthenticated handshakes"
     store = server.split('async def api_native_store_act')[1][:900]
     assert "is_loopback" in store, "installing software must be loopback-only"
     sui = server.split("async def api_shell_sui")[1][:900]
