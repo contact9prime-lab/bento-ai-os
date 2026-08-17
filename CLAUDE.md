@@ -511,6 +511,38 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
 
+## The footprint is a feature: this may be a Raspberry Pi
+
+Measured, on a warm install with no browser attached: ~70 MB idle RSS, ~0.6% of
+one core, ~0.13s of CPU and ~1.6 kB of database per turn, settling at ~120 MB
+after 1,300 turns and staying there. There is no unbounded leak; what there WAS
+is three standing costs paid by machines that were not using the feature.
+
+- **Nothing large is fetched, parsed or held for a feature nobody opened.** The
+  MCP catalogue is 21,811 servers: 11.9 MB of JSON, +35 MB of RSS parsed. It used
+  to be synced at boot and held forever; it is now synced on first use and
+  released after 15 idle minutes (`mcp_store.release_if_idle`). `ensure_index(
+  only_refresh=True)` decides staleness from the FILE's mtime, because parsing it
+  to find out is the cost being avoided.
+- **A file that accumulates must not be rewritten per item.** The index was saved
+  after every page, with the whole list — 219 pages of a file growing to 11.9 MB
+  is ~1.3 GB written per sync, daily, to storage that wears out. Publish in
+  memory every page; write every few seconds.
+- **A probe is a process.** `executors.probe()` caches for five minutes and
+  `forget_probes()` is called on the way out of any install. Uncached it cost
+  1.2s per `/api/executors` call, and the chat header, Settings and the wizard
+  all ask.
+- **Everything that grows needs a ceiling.** `memory.Store.prune()` drops logs
+  and flow events past 30 days and usage past a year, then checkpoints the WAL so
+  the disk comes back. It must never touch `audit` (hash-chained — deleting rows
+  is what `audit_verify()` exists to detect) or the user's own work. The same
+  rule applies in the page: `TOOL_ARGS` is capped, because a tool call whose turn
+  died never gets its `tool_end`.
+
+Measure before and after, and put the numbers in the commit message. Every claim
+in this section came from `/proc/<pid>/status` on a running server, not from
+reading the code.
+
 ## Performance rules that are load-bearing
 
 - **Windows sleep.** Periodic work belongs in `winTick(w, fn, ms)`, not

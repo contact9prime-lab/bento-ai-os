@@ -235,7 +235,7 @@ function handle(ev){
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
-      if(ev.call_id)TOOL_ARGS[ev.call_id]=ev.args||{};
+      if(ev.call_id)toolArgsRemember(ev.call_id,ev.args);
       const detail=ev.detail||actDetail(ev.name,ev.args);
       // A card headed `Read {"file_path":"/home/p/proj/agent.py"}` makes the
       // reader parse JSON to learn it is reading agent.py. Show the words; the

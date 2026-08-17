@@ -1086,6 +1086,27 @@ def doctor(fix: bool = False, session: bool = False):
         integ = db.execute("PRAGMA integrity_check").fetchone()[0]
         (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
         (ok if integ == "ok" else bad)(f"db integrity: {integ}")
+        # How much disk it is using, and what is using it. On an SD card this is
+        # the number that matters and nothing reported it — a database that grows
+        # every day is invisible until the machine cannot write at all.
+        size = 0
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                size += os.path.getsize(str(cfgmod.DB_PATH) + suffix)
+            except OSError:
+                pass
+        mb = size / 1_048_576
+        rows = db.execute("SELECT count(*) FROM logs").fetchone()[0]
+        ret = (cfg.get("retention") or {})
+        line = f"database {mb:.1f} MB, {rows} log rows"
+        if mb > 2000:
+            bad(line + " — that is a lot for an SD card")
+            todo("bento config retention.logs_days 7   # and restart, or prune by hand")
+        elif mb > 500:
+            warn(line)
+        else:
+            ok(line + (" · retention off" if not ret.get("enabled", True) else
+                       f" · keeping {ret.get('logs_days', 30)}d of logs"))
     except Exception as e:
         bad(f"db check failed: {e}")
 

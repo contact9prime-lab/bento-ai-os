@@ -272,6 +272,39 @@ always behaves as `fail`, so a unit or a CI step never blocks on a prompt.
 A second instance shares `~/.agentos` — one database, two schedulers, two Telegram
 pollers. Use `AGENTOS_HOME=~/.agentos-test bento serve --port 8322` for a real one.
 
+## Small machines (Raspberry Pi and friends)
+
+A standing agent earns its keep on a Pi, so the footprint is measured rather than
+assumed. On a warm install with no browser attached:
+
+| | |
+|---|---|
+| idle RSS | ~70 MB, flat |
+| idle CPU | ~0.6% of one core |
+| a turn | ~0.13 s of CPU, ~1.6 kB of database |
+| after 1,300 turns | RSS settles at ~120 MB and stays there |
+
+Three standing costs are deliberately **not** paid unless you use the thing:
+
+- **The MCP catalogue** is 21,811 servers — 11.9 MB of JSON, +35 MB of RSS once
+  parsed. It is synced when you first open the MCP Store, not at boot, and it is
+  released from memory again after 15 idle minutes (the file stays; the next
+  search reads it back). While it syncs, the file is written every few seconds
+  rather than after every page — page-by-page writes cost ~1.3 GB of SD-card
+  writes per sync, daily.
+- **Executor probes** (`claude --version` and friends) are cached for five
+  minutes and dropped the moment something is installed. Uncached, they cost
+  1.2 s per `/api/executors` call, and every Settings repaint asked.
+- **Telemetry is pruned.** Logs and flow-run events older than 30 days and token
+  accounting older than a year are deleted on the maintenance pass, and the WAL
+  is checkpointed so the disk is actually given back. The audit ledger and your
+  own work — messages, memories, assets, apps — are never touched. Change or
+  switch it off under `retention` in `config.json`; `bento doctor` prints the
+  database size.
+
+If a Pi feels slow, `bento doctor` is the first stop: it reports the database
+size, what answers turns here, and which optional components are missing.
+
 ## Updating
 
 ```bash

@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -822,8 +823,40 @@ def _find_bin(names: tuple) -> str:
     return ""
 
 
-def probe(executor_id: str) -> dict:
-    """One executor: is it here, which version, and if not what would fix it."""
+#: How long a probe's answer is trusted. An executor appearing or disappearing is
+#: a once-in-a-while event; asking again costs a PROCESS.
+PROBE_TTL = 300.0
+_PROBES: dict[str, tuple[float, dict]] = {}
+
+
+def forget_probes() -> None:
+    """Drop the cache — after an install, or when somebody presses Refresh."""
+    _PROBES.clear()
+    claude_exe(refresh=True)
+
+
+def probe(executor_id: str, refresh: bool = False) -> dict:
+    """One executor: is it here, which version, and if not what would fix it.
+
+    CACHED, because this spawns `<exe> --version` and every surface asks: the
+    chat header, Settings, the wizard, `/api/brains`, `/api/executors`, the
+    doctor. Measured on this machine before the cache: 1.2s of wall time per
+    `/api/executors` call and 0.33s per `/api/brains`, most of it waiting for a
+    Node process to start — and the panel calls both. On a Raspberry Pi that is
+    seconds of CPU every time somebody opens Settings, for an answer that
+    changes when you install something, which is exactly when the cache is
+    dropped (`forget_probes`).
+    """
+    if not refresh:
+        hit = _PROBES.get(executor_id)
+        if hit and (time.monotonic() - hit[0]) < PROBE_TTL:
+            return hit[1]
+    out = _probe_now(executor_id)
+    _PROBES[executor_id] = (time.monotonic(), out)
+    return out
+
+
+def _probe_now(executor_id: str) -> dict:
     spec = EXECUTORS_BY_ID.get(executor_id)
     if not spec:
         return {"id": executor_id, "installed": False, "title": executor_id,
@@ -1116,6 +1149,7 @@ async def install(note=None) -> tuple[bool, str]:
     code = await proc.wait()
     if code != 0:
         return False, ("the installer failed:\n" + "\n".join(tail[-8:]))[:600]
+    forget_probes()          # something just appeared; the cached answer is stale
     if not claude_exe():
         return False, ("the installer finished but `claude` is not on PATH yet — "
                        "open a new terminal, or add ~/.local/bin to your PATH")

@@ -358,7 +358,10 @@ async def startup():
                                                     lambda: state.get("notifd"),
                                                     scheduler, broadcast))
     from . import mcp_store as mcp_storemod
-    mcp_storemod.ensure_index(store)  # warm the MCP catalog index in the background
+    # Refresh a catalogue this machine already has; never fetch one it has not
+    # asked for. Opening the MCP Store (or any search) syncs it on the spot —
+    # see `ensure_index`, which every search path already calls.
+    mcp_storemod.ensure_index(store, only_refresh=True)
     store.log("system", "AgentOS started")
 
     # pick a default model if none is set — but don't let this first write of
@@ -2178,7 +2181,7 @@ async def api_models():
 
 
 @app.get("/api/brains")
-async def api_brains():
+async def api_brains(refresh: bool = False):
     """Who can answer here, and what each of them can run.
 
     One list: local providers, cloud providers and other agents, each owning the
@@ -2188,10 +2191,14 @@ async def api_brains():
     """
     from . import executors as execmod
     cfg = state["cfg"]
+    if refresh:                      # the panel's ↻ button: ask the machine again
+        await asyncio.to_thread(execmod.forget_probes)
     models = await providers.available_models(cfg)
     # `brains()` probes the roster, and a probe runs `--version` on real
     # binaries. Awaiting that on the event loop is how the update check froze
-    # the whole server, so it goes to a thread.
+    # the whole server, so it goes to a thread. The probes are cached for five
+    # minutes on top of that — every surface asks this question, and on a small
+    # machine spawning three processes per Settings repaint is felt.
     return await asyncio.to_thread(execmod.brains, cfg, models)
 
 
@@ -2314,13 +2321,15 @@ async def api_channel_save(channel_id: str, body: dict):
 
 
 @app.get("/api/executors")
-async def api_executors():
+async def api_executors(refresh: bool = False):
     """Which other agents on this machine AgentOS can hand a task to.
 
     Reports the reason and the fix when there is none, rather than leaving a dead
     control — the same contract /api/platform keeps for capabilities.
     """
     from . import executors as execmod
+    if refresh:
+        await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
     workspace = conf.get("workspace") or str(cfgmod.AGENTOS_HOME / "workspace")

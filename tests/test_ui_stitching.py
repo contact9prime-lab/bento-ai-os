@@ -108,8 +108,10 @@ def test_a_handoff_opens_the_thing_not_just_the_app():
 def test_the_stream_feeds_the_handoff_from_the_args_it_remembered():
     """`tool_end` carries no args (agent.py), so `tool_start` has to keep them."""
     ws = read("09-websocket.js")
-    assert "TOOL_ARGS[ev.call_id]=ev.args||{}" in ws
+    assert "toolArgsRemember(ev.call_id,ev.args)" in ws
     assert "handoffEmit(ev,_cid,_sk,_cur)" in ws
+    # and the map is bounded: a tool call whose turn died never gets its tool_end
+    assert "keys.length>200" in read("10a-handoff.js")
 
 
 def test_every_live_surface_can_show_a_handoff():

@@ -359,7 +359,9 @@ async function paintModelPicker(refresh){
   // rather than done on every repaint — a Settings tab that stalled behind three
   // network calls would be worse than a list that is a minute old.
   try{
-    const d=await (await fetch('/api/brains'+(refresh?'?t='+Date.now():''))).json();
+    // refresh=1 rather than a cache-buster: the probes are cached SERVER-side
+    // (each one is a process), so only an explicit ask should pay for them.
+    const d=await (await fetch('/api/brains'+(refresh?'?refresh=1':''))).json();
     if(d&&d.executors)BRAINS=d;
   }catch(e){}
   if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}

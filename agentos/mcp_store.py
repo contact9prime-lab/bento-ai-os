@@ -29,6 +29,24 @@ INDEX_TTL = 24 * 3600          # refresh the catalog daily
 PAGE_LIMIT = 100
 MAX_PAGES = 300                # safety backstop, far above the registry's real size
 
+# The catalogue is BIG and this machine may be a Raspberry Pi. Measured on the
+# public registry: 21,811 servers, 11.9 MB of JSON, +35 MB of RSS once parsed.
+# Three limits follow from that, and each one was costing something real:
+#
+#   · The index used to be written to disk after EVERY page, with the whole
+#     accumulated list — 219 pages of a list growing to 12 MB is ~1.3 GB written
+#     per sync, daily, to an SD card. Now the disk write is throttled; the
+#     in-memory copy still grows page by page, so "results appear as pages
+#     arrive" is unchanged.
+#   · Holding 35 MB of parsed catalogue forever, for an app most installs never
+#     open, is a third of the server's memory. It is released when nobody has
+#     searched for a while and re-read from disk on demand (0.09s here).
+#   · Syncing at boot made every install pay the download whether or not it ever
+#     opens the MCP Store. It is synced on FIRST USE, and refreshed on schedule
+#     only once it has been used at least once.
+SAVE_EVERY = 5.0               # seconds between disk writes while paging
+IDLE_RELEASE = 900.0           # drop the in-memory catalogue after 15 idle minutes
+
 _slug_rx = re.compile(r"[^a-z0-9-]+")
 
 
@@ -114,10 +132,12 @@ async def search(query: str, limit: int = 20) -> list[dict]:
 
 _index: dict | None = None      # {"updated_at": ts, "complete": bool, "servers": [...]}
 _syncing = False
+_touched = 0.0                  # when the in-memory catalogue was last read
 
 
 def _load_index() -> dict:
-    global _index
+    global _index, _touched
+    _touched = time.monotonic()
     if _index is None:
         try:
             _index = json.loads(INDEX_PATH.read_text())
@@ -127,9 +147,33 @@ def _load_index() -> dict:
     return _index
 
 
-def _save_index(idx: dict):
+def release_if_idle(now: float | None = None) -> int:
+    """Let the catalogue go if nobody has searched for a while.
+
+    Returns how many servers were dropped, so the caller can say it happened.
+    The file stays; `_load_index()` reads it back the next time somebody looks.
+    A machine that opened the MCP Store once should not carry 35 MB for it until
+    the next reboot.
+    """
     global _index
+    if _index is None or _syncing:
+        return 0
+    if (now or time.monotonic()) - _touched < IDLE_RELEASE:
+        return 0
+    n = len(_index.get("servers") or ())
+    _index = None
+    return n
+
+
+def _publish(idx: dict) -> None:
+    """The in-memory half: searches see the growing list immediately."""
+    global _index, _touched
     _index = idx
+    _touched = time.monotonic()
+
+
+def _save_index(idx: dict):
+    _publish(idx)
     try:
         INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
         INDEX_PATH.write_text(json.dumps(idx))
@@ -143,13 +187,33 @@ def index_status() -> dict:
             "syncing": _syncing, "updated_at": idx.get("updated_at", 0)}
 
 
-def ensure_index(store=None) -> bool:
+def ensure_index(store=None, only_refresh: bool = False) -> bool:
     """Kick off a background catalog sync if the index is missing, incomplete, or
-    stale. Returns True when a sync was started. Safe to call on every search."""
-    idx = _load_index()
-    stale = time.time() - (idx.get("updated_at") or 0) > INDEX_TTL
-    if _syncing or (idx.get("complete") and not stale):
+    stale. Returns True when a sync was started. Safe to call on every search.
+
+    `only_refresh=True` means "keep what is already here up to date, but do not
+    fetch a catalogue this machine has never asked for". That is what boot uses:
+    downloading 12 MB and holding 35 MB of it for an app most installs never open
+    is not a warm-up, it is a tax — and on a Pi it is a visible one.
+    """
+    if _syncing:
         return False
+    if only_refresh:
+        # Decided from the FILE, deliberately: parsing it to find out whether it
+        # needs refreshing would allocate the whole 35 MB at boot, which is the
+        # cost this path exists to avoid. mtime is the honest proxy for
+        # `updated_at` — every write of the file sets both.
+        try:
+            fresh = (time.time() - INDEX_PATH.stat().st_mtime) <= INDEX_TTL
+        except OSError:
+            return False           # nothing here, and nobody asked for it
+        if fresh:
+            return False
+    else:
+        idx = _load_index()
+        stale = time.time() - (idx.get("updated_at") or 0) > INDEX_TTL
+        if idx.get("complete") and not stale:
+            return False
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -166,6 +230,7 @@ async def _sync_index(store=None):
         return
     _syncing = True
     servers, seen, cursor, pages = [], set(), None, 0
+    last_write = 0.0
     try:
         if store:
             store.log("system", "mcp index: sync started (public registry is slow — "
@@ -188,8 +253,17 @@ async def _sync_index(store=None):
                         seen.add(c["registry_name"])
                         servers.append(c)
                 pages += 1
-                _save_index({"updated_at": time.time(), "complete": False,
-                             "servers": servers})
+                # Publish every page, WRITE at most every SAVE_EVERY seconds. The
+                # write is the whole accumulated list, so writing per page made a
+                # sync cost roughly (pages/2 x final size) of disk — over a
+                # gigabyte on the real registry, on hardware whose storage wears
+                # out. Nothing is lost: the final save below is unconditional.
+                _publish({"updated_at": time.time(), "complete": False,
+                          "servers": servers})
+                if time.monotonic() - last_write >= SAVE_EVERY:
+                    last_write = time.monotonic()
+                    _save_index({"updated_at": time.time(), "complete": False,
+                                 "servers": servers})
                 meta = data.get("metadata") or {}
                 cursor = meta.get("nextCursor") or meta.get("next_cursor")
                 if not cursor:

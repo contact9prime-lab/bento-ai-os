@@ -451,6 +451,34 @@ async def run_maintenance(cfg: dict, store, broadcast=None, force: bool = False)
     except Exception as e:
         store.log("error", f"kg dedup failed: {type(e).__name__}: {e}")
     try:
+        # The MCP catalogue is 35 MB of parsed JSON for an app that is opened
+        # occasionally. Let it go when nobody has searched for a while; the file
+        # stays and the next search reads it back.
+        from . import mcp_store as mcp_storemod
+        n = mcp_storemod.release_if_idle()
+        if n:
+            store.log("system", f"released the MCP catalogue from memory ({n} servers, "
+                                f"unused for {int(mcp_storemod.IDLE_RELEASE / 60)} min)")
+    except Exception:
+        pass
+    try:
+        # Retention. Nothing in this database was ever deleted by age, which on a
+        # Raspberry Pi with an SD card is the failure mode rather than an
+        # untidiness: a machine doing its job every day fills its own disk, and
+        # the first symptom is being unable to write the log that would say why.
+        # Telemetry only — the ledger and the user's own work are never touched.
+        r = (cfg.get("retention") or {})
+        if r.get("enabled", True):
+            gone = store.prune(int(r.get("logs_days", 30)),
+                               int(r.get("events_days", 30)),
+                               int(r.get("usage_days", 365)))
+            if gone:
+                store.log("system", "retention: dropped "
+                          + ", ".join(f"{n} {t}" for t, n in gone.items())
+                          + f" · database now {store.db_bytes() // 1024} kB")
+    except Exception as e:
+        store.log("error", f"retention sweep failed: {type(e).__name__}: {e}")
+    try:
         # keep the file search index warm while the machine is idle
         from . import search as searchmod
         await searchmod.maintenance_tick(cfg, store)
