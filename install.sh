@@ -292,9 +292,76 @@ fi
 
 repo_ok "$DIR" || die "no AgentOS source in $DIR after cloning — remove it and run this again"
 cd "$DIR"
+
+# The build toolchain a source compile needs, and the ladder to install it.
+#
+# On x86-64 and 64-bit ARM (aarch64) every dependency here ships a wheel, so
+# `uv sync` never touches a compiler. But 32-bit Raspberry Pi OS (armv7/armv6)
+# has NO wheel for cffi — pulled in by cryptography, pulled in by the MCP SDK —
+# so pip builds it from source and stops with "you likely need to install
+# ffi.h". This is not the drifting runtime-component apt block that used to live
+# below: it is the small, stable set of headers and compilers that building any
+# native Python package requires, and naming it is the difference between a
+# five-word fix and an afternoon.
+#
+# The ladder is the one this project keeps everywhere: passwordless sudo →
+# a sudo prompt → hand back the exact command. Never a silent system change.
+APT_BUILD_DEPS="build-essential python3-dev libffi-dev libssl-dev pkg-config"
+UVSYNC_LOG="${TMPDIR:-/tmp}/agentos-uvsync.$$.log"
+
+# Install the build headers/compilers, by the ladder this project keeps
+# everywhere: passwordless sudo → a sudo prompt → the caller hands back the
+# command. Returns 0 only if they are now installed. POSIX sh, no `local`.
+ensure_build_deps() {
+  command -v apt-get >/dev/null 2>&1 || return 1        # not Debian/Pi OS
+  say "installing the build tools those packages need: $APT_BUILD_DEPS"
+  if [ "$(id -u)" = 0 ]; then
+    apt-get update >/dev/null 2>&1
+    apt-get install -y $APT_BUILD_DEPS && return 0
+  elif command -v sudo >/dev/null 2>&1; then
+    if sudo -n true 2>/dev/null; then
+      sudo apt-get update >/dev/null 2>&1
+      sudo apt-get install -y $APT_BUILD_DEPS && return 0
+    elif ask "install the build tools with sudo (you may be asked for your password)?"; then
+      sudo apt-get update >/dev/null 2>&1
+      sudo apt-get install -y $APT_BUILD_DEPS && return 0
+    fi
+  fi
+  return 1
+}
+
 say "installing dependencies (this fetches Python too, if needed)"
-uv sync || die "dependency install failed — the output above says why"
-ok "dependencies ready"
+# Captured to a log rather than teed live: process substitution and pipefail are
+# bash-only and this runs under /bin/sh, and the exit status has to be the one
+# uv actually returned, not tee's. On a machine with wheels this is seconds; on a
+# 32-bit Pi that must compile it is slower and silent, so it is announced.
+echo "   (on a 32-bit Raspberry Pi some packages compile from source — this can take a few minutes)"
+if uv sync >"$UVSYNC_LOG" 2>&1; then
+  rm -f "$UVSYNC_LOG"
+  ok "dependencies ready"
+else
+  cat "$UVSYNC_LOG"                                      # show what actually failed
+  # "you likely need to install ffi.h" and its siblings mean exactly one thing —
+  # a source compile with no C toolchain — so name the fix and, with permission,
+  # apply it and try once more rather than making the machine be told twice.
+  if grep -qiE "ffi\.h|Python\.h|openssl/|libffi|command .(gcc|cc). failed|need to install.*development|Microsoft Visual C" "$UVSYNC_LOG" 2>/dev/null; then
+    warn "a dependency had no prebuilt wheel for this machine and was COMPILED from source, but the C build tools are missing."
+    if ensure_build_deps && uv sync >"$UVSYNC_LOG" 2>&1; then
+      rm -f "$UVSYNC_LOG"
+      ok "dependencies ready (after installing the build tools)"
+    else
+      rm -f "$UVSYNC_LOG"
+      die "a dependency must be compiled and the build tools are missing. Install them, then re-run this installer:
+     sudo apt install -y $APT_BUILD_DEPS
+   On a Raspberry Pi, 64-bit Pi OS avoids this entirely — every dependency ships a prebuilt wheel
+   there, so nothing is compiled. If cryptography still fails to build on 32-bit, it also needs
+   Rust:  sudo apt install -y cargo"
+    fi
+  else
+    rm -f "$UVSYNC_LOG"
+    die "dependency install failed — the output above says why"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # 2b. what THIS machine can do — asked of AgentOS, not decided here.

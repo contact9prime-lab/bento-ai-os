@@ -72,6 +72,21 @@ git clone <your fork> agentic-os && cd agentic-os
 uv sync && uv run agentos
 ```
 
+> **Use 64-bit Pi OS.** On **arm64** every dependency ships a prebuilt wheel, so nothing is
+> compiled and the install is quick. On **32-bit** Pi OS (armv7/armv6 — an older image, or a Pi
+> Zero / 1 / 2) there is no wheel for `cffi` (pulled in by `cryptography`, pulled in by the MCP
+> SDK), so pip builds it from source and stops with *"you likely need to install ffi.h."* The fix
+> is the C build toolchain:
+>
+> ```bash
+> sudo apt install -y build-essential python3-dev libffi-dev libssl-dev pkg-config
+> # if cryptography itself then fails to build on 32-bit, it also needs Rust:
+> sudo apt install -y cargo
+> ```
+>
+> `install.sh` detects this failure, names these packages, and offers to install them for you —
+> but reflashing to 64-bit Pi OS avoids the compile (and the wait) entirely.
+
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a
 real shell, so `--host 0.0.0.0` hands your Pi to anyone on the LAN. Forward the loopback port
