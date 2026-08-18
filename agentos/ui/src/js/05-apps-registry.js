@@ -53,7 +53,7 @@ const APPS={
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
   quarantine:{id:'quarantine',title:'Quarantine',icon:'⛔',w:720,h:600,desc:'What the OS stopped, and why — with the evidence',render:renderQuarantine},
-  store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
+  store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, extensions & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},

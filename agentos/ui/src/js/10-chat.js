@@ -182,7 +182,12 @@ function showWorking(){
     feed.appendChild(w);
   }
   WORK_T0=WORK_T0||Date.now();
-  tickWorking();          // paint at once: a row that says nothing for a second is a flicker
+  // Start the shared per-second ticker NOW, on send — not when the server's first
+  // event arrives. A Claude Code turn cold-starts silently for a minute or more,
+  // and without this the row painted once and froze at "0s" until that first event;
+  // actSync counts #working as live, so the clock counts up from send. (Paints at
+  // once too: a row that says nothing for a second is a flicker.)
+  if(typeof actSync==='function')actSync(); else tickWorking();
 }
 /* The waiting row. Driven by the shared activity record (08b-activity.js) so
    the sentence here, in the copilot panels and on the presence bubble is the
@@ -212,6 +217,8 @@ function tickWorking(){
 function removeWorking(){
   $('#working')?.remove();
   WORK_T0=0;WORK_MSG='';
+  // …and let the ticker stop itself now that this row is gone.
+  if(typeof actSync==='function')actSync();
 }
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
