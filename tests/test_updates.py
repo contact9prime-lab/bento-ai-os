@@ -102,6 +102,10 @@ def test_a_newer_published_version_is_reported(monkeypatch):
 
 
 def test_being_current_is_not_an_update(monkeypatch):
+    # check() now consults git as well as the version file; these pin the
+    # VERSION-file behaviour, so the git half is neutralised (pip-style
+    # install, no checkout — git_state() reports nothing).
+    monkeypatch.setattr(up, "install_dir", lambda: None)
     monkeypatch.setattr(up, "current", lambda: "0.9.0")
     monkeypatch.setattr(up.httpx, "AsyncClient",
                         _http({f"{up.RAW}/master/agentos/VERSION": "0.9.0"}))
@@ -109,6 +113,10 @@ def test_being_current_is_not_an_update(monkeypatch):
 
 
 def test_no_network_is_reported_not_raised(monkeypatch):
+    # check() now consults git as well as the version file; these pin the
+    # VERSION-file behaviour, so the git half is neutralised (pip-style
+    # install, no checkout — git_state() reports nothing).
+    monkeypatch.setattr(up, "install_dir", lambda: None)
     class Boom:
         def __init__(self, *a, **k): pass
         async def __aenter__(self): return self
@@ -120,6 +128,10 @@ def test_no_network_is_reported_not_raised(monkeypatch):
 
 
 def test_a_junk_response_is_not_treated_as_a_version(monkeypatch):
+    # check() now consults git as well as the version file; these pin the
+    # VERSION-file behaviour, so the git half is neutralised (pip-style
+    # install, no checkout — git_state() reports nothing).
+    monkeypatch.setattr(up, "install_dir", lambda: None)
     """A captive portal returns a login page with HTTP 200."""
     monkeypatch.setattr(up.httpx, "AsyncClient",
                         _http({f"{up.RAW}/master/agentos/VERSION": "<!DOCTYPE html>"}))
@@ -211,7 +223,7 @@ def test_a_version_that_fails_its_own_tests_is_rolled_back(tmp_path, monkeypatch
 
     real = up._run
 
-    def fake(args, cwd=None, timeout=60):
+    def fake(args, cwd=None, timeout=60, env=None):
         if args[:2] == ["git", "fetch"]:
             return True, ""
         if args[:2] == ["git", "merge"]:
@@ -221,7 +233,7 @@ def test_a_version_that_fails_its_own_tests_is_rolled_back(tmp_path, monkeypatch
             return True, ""
         if "pytest" in args:
             return False, "3 failed"
-        return real(args, cwd, timeout)
+        return real(args, cwd, timeout, env)
     monkeypatch.setattr(up, "_run", fake)
 
     res = asyncio.run(up.apply({}, run_tests=True))

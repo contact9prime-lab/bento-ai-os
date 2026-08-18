@@ -32,6 +32,7 @@ Four rules this module keeps:
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import subprocess
 import time
@@ -53,13 +54,32 @@ CHECK_TIMEOUT = 10.0
 APPLY_TIMEOUT = 900
 
 
-def _run(args: list[str], cwd: Path | None = None, timeout: int = 60) -> tuple[bool, str]:
+def _run(args: list[str], cwd: Path | None = None, timeout: int = 60,
+         env: dict | None = None) -> tuple[bool, str]:
     try:
+        full_env = {**os.environ, **env} if env else None
         p = subprocess.run(args, cwd=str(cwd) if cwd else None, capture_output=True,
-                           text=True, timeout=timeout)
+                           text=True, timeout=timeout, env=full_env)
         return p.returncode == 0, (p.stdout + p.stderr).strip()
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
+
+
+def _fresh_pyc_env() -> dict:
+    """A private bytecode-cache directory for one pytest run.
+
+    The regression gate runs the suite on the new code, then `git reset --hard`
+    to the old code and runs it again. Those two checkouts can land in the SAME
+    second, and git stamps the restored file with the checkout time — so Python,
+    which decides a `.pyc` is fresh by comparing that mtime, happily reuses the
+    bytecode it just compiled from the NEW source while running the OLD source.
+    The old code then "fails" a test it actually passes, and the gate mistakes a
+    real regression for a pre-existing failure. A fresh `PYTHONPYCACHEPREFIX` per
+    run points each invocation at an empty cache, so every import compiles from
+    the source actually on disk. Found the hard way, in exactly this file's tests.
+    """
+    import tempfile
+    return {"PYTHONPYCACHEPREFIX": tempfile.mkdtemp(prefix="agentos-pyc-")}
 
 
 def current() -> str:
@@ -459,13 +479,42 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
             return rollback(f"dependencies could not be installed: {out[-300:]}")
 
     if run_tests:
-        # The same guard `restart_agentos` uses, for the same reason: code that
-        # cannot pass its own tests must not become the code answering turns.
+        # Code that cannot pass its own tests must not become the code answering
+        # turns — but "its own tests" has to mean the tests the UPDATE affected,
+        # not every test in a developer suite that also runs on this machine.
+        # A test can fail here for reasons the update never touched: pytest's
+        # temp dir resolves under a system directory on a Mac, a cloud-provider
+        # test needs an API this box cannot reach, a browser test needs a
+        # browser. Rolling the update back for those strands the machine on old
+        # code forever, for something the update did not cause. `bento update`
+        # rolling back on a Mac with "fails its own tests" pointing at a folder
+        # nobody would share is exactly how this was reported.
+        #
+        # So the gate is REGRESSION-only: run the suite, and if anything fails,
+        # ask whether it also failed BEFORE the update. A test that was already
+        # red on this machine is not the update's fault; only a test the update
+        # turned from green to red is.
         say("verifying…")
-        ok, out = _run([_python(root), "-m", "pytest", "tests/", "-q", "-x"],
-                       cwd=root, timeout=APPLY_TIMEOUT)
+        ok, out = _run([_python(root), "-m", "pytest", "tests/", "-q", "--tb=line",
+                        "-p", "no:cacheprovider"], cwd=root, timeout=APPLY_TIMEOUT,
+                       env=_fresh_pyc_env())
         if not ok:
-            return rollback(f"the new version fails its own tests: {out[-300:]}")
+            failed = _failed_nodes(out)
+            if not failed:
+                # non-zero with nothing parseable is a crash or a collection error
+                # in the new code itself — that IS the update's fault.
+                return rollback(f"the new version could not run its tests: {out[-300:]}")
+            say(f"{len(failed)} test(s) failed — checking whether the update caused them…")
+            regressions = _regressions_only(root, before, branch, failed, say)
+            if regressions is None:
+                return rollback("could not verify the update against the previous "
+                                "version (git state) — nothing changed")
+            if regressions:
+                return rollback("the update turns passing tests red: "
+                                + ", ".join(sorted(regressions)[:8])
+                                + (f" (+{len(regressions) - 8} more)" if len(regressions) > 8 else ""))
+            say(f"all {len(failed)} failing test(s) failed on the previous version "
+                f"too — the update did not cause them, so it stands")
 
     after = _run(["git", "rev-parse", "HEAD"], cwd=root)[1].strip()
     # What was actually pulled, from git rather than from a file somebody has to
@@ -478,9 +527,86 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
             "files": len(changed)}
 
 
+def _failed_nodes(pytest_out: str) -> set[str]:
+    """The test node ids pytest reported as FAILED or ERROR, from `-q` output.
+
+    Parsed from the short summary lines (`FAILED tests/x.py::name - reason`)
+    rather than an exit code, because the gate needs to know WHICH tests failed,
+    not merely that some did.
+    """
+    nodes: set[str] = set()
+    for line in (pytest_out or "").splitlines():
+        m = re.match(r"^(?:FAILED|ERROR)\s+(\S+)", line.strip())
+        if m and "::" in m.group(1):
+            nodes.add(m.group(1))
+    return nodes
+
+
+def _blob_exists(root: Path, rev: str, path: str) -> bool:
+    """Did this file exist at that revision? A test whose FILE is new cannot have
+    passed before the update, so it is not a regression — it is new behaviour the
+    dev CI already vetted, and blocking on it here would strand the machine."""
+    return _run(["git", "cat-file", "-e", f"{rev}:{path}"], cwd=root)[0]
+
+
+def _regressions_only(root: Path, before: str, branch: str,
+                      failed: set[str], say) -> set[str] | None:
+    """Of the tests that failed on the NEW code, which passed on the OLD code.
+
+    Those — and only those — are the update's fault. Leaves the checkout back on
+    the new code when it returns (so `apply` can continue), or on the old code
+    only if it could not re-apply, in which case it returns None to signal that
+    the caller must roll back and refuse. Returns a (possibly empty) set of
+    regressed node ids otherwise.
+    """
+    # A test whose file is new to this update never passed before it: not a
+    # regression. Only the ones in files that already existed can be compared.
+    comparable = {n for n in failed if _blob_exists(root, before, n.split("::")[0])}
+    new_only = failed - comparable
+
+    if comparable:
+        say("running the previous version to compare…")
+        if not _run(["git", "reset", "--hard", before], cwd=root, timeout=120)[0]:
+            return None
+        # Run EXACTLY the failed nodes on the old code. Anything that also fails
+        # here was already broken on this machine.
+        _ok, old_out = _run([_python(root), "-m", "pytest", *sorted(comparable),
+                             "-q", "--tb=no", "-p", "no:cacheprovider"],
+                            cwd=root, timeout=APPLY_TIMEOUT, env=_fresh_pyc_env())
+        old_failed = _failed_nodes(old_out)
+        # back to the new code so the update can proceed
+        if not _run(["git", "merge", "--ff-only", f"origin/{branch}"], cwd=root, timeout=120)[0]:
+            return None
+        regressions = comparable - old_failed
+    else:
+        regressions = set()
+
+    if new_only:
+        # Said, never silent: a new test failing on this machine is tolerated, but
+        # the operator should be able to see it happened.
+        say(f"note: {len(new_only)} newly added test(s) fail here and are new to this "
+            f"update, so they are not treated as regressions")
+    return regressions
+
+
 def _python(root: Path) -> str:
-    venv = root / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else "python3"
+    """The interpreter to run the checkout's tests with.
+
+    Windows puts the venv's Python in `Scripts\\python.exe`, POSIX in
+    `bin/python` — looking only under `bin/` meant every Windows update fell
+    through to `python3`, which is not even a command on a default Windows box,
+    so the verify gate could never launch pytest and the update rolled back with
+    "could not run its tests". The fallback is `sys.executable` — the interpreter
+    running THIS process, which by definition exists and carries AgentOS's own
+    dependencies (pytest among them) — rather than a `python3` that may not.
+    """
+    import sys
+
+    cand = (root / ".venv" / "Scripts" / "python.exe") if os.name == "nt" \
+        else (root / ".venv" / "bin" / "python")
+    if cand.exists():
+        return str(cand)
+    return sys.executable or "python3"
 
 
 def _version_on_disk(root: Path) -> str:

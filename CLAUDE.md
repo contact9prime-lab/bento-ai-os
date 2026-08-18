@@ -604,6 +604,20 @@ Four things that have to stay true:
 Say what it is up to date WITH. A checkout sitting on another branch is the
 commonest reason a push looks like it did nothing, and every surface now names it.
 
+**The verify gate refuses REGRESSIONS, not a fragile machine.** `apply()` runs the
+suite on the new code, and if anything fails, runs those same tests on the OLD
+code before deciding. A test already red on this machine — pytest's temp dir
+under `/private/var` on a Mac, a cloud-provider test with no network — is an
+environment fact, not the update's fault, and must not strand the machine on old
+code. Only a test the update turns from green to red rolls it back. Two traps
+this hides: each pytest run needs its own `PYTHONPYCACHEPREFIX` (two checkouts in
+the same second let Python reuse the new code's `.pyc` while running the old, so
+the old run "fails" a test it passes), and a test whose FILE is new to the update
+never passed before it, so it is not a regression. `tests/test_update_gate.py`
+pins all of it. The blunt `-x` gate this replaced bricked updates on a Mac —
+`test_safe_folders` cannot pass when the temp dir resolves under a system
+directory, so the machine could never self-update.
+
 ## Honesty rules
 
 - A capability that is missing reports **why**, in a sentence, plus the component

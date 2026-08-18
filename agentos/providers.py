@@ -391,8 +391,15 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
         # Name the provider the way the user chose it — somebody who picked "Kimi"
         # has no idea what a "moonshot" is, and an error naming the wrong thing sends
         # them looking in the wrong Settings row.
-        _KEYED = {"openrouter": "OpenRouter", "deepseek": "DeepSeek",
-                  "moonshot": "Moonshot (Kimi)"}
+        # `custom` is the only one of this group that may run without a key — a
+        # local llama.cpp / LM Studio / vLLM server. openai and the rest never
+        # answer keyless, so a missing key must be NAMED here, before the request
+        # goes out: otherwise openai dispatched to the network and the user got a
+        # raw 401 from OpenAI instead of "add your key in Settings" — and a machine
+        # with no route to openai.com got a confusing connection error for a
+        # mistake this line can state plainly.
+        _KEYED = {"openai": "OpenAI", "openrouter": "OpenRouter",
+                  "deepseek": "DeepSeek", "moonshot": "Moonshot (Kimi)"}
         if provider in _KEYED and not p.get("api_key"):
             raise ProviderError(f"{_KEYED[provider]} API key not set — add it in Settings.")
         # openai_base, not the raw setting: the URL that answers a turn has to be
