@@ -5025,7 +5025,7 @@ const APPS={
   policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
   quarantine:{id:'quarantine',title:'Quarantine',icon:'⛔',w:720,h:600,desc:'What the OS stopped, and why — with the evidence',render:renderQuarantine},
-  store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, channels & skills — or build with AI',render:renderStore},
+  store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, extensions & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
@@ -6512,10 +6512,15 @@ function actAny() {
    shown; it runs only while something is actually running, and stops itself
    the moment nothing is. */
 function actSync() {
-  // A mini-feed waiting row counts as live even with no record behind it yet:
-  // the gap between pressing send and the server's turn_start is exactly the
-  // one that used to show nothing at all.
-  const live = Object.keys(ACT).length > 0 || !!document.querySelector('.mf-working');
+  // A waiting row counts as live even with no record behind it yet: the gap
+  // between pressing send and the server's first event is exactly the one that
+  // used to show nothing. Both surfaces have such a row — the copilot mini-feed
+  // (.mf-working) AND the Chat window's own #working row. Missing the latter is
+  // why a Claude Code turn, which cold-starts silently for a minute or more
+  // before its first event, sat frozen at "0s": the ticker had stopped itself.
+  const live = Object.keys(ACT).length > 0
+    || !!document.querySelector('.mf-working')
+    || !!document.querySelector('#working');
   if (live && !ACT_TICK) ACT_TICK = setInterval(actTick, 1000);
   if (!live && ACT_TICK) { clearInterval(ACT_TICK); ACT_TICK = null }
   actTick();
@@ -7220,7 +7225,12 @@ function showWorking(){
     feed.appendChild(w);
   }
   WORK_T0=WORK_T0||Date.now();
-  tickWorking();          // paint at once: a row that says nothing for a second is a flicker
+  // Start the shared per-second ticker NOW, on send — not when the server's first
+  // event arrives. A Claude Code turn cold-starts silently for a minute or more,
+  // and without this the row painted once and froze at "0s" until that first event;
+  // actSync counts #working as live, so the clock counts up from send. (Paints at
+  // once too: a row that says nothing for a second is a flicker.)
+  if(typeof actSync==='function')actSync(); else tickWorking();
 }
 /* The waiting row. Driven by the shared activity record (08b-activity.js) so
    the sentence here, in the copilot panels and on the presence bubble is the
@@ -7250,6 +7260,8 @@ function tickWorking(){
 function removeWorking(){
   $('#working')?.remove();
   WORK_T0=0;WORK_MSG='';
+  // …and let the ticker stop itself now that this row is gone.
+  if(typeof actSync==='function')actSync();
 }
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
@@ -15327,11 +15339,11 @@ function openFile(rel,ext){
 /* ================= store ================= */
 let STORE_TAB='apps';
 async function renderStore(body,w){
-  const TABS=['apps','discover','channels','skills','import','build'];
+  const TABS=['apps','discover','extensions','skills','import','build'];
   const box=panelShell(body,{
     title:'Store',
     search:STORE_TAB==='import'||STORE_TAB==='build'||STORE_TAB==='discover'?null:{id:'store-q',placeholder:'Search the catalog…'},
-    actions:segTabs('store-tabs',['Apps','Discover','Channels','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
+    actions:segTabs('store-tabs',['Apps','Discover','Extensions','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
   });
   if(STORE_TAB==='discover'){renderStoreDiscover(box);return}
   if(STORE_TAB==='apps'){
@@ -15341,12 +15353,12 @@ async function renderStore(body,w){
         <span class="cn">${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
         <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
       </div>`).join('')}</div>`;
-  } else if(STORE_TAB==='channels'){
+  } else if(STORE_TAB==='extensions'){
     const r=await fetch('/api/mcp');const md=await r.json();
     MCPCFG={};   // keep the full current config so adding one doesn't wipe the rest
     md.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
     const have=new Set(md.servers.map(s=>s.name));
-    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Tool channels (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Extensions (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
       ${MCP_GROUPS.map((g,gi)=>`<div data-fgroup><div class="sect">${esc(g)}</div>
       <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`<div class="catcard${have.has(e.k)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
@@ -15363,7 +15375,7 @@ async function renderStore(body,w){
       ${d.skills.map(s=>`<div class="item" data-f="${esc(s.name+' '+(s.description||''))}"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div>`;
   } else if(STORE_TAB==='import'){
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">Install an app package (<code>.agentapp.json</code>) shared from another AgentOS.
-      You review its permissions before anything runs; missing MCP channels & skills are offered as one-click installs (you supply any API keys).</p>
+      You review its permissions before anything runs; missing MCP extensions & skills are offered as one-click installs (you supply any API keys).</p>
       <div class="row"><input id="store-pkg-url" placeholder="https://…/app.agentapp.json">
         <button class="pact" style="flex:0 0 110px" onclick="storeImportURL()">Fetch</button></div>
       <div class="row" style="margin-top:8px"><input type="file" id="store-pkg-file" accept=".json,.agentapp.json" style="flex:1">
@@ -15380,7 +15392,7 @@ async function renderStore(body,w){
     $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
   }
 }
-function storeSetTab(i){STORE_TAB=['apps','discover','channels','skills','import','build'][i];refreshApp('store')}
+function storeSetTab(i){STORE_TAB=['apps','discover','extensions','skills','import','build'][i];refreshApp('store')}
 
 /* ---- Discover: search the worldwide public MCP registry, install with consent,
    record in the local MCP Registry (+ generated docs), then build an app on top ---- */

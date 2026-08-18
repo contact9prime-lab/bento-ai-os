@@ -149,10 +149,15 @@ function actAny() {
    shown; it runs only while something is actually running, and stops itself
    the moment nothing is. */
 function actSync() {
-  // A mini-feed waiting row counts as live even with no record behind it yet:
-  // the gap between pressing send and the server's turn_start is exactly the
-  // one that used to show nothing at all.
-  const live = Object.keys(ACT).length > 0 || !!document.querySelector('.mf-working');
+  // A waiting row counts as live even with no record behind it yet: the gap
+  // between pressing send and the server's first event is exactly the one that
+  // used to show nothing. Both surfaces have such a row — the copilot mini-feed
+  // (.mf-working) AND the Chat window's own #working row. Missing the latter is
+  // why a Claude Code turn, which cold-starts silently for a minute or more
+  // before its first event, sat frozen at "0s": the ticker had stopped itself.
+  const live = Object.keys(ACT).length > 0
+    || !!document.querySelector('.mf-working')
+    || !!document.querySelector('#working');
   if (live && !ACT_TICK) ACT_TICK = setInterval(actTick, 1000);
   if (!live && ACT_TICK) { clearInterval(ACT_TICK); ACT_TICK = null }
   actTick();

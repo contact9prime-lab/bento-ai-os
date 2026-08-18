@@ -362,11 +362,30 @@ run_uv_sync() {
   wait "$_uvpid"
 }
 
+# Pin the interpreter. `requires-python = ">=3.10"` has no ceiling, so on a fresh
+# machine uv provisions the NEWEST CPython it can — and the newest is where wheels
+# have not caught up yet: cryptography 49, pydantic-core and friends ship prebuilt
+# wheels for 3.11–3.13 but not the bleeding-edge release, so uv falls back to
+# compiling them (cryptography needs Rust) and the install dies on a 64-bit Pi for
+# a reason that has nothing to do with ARM. `.python-version` fixes the interpreter
+# at a version with full wheel coverage; this clears a `.venv` a previous run built
+# on a different Python so the pin actually takes — uv rebuilds it from the lock.
+PYPIN=""
+[ -f .python-version ] && PYPIN="$(cat .python-version 2>/dev/null)"
+if [ -n "$PYPIN" ] && [ -x .venv/bin/python ]; then
+  _have="$(.venv/bin/python -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+  case "$_have" in
+    "$PYPIN"|"$PYPIN".*) : ;;                              # already the pinned line
+    "") rm -rf .venv ;;                                    # unusable, rebuild
+    *) say "rebuilding the environment on Python $PYPIN (was $_have — too new for prebuilt wheels)"; rm -rf .venv ;;
+  esac
+fi
+
 say "installing dependencies (this fetches Python too, if needed)"
 if [ -n "$UV_PI_ARGS" ]; then
   echo "   (32-bit Raspberry Pi — using piwheels prebuilt ARM wheels so packages download instead of compiling; anything not on piwheels still compiles, which is slow)"
-else
-  echo "   (on a 32-bit Raspberry Pi some packages compile from source — this can take a few minutes)"
+elif [ -n "$PYPIN" ]; then
+  echo "   (using Python $PYPIN, which has prebuilt wheels for every dependency, so nothing is compiled)"
 fi
 printf '   working'
 if run_uv_sync; then
@@ -376,28 +395,71 @@ if run_uv_sync; then
 else
   echo ""
   cat "$UVSYNC_LOG"                                      # show what actually failed
-  # cryptography (via pyjwt[crypto], via the MCP SDK) is the hard one, and it is
-  # NOT the same fix as a missing C header. It is pinned to a version with no 32-bit
-  # ARM wheel that builds with Rust — and its minimum Rust is newer than the `cargo`
-  # Debian ships, so `apt install cargo` compiles nothing and only looks like
-  # progress. This is checked FIRST so that case is never sent down the apt path
-  # below, which cannot fix it. On 64-bit Pi OS it never arises: PyPI has an aarch64
-  # wheel and nothing is compiled — so the honest answer names both ways out.
-  if grep -qiE "cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
+  # A cryptography source build, spotted by any of its telltales — the OpenSSL 3.0
+  # `#error`, a Rust/cargo failure, "could not compile cryptography". The point is
+  # that all three are SYMPTOMS: they only appear once uv has fallen back to
+  # building from source, and on 32-bit ARM the reason it fell back is almost always
+  # glibc. cryptography DOES ship a prebuilt armv7 wheel — but it is tagged
+  # manylinux_2_31, so it needs glibc >= 2.31 (Raspberry Pi OS "Bullseye"). "Buster"
+  # has glibc 2.28, too old, so there is no wheel to download and uv compiles — and
+  # only THEN meets the OpenSSL/Rust wall. Moving off Buster to Bullseye+ gets the
+  # wheel and skips the compile entirely. (Verified against PyPI: the 2_31_armv7l
+  # wheel exists and is what a Bullseye Pi downloads.)
+  if grep -qiE "MUST be linked with OpenSSL 3|OpenSSL 3\.0\.0 or later|cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
     rm -f "$UVSYNC_LOG"
-    die "cryptography has no prebuilt wheel for 32-bit Pi OS and must compile with a MODERN Rust —
-   newer than the 'cargo' apt provides, so 'sudo apt install cargo' will NOT be enough.
+    _g="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)"
+    _gmaj="${_g%%.*}"; _gmin="$(printf '%s' "${_g#*.}" | tr -cd '0-9')"
+    [ -z "$_gmin" ] && _gmin=0
+    # glibc >= 2.31 ? (unknown or major>2 counts as new-enough)
+    if { [ "$_gmaj" = 2 ] && [ "$_gmin" -ge 31 ] 2>/dev/null; } || { [ -n "$_gmaj" ] && [ "$_gmaj" != 2 ] 2>/dev/null; }; then
+      NEW_GLIBC=1
+    else
+      NEW_GLIBC=0
+    fi
+    case "$(uname -m)" in
+      armv7l)
+        if [ "$NEW_GLIBC" = 0 ]; then
+          die "cryptography could not install, and the real reason is the OS version — NOT Rust or
+   OpenSSL, which are only what the fallback source build then tripped over.
 
-   The reliable fix is 64-bit Raspberry Pi OS. There cryptography installs prebuilt in seconds,
-   with no Rust and no compile. A Pi 3, 4, 5 or Zero 2 W can run it — reflash to 64-bit Pi OS
-   (Bookworm) and re-run this installer.
+   cryptography ships a PREBUILT 32-bit ARM wheel, but it needs glibc 2.31 or newer. This system
+   has glibc ${_g:-older than 2.31} — Raspberry Pi OS 'Buster' is 2.28, too old — so there was no
+   wheel to download and uv tried to compile instead.
 
-   To stay on 32-bit, install a current Rust with rustup and give the build room, then re-run me:
+   The fix is to move off Buster to Raspberry Pi OS 'Bullseye' or 'Bookworm' — 32-BIT IS FINE. There
+   the wheel installs in seconds: no compile, no Rust, no swap, and it bundles its own OpenSSL so the
+   system's version stops mattering. Reflash (or upgrade) to Bullseye/Bookworm and re-run me."
+        else
+          die "cryptography compiled even though this system's glibc (${_g}) is new enough for the prebuilt
+   32-bit ARM wheel — which usually means an out-of-date uv/pip that cannot see manylinux_2_31 wheels.
+   Update uv and re-run:
+       uv self update
+   As a last resort, build it (needs a modern Rust and OpenSSL 3.0, i.e. Bookworm not Buster):
        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-       . \"\$HOME/.cargo/env\"
-       sudo apt install -y $APT_BUILD_DEPS
-   Ensure at least 1 GB of swap first (the build is memory-hungry); it takes many minutes on a Pi
-   and can still fail on armv6 (Pi Zero / 1)."
+       . \"\$HOME/.cargo/env\" && sudo apt install -y $APT_BUILD_DEPS"
+        fi ;;
+      armv6l)
+        # armv6 (Pi Zero / 1) is not armv7 — the manylinux wheel does not apply, so
+        # cryptography must be built, which needs OpenSSL 3.0 (Bookworm) and rustup.
+        die "this is an armv6 Pi (Zero / 1), which has NO prebuilt cryptography wheel at all — the 32-bit
+   wheel is armv7-only. Either use a newer Pi (Zero 2 W / 3 / 4 / 5) with 64-bit Bookworm, where
+   everything is prebuilt, or compile it on Bookworm (needs OpenSSL 3.0, so not Buster/Bullseye):
+       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+       . \"\$HOME/.cargo/env\" && sudo apt install -y $APT_BUILD_DEPS
+   Ensure at least 1 GB of swap first; the build is slow and can still fail on armv6." ;;
+      *)
+        # 64-bit (aarch64 / x86-64) DOES have a wheel — for 3.11–3.13. Reaching a Rust
+        # compile here means uv picked a Python too new for the wheel (3.14+). The pin
+        # above prevents it; if we still got here, the pin was missing or overridden.
+        die "cryptography tried to compile with Rust on a 64-bit machine, where a prebuilt wheel exists —
+   which means uv used a Python too new for it (3.14+). This copy pins Python to ${PYPIN:-3.13}
+   in .python-version to avoid exactly that.
+
+   Delete the environment and re-run me so the pin takes effect:
+       rm -rf .venv
+   If it recurs, uv is ignoring the pin — force the interpreter explicitly:
+       uv python install ${PYPIN:-3.13} && uv sync --python ${PYPIN:-3.13}" ;;
+    esac
   # "you likely need to install ffi.h" and its siblings mean exactly one thing —
   # a source compile with no C toolchain — so name the fix and, with permission,
   # apply it and try once more rather than making the machine be told twice.

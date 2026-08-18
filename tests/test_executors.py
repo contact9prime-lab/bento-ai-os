@@ -206,7 +206,9 @@ async def test_non_json_chatter_on_stdout_is_ignored(tmp_path):
     with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")),
                           lambda ev: asyncio.sleep(0, result=seen.append(ev)))
-    assert [e["type"] for e in seen] == ["text_delta"]
+    # the leading 'status' is the "starting up…" cold-start notice; the point of
+    # this test is that the stray npm line produced no event of its own
+    assert [e["type"] for e in seen if e["type"] != "status"] == ["text_delta"]
 
 
 @pytest.mark.asyncio
@@ -241,6 +243,63 @@ async def test_a_whole_app_on_one_stream_line_does_not_kill_the_run(tmp_path):
     assert run.cost_usd == 1.5 and run.turns == 4        # the run reached its own end
     assert not run.dropped
     assert [e for e in seen if e["type"] == "error"] == []
+
+
+def test_the_final_answer_is_never_lost_and_never_doubled():
+    """The `result` event carries the reply in its `result` field. When the answer
+    already streamed as an `assistant` text block (the normal case) that field is a
+    duplicate and must be dropped; when NOTHING streamed it is the whole reply and
+    must be shown. Driven with the real event shapes captured from the CLI."""
+    # normal: assistant streams, result repeats it -> one copy only
+    r = ex.Run()
+    a = ex.translate({"type": "assistant",
+                      "message": {"content": [{"type": "text", "text": "hello"}]}}, r)
+    b = ex.translate({"type": "result", "subtype": "success", "result": "hello",
+                      "total_cost_usd": 0.1, "num_turns": 1}, r)
+    assert [e.get("text") for e in a + b if e["type"] == "text_delta"] == ["hello"]
+
+    # result-only: nothing streamed -> the answer comes from result.result
+    r2 = ex.Run()
+    o = ex.translate({"type": "result", "subtype": "success", "result": "The answer is 42",
+                      "total_cost_usd": 0.1, "num_turns": 1, "is_error": False}, r2)
+    assert [e.get("text") for e in o if e["type"] == "text_delta"] == ["The answer is 42"]
+
+    # a failed result never smuggles its text in as a normal reply
+    r3 = ex.Run()
+    o3 = ex.translate({"type": "result", "subtype": "error_max_turns", "result": "partial",
+                       "is_error": True, "total_cost_usd": 0.1, "num_turns": 9}, r3)
+    assert not [e for e in o3 if e["type"] == "text_delta"]
+
+
+def test_unknown_stream_event_types_are_ignored_not_crashed():
+    """The live CLI emits active_goal, autocompact_state, system/commands_changed,
+    system/post_turn_summary and more that AgentOS has no use for. translate() must
+    return nothing for them, not raise — captured from a real run."""
+    for ev in [{"type": "active_goal"}, {"type": "autocompact_state"},
+               {"type": "system", "subtype": "commands_changed"},
+               {"type": "system", "subtype": "post_turn_summary"}]:
+        assert ex.translate(ev, ex.Run()) == []
+
+
+@pytest.mark.asyncio
+async def test_the_cold_start_gap_says_what_it_is_doing(tmp_path):
+    """An external CLI is silent while it boots node and its MCP servers. Before
+    that silence, run_task must emit a 'status' so the working row shows a sentence
+    (and its clock starts) instead of a bare frozen '0s'."""
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\n"
+                    f"echo '{json.dumps({'type': 'result', 'subtype': 'success', 'result': 'x', 'total_cost_usd': 0.1, 'num_turns': 1})}'\n")
+    stub.chmod(0o755)
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
+        await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
+
+    assert seen and seen[0]["type"] == "status", "the first event must be the cold-start notice"
+    assert "starting" in seen[0]["message"].lower()
 
 
 @pytest.mark.asyncio

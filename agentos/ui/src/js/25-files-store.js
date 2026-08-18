@@ -65,11 +65,11 @@ function openFile(rel,ext){
 /* ================= store ================= */
 let STORE_TAB='apps';
 async function renderStore(body,w){
-  const TABS=['apps','discover','channels','skills','import','build'];
+  const TABS=['apps','discover','extensions','skills','import','build'];
   const box=panelShell(body,{
     title:'Store',
     search:STORE_TAB==='import'||STORE_TAB==='build'||STORE_TAB==='discover'?null:{id:'store-q',placeholder:'Search the catalog…'},
-    actions:segTabs('store-tabs',['Apps','Discover','Channels','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
+    actions:segTabs('store-tabs',['Apps','Discover','Extensions','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
   });
   if(STORE_TAB==='discover'){renderStoreDiscover(box);return}
   if(STORE_TAB==='apps'){
@@ -79,12 +79,12 @@ async function renderStore(body,w){
         <span class="cn">${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
         <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
       </div>`).join('')}</div>`;
-  } else if(STORE_TAB==='channels'){
+  } else if(STORE_TAB==='extensions'){
     const r=await fetch('/api/mcp');const md=await r.json();
     MCPCFG={};   // keep the full current config so adding one doesn't wipe the rest
     md.servers.forEach(s=>{MCPCFG[s.name]=mcpSnap(s)});
     const have=new Set(md.servers.map(s=>s.name));
-    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Tool channels (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Extensions (MCP) give the agent new powers — browser control, GitHub, search, and more.</p>
       ${MCP_GROUPS.map((g,gi)=>`<div data-fgroup><div class="sect">${esc(g)}</div>
       <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`<div class="catcard${have.has(e.k)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
@@ -101,7 +101,7 @@ async function renderStore(body,w){
       ${d.skills.map(s=>`<div class="item" data-f="${esc(s.name+' '+(s.description||''))}"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div>`;
   } else if(STORE_TAB==='import'){
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">Install an app package (<code>.agentapp.json</code>) shared from another AgentOS.
-      You review its permissions before anything runs; missing MCP channels & skills are offered as one-click installs (you supply any API keys).</p>
+      You review its permissions before anything runs; missing MCP extensions & skills are offered as one-click installs (you supply any API keys).</p>
       <div class="row"><input id="store-pkg-url" placeholder="https://…/app.agentapp.json">
         <button class="pact" style="flex:0 0 110px" onclick="storeImportURL()">Fetch</button></div>
       <div class="row" style="margin-top:8px"><input type="file" id="store-pkg-file" accept=".json,.agentapp.json" style="flex:1">
@@ -118,7 +118,7 @@ async function renderStore(body,w){
     $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
   }
 }
-function storeSetTab(i){STORE_TAB=['apps','discover','channels','skills','import','build'][i];refreshApp('store')}
+function storeSetTab(i){STORE_TAB=['apps','discover','extensions','skills','import','build'][i];refreshApp('store')}
 
 /* ---- Discover: search the worldwide public MCP registry, install with consent,
    record in the local MCP Registry (+ generated docs), then build an app on top ---- */
