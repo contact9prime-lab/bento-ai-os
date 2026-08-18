@@ -1478,6 +1478,42 @@ def translate(event: dict, run: Run) -> list[dict]:
 # an allocation: the buffer only ever grows to what the CLI actually wrote.
 STREAM_LINE_LIMIT = 32 * 1024 * 1024
 
+# How long to wait for the CLI's FIRST line before deciding it is never coming.
+#
+# `stream-json` emits a `system/init` event within a second or two of a healthy
+# start — before any model work. If nothing arrives at all, the CLI is not slow,
+# it is stuck: not signed in and waiting on a prompt that `--print` gives it no
+# way to show, or wedged before it could reach the network. `readline()` then
+# blocks forever, the turn never leaves "working 0s", and every later message in
+# that conversation queues behind a turn that will never end. This is the outer
+# `wait_for` that `flows.py` has and `run_task` lacked. It bounds ONLY the wait
+# for the first byte — once the CLI is talking we trust it and the user can Stop —
+# so a long, legitimately quiet build is never cut off. Generous, because a cold
+# Node start on a Raspberry Pi is slow; still finite, because forever is a bug.
+STARTUP_TIMEOUT = 90.0
+
+
+async def _reap(proc) -> None:
+    """Stop a process and WAIT for it, escalating SIGTERM → SIGKILL.
+
+    `terminate()` alone is not enough to guarantee the watchdog returns: a shell
+    that has not exec'd its child, or a process ignoring SIGTERM, leaves
+    `proc.wait()` blocking forever — which is the same hang the watchdog exists to
+    end, moved one line down. So terminate, give it a moment, and if it is still
+    there, kill it. Either way this returns, which is the whole point."""
+    for step in ("terminate", "kill"):
+        if proc.returncode is not None:
+            return
+        try:
+            getattr(proc, step)()
+        except ProcessLookupError:
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), 3)
+            return
+        except asyncio.TimeoutError:
+            continue
+
 
 async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Run:
     """Delegate a task and stream it back through `emit`.
@@ -1502,9 +1538,25 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     run.proc = proc
 
     assert proc.stdout is not None
+    seen_output = False
     while True:
         try:
-            line = await proc.stdout.readline()
+            if seen_output:
+                line = await proc.stdout.readline()
+            else:
+                # The first line is the one that can never come. Bound only this
+                # wait; everything after it is the CLI genuinely working.
+                line = await asyncio.wait_for(proc.stdout.readline(), STARTUP_TIMEOUT)
+        except asyncio.TimeoutError:
+            await _reap(proc)
+            await emit({"type": "error",
+                        "message": (f"Claude Code produced no output within "
+                                    f"{int(STARTUP_TIMEOUT)}s and was stopped. It is "
+                                    f"usually waiting to sign in — run `claude` once in a "
+                                    f"terminal — or it could not reach the network. "
+                                    f"Nothing was billed.")})
+            run.reported_error = True
+            break
         except ValueError:
             # Past even that ceiling. `readline()` has already dropped the
             # oversized line and left the stream usable, so lose the one event
@@ -1517,6 +1569,9 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
             continue
         if not line:
             break
+        # The CLI is talking: drop the startup deadline for every subsequent read,
+        # even if this line is blank — a byte on the pipe is proof it started.
+        seen_output = True
         text = line.decode(errors="replace").strip()
         if not text:
             continue

@@ -330,25 +330,68 @@ ensure_build_deps() {
   return 1
 }
 
+# 32-bit Raspberry Pi (armv6l/armv7l) has NO wheel on PyPI for cffi, cryptography
+# or pydantic-core, so uv compiles them from source: minutes of 100% CPU that look
+# exactly like a hang and, on a small Pi, can thrash into an OOM kill. piwheels.org
+# is the Raspberry Pi project's own wheelhouse of precisely these packages built
+# for ARM; pip on Pi OS uses it by default, but uv does not, so it is pointed at it
+# here. `unsafe-best-match` is the documented way to let a supplemental index
+# satisfy a wheel PyPI only has as an sdist — safe BECAUSE it is added only on
+# 32-bit ARM, where PyPI has no wheel to be confused with and piwheels is the
+# canonical source for one. If piwheels is unreachable, uv falls back to the PyPI
+# sdist and the compile path below still applies, so this only ever helps.
+UV_PI_ARGS=""
+case "$(uname -m)" in
+  armv6l|armv7l)
+    UV_PI_ARGS="--extra-index-url https://www.piwheels.org/simple --index-strategy unsafe-best-match" ;;
+esac
+
+# `uv sync`, backgrounded with a heartbeat. On a Pi a source build is minutes of
+# silence at full CPU, and silence reads as a hang — so a dot every few seconds
+# says "working, not stuck". Backgrounded so `wait` yields uv's OWN exit status
+# (a `| tee` pipe would report tee's, which is the reason live output was dropped
+# before); the log is still written, for the failure classifier below. POSIX sh:
+# no pipefail, no process substitution, `$UV_PI_ARGS` intentionally word-split.
+run_uv_sync() {
+  uv sync $UV_PI_ARGS >"$UVSYNC_LOG" 2>&1 &
+  _uvpid=$!
+  while kill -0 "$_uvpid" 2>/dev/null; do
+    printf '.'
+    sleep 5
+  done
+  wait "$_uvpid"
+}
+
 say "installing dependencies (this fetches Python too, if needed)"
-# Captured to a log rather than teed live: process substitution and pipefail are
-# bash-only and this runs under /bin/sh, and the exit status has to be the one
-# uv actually returned, not tee's. On a machine with wheels this is seconds; on a
-# 32-bit Pi that must compile it is slower and silent, so it is announced.
-echo "   (on a 32-bit Raspberry Pi some packages compile from source — this can take a few minutes)"
-if uv sync >"$UVSYNC_LOG" 2>&1; then
+if [ -n "$UV_PI_ARGS" ]; then
+  echo "   (32-bit Raspberry Pi — using piwheels prebuilt ARM wheels so packages download instead of compiling; anything not on piwheels still compiles, which is slow)"
+else
+  echo "   (on a 32-bit Raspberry Pi some packages compile from source — this can take a few minutes)"
+fi
+printf '   working'
+if run_uv_sync; then
+  echo ""                                               # close the dotted line
   rm -f "$UVSYNC_LOG"
   ok "dependencies ready"
 else
+  echo ""
   cat "$UVSYNC_LOG"                                      # show what actually failed
   # "you likely need to install ffi.h" and its siblings mean exactly one thing —
   # a source compile with no C toolchain — so name the fix and, with permission,
   # apply it and try once more rather than making the machine be told twice.
   if grep -qiE "ffi\.h|Python\.h|openssl/|libffi|command .(gcc|cc). failed|need to install.*development|Microsoft Visual C" "$UVSYNC_LOG" 2>/dev/null; then
     warn "a dependency had no prebuilt wheel for this machine and was COMPILED from source, but the C build tools are missing."
-    if ensure_build_deps && uv sync >"$UVSYNC_LOG" 2>&1; then
-      rm -f "$UVSYNC_LOG"
-      ok "dependencies ready (after installing the build tools)"
+    if ensure_build_deps; then
+      printf '   working'
+      if run_uv_sync; then
+        echo ""
+        rm -f "$UVSYNC_LOG"
+        ok "dependencies ready (after installing the build tools)"
+      else
+        echo ""
+        rm -f "$UVSYNC_LOG"
+        die "a dependency still failed to build after installing the tools — the output above says why"
+      fi
     else
       rm -f "$UVSYNC_LOG"
       die "a dependency must be compiled and the build tools are missing. Install them, then re-run this installer:

@@ -47,6 +47,17 @@ async function usersBoot(){
     if(who){who.textContent=(d.display||d.name)+(d.admin?' · admin':'');who.hidden=false}
     if(out)out.hidden=false;
     if(hr)hr.hidden=false;
+    // And on the bar itself: an initial disc plus the name, so whose desktop this
+    // is reads at a glance next to which brain is answering. Only here on a
+    // multi-user machine — the early return above keeps it off a single-user one.
+    const chip=document.getElementById('mb-user');
+    if(chip){
+      const nm=String(d.display||d.name||'').trim();
+      const ini=(nm[0]||'?').toUpperCase();
+      chip.innerHTML='<span class="ini">'+esc(ini)+'</span><span class="nm">'+esc(nm)+'</span>'
+        +(d.admin?'<span class="badge">admin</span>':'');
+      chip.hidden=false;
+    }
   }catch(e){}
 }
 

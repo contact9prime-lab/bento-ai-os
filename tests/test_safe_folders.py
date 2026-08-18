@@ -339,20 +339,32 @@ def test_read_only_takes_the_caution_off_a_system_directory():
     assert toolsmod.folder_risk("/etc", "ro") == ""
 
 
-def test_an_ordinary_data_folder_is_not_cautioned():
+def test_an_ordinary_data_folder_is_not_cautioned(monkeypatch):
     """A warning on everything is a warning on nothing.
 
-    NOT under `tmp_path`: pytest's temp directory resolves under a system
-    directory on macOS (`/private/var/folders/…`) and on Linux hosts whose
-    `/tmp` lives under `/var` — which is exactly what `folder_risk` is SUPPOSED
-    to flag, so the assertion would fail there for the right reason and this test
-    would (wrongly) block a self-update on those machines. `folder_risk` is pure
-    path logic — `realpath` is lexical for a path that need not exist — so a
-    plainly ordinary constructed path exercises it faithfully wherever the tests
-    run. This bug shipped, and its symptom was `bento update` rolling back on a
-    Mac with "the new version fails its own tests" pointing at a folder nobody
-    would ever share.
+    The trap here is `realpath`, and it has now bitten on two different machines
+    for the same reason: `folder_risk` normalises with `os.path.realpath`, which
+    resolves symlinks in the path's EXISTING prefix against the running machine's
+    filesystem. So the same literal path is a different real path on different
+    machines:
+
+      - Under `tmp_path`, pytest's temp dir resolves below `/private/var` on
+        macOS — a system directory — so the ordinary case looked cautioned there.
+      - A fixed literal like `/home/pat/...` is no safer: on a host where `/home`
+        (or `/srv`, or a mount point) is symlinked under `/var` — a Raspberry Pi
+        whose home moved onto external storage, a distro that maps home below
+        `/var` — `realpath` resolves it INTO a system directory and it is
+        cautioned for real.
+
+    Both symptoms were identical: `bento update` rolling back with "the new
+    version fails its own tests" pointing at a folder nobody would ever refuse.
+    The machine's symlink layout is not what this test is about — the caution
+    RULES are (secret dir, home, system dir, top-level). So `realpath` is
+    neutralised to lexical normalisation, which is exactly what `folder_risk`
+    already assumes for the ordinary path a user actually shares, and the rules
+    are then exercised deterministically wherever the suite runs.
     """
+    monkeypatch.setattr(os.path, "realpath", os.path.normpath)
     for ordinary in ("/home/pat/projects/reports", "/srv/exports/quarterly",
                      "/mnt/data/reports"):
         assert toolsmod.folder_risk(ordinary, "rw") == "", ordinary

@@ -92,5 +92,19 @@
   box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
 #fwdchip[hidden]{display:none}
 #fwdchip:hover{filter:brightness(1.08)}
+
+/* ---- who is signed in: an identity pill, deliberately quieter than the brain
+   chip beside it (that one is the accent gradient; this is glass), so "whose
+   desktop" and "which brain" read as two different facts, not one control. ---- */
+#mb-user{display:flex;align-items:center;gap:6px;padding:2px 9px 2px 3px;border-radius:999px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
+  color:var(--txt);background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.12)}
+#mb-user[hidden]{display:none}
+#mb-user:hover{background:rgba(255,255,255,.16)}
+#mb-user .ini{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
+  border-radius:999px;font-weight:800;color:#04211c;
+  background:linear-gradient(135deg,var(--acc),var(--acc2))}
+#mb-user .badge{font-size:var(--fs-3xs,9px);font-weight:600;opacity:.7;padding-left:6px;
+  margin-left:2px;border-left:1px solid rgba(255,255,255,.2);text-transform:uppercase}
 #fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
   border-left:1px solid rgba(0,0,0,.28)}
