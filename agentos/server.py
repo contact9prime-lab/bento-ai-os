@@ -125,8 +125,16 @@ async def startup():
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
     clients: set[WebSocket] = set()
+    # ws -> the account that owns the socket, from its signed cookie. A TURN
+    # belongs to one account and so does its working indicator; without this map
+    # there is nobody to address it to but "everyone", which is how one account's
+    # spinner, reply and approval card surfaced in another's windows. On a
+    # single-user machine every socket's uid is '' and the map changes nothing.
+    client_uids: dict = {}
 
     async def broadcast(event: dict):
+        """Machine-wide: a fact true for the whole box (wallpaper, an MCP consent
+        prompt). A turn is NOT machine-wide — use `broadcast_user` for it."""
         dead = []
         for ws in clients:
             try:
@@ -135,6 +143,25 @@ async def startup():
                 dead.append(ws)
         for ws in dead:
             clients.discard(ws)
+            client_uids.pop(ws, None)
+
+    async def broadcast_user(event: dict, uid: str):
+        """Deliver a turn's events only to the sessions of the account that owns
+        it. The desktop and the phone of that one person both get it and either
+        can answer an approval — "any client may answer" was always meant among a
+        person's OWN sessions, not across accounts. On a single-user machine
+        every uid is '' and this is exactly `broadcast`."""
+        dead = []
+        for ws in clients:
+            if client_uids.get(ws, "") != uid:
+                continue
+            try:
+                await ws.send_text(json.dumps(event))
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            clients.discard(ws)
+            client_uids.pop(ws, None)
         # Wallpaper continuity in de mode: every wallpaper change (there are six
         # producers) funnels through this broadcast, so this is the one place to
         # keep the compositor background + swaylock in step with the shell.
@@ -179,7 +206,8 @@ async def startup():
     flowsmod.seed_builtin(store)
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, whatsapp=whatsapp,
-                 clients=clients, broadcast=broadcast,
+                 clients=clients, client_uids=client_uids,
+                 broadcast=broadcast, broadcast_user=broadcast_user,
                  fabric=control, pdp=pdp, trainforge=trainforge,
                  wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
@@ -2584,8 +2612,12 @@ async def api_new_conversation(body: dict | None = None):
     # conversation decides the turn's space, so it has to be decided here too.
     space = str(b.get("space_id") or "") or spacemod.active_for(state["cfg"], surface)
     cid = state["store"].create_conversation(title, origin=origin, space_id=space)
-    await state["broadcast"]({"type": "conversation", "id": cid, "title": title,
-                              "origin": origin, "space_id": space})
+    # Only the account that created it: a conversation lives in that user's own
+    # database, so announcing it to every socket would put a stranger's new chat
+    # in another person's sidebar.
+    await state["broadcast_user"]({"type": "conversation", "id": cid, "title": title,
+                                   "origin": origin, "space_id": space},
+                                  str(usersmod.current() or ""))
     return {"id": cid, "title": title, "origin": origin, "space_id": space}
 
 
@@ -7796,8 +7828,12 @@ def _queue_public(cid: str) -> list[dict]:
 
 
 async def _queue_broadcast(cid: str, **extra):
-    await state["broadcast"]({"type": "queue_update", "conversation_id": cid,
-                              "queue": _queue_public(cid), **extra})
+    # A queue belongs to one conversation, which belongs to one account — scope it
+    # to that owner's sessions, the same as the turn's own events. The owner is on
+    # the turn slot (a queue only exists while a turn is running).
+    owner = str(state["turns"].get(cid, {}).get("uid", "") or "")
+    await state["broadcast_user"]({"type": "queue_update", "conversation_id": cid,
+                                   "queue": _queue_public(cid), **extra}, owner)
 
 
 def _queue_drop(cid: str, qid: str = "") -> int:
@@ -7867,8 +7903,14 @@ async def _run_chat(cid: str, data: dict):
     turns = state["turns"]
     text = (data.get("text") or "").strip()
 
+    # The account that owns this turn, server-set from the socket's signed cookie
+    # (never from the client). Its events reach only that account's own sessions —
+    # a turn's working indicator, tokens, reply and approval card are private to
+    # the person who started it, not to whoever else is signed in on the machine.
+    owner = str(data.get("uid", "") or "")
+
     async def evsend(ev: dict):
-        await state["broadcast"]({**ev, "conversation_id": cid})
+        await state["broadcast_user"]({**ev, "conversation_id": cid}, owner)
 
     async def approver(name: str, args: dict, reason: str, offer: dict | None = None) -> bool:
         # global broker: the card renders in this chat, but any client may answer
@@ -7978,7 +8020,7 @@ async def _run_chat(cid: str, data: dict):
                     checkout = None
             run = execmod.Run()
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
-                          "model": "claude-code", "executor": run}
+                          "model": "claude-code", "executor": run, "uid": owner}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": "claude-code"})
@@ -8023,7 +8065,8 @@ async def _run_chat(cid: str, data: dict):
             trig, flow = flow_hit
             model = state["fabric"].resolve_model({"name": flow["name"],
                                                    "model": flow.get("model") or ""})
-            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model}
+            turns[cid] = {"agent": None, "task": asyncio.current_task(),
+                          "model": model, "uid": owner}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": model})
@@ -8044,7 +8087,8 @@ async def _run_chat(cid: str, data: dict):
         elif mention:
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
-            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model}
+            turns[cid] = {"agent": None, "task": asyncio.current_task(),
+                          "model": model, "uid": owner}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": model})
@@ -8080,7 +8124,8 @@ async def _run_chat(cid: str, data: dict):
             for queued in state["queues"].get(cid) or []:
                 agent.offer(queued)
             agent.on_steer_decision = _steer_hook(cid)
-            turns[cid] = {"agent": agent, "task": asyncio.current_task(), "model": model}
+            turns[cid] = {"agent": agent, "task": asyncio.current_task(),
+                          "model": model, "uid": owner}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": model})
@@ -9033,16 +9078,24 @@ async def ws_endpoint(ws: WebSocket):
     # `users.as_user(uid)` — create_task copies the CURRENT context, and the receive
     # loop's context is not the user's because no HTTP middleware runs for a socket.
     ws_uid = _ws_user(ws) or ""
+    # Remember which account this socket belongs to, so a turn's events reach only
+    # its owner's sessions (see `broadcast_user`). Registered here rather than at
+    # `.add()` above because the uid is not known until the cookie is resolved.
+    state["client_uids"][ws] = ws_uid
 
     async def send(event: dict):
         with contextlib.suppress(Exception):
             await ws.send_text(json.dumps(event))
 
     # a (re)connecting client learns what is still running, so a page reload never
-    # strands a spinner — the UI re-attaches (or clears) by conversation_id
+    # strands a spinner — the UI re-attaches (or clears) by conversation_id. Only
+    # THIS account's turns: another account's running conversation is not this
+    # user's to see, and reporting it here is what showed a freshly signed-in user
+    # a spinner "from the previous session".
     await send({"type": "state_sync",
-                "running": list(turns.keys()),
-                "queues": {c: _queue_public(c) for c in state["queues"]},
+                "running": [c for c, t in turns.items() if t.get("uid", "") == ws_uid],
+                "queues": {c: _queue_public(c) for c in state["queues"]
+                           if turns.get(c, {}).get("uid", "") == ws_uid},
                 "build_running": bool(build.get("task") and not build["task"].done())})
 
     def _stop(tinfo: dict):
@@ -9100,7 +9153,9 @@ async def ws_endpoint(ws: WebSocket):
                                                              space_id=_space)
                     await send({"type": "conversation", "id": cid, "title": title,
                                 "origin": origin, "space_id": _space})
-                turns[cid] = {"agent": None, "task": None, "model": ""}  # claim before the task starts
+                # claim before the task starts, stamped with the owner so a
+                # state_sync racing the task creation still scopes it correctly
+                turns[cid] = {"agent": None, "task": None, "model": "", "uid": ws_uid}
                 data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
@@ -9167,3 +9222,4 @@ async def ws_endpoint(ws: WebSocket):
         # reply persists and broadcasts to whoever is connected); only this socket's
         # registration is cleaned up
         state["clients"].discard(ws)
+        state["client_uids"].pop(ws, None)
