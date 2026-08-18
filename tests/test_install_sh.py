@@ -320,3 +320,20 @@ def test_uv_sync_shows_a_heartbeat_and_keeps_uvs_own_exit_status():
     # the failure classifier still runs uv through the same heartbeat wrapper
     assert SRC.count("run_uv_sync") >= 3, (
         "both the first sync and the post-build-deps retry must use the heartbeat wrapper")
+
+
+def test_a_cryptography_rust_failure_is_told_apart_from_a_missing_c_header():
+    """cryptography (via pyjwt[crypto], via the MCP SDK) has no 32-bit ARM wheel and
+    builds with a Rust newer than Debian's `cargo`, so `apt install cargo` is a dead
+    retry. That failure must be caught BEFORE the ffi.h/apt path that cannot fix it,
+    and the message must name both ways out: rustup for 32-bit, 64-bit Pi OS as the
+    real fix. Ordering is the mechanism — a plain `elif` would let the C-header
+    branch swallow it."""
+    rust = _lineno(r'grep -qiE "cargo\|rust')
+    cheader = _lineno(r'grep -qiE "ffi\\\.h')
+    assert rust and cheader and rust < cheader, (
+        "the cryptography/Rust check must run before the C-toolchain check, or the "
+        "apt path that cannot fix it runs first")
+    assert re.search(r'rustup', SRC), "the 32-bit path must point at rustup, not apt cargo"
+    assert re.search(r'64-bit Raspberry Pi OS', SRC), "the reliable fix (64-bit) must be named"
+    assert "sh.rustup.rs" in SRC, "the exact rustup command belongs in the message"

@@ -78,20 +78,29 @@ uv sync && uv run agentos
 > would be built from source: minutes of 100% CPU that looks like the installer has hung, and on a
 > small Pi can thrash into an out-of-memory kill.
 >
-> `install.sh` handles this for you in two ways. It points `uv` at
-> [piwheels](https://www.piwheels.org) — the Raspberry Pi project's own wheelhouse of these
-> packages built for ARM — so they **download instead of compiling** (uv, unlike pip on Pi OS, does
-> not use piwheels by default). And it prints a heartbeat while `uv` works, so a genuine compile
-> reads as *working*, not *stuck*. Anything piwheels does not carry still compiles, and for that it
-> names and offers to install the C build toolchain:
+> `install.sh` helps in two ways. It points `uv` at [piwheels](https://www.piwheels.org) — the
+> Raspberry Pi project's own wheelhouse of these packages built for ARM — so what piwheels carries
+> **downloads instead of compiling** (uv, unlike pip on Pi OS, does not use piwheels by default).
+> And it prints a heartbeat while `uv` works, so a genuine compile reads as *working*, not *stuck*.
+> Anything piwheels does not carry still compiles, and for the C ones it names and offers to install
+> the build toolchain: `build-essential python3-dev libffi-dev libssl-dev pkg-config`.
+>
+> **`cryptography` is the exception, and on 32-bit it is a wall.** It arrives via `pyjwt[crypto]`
+> (which the MCP SDK needs), is pinned to a version with no 32-bit ARM wheel, and builds with
+> **Rust** — and a *newer* Rust than the `cargo` Debian ships, so `sudo apt install cargo` is not
+> enough. To stay on 32-bit you need a current Rust from [rustup](https://rustup.rs) and ≥1 GB of
+> swap, and the build still takes many minutes (and can fail outright on a Pi Zero / 1):
 >
 > ```bash
+> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+> . "$HOME/.cargo/env"
 > sudo apt install -y build-essential python3-dev libffi-dev libssl-dev pkg-config
-> # if cryptography itself then fails to build on 32-bit, it also needs Rust:
-> sudo apt install -y cargo
 > ```
 >
-> Reflashing to 64-bit Pi OS avoids the compile (and the wait) entirely.
+> **The reliable fix is 64-bit Pi OS.** On **arm64** `cryptography` (and everything else) installs
+> as a prebuilt wheel in seconds — no Rust, no compile, no swap tuning. A Pi 3, 4, 5 or Zero 2 W can
+> run it; reflashing to 64-bit Pi OS (Bookworm) is strongly recommended over fighting the 32-bit
+> toolchain. The installer detects the `cryptography`/Rust failure and prints exactly this choice.
 
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a
