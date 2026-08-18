@@ -244,6 +244,61 @@ async def test_a_whole_app_on_one_stream_line_does_not_kill_the_run(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_a_silent_executor_is_stopped_instead_of_hanging_forever(tmp_path, monkeypatch):
+    """A CLI that never prints — wedged before sign-in, a pre-model network stall —
+    used to block `readline()` forever: the turn froze at "working 0s" and every
+    later message in that conversation queued behind a turn that would never end.
+    The startup deadline turns that into an honest error and lets the process go.
+    The outer `wait_for` here is the assertion itself — run_task must RETURN."""
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\nsleep 30\n")             # produces nothing at all
+    stub.chmod(0o755)
+    monkeypatch.setattr(ex, "STARTUP_TIMEOUT", 0.4)
+
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
+        run = await asyncio.wait_for(
+            ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit),
+            timeout=10)
+
+    assert run.reported_error, "a stalled start must be reported, not swallowed"
+    errs = [e for e in seen if e["type"] == "error"]
+    assert errs and "no output" in errs[0]["message"], seen
+    assert "sign in" in errs[0]["message"], "the error must say the likely fix"
+
+
+@pytest.mark.asyncio
+async def test_a_slow_first_line_is_not_mistaken_for_a_stall(tmp_path, monkeypatch):
+    """The deadline bounds ONLY the wait for the first byte. A CLI that is slow to
+    start but then talks must run to completion — the watchdog must not clip it."""
+    stub = tmp_path / "claude"
+    ok = json.dumps({"type": "assistant",
+                     "message": {"content": [{"type": "text", "text": "hello"}]}})
+    result = json.dumps({"type": "result", "subtype": "success", "result": "hello",
+                         "total_cost_usd": 0.1, "num_turns": 1})
+    # A pause shorter than the deadline, then output — the healthy slow-start case.
+    stub.write_text(f"#!/bin/sh\nsleep 0.2\necho '{ok}'\necho '{result}'\n")
+    stub.chmod(0o755)
+    monkeypatch.setattr(ex, "STARTUP_TIMEOUT", 1.0)
+
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
+        run = await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
+
+    assert not run.reported_error
+    assert [e for e in seen if e["type"] == "error"] == []
+    assert "hello" in "".join(e.get("text", "") for e in seen)
+
+
+@pytest.mark.asyncio
 async def test_a_line_past_even_that_ceiling_costs_one_event_not_the_run(tmp_path):
     """There is always a bigger line. Dropping the event keeps the run alive —
     the executor carries on regardless of what we manage to read."""
