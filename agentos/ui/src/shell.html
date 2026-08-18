@@ -19,6 +19,13 @@
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
+    <!-- Who you are, stated on the bar itself — not only buried in the power
+         menu. On a machine with accounts, "whose desktop is this" is a fact the
+         top bar should answer at a glance, next to which brain is answering.
+         Hidden on a single-user machine, where there is only one answer and a
+         name would be noise (see usersBoot). Clicking opens the accounts app. -->
+    <button id="mb-user" hidden onclick="openApp('users')"
+            title="Signed in — click to manage accounts"></button>
     <!-- The brain, always stated: which executor answers and which model it
          runs on. Forwarding to another agent is never silent, and neither is
          the ordinary case — clicking opens the one place that changes it. -->
