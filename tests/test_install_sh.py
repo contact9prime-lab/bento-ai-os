@@ -292,3 +292,31 @@ def test_the_git_fallback_runs_after_the_cheap_probes_not_before():
     assert curl_probe < git_probe, (
         f"the git handshake on line {git_probe} runs before the cheap curl probes "
         f"on line {curl_probe}, so every install pays for it")
+
+
+# --- 32-bit Raspberry Pi: prefer prebuilt wheels, and show progress ----------
+
+def test_32bit_arm_points_uv_at_piwheels_to_avoid_the_source_compile():
+    """armv6l/armv7l has no PyPI wheel for cffi/cryptography/pydantic-core, so uv
+    compiles them — minutes of 100% CPU that reads as a hang. piwheels is the Pi
+    project's ARM wheelhouse; uv must be pointed at it, because unlike pip it does
+    not use it by default. `unsafe-best-match` is what lets a supplemental index
+    satisfy a wheel PyPI only has as an sdist, and it is added ONLY on 32-bit ARM."""
+    assert re.search(r'armv6l\|armv7l\)', SRC), "the 32-bit ARM case must be detected"
+    assert "https://www.piwheels.org/simple" in SRC, "piwheels must be offered on 32-bit ARM"
+    assert "--index-strategy unsafe-best-match" in SRC, (
+        "without unsafe-best-match uv stops at PyPI's sdist and never sees piwheels")
+
+
+def test_uv_sync_shows_a_heartbeat_and_keeps_uvs_own_exit_status():
+    """A silent multi-minute compile at full CPU looks stopped. The run is
+    backgrounded with a heartbeat so it visibly works — and `wait`, not a `| tee`
+    pipe, reports the status, so uv's real failure is not masked by tee's success."""
+    assert re.search(r'uv sync \$UV_PI_ARGS >"\$UVSYNC_LOG" 2>&1 &', SRC), (
+        "uv sync must run in the background so a heartbeat can be printed beside it")
+    run = _lineno(r'run_uv_sync\(\)')
+    wait = _lineno(r'wait "\$_uvpid"')
+    assert run and wait and run < wait, "run_uv_sync must wait on uv's own pid for the status"
+    # the failure classifier still runs uv through the same heartbeat wrapper
+    assert SRC.count("run_uv_sync") >= 3, (
+        "both the first sync and the post-build-deps retry must use the heartbeat wrapper")
