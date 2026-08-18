@@ -245,6 +245,42 @@ async def test_a_whole_app_on_one_stream_line_does_not_kill_the_run(tmp_path):
     assert [e for e in seen if e["type"] == "error"] == []
 
 
+def test_the_final_answer_is_never_lost_and_never_doubled():
+    """The `result` event carries the reply in its `result` field. When the answer
+    already streamed as an `assistant` text block (the normal case) that field is a
+    duplicate and must be dropped; when NOTHING streamed it is the whole reply and
+    must be shown. Driven with the real event shapes captured from the CLI."""
+    # normal: assistant streams, result repeats it -> one copy only
+    r = ex.Run()
+    a = ex.translate({"type": "assistant",
+                      "message": {"content": [{"type": "text", "text": "hello"}]}}, r)
+    b = ex.translate({"type": "result", "subtype": "success", "result": "hello",
+                      "total_cost_usd": 0.1, "num_turns": 1}, r)
+    assert [e.get("text") for e in a + b if e["type"] == "text_delta"] == ["hello"]
+
+    # result-only: nothing streamed -> the answer comes from result.result
+    r2 = ex.Run()
+    o = ex.translate({"type": "result", "subtype": "success", "result": "The answer is 42",
+                      "total_cost_usd": 0.1, "num_turns": 1, "is_error": False}, r2)
+    assert [e.get("text") for e in o if e["type"] == "text_delta"] == ["The answer is 42"]
+
+    # a failed result never smuggles its text in as a normal reply
+    r3 = ex.Run()
+    o3 = ex.translate({"type": "result", "subtype": "error_max_turns", "result": "partial",
+                       "is_error": True, "total_cost_usd": 0.1, "num_turns": 9}, r3)
+    assert not [e for e in o3 if e["type"] == "text_delta"]
+
+
+def test_unknown_stream_event_types_are_ignored_not_crashed():
+    """The live CLI emits active_goal, autocompact_state, system/commands_changed,
+    system/post_turn_summary and more that AgentOS has no use for. translate() must
+    return nothing for them, not raise — captured from a real run."""
+    for ev in [{"type": "active_goal"}, {"type": "autocompact_state"},
+               {"type": "system", "subtype": "commands_changed"},
+               {"type": "system", "subtype": "post_turn_summary"}]:
+        assert ex.translate(ev, ex.Run()) == []
+
+
 @pytest.mark.asyncio
 async def test_the_cold_start_gap_says_what_it_is_doing(tmp_path):
     """An external CLI is silent while it boots node and its MCP servers. Before

@@ -132,6 +132,7 @@ class Run:
     steps: int = 0                 # tool calls started, for a live "step N" line
     last: str = ""                 # what it is doing right now, in words
     dropped: int = 0               # stream events too large to read (see STREAM_LINE_LIMIT)
+    saw_text: bool = False         # did any assistant text stream? decides the result fallback
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -1404,6 +1405,7 @@ def translate(event: dict, run: Run) -> list[dict]:
     elif kind == "assistant":
         for block in (event.get("message") or {}).get("content", []):
             if block.get("type") == "text" and block.get("text"):
+                run.saw_text = True
                 out.append({"type": "text_delta", "text": block["text"]})
             elif block.get("type") == "thinking" and block.get("thinking"):
                 out.append({"type": "thinking_delta", "text": block["thinking"]})
@@ -1439,6 +1441,16 @@ def translate(event: dict, run: Run) -> list[dict]:
         run.cost_usd = float(event.get("total_cost_usd") or 0.0)
         run.turns = int(event.get("num_turns") or 0)
         run.denials = list(event.get("permission_denials") or [])
+        # The final answer is normally an `assistant` text block, already streamed —
+        # emitting `result.result` on top of it would print the reply twice. But if
+        # NOTHING streamed (a turn that ended straight from tools, or a build of the
+        # CLI that only puts the answer here), that field is the whole reply, and
+        # dropping it leaves the chat with steps and no result. So use it only as a
+        # fallback — never a duplicate, never a loss.
+        final = str(event.get("result") or "").strip()
+        if final and not run.saw_text and not event.get("is_error"):
+            run.saw_text = True
+            out.append({"type": "text_delta", "text": final})
         if run.denials:
             # Say what the envelope refused, by name. A run that quietly did less
             # than asked because a tool was withheld is the one failure mode the
