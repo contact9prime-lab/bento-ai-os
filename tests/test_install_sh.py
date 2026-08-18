@@ -322,21 +322,22 @@ def test_uv_sync_shows_a_heartbeat_and_keeps_uvs_own_exit_status():
         "both the first sync and the post-build-deps retry must use the heartbeat wrapper")
 
 
-def test_a_cryptography_rust_failure_is_told_apart_from_a_missing_c_header():
-    """cryptography (via pyjwt[crypto], via the MCP SDK) has no 32-bit ARM wheel and
-    builds with a Rust newer than Debian's `cargo`, so `apt install cargo` is a dead
-    retry. That failure must be caught BEFORE the ffi.h/apt path that cannot fix it,
-    and the message must name both ways out: rustup for 32-bit, 64-bit Pi OS as the
-    real fix. Ordering is the mechanism — a plain `elif` would let the C-header
-    branch swallow it."""
-    rust = _lineno(r'grep -qiE "cargo\|rust')
+def test_a_cryptography_build_is_caught_before_the_generic_c_header_path():
+    """A cryptography source build — spotted by the OpenSSL #error, a Rust/cargo
+    failure, or "could not compile cryptography" — must be handled BEFORE the
+    generic ffi.h/apt path, which installs a C compiler that cannot fix any of
+    those. Ordering is the mechanism; a plain later branch would swallow it."""
+    crypto = _lineno(r'grep -qiE "MUST be linked with OpenSSL 3')
     cheader = _lineno(r'grep -qiE "ffi\\\.h')
-    assert rust and cheader and rust < cheader, (
-        "the cryptography/Rust check must run before the C-toolchain check, or the "
-        "apt path that cannot fix it runs first")
-    assert re.search(r'rustup', SRC), "the 32-bit path must point at rustup, not apt cargo"
-    assert re.search(r'64-bit Raspberry Pi OS', SRC), "the reliable fix (64-bit) must be named"
-    assert "sh.rustup.rs" in SRC, "the exact rustup command belongs in the message"
+    assert crypto and cheader and crypto < cheader, (
+        "the cryptography build check must run before the C-toolchain check")
+    # the OpenSSL/Rust telltales are one merged condition, because all are symptoms
+    # of the same fallback-to-source, not independent failures with separate fixes
+    seg = SRC[SRC.index('grep -qiE "MUST be linked'):]
+    line = seg.split("\n", 1)[0]
+    assert 'cargo' in line and 'could not compile' in line, (
+        "OpenSSL, Rust and 'could not compile' must be one condition — they are the "
+        "same event (a source build) seen from different angles")
 
 
 # --- the interpreter is pinned so fresh installs get wheels, not a compile ----
@@ -368,24 +369,27 @@ def test_a_stale_venv_on_a_newer_python_is_rebuilt_so_the_pin_takes():
 
 
 def test_the_cryptography_message_is_arch_aware():
-    """The same Rust-compile failure means opposite things by arch: on 32-bit ARM
-    there is genuinely no wheel (rustup / 64-bit), on 64-bit it means uv picked a
-    Python too new for the wheel (the pin). One message for both was wrong — it told
-    a 64-bit Pi user their machine was 32-bit."""
-    seg = SRC.split('could not compile .?cryptography', 1)[1][:1600]
-    assert 'armv6l|armv7l' in seg, "the message must branch on architecture"
+    """The same source-build failure means different things by architecture, so the
+    handler branches: armv7l, armv6l, and 64-bit each get their own message."""
+    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:3000]
+    assert re.search(r'armv7l\)', seg), "must branch for 32-bit armv7"
+    assert re.search(r'armv6l\)', seg), "must branch for armv6 (Pi Zero / 1)"
     assert 'too new for it' in seg or '3.14' in seg, (
         "the 64-bit branch must name the too-new-Python cause, not send them to rustup")
 
 
-def test_an_old_openssl_is_told_to_upgrade_the_os_not_install_a_compiler():
-    """cryptography 49 refuses OpenSSL < 3.0 with a hard #error, so on Raspberry Pi
-    OS Bullseye (OpenSSL 1.1.1) the build cannot succeed at all. That must be caught
-    BEFORE the Rust branch, or a Bullseye user is sent to install a compiler that
-    then hits the same wall. The only real fix is an OS with OpenSSL 3.0."""
-    openssl = _lineno(r'grep -qiE "MUST be linked with OpenSSL 3')
-    rust = _lineno(r'grep -qiE "cargo\|rust')
-    assert openssl and rust and openssl < rust, (
-        "the OpenSSL-3.0 wall must be detected before the Rust branch")
-    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:900]
-    assert 'Bookworm' in seg, "the fix (a Bookworm-era OS with OpenSSL 3.0) must be named"
+def test_the_real_32bit_cause_is_named_as_glibc_not_openssl_or_rust():
+    """The empirical finding: cryptography 49 SHIPS a prebuilt armv7 wheel
+    (manylinux_2_31_armv7l), so the reason a 32-bit Pi compiles is glibc — Buster's
+    2.28 is below the wheel's 2.31 floor, Bullseye's is exactly 2.31. OpenSSL and
+    Rust are only what the fallback build then trips over. The message must send a
+    Buster user to Bullseye+ for the prebuilt wheel, NOT to rustup."""
+    # the handler measures glibc and compares against 2.31
+    assert re.search(r'ldd --version', SRC), "the installer must read the system's glibc"
+    assert re.search(r'-ge 31', SRC), "the 2.31 wheel floor must be the comparison"
+    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:3000]
+    assert 'glibc 2.31' in seg, "the armv7 message must name the real requirement (glibc 2.31)"
+    assert 'Buster' in seg and ('Bullseye' in seg), (
+        "it must name Buster as too-old and Bullseye/Bookworm as the fix")
+    assert '32-BIT IS FINE' in seg or '32-bit is fine' in seg.lower(), (
+        "the whole point: staying 32-bit is fine, only the OS version must move")

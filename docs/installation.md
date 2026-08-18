@@ -81,10 +81,9 @@ uv sync && uv run agentos
 > `.venv` and re-sync if an earlier run already built the environment on a newer Python.
 
 > **Use 64-bit Pi OS.** On **arm64** every dependency ships a prebuilt wheel, so nothing is
-> compiled and the install is quick. On **32-bit** Pi OS (armv7/armv6 — an older image, or a Pi
-> Zero / 1 / 2) there is no wheel on PyPI for `cffi`, `cryptography` or `pydantic-core`, so they
-> would be built from source: minutes of 100% CPU that looks like the installer has hung, and on a
-> small Pi can thrash into an out-of-memory kill.
+> compiled and the install is quick. On **32-bit** Pi OS (armv7 — and especially an old image like
+> Buster, or a Pi Zero / 1) some packages may have to build from source: minutes of 100% CPU that
+> looks like the installer has hung, and on a small Pi can thrash into an out-of-memory kill.
 >
 > `install.sh` helps in two ways. It points `uv` at [piwheels](https://www.piwheels.org) — the
 > Raspberry Pi project's own wheelhouse of these packages built for ARM — so what piwheels carries
@@ -93,28 +92,27 @@ uv sync && uv run agentos
 > Anything piwheels does not carry still compiles, and for the C ones it names and offers to install
 > the build toolchain: `build-essential python3-dev libffi-dev libssl-dev pkg-config`.
 >
-> **`cryptography` is the exception, and on 32-bit it is a wall.** It arrives via `pyjwt[crypto]`
-> (which the MCP SDK needs), is pinned to a version with no 32-bit ARM wheel, and builds with
-> **Rust** — and a *newer* Rust than the `cargo` Debian ships, so `sudo apt install cargo` is not
-> enough. To stay on 32-bit you need a current Rust from [rustup](https://rustup.rs) and ≥1 GB of
-> swap, and the build still takes many minutes (and can fail outright on a Pi Zero / 1):
+> **`cryptography` deserves its own note, and the real variable is glibc — not 32-bit.** It arrives
+> via `pyjwt[crypto]` (the MCP SDK needs it), and it *does* ship a prebuilt 32-bit ARM wheel. But
+> that wheel is tagged `manylinux_2_31_armv7l`, so it needs **glibc ≥ 2.31**:
 >
-> ```bash
-> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-> . "$HOME/.cargo/env"
-> sudo apt install -y build-essential python3-dev libffi-dev libssl-dev pkg-config
-> ```
+> | Raspberry Pi OS | Debian | glibc | 32-bit `cryptography` |
+> |---|---|---|---|
+> | **Buster** | 10 | 2.28 | ❌ too old → source build → fails (no OpenSSL 3.0) |
+> | **Bullseye** | 11 | 2.31 | ✅ prebuilt wheel — no compile, no Rust |
+> | **Bookworm** | 12 | 2.36 | ✅ prebuilt wheel — no compile, no Rust |
 >
-> **On Raspberry Pi OS "Bullseye" it cannot be built at all.** cryptography 49 refuses to compile
-> against OpenSSL older than 3.0 with a hard `#error`, and Bullseye ships OpenSSL 1.1.1 — so on
-> Bullseye no amount of Rust or swap helps; the library will not build. Only an OS with OpenSSL 3.0
-> (Raspberry Pi OS **Bookworm** or newer) can build or run it. The installer detects this and says so.
+> So on **Bullseye or Bookworm, 32-bit is completely fine** — the wheel installs in seconds and
+> bundles its own OpenSSL 3, so the system's OpenSSL version is irrelevant. The only real problem is
+> **Buster**: its glibc 2.28 is below the wheel's floor, so `uv` falls back to a source build, which
+> then fails because Buster's OpenSSL is 1.1.1 and cryptography 49 requires 3.0. The fix for a Buster
+> Pi is simply to move to Bullseye or Bookworm — **you do not need 64-bit and you do not need Rust.**
+> The installer measures glibc and says exactly this.
 >
-> **The reliable fix is 64-bit Bookworm.** On **arm64** `cryptography` (and everything else) installs
-> as a prebuilt wheel in seconds — no Rust, no compile, no swap tuning, and the bundled OpenSSL means
-> the system's version is irrelevant. A Pi 3, 4, 5 or Zero 2 W can run it; reflashing to 64-bit Pi OS
-> (Bookworm) is strongly recommended over fighting the 32-bit toolchain. The installer detects each
-> failure mode — old OpenSSL, no wheel, missing Rust — and prints the specific choice.
+> Two genuine exceptions still need a compile (Rust via [rustup](https://rustup.rs) + ≥1 GB swap, on
+> Bookworm for its OpenSSL 3.0): an **armv6** Pi (Zero / 1), which has no ARM wheel at all, and any
+> case where you deliberately stay on Buster. **64-bit Bookworm** remains the smoothest option of all —
+> prebuilt `aarch64` wheels for everything — if reflashing is on the table.
 
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a
