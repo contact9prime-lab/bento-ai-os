@@ -1480,17 +1480,20 @@ STREAM_LINE_LIMIT = 32 * 1024 * 1024
 
 # How long to wait for the CLI's FIRST line before deciding it is never coming.
 #
-# `stream-json` emits a `system/init` event within a second or two of a healthy
-# start — before any model work. If nothing arrives at all, the CLI is not slow,
-# it is stuck: not signed in and waiting on a prompt that `--print` gives it no
-# way to show, or wedged before it could reach the network. `readline()` then
-# blocks forever, the turn never leaves "working 0s", and every later message in
-# that conversation queues behind a turn that will never end. This is the outer
-# `wait_for` that `flows.py` has and `run_task` lacked. It bounds ONLY the wait
-# for the first byte — once the CLI is talking we trust it and the user can Stop —
-# so a long, legitimately quiet build is never cut off. Generous, because a cold
-# Node start on a Raspberry Pi is slow; still finite, because forever is a bug.
-STARTUP_TIMEOUT = 90.0
+# `stream-json` emits its init event before any model work — but NOT necessarily
+# quickly: the CLI first spawns node and connects every configured MCP server, and
+# with a dozen extensions on a slow machine that alone can take a minute or two of
+# complete silence. Only past that is silence a real stall: not signed in and
+# waiting on a prompt `--print` cannot show, or wedged before the network. Then
+# `readline()` blocks forever, the turn never leaves "working", and every later
+# message in that conversation queues behind a turn that will never end. This is
+# the outer `wait_for` that `flows.py` has and `run_task` lacked. It bounds ONLY
+# the wait for the first byte — once the CLI is talking we trust it and the user
+# can Stop. The bound is deliberately loose (3 min): the observed failure was
+# healthy slow-starts being LOOKED at as stuck (the frozen clock, now fixed), so
+# the cost of cutting off a real start is worse than a stall taking longer to
+# report. Still finite, because forever is a bug.
+STARTUP_TIMEOUT = 180.0
 
 
 async def _reap(proc) -> None:
@@ -1525,6 +1528,14 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     env = env.sanitized()
     run = run or Run()
     Path(env.workspace).mkdir(parents=True, exist_ok=True)
+
+    # Say what the silence is. An external CLI executor spends its first stretch
+    # spawning node and connecting every MCP server before it emits a single
+    # stream line — a minute or more with many extensions — and with nothing said,
+    # the working row reads as "stuck at 0s". A `status` event fills that gap with a
+    # sentence the UI shows in the working row, and (via actMove) starts its clock.
+    await emit({"type": "status",
+                "message": "starting up — waking the agent and its tools"})
 
     proc = await asyncio.create_subprocess_exec(
         *build_command(task, env),

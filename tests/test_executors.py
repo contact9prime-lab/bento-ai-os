@@ -206,7 +206,9 @@ async def test_non_json_chatter_on_stdout_is_ignored(tmp_path):
     with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
         await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")),
                           lambda ev: asyncio.sleep(0, result=seen.append(ev)))
-    assert [e["type"] for e in seen] == ["text_delta"]
+    # the leading 'status' is the "starting up…" cold-start notice; the point of
+    # this test is that the stray npm line produced no event of its own
+    assert [e["type"] for e in seen if e["type"] != "status"] == ["text_delta"]
 
 
 @pytest.mark.asyncio
@@ -241,6 +243,27 @@ async def test_a_whole_app_on_one_stream_line_does_not_kill_the_run(tmp_path):
     assert run.cost_usd == 1.5 and run.turns == 4        # the run reached its own end
     assert not run.dropped
     assert [e for e in seen if e["type"] == "error"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_cold_start_gap_says_what_it_is_doing(tmp_path):
+    """An external CLI is silent while it boots node and its MCP servers. Before
+    that silence, run_task must emit a 'status' so the working row shows a sentence
+    (and its clock starts) instead of a bare frozen '0s'."""
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\n"
+                    f"echo '{json.dumps({'type': 'result', 'subtype': 'success', 'result': 'x', 'total_cost_usd': 0.1, 'num_turns': 1})}'\n")
+    stub.chmod(0o755)
+    seen: list[dict] = []
+
+    async def emit(ev):
+        seen.append(ev)
+
+    with mock.patch.object(ex, "claude_exe", lambda: str(stub)):
+        await ex.run_task("hi", ex.Envelope(workspace=str(tmp_path / "ws")), emit)
+
+    assert seen and seen[0]["type"] == "status", "the first event must be the cold-start notice"
+    assert "starting" in seen[0]["message"].lower()
 
 
 @pytest.mark.asyncio
