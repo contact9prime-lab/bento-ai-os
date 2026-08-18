@@ -590,8 +590,23 @@ def _regressions_only(root: Path, before: str, branch: str,
 
 
 def _python(root: Path) -> str:
-    venv = root / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else "python3"
+    """The interpreter to run the checkout's tests with.
+
+    Windows puts the venv's Python in `Scripts\\python.exe`, POSIX in
+    `bin/python` — looking only under `bin/` meant every Windows update fell
+    through to `python3`, which is not even a command on a default Windows box,
+    so the verify gate could never launch pytest and the update rolled back with
+    "could not run its tests". The fallback is `sys.executable` — the interpreter
+    running THIS process, which by definition exists and carries AgentOS's own
+    dependencies (pytest among them) — rather than a `python3` that may not.
+    """
+    import sys
+
+    cand = (root / ".venv" / "Scripts" / "python.exe") if os.name == "nt" \
+        else (root / ".venv" / "bin" / "python")
+    if cand.exists():
+        return str(cand)
+    return sys.executable or "python3"
 
 
 def _version_on_disk(root: Path) -> str:

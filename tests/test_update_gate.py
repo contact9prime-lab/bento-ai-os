@@ -146,3 +146,21 @@ async def test_a_new_test_that_fails_here_is_not_counted_as_a_regression(repo):
     assert res["ok"] is True, res
     assert head(local) != before
     assert any("new to this update" in m for m in msgs), msgs
+
+
+def test_the_verify_interpreter_is_found_on_every_platform(tmp_path, monkeypatch):
+    """`_python` looked only under `.venv/bin`, so on Windows (Scripts\\python.exe)
+    it fell through to `python3` — not a command on a default Windows box — and
+    the whole verify gate could never launch. It must resolve the venv on the
+    right platform and otherwise fall back to the running interpreter, which is
+    guaranteed to exist and to have pytest."""
+    import os
+    import sys
+    # no .venv on disk → the fallback must be a real interpreter, not "python3"
+    assert upd._python(tmp_path) == sys.executable
+
+    # a POSIX-layout venv is found on POSIX
+    if os.name != "nt":
+        (tmp_path / ".venv" / "bin").mkdir(parents=True)
+        (tmp_path / ".venv" / "bin" / "python").write_text("")
+        assert upd._python(tmp_path).endswith("/.venv/bin/python")
