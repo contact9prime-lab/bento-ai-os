@@ -339,11 +339,23 @@ def test_read_only_takes_the_caution_off_a_system_directory():
     assert toolsmod.folder_risk("/etc", "ro") == ""
 
 
-def test_an_ordinary_data_folder_is_not_cautioned(tmp_path):
-    """A warning on everything is a warning on nothing."""
-    d = tmp_path / "reports"
-    d.mkdir()
-    assert toolsmod.folder_risk(str(d), "rw") == ""
+def test_an_ordinary_data_folder_is_not_cautioned():
+    """A warning on everything is a warning on nothing.
+
+    NOT under `tmp_path`: pytest's temp directory resolves under a system
+    directory on macOS (`/private/var/folders/…`) and on Linux hosts whose
+    `/tmp` lives under `/var` — which is exactly what `folder_risk` is SUPPOSED
+    to flag, so the assertion would fail there for the right reason and this test
+    would (wrongly) block a self-update on those machines. `folder_risk` is pure
+    path logic — `realpath` is lexical for a path that need not exist — so a
+    plainly ordinary constructed path exercises it faithfully wherever the tests
+    run. This bug shipped, and its symptom was `bento update` rolling back on a
+    Mac with "the new version fails its own tests" pointing at a folder nobody
+    would ever share.
+    """
+    for ordinary in ("/home/pat/projects/reports", "/srv/exports/quarterly",
+                     "/mnt/data/reports"):
+        assert toolsmod.folder_risk(ordinary, "rw") == "", ordinary
 
 
 def test_a_home_directory_says_home_not_system(monkeypatch, tmp_path):
