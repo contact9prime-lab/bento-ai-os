@@ -362,11 +362,30 @@ run_uv_sync() {
   wait "$_uvpid"
 }
 
+# Pin the interpreter. `requires-python = ">=3.10"` has no ceiling, so on a fresh
+# machine uv provisions the NEWEST CPython it can — and the newest is where wheels
+# have not caught up yet: cryptography 49, pydantic-core and friends ship prebuilt
+# wheels for 3.11–3.13 but not the bleeding-edge release, so uv falls back to
+# compiling them (cryptography needs Rust) and the install dies on a 64-bit Pi for
+# a reason that has nothing to do with ARM. `.python-version` fixes the interpreter
+# at a version with full wheel coverage; this clears a `.venv` a previous run built
+# on a different Python so the pin actually takes — uv rebuilds it from the lock.
+PYPIN=""
+[ -f .python-version ] && PYPIN="$(cat .python-version 2>/dev/null)"
+if [ -n "$PYPIN" ] && [ -x .venv/bin/python ]; then
+  _have="$(.venv/bin/python -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+  case "$_have" in
+    "$PYPIN"|"$PYPIN".*) : ;;                              # already the pinned line
+    "") rm -rf .venv ;;                                    # unusable, rebuild
+    *) say "rebuilding the environment on Python $PYPIN (was $_have — too new for prebuilt wheels)"; rm -rf .venv ;;
+  esac
+fi
+
 say "installing dependencies (this fetches Python too, if needed)"
 if [ -n "$UV_PI_ARGS" ]; then
   echo "   (32-bit Raspberry Pi — using piwheels prebuilt ARM wheels so packages download instead of compiling; anything not on piwheels still compiles, which is slow)"
-else
-  echo "   (on a 32-bit Raspberry Pi some packages compile from source — this can take a few minutes)"
+elif [ -n "$PYPIN" ]; then
+  echo "   (using Python $PYPIN, which has prebuilt wheels for every dependency, so nothing is compiled)"
 fi
 printf '   working'
 if run_uv_sync; then
@@ -385,7 +404,11 @@ else
   # wheel and nothing is compiled — so the honest answer names both ways out.
   if grep -qiE "cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
     rm -f "$UVSYNC_LOG"
-    die "cryptography has no prebuilt wheel for 32-bit Pi OS and must compile with a MODERN Rust —
+    case "$(uname -m)" in
+      armv6l|armv7l)
+        # Genuinely no wheel: 32-bit ARM. cryptography must build with a Rust newer
+        # than Debian's `cargo`, so `apt install cargo` is a dead retry.
+        die "cryptography has no prebuilt wheel for 32-bit Pi OS and must compile with a MODERN Rust —
    newer than the 'cargo' apt provides, so 'sudo apt install cargo' will NOT be enough.
 
    The reliable fix is 64-bit Raspberry Pi OS. There cryptography installs prebuilt in seconds,
@@ -397,7 +420,20 @@ else
        . \"\$HOME/.cargo/env\"
        sudo apt install -y $APT_BUILD_DEPS
    Ensure at least 1 GB of swap first (the build is memory-hungry); it takes many minutes on a Pi
-   and can still fail on armv6 (Pi Zero / 1)."
+   and can still fail on armv6 (Pi Zero / 1)." ;;
+      *)
+        # 64-bit (aarch64 / x86-64) DOES have a wheel — for 3.11–3.13. Reaching a Rust
+        # compile here means uv picked a Python too new for the wheel (3.14+). The pin
+        # above prevents it; if we still got here, the pin was missing or overridden.
+        die "cryptography tried to compile with Rust on a 64-bit machine, where a prebuilt wheel exists —
+   which means uv used a Python too new for it (3.14+). This copy pins Python to ${PYPIN:-3.13}
+   in .python-version to avoid exactly that.
+
+   Delete the environment and re-run me so the pin takes effect:
+       rm -rf .venv
+   If it recurs, uv is ignoring the pin — force the interpreter explicitly:
+       uv python install ${PYPIN:-3.13} && uv sync --python ${PYPIN:-3.13}" ;;
+    esac
   # "you likely need to install ffi.h" and its siblings mean exactly one thing —
   # a source compile with no C toolchain — so name the fix and, with permission,
   # apply it and try once more rather than making the machine be told twice.

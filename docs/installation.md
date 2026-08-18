@@ -72,6 +72,14 @@ git clone <your fork> agentic-os && cd agentic-os
 uv sync && uv run agentos
 ```
 
+> **The interpreter is pinned in `.python-version`.** `requires-python` has no upper bound, so left
+> to itself `uv` provisions the newest CPython — and the newest release is where prebuilt wheels
+> have not caught up: `cryptography`, `pydantic-core` and friends have wheels for 3.11–3.13 but not
+> a just-released 3.14, so `uv` would compile them from source (and `cryptography` needs Rust). On a
+> 64-bit Pi that turns a seconds-long wheel download into a Rust build that fails — for a reason that
+> has nothing to do with ARM. The pin keeps `uv` on a version with full wheel coverage; delete
+> `.venv` and re-sync if an earlier run already built the environment on a newer Python.
+
 > **Use 64-bit Pi OS.** On **arm64** every dependency ships a prebuilt wheel, so nothing is
 > compiled and the install is quick. On **32-bit** Pi OS (armv7/armv6 — an older image, or a Pi
 > Zero / 1 / 2) there is no wheel on PyPI for `cffi`, `cryptography` or `pydantic-core`, so they

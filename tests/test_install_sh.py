@@ -337,3 +337,42 @@ def test_a_cryptography_rust_failure_is_told_apart_from_a_missing_c_header():
     assert re.search(r'rustup', SRC), "the 32-bit path must point at rustup, not apt cargo"
     assert re.search(r'64-bit Raspberry Pi OS', SRC), "the reliable fix (64-bit) must be named"
     assert "sh.rustup.rs" in SRC, "the exact rustup command belongs in the message"
+
+
+# --- the interpreter is pinned so fresh installs get wheels, not a compile ----
+
+PYVER = (REPO / ".python-version")
+
+
+def test_the_interpreter_is_pinned_below_the_bleeding_edge():
+    """requires-python has no ceiling, so uv would provision the NEWEST CPython —
+    and the newest release is where prebuilt wheels have not caught up, so
+    cryptography/pydantic-core compile from source (cryptography needs Rust) and a
+    64-bit Pi install dies for a reason that has nothing to do with ARM. A pinned
+    `.python-version` at a wheel-covered release is the fix; it must exist and must
+    not itself be the bleeding edge."""
+    assert PYVER.is_file(), ".python-version must pin the interpreter uv provisions"
+    major, minor = (int(x) for x in PYVER.read_text().strip().split(".")[:2])
+    assert (major, minor) >= (3, 10), "must satisfy requires-python >=3.10"
+    assert (major, minor) <= (3, 13), (
+        "pinned to a Python whose wheels may not exist yet — the exact bug this pins against")
+
+
+def test_a_stale_venv_on_a_newer_python_is_rebuilt_so_the_pin_takes():
+    """uv reuses an existing .venv; if a prior run built it on 3.14, the pin does
+    nothing until that venv is gone. The installer must detect the mismatch and
+    rebuild, or the fix never reaches a machine that already failed once."""
+    assert re.search(r'\.venv/bin/python -c .*version_info', SRC), (
+        "the installer must read the existing venv's Python version")
+    assert re.search(r'rm -rf \.venv', SRC), "a mismatched venv must be rebuilt, not reused"
+
+
+def test_the_cryptography_message_is_arch_aware():
+    """The same Rust-compile failure means opposite things by arch: on 32-bit ARM
+    there is genuinely no wheel (rustup / 64-bit), on 64-bit it means uv picked a
+    Python too new for the wheel (the pin). One message for both was wrong — it told
+    a 64-bit Pi user their machine was 32-bit."""
+    seg = SRC.split('could not compile .?cryptography', 1)[1][:1600]
+    assert 'armv6l|armv7l' in seg, "the message must branch on architecture"
+    assert 'too new for it' in seg or '3.14' in seg, (
+        "the 64-bit branch must name the too-new-Python cause, not send them to rustup")
