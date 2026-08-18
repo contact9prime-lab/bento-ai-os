@@ -376,3 +376,16 @@ def test_the_cryptography_message_is_arch_aware():
     assert 'armv6l|armv7l' in seg, "the message must branch on architecture"
     assert 'too new for it' in seg or '3.14' in seg, (
         "the 64-bit branch must name the too-new-Python cause, not send them to rustup")
+
+
+def test_an_old_openssl_is_told_to_upgrade_the_os_not_install_a_compiler():
+    """cryptography 49 refuses OpenSSL < 3.0 with a hard #error, so on Raspberry Pi
+    OS Bullseye (OpenSSL 1.1.1) the build cannot succeed at all. That must be caught
+    BEFORE the Rust branch, or a Bullseye user is sent to install a compiler that
+    then hits the same wall. The only real fix is an OS with OpenSSL 3.0."""
+    openssl = _lineno(r'grep -qiE "MUST be linked with OpenSSL 3')
+    rust = _lineno(r'grep -qiE "cargo\|rust')
+    assert openssl and rust and openssl < rust, (
+        "the OpenSSL-3.0 wall must be detected before the Rust branch")
+    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:900]
+    assert 'Bookworm' in seg, "the fix (a Bookworm-era OS with OpenSSL 3.0) must be named"

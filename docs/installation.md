@@ -105,10 +105,16 @@ uv sync && uv run agentos
 > sudo apt install -y build-essential python3-dev libffi-dev libssl-dev pkg-config
 > ```
 >
-> **The reliable fix is 64-bit Pi OS.** On **arm64** `cryptography` (and everything else) installs
-> as a prebuilt wheel in seconds — no Rust, no compile, no swap tuning. A Pi 3, 4, 5 or Zero 2 W can
-> run it; reflashing to 64-bit Pi OS (Bookworm) is strongly recommended over fighting the 32-bit
-> toolchain. The installer detects the `cryptography`/Rust failure and prints exactly this choice.
+> **On Raspberry Pi OS "Bullseye" it cannot be built at all.** cryptography 49 refuses to compile
+> against OpenSSL older than 3.0 with a hard `#error`, and Bullseye ships OpenSSL 1.1.1 — so on
+> Bullseye no amount of Rust or swap helps; the library will not build. Only an OS with OpenSSL 3.0
+> (Raspberry Pi OS **Bookworm** or newer) can build or run it. The installer detects this and says so.
+>
+> **The reliable fix is 64-bit Bookworm.** On **arm64** `cryptography` (and everything else) installs
+> as a prebuilt wheel in seconds — no Rust, no compile, no swap tuning, and the bundled OpenSSL means
+> the system's version is irrelevant. A Pi 3, 4, 5 or Zero 2 W can run it; reflashing to 64-bit Pi OS
+> (Bookworm) is strongly recommended over fighting the 32-bit toolchain. The installer detects each
+> failure mode — old OpenSSL, no wheel, missing Rust — and prints the specific choice.
 
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a

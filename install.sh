@@ -395,14 +395,29 @@ if run_uv_sync; then
 else
   echo ""
   cat "$UVSYNC_LOG"                                      # show what actually failed
-  # cryptography (via pyjwt[crypto], via the MCP SDK) is the hard one, and it is
+  # The OpenSSL wall comes first, because it is the one no toolchain can climb.
+  # cryptography refuses to compile against OpenSSL older than 3.0 with a hard
+  # `#error` — Raspberry Pi OS "Bullseye" ships 1.1.1, so on Bullseye the build
+  # cannot succeed no matter how much Rust or swap is thrown at it. Checked ahead of
+  # the Rust branch so a Bullseye user is told to upgrade the OS, not to install a
+  # compiler that will hit this same wall.
+  if grep -qiE "MUST be linked with OpenSSL 3|OpenSSL 3\.0\.0 or later" "$UVSYNC_LOG" 2>/dev/null; then
+    rm -f "$UVSYNC_LOG"
+    die "cryptography will not build against this system's OpenSSL — it requires 3.0.0 or newer, and
+   this OS has an older one (OpenSSL 1.1.1 ships on Raspberry Pi OS 'Bullseye'). This is not a
+   missing tool: the library refuses to compile here at all, by design.
+
+   The fix is an OS with OpenSSL 3.0 — Raspberry Pi OS 'Bookworm' or newer:
+     - 64-bit Bookworm is best: cryptography installs as a PREBUILT wheel, no compile, no Rust.
+     - 32-bit Bookworm works too, but still compiles cryptography (slow; needs rustup + swap).
+   Reflash to 64-bit Bookworm and re-run this installer — that ends every part of this problem."
+  # cryptography (via pyjwt[crypto], via the MCP SDK) is the next hard one, and it is
   # NOT the same fix as a missing C header. It is pinned to a version with no 32-bit
   # ARM wheel that builds with Rust — and its minimum Rust is newer than the `cargo`
   # Debian ships, so `apt install cargo` compiles nothing and only looks like
-  # progress. This is checked FIRST so that case is never sent down the apt path
-  # below, which cannot fix it. On 64-bit Pi OS it never arises: PyPI has an aarch64
-  # wheel and nothing is compiled — so the honest answer names both ways out.
-  if grep -qiE "cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
+  # progress. This is checked before the apt path below, which cannot fix it. On
+  # 64-bit Pi OS it never arises: PyPI has an aarch64 wheel and nothing is compiled.
+  elif grep -qiE "cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
     rm -f "$UVSYNC_LOG"
     case "$(uname -m)" in
       armv6l|armv7l)
