@@ -87,20 +87,33 @@ function showBriefing(ev){
 function showUpdate(ev){
   const old=document.getElementById('updcard');if(old)old.remove();
   const c=document.createElement('div');c.id='updcard';c.className='procard';
-  c.innerHTML=`<div class="pc-head">▲ Update available — ${esc(ev.latest||'')}</div>
-    <div class="pc-text">You are running ${esc(ev.current||'')}.${ev.notes?' ':''}
-      ${ev.notes?`<span class="mut">${esc(String(ev.notes).split('\n').slice(1,4).join(' ').slice(0,180))}</span>`:''}</div>
+  /* Two kinds of news, and this card printed one of them wrong for the common
+     case: between releases the version does not move, so it read "Update
+     available — 0.2.0 / You are running 0.2.0". `updWord` is the same phrasing
+     About and Settings use. */
+  const bumped=ev.latest&&ev.latest!==ev.current;
+  const head=typeof updWord==='function'?updWord(ev):(ev.latest||'');
+  c.innerHTML=`<div class="pc-head">▲ ${esc(bumped?'Update available — '+head:head)}</div>
+    <div class="pc-text">You are running ${esc(ev.current||'')}${bumped?'':' — the code on '+esc(ev.tracks||'the update branch')+' has moved on'}.${ev.notes?' ':''}
+      ${ev.notes?`<span class="mut">${esc(String(ev.notes).split('\n').slice(1,4).join(' ').slice(0,180))}</span>`:''}
+      ${(ev.commits||[]).length?`<div class="upd-log">${(ev.commits||[]).slice(0,6).map(x=>
+        `<div><code>${esc(x.hash)}</code> ${esc(x.title)}</div>`).join('')}</div>`:''}</div>
     <div id="upd-prog" class="pc-text mut" style="display:none"></div>
     <div class="pc-actions">
       <button class="pc-go">Update now</button>
       <button class="pc-x">Later</button>
-      <button class="pc-skip endbtn">Skip ${esc(ev.latest||'')}</button></div>`;
+      <button class="pc-skip endbtn">${esc(bumped?'Skip '+ev.latest:'Not this one')}</button></div>`;
   $('#desktop').appendChild(c);popIn(c,{origin:'bottom right'});
   c.querySelector('.pc-x').onclick=()=>popOut(c,()=>c.remove());
   c.querySelector('.pc-skip').onclick=()=>{
+    /* Skip the MARK, not the version. Skipping "0.2.0" while running 0.2.0 would
+       silence every commit that ever lands under that version — a decline that
+       quietly turns into "never update this machine again". */
+    const mark=ev.mark||ev.latest||'';
     fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({skip:ev.latest})});
-    popOut(c,()=>c.remove());toast('skipping '+ev.latest);
+      body:JSON.stringify({skip:mark})});
+    popOut(c,()=>c.remove());
+    toast(bumped?('skipping '+ev.latest):'not installing these changes');
   };
   c.querySelector('.pc-go').onclick=()=>runUpdate(c);
 }

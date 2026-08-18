@@ -482,6 +482,53 @@ def forward_cmd(engine: str | None):
     print("  a running server picks this up on its next turn")
 
 
+def profile_cmd(want: str | None):
+    """Show or set the footprint profile — the Pi switch.
+
+    The TUI face of it, and the one the installer calls for `--lite`. Printing
+    what it changes rather than just the word: a profile whose effects are not on
+    screen is a machine behaving differently for reasons nobody can see.
+    """
+    from . import config as cfgmod
+    from . import mcp_store as mcpmod
+    from . import profile as profmod
+
+    cfg = cfgmod.load_config()
+    if not want:
+        print(f"profile: {profmod.describe(cfg)}")
+        m = profmod.machine()
+        print(f"  machine:   {m['ram_mb']} MB RAM · {m['cores']} cores · {m['arch']}"
+              + (f" · {m['board']}" if m["board"] else ""))
+        try:
+            size = mcpmod.INDEX_PATH.stat().st_size
+            print(f"  MCP cache: {size // 1024} kB at {mcpmod.INDEX_PATH}")
+        except OSError:
+            print("  MCP cache: nothing on disk")
+        print()
+        print("  bento profile lite   # fetch the MCP catalogue only while you search")
+        print("  bento profile full   # keep it, refresh it daily")
+        print("  bento profile auto   # decide from this machine")
+        return
+    ok, msg = profmod.apply(cfg, want)
+    if not ok:
+        print(msg)
+        raise SystemExit(2)
+    cfgmod.save_config(cfg)
+    print(f"profile: {msg}")
+    # Light mode means nothing kept, so the cache goes NOW rather than at the next
+    # maintenance pass — somebody switching to lite on a full SD card is asking
+    # for the space back today.
+    if profmod.settings(cfg)["mcp_cache"] == "discard":
+        try:
+            size = mcpmod.INDEX_PATH.stat().st_size
+            mcpmod.INDEX_PATH.unlink()
+            print(f"  deleted the MCP catalogue cache ({size // 1024} kB) — "
+                  f"the next search fetches it again")
+        except OSError:
+            pass
+    print("  a running server picks this up on its next maintenance pass")
+
+
 def brain_cmd(executor: str | None, model: str | None):
     """Read or set the brain: which executor answers, and which of ITS models.
 
@@ -1051,6 +1098,14 @@ def doctor(fix: bool = False, session: bool = False):
                      "(or `launchctl setenv` on macOS), then restart ollama")
                 break
 
+    # 3a. The profile — what this machine has decided to keep. On a Pi it is the
+    # line that explains why the MCP Store is slower and the database smaller.
+    try:
+        from . import profile as profmod
+        ok(f"profile {profmod.describe(cfg)}")
+    except Exception as exc:
+        warn(f"could not read the profile: {exc}")
+
     # 3b. The brain. "What will answer a turn here" is the first thing to check on
     # a headless box, and it was the one thing this report did not say — a machine
     # with no reachable model looks healthy in every other line.
@@ -1086,6 +1141,27 @@ def doctor(fix: bool = False, session: bool = False):
         integ = db.execute("PRAGMA integrity_check").fetchone()[0]
         (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
         (ok if integ == "ok" else bad)(f"db integrity: {integ}")
+        # How much disk it is using, and what is using it. On an SD card this is
+        # the number that matters and nothing reported it — a database that grows
+        # every day is invisible until the machine cannot write at all.
+        size = 0
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                size += os.path.getsize(str(cfgmod.DB_PATH) + suffix)
+            except OSError:
+                pass
+        mb = size / 1_048_576
+        rows = db.execute("SELECT count(*) FROM logs").fetchone()[0]
+        ret = (cfg.get("retention") or {})
+        line = f"database {mb:.1f} MB, {rows} log rows"
+        if mb > 2000:
+            bad(line + " — that is a lot for an SD card")
+            todo("bento config retention.logs_days 7   # and restart, or prune by hand")
+        elif mb > 500:
+            warn(line)
+        else:
+            ok(line + (" · retention off" if not ret.get("enabled", True) else
+                       f" · keeping {ret.get('logs_days', 30)}d of logs"))
     except Exception as e:
         bad(f"db check failed: {e}")
 
@@ -2339,33 +2415,55 @@ def _update_cli(args) -> int:
     cfg = cfgmod.load_config()
     root = upd.install_dir()
 
-    print(f"AgentOS {upd.current()}")
-    print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
-    print(f"  branch:    {upd.conf(cfg).get('branch') or upd.DEFAULT_BRANCH}")
-
     state = asyncio.run(upd.check(cfg, force=True))
     cfgmod.save_config(cfg)          # check() stamps last_check on the conf dict
 
+    print(f"AgentOS {upd.current()}")
+    print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
+    print(f"  branch:    {state.get('on_branch') or '(unknown)'}"
+          + (f"  → updates track '{state.get('tracks')}'"
+             if state.get("mismatch") else "  (the branch updates track)"))
+    if state.get("ahead"):
+        # Somebody's own commits. Worth naming: it is the other half of "I pushed
+        # and nothing happened" — the code is here, it is just not upstream.
+        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on "
+              f"origin/{state.get('tracks')}")
+
+    # An error is not a reason to stop reporting: the version file may be
+    # unreachable while git knows exactly how far behind this copy is, and vice
+    # versa. Print what is known, then the failure.
     if state.get("error"):
-        print(f"\n✗ {state['error']}")
-        return 1
+        print(f"\n! {state['error']}")
+
     if not state.get("update_available"):
-        print(f"\n✓ up to date (latest published is {state.get('latest') or 'unknown'})")
-        return 0
+        if state.get("mismatch"):
+            print(f"\n✓ up to date with origin/{state.get('tracks')} — but this checkout is "
+                  f"on '{state.get('on_branch')}', so commits you pushed to another branch "
+                  f"will never show up here")
+        else:
+            print(f"\n✓ up to date with origin/{state.get('tracks')} "
+                  f"(published version {state.get('latest') or 'unknown'})")
+        return 0 if not state.get("error") else 1
 
-    print(f"\n▲ {state['latest']} is available (you have {upd.current()})")
-    for e in upd.entries(state.get("notes") or "", limit=3):
-        if e.get("title"):
-            print(f"\n  {e['title']}")
-        for line in (e.get("body") or "").splitlines()[:6]:
-            if line.strip():
-                print(f"    {line.strip()[:100]}")
+    # Two different pieces of news. A version bump is a release; commits waiting on
+    # the tracked branch are the code, and between releases only the second moves —
+    # printing "0.2.0 is available (you have 0.2.0)" is how this said nothing.
+    if state.get("latest") and upd.is_newer(state["latest"], upd.current()):
+        print(f"\n▲ {state['latest']} is available (you have {upd.current()})")
+        for e in upd.entries(state.get("notes") or "", limit=3):
+            if e.get("title"):
+                print(f"\n  {e['title']}")
+            for line in (e.get("body") or "").splitlines()[:6]:
+                if line.strip():
+                    print(f"    {line.strip()[:100]}")
+    else:
+        n = state.get("behind") or 0
+        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on origin/"
+              f"{state.get('tracks')} — same version ({upd.current()}), newer code")
 
-    # The changelog nobody maintains by hand. CHANGELOG.md is a published release
-    # note and says nothing on a branch between releases, which is most of the
-    # time — so the commits themselves are the honest answer to "what am I about
-    # to install".
-    waiting = asyncio.run(upd.pending(cfg, limit=15))
+    # The changelog nobody maintains by hand: the commits themselves, already
+    # fetched by the check rather than fetched a second time here.
+    waiting = state.get("commits") or []
     if waiting:
         print(f"\n  {len(waiting)} change{'s' if len(waiting) != 1 else ''} waiting:")
         for c in waiting:
@@ -2737,6 +2835,11 @@ def main():
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
+    p_prof = sub.add_parser("profile", help="footprint profile — lite keeps nothing "
+                                            "it is not using (for a Pi)")
+    p_prof.add_argument("profile", nargs="?", choices=["auto", "full", "lite"],
+                        help="omit to show what this machine is doing now")
+
     p_brain = sub.add_parser("brain", help="which executor answers and which of its models "
                                           "(omit everything to list what could)")
     # No `choices=`: the executors are a probe of this machine, and a hardcoded
@@ -2998,6 +3101,8 @@ def main():
         forward_cmd(args.engine)
     elif args.cmd == "brain":
         brain_cmd(args.executor, args.model)
+    elif args.cmd == "profile":
+        profile_cmd(args.profile)
     elif args.cmd == "tunnel":
         tunnel_cmd(args.on, args.off, args.public, args.provider, args.install)
     elif args.cmd in ("log", "logs"):

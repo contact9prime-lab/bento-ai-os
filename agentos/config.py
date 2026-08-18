@@ -153,6 +153,17 @@ DEFAULTS = {
     # Which agent answers. "aria" is the built-in one; anything else turns this
     # machine into a forwarder — every turn a person starts goes to that agent
     # instead, on every surface (chat, omnibar, copilot, Telegram, API, tasks).
+    # Which trade this machine makes between speed and footprint. "auto" decides
+    # from the hardware on first run and then writes down what it decided —
+    # `agentos/profile.py` is the whole rule, and what it changes lands in the
+    # ordinary keys below rather than in an invisible overlay.
+    "profile": "auto",
+    # How long telemetry is kept. Not the ledger and not the user's own work —
+    # `memory.Store.prune` says exactly what it will and will not touch. 0 for any
+    # window means "keep it forever", because a machine somebody is debugging must
+    # be able to switch this off without editing code.
+    "retention": {"enabled": True, "logs_days": 30, "events_days": 30,
+                  "usage_days": 365},
     "engine": "aria",
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
     "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty

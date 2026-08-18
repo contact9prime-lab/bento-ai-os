@@ -442,6 +442,17 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
   read the store first and set the user second would act as the machine, not the person.
 
+- **A WebSocket has no HTTP middleware, so it checks its ORIGIN by hand too.** The same
+  reason `csrf_origin_guard` cannot see it. A browser attaches the site's cookies to a
+  cross-origin WS handshake and the same-origin policy does not stop a foreign page opening
+  one — so without a check, a page on the open web could open `ws://localhost/ws/terminal`
+  and, because `_ws_authed` trusts loopback on a default single-user box, be handed a shell.
+  That is Cross-Site WebSocket Hijacking, and on this OS it is RCE. Every socket now passes
+  ONE gate, `_ws_reject`, which refuses a cross-origin (or `null`) Origin *before* auth;
+  an absent Origin is a non-browser client with no cookie jar and is allowed, mirroring
+  `_same_origin`. Having one gate is the point — a new socket must not be able to forget
+  the check, and one of these sockets is a shell. `tests/test_ws_origin.py` pins it.
+
 - **Accounts are a data boundary through the tools, enforced, not an OS boundary.** On a
   machine with accounts, the file tools refuse another account's home (via `_tenant_deny`,
   independent of the sandbox toggle) and `run_command`/the Terminal run in a per-account
@@ -511,6 +522,45 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
 
+## The footprint is a feature: this may be a Raspberry Pi
+
+Measured, on a warm install with no browser attached: ~70 MB idle RSS, ~0.6% of
+one core, ~0.13s of CPU and ~1.6 kB of database per turn, settling at ~120 MB
+after 1,300 turns and staying there. There is no unbounded leak; what there WAS
+is three standing costs paid by machines that were not using the feature.
+
+- **Nothing large is fetched, parsed or held for a feature nobody opened.** The
+  MCP catalogue is 21,811 servers: 11.9 MB of JSON, +35 MB of RSS parsed. It used
+  to be synced at boot and held forever; it is now synced on first use and
+  released after 15 idle minutes (`mcp_store.release_if_idle`). `ensure_index(
+  only_refresh=True)` decides staleness from the FILE's mtime, because parsing it
+  to find out is the cost being avoided.
+- **A file that accumulates must not be rewritten per item.** The index was saved
+  after every page, with the whole list — 219 pages of a file growing to 11.9 MB
+  is ~1.3 GB written per sync, daily, to storage that wears out. Publish in
+  memory every page; write every few seconds.
+- **A probe is a process.** `executors.probe()` caches for five minutes and
+  `forget_probes()` is called on the way out of any install. Uncached it cost
+  1.2s per `/api/executors` call, and the chat header, Settings and the wizard
+  all ask.
+- **Light mode is a PROFILE, and a profile writes settings rather than hiding
+  them.** `profile.apply()` puts the retention numbers into config where
+  `bento config` can argue with them; the one thing it owns live is whether the
+  MCP catalogue survives a search (`mcp_store.housekeeping`). `auto` resolves
+  from RAM on first run and then records what it chose — a machine that behaves
+  differently after a RAM upgrade, with nothing on screen saying why, is the
+  thing this shape exists to avoid.
+- **Everything that grows needs a ceiling.** `memory.Store.prune()` drops logs
+  and flow events past 30 days and usage past a year, then checkpoints the WAL so
+  the disk comes back. It must never touch `audit` (hash-chained — deleting rows
+  is what `audit_verify()` exists to detect) or the user's own work. The same
+  rule applies in the page: `TOOL_ARGS` is capped, because a tool call whose turn
+  died never gets its `tool_end`.
+
+Measure before and after, and put the numbers in the commit message. Every claim
+in this section came from `/proc/<pid>/status` on a running server, not from
+reading the code.
+
 ## Performance rules that are load-bearing
 
 - **Windows sleep.** Periodic work belongs in `winTick(w, fn, ms)`, not
@@ -523,6 +573,36 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
   Glass themes declare their own, and `Themes → Effects` turns it down.
 
 ---
+
+## "Up to date" is a claim about the CODE, not about a file
+
+`updates.check()` has two sources and needs both. `agentos/VERSION` is written by
+hand at a release, so between releases it does not move — a machine could be
+twenty commits behind the branch it tracks and be told, truthfully about the file
+and uselessly about the code, that there was nothing new. That is exactly what was
+reported. `updates.git_state()` asks git: which branch this copy is on, which one
+updates track, how far behind, and which commits.
+
+Four things that have to stay true:
+
+- **Either source may say yes.** The version file is all a pip/wheel install has;
+  git is the only thing that knows about commits between releases. `behind > 0` is
+  an update even when the version is identical.
+- **Both halves report even when one fails.** An unreachable version file and an
+  unfetchable remote are different sentences, and either alone still leaves a
+  usable answer — bailing on the first one is how a network blip became "up to
+  date".
+- **The count and the list must agree.** `commits()` drops merges, so a checkout
+  two merge commits behind said "2 changes waiting" above an empty list; it now
+  falls back to showing the merges. A number with nothing under it reads as the
+  updater being broken.
+- **Announce-once is keyed on the MARK, not the version** (`version@newest-hash`),
+  and so is Skip. Keyed on the version, a version announced or skipped once
+  silenced every commit that ever landed under it — a decline that quietly became
+  "never update this machine again".
+
+Say what it is up to date WITH. A checkout sitting on another branch is the
+commonest reason a push looks like it did nothing, and every surface now names it.
 
 ## Honesty rules
 

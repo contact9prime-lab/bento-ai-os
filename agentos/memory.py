@@ -1,7 +1,9 @@
 """SQLite persistence: conversations, messages, long-term memories, scheduled tasks."""
 
+import contextlib
 import hashlib
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -490,6 +492,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 class Store:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = db_path          # kept: retention reports on the file, not the rows
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         # WAL + busy timeout: readers never block the writer, and a second process
@@ -896,6 +899,74 @@ class Store:
     def clear_logs(self):
         self.db.execute("DELETE FROM logs")
         self.db.commit()
+
+    # -- retention: the tables that grow forever, and the ones that must not be
+    #    touched ---------------------------------------------------------------
+    #
+    # Nothing in this database was ever deleted by age. On a laptop that is
+    # merely untidy; on a Raspberry Pi with an SD card it is the failure mode —
+    # a machine doing its job every day fills its own disk, and the first
+    # symptom is the OS being unable to write anything, including the log that
+    # would say why.
+    #
+    # What is pruned is TELEMETRY: the free-text operator diary, per-run step
+    # events, and token accounting past the window anybody reports on. What is
+    # NOT pruned is anything somebody would miss:
+    #
+    #   · `audit` — hash-chained and tamper-evident. Deleting rows is exactly
+    #     what `audit_verify()` exists to detect, so a retention sweep here
+    #     would make the ledger permanently "broken" by design.
+    #   · messages, memories, assets, apps, flows, the timeline — the user's own
+    #     work and history. Age is not consent to delete it.
+
+    #: Defaults in days. Generous rather than aggressive: the point is a ceiling,
+    #: not a tidy database.
+    RETENTION = {"logs_days": 30, "events_days": 30, "usage_days": 365}
+
+    def prune(self, logs_days: int = 30, events_days: int = 30,
+              usage_days: int = 365) -> dict:
+        """Delete telemetry older than the given windows. Returns what went.
+
+        0 for any window means "keep it forever" — a machine somebody is
+        debugging must be able to switch this off without editing code.
+        """
+        now = time.time()
+        gone: dict[str, int] = {}
+
+        def cut(table: str, column: str, days: int, where: str = "") -> None:
+            if days <= 0:
+                return
+            n = self.db.execute(
+                f"SELECT count(*) FROM {table} WHERE {column} < ?{where}",
+                (now - days * 86400,)).fetchone()[0]
+            if not n:
+                return
+            self.db.execute(f"DELETE FROM {table} WHERE {column} < ?{where}",
+                            (now - days * 86400,))
+            gone[table] = n
+
+        cut("logs", "created_at", logs_days)
+        cut("usage", "ts", usage_days)
+        # Events belong to a run: they are the step-by-step trace, by far the
+        # biggest writer here, and the run row itself is kept so the history of
+        # WHAT ran is intact even once the trace has aged out.
+        cut("fabric_events", "ts", events_days)
+        if gone:
+            self.db.commit()
+            # The WAL is where the freed pages live until somebody checkpoints.
+            # Without this a prune can leave the DIRECTORY bigger than it was.
+            with contextlib.suppress(Exception):
+                self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.db.execute("PRAGMA optimize")
+        return gone
+
+    def db_bytes(self) -> int:
+        """How much disk this database is actually using, WAL included."""
+        total = 0
+        for suffix in ("", "-wal", "-shm"):
+            with contextlib.suppress(OSError):
+                total += os.path.getsize(str(self.path) + suffix)
+        return total
 
     # -- the access ledger ----------------------------------------------------
 

@@ -86,6 +86,9 @@ def conf(cfg: dict) -> dict:
     c.setdefault("check_interval_hours", 24)
     c.setdefault("last_check", 0.0)
     c.setdefault("last_seen", "")          # the newest version we have told them about
+    c.setdefault("last_mark", "")          # version + newest waiting commit, told once
+    c.setdefault("last_behind", 0)         # commits waiting at the last check
+    c.setdefault("last_on_branch", "")     # the branch the checkout was on then
     c.setdefault("skipped", "")            # a version the user said no to
     return c
 
@@ -139,38 +142,131 @@ def can_apply(cfg: dict) -> tuple[bool, str]:
 
 # ------------------------------------------------------------------- the check
 
+def git_state(cfg: dict, limit: int = 20) -> dict:
+    """What the CHECKOUT knows: which branch it is on, which one updates track,
+    and exactly how many commits are waiting on it.
+
+    This exists because the version file lied by omission. `agentos/VERSION` is
+    written by hand at a release; between releases it does not move, so a machine
+    could be twenty commits behind the branch it tracks and be told, truthfully
+    about the file and uselessly about the code, that it was up to date. Git
+    already knows the answer — this asks it.
+
+    Blocking: it fetches. Callers on the event loop must use a thread.
+    """
+    out = {"root": "", "on_branch": "", "tracks": conf(cfg).get("branch") or DEFAULT_BRANCH,
+           "behind": 0, "ahead": 0, "commits": [], "error": ""}
+    root = install_dir()
+    if not root:
+        # Not a git install. Not an error — it simply has no second source of
+        # truth, and the version comparison is all it can do.
+        return out
+    out["root"] = str(root)
+    ok, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
+    out["on_branch"] = branch.strip() if ok else ""
+    want = out["tracks"]
+    if not _run(["git", "fetch", "origin", want], cwd=root, timeout=120)[0]:
+        out["error"] = f"could not fetch origin/{want} — no network, or the branch is gone"
+        return out
+    def count(rng: str) -> int:
+        # Counted the way `commits()` LISTS: non-merges, falling back to the full
+        # count when merges are all there is. A number that does not match the
+        # list under it is how "2 changes waiting" appeared above nothing.
+        for args in (["--count", "--no-merges", rng], ["--count", rng]):
+            ok, n = _run(["git", "rev-list", *args], cwd=root)
+            try:
+                got = int(n.strip()) if ok else 0
+            except ValueError:
+                got = 0
+            if got:
+                return got
+        return 0
+
+    out["behind"] = count(f"HEAD..origin/{want}")
+    out["ahead"] = count(f"origin/{want}..HEAD")
+    if out["behind"]:
+        out["commits"] = commits("HEAD", f"origin/{want}", limit=limit, root=root)
+    return out
+
+
 async def check(cfg: dict, force: bool = False) -> dict:
-    """Is there a newer published version? Never raises: a machine with no
-    network must not have a broken Settings page."""
+    """Is there anything newer? Never raises: a machine with no network must not
+    have a broken Settings page.
+
+    TWO sources, because they answer for different installs. The published
+    `VERSION` file is the only thing a pip/wheel install can compare against; the
+    checkout's own git is the only thing that knows about commits between
+    releases. An update is available if EITHER says so — reporting only the file
+    is how "up to date" survived twenty pushed commits.
+    """
     c = conf(cfg)
     now = time.time()
     state = {"current": current(), "latest": "", "update_available": False,
-             "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
+             "notes": "", "checked_at": c.get("last_check") or 0.0, "error": "",
+             # git's half, always present so no caller has to branch on its absence
+             "on_branch": "", "tracks": c.get("branch") or DEFAULT_BRANCH,
+             "behind": 0, "ahead": 0, "commits": [], "mismatch": False, "mark": ""}
     if not force and not c.get("enabled", True):
         state["error"] = "update checks are switched off"
         return state
     branch = c.get("branch") or DEFAULT_BRANCH
+    # The checkout first, in a thread: `git fetch` is a blocking subprocess and
+    # awaiting it on the loop stalls every request and every turn.
+    g = await asyncio.to_thread(git_state, cfg, 20)
+    state.update({k: g[k] for k in ("on_branch", "tracks", "behind", "ahead", "commits")})
+    # On another branch, the version file at the tip of the tracked one is not a
+    # statement about this code. Say which branch we are on rather than comparing
+    # against something the checkout is not following — that mismatch is itself
+    # the answer to "why does it say up to date after I pushed".
+    state["mismatch"] = bool(g["root"] and g["on_branch"] and g["on_branch"] != branch)
+    git_error = g["error"]
     try:
         async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as client:
             r = await client.get(f"{RAW}/{branch}/agentos/VERSION")
             r.raise_for_status()
             latest = r.text.strip().splitlines()[0].strip()
     except httpx.HTTPStatusError as e:
+        latest = ""
         state["error"] = (f"the '{branch}' branch does not publish a version file "
                           f"(HTTP {e.response.status_code}) — nothing to compare against")
-        return state
     except Exception as e:
+        latest = ""
         state["error"] = f"could not reach the update server ({type(e).__name__})"
-        return state
-    if not re.match(r"^\d+(\.\d+)*", latest or ""):
+    if latest and not re.match(r"^\d+(\.\d+)*", latest or ""):
+        latest = ""
         state["error"] = "the update server returned something that is not a version"
-        return state
     c["last_check"] = now
+    # Remembered so the instant path (`GET /api/update` with no check) can still
+    # say "8 changes waiting, as of the last look" instead of "up to date" —
+    # answering from a cache that only held a version number was the same lie in
+    # a cheaper place.
+    c["last_behind"] = state["behind"]
+    c["last_on_branch"] = state["on_branch"]
     state["checked_at"] = now
     state["latest"] = latest
-    state["update_available"] = is_newer(latest, current())
-    if state["update_available"]:
+    # EITHER source may say yes. A version bump is the release; commits waiting on
+    # the tracked branch are the code — and between releases only the second one
+    # moves, which is most of the time.
+    state["update_available"] = bool((latest and is_newer(latest, current()))
+                                     or state["behind"])
+    # Two half-failures, reported rather than blended: the version file could not
+    # be read, or the checkout could not be fetched. Either alone still leaves a
+    # usable answer, so the check does not bail on the first one.
+    if git_error and not state["error"]:
+        state["error"] = git_error
+    elif git_error:
+        state["error"] += f"; {git_error}"
+    # Release notes only when there IS a release. The published changelog's top
+    # entry describes the version at the branch tip — which, when the version has
+    # not moved, is the one already installed: notes for what you are running,
+    # printed as if they were arriving.
+    if latest and is_newer(latest, current()):
         state["notes"] = await _notes(branch)
+    # What "we already told them about this" means. The version alone was the key,
+    # so once a version had been announced no amount of new commits under it could
+    # ever be announced again — which is the same bug as "up to date", wearing the
+    # watcher's clothes.
+    state["mark"] = f"{latest or current()}@{(state['commits'] or [{}])[0].get('hash', '')}"
     return state
 
 
@@ -264,11 +360,21 @@ def commits(a: str, b: str, limit: int = 20, root: Path | None = None) -> list[d
     if not root or not a or not b or a == b:
         return []
     sep, rec = "\x1f", "\x1e"
-    ok, out = _run(["git", "log", "--no-merges", f"-{max(1, int(limit))}",
-                    f"--pretty=format:%h{sep}%s{sep}%an{sep}%ct{rec}", f"{a}..{b}"],
-                   cwd=root)
+    fmt = f"--pretty=format:%h{sep}%s{sep}%an{sep}%ct{rec}"
+    n = f"-{max(1, int(limit))}"
+    ok, out = _run(["git", "log", "--no-merges", n, fmt, f"{a}..{b}"], cwd=root)
     if not ok:
         return []
+    # Nothing but merges separates the two? Then show the merges. Dropping them
+    # unconditionally is right when they sit alongside the commits they brought —
+    # "Merge pull request #14" tells you nothing the real commits do not — but a
+    # checkout that is two merge commits behind was then told "2 changes waiting"
+    # above an empty list, which reads as the update system being broken. Between
+    # a useless subject and no answer at all, the subject wins.
+    if not out.strip():
+        ok, out = _run(["git", "log", n, fmt, f"{a}..{b}"], cwd=root)
+        if not ok:
+            return []
     rows = []
     for chunk in out.split(rec):
         parts = chunk.strip().strip("\n").split(sep)
@@ -399,11 +505,18 @@ async def watch(cfg, store, broadcast, save_config) -> None:
             due = time.time() - float(c.get("last_check") or 0) >= hours * 3600
             if c.get("enabled", True) and due:
                 res = await check(cfg)
-                if res["update_available"] and res["latest"] not in (c.get("skipped"),
-                                                                     c.get("last_seen")):
-                    c["last_seen"] = res["latest"]
-                    store.log("system", f"update available: {res['latest']} "
-                                        f"(running {res['current']})")
+                # Keyed on the MARK (version + newest waiting commit), not on the
+                # version: between releases the version does not move, so a
+                # version key announced once and then never again.
+                mark = res.get("mark") or res["latest"]
+                if res["update_available"] and mark not in (c.get("skipped"),
+                                                            c.get("last_mark")):
+                    c["last_mark"] = mark
+                    c["last_seen"] = res["latest"] or res["current"]
+                    n = res.get("behind") or 0
+                    store.log("system", f"update available: {res['latest'] or res['current']}"
+                                        + (f", {n} commit(s) waiting" if n else "")
+                                        + f" (running {res['current']})")
                     await broadcast({"type": "update", **res})
                 save_config(cfg)
         except Exception as e:                 # never let the loop die

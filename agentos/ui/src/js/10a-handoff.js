@@ -17,6 +17,17 @@
 var TOOL_ARGS={};        // call_id -> args, from tool_start
 var HANDOFF_SEEN={};     // conversation_id -> last handoff key, so a retry is not two chips
 
+/* A tool call that never ends — the turn was stopped, the socket dropped, the
+   server restarted — leaves its arguments behind. One entry is nothing; a
+   desktop left open for a week is not, and this page is the long-lived process
+   on a machine that may have 1 GB of RAM. The oldest are dropped: the map only
+   exists to carry args from tool_start to the tool_end a moment later. */
+function toolArgsRemember(id,args){
+  TOOL_ARGS[id]=args||{};
+  const keys=Object.keys(TOOL_ARGS);
+  if(keys.length>200)keys.slice(0,keys.length-200).forEach(k=>{delete TOOL_ARGS[k]});
+}
+
 /* Which tools make something, and where that something lives. A tool NOT in
    here is deliberately not a handoff: `read_file` produced no artefact, and a
    button offering to "open" one would be an invention. */

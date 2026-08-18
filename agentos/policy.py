@@ -301,6 +301,13 @@ class RateMeter:
         self._calls: dict = {}   # label -> [timestamps], trimmed to the widest window asked of it
 
     def record(self, label: str, now: float, keep: float):
+        # Principals come and go — an app installed and removed, a flow renamed,
+        # a subagent used once — and each left an entry here forever. They are
+        # small, but "forever" on a machine that runs for months is the shape of
+        # every leak in this file's neighbourhood.
+        if len(self._calls) > 512:
+            for dead in [k for k, v in self._calls.items() if not v][:256]:
+                del self._calls[dead]
         q = self._calls.setdefault(label, [])
         q.append(now)
         if len(q) > 4096:                 # bounded: a runaway must not also eat memory.

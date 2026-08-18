@@ -231,6 +231,24 @@ function setTab(body,all){
         {desc:'Who can sign in, their role, and the folders and agents shared between them. AgentOS stays single-user until the first account is added — from then on it asks who you are, at the keyboard as well as from a phone.',
          f:'users accounts people roles admin executor sign in multi-user shared folders'}),
     ],{f:'users accounts multi-user'}));
+    /* The Pi switch. It is in Settings and not only in the installer because the
+       machine it matters on is the one you set up once and then reach over SSH
+       from a phone — and because what it costs has to be readable before you
+       choose it, not discovered the first time a search takes 30 seconds. */
+    P.push(pGroup('Footprint',[
+      pRow('Profile',pSelect('s-profile',[
+          ['auto','Auto — decide from this machine'],
+          ['full','Full — keep the MCP catalogue, refresh it daily'],
+          ['lite','Light — keep nothing this machine is not using']],cfg.profile||'auto'),
+        {desc:'Light mode is for a Raspberry Pi: the MCP catalogue (21,811 servers, ~12 MB '
+              +'on disk and ~35 MB of memory) is fetched while you search and deleted when '
+              +'you stop, so a search costs a download instead of the card and the RAM. '
+              +'Telemetry is kept 7 days rather than 30. Nothing else changes.',
+         f:'profile lite light footprint raspberry pi memory disk mcp catalogue small machine'}),
+      pRow('Now','<span id="s-profile-now" class="mut">…</span>',
+        {desc:'What this machine is doing, and what it is keeping.',f:'profile current'}),
+    ],{f:'footprint profile lite pi'}));
+    setTimeout(paintProfile,0);
     P.push(pGroup('Version',[
       pRow('This build','<span id="s-ver" class="mut">checking…</span>',
         {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
@@ -290,6 +308,30 @@ function settingsVoices(){
    models Ollama has pulled, and any executor this machine forwards to. */
 /* The version row. Answers from the last check so opening Settings is instant;
    "Check now" is the one that goes and looks. */
+/* Live, because the answer is a fact about the machine (how much RAM, what is on
+   disk) rather than a setting — and because switching writes the retention keys,
+   so the row has to be re-read rather than assumed. */
+async function paintProfile(){
+  const el=document.getElementById('s-profile-now');if(!el)return;
+  const sel=document.getElementById('s-profile');
+  if(sel&&!sel._wired){
+    sel._wired=1;
+    sel.onchange=async()=>{
+      el.textContent='applying…';
+      const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({profile:sel.value})});
+      const d=await r.json().catch(()=>({}));
+      if(d.error)toast(d.error);else toast('✓ profile: '+sel.value);
+      await loadConfig();paintProfile();
+    };
+  }
+  try{
+    const d=await (await fetch('/api/profile')).json();
+    el.innerHTML=esc(d.description||'')
+      +(d.mcp_cache_bytes?` · MCP cache ${Math.round(d.mcp_cache_bytes/1024)} kB on disk`
+                         :' · nothing cached on disk');
+  }catch(e){el.textContent='could not read it'}
+}
 async function paintVersion(check){
   const el=document.getElementById('s-ver'); if(!el)return;
   el.textContent='checking…';
@@ -309,12 +351,29 @@ async function paintVersion(check){
       (d.changes||[]).slice(0,15).map(c=>
         `<div><code>${esc(c.hash)}</code> ${esc(c.title)}</div>`).join('')}${
       (d.changes||[]).length>15?`<div class="mut">…and ${d.changes.length-15} more</div>`:''}</div>`:'';
-    el.innerHTML=`<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+    /* Two different pieces of news, and they used to be printed as one:
+       "0.2.0 → 0.2.0 available" is what a machine says when it is behind by
+       COMMITS and the version file has not moved. The version bump is a release;
+       the commits are the code. */
+    const bumped=d.latest&&d.latest!==d.current;
+    const n=d.behind||0;
+    const head=bumped
+      ? `<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
+      : `<b>${esc(d.current)}</b> <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
+        +` <span class="mut">on ${esc(d.tracks||'')}</span>`;
+    el.innerHTML=head
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
                    :`<div class="mut" style="margin-top:4px">${esc(d.blocked_reason||'')}</div>`)+btn+ch;
   }else{
+    /* "Up to date" has to say up to date WITH WHAT. A checkout sitting on another
+       branch is the commonest reason a push seems to have no effect, and it was
+       invisible here: the panel compared against a branch this copy is not on and
+       reported the good news. */
+    const where=d.mismatch
+      ? `up to date with ${esc(d.tracks||'')} — this copy is on ${esc(d.on_branch||'another branch')}`
+      : (d.latest?`up to date with ${esc(d.tracks||'')}`:'not checked yet');
     el.innerHTML=`<b>${esc(d.current||'?')}</b> `
-      +`<span class="mut">${d.error?esc(d.error):(d.latest?'up to date':'not checked yet')}</span>`+btn;
+      +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn;
   }
 }
 async function updateNow(btn){
@@ -342,7 +401,9 @@ async function paintModelPicker(refresh){
   // rather than done on every repaint — a Settings tab that stalled behind three
   // network calls would be worse than a list that is a minute old.
   try{
-    const d=await (await fetch('/api/brains'+(refresh?'?t='+Date.now():''))).json();
+    // refresh=1 rather than a cache-buster: the probes are cached SERVER-side
+    // (each one is a process), so only an explicit ask should pay for them.
+    const d=await (await fetch('/api/brains'+(refresh?'?refresh=1':''))).json();
     if(d&&d.executors)BRAINS=d;
   }catch(e){}
   if(btn){btn.disabled=false;btn.textContent='↻ Refresh'}

@@ -74,18 +74,32 @@ async function aboutVersion(){
     const u=await (await fetch('/api/update')).json();
     if(!v)return;
     if(u.update_available)
-      v.innerHTML+=` <span class="ab-new">${esc(u.latest)} available</span>`
+      v.innerHTML+=` <span class="ab-new">${esc(updWord(u))}</span>`
         +` <button class="endbtn" onclick="openApp('settings');SETTAB='system';localStorage.setItem('settab','system');refreshApp('settings')">Update…</button>`;
     else v.innerHTML+=` <span class="mut">· <a href="#" onclick="aboutCheck(this);return false">check for updates</a></span>`;
   }catch(e){}
+}
+/* What the news actually is. A version bump is a release; commits waiting on the
+   tracked branch are the code — and between releases only the second one moves,
+   so "0.2.0 available" while running 0.2.0 was the panel's way of saying nothing
+   had happened when eight commits had. */
+function updWord(u){
+  const bumped=u.latest&&u.latest!==u.current;
+  if(bumped)return `${u.latest} available`;
+  const n=u.behind||0;
+  return `${n} change${n===1?'':'s'} waiting on ${u.tracks||'the update branch'}`;
 }
 async function aboutCheck(a){
   a.textContent='checking…';
   try{
     const u=await (await fetch('/api/update?check=true')).json();
     a.parentElement.innerHTML=u.update_available
-      ? `· <b style="color:var(--acc)">${esc(u.latest)} available</b>`
-      : `· ${esc(u.error||'up to date')}`;
+      ? `· <b style="color:var(--acc)">${esc(updWord(u))}</b>`
+      // Up to date WITH WHAT — and a checkout on another branch says so, because
+      // that is the commonest reason a push looks like it did nothing.
+      : `· ${esc(u.error||(u.mismatch
+            ? `up to date with ${u.tracks} — this copy is on ${u.on_branch}`
+            : `up to date with ${u.tracks||'the update branch'}`))}`;
   }catch(e){a.textContent='could not check'}
 }
 

@@ -601,6 +601,21 @@ async def install(component_id: str) -> dict:
     Returns {ok, message, command, needs_terminal} — `command` is always the
     exact thing run or to run, so nothing changes invisibly.
     """
+    # However this ends, the machine may look different afterwards and the
+    # executor probes are cached for five minutes. A panel that still says "not
+    # installed" right after installing it is the same dead end the offer exists
+    # to remove — so the cache is dropped on the way OUT, whichever return it is.
+    try:
+        return await _install(component_id)
+    finally:
+        try:
+            from . import executors as _exec
+            _exec.forget_probes()
+        except Exception:
+            pass
+
+
+async def _install(component_id: str) -> dict:
     comp = CATALOG.get(component_id)
     if not comp:
         return {"ok": False, "message": f"unknown component '{component_id}'",

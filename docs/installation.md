@@ -272,6 +272,58 @@ always behaves as `fail`, so a unit or a CI step never blocks on a prompt.
 A second instance shares `~/.agentos` — one database, two schedulers, two Telegram
 pollers. Use `AGENTOS_HOME=~/.agentos-test bento serve --port 8322` for a real one.
 
+## Small machines (Raspberry Pi and friends)
+
+A standing agent earns its keep on a Pi, so the footprint is measured rather than
+assumed. On a warm install with no browser attached:
+
+| | |
+|---|---|
+| idle RSS | ~70 MB, flat |
+| idle CPU | ~0.6% of one core |
+| a turn | ~0.13 s of CPU, ~1.6 kB of database |
+| after 1,300 turns | RSS settles at ~120 MB and stays there |
+
+### Light mode
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh -s -- --lite
+bento profile            # what this machine is doing, and what it is keeping
+bento profile lite       # switch later; the MCP cache is deleted on the spot
+```
+
+`--lite` is the Pi profile. The one behaviour it changes is the expensive one: the
+MCP catalogue is **fetched while you search and deleted when you stop**, so
+nothing is kept at rest — a search costs a download instead of 12 MB of card and
+35 MB of RAM. Telemetry is kept 7 days rather than 30. Nothing else changes: same
+features, same tools, same agent.
+
+Left alone, the profile is `auto`: the server decides from the machine on first
+run (≤ 2 GB of RAM → lite) and **writes down what it decided**, so it shows up as
+an ordinary `profile` key in `config.json` and in `bento doctor` rather than as
+behaviour you cannot see. Settings → System → Footprint is the same switch.
+
+Three standing costs are deliberately **not** paid unless you use the thing:
+
+- **The MCP catalogue** is 21,811 servers — 11.9 MB of JSON, +35 MB of RSS once
+  parsed. It is synced when you first open the MCP Store, not at boot, and it is
+  released from memory again after 15 idle minutes (the file stays; the next
+  search reads it back). While it syncs, the file is written every few seconds
+  rather than after every page — page-by-page writes cost ~1.3 GB of SD-card
+  writes per sync, daily.
+- **Executor probes** (`claude --version` and friends) are cached for five
+  minutes and dropped the moment something is installed. Uncached, they cost
+  1.2 s per `/api/executors` call, and every Settings repaint asked.
+- **Telemetry is pruned.** Logs and flow-run events older than 30 days and token
+  accounting older than a year are deleted on the maintenance pass, and the WAL
+  is checkpointed so the disk is actually given back. The audit ledger and your
+  own work — messages, memories, assets, apps — are never touched. Change or
+  switch it off under `retention` in `config.json`; `bento doctor` prints the
+  database size.
+
+If a Pi feels slow, `bento doctor` is the first stop: it reports the database
+size, what answers turns here, and which optional components are missing.
+
 ## Updating
 
 ```bash
@@ -284,8 +336,24 @@ wrong branch, and says which. It runs the test suite before keeping the new code
 **rolls back** if it fails — `--no-tests` skips that gate, which is also what makes a
 bad update recoverable. `--no-restart` leaves loading it to you.
 
-A bare `bento update` never pulls. The same machinery backs Settings → Updates and the
-background check, so all three agree about what a version is.
+A bare `bento update` never pulls. The same machinery backs Settings → Updates, the
+About panel and the background check, so all four agree about what is waiting.
+
+**Two sources, because they answer for different installs.** `agentos/VERSION` is
+published at a release and is the only thing a pip/wheel copy can compare against.
+The checkout's own git is the only thing that knows about commits BETWEEN releases —
+and that is most of the time. So a report looks like one of:
+
+```
+▲ 0.4.0 is available (you have 0.3.0)              # a release
+▲ 8 changes waiting on origin/master — same version (0.3.0), newer code
+✓ up to date with origin/master (published version 0.3.0)
+```
+
+If a push of yours never seems to arrive, the first line of `bento update` is the
+usual answer: it prints the branch this checkout is **on** and the branch updates
+**track**. Commits pushed to any other branch will never show up here, and your own
+unpushed commits are reported as `ahead`.
 
 ## Managing the service
 

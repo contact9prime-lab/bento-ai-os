@@ -141,6 +141,18 @@ async def attention_loop(cfg: dict, store, notifd_get, broadcast=None, interval:
                         st.log("error", f"notification triage failed: {type(e).__name__}: {e}")
                     except Exception:
                         pass
+        # Machine-level, once a tick: the footprint profile's cache policy. It
+        # rides this loop rather than starting another one — a wake per minute
+        # that usually compares two floats is nothing, and a THIRD periodic task
+        # on a Pi is not. In light mode this is what makes "deleted when you stop
+        # searching" mean minutes rather than "at the next maintenance pass".
+        try:
+            from . import mcp_store as mcp_storemod
+            said = mcp_storemod.housekeeping(cfg)
+            if said:
+                store.log("system", said)
+        except Exception:
+            pass
         await asyncio.sleep(interval)
 
 

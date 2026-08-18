@@ -358,8 +358,25 @@ async def startup():
                                                     lambda: state.get("notifd"),
                                                     scheduler, broadcast))
     from . import mcp_store as mcp_storemod
-    mcp_storemod.ensure_index(store)  # warm the MCP catalog index in the background
+    # Refresh a catalogue this machine already has; never fetch one it has not
+    # asked for. Opening the MCP Store (or any search) syncs it on the spot —
+    # see `ensure_index`, which every search path already calls.
+    mcp_storemod.ensure_index(store, only_refresh=True, cfg=cfg)
     store.log("system", "AgentOS started")
+
+    # Decide the footprint profile ONCE and write down what was decided. `auto` on
+    # every boot would mean a machine that behaves differently after a RAM upgrade
+    # with nothing on screen saying why; this leaves an ordinary config key, and
+    # `bento profile` can argue with it.
+    if str(cfg.get("profile") or "auto") == "auto":
+        from . import profile as profmod
+        first = cfgmod.is_first_run()
+        ok, said = profmod.apply(cfg, profmod.resolve(cfg))
+        if ok:
+            if first:
+                cfg["setup_complete"] = False     # same trap as the model below
+            cfgmod.save_config(cfg)
+            store.log("system", f"profile: {said}")
 
     # pick a default model if none is set — but don't let this first write of
     # config.json disarm the setup wizard on a brand-new install
@@ -725,9 +742,19 @@ async def api_update_status(check: bool = False):
         cfgmod.save_config(cfg)
     else:
         c = updmod.conf(cfg)
+        behind = int(c.get("last_behind") or 0)
         res = {"current": updmod.current(), "latest": c.get("last_seen", ""),
-               "update_available": bool(c.get("last_seen")
-                                        and updmod.is_newer(c["last_seen"], updmod.current())),
+               # Both halves of the last check, not just the version: a machine
+               # that was eight commits behind an hour ago must not open Settings
+               # saying "up to date".
+               "update_available": bool(behind or (c.get("last_seen")
+                                        and updmod.is_newer(c["last_seen"], updmod.current()))),
+               "behind": behind, "ahead": 0,
+               "on_branch": c.get("last_on_branch", ""),
+               "tracks": c.get("branch") or updmod.DEFAULT_BRANCH,
+               "mismatch": bool(c.get("last_on_branch")
+                                and c.get("last_on_branch") != (c.get("branch")
+                                                                or updmod.DEFAULT_BRANCH)),
                "notes": "", "checked_at": c.get("last_check") or 0.0, "error": ""}
     # The commits an update would bring. Only on an explicit check — `pending()`
     # fetches, and a status route that opens Settings instantly must not do
@@ -2167,8 +2194,26 @@ async def api_models():
             "engine": execmod.resolve_engine(cfg)}
 
 
+@app.get("/api/profile")
+async def api_profile():
+    """What this machine has decided to keep, and what it is keeping right now."""
+    from . import mcp_store as mcpmod
+    from . import profile as profmod
+    cfg = state["cfg"]
+    try:
+        cached = mcpmod.INDEX_PATH.stat().st_size
+    except OSError:
+        cached = 0
+    return {"profile": cfg.get("profile", "auto"),
+            "resolved": profmod.resolve(cfg),
+            "description": profmod.describe(cfg),
+            "machine": profmod.machine(),
+            "retention": cfg.get("retention", {}),
+            "mcp_cache_bytes": cached}
+
+
 @app.get("/api/brains")
-async def api_brains():
+async def api_brains(refresh: bool = False):
     """Who can answer here, and what each of them can run.
 
     One list: local providers, cloud providers and other agents, each owning the
@@ -2178,10 +2223,14 @@ async def api_brains():
     """
     from . import executors as execmod
     cfg = state["cfg"]
+    if refresh:                      # the panel's ↻ button: ask the machine again
+        await asyncio.to_thread(execmod.forget_probes)
     models = await providers.available_models(cfg)
     # `brains()` probes the roster, and a probe runs `--version` on real
     # binaries. Awaiting that on the event loop is how the update check froze
-    # the whole server, so it goes to a thread.
+    # the whole server, so it goes to a thread. The probes are cached for five
+    # minutes on top of that — every surface asks this question, and on a small
+    # machine spawning three processes per Settings repaint is felt.
     return await asyncio.to_thread(execmod.brains, cfg, models)
 
 
@@ -2304,13 +2353,15 @@ async def api_channel_save(channel_id: str, body: dict):
 
 
 @app.get("/api/executors")
-async def api_executors():
+async def api_executors(refresh: bool = False):
     """Which other agents on this machine AgentOS can hand a task to.
 
     Reports the reason and the fix when there is none, rather than leaving a dead
     control — the same contract /api/platform keeps for capabilities.
     """
     from . import executors as execmod
+    if refresh:
+        await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
     workspace = conf.get("workspace") or str(cfgmod.AGENTOS_HOME / "workspace")
@@ -2397,6 +2448,22 @@ async def api_put_config(patch: dict):
         for k in localeinfo.FIELDS:
             if k in patch["locale"]:
                 lo[k] = str(patch["locale"][k] or "")[:64]
+    if "profile" in patch:
+        # Through profile.apply(), never a bare key write: the profile's job is to
+        # SET the ordinary keys (retention, and what the MCP cache does), and a
+        # config that recorded "lite" without them would be a label with no effect.
+        from . import profile as profmod
+        ok_p, said = profmod.apply(cfg, str(patch["profile"] or "auto"))
+        if not ok_p:
+            return JSONResponse({"error": said}, status_code=400)
+        state["store"].log("system", f"profile: {said}")
+        # Somebody switching to light mode is usually asking for the space back
+        # NOW, not at the next maintenance pass half an hour from now. It still
+        # waits for a search in flight to finish — see `release_if_idle`.
+        from . import mcp_store as mcpmod
+        freed = await asyncio.to_thread(mcpmod.housekeeping, cfg)
+        if freed:
+            state["store"].log("system", freed)
     if "engine" in patch:
         from . import executors as execmod
         want = str(patch["engine"] or "aria")
@@ -4585,7 +4652,78 @@ async def remote_access_gate(request: Request, call_next):
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Headers that are cheap, safe, and were simply not being sent.
+
+    Three of them apply to everything and cannot break anything, because the
+    server already serves correct content types and never wants to leak a URL:
+
+      · `X-Content-Type-Options: nosniff` — a stylesheet or upload is never
+        re-guessed into a script.
+      · `Referrer-Policy: no-referrer` — the agent's own browser and the apps
+        visit the open web; a session-bearing path must not ride along in a
+        Referer header to a site the user did not choose to tell.
+      · `Cross-Origin-Opener-Policy: same-origin` — a window this page opened
+        cannot reach back into it.
+
+    The fourth is clickjacking, and it is scoped. The DESKTOP is the one page
+    with an Allow / Deny that grants real capability on one click, and nothing
+    should ever frame it — so `frame-ancestors 'none'`. An APP page is meant to
+    be framed, but only by the desktop that served it — so `frame-ancestors
+    'self'`, which keeps a foreign site from embedding somebody's app and
+    reading their clicks. A full script-src CSP is deliberately NOT set here: the
+    hand-written desktop uses inline handlers throughout, and a policy that
+    breaks the whole OS to add a header nobody measured is the wrong trade.
+    """
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    # HSTS only over TLS, and never on loopback: telling a browser "only ever
+    # reach this host over HTTPS" is right for a tunnelled public hostname and
+    # catastrophic for `localhost`, which is plain http and would become
+    # unreachable for six months. So it rides the same signal the Secure cookie
+    # does — the connection actually being HTTPS.
+    if _is_https(request):
+        resp.headers.setdefault("Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains")
+    path = request.url.path
+    is_app_page = path.startswith("/api/apps/") and path.rstrip("/").endswith("/page")
+    if is_app_page:
+        # framed by the desktop (same origin), by nobody else
+        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
+    elif not path.startswith("/api/") and not path.startswith("/ws"):
+        # a document: the desktop, the login page, the manifest. Never framed.
+        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+    return resp
+
+
 # ---- Run a single tool (for AI-built apps to reach the OS / MCP) -----------------
+
+def _is_https(request) -> bool:
+    """Is the browser talking to us over TLS? True over a tunnel, false on plain
+    loopback. A proxy terminates TLS and re-forwards http, so the scheme it
+    forwarded (`X-Forwarded-Proto`) is the honest answer, not our own socket."""
+    if (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip() == "https":
+        return True
+    return request.url.scheme == "https"
+
+
+def _set_session_cookie(resp, request, token: str, days: int = 30) -> None:
+    """Write the session cookie the one right way, from every sign-in path.
+
+    `Secure` is added over HTTPS so a session that was established over a tunnel
+    can never be sent back in the clear — but it must NOT be set on plain
+    loopback, where the browser would then drop the cookie and the person could
+    not stay signed in on their own machine. `HttpOnly` keeps script (including a
+    compromised app, though the sandbox already blocks it) from reading it;
+    `SameSite=Lax` keeps a foreign page from riding it on a cross-site request.
+    """
+    resp.set_cookie(remotemod.COOKIE, token, max_age=days * 86400,
+                    httponly=True, samesite="lax", secure=_is_https(request), path="/")
+
 
 def _principal_of(request) -> Principal:
     """Map a request to its principal: an app runtime token (X-App-Token, minted when the
@@ -5358,9 +5496,8 @@ async def api_remote_login(body: dict, request: Request):
     remotemod.note_success(addr)
     state["store"].log("system", "remote sign-in", {"from": addr})
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(remotemod.COOKIE, remotemod.issue_session(cfg),
-                    max_age=int(cfg["remote"].get("session_days") or 30) * 86400,
-                    httponly=True, samesite="lax", path="/")
+    _set_session_cookie(resp, request, remotemod.issue_session(cfg),
+                        days=int(cfg["remote"].get("session_days") or 30))
     return resp
 
 
@@ -5976,8 +6113,7 @@ async def api_users_login(body: dict, request: Request):
     tok = remotemod.issue_session(state.machine_cfg(), u["id"])
     resp = JSONResponse({"ok": True, "id": u["id"], "name": u["name"],
                          "role": u["role"]})
-    resp.set_cookie(remotemod.COOKIE, tok, httponly=True, samesite="lax",
-                    max_age=86400 * 30, path="/")
+    _set_session_cookie(resp, request, tok)
     usersmod.store_for(u["id"]).log("system", f"signed in: {u['name']}")
     return resp
 
@@ -5997,7 +6133,7 @@ async def api_users():
 
 
 @app.post("/api/users")
-async def api_users_create(body: dict):
+async def api_users_create(body: dict, request: Request):
     if (r := _require_admin()):
         return r
     b = body or {}
@@ -6018,9 +6154,8 @@ async def api_users_create(body: dict):
         with usersmod.as_user(u["id"]):
             usersmod.store_for(u["id"]).log(
                 "system", f"multi-user turned on; {u['name']} is the first admin")
-        resp.set_cookie(remotemod.COOKIE,
-                        remotemod.issue_session(state.machine_cfg(), u["id"]),
-                        httponly=True, samesite="lax", max_age=86400 * 30, path="/")
+        _set_session_cookie(resp, request,
+                            remotemod.issue_session(state.machine_cfg(), u["id"]))
     else:
         state["store"].log("system", f"user created: {u['name']} ({u['role']})")
     return resp
@@ -7336,6 +7471,55 @@ def _chat_images(data: dict, limit: int = 4) -> list[str]:
 # WebSocket: host terminal (PTY)
 # ---------------------------------------------------------------------------
 
+def _ws_origin_ok(ws) -> bool:
+    """Refuse a WebSocket handshake that a foreign page opened.
+
+    This is the socket half of `csrf_origin_guard`, and it closes a hole that
+    guard could not see. A browser attaches the site's cookies to a WebSocket
+    connection AND is not stopped from opening one at a cross-origin URL — the
+    same-origin policy does not cover the WS handshake. So a page on the open
+    internet, while AgentOS is running on `localhost`, can open
+    `ws://localhost:<port>/ws/terminal` and, because `_ws_authed` trusts loopback
+    (or trusts nothing at all on a fresh single-user box), be handed a shell on
+    the machine. That is Cross-Site WebSocket Hijacking, and on this OS it is
+    remote code execution.
+
+    Browsers ALWAYS send `Origin` on a WS handshake, so the rule mirrors
+    `_same_origin`: a present Origin must match the Host, `null` (a sandboxed or
+    file:// opener) is refused, and an ABSENT Origin is allowed — that is a
+    non-browser client (a CLI, a test) with no ambient cookie to abuse, exactly
+    the case the HTTP guard also leaves to the auth gate.
+    """
+    origin = ws.headers.get("origin")
+    if not origin:
+        return True                      # non-browser: no cookie jar, no CSRF
+    if origin == "null":
+        return False
+    from urllib.parse import urlsplit
+    return urlsplit(origin).netloc == ws.headers.get("host", "")
+
+
+async def _ws_reject(ws) -> bool:
+    """One gate every socket passes before `accept()`: cross-origin first, then
+    auth. Returns True when the handshake was refused (and already closed), so a
+    handler reads `if await _ws_reject(ws): return`. Having ONE gate is the point
+    — an origin check that each new socket has to remember to add is one a new
+    socket will eventually forget, and this OS's sockets include a shell."""
+    if not _ws_origin_ok(ws):
+        with contextlib.suppress(Exception):
+            state["store"].log("system", "refused a cross-origin WebSocket",
+                               {"origin": ws.headers.get("origin", ""),
+                                "path": ws.url.path})
+        with contextlib.suppress(Exception):
+            await ws.close(code=4403)     # 4403: our "forbidden origin"
+        return True
+    if not _ws_authed(ws):
+        with contextlib.suppress(Exception):
+            await ws.close(code=4401)
+        return True
+    return False
+
+
 def _ws_authed(ws) -> bool:
     """Websockets do not pass through HTTP middleware, so the same gate is
     applied by hand here — a socket is a longer-lived and more capable channel
@@ -7389,8 +7573,7 @@ async def ws_vnc(ws: WebSocket):
     only in the sense that a pipe speaks whatever is poured into it. That is also
     why it is the same job websockify does, and why AgentOS does not need it.
     """
-    if not _ws_authed(ws):
-        await ws.close(code=4401)
+    if await _ws_reject(ws):
         return
     if not _vnc_running():
         # Refuse rather than hang: a client waiting forever on a socket that will
@@ -7445,8 +7628,7 @@ async def ws_vnc(ws: WebSocket):
 @app.websocket("/ws/terminal")
 async def ws_terminal(ws: WebSocket):
     """A real shell on the host, bridged to xterm.js in the Terminal app."""
-    if not _ws_authed(ws):
-        await ws.close(code=4401)
+    if await _ws_reject(ws):
         return
     import fcntl
     import os
@@ -8840,8 +9022,7 @@ async def _run_build(data: dict):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
-    if not _ws_authed(ws):
-        await ws.close(code=4401)
+    if await _ws_reject(ws):
         return
     await ws.accept()
     state["clients"].add(ws)
