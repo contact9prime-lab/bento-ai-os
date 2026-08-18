@@ -376,10 +376,32 @@ if run_uv_sync; then
 else
   echo ""
   cat "$UVSYNC_LOG"                                      # show what actually failed
+  # cryptography (via pyjwt[crypto], via the MCP SDK) is the hard one, and it is
+  # NOT the same fix as a missing C header. It is pinned to a version with no 32-bit
+  # ARM wheel that builds with Rust — and its minimum Rust is newer than the `cargo`
+  # Debian ships, so `apt install cargo` compiles nothing and only looks like
+  # progress. This is checked FIRST so that case is never sent down the apt path
+  # below, which cannot fix it. On 64-bit Pi OS it never arises: PyPI has an aarch64
+  # wheel and nothing is compiled — so the honest answer names both ways out.
+  if grep -qiE "cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
+    rm -f "$UVSYNC_LOG"
+    die "cryptography has no prebuilt wheel for 32-bit Pi OS and must compile with a MODERN Rust —
+   newer than the 'cargo' apt provides, so 'sudo apt install cargo' will NOT be enough.
+
+   The reliable fix is 64-bit Raspberry Pi OS. There cryptography installs prebuilt in seconds,
+   with no Rust and no compile. A Pi 3, 4, 5 or Zero 2 W can run it — reflash to 64-bit Pi OS
+   (Bookworm) and re-run this installer.
+
+   To stay on 32-bit, install a current Rust with rustup and give the build room, then re-run me:
+       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+       . \"\$HOME/.cargo/env\"
+       sudo apt install -y $APT_BUILD_DEPS
+   Ensure at least 1 GB of swap first (the build is memory-hungry); it takes many minutes on a Pi
+   and can still fail on armv6 (Pi Zero / 1)."
   # "you likely need to install ffi.h" and its siblings mean exactly one thing —
   # a source compile with no C toolchain — so name the fix and, with permission,
   # apply it and try once more rather than making the machine be told twice.
-  if grep -qiE "ffi\.h|Python\.h|openssl/|libffi|command .(gcc|cc). failed|need to install.*development|Microsoft Visual C" "$UVSYNC_LOG" 2>/dev/null; then
+  elif grep -qiE "ffi\.h|Python\.h|openssl/|libffi|command .(gcc|cc). failed|need to install.*development|Microsoft Visual C" "$UVSYNC_LOG" 2>/dev/null; then
     warn "a dependency had no prebuilt wheel for this machine and was COMPILED from source, but the C build tools are missing."
     if ensure_build_deps; then
       printf '   working'
@@ -390,15 +412,16 @@ else
       else
         echo ""
         rm -f "$UVSYNC_LOG"
-        die "a dependency still failed to build after installing the tools — the output above says why"
+        die "a dependency still failed to build after installing the tools — the output above says why.
+   If it is cryptography, it needs a modern Rust (rustup), not just the C tools; 64-bit Pi OS avoids it."
       fi
     else
       rm -f "$UVSYNC_LOG"
       die "a dependency must be compiled and the build tools are missing. Install them, then re-run this installer:
      sudo apt install -y $APT_BUILD_DEPS
    On a Raspberry Pi, 64-bit Pi OS avoids this entirely — every dependency ships a prebuilt wheel
-   there, so nothing is compiled. If cryptography still fails to build on 32-bit, it also needs
-   Rust:  sudo apt install -y cargo"
+   there, so nothing is compiled. cryptography on 32-bit additionally needs a modern Rust via rustup
+   (Debian's 'cargo' is too old), which is one more reason to prefer 64-bit Pi OS."
     fi
   else
     rm -f "$UVSYNC_LOG"
