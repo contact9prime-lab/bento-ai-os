@@ -2395,6 +2395,24 @@ def _log_cli(args) -> int:
     return 0
 
 
+def _confirm(question: str) -> bool:
+    """Ask a yes/no question, and take silence for no.
+
+    No terminal means nobody to ask: a systemd timer, a cron line or a CI step
+    must never block on a prompt, and answering it for them is worse than refusing
+    — so an unattended run gets the same refusal it always got, and only a person
+    sitting in front of the command can say yes. `--stash` is how a script says it
+    on purpose.
+    """
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        return input(f"\n  {question} [y/N] ").strip().lower() in ("y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def _update_cli(args) -> int:
     """`bento update` — is there a newer version, and pull it.
 
@@ -2473,22 +2491,65 @@ def _update_cli(args) -> int:
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
     ok, why = upd.can_apply(cfg)
+    stashed = ""
     if not ok:
-        print(f"\n✗ cannot install it here: {why}")
-        return 1
+        # "1 uncommitted change(s)" and a full stop is a dead end: the one thing
+        # the user needs — WHICH file, and what to do about it — is the thing the
+        # refusal did not say, so every hit meant leaving the command and running
+        # git by hand. Name them, then offer the one answer that loses nothing.
+        dirty = upd.local_changes()
+        if not dirty:
+            print(f"\n✗ cannot install it here: {why}")     # wrong branch, no git, …
+            return 1
+        print(f"\n! this checkout has {len(dirty)} uncommitted change"
+              f"{'s' if len(dirty) != 1 else ''} of your own:")
+        for c in dirty:
+            print(f"    {c['code']:<2}  {c['path']}")
+        print(f"\n  Updating would pull on top of them. Stashing parks them in the "
+              f"repository first —\n  nothing is discarded, and `git stash pop` brings "
+              f"them straight back afterwards.")
+        if not (getattr(args, "stash", False) or _confirm("stash them and install the update?")):
+            # A no is a full answer: say what was NOT done, and leave the two ways
+            # out that do not involve this command.
+            print("\n  stopped — nothing was stashed, pulled or restarted.")
+            print("  commit or stash them yourself, then:  bento update --apply")
+            return 1
+        okz, msg = upd.stash_local()
+        print(f"\n  {msg}")
+        if not okz:
+            return 1
+        stashed = msg
+        ok, why = upd.can_apply(cfg)
+        if not ok:
+            print(f"\n✗ still cannot install it here: {why}")
+            return 1
+        # Answering that prompt IS the instruction to install — asking again for
+        # `--apply` after somebody typed 'y' to "install the update?" would be the
+        # same dead end with an extra step.
+        args.apply = True
 
     if not getattr(args, "apply", False):
         print(f"\n  install it:  bento update --apply")
         return 0
+
+    # Work parked at the start of this command is the easiest thing in the world to
+    # forget, and whoever forgets it concludes the update ate their edits. So it is
+    # said again on the way out — on EVERY way out, including the two that fail:
+    # a rolled-back update with a silent stash behind it is the worst version of this.
+    def parked() -> None:
+        if stashed:
+            print(f"\n  your parked changes: {stashed.split('with: ')[-1]}")
 
     print()
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
                                    log=lambda m: print(f"  {m}")))
     if not result.get("ok"):
         print(f"✗ {result.get('error')}")
+        parked()
         return 1
     if result.get("unchanged"):
         print("✓ already at the newest commit — nothing changed")
+        parked()
         return 0
     print(f"✓ updated {result['from']} → {result['to']} "
           f"({result['files']} files, now {result.get('version') or '?'})")
@@ -2497,6 +2558,7 @@ def _update_cli(args) -> int:
     # of — this is the only place that machine's operator ever sees what changed.
     for c in (result.get("changes") or []):
         print(f"    {c['hash']}  {c['title'][:88]}")
+    parked()
 
     # An update that has not been loaded is a half-state: the files on disk and the
     # process answering turns disagree, and nothing on screen says which one you are
@@ -2882,6 +2944,10 @@ def main():
     p_upd.add_argument("--apply", action="store_true",
                        help="actually install it: fast-forward, sync deps, run the "
                             "tests, restart")
+    p_upd.add_argument("--stash", action="store_true",
+                       help="if the checkout has your own uncommitted edits, park them "
+                            "with `git stash` and update anyway (answers the prompt "
+                            "for an unattended run)")
     p_upd.add_argument("--no-tests", action="store_true",
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
