@@ -4169,6 +4169,17 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         state["pending_approvals"].pop(aid, None)
 
 
+# How long an unanswered price card holds the turn before it runs anyway.
+#
+# This is a wait for a HUMAN, and it is the only gate that runs before
+# `turn_start` — so every second of it is a second the chat can draw as nothing
+# but "working". It used to be spent on a card no surface rendered: the UI
+# handled no `price_request`, so the answer could not arrive and the full timeout
+# was the only outcome. The card is now in the chat window, and the timeout also
+# records the skip — an unanswered question is asked once, not once per turn.
+PRICE_ASK_TIMEOUT = 300.0
+
+
 async def request_price(model: str, evsend=None) -> bool:
     """A new cloud model has no price. Ask before it runs.
 
@@ -4181,6 +4192,21 @@ async def request_price(model: str, evsend=None) -> bool:
     on timeout the turn proceeds and the model is recorded as unpriced, with the
     reason in the log. Refusing to run would be a worse failure than not knowing
     what it cost.
+
+    Two things this learned the hard way, both from the same five minutes.
+
+    The wait SAYS it is waiting. This runs before `turn_start`, so a turn held
+    here produced no event at all: the chat sat on "working" with the clock the
+    UI started at send, no step, no tool, no sentence, and every report of it was
+    a report about the executor being slow. A `status` first means the row names
+    the thing it is actually waiting for.
+
+    And it is asked ONCE. A timed-out ask used to change nothing, so the next
+    turn asked again and waited the full timeout again — the stall was not a
+    first-run cost, it was the price of every turn on that model, forever.
+    Recording the skip is what the user would have chosen by leaving it: run it,
+    and record the tokens as unpriced. Settings → Pricing sets a real price later
+    and that overrides this.
     """
     if state.get("price_pending", {}).get(model):
         return True                       # already being asked about; don't stack cards
@@ -4191,12 +4217,19 @@ async def request_price(model: str, evsend=None) -> bool:
     found = await usagemod.discover_price(state["cfg"], model)
     ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
     try:
+        if evsend is not None:
+            await evsend({"type": "status",
+                          "message": f"waiting on a price for {model} before it runs "
+                                     f"— set one in Settings → Pricing"})
         await (evsend(ev) if evsend is not None else state["broadcast"](ev))
-        return await asyncio.wait_for(fut, timeout=300)
+        return await asyncio.wait_for(fut, timeout=PRICE_ASK_TIMEOUT)
     except asyncio.TimeoutError:
+        usagemod.skip_price(state["cfg"], model)          # never ask this twice
+        cfgmod.save_config(state["cfg"])
         state["store"].log("system",
                            f"no price set for {model} — nobody answered the prompt, so the "
-                           f"turn ran and its tokens are recorded as unpriced",
+                           f"turn ran and its tokens are recorded as unpriced. It will not "
+                           f"be asked again; set a price in Settings → Pricing to record cost.",
                            {"model": model, "kind": "pricing"})
         return True
     finally:
@@ -4480,6 +4513,9 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/wm/outputs"), ("POST", "/api/components"),
     # shell_cmd results come from the shell itself, never from an app iframe
     ("POST", "/api/shell/result"),
+    # locking the desktop is a user gesture. An app that could lock it could hold
+    # the machine's owner out of their own session on a loop
+    ("POST", "/api/session/lock"),
     # an eval run spends real model tokens for as long as it takes; that is a
     # user's decision to make, not something an app kicks off in the background
     ("POST", "/api/evals/run"),
@@ -4617,6 +4653,12 @@ async def app_privilege_guard(request: Request, call_next):
 # ---------------------------------------------------------------------------
 
 REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
+                     # Coming back from a locked screen. Open for the same reason
+                     # the sign-in routes are: the gate is what it has to get past.
+                     # Its own defence is the password plus the same per-address
+                     # backoff sign-in uses, and the identity it unlocks is the one
+                     # already inside the signed cookie — never one it is handed.
+                     "/api/session/unlock",
                      "/api/users/who", "/assets/", "/manifest.webmanifest",
                      "/favicon.ico", "/apple-touch-icon.png",
                      # Flow webhooks. A service posting from the internet has no session
@@ -4634,6 +4676,13 @@ def _client_addr(request: Request) -> str:
 
 def _authed(request: Request) -> bool:
     cfg = state.machine_cfg()
+    # A locked screen outranks every reason to let somebody in, loopback included:
+    # the person who locked it is the person sitting at that keyboard, and "you are
+    # physically here" is exactly the claim they just withdrew. Checked first so the
+    # API and the sockets go quiet with the page — a desktop that kept streaming a
+    # turn behind the lock screen would be a lock over the pixels only.
+    if remotemod.session_locked(cfg, request.cookies.get(remotemod.COOKIE, "")):
+        return False
     # Adding a second person is what turns this machine into one that needs a login.
     # Loopback trust cannot survive it: "whoever is sitting here" is exactly the
     # thing that must stop being an identity once there is more than one identity,
@@ -4663,6 +4712,10 @@ async def resolve_user(request: Request, call_next):
                                      request.cookies.get(remotemod.COOKIE, "")) or ""
         if uid and not usersmod.get(uid):
             uid = ""                     # the account was deleted mid-session
+        # A LOCKED cookie still resolves to its owner, deliberately. Locking is not
+        # signing out: the unlock route has to know whose password to check, and the
+        # lock screen has to be able to say whose desktop this is. Nothing else runs
+        # while locked — `remote_access_gate` refuses every path but the open ones.
     token = usersmod._current.set(uid)
     try:
         return await call_next(request)
@@ -5540,6 +5593,97 @@ async def api_remote_logout():
     return resp
 
 
+# ---------------------------------------------------------------------------
+# Lock the desktop, and come back to it with one password.
+#
+# This is the GUI/browser lock, and it exists because the lock this OS already had
+# is the HOST's: `POST /api/power {"action":"lock"}` runs `loginctl lock-session`
+# (or sleeps the display on a Mac). That is the right lock in SUI — there AgentOS
+# IS the session, native windows sit ABOVE the desktop on the BACKGROUND layer,
+# and only the compositor's own lock can cover them. It is the wrong lock, or no
+# lock at all, everywhere else: in a browser tab on another machine it locks the
+# screen of the SERVER, in a room the person may not be in, while their AgentOS
+# desktop stays wide open in front of them.
+#
+# So: locking AgentOS is offered where the native lock cannot answer — a tab, a
+# window, a phone — and SUI keeps using the compositor's, which is stronger.
+#
+# What makes this a lock rather than a curtain drawn in the page:
+#   · it is in the SIGNED cookie, so a reload, a second tab, a restored browser
+#     session and a server restart all still find it locked, and no script in the
+#     page can clear it;
+#   · `_authed` refuses a locked cookie BEFORE loopback trust and before the
+#     account check, so the API and every WebSocket go quiet too;
+#   · it keeps WHO you are, so coming back asks for a password and not a username.
+#     That is the whole difference from signing out, and it is why `resolve_user`
+#     still resolves a locked cookie's owner.
+# ---------------------------------------------------------------------------
+
+@app.post("/api/session/lock")
+async def api_session_lock(request: Request):
+    """Lock this browser's AgentOS session. Idempotent, and honest when it cannot.
+
+    Refused on a machine with no key. A lock needs something to unlock it, and on
+    an install with no accounts and no remote passphrase there is nothing — the
+    button would shut somebody out of their own desktop for good. The sentence
+    names both ways to fix it rather than just saying no.
+    """
+    cfg = state.machine_cfg()
+    kind = remotemod.lock_kind(cfg)
+    if not kind:
+        return JSONResponse(
+            {"error": "there is nothing to unlock with yet — add an account "
+                      "(Settings → Users) or set a remote passphrase (Settings → "
+                      "Remote access) first. A lock with no key would not open again.",
+             "lock": ""}, status_code=400)
+    uid = usersmod.current()
+    resp = JSONResponse({"ok": True, "lock": kind})
+    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid, locked=True))
+    state["store"].log("system", "desktop locked")
+    return resp
+
+
+@app.post("/api/session/unlock")
+async def api_session_unlock(body: dict, request: Request):
+    """Come back from a locked screen with the password of whoever locked it.
+
+    The identity is read out of the signed cookie, never out of the body: a route
+    that accepted a name here would be a second sign-in door with no username
+    field, and a locked screen would be a way to guess at other people's accounts.
+    """
+    cfg = state.machine_cfg()
+    claims = remotemod.session_claims(cfg, request.cookies.get(remotemod.COOKIE, ""))
+    if claims is None:
+        # No session to unlock — an expired lock, or a cleared cookie. That is a
+        # sign-in, and saying so is what puts the username field back on the page.
+        return JSONResponse({"error": "sign in required", "login": "/login"},
+                            status_code=401, headers=NO_STORE)
+    if not claims.get("lk"):
+        return {"ok": True}          # already open: a double submit, not an error
+    addr = _client_addr(request)
+    if (wait := remotemod.locked_for(addr)):
+        return JSONResponse({"error": f"too many attempts — wait {wait}s"},
+                            status_code=429)
+    uid = str(claims.get("uid") or "")
+    pw = str((body or {}).get("password") or "")
+    if usersmod.enabled():
+        if not uid or usersmod.get(uid) is None:
+            return JSONResponse({"error": "that account is gone — sign in again",
+                                 "login": "/login"}, status_code=401)
+        ok = usersmod.check_password(uid, pw)
+    else:
+        ok = remotemod.check_passphrase(cfg, pw)
+    if not ok:
+        remotemod.note_failure(addr)
+        return JSONResponse({"error": "that password does not match"}, status_code=401)
+    remotemod.note_success(addr)
+    resp = JSONResponse({"ok": True})
+    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid))
+    with contextlib.suppress(Exception):
+        usersmod.store_for(uid).log("system", "desktop unlocked")
+    return resp
+
+
 @app.get("/api/remote")
 async def api_remote_status():
     return remotemod.status(state["cfg"])
@@ -6119,10 +6263,24 @@ def _require_admin():
 
 
 @app.get("/api/users/who")
-async def api_users_who():
+async def api_users_who(request: Request):
     """Deliberately outside the auth gate: the sign-in page has to know whether this
-    machine has users at all before it can ask for anything."""
-    return {**_me(), "any": usersmod.enabled()}
+    machine has users at all before it can ask for anything.
+
+    It also answers two things the same page needs and cannot guess:
+
+      `lock`   what this machine is locked BY — 'accounts', 'passphrase' or ''.
+               The desktop reads it to decide whether it may offer Lock at all;
+               offering a lock with no key is offering to shut somebody out.
+      `locked` whether THIS browser is merely locked rather than signed out. That
+               is the difference between asking for a password and asking for a
+               username and a password, and only the cookie knows.
+    """
+    cfg = state.machine_cfg()
+    return {**_me(), "any": usersmod.enabled(),
+            "lock": remotemod.lock_kind(cfg),
+            "locked": remotemod.session_locked(
+                cfg, request.cookies.get(remotemod.COOKIE, ""))}
 
 
 @app.post("/api/users/login")
@@ -7557,6 +7715,8 @@ def _ws_authed(ws) -> bool:
     applied by hand here — a socket is a longer-lived and more capable channel
     than any REST call, and the terminal one is literally a shell."""
     cfg = state.machine_cfg()
+    if remotemod.session_locked(cfg, ws.cookies.get(remotemod.COOKIE, "")):
+        return False              # same refusal as `_authed`, for the same reason
     if usersmod.enabled():
         # A machine with accounts is locked by them: only a valid signed session
         # cookie gets a socket, whichever transport it arrived on. Loopback trust
@@ -7574,19 +7734,33 @@ def _ws_authed(ws) -> bool:
 def _ws_user(ws) -> str | None:
     """Which account this socket belongs to, from the SIGNED cookie only.
 
-    None means the cookie did not verify. The empty string is a real answer: a
-    single-user machine, where '' is the machine account and every turn runs as
-    it. This is the WebSocket half of the `resolve_user` middleware — the HTTP
-    middleware never runs for a socket, so a turn launched from the receive loop
-    would otherwise resolve `state["store"]` to the machine on a multi-user box,
-    quietly reading and writing the wrong person's memory, grants and ledger.
+    None means "not somebody": either the cookie did not verify, or it verified
+    and names nobody. The empty string is a real answer on a SINGLE-USER machine
+    only, where '' is the machine account and every turn runs as it. This is the
+    WebSocket half of the `resolve_user` middleware — the HTTP middleware never
+    runs for a socket, so a turn launched from the receive loop would otherwise
+    resolve `state["store"]` to the machine on a multi-user box, quietly reading
+    and writing the wrong person's memory, grants and ledger.
+
+    On a machine WITH accounts, a cookie carrying no uid is refused, and that is
+    the whole reason this returns None rather than ''. Such a cookie exists: it
+    is what `/api/remote/login` issued while the machine was locked by a shared
+    passphrase, and adding accounts does not invalidate it (sessions are signed
+    with the passphrase hash, which nobody changed). `_authed` already refuses it
+    over HTTP — `bool(uid) and get(uid)` — so a browser holding one is correctly
+    sent to the sign-in page, and the two gates must agree. They did not: the
+    same cookie opened every socket as the machine account '', which is the
+    pre-accounts home, and one of those sockets is a shell.
     """
+    cfg = state.machine_cfg()
+    if remotemod.session_locked(cfg, ws.cookies.get(remotemod.COOKIE, "")):
+        return None               # locked is nobody, on a single-user machine too
     if not usersmod.enabled():
         return ""
-    uid = remotemod.session_user(state.machine_cfg(), ws.cookies.get(remotemod.COOKIE, ""))
-    if uid is None or (uid and not usersmod.get(uid)):
+    uid = remotemod.session_user(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+    if not uid or not usersmod.get(uid):
         return None
-    return uid or ""
+    return uid
 
 
 @app.websocket("/ws/vnc")

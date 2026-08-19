@@ -141,6 +141,19 @@ Three things will bite whoever touches this next:
   strips the personal keys before an admin's save reaches it — leaving a Telegram token
   there hands it to the next person who signs up.
 
+**A locked screen is a third refusal, and it sits in front of both.** `remote.session_locked`
+reads a lock out of the SIGNED cookie, and `_authed` / `_ws_authed` refuse it BEFORE loopback
+trust and before the account check — otherwise the page would be behind a lock screen while its
+socket kept streaming a turn. Two rules keep the two locks apart: the HOST lock
+(`/api/power {"action":"lock"}`) is the only correct one in SUI, where native windows sit above
+the BACKGROUND-layer desktop and nothing the page does can cover them; the SESSION lock
+(`/api/session/lock`) is offered only outside SUI, where the host's would lock the screen of the
+*server* while the person's desktop stays open in their hand. A locked cookie still RESOLVES to
+its owner in `resolve_user` — that is what makes unlocking one password instead of a sign-in, and
+it is the whole difference from Sign out. A machine with no key (`remote.lock_kind` == `''`)
+refuses to lock rather than shipping a door that never opens again. Full reasoning in
+`docs/users.md`.
+
 ## One deliberate name divergence: the app is "Workflows", the code says `flows`
 
 The app in the dock is **Workflows**, because that is the word people arrive with. Every

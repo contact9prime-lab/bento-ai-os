@@ -42,6 +42,17 @@
   <button id="pm-user" hidden onclick="openApp('users')"></button>
   <button id="pm-signout" hidden onclick="usersSignOut()">Sign out…</button>
   <hr id="pm-userhr" hidden>
+  <!-- Two locks, and they are not the same lock.
+       "Lock desktop" locks THIS browser's AgentOS session: the desktop goes behind
+       the sign-in page and one password brings it back. Hidden until usersBoot()
+       has established that there is a key to unlock it with (an account, or a
+       remote passphrase) — a lock with no key shuts somebody out for good.
+       "Lock screen" is the HOST's lock (loginctl lock-session / display sleep).
+       That is the right one in SUI, where AgentOS is the session and native
+       windows sit above the desktop, so only the compositor can cover them — and
+       it is why the item above is offered only outside SUI. -->
+  <button id="pm-lock" hidden onclick="lockDesktop()"
+          title="Lock this desktop — your password brings it back">Lock desktop</button>
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>

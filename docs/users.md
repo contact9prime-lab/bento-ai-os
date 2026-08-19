@@ -271,6 +271,48 @@ deployment decision (a real per-user OS uid, or containers), laid out in
 this OS exposes; hardening the box underneath them against a resourceful insider
 is a deployment choice on top.
 
+## Locking the screen, which is not signing out
+
+The lock this OS started with is the **host's**: `loginctl lock-session`, or sleeping
+the display on a Mac. In SUI that is the right lock and still the only correct one —
+AgentOS draws the desktop on the compositor's BACKGROUND layer with native windows
+above it, so nothing the page can do would cover a running Firefox. In a browser it
+is the wrong lock, or none at all: from a phone it locks the screen of the *server*,
+in a room the person may not be in, while their AgentOS desktop stays open in their
+hand.
+
+So there is a second lock, offered exactly where the first cannot answer — a tab, a
+window, a phone — and hidden in SUI, where the compositor's lock is stronger:
+
+    Power menu → Lock desktop        (⌘/Ctrl palette: "lock desktop")
+
+It locks the **session**, not the pixels. `POST /api/session/lock` re-issues the same
+signed cookie with a lock inside it, and three things follow from where it lives:
+
+- a reload, a second tab, a restored browser session and a server restart all still
+  find it locked, and no script in the page can clear it;
+- `_authed` refuses a locked cookie **before** loopback trust and before the account
+  check, so the API and every WebSocket — the terminal included — go quiet with the
+  page. A desktop that kept streaming a turn behind the lock screen would be a lock
+  over the pixels only;
+- it keeps **who** you are. `resolve_user` still resolves a locked cookie's owner, so
+  coming back asks for one password and not a username. That is the entire difference
+  from Sign out, and the lock screen says whose desktop it is guarding.
+
+`/login` is both doors and the server decides which: `/api/users/who` answers `locked`,
+and the page then asks for a password, offers "Sign in as someone else" for whoever is
+not that person, and otherwise stays the sign-in page it was.
+
+A machine with **no key** refuses to lock, in a sentence naming both ways to get one
+(add an account, or set a remote passphrase). A lock with nothing to open it would
+shut somebody out of their own desktop for good, so it is the one thing this must not
+quietly become. `POST /api/session/lock` is in `SENSITIVE_FOR_APPS` for the mirror
+reason: an app that could lock the desktop could hold its owner out on a loop.
+
+There is nothing to lock from the **TUI**. The lock is a property of a browser
+session, and the terminal client has no cookie — a headless machine's lock is the one
+on the shell you reached it through.
+
 ## From a terminal
 
 A headless machine has no desktop to add the first account from, and the
@@ -319,10 +361,13 @@ database would be discovered weeks later by whoever did not get their briefing.
 - **GUI** — the Users app: the offer, the roster, roles, passwords, the shared
   library. The power menu names who is signed in and offers Sign out, and shows
   neither on a machine without accounts.
-- **TUI** — `bento user`, plus `--user` / `AGENTOS_USER` on every data verb.
-- **SUI** — the same page, so the same app. One thing is genuinely different and
-  is stated rather than hidden: signing out returns this **AgentOS session** to
+- **TUI** — `bento user`, plus `--user` / `AGENTOS_USER` on every data verb. No
+  lock: see [Locking the screen](#locking-the-screen-which-is-not-signing-out).
+- **SUI** — the same page, so the same app. Two things are genuinely different and
+  are stated rather than hidden. Signing out returns this **AgentOS session** to
   the sign-in page; it is not a Linux logout, and the compositor, the native
-  windows and anything already running are unaffected. Two people cannot use one
+  windows and anything already running are unaffected. And "Lock desktop" is not
+  offered at all, because native windows sit above the desktop where only the
+  compositor's own lock reaches them — the menu's "Lock screen" is that lock. Two people cannot use one
   physical screen at once, so the session-shell case is one account at a time —
   the others reach the machine from their own browsers.
