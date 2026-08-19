@@ -1,0 +1,525 @@
+# Bento Box AI —— 一套在地優先的代理式作業系統
+
+<p align="right"><sub>
+<a href="../../README.md">English</a> ·
+<a href="README.zh-CN.md">简体中文</a> ·
+<b>繁體中文</b> ·
+<a href="README.ja.md">日本語</a> ·
+<a href="README.ko.md">한국어</a> ·
+<a href="README.es.md">Español</a> ·
+<a href="README.pt-BR.md">Português&nbsp;(BR)</a> ·
+<a href="README.fr.md">Français</a> ·
+<a href="README.de.md">Deutsch</a> ·
+<a href="README.ru.md">Русский</a> ·
+<a href="README.hi.md">हिन्दी</a> ·
+<a href="README.ar.md">العربية</a>
+</sub></p>
+
+**你的機器，配上一顆大腦。** Bento Box AI 是一套自我託管的 **AI 桌面環境**：一整套桌面 —— 視窗、應用程式、檔案、終端機 —— 由一個會在你電腦上採取**真實行動**的**自主 AI 代理**驅動。透過 [Ollama](https://ollama.com) 使用在地模型以獲得完整隱私，或使用雲端模型（Anthropic Claude、OpenAI、OpenRouter，或任何 OpenAI 相容端點）—— 而且一律需要你的核准。這個代理能瀏覽網頁、自行打造應用程式、排程任務、記住它學到的東西、擴充自己的原始碼，並透過 Telegram 或 WhatsApp 找到你。
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
+![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
+
+執行於 `http://127.0.0.1:8321` —— 預設私有，可安裝為開機服務。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+![Bento Box AI 動態展示 —— 向代理詢問晨間簡報並得到即時回覆、堆疊視窗，並在五種設計語言之間切換](../screenshots/demo.gif)
+
+<sub>▶ [觀看完整片段（MP4）](../screenshots/demo.mp4) —— 在裝置上回答的一次真實對話；上方的聊天回覆是即時代理，不是模擬畫面。</sub>
+
+![Bento Box AI 桌面 —— AI 代理聊天、檔案管理員，以及在瀏覽器桌面環境中的快速設定](../screenshots/desktop.png)
+
+**完整文件在 [`docs/`](../README.md)** —— 安裝、桌面與每個應用程式的使用者指南、代理及其工具、打造應用程式、整合、API 參考，以及疑難排解。
+
+---
+
+## 設定共有九步，而每一步都留下一些東西
+
+這不是一張帶進度條的設定表單。每一步都**產生一些真實的東西** —— 一個會回答的模型、一個確實存在的代理、一段會執行的流程、一個會觸發的排程 —— 而且在向你要任何東西之前，都會先說清楚你最後會得到什麼。
+
+![初次執行的設定畫面：左側是九個步驟排成的軌道，右側是「為你的代理命名」，並附上一句「你最後會得到：選單列上以及每則回覆裡的名字」](../screenshots/onboarding-1-name.png)
+
+每一步都是**經過探測，而非記住**的：它被打勾，是因為機器確實擁有那樣東西。刪掉代理，這一步就退回待辦。這正是它能安全重跑的原因 —— 而在這裡重跑是很正常的事，因為**設定本身也是一個應用程式**。隨時打開它，就能看到某一步在做什麼，即使是在你幾個月前才設定好的機器上。
+
+![以視窗開啟的「設定」應用程式：左側是九步軌道，右側開啟了「打造一位專才」這一步](../screenshots/setup-app.png)
+
+同一份目錄、同一套探測、同一組面板 —— 在終端機裡也一樣，其中 `bento setup` 透過 SSH 從瀏覽器離開的地方接著往下走。
+
+---
+
+## 它問你的第一件事，是要做什麼工作
+
+設定以一個問題作結，而不是一扇門：**給我一份工作。** 從三項中挑一項，回答兩個問題，這台機器就在你打開任何一個應用程式之前，已經在為你做事了。
+
+![工作畫面：三份配方 —— 每天早上為我簡報、幫我盯著一個資料夾、頁面變動時告訴我 —— 以及所選那份的提問，還有它確切會被允許做的事](../screenshots/jobs.png)
+
+| | |
+|---|---|
+| **每天早上為我簡報** | 徹夜讀完你關注的事物，留下一頁等你 |
+| **幫我盯著一個資料夾** | 留意*你選定的*資料夾裡落進了什麼、弄清楚那是什麼、然後告訴你 |
+| **頁面變動時告訴我** | 檢查一個頁面，只在真的有東西變動時才出聲 |
+
+有兩件事它不會做。它不會替自己爭取任何你沒看過的權限：面板會在你按下按鈕之前印出確切的權限，由撰寫那些權限的同一段程式碼算出來 —— 「讀取 `~/Downloads/*`，除此之外別無其他」。而且它不會提供一種聯絡不到你的方式：一個尚未配對的 Telegram 會以灰色顯示，並附上一句能修好它的說明，絕不隱藏，也絕不悄悄替換掉。
+
+最後一個按鈕是**「現在就跑一次，讓我看到它運作」** —— 因為一個你沒親眼看過它觸發的排程只是一個承諾，而新使用者沒有理由相信一個承諾。
+
+一份工作就是一段*流程*，而不是一種新東西：同一個排程器、同一道權限關卡、同一本稽核帳本。在無頭機器上：`bento job recipes`，接著 `bento job add morning-brief --topics "…"`。
+
+---
+
+## 三張臉，一個程式
+
+Bento 在三個地方執行，而**每一項功能都為這三者打造**。這是任何變動被問到的第一個問題，而不是最後一個。
+
+| | 這是什麼 | 用什麼啟動 |
+|---|---|---|
+| **GUI** | macOS、Windows 或 Linux 上的一個視窗（或分頁）。無需額外安裝任何東西 | `bento` |
+| **TUI** | 整套作業系統在終端機裡 —— 給伺服器，或透過 SSH 連上的無頭 Pi | `bento tui` |
+| **SUI** | Bento **就是**你的 Linux 工作階段：它擁有整台機器 | `bento installer` |
+
+> 指令是 `bento`。`agentos` 仍然有效，而且永遠都會 —— 它存在於人們的 shell 歷史紀錄、systemd 單元和指令稿裡，而我們選擇的更名不該讓他們付出那個代價。
+
+---
+
+## 看它實際運作
+
+| | |
+|---|---|
+| ![與 AI 代理聊天 —— 串流回覆、工具呼叫與核准](../screenshots/chat.png) **代理聊天** —— 和你的機器對話；串流回覆、工具卡、核准、語音 | ![團隊應用程式 —— 子代理、工作流程與可觀測性](../screenshots/team.png) **團隊** —— 專才子代理與視覺化工作流程，可逐步混用不同模型 |
+| ![內建文件應用程式呈現完整手冊](../screenshots/docs.png) **文件** —— 完整手冊就住在作業系統裡 | ![應用商店 —— 一鍵應用程式、技能與 MCP 頻道](../screenshots/store.png) **商店** —— 一鍵應用程式、技能，以及 MCP 工具頻道 |
+
+### 好幾個人，一台機器
+
+新增一個帳號，每個人就有**自己的家** —— 自己的資料庫、記憶、代理、頻道、MCP 伺服器與憑證。不是那種一個忘掉的 `WHERE` 子句就會外洩的 `user_id` 欄位：而是自己的目錄，因為兩個檔案無法彼此外洩。
+
+![使用者應用程式：兩個帳號，Ada Lovelace 標記為管理員與「這是你」，Bob Kahn 的角色下拉選單設為 Executor](../screenshots/users-two-accounts.png)
+
+兩種角色 —— **executor**（在自己家裡的一切）與 **admin**（那些之外，再加上整台機器）。設定維持共用，所以整台機器只有一把供應商金鑰，而不是每人一把。代理與應用程式會刻意地以副本形式，透過一個共用程式庫跨越彼此。
+
+而且它是**一次登入，此處與任何地方皆通**：一台有帳號的機器由帳號鎖住，所以某人口袋裡的手機用的是和桌面相同的使用者名稱與密碼，並落進他們自己的家。不需要再發明、分享或忘記第二組共用通行碼。
+
+![遠端存取面板顯示「由本機的帳號鎖定 —— 每個人都用他們在這裡使用的同一組使用者名稱與密碼從手機登入」](../screenshots/remote-locked-by-accounts.png)
+
+### 你看得到它在做什麼
+
+![一次進行中的對話：已完成的 Read 呼叫保留了它的耗時，執行中的 Bash 呼叫就地計時，下方那一列說明目前在哪一步以及這次對話已花了多久](../screenshots/agent-working.png)
+
+一次對話大多在等待，而顯示「工作中…」四分鐘什麼也沒告訴你 —— 一個正在思考的模型和一次已悄然死去的執行在它底下看起來一模一樣。每一個等待中的介面都會說出**它在忙什麼、忙了多久**：執行中的呼叫就地計時（`running · 2m 14s`），已完成的呼叫保留它的耗時，下方那一列帶著步驟與整次對話的總計。同一句話會出現在在場泡泡與全域指令列上，所以不打開聊天，也能從桌面得到答案。
+
+### 它能打造自己的團隊 —— 而且動手前會先問
+
+![核准一次委派：卡片列出代理、模型、步驟與時間預算，以及它將握有的確切工具與技能](../screenshots/agent-approval.png)
+
+當現有專才都不合適時，代理會**打造一位**並委派給它。定義一個代理不會授予它任何權限；第一次它真的被使用時，你會收到一張卡片，列出它執行所用的模型、它的預算，以及它的定義賦予它的確切工具與技能 —— 因為對一個你無法想像的行動者所給的同意，只是名義上的同意。核准 `researcher` 不等於核准 `deploy-bot`，而且這份授權可以在「權限」裡撤銷，和其他授權一樣。[運作方式 →](../security.md)
+
+### 它從自己的手冊回答關於自身的問題
+
+![文件應用程式回答一個關於這套作業系統的問題，並以手冊為依據](../screenshots/docs-ask.png)
+
+手冊就在檢索索引裡，所以「我要怎麼讓一個應用程式連不上網際網路，卻仍能運作？」是從**這些頁面**回答的，而不是從某個模型對另一個專案的記憶 —— 而且回覆會指名它用到的頁面。這是代理式檢索，而非一次性查表：代理會搜尋、閱讀，並在第一遍漏掉時再搜尋一次。
+
+### 表現得像視窗的視窗
+
+![四個 Bento 視窗堆疊在桌面上：被聚焦的那個帶著強調色光環與完整陰影，其餘的退居其後](../screenshots/windows.png)
+
+一個視窗會在**你上次擺放的地方**開啟 —— 位置與大小逐一應用程式記住 —— 而一個初次開啟的視窗會以超過一條標題列的幅度層疊，讓底下那個的名稱仍然讀得到。被聚焦的視窗帶著強調色光環與完整陰影；其餘的退居其後。標題列上的 ✦ 是那個*應用程式內部*的代理：不離開它，就能問它畫面上有什麼。
+
+### 五種設計語言，而非五組配色
+
+![五種內建設計語言主題：Bento、Liquid Glass、Spatial、Claymorphism、Minimalism](../screenshots/themes.png)
+
+**Bento · Liquid Glass · Spatial · Claymorphism · Minimalism。** 每一種都重新裁切整個外殼 —— 表面、圓角、層次、模糊、字體 —— 並帶來自己的桌布。這些桌布以 SVG 形式提供：每張只有幾 KB，從手機到 4K 面板都清晰銳利。[更多 →](../desktop.md#themes)
+
+玻璃是桌面能繪製的最昂貴的東西，而且成本會隨著你每多開一個視窗而複合累加。**Themes → Effects** 會量測你的機器，只有在非降不可時才把它調低 —— 在 Liquid Glass 中的五個視窗，從 6.5fps 提升到 27（已降低）或 60（關閉）。
+
+### 它在你已身處之處找到你
+
+![設定裡的 WhatsApp 頻道：四個 Cloud API 欄位、要貼進 Meta 主控台的回呼 URL、已配對的號碼，以及 24 小時視窗是否開啟](../screenshots/channels-whatsapp.png)
+
+**Telegram 與 WhatsApp 是原生頻道** —— 和坐在桌前時同一段對話、同一份記憶、同一組工具，以及同一批核准按鈕。這不是一座通知橋樑：一則來自你手機的回覆，會延續你今天早上開啟的那段對話串。
+
+WhatsApp 有**兩種傳輸方式**，而它們失敗的方向相反。Meta 的 Cloud API 是官方的，但需要一個開發者帳號和一個公開 webhook，而且在你上一則訊息之後超過 24 小時，它根本不會傳送任何自由格式的回覆 —— 卡片會說明那個視窗是否開啟，一則送不出去的訊息會說明原因與修法，而一個排程工作會先儲存它的報告，這樣就什麼都不會遺失。WhatsApp Web 連結只需要掃一次 QR，而且沒有 24 小時視窗，但它是**非官方的**，Bento 在任何東西下載之前就在安裝卡上這麼說。[設定 →](../whatsapp.md)
+
+Telegram 同時也是一個**管理主控台**：`/agents`、`/run`、`/flows`、`/model`、`/logs`、`/perms` —— 僅限擁有者，而且每一個*確實會做事*的指令都會經過與桌面相同的權限關卡和相同的核准按鈕，所以它永遠不是一條更廉價的入口。[指令 →](../integrations.md)
+
+### 一套桌面，適配每一塊螢幕
+
+![Bento Box AI 在手機上：鎖定畫面、為手機排布的桌面，以及以滿版工作表呈現的一個應用程式](../screenshots/mobile.png)
+
+手機、平板、工作站 —— 同一套桌面，自我調適。視窗變成滿版工作表，dock 橫跨底緣，彈出式視窗變成工作表。打開**遠端存取**，就能在通行碼保護下，透過你的網路從手機連上它；*加入主畫面*讓它成為一個全螢幕應用程式。[遠端存取 →](../remote-access.md) · [響應式版面 →](../desktop.md#phone-tablet-desktop)
+
+### 它能*成為*桌面，而不只是活在桌面上
+
+![一個原生 Wayland 應用程式浮在 Bento 桌面之上，選單列保留在它上方，dock 保留在它下方](../screenshots/session-native-window.png)
+
+登入，就把 Bento 當作你的 Linux 工作階段。桌面被繪製為一個**位於背景層的 Wayland 圖層表面**，所以原生應用程式視窗在正常堆疊順序中位於它之上 —— 不是因為有什麼被抬高或壓低，而是因為「背景」本來就是這個意思。選單列與 dock 位於**與合成器保留下來**的帶狀區域中，這與 GNOME 或 KDE 面板所用的機制相同，所以一個全螢幕應用程式會停在它們的邊緣，而不是把它們吞掉。
+
+![兩個原生終端機分別吸附到 Bento 桌面的左半與右半](../screenshots/session-snapped.png)
+
+為原生應用程式提供完整的視窗管理：吸附到二分之一與四分之一、平鋪、浮動、版面配置、鍵盤調整大小、工作區、最小化，以及一個 Alt-Tab 切換器 —— 工作列與選單列會追蹤當下被聚焦的那個應用程式。[工作階段 UI →](../session-ui.md)
+
+### 從 Bento 內部安裝應用程式
+
+![應用程式應用程式在搜尋機器的套件目錄，每個結果都有安裝按鈕](../screenshots/app-store.png)
+
+一套你沒辦法在上面安裝軟體的桌面只是一個展示品。*Applications → Get apps…* 搜尋機器自己的目錄 —— AppStream、Flatpak 或 apt —— 並在執行之前把確切的指令顯示給你看。哪裡有 Flatpak 就優先用它，因為逐一使用者的安裝根本不需要密碼。Bento 什麼都不鏡像、什麼都不打包；它向你早已擁有的套件管理員詢問。
+
+### 你真正的螢幕，在你手機上，在瀏覽器裡
+
+![Bento 的遠端桌面在手機瀏覽器中開啟，顯示機器真正的螢幕，上面有一個原生應用程式，以及一排手機鍵盤所缺的按鍵工具列](../screenshots/phone-remote-desktop.png)
+
+**遠端存取**把 Bento 外殼傳給你，那是 HTML，能完美地傳輸 —— 但一個原生應用程式是機器自己顯示器上的像素，從來就不是頁面的一部分。**遠端桌面**補上這一塊：Bento 透過它*自己的*已驗證連線轉播螢幕，於是你得到那個真正的、可點擊的桌面，而且手機上不必安裝任何 VNC 應用程式。
+
+這個形狀正是重點 —— VNC 伺服器留在 `127.0.0.1` 上，永遠不靠近網路；保護它的，是你早已使用的那組通行碼。[遠端存取 →](../remote-access.md)
+
+### 自動化與熱角
+
+![自動化應用程式，含已儲存的例行程序、熱角地圖，以及步驟建構器](../screenshots/automations.png)
+
+把一連串動作命名一次 —— 打開這些應用程式、切換主題、執行這段 Python、呼叫那個 MCP 工具、讓代理去做一項任務 —— 從此就能永遠透過指令列、一個熱角、一個排程，或直接叫它的名字來執行。[更多 →](../desktop.md#automations)
+
+---
+
+## 為什麼選 Bento Box AI
+
+- **一套真正的桌面，而不是一個聊天框** —— 可拖曳的視窗、工作列、虛擬桌面、小工具、主題、一個指令選盤，以及 25 個以上的內建應用程式。
+- **一個有手的代理** —— shell 指令、檔案管理、網路研究、桌面通知、排程任務、HTML 報告與打造應用程式，全都用平白的語言。
+- **在地優先且私有** —— 一切都能在你自己的硬體上以 Ollama 執行；除非你加上一把雲端金鑰，否則沒有任何東西離開你的機器。只綁定 localhost，直到你刻意打開通行碼保護的[遠端存取](../remote-access.md)。
+- **整個生命週期在同一個屋簷下** —— **訓練 · 測試 · 運營 · 打造 · 出貨 · 管理**，全都活生生地在同一塊螢幕上（Mission Control）：在你的 GPU 上微調你自己的模型、為每一次自我修改設下測試關卡、執行排程任務、打造應用程式，並把它們出貨到 GitHub。
+- **自我擴充** —— 代理為自己打造新的 UI 應用程式（App Studio）、安裝技能與 MCP 工具伺服器，還能修改 Bento 自己的原始碼（附帶自動快照，以及一套在重啟前必須通過的測試套件）。
+- **會複利累積的記憶** —— 雙層記憶、一張即時知識圖譜，以及一個持久的「靈魂」，在每次對話後自動習得。
+- **設計即安全** —— 自主等級、核准提示、允許／拒絕政策、一個 bubblewrap 資料夾沙箱、被硬性封鎖的破壞性指令，以及一鍵還原點。
+
+---
+
+## 快速開始
+
+**一道指令，在 macOS 或 Linux 上。** 它會安裝一切 —— 包括透過 `uv` 安裝 Python —— 啟動 Bento，接著在說「完成」之前，*證明它確實可用*，方法是向正在執行的伺服器問一個問題。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+接著開啟 **http://127.0.0.1:8321**，或執行 `bento setup` 在終端機裡走完同樣的九步。
+
+它會在你的 `PATH` 上留下一個 `bento` 指令（在 `~/.local/bin`，如果它原本不在那裡，就加進你的 shell 設定檔 —— 之後請開一個新終端機）。
+
+### 把它安裝到指定的位址與連接埠
+
+在一台你透過 SSH 連上的伺服器上，`127.0.0.1:8321` 意味著「誰都連不到」。給安裝程式一組通行碼和一個位址，它就會準備就緒地啟動，開機服務也早已指向正確的連接埠：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=0.0.0.0 --port=8080
+```
+
+那台機器現在在**每一個**介面上以連接埠 8080 回應，而且在做任何事之前都會要求那組通行碼。透過 `127.0.0.1:8080` 的本地使用維持不變。
+
+安裝程式會告訴你它留給你的是兩者中的哪一種 —— 只有在確實有東西在監聽時才會說 `AgentOS is running`。在一台沒有現成服務管理員的機器上（一個容器、一個非 systemd 的發行版、一個沒有使用者 D-Bus 的 SSH），它會這麼說，而 `bento service start` 會把工作收尾。
+
+只綁一個介面，而不是全部 —— 一個私有 VLAN、一個 Tailscale 位址：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=192.168.1.20 --port=8080
+```
+
+只換一個連接埠，仍然僅限迴路：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --port=8080
+```
+
+> **`-s --` 不是可有可無的。** `curl … | sh --port=8080` 會把那個旗標交給 `sh`，而 `sh` 會拒絕它 —— 一段透過管線輸入的指令稿拿不到屬於它自己的引數。`-s --` 的意思是「其餘的是給這段指令稿的」。這是這些旗標最常見的遺失方式，而且錯誤訊息指名的是 `sh`，所以讀起來像是安裝程式壞掉了。
+
+**所有旗標：**
+
+| 旗標 | 作用 |
+|---|---|
+| `--passphrase=SECRET` | 登入需要這個，並允許綁定到迴路以外 |
+| `--bind=ADDR` | 要監聽哪個介面（預設 `0.0.0.0`）；需要 `--passphrase` |
+| `--port=N` | 哪個連接埠（預設 `8321`）；會存進設定檔，讓開機服務使用它 |
+| `--yes` | 對每一個可選元件都回答「是」 |
+| `--no-service` | 不要啟動器，也不要開機服務（容器、CI） |
+| `--no-verify` | 略過「證明它可用」那一步 |
+
+### 事後更改它
+
+上面這一切都住在 **`~/.agentos/config.json`**（或在 `$AGENTOS_HOME` 底下），而 `bento config` 會讀寫它，不必你自己去找：
+
+```bash
+bento config                       # 整個檔案，機密已遮蔽
+bento config port                  # 一項設定
+bento config port 8080             # 更改它
+bento config remote.bind 0.0.0.0   # 用點分隔路徑處理巢狀設定
+bento config --path                # 檔案在哪裡
+bento config --edit                # 在 $EDITOR 中開啟它 —— 拒絕儲存無效的 JSON
+```
+
+`bento remote` 是同一批設定，但把可達性相關的那些歸在一起：
+
+```bash
+bento remote --on --passphrase 'something long' --bind 0.0.0.0   # 位址
+bento remote --port 8080                                          # 連接埠
+bento remote                                                      # 現在是怎樣
+```
+
+**更改連接埠不會自己傳達到一個已安裝的開機服務** —— systemd 單元和 LaunchAgent 把它烘進了 `ExecStart`。這兩道指令都會在此情況適用時告訴你：
+
+```bash
+bento service install && bento service restart
+```
+
+> **能被其他機器連上是一個刻意的選擇，而不是預設值。** Bento 只監聽 `127.0.0.1`，直到你給它一組通行碼，因為這個代理握有一個真正的 shell —— 這裡一個開放的連接埠就是一個開放的 shell。單獨的 `--bind` 因此會被拒絕，而在遠端存取關閉時執行 `bento serve --host 0.0.0.0` 也一樣會被拒絕。
+
+**關於 1024 以下的連接埠。** 在 Linux 上它們會被拒絕給非 root 行程，而在 macOS 上這種拒絕是逐位址的 —— 它准許 `0.0.0.0:80` 卻拒絕 `127.0.0.1:80`。所以這裡沒有任何東西從數字去猜：`--port` 會嘗試真正的綁定，若核心說不行，就印出能修好它的那一行 `sysctl`、那條轉址規則，或那個代理選項。在 Linux 上，連接埠 80 通常意味著一道指令：
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
+sudo sysctl --system
+```
+
+不建議以 root 身分執行伺服器 —— 這個代理握有一個真正的 shell。
+
+<details>
+<summary><b>改用 git checkout</b></summary>
+
+```bash
+uv sync                 # 安裝相依套件（或：pip install -e .）
+uv run bento            # 啟動伺服器並在你的瀏覽器中開啟桌面
+```
+</details>
+
+<details>
+<summary><b>在 Docker 中</b></summary>
+
+```bash
+docker build -t bento .
+docker run -d --name bento -p 8321:8321 -v bento-data:/data \
+  -e AGENTOS_PASSPHRASE='something long and unguessable' bento
+```
+
+一個容器必須綁定 `0.0.0.0` 才可能被連上，所以通行碼是必需的而非可選的 —— 進入點會拒絕以「連不到」*或*「不安全」的狀態啟動，並告訴你是哪一種。所有會遺失的東西都住在 `/data` 卷中。用 `--build-arg SOURCE=git --build-arg REF=my-branch` 來建置某個特定分支。
+</details>
+
+如果 **Ollama** 正在執行，你的在地模型會被自動接手。若你想用雲端 API 金鑰，就在**設定**底下加上。整個設定就這樣。
+
+> **提示：** 用一個**具工具能力的模型**（任何 `qwen*` 模型，或一個雲端模型），打造、工具呼叫與多步驟任務會可靠得多。像 `gemma` 這種較弱的在地模型無法可靠地呼叫工具。
+
+---
+
+## 把它當作你的 Linux 桌面來執行（SUI）
+
+```bash
+uv run bento installer      # 偵測你的發行版、安裝缺少的東西、把它加進登入畫面
+```
+
+接著登出，並在登入畫面選 **Bento Box AI**。你現有的桌面毫髮無傷 —— 要換回去，就是登出後再選一次 Ubuntu。
+
+安裝程式會偵測發行版，指名它想要的每一個套件以及原因，並在安裝任何東西之前先問。分兩組：合成器引擎（sway 及其相關套件，MIT），以及讓桌面成為一個真正的 Wayland 表面而非瀏覽器視窗的原生桌面表面（`python3-gi`、`python3-gi-cairo`、gtk-layer-shell、WebKitGTK）。
+
+**Bento 不隨附也不轉散布它們當中的任何一個。** gtk-layer-shell 是 MIT，但 GTK、PyGObject 與 WebKitGTK 是 LGPL，而這個專案所*相依*的東西維持寬鬆授權 —— 所以它們是被詢問而來的，並把授權攤在你眼前。少了它們，工作階段仍會執行，改在一個 Chromium 視窗裡繪製桌面。[授權 →](../licensing.md) · [工作階段 UI →](../session-ui.md)
+
+如果桌面有任何地方出狀況，一道指令告訴你原因：
+
+```bash
+uv run bento doctor --session   # 探測在「這台」機器上究竟什麼能繪製，並說出來
+```
+
+它會檢查直譯器、GTK 的顯示、合成器的 layer-shell 支援，以及 WebKit 能不能繪製*並持續繪製* —— 在一個視窗裡，以及在一個圖層表面上 —— 然後給出裁決。探測在子行程中執行，因為它要找的失敗是中止與區段錯誤，而一個把 doctor 弄崩潰的探測沒辦法回報它崩潰了。
+
+---
+
+## 安裝為 Debian/Ubuntu 套件（.deb）
+
+一個自足的 `.deb`（打包了應用程式**以及**一個帶有所有相依套件的 Python venv —— 安裝時不需網路）：
+
+```bash
+./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
+sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # 安裝到 /opt/agentos + 啟動器 + 服務
+systemctl --user enable --now agentos                      # 在登入時啟動（逐一使用者）
+bento app                                                  # 或從你的選單啟動它
+```
+
+`apt`/`dpkg` 處理更新與移除。它 **Recommends** `bubblewrap`（沙箱）與 `xdg-utils`，並 **Suggests** `ollama`、`nodejs` 與 `git`。桌面套件另外 **Suggests** 工作階段 UI 堆疊與 `wayvnc`/`novnc` —— 是建議而非相依，因為 apt 預設會安裝 Recommends，而那等於用一個較柔和的名稱來打包。
+
+## 安裝為一個真正的應用程式（開機自動啟動）—— 從原始碼
+
+```bash
+uv run bento install      # 應用程式啟動器 + 一個在登入/開機時啟動的背景服務
+```
+
+正確的原生機制會被自動採用：Linux 上是一個 `.desktop` 啟動器加一個 **systemd user service**（附帶 linger，讓它開機時就啟動），macOS 上是一個 app bundle 加 **LaunchAgents**，Windows 上是一個開始選單捷徑加 **啟動項目**。
+
+一組指令驅動這三者 —— 你不該為了控制自己的代理，還得知道這台機器用的是 systemd 還是 launchd：
+
+```bash
+bento service status       # 它在跑嗎、開機時會回來嗎、連接埠有回應嗎
+bento service start        # …stop、restart
+bento service logs -f      # journalctl 或日誌檔，看這台機器用哪個
+bento service uninstall    # 只移除背景服務 —— 啟動器與資料保留
+bento uninstall            # 移除啟動器 + 服務（你的資料保留）
+bento app                  # 隨時以一個無邊框桌面視窗開啟
+```
+
+`bento service status` 分別回報監督程式所相信的狀態**以及**連接埠是否回應：一個顯示「active」卻沒有任何東西在監聽的單元是一個崩潰迴圈，而那正是值得能看見的狀態。
+
+---
+
+## 啟動模式
+
+| 指令 | 作用 |
+|---|---|
+| `uv run bento` | 啟動伺服器**並**在你的瀏覽器中開啟桌面 |
+| `uv run bento serve --no-browser --port 8321` | 無頭伺服器（開機服務所用） |
+| `uv run bento app` | 以一個原生手感的視窗開啟桌面 |
+| `uv run bento tui` | 整套作業系統在終端機裡（**TUI**） |
+| `uv run bento installer` | 偵測這個發行版並設定 Linux 工作階段（**SUI**） |
+| `uv run bento doctor` / `doctor --session` | 環境檢查／這裡什麼能繪製桌面 |
+| `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | 背景伺服器，在這套作業系統所用的任何監督程式上 |
+| `uv run bento update` / `update --apply` | 檢查是否有更新版本／拉取、同步、測試並重啟 |
+| `uv run bento config [key] [value]` | 讀取或更改 `~/.agentos/config.json`（`--edit`、`--path`） |
+| `uv run bento remote --port 8080 --bind 0.0.0.0` | 它回應所在的位址，存入設定檔 |
+| `uv run bento serve --if-running open\|port\|restart\|fail` | 當已有一個在執行時該怎麼辦（預設：詢問） |
+| `uv run bento apps search \| install \| remove` | 原生應用程式，從終端機 |
+| `uv run bento remote --on --passphrase '…'` | 從你的手機連上這套桌面 |
+| `uv run bento remote-desktop --on` | 瀏覽器遠端桌面（真正的螢幕、原生應用程式） |
+| `uv run bento ask "…"` | 在終端機裡一次性執行代理（`--full`、`--model …`） |
+
+---
+
+## 需求
+
+- **Python ≥ 3.10** 與 [**uv**](https://docs.astral.sh/uv/)（或 pip）。
+- **一個模型供應商** —— 在地端的 [Ollama](https://ollama.com)（建議：一個具工具能力的模型，例如 `qwen3.5:9b`），或一把雲端 API 金鑰。
+
+可選，存在時解鎖額外功能 —— `bento installer` 會連同各自的授權一併提供：
+
+- **Linux 工作階段（SUI）** —— `sway` 及其相關套件，外加 `python3-gi`、`python3-gi-cairo`、`gir1.2-gtklayershell-0.1` 與 `gir1.2-webkit2-4.1`。[詳情 →](../session-ui.md)
+- **wayvnc + novnc** —— 從手機瀏覽器的遠端桌面，在迴路上轉播。
+- **bubblewrap**（`bwrap`）—— 把代理與終端機關進一個資料夾的資料夾**沙箱**。
+- **Node/npx** 和／或 **uvx** —— 用來執行 **MCP 伺服器**（Playwright、filesystem、git、…）。
+- **git** —— 用來從儲存庫安裝**技能**。
+
+---
+
+## 桌面
+
+- **視窗** —— 每個應用程式都在一個可拖曳、可調整大小的視窗中開啟，附帶最小化/最大化/關閉與 z 順序。一個**工作列**追蹤開啟的視窗；一個**開始選單**啟動一切。
+- **會睡覺的視窗** —— 一個你看不見的視窗會停止做週期性工作，並在它一回來的那一刻刷新。六個應用程式全開且全部最小化，從每 10 秒 25 次請求降到 2 次。
+- **虛擬桌面** —— 一個工作列分頁器；`Ctrl+1..6` 切換，右鍵把一個視窗移過去。小工具是逐一桌面的，所以每個桌面都是自己的空間。
+- **小工具** —— 把任何應用程式釘成一塊無邊框的即時磚；拖曳、調整大小，它在啟動時會還原。
+- **指令選盤** —— `Ctrl+Space`（或 `Ctrl+K`）以模糊搜尋啟動任何應用程式或動作，或「Ask Aria …」直接送給代理。`Ctrl+Alt+T` 開啟一個終端機。
+- **外觀與感受** —— AI 生成的桌布，附一個在地藝廊、代理工作時的思考動畫，以及可選的語音。把圖片直接貼進聊天，供具視覺能力的模型使用。
+
+### 內建應用程式
+
+| 應用程式 | 這是什麼 |
+|---|---|
+| **代理聊天** | 和代理對話；串流、工具卡、核准、語音、貼圖 |
+| **應用程式** | 每一個已安裝的桌面應用程式 —— 啟動它們，或安裝新的 |
+| **遠端桌面** | 機器真正的螢幕，可點擊，從這裡或從一支手機 |
+| **主機螢幕** | 真實顯示器的一張刷新中的靜態畫面，包含原生應用程式視窗 |
+| **網頁** | 用你**真正的系統瀏覽器**開啟 URL（完整網站、登入、擴充功能） |
+| **檔案** | 瀏覽工作區；點一個檔案就在你的主機瀏覽器/應用程式中開啟它 |
+| **終端機** | 一個真正的主機 shell（透過 PTY 的 xterm.js），關進沙箱資料夾 |
+| **App Studio** | 用平白的語言描述一個應用程式，代理就**當場把它打造出來** |
+| **工作管理員** | 即時 CPU/記憶體/磁碟、行程、開啟的視窗（以及哪些在睡覺） |
+| **知識圖譜** | 代理知道的東西，以一張即時力導向圖呈現 |
+| **靈魂** | 代理持久的身份/個性（每次對話都注入） |
+| **記憶** | 使用者與工作階段記憶，附自動學習 + 語意回想 |
+| **個人檔案** | 代理對你所知的一切，都在同一處 |
+| **團隊** | 子代理與視覺化工作流程（逐步混用模型）+ 可觀測性 |
+| **文件** | 這本手冊，就在作業系統裡 |
+| **自動化** | 具名例行程序、熱角，以及步驟建構器 |
+| **技能** | 可重用的程序；從一個 git 儲存庫或一個原始 `.md` URL 安裝 |
+| **MCP 伺服器** | 從一份目錄連接外部工具伺服器 |
+| **Telegram** | 從你的手機控制代理；逐一對話的允許清單 |
+| **政策** | 針對工具與指令的一律允許／一律拒絕規則 |
+| **日誌** | 系統做過的一切（對話、工具、MCP、telegram、工作） |
+| **排程器** | 週期性背景**工作** |
+| **快照** | 整套作業系統的還原點（設定、資料與原始碼） |
+| **設定** | 供應商、模型、自主性、語音、沙箱、代理名稱 |
+
+---
+
+## 代理能做什麼
+
+這個代理（預設名字為 **Aria**）擁有一套龐大的工具集，能從聊天或 Telegram 驅動整套作業系統：
+
+- **在機器上行動** —— 執行 shell 指令、讀寫檔案、擷取網頁、在主機上開啟應用程式/檔案、桌面通知。
+- **交付成果** —— `save_report` 寫出一份帶樣式的 HTML 報告，會顯示在「檔案」裡並在你的瀏覽器中開啟，還能把一份摘要送到 Telegram。代理被要求**把工作完成** —— 把研究變成一個實際的交付物，而不是搜尋完就停手。
+- **打造作業系統** —— `create_app` 製作帶桌面圖示的新 UI 應用程式；`pin_widget` 把它們放上桌面；`add_mcp_server` 連接新的工具頻道。
+- **成長** —— 雙層記憶、一張知識圖譜、`update_soul` —— 外加**自動學習**：每次對話後的一次背景處理會自行抽取記憶與事實。
+- **自動化** —— `schedule_task` 建立會交付到一份報告和／或 Telegram 的無頭**工作**。
+- **擴充自身** —— `read_source` / `develop_agentos` 讓它修改 Bento **自己的原始碼**；它會先自動快照，並在寫入前做語法檢查。
+
+用平白的語言問：*「加上 github MCP 頻道」、「幫我打造一個習慣追蹤器並把它釘到第 2 個桌面」、「每天早上把社群媒體趨勢報到我的 Telegram」、「安裝 inkscape」。*
+
+---
+
+## 模型與供應商
+
+- **Ollama**（在地）—— 自動探索；沒有任何東西離開你的機器。
+- **Anthropic**、**OpenAI**、**OpenRouter**，或任何 **OpenAI 相容**端點（LM Studio、vLLM、Groq、…）。
+- **影像生成** —— 設了金鑰時用 Google Gemini 或 OpenAI 影像模型，否則用免費的後備方案。
+
+`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENROUTER_API_KEY` 與 `GOOGLE_API_KEY` 會被自動接手。從聊天視窗的下拉選單中途切換模型。
+
+---
+
+## 安全
+
+- **自主等級** —— 偏執／平衡會自動執行唯讀動作，並在任何會修改系統的事情之前先問；完全會執行一切。破壞性指令在每一個等級都被**硬性封鎖**。
+- **政策** —— 一律允許／一律拒絕規則（附 `*` 萬用字元），比對於 `<tool> <command>`。
+- **資料夾沙箱** —— 有了 bubblewrap，代理的 shell/檔案工具與終端機都被關進一個資料夾；檔案系統的其餘部分是唯讀的。
+- **快照** —— 還原點；代理在編輯自己的程式碼之前會自動快照。
+- **預設私有** —— 綁定到 `127.0.0.1`。遠端存取在你以通行碼打開它之前都是關閉的，而安裝軟體在機器本身以外的任何地方都會被拒絕。
+
+---
+
+## Telegram · MCP · 可程式化
+
+**Telegram** —— 傳訊給 @BotFather、把權杖貼進 Telegram 應用程式，第一段私人對話就成為擁有者。代理在那裡擁有它所有的工具；有風險的動作會送出行內的 Allow/Deny 按鈕。
+
+**MCP 伺服器** —— 從目錄新增外部工具伺服器（Playwright、filesystem、fetch、git、GitHub、Postgres、Slack、search、…）或一個自訂的 `stdio`/`http` 伺服器。它們的工具對代理呈現為 `mcp_<server>_<tool>`，對打造出的應用程式則透過 `POST /api/tool` 呈現。
+
+**可程式化** —— `bento ask "…"` 供一次性執行；一套 REST API（`POST /api/chat`、`GET /api/system`、`POST /api/tool`、…）；`/ws`（串流聊天 + 核准）與 `/ws/terminal`（主機 PTY）上的 WebSocket。你打造的應用程式在一個同源 iframe 中執行，並能呼叫上述全部。
+
+---
+
+## 架構
+
+```
+agentos/                 # 這個 Python 套件保留原本的名字；見下方「關於名字」
+├── __main__.py    # CLI 進入點：serve · app · installer · doctor · apps · remote-desktop · ask
+├── agent.py       # 核心：規劃 → 行動（工具）→ 觀察 迴圈、核准關卡、人格
+├── providers.py   # 統一的串流聊天：Ollama / Anthropic / OpenAI / OpenRouter / 自訂
+├── tools.py       # 那雙手：shell、檔案、網頁、應用程式、報告、記憶、KG、靈魂、技能、MCP
+├── shellhost.py   # SUI：作為 wlr-layer-shell 表面的桌面（GTK + WebKitGTK）
+├── sessiondoctor.py # 在這台機器上究竟什麼能繪製桌面
+├── compositor.py  # sway/wlroots IPC：視窗、工作區、輸出、即時事件
+├── appstore.py    # 透過 appstream / flatpak / apt 安裝原生應用程式
+├── remotedesktop.py # 瀏覽器遠端桌面，在已驗證連線上轉播
+├── installer.py   # 感知作業系統的設定：偵測發行版、安裝缺少的東西、先問過
+├── memory.py      # SQLite：對話、記憶、任務、日誌、KG、技能、應用程式
+├── server.py      # FastAPI：桌面 UI、REST API、WebSocket 串流、檔案服務
+└── ui/
+    ├── src/       # 桌面的原始碼 —— 在這裡編輯
+    └── index.html # 由 `python -m agentos.ui.build` 生成（請勿編輯）
+```
+
+**狀態住在 `~/.agentos/`：** `config.json`、SQLite 資料庫、`soul.md`、`wallpapers/`、`snapshots/`。代理的工作目錄是 `~/AgentOS/`。
+
+### 關於名字
+
+產品是 **Bento Box AI**。Python 套件、資料目錄與 systemd 單元仍然是 `agentos` —— 這是刻意的。重新命名它們會弄壞每一個現有安裝的服務、設定與指令稿，而且沒有給使用者任何他們看得到的好處。它們會在有一次值得執行的遷移時再動，不會更早。這個名字與標記是我們的，就像 Ubuntu 的是 Canonical 的一樣：在 MIT 之下自由地 fork 程式碼，用你自己的名字出貨它。[授權與商標 →](../licensing.md)
+
+---
+
+*Bento Box AI 是雲端 AI 助理的一個開放、在地優先的替代方案：一套你自己執行的代理式作業系統、AI 桌面與自動化平台 —— 在 Linux、macOS 或 Windows 上。*

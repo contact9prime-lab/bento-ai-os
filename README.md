@@ -1,5 +1,20 @@
 # Bento Box AI — a local-first agentic operating system
 
+<p align="right"><sub>
+<b>English</b> ·
+<a href="docs/i18n/README.zh-CN.md">简体中文</a> ·
+<a href="docs/i18n/README.zh-TW.md">繁體中文</a> ·
+<a href="docs/i18n/README.ja.md">日本語</a> ·
+<a href="docs/i18n/README.ko.md">한국어</a> ·
+<a href="docs/i18n/README.es.md">Español</a> ·
+<a href="docs/i18n/README.pt-BR.md">Português&nbsp;(BR)</a> ·
+<a href="docs/i18n/README.fr.md">Français</a> ·
+<a href="docs/i18n/README.de.md">Deutsch</a> ·
+<a href="docs/i18n/README.ru.md">Русский</a> ·
+<a href="docs/i18n/README.hi.md">हिन्दी</a> ·
+<a href="docs/i18n/README.ar.md">العربية</a>
+</sub></p>
+
 **Your machine, with a brain.** Bento Box AI is a self-hosted **AI desktop environment**: a full
 desktop — windows, apps, files, terminal — driven by an **autonomous AI agent** that takes **real
 actions** on your computer. Use local models via [Ollama](https://ollama.com) for total privacy, or
@@ -16,6 +31,10 @@ Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-ti
 ```bash
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
+
+![Bento Box AI in motion — asking the agent for a morning briefing and getting a live reply, stacking windows, and switching between five design languages](docs/screenshots/demo.gif)
+
+<sub>▶ [Watch the full clip (MP4)](docs/screenshots/demo.mp4) — a real turn answered on-device; the chat reply above is the live agent, not a mockup.</sub>
 
 ![The Bento Box AI desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
 
