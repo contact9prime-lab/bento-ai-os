@@ -26,6 +26,22 @@ turn you start in the TUI streams into the browser too, and vice versa.
 | **Docs** | This manual, rendered in the terminal |
 | **Config** | Providers, autonomy, agent name |
 
+## Finding your way around the CLI
+
+`bento --help` shows **ten commands** — the ones a machine that was installed ten
+minutes ago needs, with `setup` first. It is not the whole list, and it says so:
+
+```bash
+bento help            # the same short page
+bento help --all      # every command, in two groups
+bento help remote     # one command in full
+```
+
+Nothing is hidden in the sense of removed. Every verb `--all` lists is a real command
+with its own `--help`; the short page exists because thirty-nine of them in one flat
+list reads as "you have to understand all of this first", when on a fresh machine the
+answer is one word long.
+
 ## Setting the machine up from a terminal
 
 `bento setup` walks the **same nine-step arc** as the desktop wizard, from the same

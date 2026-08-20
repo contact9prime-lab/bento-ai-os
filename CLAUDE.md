@@ -631,6 +631,41 @@ pins all of it. The blunt `-x` gate this replaced bricked updates on a Mac —
 `test_safe_folders` cannot pass when the temp dir resolves under a system
 directory, so the machine could never self-update.
 
+## The first five minutes: a short front page and one question
+
+The install and `--help` are the same surface as everything else here, and both were
+failing the same way — by telling the truth at a volume nobody can read.
+
+- **`bento --help` lists ten verbs, not thirty-nine.** The mechanism is `verb()` in
+  `__main__.py`: argparse has no hidden subcommand, but a parser registered WITHOUT
+  `help=` is left out of the listing while staying in `sub.choices`. So nothing is
+  removed — `bento help --all` prints the whole catalogue from `VERBS`, which is why
+  the text is recorded there rather than only handed to argparse. `metavar` matters
+  as much as the list: without it the usage line is a forty-word wall that scrolls
+  the help off an 80-column SSH window. `tests/test_cli_help.py` pins all three.
+
+- **install.sh ASKS how the machine will be reached, and `--yes` cannot answer.**
+  Loopback-only is still the default and still right — but the desktop is a browser
+  page, so on a Pi over SSH that default means "an install nobody can open", and the
+  only thing that ever said so was one line at the end of a long log. `ask_deliberate`
+  exists to be the one prompt `--yes` does not reach: yes to every optional install
+  is consent to install THINGS, and opening this port hands a real shell to whatever
+  can reach the machine. There is deliberately no `--remote` flag; the only way in is
+  `--passphrase`, where the person choosing the secret is the person deciding.
+
+- **`[ -t 0 ]` is the wrong interactivity test for a script installed by a pipe.**
+  The documented install is `curl … | sh`, so stdin is never a terminal and every
+  question in that script was answered "no" without being asked. The terminal is
+  /dev/tty, and `INTERACTIVE` tests for it — while still resolving to "nobody" when
+  there is no controlling terminal, because a systemd unit or a container build must
+  never block on a prompt.
+
+- **A machine that has not been set up says so where it is looked at.** `serve()`
+  prints the arc's terminal entry point on every start until `setup_complete`, next
+  to the URL rather than after it. The browser wizard already opens itself
+  (`14-docs-setup.js`); the headless half had nothing, and "it is set up when you
+  open it" is not true on a machine nobody is sitting in front of.
+
 ## Honesty rules
 
 - A capability that is missing reports **why**, in a sentence, plus the component

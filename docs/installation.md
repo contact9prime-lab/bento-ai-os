@@ -282,6 +282,19 @@ curl -fsSL <url> | sh -s -- --passphrase='<long>' --bind=0.0.0.0 --port=8080
 The `-s --` matters: `curl … | sh --port=8080` gives the flag to `sh`, not to the
 script, and `sh` rejects it.
 
+**Or it asks.** An install with somebody at the keyboard — including the piped
+`curl … | sh`, which reads the terminal directly — stops once to say that the
+machine answers on `127.0.0.1` only and offers to open it, taking a passphrase
+there and then. On a headless box that question is the difference between an
+install you can look at and one you cannot: the desktop is a browser page, and a
+machine with no screen and a closed port has nowhere to draw it.
+
+`--yes` does **not** answer that question, and there is no `--remote` flag. "Yes to
+every optional install" is consent to install things; opening this port hands a real
+shell to whatever can reach the machine, which is a different decision and needs a
+passphrase a person chose. An install with no terminal at all (a systemd unit, a
+container build, CI) is never asked and stays on loopback.
+
 Three things this will not do quietly:
 
 - **Binding off loopback needs a passphrase.** `--bind` alone is refused, and so is

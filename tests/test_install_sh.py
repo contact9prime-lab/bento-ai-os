@@ -393,3 +393,88 @@ def test_the_real_32bit_cause_is_named_as_glibc_not_openssl_or_rust():
         "it must name Buster as too-old and Bullseye/Bookworm as the fix")
     assert '32-BIT IS FINE' in seg or '32-bit is fine' in seg.lower(), (
         "the whole point: staying 32-bit is fine, only the OS version must move")
+
+
+# ------------------------------------- 4. the question a headless install must ask
+
+def test_the_interactive_test_is_not_stdin():
+    """`[ -t 0 ]` is false on the ONE path everybody uses.
+
+    The documented install is `curl … | sh`, so stdin is the pipe. Every question in
+    this script — including "install the build tools?" — was therefore answered "no"
+    without being asked, on a script whose whole design is to ask before it changes
+    anything. The reads already targeted /dev/tty; the test has to agree with them.
+    """
+    assert 'INTERACTIVE=' in SRC, "install.sh no longer decides whether anybody is here"
+    assert re.search(r'\[ -c /dev/tty \] && \(: </dev/tty\)', SRC), (
+        "the interactive test does not look for a controlling terminal, so a piped "
+        "install silently declines every question in this script")
+    # And it must still be able to answer "nobody": a systemd unit or a docker build
+    # has no /dev/tty, and blocking on a prompt there is worse than not asking.
+    assert re.search(r'ask\(\)[^}]*\[ -n "\$INTERACTIVE" \] \|\| return 1', SRC, re.S), (
+        "ask() no longer refuses to prompt when there is no terminal")
+
+
+def test_the_machine_is_asked_how_it_will_be_reached():
+    """On a Pi over SSH, loopback-only means "reachable by nothing" — and the desktop
+    is a browser page, so an install nobody can open is the normal outcome of saying
+    nothing. The old script's only mention of it was one line at the end of a long log.
+    """
+    assert 'bento remote --on --passphrase "$pass1"' in SRC, (
+        "install.sh no longer offers to open the port")
+    assert "make this machine reachable" in SRC
+
+
+def test_opening_the_port_is_not_answered_by_yes():
+    """`--yes` is consent to install THINGS. The agent behind this port has a real
+    shell, so opening it is consent to hand that shell to whatever can reach the
+    machine — a different decision, and not one a flag typed to skip package prompts
+    may make. It needs a passphrase a person chose, which is why there is no
+    `--remote` flag either."""
+    m = re.search(r'ask_deliberate\(\) \{(.*?)\n\}', SRC, re.S)
+    assert m, "the deliberate-consent prompt has gone"
+    assert "ASSUME_YES" not in m.group(1), (
+        "ask_deliberate consults --yes, so an unattended install can open the port")
+    assert re.search(r'if ask_deliberate "make this machine reachable', SRC), (
+        "the remote-access offer is back on the --yes-answerable prompt")
+
+
+def test_the_passphrase_is_not_echoed_into_the_scrollback():
+    """A shared terminal, a screen recording, a scrollback buffer somebody pastes
+    into an issue. `stty` may be absent on a stripped image, and the fallback says so
+    rather than pretending."""
+    m = re.search(r'ask_secret\(\) \{(.*?)\n\}', SRC, re.S)
+    assert m, "the secret prompt has gone"
+    assert "stty -echo" in m.group(1)
+    assert "typed in the clear" in m.group(1), (
+        "the no-stty fallback echoes the passphrase without admitting it")
+
+
+def test_the_port_is_decided_before_the_launcher_is_installed():
+    """The systemd unit / LaunchAgent bakes in what the config says AT INSTALL TIME.
+    Asked afterwards, the answer needs a restart nobody knows to perform, and the
+    machine that was just told "reachable from your network" is not."""
+    offer_at = _lineno(r'if ask_deliberate "make this machine reachable')
+    launcher_at = _lineno(r'^\s*uv run bento install \|\| warn')
+    assert offer_at and launcher_at
+    assert offer_at < launcher_at, (
+        f"the launcher is installed on line {launcher_at}, before the machine is "
+        f"asked how it will be reached on line {offer_at}")
+
+
+def test_the_closing_block_names_one_next_step():
+    """Seven `bento …` lines at equal weight, printed to somebody who has just watched
+    five minutes of log scroll past, is not an answer to "what do I do now?" — and on
+    a machine that has never been set up that question has exactly one answer."""
+    tail = SRC.split("# done\n# ---", 1)[-1]
+    assert "bento setup" in tail, "the closing block no longer names the next step"
+    assert "bento help" in tail, (
+        "the closing block does not say where the rest of the commands are")
+    # The old list, back in full, is the regression this guards. Counted over the
+    # lines that PRINT, so a comment explaining the change does not inflate it.
+    printed = "\n".join(ln for ln in tail.split("\n")
+                        if re.match(r'\s*(echo|printf)\b', ln))
+    verbs = sorted(set(re.findall(r'\bbento ([a-z][a-z-]*)', printed)))
+    assert verbs, "the closing block names no commands at all"
+    assert len(verbs) <= 5, (
+        f"the closing block offers {len(verbs)} commands again: {verbs}")
