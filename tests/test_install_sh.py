@@ -478,3 +478,40 @@ def test_the_closing_block_names_one_next_step():
     assert verbs, "the closing block names no commands at all"
     assert len(verbs) <= 5, (
         f"the closing block offers {len(verbs)} commands again: {verbs}")
+
+
+def test_the_install_offers_an_account_as_well_as_a_passphrase():
+    """"Where is the user?" is the question a passphrase leaves behind.
+
+    A passphrase is not a login: on a machine with no accounts you sign in with
+    one shared secret and you ARE the machine (uid ''), which is the right shape
+    for one person and one Pi and is genuinely confusing if you expected a
+    username. So the install asks which door you want.
+    """
+    assert "Two ways to sign in" in SRC, (
+        "the install no longer offers an account — a passphrase is the only way "
+        "in, and nothing says what you are signing in AS")
+    assert re.search(r'uv run bento user add "\$who"', SRC), (
+        "nothing creates the first account")
+    assert re.search(r'uv run bento remote --on --bind "\$bind_to"', SRC), (
+        "the account path still passes a passphrase — accounts ARE the lock, and "
+        "a second secret in front of them is config nothing reads")
+
+
+def test_the_chosen_sign_in_survives_a_retry():
+    """`ask_line` writes ANSWER, and the retry loop asks for a username with it.
+    Re-testing ANSWER for the MODE meant one mistyped password dropped you from
+    the account path into the passphrase path — and the install then reported
+    "sign in with that passphrase" to somebody who had just chosen a username."""
+    assert re.search(r'signin="\$ANSWER"', SRC), (
+        "the sign-in choice is not held apart from the last thing typed")
+    assert '[ "$signin" = "2" ]' in SRC, (
+        "the retry loop reads the mode out of ANSWER again")
+    assert '[ "$ANSWER" = "2" ]' not in SRC
+
+
+def test_the_last_lines_say_what_to_sign_in_with():
+    """An address nobody can get into is not an address."""
+    tail = SRC.split("# done\n# ---", 1)[-1]
+    assert "sign in as:" in tail and "sign in with:" in tail, (
+        "the closing block gives an address without saying who signs in there")

@@ -38,6 +38,37 @@ comment. "Not applicable" is a fine answer; silence is not.
 
 ---
 
+## A phone is a face too, and a fingertip is 9mm
+
+The GUI face is not "a browser": it is a browser on a 390px screen held in one
+hand, which is how remote access is actually used. `15-responsive.css` had that
+layout — sheets, a bottom dock, safe areas, sheet popovers — and every control
+INSIDE an app still had the size a mouse gave it. Measured in Chrome with touch
+emulation, signed in over the LAN as a phone: a 10x16 ✕ in Flows, a 98x23 button
+in Chat, a 26x26 window close, Settings' 188px rail leaving a 202px pane whose
+rows ran to x=571 on a 390px screen, and a ✦ whose panel is `display:none` here.
+Every one of those was reported as "the buttons don't work", and every one of
+them was true.
+
+- **`--tap` is the floor and it is real size, not a halo.** An invisible enlarged
+  hit area is the tempting fix because nothing reflows — and two adjacent 16px
+  buttons with 40px halos overlap, so whichever paints last silently eats the
+  other's taps. Reflowing a dense row on a phone is the correct outcome: on a
+  phone that row was too dense.
+- **A row that cannot fit must scroll, and must not rest half-way.** `.seg`,
+  `.prefs-side` and the dock all overflowed a phone. Scroll-snap is not polish
+  here: a scroller resting mid-item puts the centre of a button outside its own
+  box, where the tap lands on whatever is behind it.
+- **A control whose target cannot exist here is removed, not left.** The ✦
+  copilot button answered a tap by doing nothing, which is the dead control the
+  honesty rules forbid — and is indistinguishable from the OS being broken.
+- **Measure it in a browser with real touch emulation.** Every number above came
+  from CDP `Input.dispatchTouchEvent` and `elementFromPoint`, not from reading
+  the CSS; synthetic clicks land dead centre every time and prove nothing about a
+  finger. `tests/test_ui_touch.py` pins the rules that came out of it.
+
+---
+
 ## The session UI (SUI) — the part most likely to be got wrong
 
 The desktop is **not a window**. It is a layer surface on the **BACKGROUND**
@@ -140,6 +171,17 @@ Three things will bite whoever touches this next:
 - **The machine config is the seed for every account created later.** `machine_view()`
   strips the personal keys before an admin's save reaches it — leaving a Telegram token
   there hands it to the next person who signs up.
+
+**A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
+is the whole rule: accounts win, and a shared passphrase in front of them is one more
+secret held in common by people this OS otherwise keeps in separate directories. Every
+part of the system knew that except the one command a headless machine is driven with —
+`bento remote --on` demanded a passphrase on a machine that already had accounts, then
+stored one `lock_kind` would never read. When you change either lock, check all four
+places that decide it: `enabled()`, `sanitize_remote()`, `_remote_cli` and the sign-in
+page's `/api/users/who`. And say WHICH lock is on: "where is the user?" is the first
+question anybody asks of a machine they have just made reachable, and on a machine with
+no accounts the honest answer is that there isn't one — you are the machine.
 
 **A locked screen is a third refusal, and it sits in front of both.** `remote.session_locked`
 reads a lock out of the SIGNED cookie, and `_authed` / `_ws_authed` refuse it BEFORE loopback

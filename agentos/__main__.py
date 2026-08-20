@@ -2167,8 +2167,22 @@ def _remote_cli(args):
     if args.port:
         _set_port(cfg, args.port)
 
+    # A machine with accounts is ALREADY locked, and `remote.lock_kind` says so:
+    # accounts win, and a shared passphrase in front of them is one more secret
+    # held in common by people the rest of this OS keeps apart. Everything else
+    # here understood that — `enabled()`, `sanitize_remote()`, the sign-in page —
+    # and this command did not, so `bento remote --on` on a machine with users
+    # refused with "set a passphrase first" and then stored a passphrase that
+    # `lock_kind` would never consult. A door that cannot be opened, in front of
+    # a door that works.
+    by_accounts = remotemod.accounts_lock()
     pw = args.passphrase
-    if args.on and not pw and not r.get("pass_hash"):
+    if pw and by_accounts:
+        print("this machine is locked by its accounts — people sign in with their\n"
+              "own username and password, here and from anywhere. A passphrase as\n"
+              "well would be a second secret that nothing reads; not setting it.")
+        pw = ""
+    if args.on and not pw and not r.get("pass_hash") and not by_accounts:
         pw = getpass.getpass("Set a remote-access passphrase: ")
         if pw != getpass.getpass("Repeat it: "):
             print("those did not match")
@@ -2182,8 +2196,10 @@ def _remote_cli(args):
     if args.bind:
         r["bind"] = args.bind
     if args.on:
-        if not r.get("pass_hash"):
-            print("set a passphrase first: agentos remote --on --passphrase '<something long>'")
+        if not r.get("pass_hash") and not by_accounts:
+            print("this machine has no lock, and an open port here is an open shell.\n"
+                  "  one secret for the household:  bento remote --on --passphrase '<something long>'\n"
+                  "  or an account each:            bento user add <name>   (then --on needs no passphrase)")
             sys.exit(1)
         r["enabled"] = True
     if args.off:
@@ -2196,7 +2212,23 @@ def _remote_cli(args):
 
     st = remotemod.status(cfg)
     print(f"remote access: {'ON' if st['enabled'] else 'off'}"
-          f"{'' if st['configured'] else '  (no passphrase set)'}")
+          f"{'' if st['configured'] else '  (no lock — nothing to sign in with)'}")
+    # Name the lock rather than only the port. "Who do I sign in as?" is the first
+    # question anybody asks of a machine they have just made reachable, and the
+    # answer is different on a machine with accounts — it is a username, not a
+    # shared secret, and it is the same one at the keyboard.
+    if st["lock"] == "accounts":
+        try:
+            from . import users as usersmod
+            who = ", ".join(u["name"] for u in usersmod.list_users()[:4])
+        except Exception:
+            who = ""
+        print(f"  sign in: a username and password{' — ' + who if who else ''}")
+    elif st["lock"] == "passphrase":
+        print("  sign in: the remote passphrase (this machine has no accounts, so "
+              "there is no username to give)")
+        print("           `bento user add <name>` if you would rather sign in as "
+              "somebody — accounts then replace the passphrase.")
     print(f"  binds:   {remotemod.bind_host(cfg)}:{st['port']}")
     for a in st["addresses"]:
         print(f"  reach:   {a}")

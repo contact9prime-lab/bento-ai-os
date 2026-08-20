@@ -136,6 +136,8 @@ SOURCE_ME=""
 # Set when this install actually opened the port, so the last lines can name the
 # address that will work rather than the one that happens to be loopback.
 REMOTE_ON=""
+# ...and who signs in there, when the answer is a person rather than a secret.
+REMOTE_WHO=""
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!  %s\033[0m\n' "$*"; }
@@ -188,6 +190,18 @@ ask_deliberate() {
   printf '\033[36m?  %s [y/N] \033[0m' "$1"
   read -r a </dev/tty 2>/dev/null || return 1
   case "$a" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+# A question with a typed answer rather than y/n. Same terminal, same rule about
+# there being somebody at it: with nobody there ANSWER is the default and nothing
+# blocks.
+ask_line() {
+  ANSWER="$2"
+  [ -n "$INTERACTIVE" ] || return 0
+  printf '\033[36m?  %s [%s]: \033[0m' "$1" "$2"
+  if read -r _line </dev/tty 2>/dev/null; then
+    [ -n "$_line" ] && ANSWER="$_line"
+  fi
 }
 
 # A secret, read without echoing it into the scrollback of a shared terminal.
@@ -824,32 +838,78 @@ elif [ -n "$INTERACTIVE" ] && ! uv run bento remote 2>/dev/null | head -1 | grep
   echo "   passphrase to sign in."
   echo "   (You can do it later instead: bento remote --on)"
   if ask_deliberate "make this machine reachable from your phone or laptop?"; then
+    # WHO signs in, asked as a choice rather than assumed.
+    #
+    # A passphrase is not a user. On a machine with no accounts you sign in with
+    # one shared secret and you are the machine itself — which is the right shape
+    # for one person and one Pi, and is genuinely confusing if you expected a
+    # username. The alternative is real and this is the moment to offer it, but
+    # NOT as a second secret: `remote.lock_kind` is explicit that accounts win and
+    # a passphrase in front of them is dead config, so this is one question with
+    # two answers, not two questions.
+    echo
+    echo "   Two ways to sign in:"
+    echo "     1  a passphrase — one secret, for whoever uses this machine."
+    echo "        Simplest, and right for one person and one machine."
+    echo "     2  an account — your own username and password."
+    echo "        This machine then asks who you are at the keyboard too; everything"
+    echo "        already here becomes that first account's, and it is an admin."
+    ask_line "1 or 2" "1"
+    # Kept in its own variable, because `ask_line` writes ANSWER and the retry
+    # loop asks for a username with it — so re-testing ANSWER for the MODE meant
+    # that a mistyped password on the account path silently dropped you into the
+    # passphrase path, which then reported "sign in with that passphrase" for a
+    # machine where you had just been asked to choose a username.
+    signin="$ANSWER"
     tries=0
     while [ "$tries" -lt 3 ]; do
       tries=$((tries + 1))
-      ask_secret "a passphrase to sign in with (8 characters or more):"
-      pass1="$SECRET"
-      ask_secret "again:"
-      pass2="$SECRET"
-      SECRET=""
-      if [ -z "$pass1" ]; then
-        warn "nothing typed — staying on loopback"
-        break
+      if [ "$signin" = "2" ]; then
+        ask_line "a username" "$(id -un 2>/dev/null || echo me)"
+        who="$ANSWER"
+        ask_secret "a password for $who (8 characters or more):"
+        pass1="$SECRET"
+        ask_secret "again:"
+        pass2="$SECRET"
+        SECRET=""
+        [ -n "$pass1" ] || { warn "nothing typed — staying on loopback"; break; }
+        if [ "$pass1" != "$pass2" ]; then warn "those did not match"; continue; fi
+        # Two calls, because they are two facts: WHO may sign in, and THAT this
+        # machine answers off loopback. The account is the lock, so `remote --on`
+        # needs no passphrase once it exists — and if the account is refused
+        # (a name already taken, a password too short) the port is never opened,
+        # which is the safe way round.
+        if user_out="$(uv run bento user add "$who" --password "$pass1" --role admin 2>&1)"; then
+          if remote_out="$(uv run bento remote --on --bind "$bind_to" 2>&1)"; then
+            ok "reachable from your network — sign in as $who"
+            gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
+            REMOTE_ON=1
+            REMOTE_WHO="$who"
+            break
+          fi
+          printf '%s\n' "$remote_out" | sed -n '1,3p' | sed 's/^/   /'
+        else
+          printf '%s\n' "$user_out" | sed -n '$p' | sed 's/^/   /'
+        fi
+      else
+        ask_secret "a passphrase to sign in with (8 characters or more):"
+        pass1="$SECRET"
+        ask_secret "again:"
+        pass2="$SECRET"
+        SECRET=""
+        [ -n "$pass1" ] || { warn "nothing typed — staying on loopback"; break; }
+        if [ "$pass1" != "$pass2" ]; then warn "those did not match"; continue; fi
+        # One call, and it is the same one the flag path makes. Its refusal is shown
+        # verbatim rather than paraphrased here, where the rule would drift from
+        # `remote.passphrase_problem` the first time that rule changes.
+        if remote_out="$(uv run bento remote --on --passphrase "$pass1" --bind "$bind_to" 2>&1)"; then
+          ok "reachable from your network — sign in with that passphrase"
+          gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
+          REMOTE_ON=1
+          break
+        fi
+        printf '%s\n' "$remote_out" | sed -n '1,3p' | sed 's/^/   /'
       fi
-      if [ "$pass1" != "$pass2" ]; then
-        warn "those did not match"
-        continue
-      fi
-      # One call, and it is the same one the flag path makes. Its refusal is shown
-      # verbatim rather than paraphrased here, where the rule would drift from
-      # `remote.passphrase_problem` the first time that rule changes.
-      if remote_out="$(uv run bento remote --on --passphrase "$pass1" --bind "$bind_to" 2>&1)"; then
-        ok "reachable from your network — sign in with that passphrase"
-        gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
-        REMOTE_ON=1
-        break
-      fi
-      printf '%s\n' "$remote_out" | sed -n '1,3p' | sed 's/^/   /'
       if [ "$tries" -ge 3 ]; then
         warn "leaving remote access off"
         gap "turn it on when you have chosen one:  bento remote --on"
@@ -1060,6 +1120,11 @@ if [ -n "$RUNNING" ]; then
   if [ -n "$REMOTE_ON" ]; then
     uv run bento remote 2>/dev/null \
       | sed -n 's|^  reach:   |   from another device:  |p'
+    if [ -n "$REMOTE_WHO" ]; then
+      echo "   sign in as:  $REMOTE_WHO"
+    else
+      echo "   sign in with:  the passphrase you just chose"
+    fi
   fi
 else
   echo "   start it first:  bento service start"

@@ -212,3 +212,84 @@ def test_clearing_the_passphrase_disarms_it(cfg):
 ])
 def test_loopback_detection(host, want):
     assert remotemod.is_loopback(host) is want
+
+
+# --------------------------------------------- accounts ARE the lock, everywhere
+
+def test_the_cli_takes_accounts_as_the_lock(tmp_path, monkeypatch, capsys):
+    """`bento remote --on` used to demand a passphrase on a machine that already
+    had accounts.
+
+    Everything else in this module understood that accounts win — `lock_kind`
+    says so in as many words, `enabled()` accepts either, `sanitize_remote` will
+    not switch a lock off that accounts provide — and the one command people use
+    on a headless box did not. So the machine you had just given an account to
+    refused to go on the network, told you to set a passphrase, and stored one
+    that `lock_kind` would never consult: a door that cannot be opened, in front
+    of a door that works.
+    """
+    from types import SimpleNamespace
+
+    from agentos import __main__ as cli
+    from agentos import users as usersmod
+
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    monkeypatch.setattr(usersmod, "enabled", lambda: True)
+    monkeypatch.setattr(usersmod, "list_users", lambda *a, **k: [{"name": "piyush"}])
+
+    args = SimpleNamespace(on=True, off=False, passphrase="", bind="0.0.0.0", port=0)
+    cli._remote_cli(args)                       # must not SystemExit
+
+    saved = cfgmod.load_config()
+    assert saved["remote"]["enabled"] is True, (
+        "remote access refused to come on for a machine locked by its accounts")
+    assert not saved["remote"].get("pass_hash"), (
+        "a passphrase was stored on an accounts machine — a second secret that "
+        "lock_kind will never read")
+    out = capsys.readouterr().out
+    assert "username and password" in out, (
+        "the CLI does not say what to sign in with, which is the first thing "
+        "anybody asks of a machine they just made reachable")
+
+
+def test_a_passphrase_offered_to_an_accounts_machine_is_refused_out_loud(
+        tmp_path, monkeypatch, capsys):
+    """Silently ignoring it would be worse than storing it: somebody would go on
+    believing that secret was the way in."""
+    from types import SimpleNamespace
+
+    from agentos import __main__ as cli
+    from agentos import users as usersmod
+
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    monkeypatch.setattr(usersmod, "enabled", lambda: True)
+    monkeypatch.setattr(usersmod, "list_users", lambda *a, **k: [])
+
+    cli._remote_cli(SimpleNamespace(on=True, off=False, passphrase=PASS,
+                                    bind="", port=0))
+    assert not cfgmod.load_config()["remote"].get("pass_hash")
+    assert "locked by its accounts" in capsys.readouterr().out
+
+
+def test_a_machine_with_no_lock_at_all_is_told_both_ways_out(tmp_path, monkeypatch):
+    """The refusal has to name the two doors. It named one, and the other is the
+    one somebody asking "where is my user?" actually wants."""
+    from types import SimpleNamespace
+
+    from agentos import __main__ as cli
+    from agentos import users as usersmod
+
+    import getpass
+
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    monkeypatch.setattr(usersmod, "enabled", lambda: False)
+    # Nobody types one at the prompt, which is the state the refusal is about.
+    monkeypatch.setattr(getpass, "getpass", lambda *a, **k: "")
+
+    with pytest.raises(SystemExit):
+        cli._remote_cli(SimpleNamespace(on=True, off=False, passphrase="",
+                                        bind="", port=0))
+    assert cfgmod.load_config()["remote"].get("enabled") is not True

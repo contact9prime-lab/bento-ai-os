@@ -289,6 +289,12 @@ there and then. On a headless box that question is the difference between an
 install you can look at and one you cannot: the desktop is a browser page, and a
 machine with no screen and a closed port has nowhere to draw it.
 
+When you say yes it asks one more thing: **how you will sign in.** A passphrase —
+one secret for whoever uses the machine — or an account, your own username and
+password. They are alternatives, not additions: once an account exists it *is* the
+lock and a passphrase in front of it is config nothing reads. See
+[A passphrase, or an account](remote-access.md#a-passphrase-or-an-account--not-both).
+
 `--yes` does **not** answer that question, and there is no `--remote` flag. "Yes to
 every optional install" is consent to install things; opening this port hands a real
 shell to whatever can reach the machine, which is a different decision and needs a
