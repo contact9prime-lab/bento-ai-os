@@ -80,8 +80,10 @@ class Recipe:
     roster: list                  # (subagent, why)
     mission: str                  # {answer} placeholders filled from the answers
     reads_path: str = ""          # which answer key is a folder that must be granted
-    schedule: str = "daily"       # daily | interval | file_change
+    schedule: str = "daily"       # daily | interval | file_change | manual (on-demand)
     icon: str = "◇"
+    max_steps: int = 20           # a longer engagement earns more room than a page-check
+    max_seconds: int = 900
 
     def as_dict(self) -> dict:
         return {"id": self.id, "title": self.title, "blurb": self.blurb,
@@ -177,6 +179,77 @@ RECIPES: list[Recipe] = [
                 "different testimonial — finish silently and say 'no change'. Only speak "
                 "up for something a person would want to know: a price, a term, a "
                 "feature, an announcement. Quote the before and the after.",
+    ),
+    Recipe(
+        id="security-assessment",
+        icon="⛨",
+        title="Assess a site I'm authorized to test",
+        blurb="Runs an authorized, strictly in-scope reconnaissance pass over a target you "
+              "have written permission to test, and writes up what it found.",
+        example="A report headed 'Security assessment — Acme Corp (SOW-2026-014)' with the "
+                "scope tested, a findings table rated by severity — missing security "
+                "headers, an exposed admin path, a stale TLS config — and a remediation "
+                "step under each.",
+        schedule="manual",
+        max_steps=40,
+        max_seconds=1800,
+        needs=[
+            Need("client", "Who is this engagement for?", kind="text",
+                 placeholder="Acme Corp",
+                 help="The client or system owner named in your authorization. It goes on "
+                      "the report."),
+            Need("authorization", "Your written authorization reference", kind="text",
+                 placeholder="SOW-2026-014, signed 2026-08-01",
+                 help="A contract, statement of work, or ticket ID that authorizes this "
+                      "test. It is recorded verbatim in the report, and the engagement "
+                      "will not be created without it — testing a system you cannot name "
+                      "authorization for is the one thing this job will not do."),
+            Need("targets", "In-scope hosts (comma-separated)", kind="text",
+                 placeholder="app.acme.com, api.acme.com",
+                 help="ONLY these hosts are reachable. Everything else is refused by the "
+                      "permission gate, not merely by instruction — so a link that leads "
+                      "off-scope is a dead end, the way a client's scope requires."),
+            DELIVER,
+        ],
+        tools=["fetch_url", "save_report", "kg_add", "kg_query", "recall", "remember"],
+        roster=[("researcher", "maps the in-scope surface and gathers the evidence"),
+                ("writer", "writes the engagement report")],
+        # No {} placeholders that the mission fills itself beyond these three; the net
+        # allowlist is what actually confines it, and the mission says so plainly so the
+        # model does not mistake the gate for a suggestion it may argue with.
+        mission="You are performing an AUTHORIZED security assessment for {client}, under "
+                "written authorization {authorization}. Treat that reference as the ground "
+                "truth of what you may touch.\n\n"
+                "IN SCOPE — and the ONLY thing you can reach: {targets}. This is enforced: "
+                "your `fetch_url` is granted for these hosts and nothing else, so a request "
+                "anywhere else will simply be refused. If a page links off-scope, note the "
+                "link and stop there; do not follow it.\n\n"
+                "RULES OF ENGAGEMENT (do not deviate):\n"
+                "- Reconnaissance and light, non-destructive inspection over HTTP(S) ONLY. "
+                "Map the surface, read what is served, and reason about it.\n"
+                "- NO exploitation, NO attempts to authenticate with credentials you were "
+                "not given, NO injection or fuzzing payloads, NO brute force, and nothing "
+                "that could degrade or deny service. This job is a reconnaissance and "
+                "reporting pass, not an attack — if a real finding needs active proof, "
+                "recommend it as a next step for a human, do not perform it.\n"
+                "- Go gently. The machine already rate-limits you; stay well under it. You "
+                "are a guest on someone else's system, with permission but not a licence to "
+                "be noisy.\n\n"
+                "WHAT TO DO: for each in-scope host, fetch the root and the obvious public "
+                "surfaces (robots.txt, sitemap, security.txt, common paths), and examine the "
+                "responses: security headers (HSTS, CSP, X-Frame-Options, cookies' flags), "
+                "the server/framework it reveals about itself, TLS/redirect behaviour, "
+                "exposed directories or admin surfaces, verbose errors, and anything left "
+                "public that should not be. Use `kg_add` to record each finding as you go and "
+                "`kg_query`/`recall` to avoid repeating a host you already covered.\n\n"
+                "THE REPORT is the deliverable. It must open with the client, the "
+                "authorization reference, the exact scope you tested, and the date. Then a "
+                "findings table — each finding with a severity (Critical/High/Medium/Low/"
+                "Info), the evidence you actually observed, and a concrete remediation. End "
+                "with what you did NOT test and why, so the reader knows the edges. If you "
+                "found little, say so plainly rather than inflating it — a short honest "
+                "report is worth more than a padded one, and to a client a false finding is "
+                "worse than a missing one.",
     ),
 ]
 
@@ -283,6 +356,60 @@ def _url(value: str) -> str:
     return u[:500]
 
 
+_HOST_RE = re.compile(r"^[A-Za-z0-9.\-]{1,253}(?::\d{1,5})?$")
+
+
+def _hosts(value: str) -> list[str]:
+    """The in-scope hosts from a comma/space-separated answer, deduped and validated.
+
+    A host, not a URL: `https://app.acme.com/login` and `app.acme.com` both reduce to
+    `app.acme.com`, because scope is a host — the client authorized the machine, not one
+    of its paths. Refused here rather than at grant time, in the person's own words,
+    because `net:` + a mistyped host is a permission for a place that does not exist and
+    a scope the assessor thinks they set but did not.
+    """
+    raw = re.split(r"[,\s]+", (value or "").strip())
+    seen: list[str] = []
+    for token in raw:
+        if not token:
+            continue
+        # A full URL keeps only its host[:port]; a bare token must BE a host. A
+        # schemeless token with a '/' — `10.0.0.0/24`, `acme.com/app` — is refused
+        # rather than truncated: silently reducing a CIDR range to its first address
+        # is a scope the assessor thinks they set and did not.
+        host = token
+        if "//" in host:
+            host = host.split("//", 1)[1].split("/", 1)[0]
+        host = host.strip().lower()
+        if not host:
+            continue
+        if not _HOST_RE.match(host):
+            raise ValueError(f"'{token}' is not a host I can scope to — give me a host "
+                             f"like app.acme.com, not a wildcard or a range")
+        if host not in seen:
+            seen.append(host)
+    if not seen:
+        raise ValueError("name at least one in-scope host — the engagement is confined to "
+                         "exactly the hosts you list here")
+    return seen[:40]
+
+
+def _net_scope(hosts: list[str]) -> list[str]:
+    """The exact `net:` allowlist for a set of hosts — the whole scope guarantee.
+
+    Two patterns per scheme per host, and deliberately not one: `net:https://h*` would
+    also match `https://h.evil.com`, so a prefix glob is a scope leak. `net:https://h/*`
+    (every path) plus `net:https://h` (the bare root) confines it to that host and no
+    look-alike. `fetch_url` is the only net tool the recipe grants, so this list is the
+    complete set of places the engagement can reach."""
+    out: list[str] = []
+    for h in hosts:
+        for scheme in ("https", "http"):
+            out.append(f"{scheme}://{h}/*")
+            out.append(f"{scheme}://{h}")
+    return out
+
+
 def _name_for(store, recipe: Recipe, answers: dict) -> str:
     """A flow name a person would recognise in a list of twenty."""
     hint = ""
@@ -340,6 +467,23 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
             raise ValueError("tell me what to keep an eye on — a few words is enough")
         fill["topics"] = topics
         perms["net"] = ["*"]      # research means the open web; say so on the card
+    if recipe.id == "security-assessment":
+        client = " ".join((answers.get("client") or "").split())[:120]
+        if not client:
+            raise ValueError("name the client or system owner this engagement is for")
+        auth = " ".join((answers.get("authorization") or "").split())[:200]
+        if not auth:
+            # The one refusal that is a feature, not a validation nicety: no authorization,
+            # no engagement. It is why this job is safe to ship.
+            raise ValueError("record the written authorization for this test — a contract, "
+                             "statement of work, or ticket reference. Without it there is no "
+                             "engagement to run.")
+        hosts = _hosts(answers.get("targets", ""))
+        fill["client"] = client
+        fill["authorization"] = auth
+        fill["targets"] = ", ".join(hosts)
+        # The scope guarantee: the roster can reach exactly these hosts and nowhere else.
+        perms["net"] = _net_scope(hosts)
 
     dev = delivery(cfg, answers.get("deliver") or "report")
     if dev["tool"] not in perms["tools"]:
@@ -361,8 +505,8 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
         "permissions": perms,
         "sinks": [{"kind": dev["sink"]}],
         "triggers": triggers,
-        "max_steps": 20,
-        "max_seconds": 900,
+        "max_steps": recipe.max_steps,
+        "max_seconds": recipe.max_seconds,
         "enabled": 1,
         "job": recipe.id,
     }
@@ -415,7 +559,23 @@ def preview(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
             "grants": flowsmod.declared_grants(d),
             "triggers": d["triggers"],
             "delivery": delivery(cfg, answers.get("deliver") or "report"),
-            "reads": (body.get("permissions") or {}).get("fs_read") or []}
+            "reads": (body.get("permissions") or {}).get("fs_read") or [],
+            # The net allowlist, as hosts, so an engagement's consent screen shows the
+            # exact scope the same way a folder job shows the one folder it may read.
+            "scope": _scope_hosts((body.get("permissions") or {}).get("net") or [])}
+
+
+def _scope_hosts(net: list) -> list[str]:
+    """The distinct hosts behind a `net:` allowlist, for the consent screen. `['*']`
+    (open-web research) is not a scope to display, so it is dropped."""
+    hosts: list[str] = []
+    for pat in net:
+        if pat == "*":
+            continue
+        h = pat.split("//", 1)[-1].split("/", 1)[0]
+        if h and h not in hosts:
+            hosts.append(h)
+    return hosts
 
 
 def install(cfg: dict, store, recipe_id: str, answers: dict) -> dict:

@@ -87,6 +87,7 @@ async function jobConsent(r){
       body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
     if(d.error){box.innerHTML=`<span class="job-warn">${esc(d.error)}</span>`;return}
     const reads=(d.reads||[]).map(p=>`<li>reads <code>${esc(p)}</code> — and nothing else</li>`).join('');
+    const scope=(d.scope||[]).map(h=>`<li>may reach <code>${esc(h)}</code> — and no other host</li>`).join('');
     const when=(d.triggers||[]).map(t=>{
       const c=t.config||{};
       if(t.kind==='cron'&&c.type==='daily')return `<li>runs every day at ${esc(c.at)}</li>`;
@@ -94,7 +95,7 @@ async function jobConsent(r){
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${scope}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
   }catch(e){}
