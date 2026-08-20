@@ -708,6 +708,32 @@ failing the same way — by telling the truth at a volume nobody can read.
   (`14-docs-setup.js`); the headless half had nothing, and "it is set up when you
   open it" is not true on a machine nobody is sitting in front of.
 
+## The README is eleven files now
+
+`docs/i18n/README.<lang>.md` — eleven hand-written translations of the front page,
+each with a switcher to the other ten and back to English. Two things follow, and
+the first one is a real cost to accept before editing:
+
+- **Editing the English README puts eleven files out of date**, and nothing makes
+  them follow — they are prose, not generated. `tests/test_i18n_readme.py` pins
+  what can be pinned mechanically: the set is complete, every switcher resolves,
+  and the heading COUNT matches, which catches a section added on one side only.
+  It cannot catch a paragraph that changed meaning. If a change is small and you
+  cannot make it in all eleven, prefer leaving the English narrower over leaving
+  ten translations wrong — a sentence nobody on the team can proofread is worse
+  than a sentence that says less.
+- **They ship inside the product.** `docs/` is force-included into the wheel and
+  `/api/docs` globs `**/*.md`, so the Docs app and TUI tab 8 list them too. They
+  are titled by LANGUAGE there (`README — 日本語`) rather than by their own
+  heading, and this machine's language sorts first among them — eleven entries all
+  called "Bento Box AI — …" in scripts a reader cannot tell apart is how shipping
+  translations makes the docs worse. `localeinfo.DOC_LANGUAGES` is that table and
+  must stay equal to what is on disk.
+
+The guides under `docs/` are **English only**, deliberately for now: nothing has
+translated them, and a half-translated manual is worse than an honest English one.
+`docs/README.md` says so where somebody would go looking.
+
 ## Honesty rules
 
 - A capability that is missing reports **why**, in a sentence, plus the component

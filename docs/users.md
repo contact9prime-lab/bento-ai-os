@@ -245,6 +245,17 @@ lands in their own home.
 
 ![The Remote access panel: "Locked by this machine's accounts. Everyone signs in from their phone with the same username and password they use here, and lands in their own desktop — their memory, their agents, their channels. No separate remote passphrase to invent, share or forget." with a Manage accounts button, and Turn remote access on enabled](screenshots/remote-locked-by-accounts.png)
 
+Headless, that is two commands and no passphrase at all — the account is the lock:
+
+```bash
+bento user add alice          # the first account adopts this machine and is an admin
+bento remote --on --bind 0.0.0.0
+```
+
+`bento remote` then reports which lock is in force and who signs in with it. Offer it
+a `--passphrase` on a machine that has accounts and it declines, out loud, rather than
+storing a secret nothing would ever read.
+
 A second shared passphrase in front of per-person credentials would be worse than
 none: one more secret, held in common by people who are otherwise isolated from
 each other, and "sign in" would mean two different things depending on where you

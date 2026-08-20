@@ -6174,6 +6174,7 @@ def _user_docs_dir() -> Path | None:
 
 @app.get("/api/docs")
 async def api_docs():
+    from . import localeinfo
     out = []
     for base in (_docs_dir(), _user_docs_dir()):
         if not base:
@@ -6186,13 +6187,29 @@ async def api_docs():
                 first = next((ln for ln in p.read_text().splitlines() if ln.startswith("#")), rel)
             except Exception:
                 first = rel
-            out.append({"file": rel, "title": first.lstrip("# ").strip()})
+            title = first.lstrip("# ").strip()
+            # The overview, translated. Titled by the LANGUAGE rather than by its
+            # own heading: `docs/` ships inside the wheel and this route globs it,
+            # so without this the list gained eleven entries all called "Bento Box
+            # AI — …" in scripts most readers cannot tell apart. The name is in the
+            # language's own script, because that is what somebody looking for
+            # their language scans for.
+            code = rel[len("i18n/README."):-len(".md")] if rel.startswith("i18n/README.") else ""
+            if code in localeinfo.DOC_LANGUAGES:
+                title = f"README — {localeinfo.DOC_LANGUAGES[code]}"
+            out.append({"file": rel, "title": title, "lang": code})
     order = ["README.md", "getting-started.md", "installation.md", "lifecycle.md",
              "desktop.md", "agent.md", "building-apps.md", "training.md", "git.md",
              "tui.md", "security.md", "users.md", "whatsapp.md", "integrations.md",
              "models.md", "configuration.md",
              "api-reference.md", "architecture.md", "roadmap.md"]
-    out.sort(key=lambda d: order.index(d["file"]) if d["file"] in order else 99)
+    # This machine's own language first among the translations — on a machine set
+    # to Japanese, the Japanese overview is the one entry in that group worth
+    # putting where it will be seen. Everything untranslated keeps its order.
+    mine = localeinfo.doc_language(cfg=state["cfg"])
+    out.sort(key=lambda d: (order.index(d["file"]) if d["file"] in order else 99,
+                            0 if d.get("lang") and d["lang"] == mine else 1,
+                            d["file"]))
     return {"docs": out}
 
 
