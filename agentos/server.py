@@ -1416,6 +1416,13 @@ async def api_platform(request: Request):
     state_["sui"] = bool(comp.SUI_HOST[0])
     state_["sui_available"] = shellhost.available()
     state_["sui_install_hint"] = "" if state_["sui_available"] else shellhost.install_hint()
+    # Which OS events a flow trigger could actually fire here, and why not. Two of
+    # the four need AgentOS to own the session (the notification daemon and the
+    # login hook above), so on a hosted or headless box the Flows editor must grey
+    # them with the reason rather than offer a control that can never fire.
+    from . import flows as flowsmod
+    state_["os_events"] = {ev: flowsmod.os_event_problem(ev, state_.get("mode"))
+                           for ev in flowsmod.OS_EVENTS}
     return state_
 
 

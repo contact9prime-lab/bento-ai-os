@@ -29,6 +29,46 @@ import time
 TRIGGER_KINDS = ("cron", "message", "webhook", "os_event")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
 CRON_TYPES = ("interval", "daily", "once")
+
+# Which run modes can actually DELIVER each OS event.
+#
+# Two of the four need AgentOS to own the Linux session, and the reason is in
+# server.py: the notification daemon only claims org.freedesktop.Notifications in
+# DE mode (claiming it as a guest would steal the host desktop's), and the
+# session-start hook that fires `login` runs only in DE or KIOSK. `file_change`
+# and `idle` are polled by the scheduler, so they work on a headless box too.
+#
+# An empty tuple means "every mode". Offering the other two on a hosted or
+# headless machine is exactly the dead control this repo's honesty rule forbids:
+# the trigger saves, sits in the editor looking armed, and can never once fire.
+OS_EVENT_MODES = {
+    "notification": ("de",),
+    "login": ("de", "kiosk"),
+    "file_change": (),
+    "idle": (),
+}
+
+
+def os_event_problem(event: str, mode: str | None = None) -> str:
+    """"" if this machine can deliver that OS event, else the sentence why not.
+
+    One answer for every surface — the Flows editor greys the option with it, the
+    save refuses with it, and the TUI and CLI can print it — so a machine can never
+    offer a trigger it cannot fire. `mode` is resolved from the machine when not
+    given, which is what lets a caller with no config ask.
+    """
+    need = OS_EVENT_MODES.get(event)
+    if not need:                       # unknown event, or one that works anywhere
+        return ""
+    if mode is None:
+        from . import runmode
+        mode = runmode.resolve()[0]
+    if mode in need:
+        return ""
+    return (f"'{event}' needs AgentOS to be your Linux session — this machine is "
+            f"running it as an app on another desktop. Install the session "
+            f"(`bento install-session`) and pick it at login, or use a webhook, a "
+            f"file_change or an idle trigger instead.")
 SINK_KINDS = ("origin", "telegram", "whatsapp", "gui", "notify", "report", "conversation")
 MEMORY_SCOPES = ("none", "read", "read-space", "read-write")
 
@@ -171,6 +211,12 @@ def _validate_trigger(t: dict) -> dict:
             raise ValueError("a notification trigger needs `match`")
         if ev == "file_change" and not str(conf.get("path") or "").strip():
             raise ValueError("a file_change trigger needs `path`")
+        # Refuse at the save, with the same sentence the editor greys it with. A
+        # stored trigger that can never fire is worse than no trigger: it reads as
+        # armed for as long as the flow lives.
+        problem = os_event_problem(ev)
+        if problem:
+            raise ValueError(problem)
     return {"kind": kind, "config": conf,
             "cooldown_secs": max(0, int(t.get("cooldown_secs") or 60)),
             "enabled": int(bool(t.get("enabled", 1))),

@@ -199,3 +199,50 @@ def test_disabling_a_flow_takes_it_off_the_clock(sched):
     assert again, "re-enabling did not re-arm the clock"
     rearmed = next(t for t in store.list_tasks() if t["id"] == again)
     assert rearmed["flow"] == "digest"
+
+
+# ---------------------------------------------------------------------------
+# An OS event this machine cannot deliver is refused, not stored
+# ---------------------------------------------------------------------------
+
+def test_the_os_events_that_need_the_session_are_named_per_mode():
+    """Two of the four OS events only reach a machine where AgentOS IS the Linux
+    session: the notification daemon claims org.freedesktop.Notifications in DE
+    mode only, and the login hook runs in DE/KIOSK only. The other two are polled
+    by the scheduler and work headless. One function answers for every surface."""
+    assert flowsmod.os_event_problem("notification", "de") == ""
+    assert flowsmod.os_event_problem("login", "de") == ""
+    assert flowsmod.os_event_problem("login", "kiosk") == ""
+    # …and on a machine that is only hosting AgentOS as an app, they cannot fire
+    assert flowsmod.os_event_problem("notification", "hosted")
+    assert flowsmod.os_event_problem("notification", "kiosk")
+    assert flowsmod.os_event_problem("login", "hosted")
+    # the two that are polled work everywhere, which is what a headless Pi runs on
+    for mode in ("de", "kiosk", "hosted"):
+        assert flowsmod.os_event_problem("file_change", mode) == ""
+        assert flowsmod.os_event_problem("idle", mode) == ""
+
+
+def test_the_reason_says_what_would_fix_it():
+    """The honesty rule: a missing capability reports why, in a sentence, plus the
+    component that would fix it — never a bare refusal."""
+    why = flowsmod.os_event_problem("notification", "hosted")
+    assert "Linux session" in why, why
+    assert "install-session" in why, "the refusal must name the fix"
+    assert "webhook" in why, "it must point at a trigger that DOES work here"
+
+
+def test_a_trigger_that_could_never_fire_is_refused_at_save(monkeypatch):
+    """Storing it is the bug: it sits in the editor looking armed for the life of
+    the flow and never once fires. Refused with the same sentence the editor greys
+    it with — while the same trigger saves fine on a machine that can deliver it."""
+    monkeypatch.setattr(flowsmod, "os_event_problem",
+                        lambda ev, mode=None: "" if ev in ("file_change", "idle")
+                        else "'%s' needs AgentOS to be your Linux session" % ev)
+    with pytest.raises(ValueError, match="Linux session"):
+        flowsmod._validate_trigger({"kind": "os_event",
+                                    "config": {"event": "notification", "match": "invoice"}})
+    # the polled ones still validate — the gate is per event, not a blanket refusal
+    ok = flowsmod._validate_trigger({"kind": "os_event",
+                                     "config": {"event": "file_change", "path": "~/Downloads"}})
+    assert ok["config"]["event"] == "file_change"
