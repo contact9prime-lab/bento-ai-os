@@ -1695,6 +1695,115 @@ def _flow_cli(args):
                       f"{time.strftime('%d %b %H:%M', time.localtime(last[0]['started_at']))}")
         return
 
+    if act in ("add", "trigger", "rotate", "enable", "disable"):
+        if not args.name:
+            print(f"which flow? `agentos flow {act} <name>`")
+            sys.exit(1)
+
+    if act == "add":
+        # Straight through flows.save — the SAME door the editor uses, so a flow
+        # written from a terminal gets exactly the permissions, grants and triggers
+        # a flow written in the GUI does. A second authoring path would be a second
+        # permission model, which is the bug this avoids.
+        if store.get_flow(args.name):
+            print(f"'{args.name}' already exists — `agentos flow trigger {args.name} …` to add a start")
+            sys.exit(1)
+        names = [a.strip() for a in (args.agents or "").split(",") if a.strip()]
+        if not names:
+            print("a flow needs a roster: --agents researcher,writer")
+            sys.exit(1)
+        roster = [{"subagent": n} for n in names]
+        # A flow and the specialists it needs are one thought, so they are one save —
+        # the same `new_agents` path the editor uses (flows.ensure_agents), which
+        # never overwrites a name that already exists. Without this a fresh headless
+        # machine could not create its first flow at all: there is no other terminal
+        # route to a subagent.
+        have = {a["name"] for a in store.list_subagents()}
+        missing = [{"name": n} for n in names if n not in have]
+        try:
+            flow, report = flowsmod.save(store, {
+                "name": args.name,
+                "mission": args.mission or f"Standing mission: {args.name}",
+                "roster": roster,
+                "new_agents": missing,
+                # Disabled on purpose: enabling is the act of granting, so a flow
+                # created from a script never silently acquires permissions.
+                "enabled": 0,
+            })
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ created '{flow['name']}' — disabled, so it holds no permissions yet")
+        print(f"    roster: {', '.join(r['subagent'] for r in flow['roster'])}")
+        if report.get("created"):
+            print(f"    new agents: {', '.join(report['created'])}")
+        print(f"    next:   agentos flow trigger {flow['name']} --kind cron --at 08:00")
+        print(f"            agentos flow enable {flow['name']}")
+        return
+
+    if act in ("enable", "disable"):
+        if not store.get_flow(args.name):
+            print(f"no flow called '{args.name}'")
+            sys.exit(1)
+        want = act == "enable"
+        flowsmod.set_enabled(store, args.name, want)
+        print(f"✓ '{args.name}' {'enabled — its declared permissions are now real grants' if want else 'disabled — its grants and clocks are gone, the definition is kept'}")
+        return
+
+    if act == "trigger":
+        flow = store.get_flow(args.name)
+        if not flow:
+            print(f"no flow called '{args.name}'")
+            sys.exit(1)
+        kind = (args.kind or "").strip()
+        if kind not in flowsmod.TRIGGER_KINDS:
+            print(f"--kind is one of {', '.join(flowsmod.TRIGGER_KINDS)}")
+            sys.exit(1)
+        if kind == "cron":
+            conf = ({"type": "interval", "minutes": args.every} if args.every
+                    else {"type": "daily", "at": args.at or "08:00"})
+        elif kind == "message":
+            conf = {"pattern": args.pattern, "mode": "prefix"}
+        elif kind == "os_event":
+            conf = {"event": args.event or "file_change", "path": args.path, "match": args.match}
+        elif kind == "flow_done":
+            conf = {"flow": args.after, "status": args.status}
+        else:
+            conf = {}
+        # Keep the triggers it already has; this ADDS one.
+        keep = [{"kind": t["kind"], "config": t["config"],
+                 "cooldown_secs": t["cooldown_secs"], "enabled": t["enabled"]}
+                for t in store.flow_triggers(args.name)]
+        body = dict(flow)
+        body["triggers"] = keep + [{"kind": kind, "config": conf,
+                                    "cooldown_secs": args.cooldown, "enabled": 1}]
+        try:
+            saved, report = flowsmod.save(store, body)
+        except ValueError as e:
+            print(f"✗ {e}")           # includes the os_event 'not on this machine' sentence
+            sys.exit(1)
+        trigs = store.flow_triggers(args.name)
+        print(f"✓ '{args.name}' now starts on: "
+              f"{', '.join(t['kind'] for t in trigs) or 'nothing'}")
+        if kind == "webhook":
+            new = [t for t in trigs if t["kind"] == "webhook"][-1]
+            print(f"\n  curl -X POST '{flowsmod.hook_url(cfg, args.name, new)}' -d '{{}}'")
+        if not flow.get("enabled"):
+            print(f"    (still disabled — `agentos flow enable {args.name}` to arm it)")
+        return
+
+    if act == "rotate":
+        hooks = store.flow_triggers(args.name, kind="webhook")
+        if not hooks:
+            print(f"'{args.name}' has no webhook trigger to rotate")
+            sys.exit(1)
+        for t in hooks:
+            store.rotate_hook_secret(t["id"])
+            fresh = store.flow_trigger(t["id"])
+            print(f"✓ rotated — the previous URL no longer works")
+            print(f"\n  curl -X POST '{flowsmod.hook_url(cfg, args.name, fresh)}' -d '{{}}'")
+        return
+
     if act == "hooks":
         hooks = store.flow_triggers(args.name, kind="webhook")
         if not hooks:
@@ -2997,13 +3106,29 @@ def main():
 
     p_flow = sub.add_parser("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",
-                        choices=["list", "run", "show", "approvals", "allow", "deny", "hooks"])
+                        choices=["list", "run", "show", "approvals", "allow", "deny", "hooks",
+                                 "add", "trigger", "rotate", "enable", "disable"])
     p_flow.add_argument("name", nargs="?", default="",
                         help="flow name, or a run id for `show`, or an approval id")
     p_flow.add_argument("--input", default="", help="what to hand the flow")
     p_flow.add_argument("--wait", action="store_true", help="stay attached until it finishes")
     p_flow.add_argument("--always", action="store_true",
                         help="with `allow`: remember it as a grant, not just this once")
+    # authoring, so a headless machine can create what it can already run
+    p_flow.add_argument("--mission", default="", help="with `add`: what the flow is for")
+    p_flow.add_argument("--agents", default="",
+                        help="with `add`: comma-separated roster, e.g. researcher,writer")
+    p_flow.add_argument("--kind", default="",
+                        help="with `trigger`: cron | message | webhook | os_event | flow_done")
+    p_flow.add_argument("--at", default="", help="cron daily time, HH:MM")
+    p_flow.add_argument("--every", type=int, default=0, help="cron interval, in minutes")
+    p_flow.add_argument("--pattern", default="", help="message trigger pattern")
+    p_flow.add_argument("--event", default="", help="os_event: notification|file_change|login|idle")
+    p_flow.add_argument("--path", default="", help="os_event file_change: the folder to watch")
+    p_flow.add_argument("--match", default="", help="os_event notification: text to match")
+    p_flow.add_argument("--after", default="", help="flow_done: the flow this one follows")
+    p_flow.add_argument("--status", default="any", help="flow_done: any | ok | failed")
+    p_flow.add_argument("--cooldown", type=int, default=60, help="seconds between fires")
 
     p_job = sub.add_parser("job", help="give this machine a standing job — the terminal "
                                        "half of the first-run 'give it a job' screen")

@@ -175,6 +175,29 @@ runs (`agentos/flows.py` defines, `ControlPlane.run_flow` executes). Full reason
   `budget + approval_timeout + 60` must stay — a hung run holds `knowledge.turn_started()`
   and degrades the whole OS.
 
+**Triggers are the event side, and three rules keep them honest.** A flow starts on `cron`,
+`message`, `webhook`, `os_event` or `flow_done` — only the first is time-driven, and the rest
+are why "event-driven" is not a missing feature.
+
+- **A trigger this machine cannot fire is never offered.** `notification` needs AgentOS to own
+  the session and `login` needs DE/KIOSK; `file_change` and `idle` are polled and work headless.
+  `flows.os_event_problem()` is the one answer, carried on `/api/platform` as `os_events`, and
+  the save refuses what the editor greys. A stored trigger that can never fire reads as armed
+  forever, which is the dead control this file's honesty rules forbid.
+- **A webhook is the one door with no cookie**, so the trigger row records its owner and the
+  route enters `users.as_user(uid)` before reading anything. Without that the fire resolves to
+  the machine — and since accounts are isolated by directory, the trigger is not even in the
+  machine's database. `bento flow rotate` revokes a leaked URL without re-saving the flow.
+- **Chaining is `flow_done`, not one flow POSTing another's webhook.** That was an HTTP round
+  trip and a shared secret to say something local, and it made the second run look like it came
+  from the internet. A flow naming itself is refused at the save; `MAX_CHAIN_DEPTH` stops the
+  A→B→A cycle a self-check cannot see.
+
+**A flow can be authored from a terminal.** `bento flow add/trigger/rotate/enable/disable` go
+through `flows.save` — the same door the editor uses — because a second authoring path would be
+a second permission model. `add` creates missing roster agents (`new_agents`, as the editor
+does) and leaves the flow DISABLED, since enabling is the act of granting.
+
 **A disabled flow holds nothing** — `reconcile_grants` returns no grants and
 `reconcile_triggers` removes the `tasks` rows while keeping the declarations. That is what
 makes it safe for the model to draft a flow into the list without asking: Enable is the act

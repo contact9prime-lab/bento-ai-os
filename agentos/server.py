@@ -7166,17 +7166,85 @@ async def _start_flow(flow: dict, input_text: str, origin: dict, **kw) -> str:
     """
     fut: asyncio.Future = asyncio.get_event_loop().create_future()
 
+    depth = int(kw.pop("chain_depth", 0) or 0)
+
     async def go():
         try:
             res = await state["fabric"].run_flow(flow, input_text, origin=origin,
                                                  run_id_out=fut, **kw)
+            await _fire_flow_done(flow, res, depth)
             return res
         except Exception as e:
             if not fut.done():
                 fut.set_exception(e)
+            # a failed run is still a finished one: `status: failed` chains exist so
+            # somebody can be told, or a cleanup can run, precisely when it broke
+            with contextlib.suppress(Exception):
+                await _fire_flow_done(flow, {"status": "failed"}, depth)
             raise
     asyncio.create_task(go())
     return await fut
+
+
+#: How many flows one chain may start, end to end. A chain is a graph somebody drew
+#: and graphs get cycles: A→B→A is refused at the save only when a flow names ITSELF,
+#: which two flows pointing at each other slips past. The cooldown slows such a loop;
+#: this is what stops it, and it is deliberately small — a chain deeper than this is
+#: a workflow that should be one flow.
+MAX_CHAIN_DEPTH = 4
+
+
+async def _fire_flow_done(flow: dict, result, depth: int) -> None:
+    """Start the flows that were waiting for this one to finish.
+
+    Chaining lives here rather than in a flow POSTing another flow's webhook: that
+    was an HTTP round trip and a shared secret to say something entirely local, and
+    it left the second flow's run looking like it came from the internet (tainted,
+    with no memory of which run it followed).
+    """
+    status = "ok"
+    try:
+        status = str((result or {}).get("status") or "ok").lower()
+    except Exception:
+        status = "ok"
+    ok = status in ("ok", "success", "done", "")
+    store = state["store"]
+    try:
+        # `flow_triggers` already decodes config to a dict — json.loads on it raises.
+        waiting = [t for t in store.flow_triggers(kind="flow_done", enabled_only=True)
+                   if ((t.get("config") or {}).get("flow") or "").lower()
+                   == (flow.get("name") or "").lower()]
+    except Exception:
+        return
+    if not waiting:
+        return
+    if depth >= MAX_CHAIN_DEPTH:
+        store.log("error", f"flow chain stopped at depth {depth} after '{flow.get('name')}'",
+                  {"limit": MAX_CHAIN_DEPTH})
+        return
+    now = time.time()
+    for t in waiting:
+        want = ((t.get("config") or {}).get("status") or "any").lower()
+        if want == "ok" and not ok:
+            continue
+        if want == "failed" and ok:
+            continue
+        if (t.get("cooldown_secs") or 0) - (now - (t.get("last_fired") or 0)) > 0:
+            store.flow_trigger_fired(t["id"], dropped=True)
+            continue
+        nxt = store.get_flow(t["flow"])
+        if not nxt or not nxt.get("enabled"):
+            continue
+        store.flow_trigger_fired(t["id"])
+        # The upstream flow's own output is the input, so the chain carries its work
+        # forward rather than starting the next one blank.
+        text = ""
+        with contextlib.suppress(Exception):
+            text = str((result or {}).get("output") or "")[:16_000]
+        with contextlib.suppress(Exception):
+            await _start_flow(nxt, text,
+                              origin={"surface": "flow", "ref": flow.get("name") or ""},
+                              trigger_id=t["id"], chain_depth=depth + 1)
 
 
 @app.get("/api/flows/runs/{rid}/artifacts/{handle}")
@@ -7192,6 +7260,34 @@ async def api_flow_board(rid: str):
     return {"board": state["store"].artifact_index(rid)}
 
 
+def _hook_owner(trigger_id: str):
+    """(uid, store, trigger) for a webhook id, across every account on this machine.
+
+    A webhook is the one door into this OS that carries no cookie — the caller is
+    GitHub or a sensor, not a browser — so the acting account cannot come from the
+    request. It comes from the trigger row, which stamped its owner at creation.
+
+    The search is needed because a trigger LIVES in its owner's own database (users
+    are isolated by directory, not by a column), so the machine store simply does
+    not contain it. Ids are 128-bit random and unique, so finding one identifies its
+    owner unambiguously; the machine store is tried first because that is where a
+    single-user machine — and anything created before accounts existed — keeps them.
+    """
+    machine = dict.__getitem__(state, "store")
+    trig = machine.flow_trigger(trigger_id)
+    if trig or not usersmod.enabled():
+        return "", machine, trig
+    for row in usersmod.list_users():
+        uid = row.get("id") or ""
+        if not uid:
+            continue
+        st = usersmod.store_for(uid)
+        got = st.flow_trigger(trigger_id)
+        if got:
+            return uid, st, got
+    return "", machine, None
+
+
 @app.post("/api/hooks/{name}/{trigger_id}")
 async def api_flow_hook(name: str, trigger_id: str, request: Request):
     """Start a flow from outside this machine.
@@ -7203,8 +7299,9 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
     work by asking rudely. The body is content from outside this machine, so the run it
     starts is tainted: risky steps are shown to a person rather than assumed.
     """
-    store = state["store"]
-    trig = store.flow_trigger(trigger_id)
+    # Resolve WHOSE hook this is before anything else — the run has to happen in
+    # its owner's account, against their store, grants and budget.
+    uid, store, trig = _hook_owner(trigger_id)
     given = request.headers.get("x-agentos-hook-secret") or request.query_params.get("k") or ""
     if not trig or trig["kind"] != "webhook" or not trig["enabled"] or \
             (trig["flow"] or "").lower() != (name or "").lower():
@@ -7219,15 +7316,41 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
         store.flow_trigger_fired(trigger_id, dropped=True)
         return JSONResponse({"error": "cooling down", "retry_after": int(wait) + 1},
                             status_code=429)
-    flow = store.get_flow(trig["flow"])
-    if not flow or not flow.get("enabled"):
-        return JSONResponse({"error": "that flow is gone or disabled"}, status_code=409)
-    raw = (await request.body())[:64_000].decode("utf-8", "replace")
-    store.flow_trigger_fired(trigger_id)
-    run_id = await _start_flow(flow, raw,
-                               origin={"surface": "webhook", "ref": trigger_id},
-                               trigger_id=trigger_id, tainted=True)
+    # Everything from here reads and writes the OWNER's home. asyncio.create_task
+    # copies the context, so the run keeps this account for its whole life — the
+    # same reason `users.as_user` exists for scheduled work.
+    with usersmod.as_user(uid):
+        flow = store.get_flow(trig["flow"])
+        if not flow or not flow.get("enabled"):
+            return JSONResponse({"error": "that flow is gone or disabled"}, status_code=409)
+        raw = (await request.body())[:64_000].decode("utf-8", "replace")
+        store.flow_trigger_fired(trigger_id)
+        run_id = await _start_flow(flow, raw,
+                                   origin={"surface": "webhook", "ref": trigger_id},
+                                   trigger_id=trigger_id, tainted=True)
     return JSONResponse({"ok": True, "run_id": run_id, "flow": flow["name"]}, status_code=202)
+
+
+@app.post("/api/flows/{name}/hooks/{trigger_id}/rotate")
+async def api_flow_hook_rotate(name: str, trigger_id: str, request: Request):
+    """Revoke a webhook's secret and mint a new one. The old URL stops working now.
+
+    A normal `/api/*` route, so it is behind the remote-access gate and the CSRF
+    origin guard — unlike the hook itself, which must be reachable by a stranger.
+    Scoped to the acting account: you can only rotate a key on your own trigger.
+    """
+    if not _authed(request):
+        return JSONResponse({"error": "not signed in"}, status_code=401)
+    store = state["store"]
+    trig = store.flow_trigger(trigger_id)
+    if not trig or trig["kind"] != "webhook" or \
+            (trig["flow"] or "").lower() != (name or "").lower():
+        return JSONResponse({"error": "unknown hook"}, status_code=404)
+    store.rotate_hook_secret(trigger_id)
+    store.log("system", f"webhook secret rotated for flow '{name}'", {"trigger": trigger_id})
+    fresh = store.flow_trigger(trigger_id)
+    from . import flows as flowsmod
+    return {"ok": True, "url": flowsmod.hook_url(state["cfg"], name, fresh)}
 
 
 @app.get("/api/fabric/approvals")

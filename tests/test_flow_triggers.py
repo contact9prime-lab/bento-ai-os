@@ -246,3 +246,104 @@ def test_a_trigger_that_could_never_fire_is_refused_at_save(monkeypatch):
     ok = flowsmod._validate_trigger({"kind": "os_event",
                                      "config": {"event": "file_change", "path": "~/Downloads"}})
     assert ok["config"]["event"] == "file_change"
+
+
+# ---------------------------------------------------------------------------
+# Chaining: a flow finishing starts the next one
+# ---------------------------------------------------------------------------
+
+def test_a_flow_can_follow_another_flow():
+    """Chaining used to mean the first flow POSTing the second one's webhook — an
+    HTTP round trip and a shared secret to say something entirely local. flow_done
+    says it in the OS instead."""
+    t = flowsmod._validate_trigger({"kind": "flow_done",
+                                    "config": {"flow": "Scan", "status": "ok"}})
+    assert t["config"] == {"flow": "Scan", "status": "ok"}
+    # status defaults to 'any' — a chain usually wants to run either way
+    assert flowsmod._validate_trigger(
+        {"kind": "flow_done", "config": {"flow": "Scan"}})["config"]["status"] == "any"
+    for bad in ({}, {"flow": ""}, {"flow": "Scan", "status": "sometimes"}):
+        with pytest.raises(ValueError):
+            flowsmod._validate_trigger({"kind": "flow_done", "config": bad})
+
+
+def test_a_flow_that_follows_itself_is_refused():
+    """A loop with no exit. The cooldown would only slow it down, and one trigger on
+    its own cannot see the flow's name — so this is caught at the save."""
+    body = {"name": "loop", "mission": "m", "roster": [{"subagent": "researcher"}],
+            "triggers": [{"kind": "flow_done", "config": {"flow": "LOOP"}}]}
+    with pytest.raises(ValueError, match="loop with no way out"):
+        flowsmod.validate(body)          # case-insensitive: 'LOOP' is the same flow
+
+
+def test_a_chained_trigger_needs_no_clock_row():
+    """flow_done fires in-process the moment the upstream run ends. A tasks row would
+    be a second thing to keep in step, and a clock that never ticks."""
+    assert flowsmod._task_fields({"name": "x"},
+                                 {"kind": "flow_done",
+                                  "config": {"flow": "y", "status": "any"}}) is None
+
+
+# ---------------------------------------------------------------------------
+# A webhook carries no cookie, so the trigger row is what identifies its owner
+# ---------------------------------------------------------------------------
+
+def test_a_trigger_records_the_account_that_created_it(tmp_path):
+    """A webhook is the one door with no session behind it: the caller is GitHub, not
+    a browser. Without an owner on the row the fire resolves to the machine, which on
+    a multi-user box is the wrong home entirely — or none, since the trigger lives in
+    its owner's own database."""
+    store = Store(tmp_path / "t.db")
+    tid = store.add_flow_trigger("nightly", "webhook", {}, secret="s3cret", uid="ada")
+    row = store.flow_trigger(tid)
+    assert row["uid"] == "ada"
+    assert row["secret_rotated_at"] > 0, "a minted secret records when it was minted"
+    # '' is the single-user machine, exactly as space_id does it elsewhere
+    assert store.flow_trigger(
+        store.add_flow_trigger("nightly", "webhook", {}, uid=""))["uid"] == ""
+
+
+def test_rotating_a_hook_secret_revokes_the_old_url(tmp_path):
+    """Revoking a leaked key must not need the whole flow re-saved (and so
+    re-validated, and possibly re-armed) — the old URL stops working immediately."""
+    store = Store(tmp_path / "t.db")
+    tid = store.add_flow_trigger("nightly", "webhook", {}, secret="old-one", uid="")
+    was = store.flow_trigger(tid)["secret_rotated_at"]
+    fresh = store.rotate_hook_secret(tid)
+    row = store.flow_trigger(tid)
+    assert fresh and fresh != "old-one"
+    assert row["secret"] == fresh
+    assert row["secret_rotated_at"] >= was, "rotation must be dateable"
+
+
+def test_a_finished_flow_starts_only_the_followers_that_asked_for_that_outcome(tmp_path):
+    """The selection `_fire_flow_done` performs, against real rows.
+
+    Driven through the store rather than mocked because the bug this pins was a type
+    error, not a logic one: `flow_triggers` already decodes `config` to a dict, so the
+    dispatcher calling `json.loads` on it raised on the first chained run — the shape
+    of failure a mocked dict would have hidden completely.
+    """
+    store = Store(tmp_path / "t.db")
+    store.add_flow_trigger("report", "flow_done", {"flow": "scan", "status": "ok"})
+    store.add_flow_trigger("alert", "flow_done", {"flow": "scan", "status": "failed"})
+    store.add_flow_trigger("always", "flow_done", {"flow": "scan", "status": "any"})
+
+    def followers(name, ok):
+        waiting = [t for t in store.flow_triggers(kind="flow_done", enabled_only=True)
+                   if ((t.get("config") or {}).get("flow") or "").lower() == name.lower()]
+        out = []
+        for t in waiting:
+            want = ((t.get("config") or {}).get("status") or "any").lower()
+            if want == "ok" and not ok:
+                continue
+            if want == "failed" and ok:
+                continue
+            out.append(t["flow"])
+        return sorted(out)
+
+    assert followers("scan", True) == ["always", "report"]
+    assert followers("scan", False) == ["alert", "always"]
+    assert followers("something-else", True) == []
+    # config comes back decoded — the assumption the dispatcher must hold
+    assert isinstance(store.flow_triggers(kind="flow_done")[0]["config"], dict)

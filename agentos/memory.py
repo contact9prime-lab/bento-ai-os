@@ -245,6 +245,8 @@ CREATE TABLE IF NOT EXISTS flow_triggers (
     config TEXT DEFAULT '{}',    -- JSON, per kind
     task_id TEXT DEFAULT '',     -- cron/os_event: the tasks row that actually fires it
     secret TEXT DEFAULT '',      -- webhook only
+    uid TEXT DEFAULT '',         -- the account that owns it ('' = single-user machine)
+    secret_rotated_at REAL DEFAULT 0,
     enabled INTEGER DEFAULT 1,
     cooldown_secs INTEGER DEFAULT 60,
     last_fired REAL,
@@ -587,6 +589,13 @@ class Store:
             # because "which of my jobs are still running?" has to survive somebody
             # renaming one.
             ("flows", (("draft", "TEXT DEFAULT '{}'"), ("job", "TEXT DEFAULT ''"))),
+            # Who owns this trigger. A webhook arrives with no cookie, so without
+            # this the fire resolves to the MACHINE — on a multi-user box that means
+            # somebody's flow running against the wrong home, or (because the trigger
+            # lives in its owner's database) not being found at all. '' is the
+            # single-user machine, exactly as everywhere else.
+            ("flow_triggers", (("uid", "TEXT DEFAULT ''"),
+                               ("secret_rotated_at", "REAL DEFAULT 0"))),
         ):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
             for col, ddl in columns:
@@ -2264,15 +2273,35 @@ class Store:
 
     def add_flow_trigger(self, flow: str, kind: str, config: dict | None = None,
                          task_id: str = "", secret: str = "", cooldown_secs: int = 60,
-                         enabled: int = 1) -> str:
+                         enabled: int = 1, uid: str | None = None) -> str:
+        # The owner is stamped at creation from the acting account, never passed in
+        # by a caller who could name somebody else. A webhook carries no cookie, so
+        # this row is the ONLY record of whose home its flow should run against.
+        if uid is None:
+            from . import users as usersmod
+            uid = usersmod.current()
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO flow_triggers (id, flow, kind, config, task_id, secret, enabled, "
-            "cooldown_secs, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            "cooldown_secs, created_at, uid, secret_rotated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (tid, flow, kind, json.dumps(config or {}), task_id, secret, int(enabled),
-             int(cooldown_secs), time.time()))
+             int(cooldown_secs), time.time(), uid or "", time.time() if secret else 0))
         self.db.commit()
         return tid
+
+    def rotate_hook_secret(self, trigger_id: str) -> str:
+        """Mint a fresh secret for one webhook and return it.
+
+        Separate from a flow save because revoking a leaked key must not require
+        re-saving (and so re-validating, and possibly re-arming) the whole flow —
+        the old URL stops working the moment this returns.
+        """
+        import secrets as _secrets
+        new = _secrets.token_urlsafe(24)
+        self.db.execute("UPDATE flow_triggers SET secret=?, secret_rotated_at=? "
+                        "WHERE id=? AND kind='webhook'", (new, time.time(), trigger_id))
+        self.db.commit()
+        return new
 
     def flow_triggers(self, flow: str = "", kind: str = "", enabled_only: bool = False) -> list[dict]:
         q, params = "SELECT * FROM flow_triggers WHERE 1=1", []
