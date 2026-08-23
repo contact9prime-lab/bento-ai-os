@@ -1798,10 +1798,101 @@ def _flow_cli(args):
             print(f"'{args.name}' has no webhook trigger to rotate")
             sys.exit(1)
         for t in hooks:
-            store.rotate_hook_secret(t["id"])
+            store.rotate_hook_secret(t["id"], ttl_days=args.days)
             fresh = store.flow_trigger(t["id"])
-            print(f"✓ rotated — the previous URL no longer works")
+            print("✓ rotated — the previous URL no longer works")
+            if args.days:
+                print(f"    expires in {args.days:g} days "
+                      f"({time.strftime('%d %b %Y', time.localtime(fresh['secret_expires_at']))})")
             print(f"\n  curl -X POST '{flowsmod.hook_url(cfg, args.name, fresh)}' -d '{{}}'")
+        return
+
+    if act == "runs":
+        # What actually happened, from a terminal. Until this existed a headless box
+        # could start flows and had no way to see how any of them went.
+        rows = [r for r in store.fabric_runs(limit=400)
+                if not args.name or (r.get("flow") or r.get("ref") or "") == args.name]
+        if not rows:
+            print("no runs yet" + (f" for '{args.name}'" if args.name else ""))
+            return
+        for r in rows[:args.limit]:
+            when = time.strftime("%d %b %H:%M", time.localtime(r.get("started_at") or 0))
+            took = ((r.get("finished_at") or 0) - (r.get("started_at") or 0))
+            mark = {"ok": "✓", "error": "✗", "timeout": "⏱", "cancelled": "⊘",
+                    "denied": "⊘"}.get(r.get("status"), "▸")
+            print(f"  {mark} {r['id'][:8]}  {when}  {(r.get('flow') or r.get('ref') or '')[:24]:24}"
+                  f"  {r.get('status') or 'running':9} {took:5.1f}s  steps {r.get('steps') or 0}")
+            if r.get("fault"):
+                print(f"       fault: {str(r['fault'])[:100]}")
+        print(f"\n  `agentos flow events <run-id>` for one run's steps")
+        return
+
+    if act == "events":
+        if not args.name:
+            print("which run? `agentos flow events <run-id>` (ids from `agentos flow runs`)")
+            sys.exit(1)
+        runs = [r for r in store.fabric_runs(limit=400) if r["id"].startswith(args.name)]
+        if not runs:
+            print(f"no run starting '{args.name}'")
+            sys.exit(1)
+        rid = runs[0]["id"]
+        evs = store.fabric_events_for(rid, limit=args.limit * 20)
+        print(f"▲ run {rid}  ({runs[0].get('status')})")
+        for e in evs[:args.limit * 20]:
+            when = time.strftime("%H:%M:%S", time.localtime(e.get("ts") or 0))
+            pay = e.get("payload") or {}
+            # the payload shape differs per event type, so show whichever of the
+            # usual keys this one carries rather than dumping the whole dict
+            detail = (pay.get("text") or pay.get("name") or pay.get("agent")
+                      or pay.get("status") or pay.get("message") or "")
+            if not detail and pay:
+                detail = json.dumps(pay)[:90]
+            print(f"  {when}  {(e.get('type') or '')[:16]:16} {str(detail)[:90]}")
+        if not evs:
+            print("  (no events recorded for that run)")
+        return
+
+    if act == "doctor":
+        # One command that answers "is any of this actually working?" — the CLI half
+        # of the honesty rules: every trigger says whether it can fire HERE, and why
+        # not when it cannot.
+        flows_ = [store.get_flow(args.name)] if args.name else store.list_flows()
+        flows_ = [f for f in flows_ if f]
+        if not flows_:
+            print("no flows to check" + (f" — no flow called '{args.name}'" if args.name else ""))
+            return
+        problems = 0
+        for f in flows_:
+            trigs = store.flow_triggers(f["name"])
+            print(f"\n▲ {f['name']}{'' if f['enabled'] else '  (disabled — holds no grants)'}")
+            if not trigs:
+                print("    ! no trigger — it can only be started by hand")
+            for t in trigs:
+                why = ""
+                if t["kind"] == "os_event":
+                    why = flowsmod.os_event_problem((t["config"] or {}).get("event") or "")
+                if t["kind"] == "flow_done":
+                    up = (t["config"] or {}).get("flow") or ""
+                    if not store.get_flow(up):
+                        why = f"follows '{up}', which does not exist"
+                if t["kind"] == "webhook":
+                    q = store.quarantined("hook", t["id"])
+                    exp = float(t.get("secret_expires_at") or 0)
+                    if q:
+                        why = f"quarantined: {q['reason'][:70]}"
+                    elif exp and time.time() > exp:
+                        why = "its secret has expired — `agentos flow rotate` and update the caller"
+                armed = f["enabled"] and t["enabled"] and not why
+                mark = "✓" if armed else ("·" if not f["enabled"] else "!")
+                extra = f" — {why}" if why else ""
+                fired = (f"  fired {t['fires']}×" + (f", {t['dropped']} dropped" if t['dropped'] else "")
+                         if t["fires"] or t["dropped"] else "  never fired")
+                print(f"    {mark} {t['kind']:10}{fired}{extra}")
+                problems += bool(why)
+        held = [q for q in store.quarantine_list() if q["principal_kind"] in ("hook", "flow")]
+        if held:
+            print(f"\n  {len(held)} held in quarantine — `agentos quarantine` to review")
+        print(f"\n{'✓ nothing blocking' if not problems else f'! {problems} thing(s) cannot fire as written'}")
         return
 
     if act == "hooks":
@@ -1815,6 +1906,20 @@ def _flow_cli(args):
             print("  (or send the secret as the X-AgentOS-Hook-Secret header)")
             print(f"  fired {t['fires']}×, {t['dropped']} refused by the "
                   f"{t['cooldown_secs']}s cooldown")
+            # A key's age and its fate are the two things you need before deciding to
+            # rotate, and neither was stated anywhere.
+            rot = t.get("secret_rotated_at") or 0
+            exp = t.get("secret_expires_at") or 0
+            if rot:
+                print(f"  key set {time.strftime('%d %b %Y', time.localtime(rot))}", end="")
+                if exp:
+                    left = (exp - time.time()) / 86400
+                    print(f", {'EXPIRED' if left <= 0 else f'expires in {left:.0f}d'}")
+                else:
+                    print(", never expires (`--days N` on rotate to change that)")
+            if store.quarantined("hook", t["id"]):
+                print("  ! QUARANTINED — asked too often; release it in Settings → "
+                      "Quarantine or `agentos quarantine`")
         return
 
     if act == "approvals":
@@ -3107,7 +3212,8 @@ def main():
     p_flow = sub.add_parser("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",
                         choices=["list", "run", "show", "approvals", "allow", "deny", "hooks",
-                                 "add", "trigger", "rotate", "enable", "disable"])
+                                 "add", "trigger", "rotate", "enable", "disable",
+                                 "runs", "events", "doctor"])
     p_flow.add_argument("name", nargs="?", default="",
                         help="flow name, or a run id for `show`, or an approval id")
     p_flow.add_argument("--input", default="", help="what to hand the flow")
@@ -3129,6 +3235,9 @@ def main():
     p_flow.add_argument("--after", default="", help="flow_done: the flow this one follows")
     p_flow.add_argument("--status", default="any", help="flow_done: any | ok | failed")
     p_flow.add_argument("--cooldown", type=int, default=60, help="seconds between fires")
+    p_flow.add_argument("--days", type=float, default=0,
+                        help="with `rotate`: expire the new secret after N days (0 = never)")
+    p_flow.add_argument("--limit", type=int, default=20, help="with `runs`/`events`: how many")
 
     p_job = sub.add_parser("job", help="give this machine a standing job — the terminal "
                                        "half of the first-run 'give it a job' screen")

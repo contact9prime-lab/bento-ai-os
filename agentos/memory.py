@@ -247,6 +247,7 @@ CREATE TABLE IF NOT EXISTS flow_triggers (
     secret TEXT DEFAULT '',      -- webhook only
     uid TEXT DEFAULT '',         -- the account that owns it ('' = single-user machine)
     secret_rotated_at REAL DEFAULT 0,
+    secret_expires_at REAL DEFAULT 0,   -- 0 = never expires (the default)
     enabled INTEGER DEFAULT 1,
     cooldown_secs INTEGER DEFAULT 60,
     last_fired REAL,
@@ -595,7 +596,8 @@ class Store:
             # lives in its owner's database) not being found at all. '' is the
             # single-user machine, exactly as everywhere else.
             ("flow_triggers", (("uid", "TEXT DEFAULT ''"),
-                               ("secret_rotated_at", "REAL DEFAULT 0"))),
+                               ("secret_rotated_at", "REAL DEFAULT 0"),
+                               ("secret_expires_at", "REAL DEFAULT 0"))),
         ):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
             for col, ddl in columns:
@@ -2289,17 +2291,25 @@ class Store:
         self.db.commit()
         return tid
 
-    def rotate_hook_secret(self, trigger_id: str) -> str:
+    def rotate_hook_secret(self, trigger_id: str, ttl_days: float = 0) -> str:
         """Mint a fresh secret for one webhook and return it.
 
         Separate from a flow save because revoking a leaked key must not require
         re-saving (and so re-validating, and possibly re-arming) the whole flow —
         the old URL stops working the moment this returns.
+
+        `ttl_days` sets an expiry. 0 keeps the existing default of never expiring:
+        a key that dies on its own would silently stop a standing job somebody
+        relies on, so expiry is a decision, not something imposed. When it IS set,
+        the refusal after that date says so by name rather than reading as a leak.
         """
         import secrets as _secrets
         new = _secrets.token_urlsafe(24)
-        self.db.execute("UPDATE flow_triggers SET secret=?, secret_rotated_at=? "
-                        "WHERE id=? AND kind='webhook'", (new, time.time(), trigger_id))
+        now = time.time()
+        exp = now + float(ttl_days) * 86400 if ttl_days and float(ttl_days) > 0 else 0
+        self.db.execute("UPDATE flow_triggers SET secret=?, secret_rotated_at=?, "
+                        "secret_expires_at=? WHERE id=? AND kind='webhook'",
+                        (new, now, exp, trigger_id))
         self.db.commit()
         return new
 

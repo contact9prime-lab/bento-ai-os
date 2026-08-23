@@ -8,6 +8,7 @@ working unchanged. These tests assert the seam, not the scheduler.
 import asyncio
 import os
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -347,3 +348,102 @@ def test_a_finished_flow_starts_only_the_followers_that_asked_for_that_outcome(t
     assert followers("something-else", True) == []
     # config comes back decoded — the assumption the dispatcher must hold
     assert isinstance(store.flow_triggers(kind="flow_done")[0]["config"], dict)
+
+
+# ---------------------------------------------------------------------------
+# The webhook key: minted, rotatable, and optionally short-lived
+# ---------------------------------------------------------------------------
+
+def test_a_hook_secret_can_be_given_a_lifetime(tmp_path):
+    """The answer to "should the token be refreshed?": it CAN expire, and does not by
+    default. A key that dies on its own would silently stop a standing job somebody
+    relies on, so expiry is a decision — but when it is taken, the refusal afterwards
+    must say 'expired' rather than 'bad secret', which sends you hunting a leak that
+    never happened."""
+    store = Store(tmp_path / "t.db")
+    tid = store.add_flow_trigger("nightly", "webhook", {}, secret="first", uid="")
+    # default: no expiry
+    store.rotate_hook_secret(tid)
+    assert store.flow_trigger(tid)["secret_expires_at"] == 0
+
+    store.rotate_hook_secret(tid, ttl_days=30)
+    row = store.flow_trigger(tid)
+    assert row["secret_expires_at"] > time.time() + 29 * 86400
+    assert row["secret_expires_at"] < time.time() + 31 * 86400
+    # and rotating again clears it back to 'never' unless asked for
+    store.rotate_hook_secret(tid)
+    assert store.flow_trigger(tid)["secret_expires_at"] == 0
+
+
+def test_each_rotation_mints_a_different_key(tmp_path):
+    """Rotation is the whole revocation story, so two rotations must never collide."""
+    store = Store(tmp_path / "t.db")
+    tid = store.add_flow_trigger("nightly", "webhook", {}, secret="x", uid="")
+    keys = {store.rotate_hook_secret(tid) for _ in range(20)}
+    assert len(keys) == 20, "a repeated secret would make revocation meaningless"
+    assert all(len(k) > 24 for k in keys), "a short key is a guessable one"
+
+
+# ---------------------------------------------------------------------------
+# Overflow: a hook asked too often is quarantined, like any other principal
+# ---------------------------------------------------------------------------
+
+def test_a_flooded_hook_is_quarantined_and_the_hold_is_recorded_once(tmp_path):
+    """Grants answer 'may it?', the cooldown answers 'how often may it RUN?' — and
+    neither bounds how often it may be ASKED. A caller in a retry loop, or somebody
+    who found the URL, costs a lookup and a compare every time. So the same outcome
+    the rate meter gives a runaway app applies here: held until a person releases it,
+    and held ONCE — a flood must not become two hundred rows."""
+    store = Store(tmp_path / "t.db")
+    first = store.quarantine_add("hook", "trig-1", "asked too often", label="webhook for 'x'",
+                                 kind="rate", evidence={"attempts": 61})
+    assert first, "the first overflow must be recorded"
+    again = store.quarantine_add("hook", "trig-1", "asked too often")
+    assert again == "", "a flood must not write a row per attempt"
+    held = store.quarantined("hook", "trig-1")
+    assert held and held["principal_kind"] == "hook"
+    assert "asked too often" in held["reason"]
+
+
+def test_releasing_a_hook_forever_is_an_exemption_that_outlives_the_incident(tmp_path):
+    """The row is KEPT rather than deleted precisely so 'allow this forever' survives
+    — otherwise the next burst re-quarantines something the user already judged."""
+    store = Store(tmp_path / "t.db")
+    qid = store.quarantine_add("hook", "trig-2", "asked too often")
+    assert not store.quarantine_exempt("hook", "trig-2")
+    store.quarantine_release(qid, "forever")
+    assert store.quarantine_exempt("hook", "trig-2")
+    assert store.quarantined("hook", "trig-2") is None, "released means no longer held"
+
+
+def test_the_real_overflow_gate_holds_the_hook_and_honours_a_forever_release(tmp_path,
+                                                                             monkeypatch):
+    """The gate the route actually calls, driven for real rather than mocked.
+
+    A mock would have proved the arithmetic and none of what matters: that one flood
+    writes ONE row, that the hold is what refuses the next attempt, and that a
+    'forever' release genuinely stops it being re-held.
+    """
+    from agentos import server as srv
+    store = Store(tmp_path / "t.db")
+    monkeypatch.setattr(srv, "HOOK_BURST", (5, 60))
+    srv._hook_hits.clear()
+
+    refused = [srv._hook_overflowing(store, "trig-flood", "nightly", "1.2.3.4")
+               for _ in range(8)]
+    assert refused[:5] == [False] * 5, "attempts within the ceiling must pass"
+    assert all(refused[5:]), "everything past the ceiling is refused"
+
+    held = store.quarantined("hook", "trig-flood")
+    assert held and held["kind"] == "rate"
+    assert len(store.quarantine_list()) == 1, "a flood must not write a row per attempt"
+    assert "60s" in held["reason"] and "held until you release it" in held["reason"]
+    assert held["evidence"], "the hold must carry evidence a person can judge"
+
+    # 'forever' is an exemption that outlives the incident
+    store.quarantine_release(held["id"], "forever")
+    srv._hook_hits.clear()
+    for _ in range(9):
+        srv._hook_overflowing(store, "trig-flood", "nightly", "1.2.3.4")
+    assert store.quarantined("hook", "trig-flood") is None, \
+        "a hook released forever must not be re-held by the next burst"

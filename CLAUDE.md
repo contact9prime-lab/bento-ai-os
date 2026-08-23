@@ -193,10 +193,32 @@ are why "event-driven" is not a missing feature.
   from the internet. A flow naming itself is refused at the save; `MAX_CHAIN_DEPTH` stops the
   A→B→A cycle a self-check cannot see.
 
+**A hook's key is minted, rotatable, and only expires if you say so.** AgentOS mints the
+secret (`token_urlsafe(24)`) rather than letting a caller choose one, because a token
+somebody picks is a token somebody reuses. It does NOT expire by default — a key that dies
+on its own silently stops a standing job — but `bento flow rotate --days N` sets a lifetime,
+and the refusal after that date says *expired*, not *bad secret*: the difference between
+"rotate it" and hunting a leak that never happened.
+
+**Being ASKED too often is its own overflow, and it quarantines.** Grants answer *may it?*,
+the cooldown answers *how often may it run?*, and neither bounds how often a URL may be
+POSTed — a retry loop or somebody who found it costs a lookup and a compare every time.
+`_hook_overflowing` is the ceiling, in memory for the same reason `RateMeter` is (a gate
+that costs a write is one a flood turns into a disk problem), and the outcome is the one
+this OS already uses everywhere: held until a person releases it, ONE row per incident, with
+`forever` kept as an exemption so the next burst does not re-hold what was already judged.
+
 **A flow can be authored from a terminal.** `bento flow add/trigger/rotate/enable/disable` go
 through `flows.save` — the same door the editor uses — because a second authoring path would be
 a second permission model. `add` creates missing roster agents (`new_agents`, as the editor
 does) and leaves the flow DISABLED, since enabling is the act of granting.
+
+**And observed from one.** `bento flow runs` / `events <run-id>` read `fabric_runs` and
+`fabric_events` directly, so a headless box can see how its flows went with the server down.
+`bento flow doctor` is the one command that answers "is any of this actually working?": every
+trigger says whether it can fire HERE and why not — an OS event this mode cannot deliver, a
+`flow_done` following a flow that no longer exists, a quarantined or expired webhook — which
+is the honesty rule applied to a surface that had no way to state it.
 
 **A disabled flow holds nothing** — `reconcile_grants` returns no grants and
 `reconcile_triggers` removes the `tasks` rows while keeping the declarations. That is what

@@ -7260,6 +7260,47 @@ async def api_flow_board(rid: str):
     return {"board": state["store"].artifact_index(rid)}
 
 
+#: How many times one webhook may be POSTed in a window before the OS stops trusting
+#: it. The cooldown already spaces out ACCEPTED fires; this is the ceiling on being
+#: ASKED, which a cooldown never bounds — a caller in a retry loop, a misconfigured
+#: CI job, or somebody who found the URL can hammer it forever and each attempt still
+#: costs a lookup, a compare and a row. Grants answer "may it?", the cooldown answers
+#: "how often may it run?", and this answers "how often may it be tried?" — the same
+#: gap `policy.RateMeter` closes for tools, which is why the outcome is the same one:
+#: quarantine, held until a person releases it.
+HOOK_BURST = (60, 60)          # (attempts, seconds)
+_hook_hits: dict = {}
+
+
+def _hook_overflowing(store, trigger_id: str, flow_name: str, addr: str) -> bool:
+    """Record an attempt; True once this hook has been asked too often to trust.
+
+    In memory, never the database, for the same reason the rate meter is: this runs on
+    every single attempt including the refused ones, and a gate that costs a write is a
+    gate a flood turns into a disk problem of its own.
+    """
+    limit, window = HOOK_BURST
+    now = time.time()
+    hits = [t for t in _hook_hits.get(trigger_id, []) if now - t < window]
+    hits.append(now)
+    _hook_hits[trigger_id] = hits[-(limit * 2):]        # bounded: never a leak
+    if len(hits) <= limit:
+        return False
+    if store.quarantine_exempt("hook", trigger_id):     # the user said allow, forever
+        return False
+    qid = store.quarantine_add(
+        "hook", trigger_id, kind="rate",
+        label=f"webhook for '{flow_name}'",
+        reason=(f"asked {len(hits)} times in {window}s — over the {limit} allowed. The URL "
+                f"is held until you release it; rotate the secret if it has leaked."),
+        evidence={"attempts": len(hits), "window_secs": window, "from": addr,
+                  "flow": flow_name})
+    if qid:
+        store.log("error", f"webhook for '{flow_name}' quarantined — {len(hits)} "
+                           f"attempts in {window}s", {"trigger": trigger_id, "from": addr})
+    return True
+
+
 def _hook_owner(trigger_id: str):
     """(uid, store, trigger) for a webhook id, across every account on this machine.
 
@@ -7303,13 +7344,34 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
     # its owner's account, against their store, grants and budget.
     uid, store, trig = _hook_owner(trigger_id)
     given = request.headers.get("x-agentos-hook-secret") or request.query_params.get("k") or ""
+    addr = _client_addr(request)
     if not trig or trig["kind"] != "webhook" or not trig["enabled"] or \
             (trig["flow"] or "").lower() != (name or "").lower():
         return JSONResponse({"error": "unknown hook"}, status_code=404)
+    # Being ASKED too often is its own overflow, and the cooldown never bounds it.
+    # Checked before the secret compare so a flood of GUESSES is held too, and after
+    # the 404 so it can only ever be charged to a hook that really exists.
+    if _hook_overflowing(store, trigger_id, name, addr):
+        return JSONResponse({"error": "this hook is quarantined — release it in "
+                                      "Settings → Quarantine, or `bento quarantine`"},
+                            status_code=429)
+    if store.quarantined("hook", trigger_id):
+        return JSONResponse({"error": "this hook is quarantined — release it in "
+                                      "Settings → Quarantine, or `bento quarantine`"},
+                            status_code=429)
     if not hmac.compare_digest(str(given), str(trig.get("secret") or "\0")):
         store.log("error", f"webhook: bad secret for flow '{name}'",
-                  {"trigger": trigger_id, "from": _client_addr(request)})
+                  {"trigger": trigger_id, "from": addr})
         return JSONResponse({"error": "bad secret"}, status_code=401)
+    # An expired key is not a wrong key, and saying so is the difference between
+    # "rotate it" and hunting a leak that never happened.
+    exp = float(trig.get("secret_expires_at") or 0)
+    if exp and time.time() > exp:
+        store.log("error", f"webhook: expired secret for flow '{name}'",
+                  {"trigger": trigger_id, "from": addr})
+        return JSONResponse({"error": "this hook's secret expired — rotate it "
+                                      f"(`bento flow rotate {name}`) and update the caller"},
+                            status_code=401)
     now = time.time()
     wait = (trig.get("cooldown_secs") or 0) - (now - (trig.get("last_fired") or 0))
     if wait > 0:

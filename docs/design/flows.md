@@ -118,7 +118,68 @@ by the scheduler and work headless. `flows.os_event_problem(event, mode)` is the
 `/api/platform` carries it as `os_events`, the editor greys the option with it, and the save
 refuses it. A stored trigger that can never fire reads as armed for the life of the flow.
 
+### The webhook key, and its life
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant OS as AgentOS
+    participant X as GitHub / CI / a sensor
+    U->>OS: bento flow trigger f --kind webhook
+    OS-->>U: URL + minted secret (token_urlsafe(24))
+    Note over U,X: you paste the URL into the external service
+    X->>OS: POST /api/hooks/f/{id}  (?k= or header)
+    OS->>OS: rate ceiling → quarantine?
+    OS->>OS: hmac.compare_digest(secret)
+    OS->>OS: expired?
+    OS->>OS: cooldown?
+    OS-->>X: 202 + run_id
+    Note over U,OS: leaked, or just old
+    U->>OS: bento flow rotate f --days 30
+    OS-->>U: new URL — the old one is dead now
+```
+
+The secret is **minted by AgentOS, never chosen by the caller**: a token somebody picks
+is a token somebody reuses. It does **not** expire by default, because a key that dies on
+its own would silently stop a standing job; `--days N` makes that a decision, and the
+refusal afterwards says *expired* rather than *bad secret* — the difference between
+"rotate it" and hunting a leak that never happened.
+
+### Overflow is quarantine, here as everywhere else
+
+```mermaid
+flowchart LR
+    A[POST arrives] --> B{hook exists?}
+    B -- no --> N[404]
+    B -- yes --> C{asked &gt; 60x / 60s?}
+    C -- yes --> Q[quarantine the hook<br/>one row, not one per attempt]
+    Q --> R[429 until a person releases it]
+    C -- no --> D{secret ok?}
+    D -- no --> E[401 bad secret]
+    D -- yes --> F{expired?}
+    F -- yes --> G[401 — rotate it]
+    F -- no --> H{cooling down?}
+    H -- yes --> I[429 + counted as dropped]
+    H -- no --> J[run the flow as its OWNER]
+```
+
+Grants answer *may it?*, the cooldown answers *how often may it run?*, and neither bounds
+how often it may be **asked**. That gap is the same one `policy.RateMeter` closes for tools,
+so it gets the same answer: held until a person releases it, with `forever` kept as an
+exemption so the next burst does not re-hold something already judged.
+
 ### Chaining: `flow_done`
+
+```mermaid
+flowchart LR
+    T[cron / webhook / message] --> S[scan]
+    S -- ok --> R[report]
+    S -- failed --> A[alert]
+    S -- any --> L[log-it]
+    R --> D{depth &lt; MAX_CHAIN_DEPTH?}
+    D -- no --> STOP[chain stops, logged]
+```
+
 
 A flow that starts when another finishes, with `status` of `any` / `ok` / `failed`, and the
 upstream flow's output as its input. It exists because the alternative was the first flow
@@ -321,7 +382,9 @@ make a clock tick. So:
 | definition grants | none (revoked) | written |
 | `flow_triggers` rows | kept, `enabled=0`, no `task_id` | armed |
 | `tasks` rows | none | one per cron/os_event trigger |
+| `flow_done` chains | do not fire | fire |
 | webhook secret | kept | kept |
+| webhook POST | 409 | runs, as the trigger's owner |
 | manual run | 409 | runs |
 
 This is not a special "draft" state — it applies to any flow you turn off, which closes a
