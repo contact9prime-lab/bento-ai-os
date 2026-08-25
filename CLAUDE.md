@@ -481,6 +481,19 @@ Four things about it that a port of the Telegram bridge gets wrong for free:
 Meta retries and redelivers, so message ids are remembered — otherwise one sentence
 becomes several agent runs and the user pays for each.
 
+## App distribution is FEDERATED; the registry is optional curation on top
+
+Nobody hosts the commons. An author's app lives in the author's own repo at
+`bento.agentapp.json` (see `appregistry.WELL_KNOWN`), discovery is the GitHub topic
+`bento-app` (`/api/store/federated`, `bento registry search`), and `owner/repo[@ref]`
+resolves across TWO CDNs (raw.githubusercontent + jsDelivr) so one outage does not take
+the commons down. `owner/repo@commit` is the chain, literally: a git hash is a Merkle
+root, so a pinned source names immutable bytes. Validity is decided by the RECEIVING
+machine — it re-scans the code (a recorded verdict that disagrees with a fresh scan is
+flagged: `scan_drift`), and pins source+signer on first install (`tofu_check`, the SSH
+model: `changed-key` is the loudest alarm because that is what a hijacked author account
+looks like). Pins live under the `registry` USER_KEY — whom I trust is personal.
+
 ## The app registry is a Git repo of the packages the OS already speaks
 
 `agentos/appregistry.py` + `registry/` (the seed of `bento-app-registry`), full story in

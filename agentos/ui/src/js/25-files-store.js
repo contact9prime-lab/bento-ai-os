@@ -100,13 +100,19 @@ async function renderStore(body,w){
       <div data-fgroup><div class="sect">Installed (${d.skills.length})</div>
       ${d.skills.map(s=>`<div class="item" data-f="${esc(s.name+' '+(s.description||''))}"><div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div>`;
   } else if(STORE_TAB==='import'){
-    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Install an app package (<code>.agentapp.json</code>) shared from another AgentOS.
-      You review its permissions before anything runs; missing MCP extensions & skills are offered as one-click installs (you supply any API keys).</p>
-      <div class="row"><input id="store-pkg-url" placeholder="https://…/app.agentapp.json">
+    box.innerHTML=`<p class="mut" style="margin-bottom:10px">Install an app from anywhere — a package URL, a file, or an author's own GitHub repo.
+      You review its permissions before anything runs; your machine re-scans the code itself and remembers each app's source and signer, so a changed one raises an alarm.</p>
+      <div class="row"><input id="store-pkg-url" placeholder="owner/repo · owner/repo@commit · or https://…/app.agentapp.json">
         <button class="pact" style="flex:0 0 110px" onclick="storeImportURL()">Fetch</button></div>
       <div class="row" style="margin-top:8px"><input type="file" id="store-pkg-file" accept=".json,.agentapp.json" style="flex:1">
         <button class="pact" style="flex:0 0 110px" onclick="storeImportFile()">Import file</button></div>
-      <p class="mut" style="margin-top:12px;font-size:11px">Packages carry a checksum — modified packages are refused. Secrets are never inside a package.</p>`;
+      <div class="sect" style="margin-top:16px">The commons — apps in their authors' own repos (GitHub topic <code>bento-app</code>)</div>
+      <div class="row"><input id="store-fed-q" placeholder="search community apps…" onkeydown="if(event.key==='Enter')storeFedSearch()">
+        <button class="pact" style="flex:0 0 110px" onclick="storeFedSearch()">Search</button></div>
+      <div id="store-fed" class="cat" style="margin-top:8px"></div>
+      <p class="mut" style="margin-top:12px;font-size:11px">Packages carry a checksum — modified packages are refused. Secrets are never inside a package.
+        Pinning a commit (<code>owner/repo@hash</code>) names immutable bytes: nobody can change what it installs after the fact.</p>`;
+    storeFedSearch();
   } else {
     box.innerHTML=`<div style="text-align:center;padding:24px">
       <div style="font-size:16px;font-weight:700;margin:8px 0">Build any app with AI</div>
@@ -281,8 +287,22 @@ function storeBuild(){
   setTimeout(()=>{if($('#st-prompt')){$('#st-prompt').value=p;studioBuild()}},200);
 }
 async function storeImportURL(){
-  const url=$('#store-pkg-url').value.trim();if(!url)return toast('enter a package URL');
-  await storeImportStage({url});
+  const src=$('#store-pkg-url').value.trim();if(!src)return toast('enter a URL or owner/repo');
+  await storeImportStage({source:src});
+}
+async function storeFedSearch(){
+  const boxEl=$('#store-fed');if(!boxEl)return;
+  boxEl.innerHTML='<p class="mut">searching…</p>';
+  const q=($('#store-fed-q')||{value:''}).value.trim();
+  const r=await fetch('/api/store/federated?q='+encodeURIComponent(q));
+  const d=await r.json();
+  if(!r.ok){boxEl.innerHTML=`<p class="mut">${esc(d.error||'search failed')}</p>`;return}
+  if(!(d.apps||[]).length){boxEl.innerHTML=`<p class="mut">nothing tagged <code>${esc(d.topic)}</code>${q?' matching that':''} yet — tag your app repo with the topic and it appears here for everyone, no registry needed</p>`;return}
+  boxEl.innerHTML=d.apps.map(a=>`<div class="catcard">
+    <span class="cn">${esc(a.source)}</span><span class="cd">${esc(a.description||'')}</span>
+    <span class="mut" style="font-size:11px">★ ${a.stars}</span>
+    <button class="save" style="margin-top:8px;padding:6px" onclick="storeImportStage({source:'${esc(a.source)}'})">Install…</button>
+  </div>`).join('');
 }
 async function storeImportFile(){
   const f=$('#store-pkg-file').files[0];if(!f)return toast('choose a package file');
@@ -308,7 +328,8 @@ async function storeImportStage(body){
     const dd=await rr.json();
     toast(rr.ok?('installed '+d.manifest.name):(dd.error||'install failed'));
     refreshApp('store');refreshApp('permissions');
-  },{status:d.signature_status,note:d.signature_note,security:d.security});
+  },{status:d.signature_status,note:d.signature_note,security:d.security,
+     drift:d.security_drift,pin:d.pin_status,pinNote:d.pin_note});
 }
 let IMPORT_PREREQS={mcp:[],skills:[]};
 

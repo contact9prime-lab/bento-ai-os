@@ -3849,23 +3849,77 @@ async def api_app_export(aid: str):
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+_FED_CACHE: dict = {"at": 0.0, "q": None, "hits": []}
+
+
+@app.get("/api/store/federated")
+async def api_store_federated(q: str = ""):
+    """Search the commons: GitHub repositories tagged with the discovery topic.
+
+    Nobody hosts this directory — it IS GitHub's search index. Each hit is an
+    author's own repo; installing goes through the same Import staging as any
+    URL, so federation adds discovery and changes nothing about consent. Cached
+    for five minutes because the unauthenticated search API allows 10 calls a
+    minute for the whole machine, and a person retyping a query is not ten people.
+    """
+    from . import appregistry as regmod
+    q = (q or "").strip()[:80]
+    now = time.time()
+    if _FED_CACHE["q"] == q and now - _FED_CACHE["at"] < 300:
+        return {"apps": _FED_CACHE["hits"], "topic": regmod.DISCOVERY_TOPIC}
+    import httpx
+    query = f"topic:{regmod.DISCOVERY_TOPIC}" + (f" {q}" if q else "")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://api.github.com/search/repositories",
+                                 params={"q": query, "sort": "stars", "per_page": 30},
+                                 headers={"Accept": "application/vnd.github+json"})
+        if r.status_code != 200:
+            return JSONResponse({"error": f"GitHub search answered {r.status_code} — "
+                                          f"try again in a minute"}, status_code=502)
+        hits = [{"source": it.get("full_name") or "",
+                 "description": (it.get("description") or "")[:200],
+                 "stars": it.get("stargazers_count") or 0,
+                 "updated": it.get("pushed_at") or "",
+                 "homepage": it.get("html_url") or ""}
+                for it in (r.json().get("items") or [])]
+    except Exception as e:                                        # noqa: BLE001
+        return JSONResponse({"error": f"search failed: {e}"}, status_code=502)
+    _FED_CACHE.update(at=now, q=q, hits=hits)
+    return {"apps": hits, "topic": regmod.DISCOVERY_TOPIC}
+
+
 @app.post("/api/apps/import")
 async def api_app_import(body: dict):
     """Stage an app package (inline or from a URL) for install: verify integrity and diff
     prerequisites. Nothing installs and nothing is granted until the user confirms."""
     pkg = body.get("package")
-    url = (body.get("url") or "").strip()
-    if not pkg and url:
+    from . import appregistry as regmod
+    # `source` is federation's door: a full URL, `owner/repo`, or `owner/repo@ref`
+    # (a commit hash there names immutable bytes — the chain form). Candidates are
+    # tried in order across two CDNs so one outage does not take the commons down.
+    source = (body.get("source") or body.get("url") or "").strip()
+    if not pkg and source:
+        candidates = regmod.resolve_source(source)
+        if not candidates:
+            return JSONResponse({"error": f"'{source}' is not a URL or an owner/repo"},
+                                status_code=400)
         import httpx
-        try:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                r = await client.get(url)
-            if r.status_code != 200:
-                return JSONResponse({"error": f"HTTP {r.status_code} fetching package"},
-                                    status_code=400)
-            pkg = r.json()
-        except Exception as e:
-            return JSONResponse({"error": f"fetch failed: {e}"}, status_code=400)
+        last = ""
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            for cand in candidates:
+                try:
+                    r = await client.get(cand)
+                    if r.status_code == 200:
+                        pkg = r.json()
+                        break
+                    last = f"HTTP {r.status_code}"
+                except Exception as e:                            # noqa: BLE001
+                    last = str(e)
+        if not pkg:
+            return JSONResponse({"error": f"no package at '{source}' ({last}) — an app "
+                                          f"repo keeps it at {regmod.WELL_KNOWN[0]}"},
+                                status_code=400)
     if not isinstance(pkg, dict) or pkg.get("format") != "agentos-app/1":
         return JSONResponse({"error": "not an agentos-app/1 package"}, status_code=400)
     man, html = pkg.get("manifest") or {}, pkg.get("html") or ""
@@ -3888,12 +3942,23 @@ async def api_app_import(body: dict):
     # Say who (if anyone) vouches for this package, next to the permissions it
     # asks for — the two facts a person needs at the same moment. "unsigned" is
     # not a refusal: your own exports are unsigned, and installing them is fine.
-    from . import appregistry as regmod
-    vstatus, vwhy = regmod.verify_package(pkg, regmod.trusted_keys(state.machine_cfg()))
+    vstatus, vwhy = regmod.verify_package(pkg, regmod.trusted_keys(state["cfg"]))
+    # Federation trusts no author's claims: this machine RE-SCANS the code and
+    # shows its own verdict; the recorded one is only echoed when they agree.
+    local = regmod.scan_block(html)
+    drift = regmod.scan_drift(man, html)
+    # …and the SSH question: is this the same source and signer as last time?
+    pins = ((state["cfg"].get("registry") or {}).get("pins")) or {}
+    key_id = (pkg.get("signature") or {}).get("key_id") or ""
+    tstatus, tnote = regmod.tofu_check(pins, man.get("name") or "", source, key_id)
+    state["pending_installs"][iid] = {**pkg, "_source": source, "_key_id": key_id}
     return {"install_id": iid, "manifest": man, "missing": missing, "name_conflict": conflict,
             "verified": vstatus == "verified", "signature_status": vstatus,
             "signature_note": vwhy,
-            "security": (man.get("security") or {}).get("verdict") or "unscanned"}
+            "security": local.get("verdict") or "unscanned",
+            "security_findings": local.get("findings") or [],
+            "security_drift": drift,
+            "pin_status": tstatus, "pin_note": tnote}
 
 
 @app.post("/api/apps/import/{iid}/confirm")
@@ -3916,6 +3981,15 @@ async def api_app_import_confirm(iid: str, body: dict):
             state["store"].add_grant("app", aid, p.get("action") or "*", res,
                                      source="manifest", note=p.get("reason", ""))
     state["store"].set_app_manifest(aid, json.dumps(man), "approved")
+    # Remember where this app came from and who signed it — the pin the next
+    # update is checked against (tofu_check). Written only on a CONFIRMED install:
+    # a staged-and-cancelled package must not overwrite what you actually trusted.
+    from . import appregistry as regmod2
+    regcfg = state["cfg"].setdefault("registry", {})
+    regcfg["pins"] = regmod2.tofu_record(regcfg.get("pins") or {}, man.get("name") or "",
+                                         pkg.get("_source") or "", pkg.get("_key_id") or "",
+                                         pkg.get("checksum") or "")
+    cfgmod.save_config(state["cfg"])
     installed = {"mcp": [], "skills": []}
     for m in (man.get("prerequisites") or {}).get("mcp_servers", []):
         if m.get("name") in (body.get("install_mcp") or []):

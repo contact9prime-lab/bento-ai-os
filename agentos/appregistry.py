@@ -54,6 +54,97 @@ BUILTIN_KEYS: dict[str, str] = {}
 
 SIGNING_KEY_PATH = Path.home() / ".agentos" / "registry_signing.key"
 
+#: Where a package lives inside an AUTHOR'S OWN repository. Federation means the
+#: registry does not host apps — each author's repo does, for free, on GitHub's
+#: CDN — so the product needs one well-known place to look. Both forms exist so a
+#: dedicated app repo can keep it at the root while a bigger project tucks it away.
+WELL_KNOWN = ("bento.agentapp.json", ".bento/app.agentapp.json")
+
+#: The GitHub topic an app repo tags itself with to be discoverable. Discovery is
+#: GitHub's search index — nobody hosts a directory, nobody maintains a list.
+DISCOVERY_TOPIC = "bento-app"
+
+
+def resolve_source(src: str) -> list[str]:
+    """Candidate URLs for a package, from any of the ways a person names one.
+
+    - a full URL is itself;
+    - ``owner/repo`` tries the well-known paths on the default branch — first on
+      raw.githubusercontent.com, then on jsDelivr's CDN (same bytes, second CDN,
+      so one outage does not take the whole commons down);
+    - ``owner/repo@ref`` pins a branch, tag or COMMIT HASH. The commit form is the
+      chain, literally: a git hash is a Merkle root over the content, so a source
+      pinned to one names immutable bytes — no server, registry or author can
+      change what it means after the fact.
+    """
+    src = (src or "").strip()
+    if src.startswith(("http://", "https://")):
+        return [src]
+    m = re.fullmatch(r"([\w.-]+)/([\w.-]+)(?:@([\w./-]+))?", src)
+    if not m:
+        return []
+    owner, repo, ref = m.group(1), m.group(2), m.group(3) or "HEAD"
+    out = [f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{wk}"
+           for wk in WELL_KNOWN]
+    jd = f"@{m.group(3)}" if m.group(3) else ""
+    out += [f"https://cdn.jsdelivr.net/gh/{owner}/{repo}{jd}/{wk}" for wk in WELL_KNOWN]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Trust on first use — the SSH model, for a commons with no central signer
+# ---------------------------------------------------------------------------
+# In federation there is nobody to hand out "verified" badges: an author signs
+# with their own key (or not at all), and the question becomes "is this the same
+# publisher I installed from last time?" — which is exactly the question SSH's
+# known_hosts answers. The pin records where an app came from and who signed it
+# at first install; an UPDATE that arrives from somewhere else, or signed by
+# someone else, is the supply-chain attack this exists to catch.
+
+def tofu_check(pins: dict, name: str, source: str, key_id: str) -> tuple[str, str]:
+    """(status, sentence) for an app about to be installed.
+
+    ``first-install``  — no pin yet; installing records one.
+    ``match``          — same source and same signer as last time.
+    ``changed-key``    — the SIGNER changed. The loudest alarm here: a hijacked
+                         author account keeps the source and loses the key.
+    ``changed-source`` — same name, different origin. Could be a legitimate move;
+                         could be namesquatting. The person decides, told plainly.
+    """
+    pin = (pins or {}).get((name or "").strip().lower())
+    if not pin:
+        return "first-install", "first install — its source and signer will be remembered"
+    if (pin.get("key_id") or "") != (key_id or ""):
+        return "changed-key", (f"signed by '{key_id or 'nobody'}' but it was "
+                               f"'{pin.get('key_id') or 'nobody'}' when you installed it — "
+                               f"if the author did not announce a key change, do not update")
+    if (pin.get("source") or "") != (source or ""):
+        return "changed-source", (f"now comes from {source or '?'} but you installed it "
+                                  f"from {pin.get('source') or '?'}")
+    return "match", "same source and signer as when you installed it"
+
+
+def tofu_record(pins: dict, name: str, source: str, key_id: str, checksum: str) -> dict:
+    pins = dict(pins or {})
+    pins[(name or "").strip().lower()] = {"source": source or "", "key_id": key_id or "",
+                                          "checksum": checksum or "", "at": time.time()}
+    return pins
+
+
+def scan_drift(manifest: dict, html: str) -> str:
+    """'' if the recorded static verdict matches a fresh scan of these bytes, else
+    the sentence saying so. In federation the receiving machine ALWAYS re-scans —
+    the verdict in the file is the author's claim; this is your machine's check."""
+    sec = (manifest or {}).get("security") or {}
+    if not sec:
+        return "not security-scanned by its author — your machine's own scan is shown instead"
+    ai = [f for f in sec.get("findings", []) if f.get("rule") == "ai"]
+    fresh = verdict_of(static_scan(html) + ai)
+    if fresh != sec.get("verdict"):
+        return (f"the recorded verdict says '{sec.get('verdict')}' but a fresh scan of "
+                f"this code says '{fresh}' — trust the fresh one")
+    return ""
+
 
 # ---------------------------------------------------------------------------
 # Canonical form and checksum — THE definition, shared with the server

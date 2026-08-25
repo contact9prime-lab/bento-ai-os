@@ -282,7 +282,9 @@ function showConsent(manifest,missing,onApprove,trust){
         trust.status==='verified'?'var(--ok,#34d399)':(trust.status==='bad-signature'||trust.status==='checksum-mismatch')?'var(--bad,#f87171)':'var(--border,#232a35)'}">${
         trust.status==='verified'?'✓ Verified — '
         :(trust.status==='bad-signature'||trust.status==='checksum-mismatch')?'✗ Do not install — ':'○ Unverified — '}${esc(trust.note||'')}${
-        trust.security&&trust.security!=='unscanned'?` · security scan: ${esc(trust.security)}`:' · not security-scanned'}</div>`:''}
+        trust.security&&trust.security!=='unscanned'?` · this machine's scan: ${esc(trust.security)}`:' · not security-scanned'}</div>${
+      trust.drift?`<div style="margin:6px 0 0;padding:7px 10px;border-radius:8px;font-size:12.5px;border:1px solid var(--warn,#f0b429)">⚠ ${esc(trust.drift)}</div>`:''}${
+      (trust.pin==='changed-key'||trust.pin==='changed-source')?`<div style="margin:6px 0 0;padding:7px 10px;border-radius:8px;font-size:12.5px;border:1px solid ${trust.pin==='changed-key'?'var(--bad,#f87171)':'var(--warn,#f0b429)'}">${trust.pin==='changed-key'?'✗':'⚠'} ${esc(trust.pinNote||'')}</div>`:''}`:''}
     <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')}${howTo}</p>
     ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:${p.required?'default':'pointer'}">
       <input type="checkbox" data-i="${i}" checked ${p.required?'disabled title="required — this app cannot run without it"':''}

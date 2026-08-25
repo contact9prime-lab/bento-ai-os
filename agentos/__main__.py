@@ -1673,11 +1673,19 @@ def _registry_cli(args):
     from . import config as cfgmod
 
     def load_pkg(target: str) -> tuple[dict, str]:
-        if target.startswith(("http://", "https://")):
-            with urllib.request.urlopen(target, timeout=30) as r:
-                return json.loads(r.read()), ""
-        pth = Path(target)
-        return json.loads(pth.read_text()), str(pth)
+        if Path(target).is_file():
+            return json.loads(Path(target).read_text()), target
+        last = ""
+        for cand in reg.resolve_source(target):        # URL, owner/repo, owner/repo@ref
+            try:
+                with urllib.request.urlopen(cand, timeout=30) as r:
+                    return json.loads(r.read()), ""
+            except Exception as e:                                # noqa: BLE001
+                last = str(e)
+        print(f"✗ no package at '{target}'"
+              + (f" ({last})" if last else "")
+              + f" — an app repo keeps it at {reg.WELL_KNOWN[0]}")
+        sys.exit(1)
 
     act, target = args.action, args.target
 
@@ -1794,19 +1802,48 @@ def _registry_cli(args):
             sys.exit(1)
         return
 
+    if act == "search":
+        import urllib.parse
+        q = f"topic:{reg.DISCOVERY_TOPIC}" + (f" {target}" if target else "")
+        req = urllib.request.Request(
+            "https://api.github.com/search/repositories?sort=stars&per_page=30&q="
+            + urllib.parse.quote(q), headers={"Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                items = json.loads(r.read()).get("items") or []
+        except Exception as e:                                    # noqa: BLE001
+            print(f"✗ search failed: {e}")
+            sys.exit(1)
+        if not items:
+            print(f"nothing tagged '{reg.DISCOVERY_TOPIC}'"
+                  + (f" matching '{target}'" if target else "")
+                  + " — tag your app repo with the topic and it appears here, "
+                    "no registry needed")
+            return
+        for it in items:
+            print(f"\n▲ {it.get('full_name')}  ★{it.get('stargazers_count') or 0}")
+            if it.get("description"):
+                print(f"    {it['description'][:100]}")
+            print(f"    agentos registry verify {it.get('full_name')}")
+        return
+
     if act == "publish":
-        print(f"Publishing '{target}' to the registry ({reg.REGISTRY_REPO}):\n")
         slug = target.lower().replace(" ", "-")
+        print(f"Publishing '{target}' — YOUR repo is the host; nobody else runs anything:\n")
         print(f"  agentos registry package {json.dumps(target)}")
-        print(f"  agentos registry scan {slug}.agentapp.json")
-        print(f"  git clone https://github.com/{reg.REGISTRY_REPO}.git  # or your fork")
-        print(f"  mkdir -p bento-app-registry/apps/{slug}")
-        print(f"  cp {slug}.agentapp.json bento-app-registry/apps/{slug}/")
-        print("  cd bento-app-registry && git checkout -b add-" + slug
-              + " && git add -A && git commit -m 'Add " + slug + "' && git push")
-        print("\n  …then open the pull request. CI re-runs the scan, checks the checksum, "
-              "and a maintainer signs it on merge — that signature is what makes it show "
-              "as Verified on every machine that installs it.")
+        print(f"  agentos registry scan {slug}.agentapp.json --ai")
+        print(f"  agentos registry sign {slug}.agentapp.json     # your own key: agentos registry keygen")
+        print(f"\n  gh repo create {slug} --public   # or make it on github.com")
+        print(f"  cp {slug}.agentapp.json {slug}/{reg.WELL_KNOWN[0]}")
+        print(f"  cd {slug} && git add -A && git commit -m 'Publish {slug}' && git push")
+        print(f"  gh repo edit --add-topic {reg.DISCOVERY_TOPIC}   # ← this line IS the listing")
+        print("\n  Done. Anyone installs it with:")
+        print(f"      Store → Import →  <you>/{slug}")
+        print(f"      (or pin a release forever:  <you>/{slug}@<commit-hash> — immutable)")
+        print("  Their machine re-scans the code itself and pins your key on first "
+              "install, so a hijacked repo or a swapped signer raises an alarm on update.")
+        print(f"\n  The curated registry ({reg.REGISTRY_REPO}) is optional on top: a PR "
+              "there gets a maintainer review and the official signature.")
         return
 
 
@@ -3574,9 +3611,11 @@ def main():
 
     p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
     p_reg.add_argument("action", nargs="?", default="verify",
-                       choices=["keygen", "package", "scan", "sign", "verify", "publish"])
+                       choices=["keygen", "package", "scan", "sign", "verify", "publish",
+                                "search"])
     p_reg.add_argument("target", nargs="?", default="",
-                       help="app name (package/publish) or a .agentapp.json path/URL")
+                       help="app name (package/publish), a .agentapp.json path/URL, "
+                            "owner/repo[@ref], or a search term")
     p_reg.add_argument("-o", "--out", default=".", help="where package writes the file")
     p_reg.add_argument("--ai", action="store_true",
                        help="with `scan`: also read the code with this machine's brain")
