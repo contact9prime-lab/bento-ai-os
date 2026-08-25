@@ -125,24 +125,37 @@ def _secret(cfg: dict) -> bytes:
     return _machine_key() + (r.get("pass_hash", "") + r.get("pass_salt", "")).encode()
 
 
-def issue_session(cfg: dict, uid: str = "") -> str:
-    """A signed cookie. `uid` rides inside it because on a multi-user machine the
-    cookie has to say WHO, not merely that somebody proved something once."""
+def issue_session(cfg: dict, uid: str = "", locked: bool = False) -> str:
+    """A signed cookie.
+
+    `uid` rides inside it because on a multi-user machine the cookie has to say
+    WHO, not merely that somebody proved something once.
+
+    `locked` rides inside it for the same kind of reason. A locked screen has to
+    survive a reload, a second tab, a restored browser session and a server
+    restart, and no script running in the page may clear it — so it cannot be a
+    flag in the desktop, a class on the body, or a row in memory. It is part of
+    what the cookie SAYS, under the same signature as the identity.
+    """
     days = int((cfg.get("remote") or {}).get("session_days") or 30)
-    payload = json.dumps({"exp": int(time.time()) + days * 86400,
-                          "uid": uid or "",
-                          "jti": secrets.token_hex(8)}, separators=(",", ":")).encode()
+    claims = {"exp": int(time.time()) + days * 86400,
+              "uid": uid or "",
+              "jti": secrets.token_hex(8)}
+    if locked:
+        claims["lk"] = 1              # absent, not 0, so an old cookie reads as open
+    payload = json.dumps(claims, separators=(",", ":")).encode()
     body = base64.urlsafe_b64encode(payload).decode().rstrip("=")
     sig = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{body}.{sig}"
 
 
-def session_user(cfg: dict, token: str) -> str | None:
-    """The user id inside a valid session cookie, or None if it does not verify.
+def session_claims(cfg: dict, token: str) -> dict | None:
+    """The verified contents of a session cookie, or None if it is not one.
 
-    Separate from `valid_session` on purpose: the signature check and the identity
-    read are the same operation, and doing them in two places is how a route ends
-    up trusting a uid it never verified.
+    ONE verify path on purpose. The signature check, the expiry, the identity and
+    the lock are the same operation, and asking them in four places is how a route
+    ends up trusting half a cookie — a uid it never verified, or a lock it never
+    looked for.
     """
     if not token or "." not in token:
         return None
@@ -155,23 +168,30 @@ def session_user(cfg: dict, token: str) -> str | None:
         d = json.loads(base64.urlsafe_b64decode(body + pad))
     except Exception:
         return None
-    if d.get("exp", 0) <= time.time():
+    if not isinstance(d, dict) or d.get("exp", 0) <= time.time():
         return None
-    return str(d.get("uid") or "")
+    return d
+
+
+def session_user(cfg: dict, token: str) -> str | None:
+    """The user id inside a valid session cookie, or None if it does not verify."""
+    d = session_claims(cfg, token)
+    return None if d is None else str(d.get("uid") or "")
 
 
 def valid_session(cfg: dict, token: str) -> bool:
-    if not token or "." not in token:
-        return False
-    body, _, sig = token.rpartition(".")
-    want = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
-    if not hmac.compare_digest(sig, want):
-        return False
-    try:
-        pad = "=" * (-len(body) % 4)
-        return json.loads(base64.urlsafe_b64decode(body + pad))["exp"] > time.time()
-    except Exception:
-        return False
+    return session_claims(cfg, token) is not None
+
+
+def session_locked(cfg: dict, token: str) -> bool:
+    """Has whoever holds this cookie locked their screen?
+
+    A cookie that does not verify is not locked — it is nobody, which every gate
+    refuses for a different reason. Keeping those two answers apart is what lets
+    the lock screen say "enter your password" to one and "sign in" to the other.
+    """
+    d = session_claims(cfg, token)
+    return bool(d and d.get("lk"))
 
 
 # ---------------------------------------------------------------------------

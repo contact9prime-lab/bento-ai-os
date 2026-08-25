@@ -17,7 +17,8 @@
 
    `var`, not `let`: one concatenated bundle, and the menu bar reads USERS at
    boot before this file's line is reached. See CLAUDE.md on the TDZ trap. */
-var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false};
+var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false,
+           lock:''};   /* what this machine is locked BY: accounts, passphrase, or nothing */
 
 async function usersLoad(){
   try{
@@ -40,6 +41,14 @@ async function usersBoot(){
   try{
     const d=await (await fetch('/api/users/who')).json();
     USERS.me=d||{};
+    // Before the multiuser early-return on purpose: a machine with no accounts can
+    // still have a key (a remote passphrase), and so can still be locked.
+    USERS.lock=(d&&d.lock)||'';
+    const lk=document.getElementById('pm-lock');
+    // Offered where the host's own screen lock cannot answer — a tab, a window, a
+    // phone. In SUI the compositor's lock is stronger and covers the native windows
+    // this one cannot, so there we leave the menu as it was.
+    if(lk)lk.hidden=!USERS.lock||suiActive();
     if(!d||!d.multiuser)return;
     const who=document.getElementById('pm-user'),
           out=document.getElementById('pm-signout'),
@@ -387,6 +396,28 @@ async function usersCreate(pb,w){
     renderUsers(w?w.el.querySelector('.wbody'):pb,w);
   }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}
   finally{USERS.busy=false;btn.disabled=false}
+}
+
+/* Lock the desktop. One fetch, then the page goes to the sign-in door, which
+   recognises a locked session and asks for one password instead of a username and
+   a password (see ui/login.html).
+
+   Not a curtain drawn in the page: the server puts the lock inside the SIGNED
+   session cookie, so a reload, a second tab and a server restart all still find it
+   locked, and the API and every WebSocket refuse until it is opened. Which is also
+   why there is nothing to undo here if the navigation is interrupted.
+
+   TUI: there is nothing to lock. The lock is a property of a browser session and
+   the terminal client has no cookie — a headless machine's lock is the one on the
+   shell you reached it through. */
+async function lockDesktop(){
+  document.getElementById('powermenu').classList.remove('show');
+  try{
+    const r=await fetch('/api/session/lock',{method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)return toast(d.error||'could not lock the desktop');
+    location.replace('/login');
+  }catch(e){toast('could not lock the desktop: '+e)}
 }
 
 async function usersSignOut(){

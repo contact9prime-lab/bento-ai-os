@@ -38,6 +38,37 @@ comment. "Not applicable" is a fine answer; silence is not.
 
 ---
 
+## A phone is a face too, and a fingertip is 9mm
+
+The GUI face is not "a browser": it is a browser on a 390px screen held in one
+hand, which is how remote access is actually used. `15-responsive.css` had that
+layout — sheets, a bottom dock, safe areas, sheet popovers — and every control
+INSIDE an app still had the size a mouse gave it. Measured in Chrome with touch
+emulation, signed in over the LAN as a phone: a 10x16 ✕ in Flows, a 98x23 button
+in Chat, a 26x26 window close, Settings' 188px rail leaving a 202px pane whose
+rows ran to x=571 on a 390px screen, and a ✦ whose panel is `display:none` here.
+Every one of those was reported as "the buttons don't work", and every one of
+them was true.
+
+- **`--tap` is the floor and it is real size, not a halo.** An invisible enlarged
+  hit area is the tempting fix because nothing reflows — and two adjacent 16px
+  buttons with 40px halos overlap, so whichever paints last silently eats the
+  other's taps. Reflowing a dense row on a phone is the correct outcome: on a
+  phone that row was too dense.
+- **A row that cannot fit must scroll, and must not rest half-way.** `.seg`,
+  `.prefs-side` and the dock all overflowed a phone. Scroll-snap is not polish
+  here: a scroller resting mid-item puts the centre of a button outside its own
+  box, where the tap lands on whatever is behind it.
+- **A control whose target cannot exist here is removed, not left.** The ✦
+  copilot button answered a tap by doing nothing, which is the dead control the
+  honesty rules forbid — and is indistinguishable from the OS being broken.
+- **Measure it in a browser with real touch emulation.** Every number above came
+  from CDP `Input.dispatchTouchEvent` and `elementFromPoint`, not from reading
+  the CSS; synthetic clicks land dead centre every time and prove nothing about a
+  finger. `tests/test_ui_touch.py` pins the rules that came out of it.
+
+---
+
 ## The session UI (SUI) — the part most likely to be got wrong
 
 The desktop is **not a window**. It is a layer surface on the **BACKGROUND**
@@ -140,6 +171,30 @@ Three things will bite whoever touches this next:
 - **The machine config is the seed for every account created later.** `machine_view()`
   strips the personal keys before an admin's save reaches it — leaving a Telegram token
   there hands it to the next person who signs up.
+
+**A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
+is the whole rule: accounts win, and a shared passphrase in front of them is one more
+secret held in common by people this OS otherwise keeps in separate directories. Every
+part of the system knew that except the one command a headless machine is driven with —
+`bento remote --on` demanded a passphrase on a machine that already had accounts, then
+stored one `lock_kind` would never read. When you change either lock, check all four
+places that decide it: `enabled()`, `sanitize_remote()`, `_remote_cli` and the sign-in
+page's `/api/users/who`. And say WHICH lock is on: "where is the user?" is the first
+question anybody asks of a machine they have just made reachable, and on a machine with
+no accounts the honest answer is that there isn't one — you are the machine.
+
+**A locked screen is a third refusal, and it sits in front of both.** `remote.session_locked`
+reads a lock out of the SIGNED cookie, and `_authed` / `_ws_authed` refuse it BEFORE loopback
+trust and before the account check — otherwise the page would be behind a lock screen while its
+socket kept streaming a turn. Two rules keep the two locks apart: the HOST lock
+(`/api/power {"action":"lock"}`) is the only correct one in SUI, where native windows sit above
+the BACKGROUND-layer desktop and nothing the page does can cover them; the SESSION lock
+(`/api/session/lock`) is offered only outside SUI, where the host's would lock the screen of the
+*server* while the person's desktop stays open in their hand. A locked cookie still RESOLVES to
+its owner in `resolve_user` — that is what makes unlocking one password instead of a sign-in, and
+it is the whole difference from Sign out. A machine with no key (`remote.lock_kind` == `''`)
+refuses to lock rather than shipping a door that never opens again. Full reasoning in
+`docs/users.md`.
 
 ## One deliberate name divergence: the app is "Workflows", the code says `flows`
 
@@ -662,6 +717,67 @@ never passed before it, so it is not a regression. `tests/test_update_gate.py`
 pins all of it. The blunt `-x` gate this replaced bricked updates on a Mac —
 `test_safe_folders` cannot pass when the temp dir resolves under a system
 directory, so the machine could never self-update.
+
+## The first five minutes: a short front page and one question
+
+The install and `--help` are the same surface as everything else here, and both were
+failing the same way — by telling the truth at a volume nobody can read.
+
+- **`bento --help` lists ten verbs, not thirty-nine.** The mechanism is `verb()` in
+  `__main__.py`: argparse has no hidden subcommand, but a parser registered WITHOUT
+  `help=` is left out of the listing while staying in `sub.choices`. So nothing is
+  removed — `bento help --all` prints the whole catalogue from `VERBS`, which is why
+  the text is recorded there rather than only handed to argparse. `metavar` matters
+  as much as the list: without it the usage line is a forty-word wall that scrolls
+  the help off an 80-column SSH window. `tests/test_cli_help.py` pins all three.
+
+- **install.sh ASKS how the machine will be reached, and `--yes` cannot answer.**
+  Loopback-only is still the default and still right — but the desktop is a browser
+  page, so on a Pi over SSH that default means "an install nobody can open", and the
+  only thing that ever said so was one line at the end of a long log. `ask_deliberate`
+  exists to be the one prompt `--yes` does not reach: yes to every optional install
+  is consent to install THINGS, and opening this port hands a real shell to whatever
+  can reach the machine. There is deliberately no `--remote` flag; the only way in is
+  `--passphrase`, where the person choosing the secret is the person deciding.
+
+- **`[ -t 0 ]` is the wrong interactivity test for a script installed by a pipe.**
+  The documented install is `curl … | sh`, so stdin is never a terminal and every
+  question in that script was answered "no" without being asked. The terminal is
+  /dev/tty, and `INTERACTIVE` tests for it — while still resolving to "nobody" when
+  there is no controlling terminal, because a systemd unit or a container build must
+  never block on a prompt.
+
+- **A machine that has not been set up says so where it is looked at.** `serve()`
+  prints the arc's terminal entry point on every start until `setup_complete`, next
+  to the URL rather than after it. The browser wizard already opens itself
+  (`14-docs-setup.js`); the headless half had nothing, and "it is set up when you
+  open it" is not true on a machine nobody is sitting in front of.
+
+## The README is eleven files now
+
+`docs/i18n/README.<lang>.md` — eleven hand-written translations of the front page,
+each with a switcher to the other ten and back to English. Two things follow, and
+the first one is a real cost to accept before editing:
+
+- **Editing the English README puts eleven files out of date**, and nothing makes
+  them follow — they are prose, not generated. `tests/test_i18n_readme.py` pins
+  what can be pinned mechanically: the set is complete, every switcher resolves,
+  and the heading COUNT matches, which catches a section added on one side only.
+  It cannot catch a paragraph that changed meaning. If a change is small and you
+  cannot make it in all eleven, prefer leaving the English narrower over leaving
+  ten translations wrong — a sentence nobody on the team can proofread is worse
+  than a sentence that says less.
+- **They ship inside the product.** `docs/` is force-included into the wheel and
+  `/api/docs` globs `**/*.md`, so the Docs app and TUI tab 8 list them too. They
+  are titled by LANGUAGE there (`README — 日本語`) rather than by their own
+  heading, and this machine's language sorts first among them — eleven entries all
+  called "Bento Box AI — …" in scripts a reader cannot tell apart is how shipping
+  translations makes the docs worse. `localeinfo.DOC_LANGUAGES` is that table and
+  must stay equal to what is on disk.
+
+The guides under `docs/` are **English only**, deliberately for now: nothing has
+translated them, and a half-translated manual is worse than an honest English one.
+`docs/README.md` says so where somebody would go looking.
 
 ## Honesty rules
 

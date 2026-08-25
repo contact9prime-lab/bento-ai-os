@@ -1,5 +1,21 @@
 # AgentOS Documentation
 
+<p align="right"><sub>
+The overview is translated —
+<a href="i18n/README.zh-CN.md">简体中文</a> ·
+<a href="i18n/README.zh-TW.md">繁體中文</a> ·
+<a href="i18n/README.ja.md">日本語</a> ·
+<a href="i18n/README.ko.md">한국어</a> ·
+<a href="i18n/README.es.md">Español</a> ·
+<a href="i18n/README.pt-BR.md">Português&nbsp;(BR)</a> ·
+<a href="i18n/README.fr.md">Français</a> ·
+<a href="i18n/README.de.md">Deutsch</a> ·
+<a href="i18n/README.ru.md">Русский</a> ·
+<a href="i18n/README.hi.md">हिन्दी</a> ·
+<a href="i18n/README.ar.md">العربية</a><br>
+The guides below are English only.
+</sub></p>
+
 **Your machine, with a brain.** AgentOS is a local-first *agentic operating system*: a complete
 desktop environment, driven by an AI agent that takes real actions on your computer — running
 commands, managing files, building its own apps, and integrating with the host desktop. It runs

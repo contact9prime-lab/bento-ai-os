@@ -326,6 +326,17 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
   │   {url:<34}│
   └─────────────────────────────────────┘
 """)
+    # Say it BEFORE the URL scrolls away, and say it on every start until it is
+    # done. On a headless machine the browser wizard is a screen nobody is sitting
+    # in front of, so "it is set up when you open it" is not true here — the arc has
+    # a terminal face and this is the only place that names it.
+    try:
+        if cfgmod.is_first_run():
+            print("  ▲ this machine has not been set up yet.")
+            print("    over SSH:  bento setup   — name it, give it a brain, put it to work")
+            print("    or open the address above: the wizard is the first thing you see.\n")
+    except Exception:
+        pass                  # a banner is never a reason for a server not to start
     if remotemod.enabled(cfg):
         print("  remote access is ON — this desktop is reachable from your network:")
         for a in remotemod.lan_addresses(port):
@@ -2370,8 +2381,22 @@ def _remote_cli(args):
     if args.port:
         _set_port(cfg, args.port)
 
+    # A machine with accounts is ALREADY locked, and `remote.lock_kind` says so:
+    # accounts win, and a shared passphrase in front of them is one more secret
+    # held in common by people the rest of this OS keeps apart. Everything else
+    # here understood that — `enabled()`, `sanitize_remote()`, the sign-in page —
+    # and this command did not, so `bento remote --on` on a machine with users
+    # refused with "set a passphrase first" and then stored a passphrase that
+    # `lock_kind` would never consult. A door that cannot be opened, in front of
+    # a door that works.
+    by_accounts = remotemod.accounts_lock()
     pw = args.passphrase
-    if args.on and not pw and not r.get("pass_hash"):
+    if pw and by_accounts:
+        print("this machine is locked by its accounts — people sign in with their\n"
+              "own username and password, here and from anywhere. A passphrase as\n"
+              "well would be a second secret that nothing reads; not setting it.")
+        pw = ""
+    if args.on and not pw and not r.get("pass_hash") and not by_accounts:
         pw = getpass.getpass("Set a remote-access passphrase: ")
         if pw != getpass.getpass("Repeat it: "):
             print("those did not match")
@@ -2385,8 +2410,10 @@ def _remote_cli(args):
     if args.bind:
         r["bind"] = args.bind
     if args.on:
-        if not r.get("pass_hash"):
-            print("set a passphrase first: agentos remote --on --passphrase '<something long>'")
+        if not r.get("pass_hash") and not by_accounts:
+            print("this machine has no lock, and an open port here is an open shell.\n"
+                  "  one secret for the household:  bento remote --on --passphrase '<something long>'\n"
+                  "  or an account each:            bento user add <name>   (then --on needs no passphrase)")
             sys.exit(1)
         r["enabled"] = True
     if args.off:
@@ -2399,7 +2426,23 @@ def _remote_cli(args):
 
     st = remotemod.status(cfg)
     print(f"remote access: {'ON' if st['enabled'] else 'off'}"
-          f"{'' if st['configured'] else '  (no passphrase set)'}")
+          f"{'' if st['configured'] else '  (no lock — nothing to sign in with)'}")
+    # Name the lock rather than only the port. "Who do I sign in as?" is the first
+    # question anybody asks of a machine they have just made reachable, and the
+    # answer is different on a machine with accounts — it is a username, not a
+    # shared secret, and it is the same one at the keyboard.
+    if st["lock"] == "accounts":
+        try:
+            from . import users as usersmod
+            who = ", ".join(u["name"] for u in usersmod.list_users()[:4])
+        except Exception:
+            who = ""
+        print(f"  sign in: a username and password{' — ' + who if who else ''}")
+    elif st["lock"] == "passphrase":
+        print("  sign in: the remote passphrase (this machine has no accounts, so "
+              "there is no username to give)")
+        print("           `bento user add <name>` if you would rather sign in as "
+              "somebody — accounts then replace the passphrase.")
     print(f"  binds:   {remotemod.bind_host(cfg)}:{st['port']}")
     for a in st["addresses"]:
         print(f"  reach:   {a}")
@@ -2609,6 +2652,24 @@ def _log_cli(args) -> int:
     return 0
 
 
+def _confirm(question: str) -> bool:
+    """Ask a yes/no question, and take silence for no.
+
+    No terminal means nobody to ask: a systemd timer, a cron line or a CI step
+    must never block on a prompt, and answering it for them is worse than refusing
+    — so an unattended run gets the same refusal it always got, and only a person
+    sitting in front of the command can say yes. `--stash` is how a script says it
+    on purpose.
+    """
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        return input(f"\n  {question} [y/N] ").strip().lower() in ("y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def _update_cli(args) -> int:
     """`bento update` — is there a newer version, and pull it.
 
@@ -2687,22 +2748,65 @@ def _update_cli(args) -> int:
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
     ok, why = upd.can_apply(cfg)
+    stashed = ""
     if not ok:
-        print(f"\n✗ cannot install it here: {why}")
-        return 1
+        # "1 uncommitted change(s)" and a full stop is a dead end: the one thing
+        # the user needs — WHICH file, and what to do about it — is the thing the
+        # refusal did not say, so every hit meant leaving the command and running
+        # git by hand. Name them, then offer the one answer that loses nothing.
+        dirty = upd.local_changes()
+        if not dirty:
+            print(f"\n✗ cannot install it here: {why}")     # wrong branch, no git, …
+            return 1
+        print(f"\n! this checkout has {len(dirty)} uncommitted change"
+              f"{'s' if len(dirty) != 1 else ''} of your own:")
+        for c in dirty:
+            print(f"    {c['code']:<2}  {c['path']}")
+        print(f"\n  Updating would pull on top of them. Stashing parks them in the "
+              f"repository first —\n  nothing is discarded, and `git stash pop` brings "
+              f"them straight back afterwards.")
+        if not (getattr(args, "stash", False) or _confirm("stash them and install the update?")):
+            # A no is a full answer: say what was NOT done, and leave the two ways
+            # out that do not involve this command.
+            print("\n  stopped — nothing was stashed, pulled or restarted.")
+            print("  commit or stash them yourself, then:  bento update --apply")
+            return 1
+        okz, msg = upd.stash_local()
+        print(f"\n  {msg}")
+        if not okz:
+            return 1
+        stashed = msg
+        ok, why = upd.can_apply(cfg)
+        if not ok:
+            print(f"\n✗ still cannot install it here: {why}")
+            return 1
+        # Answering that prompt IS the instruction to install — asking again for
+        # `--apply` after somebody typed 'y' to "install the update?" would be the
+        # same dead end with an extra step.
+        args.apply = True
 
     if not getattr(args, "apply", False):
         print(f"\n  install it:  bento update --apply")
         return 0
+
+    # Work parked at the start of this command is the easiest thing in the world to
+    # forget, and whoever forgets it concludes the update ate their edits. So it is
+    # said again on the way out — on EVERY way out, including the two that fail:
+    # a rolled-back update with a silent stash behind it is the worst version of this.
+    def parked() -> None:
+        if stashed:
+            print(f"\n  your parked changes: {stashed.split('with: ')[-1]}")
 
     print()
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
                                    log=lambda m: print(f"  {m}")))
     if not result.get("ok"):
         print(f"✗ {result.get('error')}")
+        parked()
         return 1
     if result.get("unchanged"):
         print("✓ already at the newest commit — nothing changed")
+        parked()
         return 0
     print(f"✓ updated {result['from']} → {result['to']} "
           f"({result['files']} files, now {result.get('version') or '?'})")
@@ -2711,6 +2815,7 @@ def _update_cli(args) -> int:
     # of — this is the only place that machine's operator ever sees what changed.
     for c in (result.get("changes") or []):
         print(f"    {c['hash']}  {c['title'][:88]}")
+    parked()
 
     # An update that has not been loaded is a half-state: the files on disk and the
     # process answering turns disagree, and nothing on screen says which one you are
@@ -2998,6 +3103,40 @@ def _audit_cli(args):
               f"{who} via {a['surface'] or '?'} · {a['rule']}")
 
 
+def _help_cli(parser, sub, verbs: dict, everyday, args) -> int:
+    """`bento help` — the catalogue, in the two sizes it is actually wanted in.
+
+    `--help` shows the verbs a new machine needs; this is where the rest of them
+    are, so that shortening the front page never becomes hiding anything. A command
+    that is real but undiscoverable is worse than a long list.
+    """
+    topic = (args.topic or "").strip()
+    if topic:
+        p = sub.choices.get(topic)
+        if not p:
+            print(f"no such command: {topic}")
+            print(f"  `{parser.prog} help --all` lists every one")
+            return 2
+        p.print_help()
+        return 0
+    if not args.all:
+        parser.print_help()
+        return 0
+
+    width = max(len(v) for v in verbs) + 2
+    print(f"\n{parser.prog} — every command on this machine.\n")
+    print("  every day")
+    for v in verbs:
+        if v in everyday:
+            print(f"    {v:<{width}}{verbs[v]}")
+    print("\n  the rest")
+    for v in verbs:
+        if v not in everyday:
+            print(f"    {v:<{width}}{verbs[v]}")
+    print(f"\n  `{parser.prog} help <command>` for one of them in full.\n")
+    return 0
+
+
 def main():
     _use_system_certs()
     # Name it after however it was invoked. `bento` and `agentos` are the same
@@ -3011,9 +3150,44 @@ def main():
     # An environment variable too, so a cron line or a systemd unit can say it once.
     parser.add_argument("--user", default=os.environ.get("AGENTOS_USER", ""),
                         help="act as this user (multi-user machines only)")
-    sub = parser.add_subparsers(dest="cmd")
+    # `metavar`, or the usage line is a 39-word comma-separated wall that scrolls
+    # the actual help off an 80-column SSH window — which is exactly the terminal a
+    # fresh Pi is read from.
+    sub = parser.add_subparsers(dest="cmd", title="commands", metavar="<command>")
 
-    p_serve = sub.add_parser("serve", help="start the AgentOS server + UI (default)")
+    # The verbs a machine that was installed ten minutes ago needs. Everything else
+    # still exists, still works, and is still documented — it is just not the first
+    # thing somebody is shown, because a list of 39 things reads as "you have to
+    # understand all of this" rather than "start here".
+    EVERYDAY = ("setup", "serve", "tui", "ask", "remote", "service",
+                "doctor", "update", "job", "config")
+    VERBS: dict[str, str] = {}          # every verb -> its one-liner, in order
+
+    def verb(name, help="", **kw):
+        """Register a subcommand.
+
+        argparse has no notion of a hidden subcommand: a parser registered WITHOUT
+        `help=` is absent from the listing while remaining a perfectly valid choice.
+        That is the whole mechanism here — nothing is removed, and `bento help --all`
+        prints the full catalogue from `VERBS`, which is why the text is recorded
+        here rather than only handed to argparse.
+        """
+        VERBS[name] = help
+        for a in kw.get("aliases", ()):
+            VERBS[a] = f"same as `{name}`"
+        if name in EVERYDAY:
+            kw["help"] = help
+        return sub.add_parser(name, **kw)
+
+    p_help = verb("help", help="the full list of commands, or help for one of them")
+    p_help.add_argument("topic", nargs="?", default="",
+                        help="a command name — `bento help remote`")
+    p_help.add_argument("--all", action="store_true",
+                        help="every command, including the ones --help does not list")
+
+    verb("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
+
+    p_serve = verb("serve", help="start the AgentOS server + UI (default)")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=0)
     p_serve.add_argument("--no-browser", action="store_true")
@@ -3025,17 +3199,19 @@ def main():
                          help="one is already running: ask (default), open it, use "
                               "another port, restart it, or fail")
 
-    p_ask = sub.add_parser("ask", help="one-shot agent run in the terminal")
+    verb("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
+
+    p_ask = verb("ask", help="one-shot agent run in the terminal")
     p_ask.add_argument("prompt", nargs="+")
     p_ask.add_argument("--model", default=None, help="e.g. ollama/qwen3.5:9b")
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
-    p_usage = sub.add_parser("usage", help="what the agent has spent — tokens, and money where the model is priced")
+    p_usage = verb("usage", help="what the agent has spent — tokens, and money where the model is priced")
     p_usage.add_argument("--days", type=float, default=1.0, help="how far back (default: 1)")
     p_usage.add_argument("--by", default="model",
                          choices=["model", "day", "surface", "kind", "conversation", "space"])
 
-    p_eval = sub.add_parser("eval", help="run the behavioural evals against a model (does the agent still behave?)")
+    p_eval = verb("eval", help="run the behavioural evals against a model (does the agent still behave?)")
     p_eval.add_argument("--model", action="append", default=None,
                         help="model to test; repeat to compare several (default: the configured one)")
     p_eval.add_argument("--case", action="append", default=None, help="run only this case id (repeatable)")
@@ -3045,16 +3221,16 @@ def main():
     p_eval.add_argument("--verbose", "-v", action="store_true", help="show every assertion, not just failures")
     p_eval.add_argument("--json", action="store_true", help="print the raw report")
 
-    p_fwd = sub.add_parser("forward", help="make this machine answer with another agent (or show what it does now)")
+    p_fwd = verb("forward", help="make this machine answer with another agent (or show what it does now)")
     p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
-    p_prof = sub.add_parser("profile", help="footprint profile — lite keeps nothing "
+    p_prof = verb("profile", help="footprint profile — lite keeps nothing "
                                             "it is not using (for a Pi)")
     p_prof.add_argument("profile", nargs="?", choices=["auto", "full", "lite"],
                         help="omit to show what this machine is doing now")
 
-    p_brain = sub.add_parser("brain", help="which executor answers and which of its models "
+    p_brain = verb("brain", help="which executor answers and which of its models "
                                           "(omit everything to list what could)")
     # No `choices=`: the executors are a probe of this machine, and a hardcoded
     # list here is how `bento forward` ended up unable to name Hermes or OpenClaw.
@@ -3063,27 +3239,25 @@ def main():
                                                     "openclaw | aria")
     p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default")
 
-    p_del = sub.add_parser("delegate", help="hand a task to an executor (Claude Code) and stream it here")
+    p_del = verb("delegate", help="hand a task to an executor (Claude Code) and stream it here")
     p_del.add_argument("prompt", nargs="+")
     p_del.add_argument("--dir", default=None, help="the only folder it may touch (default: the configured workspace)")
     p_del.add_argument("--tools", default=None, help="comma-separated, e.g. Read,Grep,Edit (default: the configured envelope)")
     p_del.add_argument("--model", default=None, help="model for the executor; omit to use its own default")
     p_del.add_argument("--budget", type=float, default=None, help="hard spend ceiling in USD")
 
-    sub.add_parser("app", help="open AgentOS as a desktop app window")
-    p_doctor = sub.add_parser("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
+    verb("app", help="open AgentOS as a desktop app window")
+    p_doctor = verb("doctor", help="check the environment: port conflicts, duplicate instances, Ollama/VRAM, DB health")
     p_doctor.add_argument("--fix", action="store_true", help="auto-repair what's safe; print sudo steps for the rest")
     p_doctor.add_argument("--session", action="store_true",
                           help="probe what can actually draw the desktop on this machine "
                                "(why the session came up, or did not)")
-    sub.add_parser("tui", help="terminal UI — the AgentOS agent in your terminal (great over SSH)")
-    sub.add_parser("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
-    p_install = sub.add_parser("install", help="install app launcher + boot service + login autostart")
+    p_install = verb("install", help="install app launcher + boot service + login autostart")
     p_install.add_argument("--no-service", action="store_true",
                            help="launcher only; skip the background boot service")
     p_install.add_argument("--no-login", action="store_true",
                            help="don't open AgentOS automatically at login")
-    sub.add_parser("uninstall", help="remove launcher + boot service")
+    verb("uninstall", help="remove launcher + boot service")
     # The background server, from the terminal. This is the half of `install` that
     # was missing: `bento install` put a systemd unit / LaunchAgent on the machine
     # and then every later question about it — is it up, stop it, why did it die,
@@ -3091,17 +3265,21 @@ def main():
     # is asking the user to know which OS they are on to control their own agent.
     # Checking is the default and changes nothing; installing is an explicit flag.
     # A bare verb must not rewrite the code that is answering the user's turns.
-    p_upd = sub.add_parser("update",
+    p_upd = verb("update",
                            help="check for a newer AgentOS, and pull it with --apply")
     p_upd.add_argument("--apply", action="store_true",
                        help="actually install it: fast-forward, sync deps, run the "
                             "tests, restart")
+    p_upd.add_argument("--stash", action="store_true",
+                       help="if the checkout has your own uncommitted edits, park them "
+                            "with `git stash` and update anyway (answers the prompt "
+                            "for an unattended run)")
     p_upd.add_argument("--no-tests", action="store_true",
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
                        help="leave the restart to you")
 
-    p_svc = sub.add_parser("service",
+    p_svc = verb("service",
                            help="the background server: status, start, stop, restart, logs, uninstall")
     p_svc.add_argument("action", nargs="?", default="status",
                        choices=["status", "start", "stop", "restart",
@@ -3112,17 +3290,17 @@ def main():
                        help="logs: keep streaming")
     p_svc.add_argument("--no-login", action="store_true",
                        help="install: don't also open the AgentOS window at login")
-    p_restart = sub.add_parser("restart",
+    p_restart = verb("restart",
                                help="restart the running AgentOS server (to load code changes)")
     p_restart.add_argument("--port", type=int, default=0,
                            help="port the server is on (default: the configured one)")
-    p_auto = sub.add_parser("autostart", help="open AgentOS at login (on) or stop (--off)")
+    p_auto = verb("autostart", help="open AgentOS at login (on) or stop (--off)")
     p_auto.add_argument("--off", action="store_true", help="disable login autostart")
     # The installer is the one entry point that has to work BEFORE anything is
     # set up — on a machine where the session packages are missing and the
     # server has never run. That is why it is a plain terminal UI rather than a
     # screen in `agentos tui`, which needs Textual and a live server.
-    p_inst = sub.add_parser("installer",
+    p_inst = verb("installer",
                             help="terminal installer — detect this OS and install what "
                                  "AgentOS needs (re-runnable; shows what is missing)")
     p_inst.add_argument("--session", action="store_true",
@@ -3130,7 +3308,7 @@ def main():
     p_inst.add_argument("--yes", action="store_true",
                         help="install everything offered without asking (still prints "
                              "every package and licence first)")
-    p_sess = sub.add_parser("install-session",
+    p_sess = verb("install-session",
                             help="add AgentOS as a login session (Linux only) — pick it at the login screen, "
                                  "or --autologin to boot straight into it")
     p_sess.add_argument("--wayland", action="store_true",
@@ -3142,13 +3320,13 @@ def main():
     p_sess.add_argument("--force", action="store_true",
                         help="allow --autologin over SSH")
     p_sess.add_argument("--remove", action="store_true", help="remove the AgentOS session")
-    p_log = sub.add_parser("log", aliases=["logs"],
+    p_log = verb("log", aliases=["logs"],
                            help="the process log and everything AgentOS recorded as an error")
     p_log.add_argument("-n", "--lines", type=int, default=60, help="how many lines (default 60)")
     p_log.add_argument("-f", "--follow", action="store_true", help="keep streaming")
     p_log.add_argument("--errors", dest="errors_only", action="store_true",
                        help="only what AgentOS recorded as an error")
-    p_fold = sub.add_parser("folders",
+    p_fold = verb("folders",
                             help="show or change the folders the agent may work in, and who may work there")
     p_fold.add_argument("action", nargs="?", default="", choices=["", "list", "add", "remove"],
                         help="omit to list")
@@ -3156,7 +3334,7 @@ def main():
     p_fold.add_argument("--mode", default="rw", help="ro (read-only) or rw (read-write)")
     p_fold.add_argument("--users", default="",
                         help="accounts to share with, comma separated (omit for everyone)")
-    p_chan = sub.add_parser("channels", help="show or change the ways in (this window, terminal, remote, API, Telegram…) and how far each is trusted")
+    p_chan = verb("channels", help="show or change the ways in (this window, terminal, remote, API, Telegram…) and how far each is trusted")
     p_chan.add_argument("channel", nargs="?", default="", help="channel id (omit to list them all)")
     p_chan.add_argument("--on", action="store_true", help="switch this channel on")
     p_chan.add_argument("--off", action="store_true", help="switch this channel off")
@@ -3173,7 +3351,7 @@ def main():
                         help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
                              "(repeatable; `agentos channels <id>` lists the fields it needs)")
 
-    p_tun = sub.add_parser("tunnel", help="show how to reach this machine from elsewhere (Tailscale / tunnel), or publish it")
+    p_tun = verb("tunnel", help="show how to reach this machine from elsewhere (Tailscale / tunnel), or publish it")
     p_tun.add_argument("--on", action="store_true", help="publish AgentOS")
     p_tun.add_argument("--off", action="store_true", help="stop publishing")
     p_tun.add_argument("--public", action="store_true",
@@ -3185,31 +3363,31 @@ def main():
     # Spaces, the gallery inventory and the access ledger from a terminal. Each of
     # these is a real capability, so each needs a way in with no pointer — a
     # headless server is exactly where you audit what ran overnight.
-    p_space = sub.add_parser("space", help="show or switch the space this terminal works in")
+    p_space = verb("space", help="show or switch the space this terminal works in")
     p_space.add_argument("name", nargs="?", default="", help="space to work in (omit to list)")
     p_space.add_argument("--none", action="store_true", help="work everywhere (the shared scope)")
     p_space.add_argument("--new", default="", help="create a space with this name")
     p_space.add_argument("--about", default="", help="one line describing a new space")
 
-    p_tl = sub.add_parser("timeline", help="what happened — runs, assets, memory, apps")
+    p_tl = verb("timeline", help="what happened — runs, assets, memory, apps")
     p_tl.add_argument("--since", default="7d", help="e.g. 24h, 7d, 30d (default 7d)")
     p_tl.add_argument("--kind", default="", help="run | asset | memory | app_version | conversation | task")
     p_tl.add_argument("--limit", type=int, default=40)
 
-    p_assets = sub.add_parser("assets", help="list, open or remove things the agent made")
+    p_assets = verb("assets", help="list, open or remove things the agent made")
     p_assets.add_argument("action", nargs="?", default="list",
                           choices=["list", "path", "open", "rm"])
     p_assets.add_argument("id", nargs="?", default="", help="asset id, for path/open/rm")
     p_assets.add_argument("--kind", default="", help="image | video | audio | doc")
 
-    p_audit = sub.add_parser("audit", help="the access ledger — who was allowed to do what")
+    p_audit = verb("audit", help="the access ledger — who was allowed to do what")
     p_audit.add_argument("--since", default="24h", help="e.g. 1h, 24h, 7d (default 24h)")
     p_audit.add_argument("--effect", default="", choices=["", "allow", "deny", "ask"])
     p_audit.add_argument("--who", default="", help="user | app | subagent | workflow | system")
     p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
     p_audit.add_argument("--limit", type=int, default=50)
 
-    p_flow = sub.add_parser("flow", help="flows — standing missions run by a master orchestrator")
+    p_flow = verb("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",
                         choices=["list", "run", "show", "approvals", "allow", "deny", "hooks",
                                  "add", "trigger", "rotate", "enable", "disable",
@@ -3239,7 +3417,7 @@ def main():
                         help="with `rotate`: expire the new secret after N days (0 = never)")
     p_flow.add_argument("--limit", type=int, default=20, help="with `runs`/`events`: how many")
 
-    p_job = sub.add_parser("job", help="give this machine a standing job — the terminal "
+    p_job = verb("job", help="give this machine a standing job — the terminal "
                                        "half of the first-run 'give it a job' screen")
     p_job.add_argument("action", nargs="?", default="list",
                        choices=["list", "recipes", "add", "run"])
@@ -3251,7 +3429,7 @@ def main():
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
     p_job.add_argument("--deliver", default="", help="report | notify | telegram")
 
-    p_user = sub.add_parser("user", help="accounts — several people on one machine, "
+    p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
     p_user.add_argument("action", nargs="?", default="list",
                         choices=["list", "add", "role", "passwd", "remove"])
@@ -3266,7 +3444,7 @@ def main():
     # way to change it was a GUI panel or a command that happened to own one key —
     # so "change the port" lived under `bento remote`, which is filed under remote
     # access and is not where anybody looks for it.
-    p_cfg = sub.add_parser("config",
+    p_cfg = verb("config",
                            help="show or change settings (~/.agentos/config.json)")
     p_cfg.add_argument("key", nargs="?", default="",
                        help="dotted, e.g. port, remote.bind, telegram.enabled "
@@ -3279,7 +3457,7 @@ def main():
     p_cfg.add_argument("--edit", action="store_true",
                        help="open it in $EDITOR; refuses to save invalid JSON")
 
-    p_remote = sub.add_parser("remote", help="show or change remote access (reach this desktop from your phone)")
+    p_remote = verb("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
@@ -3290,13 +3468,13 @@ def main():
 
     # Every graphical capability needs a way in from a terminal too — a headless
     # Pi reached over SSH is a first-class way to run AgentOS, not an edge case.
-    p_apps = sub.add_parser("apps", help="find, install and remove native applications")
+    p_apps = verb("apps", help="find, install and remove native applications")
     p_apps.add_argument("action", nargs="?", default="list",
                         choices=["list", "search", "install", "remove"])
     p_apps.add_argument("name", nargs="?", default="", help="query, or the package to act on")
     p_apps.add_argument("--backend", default="", help="flatpak, apt, dnf or pacman")
 
-    p_mcp = sub.add_parser("mcp", help="MCP servers — what is connected, and add the "
+    p_mcp = verb("mcp", help="MCP servers — what is connected, and add the "
                                        "first-party ones (Canva, Higgsfield, Notion…)")
     p_mcp.add_argument("action", nargs="?", default="list",
                        choices=["list", "catalog", "add", "connect", "disconnect"])
@@ -3304,7 +3482,7 @@ def main():
                        help="with add: a catalogue key (canva, higgsfield…); "
                             "otherwise a configured server name")
 
-    p_quar = sub.add_parser("quarantine",
+    p_quar = verb("quarantine",
                             help="what the OS stopped for running away, and let it go again")
     p_quar.add_argument("action", nargs="?", default="list",
                         choices=["list", "history", "release"])
@@ -3312,17 +3490,27 @@ def main():
     p_quar.add_argument("--mode", default="once", choices=["once", "forever", "deleted"],
                         help="once (still watched), forever (an exemption), deleted")
 
-    p_rd = sub.add_parser("remote-desktop",
+    p_rd = verb("remote-desktop",
                           help="the browser remote desktop — use the real screen from a phone")
     p_rd.add_argument("--on", action="store_true", help="start it")
     p_rd.add_argument("--off", action="store_true", help="stop it")
 
-    p_mode = sub.add_parser("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
+    p_mode = verb("session", help="show or pin the desktop run mode (auto | de | hosted | kiosk)")
     p_mode.add_argument("action", nargs="?", default="show", choices=["show", "mode", "run"])
     p_mode.add_argument("value", nargs="?", default="",
                         help="with `mode`: auto, de, hosted or kiosk")
 
+    # Set here rather than at construction: it counts the catalogue, and the
+    # catalogue is not complete until the last verb above has registered.
+    hidden = len(VERBS) - len([v for v in VERBS if v in EVERYDAY])
+    parser.epilog = (f"{len(VERBS)} commands in all — `{parser.prog} help --all` lists "
+                     f"the other {hidden}.\n"
+                     f"New machine? `{parser.prog} setup` walks the whole thing.")
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+
     args = parser.parse_args()
+    if args.cmd == "help":
+        raise SystemExit(_help_cli(parser, sub, VERBS, EVERYDAY, args))
     if args.cmd == "doctor":
         doctor(fix=getattr(args, "fix", False), session=getattr(args, "session", False))
     elif args.cmd == "ask":

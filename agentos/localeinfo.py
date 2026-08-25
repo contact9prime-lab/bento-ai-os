@@ -195,3 +195,40 @@ def timezones() -> list[str]:
         return sorted(available_timezones())
     except Exception:
         return sorted({detect().get("timezone", "") or "UTC", "UTC"})
+
+
+#: The languages the overview is translated into, each under the name it is
+#: offered by. Same set as `docs/i18n/` — the file is the source of truth and
+#: `tests/test_i18n_readme.py` keeps the two from drifting.
+#:
+#: The NAME matters more than the code. Somebody looking for their language
+#: scans for the word in their own script, which is also why these are not
+#: translated into English here.
+DOC_LANGUAGES = {
+    "zh-CN": "简体中文", "zh-TW": "繁體中文", "ja": "日本語", "ko": "한국어",
+    "es": "Español", "pt-BR": "Português (BR)", "fr": "Français", "de": "Deutsch",
+    "ru": "Русский", "hi": "हिन्दी", "ar": "العربية",
+}
+
+
+def doc_language(language: str = "", cfg: dict | None = None) -> str:
+    """Which translated overview best matches this machine, or '' for none.
+
+    Exact match first: `pt-BR` must not be answered by a bare `pt`, and `zh-CN`
+    and `zh-TW` are different documents rather than variants of one. Then the
+    bare language, so a `ja-JP` machine finds `ja` — and an `en-GB` one correctly
+    finds nothing, because English is the original and is not in this table.
+    """
+    lang = (language or (effective(cfg or {}).get("language") if cfg is not None else "")).strip()
+    if not lang:
+        return ""
+    lang = lang.replace("_", "-")
+    if lang in DOC_LANGUAGES:
+        return lang
+    base = lang.split("-", 1)[0].lower()
+    # A bare language against regional files: take it only when there is ONE
+    # candidate. `pt` is Portuguese and there is only one of those, so answering
+    # `pt-BR` is right; `zh` is two different documents and guessing between
+    # Simplified and Traditional is worse than offering neither.
+    near = [c for c in DOC_LANGUAGES if c.split("-", 1)[0].lower() == base]
+    return near[0] if len(near) == 1 else ""

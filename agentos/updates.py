@@ -126,6 +126,69 @@ def install_dir() -> Path | None:
     return root if (root / ".git").exists() else None
 
 
+def local_changes(root: Path | None = None) -> list[dict]:
+    """The tracked files this checkout has changed, as `[{code, path}]`.
+
+    `can_apply` already knows they exist — it counts them to refuse. What it could
+    not say is WHICH, and "1 uncommitted change(s)" is not something anyone can act
+    on without leaving the command and running git themselves. That gap is the
+    whole reason the refusal read as a dead end rather than a decision.
+
+    Tracked files only, for the same reason the gate counts only those: an
+    untracked file is not work a fast-forward can clobber.
+    """
+    root = root or install_dir()
+    if not root:
+        return []
+    ok, out = _run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root)
+    if not ok:
+        return []
+    changed = []
+    for line in out.splitlines():
+        # Split on whitespace rather than at a fixed column: `_run` strips its
+        # output, so the FIRST line has lost the leading space of a ` M` code and
+        # the rest have not — a column offset gets one of the two wrong, and the
+        # one it gets wrong is the file the user is being asked about.
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        code, path = parts
+        # `R old -> new` names two paths; the new one is the file as it stands.
+        changed.append({"code": code, "path": path.split(" -> ")[-1].strip()})
+    return changed
+
+
+def stash_local(root: Path | None = None, message: str = "") -> tuple[bool, str]:
+    """Park the local work so an update can land on a clean tree. Never discards.
+
+    A stash is the one answer to "update on top of my edits" that loses nothing:
+    the work is still in the repository, `git stash pop` brings it back, and if it
+    conflicts with what was pulled, git says so at pop time rather than silently
+    merging. Discarding is deliberately not offered here — refusing is recoverable,
+    a `checkout --` is not.
+    """
+    root = root or install_dir()
+    if not root:
+        return False, "this copy is not a git checkout, so there is nothing to stash"
+    if not local_changes(root):
+        # `git stash push` exits 0 on a clean tree having stashed nothing, and
+        # saying "get them back with stash pop" after that sends the user to
+        # somebody else's stash — or to an empty list, wondering what was lost.
+        return True, "nothing of yours to stash — the checkout is already clean"
+    msg = message or f"agentos: parked by `bento update` at {time.strftime('%Y-%m-%d %H:%M')}"
+    ok, out = _run(["git", "stash", "push", "-m", msg], cwd=root)
+    if not ok:
+        return False, f"could not stash your changes: {out[:200]}"
+    # Trust the tree, not the exit code: `git stash push` exits 0 having stashed
+    # nothing when there was nothing to stash, and an update that proceeds on that
+    # answer is the pull-over-your-work this exists to prevent.
+    left = local_changes(root)
+    if left:
+        return False, (f"{len(left)} change(s) are still uncommitted after stashing — "
+                       f"nothing was updated")
+    return True, f"stashed your changes — get them back with: git -C {root} stash pop"
+
+
 def can_apply(cfg: dict) -> tuple[bool, str]:
     """May an update be installed right now? Returns (ok, why not)."""
     root = install_dir()
@@ -150,7 +213,8 @@ def can_apply(cfg: dict) -> tuple[bool, str]:
         n = len(out.strip().splitlines())
         return False, (f"There are {n} uncommitted change(s) to tracked files in {root}. "
                        f"Updating would pull on top of your own work, so it is refused — "
-                       f"commit or stash them first.")
+                       f"commit or stash them first. `bento update` names them and offers "
+                       f"to stash them for you.")
     ok, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     want = conf(cfg).get("branch") or DEFAULT_BRANCH
     if not ok or branch.strip() != want:

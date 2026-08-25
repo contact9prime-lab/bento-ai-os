@@ -266,6 +266,11 @@ function palIntent(q){
     act('⌁',m[1]?`Join Wi-Fi "${m[1].trim()}"`:'Wi-Fi settings','open Network settings',()=>{openApp('syssettings')});
   }
   if(P(/^lock(?:\s+(?:the\s+)?screen)?$/i))act('⌗','Lock screen','',()=>powerDo('lock','Lock the screen?'));
+  // Reachable by keyboard alone, which is the only way in when the pointer is not
+  // the point. Offered on the same condition the menu item is: a key to unlock
+  // with, and not SUI — see lockDesktop().
+  if(P(/^lock(?:\s+(?:the\s+)?desktop|\s+agentos|\s+bento)?$/i)&&USERS.lock&&!suiActive())
+    act('⌗','Lock desktop','your password brings it back',()=>lockDesktop());
   if(P(/^(?:suspend|sleep)$/i))act('☾','Suspend','put the machine to sleep',()=>powerDo('suspend','Suspend the machine?'));
   if(P(/^(?:restart|reboot)(?:\s+(?:the\s+)?(?:machine|computer|pc))?$/i))act('↻','Restart the machine','',()=>powerDo('restart','Restart the machine?'));
   if(P(/^(?:power\s*off|shut\s*down)$/i))act('⏻','Power off','',()=>powerDo('poweroff','Power off the machine?'));

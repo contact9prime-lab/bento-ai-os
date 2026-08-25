@@ -15,6 +15,7 @@ by accident and expensive to notice:
     ever gets bound to an address, that argument is gone.
 """
 import pathlib
+import re
 
 import pytest
 
@@ -180,9 +181,15 @@ def test_novnc_route_resolves_before_checking_containment():
 # the most ordinary thing anyone does with a machine.
 
 def test_native_apps_and_remote_desktop_are_reachable_from_a_terminal():
+    # Matched on the verb NAME, not on how it is registered. This used to pin
+    # `sub.add_parser("apps"` and broke the day the CLI grew a registration helper
+    # to keep `--help` short — a green-to-red on a test whose subject (does the TUI
+    # have these verbs?) had not changed at all.
     cli = (SRC / "__main__.py").read_text()
-    assert 'sub.add_parser("apps"' in cli
-    assert 'sub.add_parser("remote-desktop"' in cli
+    for name in ("apps", "remote-desktop"):
+        assert re.search(rf'(sub\.add_parser|verb)\("{name}"', cli), (
+            f"`bento {name}` is no longer registered — the TUI half of this "
+            f"capability has gone")
     assert "def _apps_cli" in cli and "def _remote_desktop_cli" in cli
 
 

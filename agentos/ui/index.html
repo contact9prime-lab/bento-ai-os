@@ -661,6 +661,13 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .approval .deny{border:1px solid var(--line);color:var(--dim);padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny:hover{color:var(--err);border-color:var(--err)}
 .approval.resolved{opacity:.55}
+/* the price card is the approval card with two numbers in it — same shape,
+   because it is the same kind of interruption: a turn is held on you. */
+.approval .prow{display:flex;gap:10px;align-items:center;margin:9px 0;flex-wrap:wrap}
+.approval .prow label{color:var(--dim);font-size:var(--fs-sm)}
+.approval .prow input{width:88px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:6px 8px;color:var(--fg);font-family:var(--mono);
+  font-size:var(--fs-sm)}
 .approval.resolved .btns{display:none}
 .errmsg{color:var(--err);background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3);border-radius:var(--r-md);padding:10px 14px;margin-bottom:12px;font-size:var(--fs-md)}
 
@@ -1898,10 +1905,45 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   --safe-r:env(safe-area-inset-right,0px);
 }
 
-/* ---------- touch: bigger targets everywhere, no hover-only affordances ---------- */
-body.dev-touch .win .tbtns button{width:17px;height:17px}
+/* ---------- touch: bigger targets everywhere, no hover-only affordances ----------
+
+   "Everywhere" used to mean three things: the window buttons, the prompt bar and
+   the tray. Every control INSIDE an app kept the size a mouse gave it — measured
+   on a 390px phone, that is a 16px-tall ✕ in Flows, a 23px "clear session" in
+   Chat, a 24px toolbar button in Studio. A fingertip is about 9mm, which is why
+   Apple asks for 44pt and Android for 48dp, and a 16px target is not a button
+   somebody misses occasionally: it is a button that does not work.
+
+   So the floor is applied to controls generally, and it is REAL size rather than
+   an invisible halo around a small one. A halo is the tempting fix — no reflow,
+   nothing moves — but two adjacent 16px buttons with 40px halos overlap, and
+   whichever paints last silently eats the other's taps. That is the same bug
+   wearing a hat. Real size reflows a dense row on a phone, which is correct: on a
+   phone the row was too dense.
+
+   `--tap` is a token so a place that genuinely cannot afford it (the traffic
+   lights, which are a shape people recognise) can say so once, in one line, and
+   still be big enough to hit. */
+body.dev-touch{--tap:40px}
+body.dev-touch .win button,body.dev-touch .win select,
+body.dev-touch .win input:not([type=checkbox]):not([type=radio]):not([type=range]),
+body.dev-touch #startmenu button,body.dev-touch #ccpop button,
+body.dev-touch #notifpanel button,body.dev-touch #powermenu button,
+body.dev-touch .ob-body button,body.dev-touch .ob-foot button,
+body.dev-touch #palbox button,body.dev-touch #swbox button{
+  min-height:var(--tap);min-width:var(--tap)}
+/* Text inputs want the height and not the width — a min-width on a field that is
+   meant to sit in a row makes it wrap for no reason. */
+body.dev-touch .win input:not([type=checkbox]):not([type=radio]):not([type=range]),
+body.dev-touch .win select,body.dev-touch .win textarea{min-width:0}
+/* The exceptions, each because the control is a shape rather than a hit area.
+   They get a hit area anyway — just their own. */
+body.dev-touch .win .tbtns button{width:17px;height:17px;min-width:0;min-height:0}
 body.dev-touch .win .ttl{height:46px}
 body.dev-touch #omnibar button,body.dev-touch #tray button{min-width:36px;min-height:36px}
+/* The prompt bar's input was 17px tall — the one control on the phone's home
+   screen, and the shortest thing on it. */
+body.dev-touch #omni-in{min-height:32px}
 body.dev-touch .widget .wgh{opacity:1;pointer-events:auto}   /* no hover to reveal the grip */
 body.dev-touch .dockb::before,body.dev-touch .tbwin::before,
 body.dev-touch .tbnat::before,body.dev-touch #startbtn::before{display:none}   /* tooltips need a cursor */
@@ -1960,13 +2002,44 @@ body.dev-mobile .win{inset:0!important;left:0!important;top:0!important;
 body.dev-mobile .win .rz{display:none!important}
 body.dev-mobile .win .ttl{grid-template-columns:auto 1fr auto;height:48px;padding:0 12px}
 body.dev-mobile .win .tbtns .mn,body.dev-mobile .win .tbtns .mx{display:none}
-body.dev-mobile .win .tbtns .cls{width:26px;height:26px;border-radius:var(--r-full);
-  background:var(--bg4);border:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+/* 38px, not 26. This is the only way out of a full-screen sheet and it is the
+   button somebody reaches for first — it was two thirds of the size a finger
+   needs, in the corner of the screen, which is the hardest place to be accurate.
+   The title bar is 48px, so it fits with room to spare. */
+body.dev-mobile .win .tbtns .cls{width:38px;height:38px;border-radius:var(--r-full);
+  background:var(--bg4);border:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-base)}
 body.dev-mobile .win .tname{font-size:var(--fs-base)}
 body.dev-mobile .copanel{display:none!important}   /* the copilot rail needs a second column */
+/* ...and so the ✦ that opens it goes too. It was still in every title bar on a
+   phone, and tapping it ran toggleCopilot() against a panel that cannot be
+   displayed here — a control that responds to a tap by doing nothing, which is
+   indistinguishable from the OS being broken. The agent is one tap away in the
+   dock and in the prompt bar; this button is the one place it is not. */
+body.dev-mobile .win .cp-btn{display:none}
 
 /* ---- in-app rails collapse: a phone shows one pane ---- */
 body.dev-mobile .cside,body.dev-mobile .stside{display:none!important}
+/* Settings' rail is 188px of a 390px screen, and it was the one rail nobody
+   collapsed — so the pane beside it was 202px wide and its rows ran off the
+   edge of the phone. Measured: the brain and model pickers, the model refresh,
+   the Ollama URL and every API key field sat between x=404 and x=571 on a 390px
+   screen, clipped by an overflow:hidden ancestor. Not small. Not reachable.
+   Hiding the rail is not an option — it is the only way to the other ten tabs —
+   so it turns on its side: a scrolling strip above the content, which is what a
+   phone does with tabs anyway. */
+body.dev-mobile .prefs{flex-direction:column}
+body.dev-mobile .prefs-side{flex:none;width:auto;display:flex;gap:6px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  border-right:none;border-bottom:1px solid var(--line);padding:8px 10px}
+body.dev-mobile .prefs-side::-webkit-scrollbar{display:none}
+body.dev-mobile .prefs-side button{flex:0 0 auto;white-space:nowrap;
+  scroll-snap-align:center;padding:8px 12px}
+body.dev-mobile .prefs-side .psi{display:none}   /* the label is the target here */
+body.dev-mobile #prefs-main{width:auto}
+/* and the rows inside it stack rather than run off the side */
+body.dev-mobile .prefs .pc,body.dev-mobile .prefs .s-modelrow{flex-wrap:wrap;max-width:100%}
+body.dev-mobile .prefs .pc>input,body.dev-mobile .prefs .pc>select,
+body.dev-mobile .prefs .s-modelrow>select{flex:1 1 100%;min-width:0;max-width:100%}
 body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;padding-right:12px}
 body.dev-mobile .msg.user .bubble{max-width:92%}
 body.dev-mobile .pad{padding:12px 14px}
@@ -1976,6 +2049,17 @@ body.dev-mobile .phead .ps{display:none}
 /* hot corners need a pointer that can rest in a corner; a phone has neither the
    pointer nor the corners to spare, so the picker isn't offered here */
 body.dev-mobile .hc-box{display:none}
+/* A segmented tab row is exactly as wide as its labels, and a phone is not.
+   `.seg` is shared by every app that has tabs, so this was not one app's bug:
+   measured in the App Store, six tabs came to 469px on a 390px screen and the
+   last one — "Build with AI" — was not on the phone at all, with nothing to say
+   a tab was missing. It scrolls rather than wraps, because a wrapped segmented
+   control stops reading as one control; snapping keeps it from resting on a
+   half-tab, which is the same untappable state in miniature. */
+body.dev-mobile .seg{max-width:100%;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;scroll-snap-type:x proximity}
+body.dev-mobile .seg::-webkit-scrollbar{display:none}
+body.dev-mobile .seg button{flex:0 0 auto;scroll-snap-align:center}
 /* app toolbars are built for a wide window — let them wrap instead of clipping */
 body.dev-mobile #topbar,body.dev-mobile .stcompose,body.dev-mobile .stident{flex-wrap:wrap}
 body.dev-mobile #topbar>select,body.dev-mobile #modelsel{flex:1 1 46%;min-width:0;max-width:none}
@@ -1995,7 +2079,14 @@ body.dev-mobile #taskbar{left:0;right:0;bottom:0;transform:none;max-width:none;
   border-radius:0;border:none;border-top:1px solid var(--hairline);
   padding:8px 10px calc(8px + var(--safe-b));gap:6px;
   justify-content:space-between;align-items:center;overflow:hidden}
-body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;justify-content:flex-start;
+  /* The dock scrolls when it has more icons than the phone is wide, and without
+     snapping it comes to rest with an icon half outside the scroller — where the
+     centre of the button is off the edge and a tap lands on the taskbar instead.
+     Measured with four windows open: the sixth icon spanned x=306..352 in a box
+     ending at 328. Snapping means it can only ever rest whole. */
+  scroll-snap-type:x proximity;scroll-padding:0 4px}
+body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:end}
 body.dev-mobile #dock::-webkit-scrollbar{display:none}
 body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
 body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
@@ -2529,6 +2620,17 @@ body.glass-off .win{background:var(--bg)!important}
   <button id="pm-user" hidden onclick="openApp('users')"></button>
   <button id="pm-signout" hidden onclick="usersSignOut()">Sign out…</button>
   <hr id="pm-userhr" hidden>
+  <!-- Two locks, and they are not the same lock.
+       "Lock desktop" locks THIS browser's AgentOS session: the desktop goes behind
+       the sign-in page and one password brings it back. Hidden until usersBoot()
+       has established that there is a key to unlock it with (an account, or a
+       remote passphrase) — a lock with no key shuts somebody out for good.
+       "Lock screen" is the HOST's lock (loginctl lock-session / display sleep).
+       That is the right one in SUI, where AgentOS is the session and native
+       windows sit above the desktop, so only the compositor can cover them — and
+       it is why the item above is offered only outside SUI. -->
+  <button id="pm-lock" hidden onclick="lockDesktop()"
+          title="Lock this desktop — your password brings it back">Lock desktop</button>
   <button onclick="powerDo('lock','Lock the screen?')">Lock screen</button>
   <button onclick="powerDo('agentos-restart','Restart Bento Box AI? Running turns will stop.')">Restart Bento Box AI</button>
   <hr>
@@ -6654,6 +6756,41 @@ function buildApprovalBox(ev,cur){
   };
   return box;
 }
+/* The price card. A cloud model with no price is held before it runs — and that
+   hold is the ONE gate that happens before `turn_start`, so until this existed the
+   server emitted `price_request` to a UI that handled nothing, and the chat drew a
+   spinner for the ask's full five-minute timeout with no word about what it was
+   waiting for. Same shape as the approval card because it is the same kind of
+   interruption: a turn stopped on a person. */
+function buildPriceBox(ev,cur){
+  const box=document.createElement('div');box.className='approval';box.id='pr-'+ev.id;
+  const sug=ev.suggested||{};
+  // A fetched rate is a suggestion about the user's money, so it is prefilled and
+  // shown for confirmation — never written for them, and always with its source.
+  const inV=sug.found&&sug.input!=null?sug.input:'';
+  const outV=sug.found&&sug.output!=null?sug.output:'';
+  const note=sug.found?('found on '+(sug.source||'a public price list')+' — check it')
+                      :(sug.note||'no published price found');
+  box.innerHTML=`<div class="atitle">Price needed · ${esc(ev.model||'')}${cur?'':' · another chat'}</div>`
+    +`<div class="areason">This machine has no price for this model, so what its turns cost `
+    +`cannot be recorded. Set it once — USD per million tokens.</div>`
+    +`<div class="prow"><label>in $/M</label><input class="pin" type="number" step="0.01" min="0" value="${esc(String(inV))}">`
+    +`<label>out $/M</label><input class="pout" type="number" step="0.01" min="0" value="${esc(String(outV))}"></div>`
+    +`<div class="areason">${esc(note)}</div>`
+    +`<div class="btns"><button class="allow">Save &amp; run</button>`
+    +`<button class="deny skip">Run unpriced</button><button class="deny stop">Cancel turn</button></div>`;
+  box.querySelector('.allow').onclick=()=>resolvePrice(ev.id,'set',
+    +box.querySelector('.pin').value||0,+box.querySelector('.pout').value||0);
+  box.querySelector('.skip').onclick=()=>resolvePrice(ev.id,'skip');
+  box.querySelector('.stop').onclick=()=>resolvePrice(ev.id,'cancel');
+  return box;
+}
+function resolvePrice(id,action,pin,pout){
+  ws.send(JSON.stringify({type:'price',id,action,in:pin||0,out:pout||0}));
+  const box=$('#pr-'+id); if(box){box.classList.add('resolved');
+    box.querySelector('.atitle').textContent=
+      action==='set'?'✓ Price saved':(action==='skip'?'✓ Running unpriced':'✕ Turn cancelled');}
+}
 /* the menu-bar spinner reflects EVERY live turn, not just the visible chat */
 function updateSpin(){
   const s=$('#spin');if(!s)return;
@@ -6841,6 +6978,20 @@ function handle(ev){
       // turn; keep a live indicator so it never looks frozen (and repaints on macOS)
       if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
+    case 'price_request':{
+      // Held on a person, exactly like an approval — and named as such so the
+      // working row stops claiming the agent is thinking.
+      actMove(_cid,'approve',{name:'a price for '+(ev.model||'this model')});
+      const pbox=buildPriceBox(ev,_cur);
+      if(_cur&&feed){
+        if(!curBody)startAssistant();
+        if(curBody)curBody.parentNode.insertBefore(pbox,curBody);
+      }else{
+        pbox.style.cssText='position:fixed;right:18px;bottom:70px;z-index:9999;max-width:440px;box-shadow:0 18px 50px rgba(0,0,0,.5)';
+        document.body.appendChild(pbox);
+        pbox.addEventListener('click',()=>setTimeout(()=>{if(pbox.classList.contains('resolved'))pbox.remove()},1000));
+      }
+      toast('a price is needed before this model runs'); scrollDown(); break;}
     case 'approval_request':{
       // the turn is not slow here, it is waiting on a human — say which
       actMove(_cid,'approve',{name:ev.name||''});
@@ -14089,7 +14240,9 @@ async function sysPower(el){
     <div class="provbox"><div class="ptitle">Performance profile</div><div class="row" style="margin-top:8px">${profHtml}</div></div>
     <div class="provbox"><div class="ptitle">Session power</div>
       <div class="row" style="margin-top:8px">
-        <button class="endbtn" onclick="powerDo('lock','Lock the screen?')">🔒 Lock</button>
+        ${USERS.lock&&!suiActive()
+          ? `<button class="endbtn" title="your password brings it back" onclick="lockDesktop()">🔒 Lock desktop</button>`:''}
+        <button class="endbtn" onclick="powerDo('lock','Lock the screen?')">🔒 Lock screen</button>
         <button class="endbtn" onclick="powerDo('suspend','Suspend the machine?')">🌙 Suspend</button>
       </div>
       <p class="mut" style="margin-top:8px">Idle timers for the AgentOS session live in config
@@ -14358,7 +14511,8 @@ async function tunStop(){
 
    `var`, not `let`: one concatenated bundle, and the menu bar reads USERS at
    boot before this file's line is reached. See CLAUDE.md on the TDZ trap. */
-var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false};
+var USERS={me:null,list:[],roles:['admin','executor'],shared:[],folders:null,busy:false,
+           lock:''};   /* what this machine is locked BY: accounts, passphrase, or nothing */
 
 async function usersLoad(){
   try{
@@ -14381,6 +14535,14 @@ async function usersBoot(){
   try{
     const d=await (await fetch('/api/users/who')).json();
     USERS.me=d||{};
+    // Before the multiuser early-return on purpose: a machine with no accounts can
+    // still have a key (a remote passphrase), and so can still be locked.
+    USERS.lock=(d&&d.lock)||'';
+    const lk=document.getElementById('pm-lock');
+    // Offered where the host's own screen lock cannot answer — a tab, a window, a
+    // phone. In SUI the compositor's lock is stronger and covers the native windows
+    // this one cannot, so there we leave the menu as it was.
+    if(lk)lk.hidden=!USERS.lock||suiActive();
     if(!d||!d.multiuser)return;
     const who=document.getElementById('pm-user'),
           out=document.getElementById('pm-signout'),
@@ -14728,6 +14890,28 @@ async function usersCreate(pb,w){
     renderUsers(w?w.el.querySelector('.wbody'):pb,w);
   }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}
   finally{USERS.busy=false;btn.disabled=false}
+}
+
+/* Lock the desktop. One fetch, then the page goes to the sign-in door, which
+   recognises a locked session and asks for one password instead of a username and
+   a password (see ui/login.html).
+
+   Not a curtain drawn in the page: the server puts the lock inside the SIGNED
+   session cookie, so a reload, a second tab and a server restart all still find it
+   locked, and the API and every WebSocket refuse until it is opened. Which is also
+   why there is nothing to undo here if the navigation is interrupted.
+
+   TUI: there is nothing to lock. The lock is a property of a browser session and
+   the terminal client has no cookie — a headless machine's lock is the one on the
+   shell you reached it through. */
+async function lockDesktop(){
+  document.getElementById('powermenu').classList.remove('show');
+  try{
+    const r=await fetch('/api/session/lock',{method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)return toast(d.error||'could not lock the desktop');
+    location.replace('/login');
+  }catch(e){toast('could not lock the desktop: '+e)}
 }
 
 async function usersSignOut(){
@@ -17217,6 +17401,11 @@ function palIntent(q){
     act('⌁',m[1]?`Join Wi-Fi "${m[1].trim()}"`:'Wi-Fi settings','open Network settings',()=>{openApp('syssettings')});
   }
   if(P(/^lock(?:\s+(?:the\s+)?screen)?$/i))act('⌗','Lock screen','',()=>powerDo('lock','Lock the screen?'));
+  // Reachable by keyboard alone, which is the only way in when the pointer is not
+  // the point. Offered on the same condition the menu item is: a key to unlock
+  // with, and not SUI — see lockDesktop().
+  if(P(/^lock(?:\s+(?:the\s+)?desktop|\s+agentos|\s+bento)?$/i)&&USERS.lock&&!suiActive())
+    act('⌗','Lock desktop','your password brings it back',()=>lockDesktop());
   if(P(/^(?:suspend|sleep)$/i))act('☾','Suspend','put the machine to sleep',()=>powerDo('suspend','Suspend the machine?'));
   if(P(/^(?:restart|reboot)(?:\s+(?:the\s+)?(?:machine|computer|pc))?$/i))act('↻','Restart the machine','',()=>powerDo('restart','Restart the machine?'));
   if(P(/^(?:power\s*off|shut\s*down)$/i))act('⏻','Power off','',()=>powerDo('poweroff','Power off the machine?'));

@@ -1,5 +1,20 @@
 # Bento Box AI — a local-first agentic operating system
 
+<p align="right"><sub>
+<b>English</b> ·
+<a href="docs/i18n/README.zh-CN.md">简体中文</a> ·
+<a href="docs/i18n/README.zh-TW.md">繁體中文</a> ·
+<a href="docs/i18n/README.ja.md">日本語</a> ·
+<a href="docs/i18n/README.ko.md">한국어</a> ·
+<a href="docs/i18n/README.es.md">Español</a> ·
+<a href="docs/i18n/README.pt-BR.md">Português&nbsp;(BR)</a> ·
+<a href="docs/i18n/README.fr.md">Français</a> ·
+<a href="docs/i18n/README.de.md">Deutsch</a> ·
+<a href="docs/i18n/README.ru.md">Русский</a> ·
+<a href="docs/i18n/README.hi.md">हिन्दी</a> ·
+<a href="docs/i18n/README.ar.md">العربية</a>
+</sub></p>
+
 **Your machine, with a brain.** Bento Box AI is a self-hosted **AI desktop environment**: a full
 desktop — windows, apps, files, terminal — driven by an **autonomous AI agent** that takes **real
 actions** on your computer. Use local models via [Ollama](https://ollama.com) for total privacy, or
@@ -272,8 +287,15 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 Then open **http://127.0.0.1:8321**, or run `bento setup` for the same nine steps in a terminal.
 
+If there is a terminal to ask on, the installer asks two things before it finishes: whether this
+machine should be reachable from your other devices, and — if so — whether you sign in with a
+**passphrase** or an **account**. On a machine with no screen that first question is the
+difference between an install you can look at and one you cannot. `--yes` deliberately does not
+answer it: an open port here is an open shell.
+
 It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
-was not there — open a new terminal afterwards).
+was not there — open a new terminal afterwards). `bento --help` shows the ten commands a new
+machine needs; `bento help --all` is the rest.
 
 ### Installing it on a chosen address and port
 
@@ -316,10 +338,10 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 | flag | what it does |
 |---|---|
-| `--passphrase=SECRET` | require this to sign in, and allow binding off loopback |
+| `--passphrase=SECRET` | require this to sign in, and allow binding off loopback — given here, the installer does not ask |
 | `--bind=ADDR` | which interface to listen on (default `0.0.0.0`); needs `--passphrase` |
 | `--port=N` | which port (default `8321`); saved to the config, so the boot service uses it |
-| `--yes` | answer yes to every optional component |
+| `--yes` | answer yes to every optional component — **not** to opening the port |
 | `--no-service` | no launcher and no boot service (containers, CI) |
 | `--no-verify` | skip the "prove it works" step |
 
@@ -340,9 +362,10 @@ bento config --edit                # open it in $EDITOR — refuses to save inva
 `bento remote` is the same settings with the reachability ones grouped together:
 
 ```bash
-bento remote --on --passphrase 'something long' --bind 0.0.0.0   # the address
+bento remote --on --passphrase 'something long' --bind 0.0.0.0   # one shared secret
+bento user add alice && bento remote --on --bind 0.0.0.0          # or an account each
 bento remote --port 8080                                          # the port
-bento remote                                                      # what it is now
+bento remote                                                      # what it is now, and who signs in
 ```
 
 **A port change does not reach an installed boot service by itself** — the systemd unit
@@ -353,9 +376,11 @@ bento service install && bento service restart
 ```
 
 > **Reachable from other machines is a deliberate choice, not a default.** Bento listens on
-> `127.0.0.1` only until you give it a passphrase, because the agent has a real shell — an open
-> port here is an open shell. `--bind` on its own is refused for that reason, and so is
-> `bento serve --host 0.0.0.0` with remote access off.
+> `127.0.0.1` only until it has a lock — a passphrase, or an account somebody signs in as —
+> because the agent has a real shell, and an open port here is an open shell. `--bind` on its
+> own is refused for that reason, and so is `bento serve --host 0.0.0.0` with remote access off.
+> The two locks are alternatives, not layers: once an account exists it *is* the lock, and a
+> passphrase in front of it is config nothing reads.
 
 **About ports below 1024.** They are refused to a non-root process on Linux, and on macOS the
 refusal is per-address — it grants `0.0.0.0:80` and denies `127.0.0.1:80`. So nothing here
@@ -499,6 +524,8 @@ loop, and that is the state worth being able to see.
 | `uv run bento remote --on --passphrase '…'` | reach this desktop from your phone |
 | `uv run bento remote-desktop --on` | the browser remote desktop (real screen, native apps) |
 | `uv run bento ask "…"` | one-shot agent run in the terminal (`--full`, `--model …`) |
+| `uv run bento user add <name>` | accounts — the first one adopts this machine and is an admin |
+| `uv run bento help --all` | every command; `bento --help` shows the ten a new machine needs |
 
 ---
 

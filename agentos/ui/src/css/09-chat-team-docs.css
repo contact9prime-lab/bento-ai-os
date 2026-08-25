@@ -146,6 +146,13 @@
 .approval .deny{border:1px solid var(--line);color:var(--dim);padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny:hover{color:var(--err);border-color:var(--err)}
 .approval.resolved{opacity:.55}
+/* the price card is the approval card with two numbers in it — same shape,
+   because it is the same kind of interruption: a turn is held on you. */
+.approval .prow{display:flex;gap:10px;align-items:center;margin:9px 0;flex-wrap:wrap}
+.approval .prow label{color:var(--dim);font-size:var(--fs-sm)}
+.approval .prow input{width:88px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:6px 8px;color:var(--fg);font-family:var(--mono);
+  font-size:var(--fs-sm)}
 .approval.resolved .btns{display:none}
 .errmsg{color:var(--err);background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3);border-radius:var(--r-md);padding:10px 14px;margin-bottom:12px;font-size:var(--fs-md)}
 

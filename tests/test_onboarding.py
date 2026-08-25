@@ -340,3 +340,29 @@ def test_a_config_written_before_setup_finishes_does_not_skip_onboarding():
     as 'an old install, already set up'. Seeding it in DEFAULTS says so out loud."""
     from agentos import config as cfgmod
     assert cfgmod.DEFAULTS.get("setup_complete") is False
+
+
+def test_a_machine_that_is_not_set_up_says_so_when_the_server_starts(monkeypatch, capsys):
+    """The browser wizard opens itself; the headless half had nothing.
+
+    On a machine nobody is sitting in front of, "it is set up when you open it" is
+    not true — there is no browser to open it in, and the arc's terminal entry point
+    (`bento setup`) was named only in the last lines of the installer, minutes of log
+    scroll earlier. It belongs next to the URL, on every start, until it is done.
+    """
+    import uvicorn
+
+    from agentos import __main__ as cli
+    from agentos import config as cfgmod
+
+    monkeypatch.setattr(cli, "_bind_problem", lambda h, p: ("free", ""))
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+
+    monkeypatch.setattr(cfgmod, "is_first_run", lambda: True)
+    cli.serve("127.0.0.1", 8399, False, "fail")
+    assert "bento setup" in capsys.readouterr().out
+
+    monkeypatch.setattr(cfgmod, "is_first_run", lambda: False)
+    cli.serve("127.0.0.1", 8399, False, "fail")
+    assert "bento setup" not in capsys.readouterr().out, (
+        "a machine that has been set up is still being told to set itself up")

@@ -24,12 +24,44 @@ agentos remote --off                 # back to loopback only
 
 Restart AgentOS afterwards — the bind address is chosen when the server starts.
 
+### A passphrase, or an account — not both
+
+**A passphrase is not a user.** On a machine with no accounts there is nobody to be:
+you sign in with one shared secret and you are the machine itself, which is the right
+shape for one person and one Pi. That is why the sign-in page asks for a passphrase
+and no username.
+
+If you would rather sign in *as somebody*, add an account:
+
+```bash
+bento user add piyush            # the first account is an admin, whatever you ask for
+bento remote --on --bind 0.0.0.0 # no passphrase needed — the account IS the lock
+```
+
+Three things follow, and they are the whole reason this is a choice rather than an
+extra step:
+
+- **Accounts win.** Once one exists, `remote.lock_kind` reports `accounts` and the
+  passphrase becomes config nothing reads. `bento remote --passphrase …` on such a
+  machine says so rather than storing a second secret — a door only some people have
+  the key to is a door that gets propped open.
+- **Everything already here becomes the first account's** — the database, the soul,
+  the assets, the linked phone. Adding a user must not look like a fresh install to
+  the person who was already using the machine.
+- **The keyboard stops being an identity.** A machine with accounts asks who you are
+  locally too, because "whoever is sitting here" cannot be a login once there is more
+  than one person. The phone in your pocket then signs in with the same username and
+  password as the desktop.
+
+`bento remote` states which of the two is in force, and who.
+
 ---
 
 ## Using it from your phone
 
 1. Open the address the settings panel shows, e.g. `http://192.168.1.24:8321`.
-2. Sign in with the passphrase. The device stays signed in for 30 days.
+2. Sign in — with the passphrase, or with your username and password if this machine
+   has accounts. The device stays signed in for 30 days.
 3. **iOS:** *Share → Add to Home Screen*. **Android:** *⋮ → Install app*.
 
 That last step is what makes it feel like a client rather than a tab: the app launches full-screen

@@ -97,16 +97,40 @@ def is_local(model: str) -> bool:
     return (model or "").lower().startswith(LOCAL_PREFIXES)
 
 
+def is_executor(model: str) -> bool:
+    """Executors are exempt too — for a different reason than local models.
+
+    `claude-code` and its siblings are ENGINE ids, not model ids. A delegated run
+    bills against the subscription that CLI is signed in to, it reports its own
+    spend on its `result` event, and AgentOS never counts tokens for it — so
+    "what does claude-code cost per million tokens" is a question with no answer,
+    and asking it is not a safeguard, it is a stall.
+
+    It stalled for exactly five minutes. `needs_price` said "unknown" for the
+    engine id, so every delegated turn went to the price card first — and at the
+    time no surface drew that card, so no answer could arrive and the turn waited
+    out the whole timeout. To the user that was five minutes of "working" with no
+    step, no tool, no word, before the CLI was even spawned.
+    """
+    from .executors import ENGINES     # local: executors imports config, config imports us
+    return (model or "") in ENGINES
+
+
 def price_state(cfg: dict, model: str) -> str:
-    """`priced` | `local` | `skipped` | `unknown`.
+    """`priced` | `local` | `executor` | `skipped` | `unknown`.
 
     `skipped` is a deliberate "run it without pricing" the user chose once; it is
     remembered so the question is asked once per model, not once per turn.
+    `executor` is its own answer rather than `local` because a delegated run is
+    not free — it is billed somewhere this machine does not meter, which is a
+    different thing from costing nothing.
     """
     if not model:
         return "priced"
     if is_local(model):
         return "local"
+    if is_executor(model):
+        return "executor"
     if model in (cfg.get("pricing_skip") or []):
         return "skipped"
     return "priced" if price_of(cfg, model) is not None else "unknown"

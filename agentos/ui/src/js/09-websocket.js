@@ -107,6 +107,41 @@ function buildApprovalBox(ev,cur){
   };
   return box;
 }
+/* The price card. A cloud model with no price is held before it runs — and that
+   hold is the ONE gate that happens before `turn_start`, so until this existed the
+   server emitted `price_request` to a UI that handled nothing, and the chat drew a
+   spinner for the ask's full five-minute timeout with no word about what it was
+   waiting for. Same shape as the approval card because it is the same kind of
+   interruption: a turn stopped on a person. */
+function buildPriceBox(ev,cur){
+  const box=document.createElement('div');box.className='approval';box.id='pr-'+ev.id;
+  const sug=ev.suggested||{};
+  // A fetched rate is a suggestion about the user's money, so it is prefilled and
+  // shown for confirmation — never written for them, and always with its source.
+  const inV=sug.found&&sug.input!=null?sug.input:'';
+  const outV=sug.found&&sug.output!=null?sug.output:'';
+  const note=sug.found?('found on '+(sug.source||'a public price list')+' — check it')
+                      :(sug.note||'no published price found');
+  box.innerHTML=`<div class="atitle">Price needed · ${esc(ev.model||'')}${cur?'':' · another chat'}</div>`
+    +`<div class="areason">This machine has no price for this model, so what its turns cost `
+    +`cannot be recorded. Set it once — USD per million tokens.</div>`
+    +`<div class="prow"><label>in $/M</label><input class="pin" type="number" step="0.01" min="0" value="${esc(String(inV))}">`
+    +`<label>out $/M</label><input class="pout" type="number" step="0.01" min="0" value="${esc(String(outV))}"></div>`
+    +`<div class="areason">${esc(note)}</div>`
+    +`<div class="btns"><button class="allow">Save &amp; run</button>`
+    +`<button class="deny skip">Run unpriced</button><button class="deny stop">Cancel turn</button></div>`;
+  box.querySelector('.allow').onclick=()=>resolvePrice(ev.id,'set',
+    +box.querySelector('.pin').value||0,+box.querySelector('.pout').value||0);
+  box.querySelector('.skip').onclick=()=>resolvePrice(ev.id,'skip');
+  box.querySelector('.stop').onclick=()=>resolvePrice(ev.id,'cancel');
+  return box;
+}
+function resolvePrice(id,action,pin,pout){
+  ws.send(JSON.stringify({type:'price',id,action,in:pin||0,out:pout||0}));
+  const box=$('#pr-'+id); if(box){box.classList.add('resolved');
+    box.querySelector('.atitle').textContent=
+      action==='set'?'✓ Price saved':(action==='skip'?'✓ Running unpriced':'✕ Turn cancelled');}
+}
 /* the menu-bar spinner reflects EVERY live turn, not just the visible chat */
 function updateSpin(){
   const s=$('#spin');if(!s)return;
@@ -294,6 +329,20 @@ function handle(ev){
       // turn; keep a live indicator so it never looks frozen (and repaints on macOS)
       if(running){WORK_MSG='';showWorking()}
       scrollDown(); break;}
+    case 'price_request':{
+      // Held on a person, exactly like an approval — and named as such so the
+      // working row stops claiming the agent is thinking.
+      actMove(_cid,'approve',{name:'a price for '+(ev.model||'this model')});
+      const pbox=buildPriceBox(ev,_cur);
+      if(_cur&&feed){
+        if(!curBody)startAssistant();
+        if(curBody)curBody.parentNode.insertBefore(pbox,curBody);
+      }else{
+        pbox.style.cssText='position:fixed;right:18px;bottom:70px;z-index:9999;max-width:440px;box-shadow:0 18px 50px rgba(0,0,0,.5)';
+        document.body.appendChild(pbox);
+        pbox.addEventListener('click',()=>setTimeout(()=>{if(pbox.classList.contains('resolved'))pbox.remove()},1000));
+      }
+      toast('a price is needed before this model runs'); scrollDown(); break;}
     case 'approval_request':{
       // the turn is not slow here, it is waiting on a human — say which
       actMove(_cid,'approve',{name:ev.name||''});

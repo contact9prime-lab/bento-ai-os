@@ -939,6 +939,161 @@ def test_the_onboarding_account_step_exists_and_is_reachable_over_http(api):
 
 
 # ---------------------------------------------------------------------------
+# Locking the desktop, and coming back with one password
+#
+# The lock this OS already had is the HOST's — loginctl lock-session, or sleeping
+# the display on a Mac. That is the right lock in SUI, where AgentOS is the session
+# and native windows sit above the desktop. It is the wrong lock in a browser: from
+# a phone it locks the screen of the SERVER, in a room the person may not be in,
+# while their desktop stays open in front of them. So this one locks the SESSION,
+# and the tests below are the three claims that make it a lock rather than a
+# curtain drawn in the page.
+# ---------------------------------------------------------------------------
+
+def test_locking_shuts_the_api_and_the_page_becomes_a_lock_screen(api):
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    assert api.get("/api/config").status_code == 200
+    assert api.post("/api/session/lock").status_code == 200
+
+    assert api.get("/api/config").status_code == 401, "the API goes quiet with the page"
+    page = api.get("/")
+    assert 'id="pw"' in page.text, "the desktop is behind the sign-in door"
+    who = api.get("/api/users/who").json()
+    assert who["locked"] is True and who["lock"] == "accounts"
+    assert who["name"] == "ada", "a lock screen knows whose desktop it is"
+
+
+def test_unlocking_asks_for_a_password_and_gives_the_same_account_back(api):
+    """The whole difference from signing out: it is still Bob's desktop, and Bob
+    typed one password to get back to it."""
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.post("/api/users", json={"name": "bob", "password": "correcthorse",
+                                 "role": "executor"})
+    api.post("/api/users/login", json={"name": "bob", "password": "correcthorse"})
+    api.post("/api/session/lock")
+
+    bad = api.post("/api/session/unlock", json={"password": "hunter2hunter"})
+    assert bad.status_code == 401, "ada's password does not open bob's lock"
+    assert api.get("/api/config").status_code == 401
+
+    assert api.post("/api/session/unlock", json={"password": "correcthorse"}).status_code == 200
+    assert api.get("/api/config").status_code == 200
+    who = api.get("/api/users/who").json()
+    assert who["locked"] is False and who["name"] == "bob"
+
+
+def test_a_lock_survives_a_new_tab_and_a_server_restart(api):
+    """It is in the signed cookie, not in the page. A reload, a second tab and a
+    restart all still find it locked — and no script in the page can clear it,
+    which is what separates this from a div over the desktop."""
+    from agentos import remote as remotemod
+    from agentos import server as servermod
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.post("/api/session/lock")
+    locked_cookie = dict(api.cookies)[remotemod.COOKIE]
+
+    from fastapi.testclient import TestClient
+    with TestClient(servermod.app) as fresh:            # a new process's view
+        fresh.cookies.set(remotemod.COOKIE, locked_cookie)
+        assert fresh.get("/api/config").status_code == 401
+        assert fresh.get("/api/users/who").json()["locked"] is True
+
+
+def test_a_locked_session_opens_no_socket(api):
+    """A desktop that kept streaming a turn behind the lock screen would be a lock
+    over the pixels only."""
+    from agentos import remote as remotemod
+    from agentos import server as servermod
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.post("/api/session/lock")
+    cookie = dict(api.cookies)[remotemod.COOKIE]
+
+    class WS:
+        headers: dict = {}
+        cookies = {remotemod.COOKIE: cookie}
+        client = type("c", (), {"host": "127.0.0.1"})()
+    assert servermod._ws_authed(WS) is False
+    assert servermod._ws_user(WS) is None
+
+
+def test_a_machine_with_no_key_refuses_to_lock_and_says_what_would_fix_it(api):
+    """No accounts and no passphrase means nothing to unlock with. A button that
+    shuts somebody out of their own desktop for good is the one thing this must
+    not be, so it refuses in a sentence that names both ways out."""
+    r = api.post("/api/session/lock")
+    assert r.status_code == 400
+    msg = r.json()["error"]
+    assert "account" in msg and "passphrase" in msg
+    assert api.get("/api/config").status_code == 200, "and nothing was locked"
+
+
+def test_the_passphrase_machine_locks_too_and_opens_with_the_passphrase(api):
+    """A single-user install reached from a phone has a key: the remote passphrase.
+    The lock is offered wherever there is something to unlock it with, not only
+    where there are accounts."""
+    from agentos import remote as remotemod
+    from agentos import server as servermod
+    cfg = servermod.state.machine_cfg()
+    cfg["remote"]["pass_hash"], cfg["remote"]["pass_salt"] = \
+        remotemod.hash_passphrase("hunter2hunter")
+    assert remotemod.lock_kind(cfg) == "passphrase"
+    assert api.post("/api/session/lock").status_code == 200
+    assert api.get("/api/config").status_code == 401
+    assert api.get("/api/users/who").json()["lock"] == "passphrase"
+    assert api.post("/api/session/unlock", json={"password": "nope"}).status_code == 401
+    assert api.post("/api/session/unlock",
+                    json={"password": "hunter2hunter"}).status_code == 200
+    assert api.get("/api/config").status_code == 200
+
+
+def test_the_desktop_offers_lock_only_where_it_can_answer(api):
+    """Source-level, because the condition is the whole design.
+
+    Two locks share that menu and they are not the same lock. The AgentOS one is
+    offered when there is a key to unlock it with and we are NOT in SUI — there the
+    desktop is the BACKGROUND layer with native windows above it, so only the
+    compositor's own lock covers the screen, and the item below it already does
+    that. Losing either half of the condition is how this becomes a lock that
+    cannot be opened, or one that leaves a browser window running above it.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "agentos" / "ui"
+    users_js = (root / "src" / "js" / "23a-users.js").read_text()
+    shell = (root / "src" / "shell.html").read_text()
+
+    assert 'id="pm-lock"' in shell and 'onclick="lockDesktop()"' in shell
+    assert "lk.hidden=!USERS.lock||suiActive()" in users_js, \
+        "a key, and not SUI — both halves"
+    assert "'/api/session/lock',{method:'POST'}" in users_js
+    assert "location.replace('/login')" in users_js, "the door recognises a lock"
+    assert "pm-lock" in (root / "index.html").read_text(), \
+        "and the shipped bundle is not stale (see tests/test_ui_build.py)"
+
+
+def test_the_lock_screen_asks_for_one_password_not_a_username(api):
+    """The lock screen and the sign-in page are one file, and which door it is is
+    the server's answer, not the page's guess: `locked` means we already know who,
+    so asking for the username again would erase the difference between locking
+    your screen and signing out."""
+    import pathlib
+    page = (pathlib.Path(__file__).resolve().parents[1] / "agentos" / "ui"
+            / "login.html").read_text()
+    assert "d.locked" in page and "mode='lock'" in page
+    assert "'/api/session/unlock'" in page
+    assert 'id="other"' in page and "/api/users/logout" in page, \
+        "somebody else's lock is not a wall"
+    assert "who.hidden=false" in page and page.index("if(d.locked)") < page.index("if(!d.any)"), \
+        "the username field belongs to the sign-in door, and lock is checked first"
+
+
+def test_an_app_cannot_lock_the_users_desktop(api):
+    """An app that could lock the desktop could hold the machine's owner out of
+    their own session on a loop. It is in SENSITIVE_FOR_APPS for that reason."""
+    from agentos import server as servermod
+    assert ("POST", "/api/session/lock") in servermod.SENSITIVE_FOR_APPS
+
+
+# ---------------------------------------------------------------------------
 # The WebSocket is not a hole in the isolation
 # ---------------------------------------------------------------------------
 
@@ -972,6 +1127,34 @@ def test_a_socket_with_a_bad_cookie_is_refused_not_promoted(api):
         client = type("c", (), {"host": "10.0.0.9"})()
     assert servermod._ws_user(WS) is None
     assert servermod._ws_authed(WS) is False
+
+
+def test_a_pre_accounts_passphrase_cookie_opens_no_socket(api):
+    """The cookie that outlived the lock changing.
+
+    A machine locked by a shared passphrase issued uid-less sessions. Adding
+    accounts does not invalidate them — sessions are signed with the passphrase
+    hash, and nobody changed the passphrase — so a browser that signed in last
+    month still presents a cookie that VERIFIES and names nobody. HTTP already
+    refuses it (`_authed` wants a real uid), so that browser is correctly sent to
+    the sign-in page; the socket accepted it as the machine account '', which is
+    the pre-accounts home, and one of the sockets is a shell. The two gates have
+    to give the same answer to the same cookie.
+    """
+    from agentos import remote as remotemod
+    from agentos import server as servermod
+    stale = remotemod.issue_session(servermod.state.machine_cfg())   # no uid
+    api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
+    api.cookies.clear()
+
+    class WS:
+        headers: dict = {}
+        cookies = {remotemod.COOKIE: stale}
+        client = type("c", (), {"host": "127.0.0.1"})()      # loopback, on purpose
+    assert servermod._ws_user(WS) is None, "verified, but it names nobody"
+    assert servermod._ws_authed(WS) is False
+    api.cookies.set(remotemod.COOKIE, stale)
+    assert api.get("/api/config").status_code == 401, "HTTP said the same thing"
 
 
 def test_a_single_user_socket_is_the_machine_account(api):

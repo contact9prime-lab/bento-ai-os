@@ -1,0 +1,691 @@
+# Bento Box AI — ein local-first agentisches Betriebssystem
+
+<p align="right"><sub>
+<a href="../../README.md">English</a> ·
+<a href="README.zh-CN.md">简体中文</a> ·
+<a href="README.zh-TW.md">繁體中文</a> ·
+<a href="README.ja.md">日本語</a> ·
+<a href="README.ko.md">한국어</a> ·
+<a href="README.es.md">Español</a> ·
+<a href="README.pt-BR.md">Português&nbsp;(BR)</a> ·
+<a href="README.fr.md">Français</a> ·
+<b>Deutsch</b> ·
+<a href="README.ru.md">Русский</a> ·
+<a href="README.hi.md">हिन्दी</a> ·
+<a href="README.ar.md">العربية</a>
+</sub></p>
+
+**Ihre Maschine, mit einem Gehirn.** Bento Box AI ist eine selbstgehostete **KI-Desktop-Umgebung**: ein vollständiger
+Desktop — Fenster, Apps, Dateien, Terminal — angetrieben von einem **autonomen KI-Agenten**, der **echte
+Aktionen** auf Ihrem Computer ausführt. Nutzen Sie lokale Modelle über [Ollama](https://ollama.com) für vollständige Privatsphäre oder
+Cloud-Modelle (Anthropic Claude, OpenAI, OpenRouter oder jeden OpenAI-kompatiblen Endpunkt) — stets mit
+Ihrer Zustimmung. Der Agent kann im Web surfen, seine eigenen Apps bauen, Aufgaben planen, sich merken, was er lernt,
+seinen eigenen Quellcode erweitern und Sie über Telegram oder WhatsApp erreichen.
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
+![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
+
+Läuft unter `http://127.0.0.1:8321` — standardmäßig privat, installierbar als Boot-Zeit-Dienst.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+![Der Bento Box AI Desktop — KI-Agenten-Chat, Dateimanager und Schnelleinstellungen in einer browserbasierten Desktop-Umgebung](../screenshots/desktop.png)
+
+**Die vollständige Dokumentation befindet sich in [`docs/`](../README.md)** — Installation, ein Benutzerhandbuch zum Desktop
+und jeder App, der Agent und seine Werkzeuge, das Bauen von Apps, Integrationen, die API-Referenz und
+Fehlerbehebung.
+
+---
+
+## Die Einrichtung hat neun Schritte, und jeder hinterlässt etwas
+
+Kein Einstellungsformular mit Fortschrittsbalken. Jeder Schritt **erzeugt etwas Reales** — ein Modell,
+das antwortet, einen Agenten, der existiert, einen Flow, der läuft, einen Zeitplan, der auslöst — und sagt Ihnen,
+was am Ende dabei herauskommt, bevor er Sie um irgendetwas bittet.
+
+![Der Einrichtungsbildschirm beim ersten Start: links eine Leiste mit neun Schritten und rechts „Benennen Sie Ihren Agenten“ mit der Zeile „Am Ende haben Sie: den Namen in der Menüleiste und in jeder Antwort“](../screenshots/onboarding-1-name.png)
+
+Jeder Schritt wird **geprüft, niemals gemerkt**: Er ist abgehakt, weil die Maschine die Sache tatsächlich hat.
+Löschen Sie den Agenten, und der Schritt geht zurück auf „offen“. Genau das macht es sicher, die Einrichtung erneut auszuführen — und
+das erneute Ausführen ist hier etwas Normales, denn **die Einrichtung ist auch eine App**. Öffnen Sie sie jederzeit, um
+zu sehen, was ein Schritt tut, auf einer Maschine, die Sie vor Monaten eingerichtet haben.
+
+![Die Einrichtungs-App in einem Fenster: links die Leiste mit neun Schritten und rechts der geöffnete Schritt „Einen Spezialisten bauen“](../screenshots/setup-app.png)
+
+Derselbe Katalog, dieselbe Prüfung, dieselben Bereiche — auch in einem Terminal, wo `bento setup` über
+SSH genau dort weitermacht, wo der Browser aufgehört hat.
+
+---
+
+## Das Erste, wonach es fragt, ist die zu erledigende Aufgabe
+
+Die Einrichtung endet mit einer Frage, nicht mit einer Tür: **gib mir eine Aufgabe.** Wählen Sie eine von dreien, beantworten Sie zwei Fragen,
+und diese Maschine tut bereits etwas für Sie, bevor Sie eine einzige App geöffnet haben.
+
+![Der Aufgaben-Bildschirm: drei Rezepte — briefe mich jeden Morgen, überwache einen Ordner, sag mir, wenn sich eine Seite ändert — mit den Fragen des gewählten Rezepts und genau dem, was es tun darf](../screenshots/jobs.png)
+
+| | |
+|---|---|
+| **Briefe mich jeden Morgen** | liest über Nacht nach, was Sie verfolgen, und legt eine fertige Seite bereit |
+| **Überwache einen Ordner für mich** | bemerkt, was in einem Ordner *Ihrer Wahl* landet, findet heraus, was es ist, und sagt es Ihnen |
+| **Sag mir, wenn sich eine Seite ändert** | prüft eine Seite und meldet sich nur, wenn sich wirklich etwas verändert hat |
+
+Zwei Dinge tut es nicht. Es gewährt sich nichts, was Sie nicht gesehen haben: Das Panel druckt
+die exakten Berechtigungen aus, bevor Sie den Knopf drücken, berechnet von demselben Code, der sie auch schreibt —
+„liest `~/Downloads/*`, und sonst nichts“. Und es bietet keinen Weg an, Sie zu erreichen, der nicht
+funktioniert: Ein nicht gekoppeltes Telegram wird ausgegraut mit dem Satz gezeigt, der es beheben würde, niemals versteckt und
+niemals stillschweigend ersetzt.
+
+Der letzte Knopf ist **„Jetzt ausführen, damit ich es funktionieren sehe“** — denn ein Zeitplan, den Sie noch nie
+haben auslösen sehen, ist ein Versprechen, und ein neuer Nutzer hat keinen Grund, einem solchen zu glauben.
+
+Eine Aufgabe ist ein *Flow*, keine neue Art von Ding: derselbe Scheduler, dasselbe Berechtigungstor, dasselbe Audit-
+Ledger. Auf einer Maschine ohne Bildschirm: `bento job recipes`, dann `bento job add morning-brief --topics "…"`.
+
+---
+
+## Drei Gesichter, ein Programm
+
+Bento läuft an drei Orten, und **jede Funktion ist für alle drei gebaut**. Das ist die erste
+Frage, die man an jede Änderung stellt, nicht die letzte.
+
+| | Was es ist | Starten mit |
+|---|---|---|
+| **GUI** | ein Fenster (oder Tab) auf macOS, Windows oder Linux. Nichts Zusätzliches zu installieren | `bento` |
+| **TUI** | das ganze OS in einem Terminal — für einen Server oder einen Raspberry Pi ohne Bildschirm über SSH | `bento tui` |
+| **SUI** | Bento **ist** Ihre Linux-Sitzung: es besitzt die Maschine | `bento installer` |
+
+> Der Befehl lautet `bento`. `agentos` funktioniert weiterhin und wird es immer tun — es steht in der Shell-History,
+> in systemd-Units und Skripten der Leute, und eine von uns gewählte Umbenennung sollte sie das nicht kosten.
+
+---
+
+## Sehen Sie es in Aktion
+
+| | |
+|---|---|
+| ![Chat mit dem KI-Agenten — gestreamte Antworten, Tool-Aufrufe und Freigaben](../screenshots/chat.png) **Agenten-Chat** — sprechen Sie mit Ihrer Maschine; gestreamte Antworten, Tool-Karten, Freigaben, Sprache | ![Team-App — Subagenten, Workflows und Beobachtbarkeit](../screenshots/team.png) **Team** — spezialisierte Subagenten und visuelle Workflows, mit Modell-Mischung pro Schritt |
+| ![Eingebaute Dokumentations-App, die das vollständige Handbuch rendert](../screenshots/docs.png) **Docs** — das vollständige Handbuch lebt im OS | ![App-Store — Ein-Klick-Apps, Skills und MCP-Kanäle](../screenshots/store.png) **Store** — Ein-Klick-Apps, Skills und MCP-Tool-Kanäle |
+
+### Mehrere Personen, eine Maschine
+
+Fügen Sie ein Konto hinzu, und jede Person erhält **ihr eigenes Zuhause** — ihre eigene Datenbank, ihren Speicher, Agenten,
+Kanäle, MCP-Server und Zugangsdaten. Keine `user_id`-Spalte, die eine vergessene `WHERE`-
+Klausel durchsickern lässt: ein eigenes Verzeichnis, denn zwei Dateien können nicht ineinander durchsickern.
+
+![Die Benutzer-App: zwei Konten, Ada Lovelace als Admin markiert und „das sind Sie“, Bob Kahn mit einem Rollen-Dropdown auf Executor gesetzt](../screenshots/users-two-accounts.png)
+
+Zwei Rollen — **Executor** (alles innerhalb ihres eigenen Zuhauses) und **Admin** (das, plus die
+Maschine). Einstellungen bleiben gemeinsam, sodass es einen Provider-Schlüssel für die Maschine gibt statt einen
+pro Person. Agenten und Apps überqueren die Grenze bewusst, als Kopien, über eine gemeinsame Bibliothek.
+
+Und es ist **eine Anmeldung, hier und von überall**: Eine Maschine mit Konten ist durch sie
+gesperrt, sodass das Telefon in jemandes Tasche denselben Benutzernamen und dasselbe Passwort wie der Desktop verwendet
+und in ihrem eigenen Zuhause landet. Keine zweite gemeinsame Passphrase, die man sich ausdenken, teilen oder vergessen muss.
+
+![Das Fernzugriffs-Panel mit dem Text „Gesperrt durch die Konten dieser Maschine — jeder meldet sich vom Telefon mit demselben Benutzernamen und Passwort an, das er hier verwendet“](../screenshots/remote-locked-by-accounts.png)
+
+### Sie können sehen, was es tut
+
+![Ein laufender Zug: der abgeschlossene Read-Aufruf hat seine Dauer behalten, der laufende Bash-Aufruf altert an Ort und Stelle, und die Zeile darunter sagt, welcher Schritt läuft und wie lange der Zug schon gedauert hat](../screenshots/agent-working.png)
+
+Ein Zug ist meist Warten, und „arbeitet…“ für vier Minuten sagt Ihnen nichts — ein denkendes Modell
+und ein Lauf, der stillschweigend gestorben ist, sehen darunter identisch aus. Jede Wartefläche sagt, **woran es
+arbeitet und wie lange schon**: Der laufende Aufruf altert an Ort und Stelle (`running · 2m 14s`), abgeschlossene Aufrufe behalten
+ihre Dauer, und die Zeile darunter trägt den Schritt und die Gesamtzeit des Zuges. Derselbe Satz
+erscheint auf der Präsenzblase und der Omnibar, sodass er vom Desktop aus beantwortet werden kann, ohne
+den Chat zu öffnen.
+
+### Es kann sein eigenes Team bauen — und fragt, bevor es das tut
+
+![Freigabe einer Delegation: Die Karte nennt den Agenten, das Modell, das Schritt- und Zeitbudget sowie die exakten Werkzeuge und Skills, die er hätte](../screenshots/agent-approval.png)
+
+Wenn kein vorhandener Spezialist passt, **baut** der Agent einen und delegiert an ihn. Das Definieren eines Agenten
+gewährt ihm nichts; beim ersten tatsächlichen Einsatz erhalten Sie eine Karte, die das Modell nennt, auf dem er läuft,
+sein Budget und die exakten Werkzeuge und Skills, die seine Definition ihm gibt — denn die Zustimmung zu einem Akteur,
+den Sie sich nicht vorstellen können, ist nur eine Zustimmung dem Namen nach. `researcher` freizugeben heißt nicht, `deploy-bot` freizugeben,
+und die Gewährung ist in den Berechtigungen widerrufbar wie jede andere. [So funktioniert es →](../security.md)
+
+### Es beantwortet Fragen über sich selbst aus dem eigenen Handbuch
+
+![Die Docs-App beantwortet eine Frage über dieses OS, verankert im Handbuch](../screenshots/docs-ask.png)
+
+Das Handbuch ist im Retrieval-Index, sodass „Wie hindere ich eine App am Internetzugang, halte sie aber
+funktionsfähig?“ aus **diesen Seiten** beantwortet wird, nicht aus der Erinnerung eines Modells an ein anderes Projekt — und
+die Antwort nennt die Seite, die sie verwendet hat. Es ist agentisches Retrieval statt einer einmaligen Nachschlage: Der Agent
+sucht, liest und sucht erneut, wenn der erste Durchgang danebengeht.
+
+### Fenster, die sich wie Fenster verhalten
+
+![Vier Bento-Fenster auf dem Desktop gestapelt: das fokussierte trägt einen Akzentring und den vollen Schatten, die übrigen treten zurück](../screenshots/windows.png)
+
+Ein Fenster öffnet sich **dort, wo Sie es verlassen haben** — Position und Größe werden pro App gemerkt — und ein Fenster,
+das zum ersten Mal geöffnet wird, kaskadiert um mehr als eine Titelleiste, sodass das darunterliegende noch
+lesbar bleibt. Das fokussierte Fenster trägt einen Akzentring und den vollen Schatten; die anderen treten zurück. Das ✦
+in der Titelleiste ist der Agent *innerhalb dieser App*: Fragen Sie ihn nach dem, was auf dem Bildschirm ist, ohne sie zu verlassen.
+
+### Fünf Designsprachen, nicht fünf Farbpaletten
+
+![Die fünf eingebauten Designsprachen-Themes: Bento, Liquid Glass, Spatial, Claymorphism, Minimalism](../screenshots/themes.png)
+
+**Bento · Liquid Glass · Spatial · Claymorphism · Minimalism.** Jedes schneidet die gesamte Hülle neu zu —
+Flächen, Radien, Tiefe, Unschärfe, Typografie — und bringt sein eigenes Hintergrundbild mit. Die Hintergrundbilder werden als SVG ausgeliefert:
+je ein paar KB, gestochen scharf vom Telefon bis zum 4K-Panel. [Mehr →](../desktop.md#themes)
+
+Glas ist das Teuerste, was ein Desktop zeichnen kann, und die Kosten summieren sich mit jedem geöffneten Fenster.
+**Themes → Effects** misst Ihre Maschine und dreht es nur herunter, wenn es sein muss — fünf Fenster
+in Liquid Glass gingen von 6,5 fps auf 27 (reduziert) oder 60 (aus).
+
+### Es erreicht Sie dort, wo Sie ohnehin schon sind
+
+![Der WhatsApp-Kanal in den Einstellungen: die vier Cloud-API-Felder, die in Metas Konsole einzufügende Callback-URL, die gekoppelte Nummer und ob das 24-Stunden-Fenster offen ist](../screenshots/channels-whatsapp.png)
+
+**Telegram und WhatsApp sind native Kanäle** — dieselbe Konversation, derselbe Speicher, dieselben
+Werkzeuge und dieselben Freigabeknöpfe wie am Schreibtisch. Keine Benachrichtigungsbrücke: eine Antwort von Ihrem
+Telefon setzt den Thread fort, den Sie heute Morgen begonnen haben.
+
+WhatsApp hat **zwei Transportwege**, und sie scheitern in entgegengesetzte Richtungen. Metas Cloud-API ist
+offiziell, braucht aber ein Entwicklerkonto und einen öffentlichen Webhook, und außerhalb von 24 Stunden nach Ihrer letzten
+Nachricht trägt sie überhaupt keine freie Antwort mehr — die Karte sagt, ob dieses Fenster offen ist, ein
+Versand, der nicht durchgehen kann, sagt das und wie man es behebt, und eine geplante Aufgabe speichert ihren Bericht zuerst,
+sodass nichts verloren geht. Der WhatsApp-Web-Link braucht nur einen QR-Scan und hat kein 24-Stunden-Fenster, aber er ist
+**inoffiziell**, und Bento sagt das auf der Installationskarte, bevor irgendetwas heruntergeladen wird. [Einrichtung →](../whatsapp.md)
+
+Telegram ist auch eine **Admin-Konsole**: `/agents`, `/run`, `/flows`, `/model`, `/logs`, `/perms` —
+nur für den Besitzer, und jeder Befehl, der *etwas tut*, geht durch dasselbe Berechtigungstor und dieselben
+Freigabeknöpfe wie der Desktop, sodass er niemals ein billigerer Weg hinein ist. [Befehle →](../integrations.md)
+
+### Ein Desktop, jeder Bildschirm
+
+![Bento Box AI auf einem Telefon: der Sperrbildschirm, der für ein Telefon angeordnete Desktop und eine App als vollflächiges Blatt](../screenshots/mobile.png)
+
+Telefon, Tablet, Workstation — derselbe Desktop, angepasst. Fenster werden zu vollflächigen Blättern, das Dock
+erstreckt sich über den unteren Rand, Popover werden zu Blättern. Schalten Sie **Fernzugriff** ein und erreichen Sie ihn vom Telefon
+über Ihr Netzwerk, hinter einer Passphrase; *Zum Startbildschirm hinzufügen* macht daraus eine Vollbild-App.
+[Fernzugriff →](../remote-access.md) · [Responsives Layout →](../desktop.md#phone-tablet-desktop)
+
+### Es kann der Desktop *sein*, nicht nur auf einem leben
+
+![Eine native Wayland-Anwendung über dem Bento-Desktop, mit der reservierten Menüleiste darüber und dem reservierten Dock darunter](../screenshots/session-native-window.png)
+
+Melden Sie sich an und erhalten Sie Bento als Ihre Linux-Sitzung. Der Desktop wird als **Wayland-Layer-Surface auf der
+Hintergrundschicht** gezeichnet, sodass native Anwendungsfenster in normaler Stapelreihenfolge darüber liegen — nicht weil
+etwas angehoben oder abgesenkt wird, sondern weil das genau das ist, was „Hintergrund“ bedeutet. Die Menüleiste und das Dock
+sitzen in Bändern, die **beim Compositor reserviert** sind, demselben Mechanismus, den ein GNOME- oder KDE-Panel nutzt, sodass eine
+Vollbild-App an ihren Rändern haltmacht, statt sie zu verschlucken.
+
+![Zwei native Terminals, an die linke und rechte Hälfte des Bento-Desktops geschnappt](../screenshots/session-snapped.png)
+
+Vollständige Fensterverwaltung für native Apps: an Hälften und Viertel schnappen, kacheln, schweben, Layouts, Größenänderung per
+Tastatur, Arbeitsflächen, minimieren und ein Alt-Tab-Umschalter — wobei Taskleiste und Menüleiste
+jeweils der App mit Fokus folgen. [Die Sitzungs-UI →](../session-ui.md)
+
+### Anwendungen installieren, von innerhalb von Bento
+
+![Die Anwendungs-App durchsucht den Paketkatalog der Maschine, mit Installationsknöpfen pro Ergebnis](../screenshots/app-store.png)
+
+Ein Desktop, auf dem Sie keine Software installieren können, ist eine Demo. *Anwendungen → Apps holen…* durchsucht den
+eigenen Katalog der Maschine — AppStream, Flatpak oder apt — und zeigt Ihnen den exakten Befehl, bevor er läuft. Flatpak
+wird bevorzugt, wo es existiert, weil eine Installation pro Nutzer überhaupt kein Passwort braucht. Bento spiegelt
+nichts und bündelt nichts; es fragt den Paketmanager, den Sie bereits haben.
+
+### Ihr echter Bildschirm, auf Ihrem Telefon, im Browser
+
+![Bentos Remote Desktop in einem Telefon-Browser geöffnet, zeigt den echten Bildschirm der Maschine mit einer nativen App darauf und einer Symbolleiste mit Tasten, die einer Telefon-Tastatur fehlen](../screenshots/phone-remote-desktop.png)
+
+**Fernzugriff** sendet Ihnen die Bento-Hülle, die HTML ist und perfekt reist — aber eine native App
+ist Pixel auf dem eigenen Display der Maschine und war nie Teil der Seite. **Remote Desktop** schließt
+diese Lücke: Bento überträgt den Bildschirm über seine *eigene* authentifizierte Verbindung, sodass Sie den echten Desktop erhalten,
+anklickbar, ohne dass eine VNC-App auf dem Telefon installiert werden muss.
+
+Die Form ist der Punkt — der VNC-Server bleibt auf `127.0.0.1` und kommt nie in die Nähe des Netzwerks; was
+ihn schützt, ist die Passphrase, die Sie ohnehin schon verwenden. [Fernzugriff →](../remote-access.md)
+
+### Automatisierungen & Hot Corners
+
+![Die Automatisierungs-App mit gespeicherten Routinen und der Hot-Corner-Karte sowie dem Schritt-Builder](../screenshots/automations.png)
+
+Benennen Sie eine Sequenz einmal — diese Apps öffnen, Theme wechseln, dieses Python ausführen, jenes MCP-Tool aufrufen, den
+Agenten auf eine Aufgabe setzen — und führen Sie sie fortan für immer aus, aus der Eingabeleiste, einem Hot Corner, einem Zeitplan oder indem
+Sie sie beim Namen nennen. [Mehr →](../desktop.md#automations)
+
+---
+
+## Warum Bento Box AI
+
+- **Ein echter Desktop, keine Chatbox** — ziehbare Fenster, Taskleiste, virtuelle Desktops, Widgets,
+  Themes, eine Befehlspalette und über 25 eingebaute Apps.
+- **Ein Agent mit Händen** — Shell-Befehle, Dateiverwaltung, Web-Recherche, Desktop-Benachrichtigungen,
+  geplante Aufgaben, HTML-Berichte und App-Bau, alles aus natürlicher Sprache.
+- **Local-first und privat** — alles kann auf Ihrer Hardware mit Ollama laufen; nichts verlässt Ihre
+  Maschine, es sei denn, Sie fügen einen Cloud-Schlüssel hinzu. Bindet nur an localhost, bis Sie bewusst den
+  passphrasengeschützten [Fernzugriff](../remote-access.md) einschalten.
+- **Der gesamte Lebenszyklus unter einem Dach** — **Train · Test · Operate · Build · Ship · Manage**, live
+  auf einem Bildschirm (Mission Control): feintunen Sie Ihre eigenen Modelle auf Ihrer GPU, testen Sie jede
+  Selbstmodifikation vor der Freigabe, führen Sie geplante Aufgaben aus, bauen Sie Apps und liefern Sie sie an GitHub aus.
+- **Selbsterweiternd** — der Agent baut neue UI-Apps für sich selbst (App Studio), installiert Skills und MCP-
+  Tool-Server und kann Bentos eigenen Quellcode verändern (mit Auto-Snapshots und einer Test-Suite, die
+  vor einem Neustart bestehen muss).
+- **Speicher, der sich summiert** — zweistufiger Speicher, ein Live-Wissensgraph und eine dauerhafte „Seele“,
+  automatisch nach jeder Konversation gelernt.
+- **Sicher durch Design** — Autonomiestufen, Freigabeaufforderungen, Allow/Deny-Richtlinien, ein Bubblewrap-Ordner-
+  Sandkasten, hart blockierte destruktive Befehle und Ein-Klick-Wiederherstellungspunkte.
+
+---
+
+## Schnellstart
+
+**Ein Befehl, auf macOS oder Linux.** Er installiert alles — einschließlich Python, über `uv` —, startet
+Bento und *beweist dann, dass es funktioniert*, indem er dem laufenden Server eine Frage stellt, bevor er „fertig“ sagt.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+Öffnen Sie dann **http://127.0.0.1:8321** oder führen Sie `bento setup` aus für dieselben neun Schritte in einem Terminal.
+
+Wenn es ein Terminal gibt, auf dem gefragt werden kann, stellt der Installer zwei Fragen, bevor er fertig
+ist: ob diese Maschine von Ihren anderen Geräten aus erreichbar sein soll, und — wenn ja — ob Sie sich mit
+einer **Passphrase** oder einem **Konto** anmelden. Auf einer Maschine ohne Bildschirm ist die erste Frage
+der Unterschied zwischen einer Installation, die Sie ansehen können, und einer, die Sie nicht ansehen
+können. `--yes` beantwortet sie bewusst nicht: ein offener Port hier ist eine offene Shell.
+
+Er hinterlässt einen `bento`-Befehl in Ihrem `PATH` (in `~/.local/bin`, zu Ihrem Shell-Profil hinzugefügt, falls er
+nicht schon dort war — öffnen Sie danach ein neues Terminal). `bento --help` zeigt die zehn Befehle, die eine neue Maschine braucht; `bento help --all` ist der Rest.
+
+### Installation auf einer gewählten Adresse und einem gewählten Port
+
+Auf einem Server, den Sie über SSH erreichen, bedeutet `127.0.0.1:8321` „von nichts erreichbar“. Geben Sie dem
+Installer eine Passphrase und eine Adresse, und er startet einsatzbereit, wobei der Boot-Dienst bereits
+auf den richtigen Port zeigt:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=0.0.0.0 --port=8080
+```
+
+Diese Maschine antwortet nun auf **jeder** Schnittstelle an Port 8080 und fragt nach dieser Passphrase,
+bevor sie irgendetwas tut. Die lokale Nutzung über `127.0.0.1:8080` bleibt unverändert.
+
+Der Installer sagt, welche der beiden Möglichkeiten er hinterlassen hat — `AgentOS is running` nur, wenn etwas
+tatsächlich lauscht. Auf einer Maschine ohne verfügbaren Dienstmanager (ein Container, eine Nicht-systemd-
+Distribution, SSH ohne Benutzer-D-Bus) sagt er das stattdessen, und `bento service start` erledigt den Rest.
+
+Eine Schnittstelle statt aller — ein privates VLAN, eine Tailscale-Adresse:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=192.168.1.20 --port=8080
+```
+
+Nur ein anderer Port, weiterhin nur Loopback:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --port=8080
+```
+
+> **`-s --` ist nicht optional.** `curl … | sh --port=8080` übergibt das Flag an `sh`, das es
+> ablehnt — ein per Pipe übergebenes Skript bekommt keine eigenen Argumente. `-s --` bedeutet „der Rest ist für das Skript“.
+> Dies ist die mit Abstand häufigste Art, wie diese Flags verloren gehen, und der Fehler nennt `sh`, sodass es
+> wie ein defekter Installer aussieht.
+
+**Alle Flags:**
+
+| Flag | Was es tut |
+|---|---|
+| `--passphrase=SECRET` | dies zur Anmeldung verlangen und das Binden abseits von Loopback erlauben — hier angegeben, fragt der Installer nicht |
+| `--bind=ADDR` | auf welcher Schnittstelle gelauscht werden soll (Standard `0.0.0.0`); braucht `--passphrase` |
+| `--port=N` | welcher Port (Standard `8321`); in der Konfiguration gespeichert, sodass der Boot-Dienst ihn verwendet |
+| `--yes` | zu jeder optionalen Komponente Ja sagen — **nicht** zum Öffnen des Ports |
+| `--no-service` | kein Launcher und kein Boot-Dienst (Container, CI) |
+| `--no-verify` | den „beweise, dass es funktioniert“-Schritt überspringen |
+
+### Nachträgliche Änderungen
+
+Alles oben lebt in **`~/.agentos/config.json`** (oder unter `$AGENTOS_HOME`), und
+`bento config` liest und schreibt es, ohne dass Sie es finden müssen:
+
+```bash
+bento config                       # the whole file, secrets masked
+bento config port                  # one setting
+bento config port 8080             # change it
+bento config remote.bind 0.0.0.0   # dotted paths for nested settings
+bento config --path                # where the file is
+bento config --edit                # open it in $EDITOR — refuses to save invalid JSON
+```
+
+`bento remote` sind dieselben Einstellungen, mit den Erreichbarkeitseinstellungen zusammengefasst:
+
+```bash
+bento remote --on --passphrase 'something long' --bind 0.0.0.0   # one shared secret
+bento user add alice && bento remote --on --bind 0.0.0.0          # or an account each
+bento remote --port 8080                                          # the port
+bento remote                                                      # what it is now, and who signs in
+```
+
+**Eine Portänderung erreicht einen installierten Boot-Dienst nicht von selbst** — die systemd-Unit
+und der LaunchAgent backen ihn in `ExecStart` ein. Beide Befehle sagen Ihnen, wann das zutrifft:
+
+```bash
+bento service install && bento service restart
+```
+
+> **Von anderen Maschinen erreichbar zu sein, ist eine bewusste Wahl, kein Standard.** Bento lauscht nur auf
+> `127.0.0.1`, bis es ein Schloss hat — eine Passphrase oder ein Konto, mit dem sich jemand
+> anmeldet —, denn der Agent hat eine echte Shell, und ein offener Port hier ist eine offene Shell. `--bind` allein wird aus diesem Grund abgelehnt, ebenso wie
+> `bento serve --host 0.0.0.0` bei ausgeschaltetem Fernzugriff. Die beiden Schlösser sind Alternativen, keine Schichten: Sobald ein Konto existiert, *ist* es das Schloss, und eine Passphrase davor ist Konfiguration, die nichts liest.
+
+**Zu Ports unter 1024.** Sie werden einem Nicht-Root-Prozess unter Linux verweigert, und unter macOS ist die
+Verweigerung pro Adresse — sie gewährt `0.0.0.0:80` und verweigert `127.0.0.1:80`. Deshalb rät hier nichts
+aus der Zahl: `--port` versucht das echte Binden und gibt, wenn der Kernel Nein sagt, die
+`sysctl`-Zeile, die Weiterleitungsregel oder die Proxy-Option aus, die es behebt. Unter Linux bedeutet Port 80 meist
+einen Befehl:
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
+sudo sysctl --system
+```
+
+Den Server als Root auszuführen, ist nicht ratsam — der Agent hat eine echte Shell.
+
+<details>
+<summary><b>Stattdessen aus einem Git-Checkout</b></summary>
+
+```bash
+uv sync                 # install dependencies (or: pip install -e .)
+uv run bento            # start the server and open the desktop in your browser
+```
+</details>
+
+<details>
+<summary><b>In Docker</b></summary>
+
+```bash
+docker build -t bento .
+docker run -d --name bento -p 8321:8321 -v bento-data:/data \
+  -e AGENTOS_PASSPHRASE='something long and unguessable' bento
+```
+
+Ein Container muss `0.0.0.0` binden, um überhaupt erreichbar zu sein, daher ist die Passphrase erforderlich statt
+optional — der Entrypoint weigert sich, unerreichbar *oder* unsicher zu starten, und sagt Ihnen, was von beidem zutrifft.
+Alles, was verloren ginge, lebt im `/data`-Volume. Bauen Sie einen bestimmten Branch mit
+`--build-arg SOURCE=git --build-arg REF=my-branch`.
+</details>
+
+Wenn **Ollama** läuft, werden Ihre lokalen Modelle automatisch erkannt. Fügen Sie Cloud-API-Schlüssel unter
+**Settings** hinzu, wenn Sie sie möchten. Das ist die ganze Einrichtung.
+
+> **Tipp:** Builds, Tool-Aufrufe und mehrstufige Aufgaben sind mit einem **tool-fähigen
+> Modell** (jedes `qwen*`-Modell oder ein Cloud-Modell) weit zuverlässiger. Schwächere lokale Modelle wie `gemma` rufen
+> Tools nicht zuverlässig auf.
+
+---
+
+## Als Ihren Linux-Desktop ausführen (SUI)
+
+```bash
+uv run bento installer      # detects your distro, installs what's missing, adds it to the login screen
+```
+
+Melden Sie sich dann ab und wählen Sie **Bento Box AI** im Anmeldebildschirm. Ihr bestehender Desktop bleibt unberührt —
+das Zurückwechseln bedeutet abmelden und wieder Ubuntu wählen.
+
+Der Installer erkennt die Distribution, benennt jedes gewünschte Paket und warum, und fragt, bevor er
+irgendetwas installiert. Zwei Gruppen: die Compositor-Engine (sway und Freunde, MIT) und die native
+Desktop-Oberfläche (`python3-gi`, `python3-gi-cairo`, gtk-layer-shell, WebKitGTK), die den Desktop
+zu einer echten Wayland-Oberfläche statt zu einem Browserfenster macht.
+
+**Bento liefert und verteilt nichts davon.** gtk-layer-shell ist MIT, aber GTK, PyGObject und
+WebKitGTK sind LGPL, und worauf dieses Projekt *angewiesen* ist, bleibt permissiv — daher werden sie erbeten, mit
+den Lizenzen im Blick. Ohne sie läuft die Sitzung trotzdem und zeichnet den Desktop in einem Chromium-Fenster.
+[Lizenzierung →](../licensing.md) · [Die Sitzungs-UI →](../session-ui.md)
+
+Wenn irgendetwas am Desktop sich falsch verhält, sagt Ihnen ein Befehl, warum:
+
+```bash
+uv run bento doctor --session   # probes what can actually draw on THIS machine, and says so
+```
+
+Er prüft den Interpreter, GTKs Display, die Layer-Shell-Unterstützung des Compositors und ob WebKit
+rendern *und weiterhin rendern* kann — in einem Fenster und auf einer Layer-Surface — und gibt dann ein Urteil ab. Prüfungen
+laufen in Subprozessen, weil die Fehler, nach denen er sucht, Abbrüche und Segfaults sind, und eine Prüfung, die
+den Doctor zum Absturz bringt, kann nicht melden, dass sie abgestürzt ist.
+
+---
+
+## Als Debian/Ubuntu-Paket installieren (.deb)
+
+Ein eigenständiges `.deb` (bündelt die App **und** ein Python-venv mit allen Abhängigkeiten — bei der Installation ist
+kein Netzwerk nötig):
+
+```bash
+./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
+sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + launcher + service
+systemctl --user enable --now agentos                      # start at login (per user)
+bento app                                                  # or launch it from your menu
+```
+
+`apt`/`dpkg` erledigt Updates und Entfernung. Es **empfiehlt** (`Recommends`) `bubblewrap` (Sandbox) und `xdg-utils`
+und **schlägt vor** (`Suggests`) `ollama`, `nodejs` und `git`. Das Desktop-Paket **schlägt** zusätzlich den
+Session-UI-Stack und `wayvnc`/`novnc` vor — vorgeschlagen statt vorausgesetzt, weil apt Recommends
+standardmäßig installiert und das ein Bündeln unter einem sanfteren Namen wäre.
+
+## Als echte App installieren (Autostart beim Booten) — aus dem Quellcode
+
+```bash
+uv run bento install      # app launcher + a background service that starts at login/boot
+```
+
+Der passende native Mechanismus wird automatisch verwendet: ein `.desktop`-Launcher plus ein **systemd-User-
+Dienst** unter Linux (mit Linger, sodass er beim Booten startet), ein App-Bundle plus **LaunchAgents** unter
+macOS, eine Startmenü-Verknüpfung plus **Autostart-Einträge** unter Windows.
+
+Ein Satz von Befehlen steuert alle drei — Sie sollten nicht wissen müssen, ob diese Maschine
+systemd oder launchd verwendet, um Ihren eigenen Agenten zu steuern:
+
+```bash
+bento service status       # is it running, will it come back at boot, is the port answering
+bento service start        # …stop, restart
+bento service logs -f      # journalctl or the log file, whichever this machine uses
+bento service uninstall    # remove the background service only — launcher and data stay
+bento uninstall            # remove launcher + service (your data stays)
+bento app                  # open as a chromeless desktop window any time
+```
+
+`bento service status` meldet, was der Supervisor glaubt, **und** ob der Port
+antwortet, getrennt: Eine Unit, die „aktiv“ ist, während nichts lauscht, ist ein Crash-
+Loop, und das ist der Zustand, den man sehen können sollte.
+
+---
+
+## Startmodi
+
+| Befehl | Was er tut |
+|---|---|
+| `uv run bento` | den Server starten **und** den Desktop im Browser öffnen |
+| `uv run bento serve --no-browser --port 8321` | Headless-Server (vom Boot-Dienst verwendet) |
+| `uv run bento app` | den Desktop als Fenster mit nativem Gefühl öffnen |
+| `uv run bento tui` | das ganze OS in einem Terminal (**TUI**) |
+| `uv run bento installer` | diese Distribution erkennen und die Linux-Sitzung einrichten (**SUI**) |
+| `uv run bento doctor` / `doctor --session` | Umgebungsprüfung / was hier den Desktop zeichnen kann |
+| `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | der Hintergrundserver, auf welchem Supervisor dieses OS auch hat |
+| `uv run bento update` / `update --apply` | nach einer neueren Version suchen / ziehen, synchronisieren, testen und neu starten |
+| `uv run bento config [key] [value]` | `~/.agentos/config.json` lesen oder ändern (`--edit`, `--path`) |
+| `uv run bento remote --port 8080 --bind 0.0.0.0` | die Adresse, unter der es antwortet, in der Konfiguration gespeichert |
+| `uv run bento serve --if-running open\|port\|restart\|fail` | was zu tun ist, wenn bereits eine läuft (Standard: fragen) |
+| `uv run bento apps search \| install \| remove` | native Anwendungen, aus einem Terminal |
+| `uv run bento remote --on --passphrase '…'` | diesen Desktop vom Telefon erreichen |
+| `uv run bento remote-desktop --on` | der Browser-Remote-Desktop (echter Bildschirm, native Apps) |
+| `uv run bento ask "…"` | einmaliger Agentenlauf im Terminal (`--full`, `--model …`) |
+| `uv run bento user add <name>` | Konten — das erste übernimmt diese Maschine und ist Administrator |
+| `uv run bento help --all` | jeder Befehl; `bento --help` zeigt die zehn, die eine neue Maschine braucht |
+
+---
+
+## Anforderungen
+
+- **Python ≥ 3.10** und [**uv**](https://docs.astral.sh/uv/) (oder pip).
+- **Ein Modell-Provider** — entweder [Ollama](https://ollama.com) lokal (empfohlen: ein tool-fähiges
+  Modell wie `qwen3.5:9b`) oder ein Cloud-API-Schlüssel.
+
+Optional, schalten zusätzliche Funktionen frei, wenn vorhanden — `bento installer` bietet jede mit ihrer Lizenz an:
+
+- **Die Linux-Sitzung (SUI)** — `sway` und Freunde, plus `python3-gi`, `python3-gi-cairo`,
+  `gir1.2-gtklayershell-0.1` und `gir1.2-webkit2-4.1`. [Details →](../session-ui.md)
+- **wayvnc + novnc** — Remote Desktop aus einem Telefon-Browser, über Loopback übertragen.
+- **bubblewrap** (`bwrap`) — der Ordner-**Sandkasten**, der den Agenten und das Terminal in einen Ordner sperrt.
+- **Node/npx** und/oder **uvx** — um **MCP-Server** auszuführen (Playwright, filesystem, git, …).
+- **git** — um **Skills** aus Repositories zu installieren.
+
+---
+
+## Der Desktop
+
+- **Fenster** — jede App öffnet sich in einem ziehbaren, größenveränderbaren Fenster mit Minimieren/Maximieren/Schließen und
+  Z-Reihenfolge. Eine **Taskleiste** verfolgt offene Fenster; ein **Startmenü** startet alles.
+- **Fenster, die schlafen** — ein Fenster, das Sie nicht sehen können, hört mit periodischer Arbeit auf und aktualisiert sich in dem
+  Moment, in dem es zurückkommt. Sechs geöffnete und alle minimierte Apps gingen von 25 Anfragen pro 10 s auf 2.
+- **Virtuelle Desktops** — ein Taskleisten-Pager; `Ctrl+1..6` zum Wechseln, Rechtsklick, um ein Fenster dorthin zu verschieben.
+  Widgets sind pro Desktop, sodass jeder sein eigener Raum ist.
+- **Widgets** — pinnen Sie jede App als rahmenlose Live-Kachel an; ziehen, Größe ändern, und sie wird beim Start wiederhergestellt.
+- **Befehlspalette** — `Ctrl+Space` (oder `Ctrl+K`) für unscharfen Start jeder App oder Aktion, oder
+  „Ask Aria …“, um direkt an den Agenten zu senden. `Ctrl+Alt+T` öffnet ein Terminal.
+- **Aussehen & Verhalten** — KI-generierte Hintergrundbilder mit einer lokalen Galerie, eine Denkanimation, während der
+  Agent arbeitet, und optionale Sprache. Fügen Sie Bilder direkt in den Chat ein für Vision-fähige Modelle.
+
+### Eingebaute Apps
+
+| App | Was sie ist |
+|---|---|
+| **Agent Chat** | mit dem Agenten sprechen; Streaming, Tool-Karten, Freigaben, Sprache, Bild einfügen |
+| **Applications** | jede installierte Desktop-App — starten oder neue installieren |
+| **Remote Desktop** | der echte Bildschirm der Maschine, anklickbar, von hier oder von einem Telefon |
+| **Host Screen** | ein sich aktualisierendes Standbild des echten Displays, einschließlich nativer App-Fenster |
+| **Web** | öffnet URLs in Ihrem **echten Systembrowser** (vollständige Seiten, Logins, Erweiterungen) |
+| **Files** | den Arbeitsbereich durchsuchen; auf eine Datei klicken, um sie im Host-Browser/-App zu öffnen |
+| **Terminal** | eine echte Host-Shell (xterm.js über eine PTY), in den Sandkasten-Ordner gesperrt |
+| **App Studio** | eine App in natürlicher Sprache beschreiben, und der Agent **baut sie live** |
+| **Task Manager** | Live-CPU/-Speicher/-Festplatte, Prozesse, offene Fenster (und welche schlafen) |
+| **Knowledge Graph** | was der Agent weiß, als Live-Kräftegraph |
+| **Soul** | die dauerhafte Identität/Persönlichkeit des Agenten (bei jedem Zug eingespeist) |
+| **Memory** | Benutzer- & Sitzungsspeicher mit Auto-Learn + semantischem Abruf |
+| **Profile** | alles, was der Agent über Sie weiß, an einem Ort |
+| **Team** | Subagenten & visuelle Workflows (Modelle pro Schritt mischen) + Beobachtbarkeit |
+| **Docs** | dieses Handbuch, im OS |
+| **Automations** | benannte Routinen, Hot Corners und der Schritt-Builder |
+| **Skills** | wiederverwendbare Abläufe; aus einem Git-Repo oder einer rohen `.md`-URL installieren |
+| **MCP Servers** | externe Tool-Server aus einem Katalog verbinden |
+| **Telegram** | den Agenten von Ihrem Telefon aus steuern; Allow-Liste pro Chat |
+| **Policies** | Immer-erlauben-/Immer-verweigern-Regeln für Tools & Befehle |
+| **Logs** | alles, was das System getan hat (Züge, Tools, MCP, Telegram, Aufgaben) |
+| **Scheduler** | wiederkehrende Hintergrund-**Aufgaben** |
+| **Snapshots** | Wiederherstellungspunkte für das ganze OS (Konfiguration, Daten und Quellcode) |
+| **Settings** | Provider, Modell, Autonomie, Sprache, Sandbox, Agentenname |
+
+---
+
+## Was der Agent kann
+
+Der Agent (Standardname **Aria**) hat ein großes Werkzeugset und kann das ganze OS aus dem Chat oder
+Telegram steuern:
+
+- **Auf der Maschine handeln** — Shell-Befehle ausführen, Dateien lesen/schreiben, das Web abrufen, Apps/Dateien auf dem
+  Host öffnen, Desktop-Benachrichtigungen.
+- **Ergebnisse liefern** — `save_report` schreibt einen gestylten HTML-Bericht, der in Files erscheint und sich in
+  Ihrem Browser öffnet, und kann eine Zusammenfassung an Telegram senden. Dem Agenten wird gesagt, die **Aufgabe zu Ende zu bringen** —
+  Recherche in ein tatsächliches Ergebnis zu verwandeln, nicht nach einer Suche aufzuhören.
+- **Das OS bauen** — `create_app` macht neue UI-Apps mit einem Desktop-Symbol; `pin_widget` setzt sie auf den
+  Desktop; `add_mcp_server` verbindet neue Tool-Kanäle.
+- **Wachsen** — zweistufiger Speicher, ein Wissensgraph, `update_soul` — plus **Auto-Learn**: ein Hintergrund-
+  durchlauf nach jedem Zug extrahiert von sich aus Erinnerungen und Fakten.
+- **Automatisieren** — `schedule_task` erstellt Headless-**Aufgaben**, die an einen Bericht und/oder Telegram liefern.
+- **Sich selbst erweitern** — `read_source` / `develop_agentos` lassen ihn Bentos **eigenen Quellcode** verändern;
+  es erstellt zuerst automatisch einen Snapshot und prüft die Syntax vor dem Schreiben.
+
+Fragen Sie in natürlicher Sprache: *„füge den github-MCP-Kanal hinzu“, „bau mir einen Gewohnheits-Tracker und pinne ihn an Desktop
+2“, „berichte jeden Morgen Social-Media-Trends an mein Telegram“, „installiere inkscape“.*
+
+---
+
+## Modelle & Provider
+
+- **Ollama** (lokal) — automatisch erkannt; nichts verlässt Ihre Maschine.
+- **Anthropic**, **OpenAI**, **OpenRouter** oder jeder **OpenAI-kompatible** Endpunkt (LM Studio, vLLM,
+  Groq, …).
+- **Bildgenerierung** — Google Gemini oder OpenAI-Bildmodelle, wenn ein Schlüssel gesetzt ist, ansonsten kostenloser
+  Fallback.
+
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` und `GOOGLE_API_KEY` werden automatisch
+aufgegriffen. Wechseln Sie Modelle im Flug aus dem Dropdown des Chatfensters.
+
+---
+
+## Sicherheit
+
+- **Autonomiestufen** — Paranoid / Balanced führen schreibgeschützte Aktionen automatisch aus und fragen vor allem, was das
+  System verändert; Full führt alles aus. Destruktive Befehle sind auf jeder Stufe **hart blockiert**.
+- **Policies** — Immer-erlauben-/Immer-verweigern-Regeln (mit `*`-Platzhaltern), abgeglichen gegen
+  `<tool> <command>`.
+- **Ordner-Sandkasten** — mit bubblewrap sind die Shell-/Datei-Tools des Agenten und das Terminal in einen
+  Ordner gesperrt; der Rest des Dateisystems ist schreibgeschützt.
+- **Snapshots** — Wiederherstellungspunkte; der Agent erstellt automatisch einen Snapshot, bevor er seinen eigenen Code bearbeitet.
+- **Standardmäßig privat** — bindet an `127.0.0.1`. Fernzugriff ist aus, bis Sie ihn mit einer
+  Passphrase einschalten, und das Installieren von Software wird von überall außer von der Maschine selbst verweigert.
+
+---
+
+## Telegram · MCP · Programmierbar
+
+**Telegram** — schreiben Sie @BotFather, fügen Sie den Token in der Telegram-App ein, und der erste private Chat
+wird zum Besitzer. Der Agent hat dort all seine Werkzeuge; riskante Aktionen senden Inline-Buttons für Erlauben/Verweigern.
+
+**MCP-Server** — fügen Sie externe Tool-Server aus dem Katalog hinzu (Playwright, filesystem, fetch, git,
+GitHub, Postgres, Slack, search, …) oder einen benutzerdefinierten `stdio`/`http`-Server. Ihre Tools erscheinen dem
+Agenten als `mcp_<server>_<tool>` und gebauten Apps über `POST /api/tool`.
+
+**Programmierbar** — `bento ask "…"` für einmalige Läufe; eine REST-API (`POST /api/chat`, `GET /api/system`,
+`POST /api/tool`, …); WebSockets unter `/ws` (Streaming-Chat + Freigaben) und `/ws/terminal` (Host-PTY).
+Apps, die Sie bauen, laufen in einem Same-Origin-iframe und können all das aufrufen.
+
+---
+
+## Architektur
+
+```
+agentos/                 # the Python package keeps its original name; see "On the name" below
+├── __main__.py    # CLI entry: serve · app · installer · doctor · apps · remote-desktop · ask
+├── agent.py       # the kernel: plan → act (tools) → observe loop, approval gates, personas
+├── providers.py   # unified streaming chat: Ollama / Anthropic / OpenAI / OpenRouter / custom
+├── tools.py       # the hands: shell, files, web, apps, reports, memory, KG, soul, skills, MCP
+├── shellhost.py   # the SUI: the desktop as a wlr-layer-shell surface (GTK + WebKitGTK)
+├── sessiondoctor.py # what can actually draw the desktop on this machine
+├── compositor.py  # sway/wlroots IPC: windows, workspaces, outputs, live events
+├── appstore.py    # installing native applications via appstream / flatpak / apt
+├── remotedesktop.py # the browser remote desktop, relayed over the authenticated connection
+├── installer.py   # OS-aware setup: detect the distro, install what is missing, ask first
+├── memory.py      # SQLite: conversations, memories, tasks, logs, KG, skills, apps
+├── server.py      # FastAPI: desktop UI, REST API, WebSocket streams, file serving
+└── ui/
+    ├── src/       # the desktop's source — edit here
+    └── index.html # generated by `python -m agentos.ui.build` (do not edit)
+```
+
+**Der Zustand lebt in `~/.agentos/`:** `config.json`, die SQLite-Datenbank, `soul.md`, `wallpapers/`,
+`snapshots/`. Das Arbeitsverzeichnis des Agenten ist `~/AgentOS/`.
+
+### Zum Namen
+
+Das Produkt ist **Bento Box AI**. Das Python-Paket, das Datenverzeichnis und die systemd-Unit heißen
+weiterhin `agentos` — bewusst. Diese umzubenennen bricht Dienst, Konfiguration und Skripte jeder bestehenden Installation
+und bringt dem Nutzer nichts Sichtbares. Sie werden umziehen, wenn es eine Migration gibt, die den Aufwand wert ist,
+nicht früher. Der Name und die Marke sind unsere, so wie Ubuntus die von Canonical sind: forken Sie den Code
+frei unter MIT, liefern Sie ihn unter Ihrem eigenen Namen aus. [Lizenzierung und Marken →](../licensing.md)
+
+---
+
+*Bento Box AI ist eine offene, local-first Alternative zu Cloud-KI-Assistenten: ein agentisches OS, KI-Desktop
+und Automatisierungsplattform, die Sie selbst betreiben — auf Linux, macOS oder Windows.*

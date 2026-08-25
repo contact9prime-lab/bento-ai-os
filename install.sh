@@ -15,7 +15,10 @@
 #   2. uv, the repo, the Python dependencies.
 #   3. offer the session desktop's own dependencies, on Linux, with what each
 #      one is for. AgentOS bundles none of them and asks before installing.
-#   4. the launcher and the login/boot service.
+#   4. ask how this machine is to be REACHED, then the launcher and the
+#      login/boot service — in that order, so the service comes up already bound
+#      the way it was asked for. On a headless box the answer to that question is
+#      the difference between an install you can look at and one you cannot.
 #   5. START IT AND ASK IT A QUESTION. See "why step 5 exists" below.
 #   6. leave it running, because on a server nobody logs into, "installed" has
 #      to mean "listening".
@@ -25,7 +28,9 @@
 #   --yes                     answer yes to every optional install
 #   --passphrase=SECRET       also make it reachable from your network (binds
 #                             0.0.0.0 and requires that passphrase to sign in).
-#                             Without this it listens on 127.0.0.1 only.
+#                             Without it, an install with a terminal ASKS; one
+#                             with none stays on 127.0.0.1. --yes does not answer
+#                             that question: an open port here is an open shell.
 #   --bind=ADDR               which interface to listen on once reachable
 #                             (default 0.0.0.0 — all of them). Needs --passphrase.
 #   --port=N                  the port to answer on (default 8321). Saved to the
@@ -101,7 +106,7 @@ for a in "$@"; do
     --port=*) PORT_WANTED="${a#--port=}" ;;
     --lite) PROFILE=lite ;;
     --full) PROFILE=full ;;
-    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
     -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
 done
@@ -128,6 +133,11 @@ esac
 ORIG_PATH="$PATH"
 # Set when a shell rc had to be edited, and printed as a required step at the end.
 SOURCE_ME=""
+# Set when this install actually opened the port, so the last lines can name the
+# address that will work rather than the one that happens to be loopback.
+REMOTE_ON=""
+# ...and who signs in there, when the answer is a person rather than a secret.
+REMOTE_WHO=""
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!  %s\033[0m\n' "$*"; }
@@ -142,12 +152,73 @@ GAPS=""
 gap() { GAPS="$GAPS
   · $*"; }
 
+# Is there a person here to answer?
+#
+# `[ -t 0 ]` is the wrong test for THIS script, and it is wrong on the one path
+# everybody uses. The documented install is `curl … | sh`, so stdin is the pipe,
+# not a terminal — every question below was therefore answered "no" without ever
+# being asked, on a script whose whole design is to ask before it changes
+# anything. The terminal to talk to is /dev/tty, which the reads already used;
+# this is the test agreeing with them. Opening it fails with no controlling
+# terminal (a systemd unit, a docker build, CI), which is exactly the case that
+# must never block on a prompt.
+INTERACTIVE=""
+if [ -t 0 ]; then
+  INTERACTIVE=1
+elif [ -c /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+  INTERACTIVE=1
+fi
+
 ask() {   # ask "question" -> 0 for yes. Non-interactive installs answer no.
   [ -n "$ASSUME_YES" ] && return 0
-  [ -t 0 ] || return 1
+  [ -n "$INTERACTIVE" ] || return 1
   printf '\033[36m?  %s [y/N] \033[0m' "$1"
   read -r a </dev/tty 2>/dev/null || return 1
   case "$a" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+# A question `--yes` does NOT answer, and the only one in this script.
+#
+# "answer yes to every optional install" is consent to install THINGS. Opening a
+# port on this OS is not an install: the agent behind it has a real shell, so it
+# is consent to hand that shell to whatever can reach the machine. A flag that was
+# typed to skip package prompts must not be able to reach that decision, which is
+# also why there is no `--remote` flag — the only way in is `--passphrase`, where
+# the person picking the secret is the person deciding.
+ask_deliberate() {
+  [ -n "$INTERACTIVE" ] || return 1
+  printf '\033[36m?  %s [y/N] \033[0m' "$1"
+  read -r a </dev/tty 2>/dev/null || return 1
+  case "$a" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+# A question with a typed answer rather than y/n. Same terminal, same rule about
+# there being somebody at it: with nobody there ANSWER is the default and nothing
+# blocks.
+ask_line() {
+  ANSWER="$2"
+  [ -n "$INTERACTIVE" ] || return 0
+  printf '\033[36m?  %s [%s]: \033[0m' "$1" "$2"
+  if read -r _line </dev/tty 2>/dev/null; then
+    [ -n "$_line" ] && ANSWER="$_line"
+  fi
+}
+
+# A secret, read without echoing it into the scrollback of a shared terminal.
+# `stty` is not always there (a stripped container); showing the characters is a
+# worse outcome than refusing to ask, but only slightly — and refusing would mean
+# a machine that cannot be reached from anywhere, so it asks anyway and says so.
+ask_secret() {
+  _s_prompt="$1"
+  printf '\033[36m?  %s\033[0m ' "$_s_prompt"
+  if command -v stty >/dev/null 2>&1 && stty -echo </dev/tty 2>/dev/null; then
+    read -r SECRET </dev/tty 2>/dev/null || SECRET=""
+    stty echo </dev/tty 2>/dev/null || true
+    echo
+  else
+    printf '(typed in the clear) '
+    read -r SECRET </dev/tty 2>/dev/null || SECRET=""
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -731,13 +802,126 @@ if [ -n "$PASSPHRASE" ]; then
   if uv run bento remote --on --passphrase "$PASSPHRASE" --bind "$bind_to" >/dev/null 2>&1; then
     ok "reachable from your network — sign in with that passphrase"
     gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
+    REMOTE_ON=1
   else
     # Never a silent half-state: refusing is usually the passphrase being too short,
     # and leaving it on loopback is the safe outcome to report.
     warn "could not enable remote access — still loopback only"
     gap "set it yourself:  bento remote --on --passphrase '<something long>' --bind $bind_to"
   fi
+elif [ -n "$INTERACTIVE" ] && ! uv run bento remote 2>/dev/null | head -1 | grep -q 'ON'; then
+  # `--bind` on its own still does not open anything — but somebody who typed it
+  # was asking for exactly this, and answering them with a warning and nothing else
+  # is a refusal where a question belongs. The interface they named is carried into
+  # the offer; the passphrase is still the thing that decides.
+  if [ -n "$BIND" ]; then
+    warn "--bind=$BIND on its own is not enough: binding off loopback needs a passphrase."
+    warn "AgentOS hands whoever loads it a real shell, so an open port is an open shell."
+  fi
+  # ASK, on a machine with somebody at the keyboard.
+  #
+  # Loopback-only is the right default and it stays the default — but on the box
+  # this install is written for (a Pi, reached over SSH, no screen) it is also the
+  # setting that makes everything that was just installed unreachable. The desktop
+  # is a browser page; a machine with no browser and a closed port is an install
+  # nobody can look at, and the only thing that said so was one line at the end of
+  # a long log.
+  #
+  # Deliberately NOT covered by --yes: opening a port here opens a shell, and
+  # "yes to every optional install" is not consent to that. It needs a passphrase
+  # a person chose, so an unattended install cannot reach this at all.
+  bind_to="${BIND:-0.0.0.0}"
+  echo
+  say "this machine answers on 127.0.0.1 only — nothing else on your network can reach it"
+  echo "   AgentOS is a desktop in a browser, so on a machine with no screen that"
+  echo "   means nothing can open it. Turning it on binds $bind_to and requires a"
+  echo "   passphrase to sign in."
+  echo "   (You can do it later instead: bento remote --on)"
+  if ask_deliberate "make this machine reachable from your phone or laptop?"; then
+    # WHO signs in, asked as a choice rather than assumed.
+    #
+    # A passphrase is not a user. On a machine with no accounts you sign in with
+    # one shared secret and you are the machine itself — which is the right shape
+    # for one person and one Pi, and is genuinely confusing if you expected a
+    # username. The alternative is real and this is the moment to offer it, but
+    # NOT as a second secret: `remote.lock_kind` is explicit that accounts win and
+    # a passphrase in front of them is dead config, so this is one question with
+    # two answers, not two questions.
+    echo
+    echo "   Two ways to sign in:"
+    echo "     1  a passphrase — one secret, for whoever uses this machine."
+    echo "        Simplest, and right for one person and one machine."
+    echo "     2  an account — your own username and password."
+    echo "        This machine then asks who you are at the keyboard too; everything"
+    echo "        already here becomes that first account's, and it is an admin."
+    ask_line "1 or 2" "1"
+    # Kept in its own variable, because `ask_line` writes ANSWER and the retry
+    # loop asks for a username with it — so re-testing ANSWER for the MODE meant
+    # that a mistyped password on the account path silently dropped you into the
+    # passphrase path, which then reported "sign in with that passphrase" for a
+    # machine where you had just been asked to choose a username.
+    signin="$ANSWER"
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+      tries=$((tries + 1))
+      if [ "$signin" = "2" ]; then
+        ask_line "a username" "$(id -un 2>/dev/null || echo me)"
+        who="$ANSWER"
+        ask_secret "a password for $who (8 characters or more):"
+        pass1="$SECRET"
+        ask_secret "again:"
+        pass2="$SECRET"
+        SECRET=""
+        [ -n "$pass1" ] || { warn "nothing typed — staying on loopback"; break; }
+        if [ "$pass1" != "$pass2" ]; then warn "those did not match"; continue; fi
+        # Two calls, because they are two facts: WHO may sign in, and THAT this
+        # machine answers off loopback. The account is the lock, so `remote --on`
+        # needs no passphrase once it exists — and if the account is refused
+        # (a name already taken, a password too short) the port is never opened,
+        # which is the safe way round.
+        if user_out="$(uv run bento user add "$who" --password "$pass1" --role admin 2>&1)"; then
+          if remote_out="$(uv run bento remote --on --bind "$bind_to" 2>&1)"; then
+            ok "reachable from your network — sign in as $who"
+            gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
+            REMOTE_ON=1
+            REMOTE_WHO="$who"
+            break
+          fi
+          printf '%s\n' "$remote_out" | sed -n '1,3p' | sed 's/^/   /'
+        else
+          printf '%s\n' "$user_out" | sed -n '$p' | sed 's/^/   /'
+        fi
+      else
+        ask_secret "a passphrase to sign in with (8 characters or more):"
+        pass1="$SECRET"
+        ask_secret "again:"
+        pass2="$SECRET"
+        SECRET=""
+        [ -n "$pass1" ] || { warn "nothing typed — staying on loopback"; break; }
+        if [ "$pass1" != "$pass2" ]; then warn "those did not match"; continue; fi
+        # One call, and it is the same one the flag path makes. Its refusal is shown
+        # verbatim rather than paraphrased here, where the rule would drift from
+        # `remote.passphrase_problem` the first time that rule changes.
+        if remote_out="$(uv run bento remote --on --passphrase "$pass1" --bind "$bind_to" 2>&1)"; then
+          ok "reachable from your network — sign in with that passphrase"
+          gap "this machine now answers on $bind_to. If it faces the internet, put it behind a tunnel or a firewall."
+          REMOTE_ON=1
+          break
+        fi
+        printf '%s\n' "$remote_out" | sed -n '1,3p' | sed 's/^/   /'
+      fi
+      if [ "$tries" -ge 3 ]; then
+        warn "leaving remote access off"
+        gap "turn it on when you have chosen one:  bento remote --on"
+      fi
+    done
+    pass1=""; pass2=""
+  else
+    gap "reachable from elsewhere later:  bento remote --on"
+  fi
 elif [ -n "$BIND" ]; then
+  # Nobody to ask (a systemd unit, a container build, CI). Never silently applied:
+  # `serve` refuses it anyway, and accepting it here would teach that it worked.
   warn "--bind=$BIND ignored: binding off loopback needs a passphrase."
   warn "AgentOS hands whoever loads it a real shell, so an open port is an open shell."
   gap "reachable from your network:  --passphrase='<something long>' --bind=$BIND"
@@ -919,20 +1103,39 @@ elif [ "$SERVICE" = 1 ]; then
 else
   ok "AgentOS is installed (nothing was started — --no-service)."
 fi
+# ONE next step, not eight.
+#
+# The old ending printed seven `bento …` lines and a passphrase incantation, all at
+# the same weight, to somebody who had just watched five minutes of log scroll past.
+# Every one of them was true and none of them was the answer to "what do I do now?"
+# — which on a machine that has never been set up is exactly one thing. The rest of
+# the catalogue is one command away and now says so in one line.
+echo
+printf '\033[1m▲ next:  bento setup\033[0m   — name it, give it a brain, put it to work\n'
 if [ -n "$RUNNING" ]; then
-  echo "   open:       http://${PROBE_HOST}:${PORT}"
+  echo "   or open the desktop:  http://${PROBE_HOST}:${PORT}"
+  # The address that will actually work from the laptop this was typed on. `bento
+  # remote` already computes it (it knows the interfaces and the port); reprinting
+  # its answer is how the two never disagree.
+  if [ -n "$REMOTE_ON" ]; then
+    uv run bento remote 2>/dev/null \
+      | sed -n 's|^  reach:   |   from another device:  |p'
+    if [ -n "$REMOTE_WHO" ]; then
+      echo "   sign in as:  $REMOTE_WHO"
+    else
+      echo "   sign in with:  the passphrase you just chose"
+    fi
+  fi
 else
-  echo "   start it:   bento service start        — then http://${PROBE_HOST}:${PORT}"
+  echo "   start it first:  bento service start"
 fi
-echo "   terminal:   bento tui          — the whole OS over SSH"
-echo "   set it up:  bento setup        — the same nine steps as the desktop"
-echo "   check:      bento doctor"
-echo "   service:    bento service status | start | stop | restart | logs | uninstall"
-# On a box you reach over SSH, loopback-only is the default and it is the right
-# default: the agent has a real shell, so an open port here is an open shell.
-# Printed, never done — widening this is the user's decision, and it needs a
-# passphrase they choose.
-echo "   from your phone/laptop:  bento remote --on --passphrase '<something long>'"
+echo
+echo "   everything else:  bento help    — the ten commands you need, and where the rest are"
+if [ -z "$REMOTE_ON" ]; then
+  # Printed, never done — widening this is the user's decision and it needs a
+  # passphrase they choose. Asked for above when there was somebody to ask.
+  echo "   reach it from your phone:  bento remote --on"
+fi
 # `session_capable`, not `command -v sway`. The old test asked whether a
 # compositor happened to be installed, so a Linux box that had simply not been
 # offered one yet was told nothing — the option existed and was never mentioned.

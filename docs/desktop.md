@@ -244,11 +244,26 @@ there; they just take a different amount of room.
 | Launcher | full-screen sheet | popover | popover |
 | Menu bar | brand + status only | no app menus | everything |
 | Popovers | bottom sheets | anchored panels | anchored panels |
+| Tab strips (Settings, Store) | scroll sideways; Settings' rail moves above the content | as desktop | a rail beside the content |
+| Copilot ✦ | not offered — its panel needs a second column | in the title bar | in the title bar |
 
 The classification is on the **viewport**, not the user agent, so a narrow browser window on a
 laptop gets the phone layout too — which is what you want when AgentOS is docked beside an editor.
 Touch is tracked separately (`body.dev-touch`), so a touchscreen laptop gets larger hit targets at
 desktop widths and hover-only affordances such as dock tooltips stand down.
+
+**Touch targets have a floor, and it is real size.** A fingertip is about 9mm — Apple asks for
+44pt and Android for 48dp — so on any touch device every control inside a window, popover or the
+launcher is at least `--tap` (40px) in both directions, and the sheet's close button is 38px. That
+reflows a dense row on a phone, which is the point: on a phone that row was too dense. The
+alternative — an invisible enlarged hit area around a small button — is rejected deliberately,
+because two neighbouring buttons' halos overlap and whichever paints last silently swallows the
+other's taps.
+
+Anything too wide to fit **scrolls and snaps** rather than clipping: the dock, `.seg` tab strips
+and Settings' rail. Snapping matters as much as scrolling — a scroller resting halfway through an
+icon puts the centre of that button outside its own box, where the tap lands on whatever is
+behind it.
 
 Screen-edge surfaces pad by `env(safe-area-inset-*)`, so the dock clears a home indicator and the
 menu bar clears a notch. On a phone the window sheet reserves the height of the dock and the prompt

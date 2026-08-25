@@ -196,7 +196,9 @@ async function sysPower(el){
     <div class="provbox"><div class="ptitle">Performance profile</div><div class="row" style="margin-top:8px">${profHtml}</div></div>
     <div class="provbox"><div class="ptitle">Session power</div>
       <div class="row" style="margin-top:8px">
-        <button class="endbtn" onclick="powerDo('lock','Lock the screen?')">🔒 Lock</button>
+        ${USERS.lock&&!suiActive()
+          ? `<button class="endbtn" title="your password brings it back" onclick="lockDesktop()">🔒 Lock desktop</button>`:''}
+        <button class="endbtn" onclick="powerDo('lock','Lock the screen?')">🔒 Lock screen</button>
         <button class="endbtn" onclick="powerDo('suspend','Suspend the machine?')">🌙 Suspend</button>
       </div>
       <p class="mut" style="margin-top:8px">Idle timers for the AgentOS session live in config
