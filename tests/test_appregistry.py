@@ -226,3 +226,25 @@ def test_the_receiving_machine_re_scans_and_flags_a_lying_verdict():
     assert reg.scan_drift(man2, html) == ""
     # unscanned says so, without pretending it is a mismatch
     assert "not security-scanned" in reg.scan_drift({"name": "X"}, html)
+
+
+# ------------------------------------------------------------ the hybrid commons
+
+def test_authorship_is_derived_from_the_edit_history_not_declared():
+    """"agent build" is the note create_app has always written, so who made an app
+    is a fact of its history — derived at export, shown at consent, never a field
+    an author fills in flatteringly."""
+    assert reg.authorship([]) == "human"
+    assert reg.authorship(["initial version", "edited"]) == "human"
+    assert reg.authorship(["agent build"]) == "agent"
+    assert reg.authorship(["agent build", "agent build"]) == "agent"
+    assert reg.authorship(["agent build", "polished by hand"]) == "hybrid"
+
+
+def test_the_commons_requires_an_honest_author_label():
+    """The registry refuses unlabelled or mislabelled packages; the product only
+    warns — an old package is underdocumented, not hostile."""
+    assert reg.author_problem({"author": {"kind": "agent"}}) == ""
+    assert reg.author_problem({"author": {"kind": "HUMAN"}}) == ""      # case-tolerant
+    assert "no author block" in reg.author_problem({})
+    assert "one of" in reg.author_problem({"author": {"kind": "robot"}})

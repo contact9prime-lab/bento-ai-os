@@ -37,6 +37,9 @@ for path in sorted(ROOT.glob("apps/*/*.agentapp.json")):
     status, why = reg.verify_package(pkg)
     if status in ("checksum-mismatch", "bad-signature"):
         problems.append(f"{status}: {why}")
+    ap = reg.author_problem(man)
+    if ap:
+        problems.append(ap + " — see COVENANT.md")
     sec = man.get("security") or {}
     if not sec:
         problems.append("not security-scanned — run `bento registry scan` before the PR")

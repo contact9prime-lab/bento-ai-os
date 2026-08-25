@@ -494,6 +494,14 @@ flagged: `scan_drift`), and pins source+signer on first install (`tofu_check`, t
 model: `changed-key` is the loudest alarm because that is what a hijacked author account
 looks like). Pins live under the `registry` USER_KEY — whom I trust is personal.
 
+The commons is HYBRID: agents contribute on the same terms as people. Authorship is
+DERIVED from the app's version notes ("agent build" is what `create_app` has always
+written) and stamped as `manifest.author.kind` (human/agent/hybrid) at export — never
+declared, so it cannot be faked cheaply — and the consent screen says it. The registry's
+CI refuses a package without it; the product only warns (an old package is
+underdocumented, not hostile). The covenant (registry COVENANT.md) binds every author
+kind equally, and its checkable clauses are checked, not asked for.
+
 ## The app registry is a Git repo of the packages the OS already speaks
 
 `agentos/appregistry.py` + `registry/` (the seed of `bento-app-registry`), full story in

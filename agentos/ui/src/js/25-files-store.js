@@ -329,7 +329,8 @@ async function storeImportStage(body){
     toast(rr.ok?('installed '+d.manifest.name):(dd.error||'install failed'));
     refreshApp('store');refreshApp('permissions');
   },{status:d.signature_status,note:d.signature_note,security:d.security,
-     drift:d.security_drift,pin:d.pin_status,pinNote:d.pin_note});
+     drift:d.security_drift,pin:d.pin_status,pinNote:d.pin_note,
+     author:d.author_kind,authorNote:d.author_note});
 }
 let IMPORT_PREREQS={mcp:[],skills:[]};
 

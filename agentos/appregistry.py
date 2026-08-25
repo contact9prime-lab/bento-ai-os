@@ -131,6 +131,45 @@ def tofu_record(pins: dict, name: str, source: str, key_id: str, checksum: str) 
     return pins
 
 
+# ---------------------------------------------------------------------------
+# Authorship — the hybrid commons, labelled honestly
+# ---------------------------------------------------------------------------
+# Agents write apps here too (App Studio's builds land as version notes reading
+# "agent build"), and the commons is open to them on the same terms as people:
+# same manifest, same scan, same consent screen, same signature mechanics. What
+# it is NOT open to is passing one off as the other — authorship is DERIVED from
+# the app's own version history rather than declared, and the consent screen says
+# it. A commons where you cannot tell who made a thing is how trust in all of it
+# erodes at once; a labelled one is how human and agent work can share a shelf.
+
+AUTHOR_KINDS = ("human", "agent", "hybrid")
+
+
+def authorship(version_notes: list[str]) -> str:
+    """'human' | 'agent' | 'hybrid', from the app's own edit history."""
+    notes = [str(n or "") for n in (version_notes or [])]
+    agent = sum(1 for n in notes if "agent build" in n)
+    if not notes or agent == 0:
+        return "human"
+    if agent == len(notes):
+        return "agent"
+    return "hybrid"
+
+
+def author_problem(manifest: dict) -> str:
+    """'' if the manifest declares authorship honestly enough for the commons,
+    else the sentence why not. The registry's CI refuses without it; the product
+    only WARNS at import — an old package is not hostile, just underdocumented."""
+    a = (manifest or {}).get("author") or {}
+    kind = (a.get("kind") or "").strip().lower()
+    if not kind:
+        return ("no author block — the commons labels who made a thing "
+                "(author.kind: human | agent | hybrid)")
+    if kind not in AUTHOR_KINDS:
+        return f"author.kind is '{kind}' — it is one of {', '.join(AUTHOR_KINDS)}"
+    return ""
+
+
 def scan_drift(manifest: dict, html: str) -> str:
     """'' if the recorded static verdict matches a fresh scan of these bytes, else
     the sentence saying so. In federation the receiving machine ALWAYS re-scans —

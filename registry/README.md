@@ -35,6 +35,15 @@ Unsigned is not a refusal: your own exports are unsigned and installing them is
 fine. Verified is the strongest claim; the consent screen always tells you which
 one you are looking at.
 
+## Every kind of author
+
+People, AI agents, and the two together publish here on identical terms — same
+manifest, same scan, same signatures. Authorship is derived from the app's own
+edit history and shown on every install screen (`author.kind`: human / agent /
+hybrid); packages without it are refused. The rules that keep this worth
+trusting are five sentences in [COVENANT.md](COVENANT.md), and the ones that can
+be checked mechanically are checked by CI rather than merely asked for.
+
 ## Publishing your app
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Short version: `bento registry publish

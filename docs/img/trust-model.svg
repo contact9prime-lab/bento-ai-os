@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="400" viewBox="0 0 920 400" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+  <rect width="920" height="400" rx="14" fill="#0d1117"/>
+  <text x="460" y="34" fill="#e6edf3" font-size="17" font-weight="600" text-anchor="middle">Validity without a central authority — three checks, all on YOUR machine</text>
+
+  <!-- package -->
+  <rect x="330" y="60" width="260" height="86" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="460" y="86" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">the package</text>
+  <text x="460" y="106" fill="#8b949e" font-size="11.5" text-anchor="middle">manifest (permissions · author · scan verdict)</text>
+  <text x="460" y="123" fill="#8b949e" font-size="11.5" text-anchor="middle">+ code · checksum over ALL of it · signature</text>
+
+  <!-- three checks -->
+  <rect x="36" y="188" width="266" height="120" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="169" y="214" fill="#5eead4" font-size="13" font-weight="600" text-anchor="middle">1 · re-scan the code</text>
+  <text x="169" y="236" fill="#8b949e" font-size="11.5" text-anchor="middle">the verdict shown is computed HERE;</text>
+  <text x="169" y="253" fill="#8b949e" font-size="11.5" text-anchor="middle">an author's claim that disagrees with</text>
+  <text x="169" y="270" fill="#8b949e" font-size="11.5" text-anchor="middle">a fresh scan of its own bytes is</text>
+  <text x="169" y="287" fill="#8b949e" font-size="11.5" text-anchor="middle">flagged: “trust the fresh one”</text>
+
+  <rect x="327" y="188" width="266" height="120" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="460" y="214" fill="#5eead4" font-size="13" font-weight="600" text-anchor="middle">2 · trust on first use</text>
+  <text x="460" y="236" fill="#8b949e" font-size="11.5" text-anchor="middle">first install pins source + signer</text>
+  <text x="460" y="253" fill="#8b949e" font-size="11.5" text-anchor="middle">(the SSH model). changed source ⚠</text>
+  <text x="460" y="270" fill="#8b949e" font-size="11.5" text-anchor="middle">changed KEY ✗ — that is what a</text>
+  <text x="460" y="287" fill="#8b949e" font-size="11.5" text-anchor="middle">hijacked author account looks like</text>
+
+  <rect x="618" y="188" width="266" height="120" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="751" y="214" fill="#5eead4" font-size="13" font-weight="600" text-anchor="middle">3 · the signature</text>
+  <text x="751" y="236" fill="#8b949e" font-size="11.5" text-anchor="middle">Ed25519 over the checksum. edit the</text>
+  <text x="751" y="253" fill="#8b949e" font-size="11.5" text-anchor="middle">code, the permissions or the verdict →</text>
+  <text x="751" y="270" fill="#8b949e" font-size="11.5" text-anchor="middle">checksum-mismatch; recompute it →</text>
+  <text x="751" y="287" fill="#8b949e" font-size="11.5" text-anchor="middle">bad-signature. no quiet path</text>
+
+  <line x1="380" y1="150" x2="200" y2="184" stroke="#5eead4" stroke-width="1.3"/>
+  <line x1="460" y1="150" x2="460" y2="184" stroke="#5eead4" stroke-width="1.3"/>
+  <line x1="540" y1="150" x2="720" y2="184" stroke="#5eead4" stroke-width="1.3"/>
+
+  <text x="460" y="348" fill="#e6edf3" font-size="12.5" text-anchor="middle">unsigned ≠ hostile (your own exports are unsigned) · only bad-signature and checksum-mismatch mean do-not-install</text>
+  <text x="460" y="372" fill="#8b949e" font-size="11.5" text-anchor="middle">and every install still ends at the same consent screen: every permission, with its reason, granted by a person</text>
+</svg>

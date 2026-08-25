@@ -3840,6 +3840,14 @@ async def api_app_export(aid: str):
             prereq.setdefault("mcp_servers", []).append(_sanitize_mcp_conf(nm, conf))
     man["prerequisites"] = prereq
     man["description"] = man.get("description") or (a.get("description") or "")
+    # Authorship is DERIVED from the app's own edit history, not declared — the
+    # hybrid commons runs on the same shelf holding human and agent work, and on
+    # every package saying honestly which it is. "agent build" is the note the
+    # create_app tool has always written; anything else is a person's hand.
+    from . import appregistry as _reg
+    man["author"] = {**(man.get("author") or {}),
+                     "kind": _reg.authorship([v.get("note") or "" for v in
+                                             state["store"].app_versions(aid)])}
     html = a.get("html") or ""
     pkg = {"format": "agentos-app/1", "manifest": man, "html": html,
            "checksum": _package_checksum(man, html), "signature": None}
@@ -3958,6 +3966,8 @@ async def api_app_import(body: dict):
             "security": local.get("verdict") or "unscanned",
             "security_findings": local.get("findings") or [],
             "security_drift": drift,
+            "author_kind": ((man.get("author") or {}).get("kind") or ""),
+            "author_note": regmod.author_problem(man),
             "pin_status": tstatus, "pin_note": tnote}
 
 

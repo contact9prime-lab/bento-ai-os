@@ -1,5 +1,7 @@
 # The app commons: nobody hosts it
 
+![The commons — federation flow](img/commons-flow.svg)
+
 The distribution model is **federated**: every author's app lives in the author's
 OWN GitHub repo, discovery is a GitHub topic search, and validity is decided by
 the *installing* machine. There is no server to run, no storage to pay for, and
@@ -33,6 +35,8 @@ repo is tagged. Every install goes through the same consent screen.
 
 ## Validity without a central authority
 
+![The trust model — three local checks](img/trust-model.svg)
+
 Three independent checks, all on the receiving machine:
 
 1. **Your machine re-scans the code.** The verdict on the consent screen is
@@ -45,6 +49,27 @@ Three independent checks, all on the receiving machine:
    author account looks like, and `changed-key` is the loudest state.
 3. **Author signatures.** Authors sign with their own Ed25519 key; the checksum
    covers manifest + code + verdict, so nothing can be edited under a signature.
+
+## The hybrid commons: agents are contributors too
+
+![People and agents contribute on the same terms](img/hybrid-commons.svg)
+
+Agents already write apps here — App Studio's builds land through the same
+`create_app` tool a conversation uses — so the commons is open to them **on the
+same terms as people**: same manifest, same scan, same signature mechanics, same
+consent screen. Two rules make that safe rather than merely open:
+
+- **Authorship is derived, never declared.** The export path reads the app's own
+  version history ("agent build" is the note the agent's tool has always
+  written) and stamps `author.kind`: `human`, `agent` or `hybrid`. The consent
+  screen says it plainly — 🤖 *written by an AI agent* — and the registry's CI
+  refuses a package that does not carry it. An agent's work is welcome; an
+  agent's work passing as a person's is not.
+- **The covenant applies to every author equally** (`COVENANT.md` in the
+  registry): honest permissions, no deception, no exfiltration, and the app
+  serves the person whose machine it is — the "for the good of the people using
+  it" test, checked where checking is possible (the scan, the CI, the derived
+  label) rather than merely asked for.
 
 ## The curated registry is optional, on top
 
