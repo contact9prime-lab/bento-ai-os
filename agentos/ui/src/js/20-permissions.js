@@ -260,7 +260,7 @@ async function reviewManifest(aid){
 }
 /* consent modal: manifest permissions with required/optional toggles + prerequisite installs.
    missing = [{label, run:async fn}] */
-function showConsent(manifest,missing,onApprove){
+function showConsent(manifest,missing,onApprove,trust){
   const perms=(manifest&&manifest.permissions)||[];
   /* Required items are deliberately locked — an app that cannot work without a
      capability must not offer to start without it. What was wrong was saying
@@ -278,6 +278,11 @@ function showConsent(manifest,missing,onApprove){
   ov.style.cssText='position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;background:rgba(5,7,10,.55);backdrop-filter:blur(4px)';
   ov.innerHTML=`<div style="width:min(560px,92vw);max-height:82vh;overflow:auto;background:var(--glass,#171b22);border:1px solid var(--border,#232a35);border-radius:14px;padding:20px">
     <div style="display:flex;align-items:center;gap:10px">${shield}<b style="font-size:15px">${esc(manifest.name||'This app')} requests permission</b></div>
+    ${trust?`<div style="margin:8px 0 0;padding:7px 10px;border-radius:8px;font-size:12.5px;border:1px solid ${
+        trust.status==='verified'?'var(--ok,#34d399)':(trust.status==='bad-signature'||trust.status==='checksum-mismatch')?'var(--bad,#f87171)':'var(--border,#232a35)'}">${
+        trust.status==='verified'?'✓ Verified — '
+        :(trust.status==='bad-signature'||trust.status==='checksum-mismatch')?'✗ Do not install — ':'○ Unverified — '}${esc(trust.note||'')}${
+        trust.security&&trust.security!=='unscanned'?` · security scan: ${esc(trust.security)}`:' · not security-scanned'}</div>`:''}
     <p class="mut" style="margin:6px 0 12px">${esc(manifest.description||'')}${howTo}</p>
     ${perms.length?perms.map((p,i)=>`<label class="item" style="display:flex;gap:10px;align-items:flex-start;cursor:${p.required?'default':'pointer'}">
       <input type="checkbox" data-i="${i}" checked ${p.required?'disabled title="required — this app cannot run without it"':''}

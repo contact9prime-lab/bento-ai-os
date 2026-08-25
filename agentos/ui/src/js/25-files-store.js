@@ -308,7 +308,7 @@ async function storeImportStage(body){
     const dd=await rr.json();
     toast(rr.ok?('installed '+d.manifest.name):(dd.error||'install failed'));
     refreshApp('store');refreshApp('permissions');
-  });
+  },{status:d.signature_status,note:d.signature_note,security:d.security});
 }
 let IMPORT_PREREQS={mcp:[],skills:[]};
 

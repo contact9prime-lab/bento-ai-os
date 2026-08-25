@@ -3798,13 +3798,11 @@ async def api_app_manifest_approve(aid: str, body: dict):
 
 # ---- App packages: distribution with consent (export / import) -------------------
 
-def _canonical(obj) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
-
-
-def _package_checksum(manifest: dict, html: str) -> str:
-    import hashlib
-    return "sha256:" + hashlib.sha256((_canonical(manifest) + "\n" + html).encode()).hexdigest()
+# One definition of the canonical form and the checksum, shared with the registry
+# tooling and its CI — two copies of "what bytes does the signature cover?" is how
+# every valid package on one side becomes a checksum-mismatch on the other.
+from .appregistry import canonical as _canonical                    # noqa: E402
+from .appregistry import package_checksum as _package_checksum      # noqa: E402
 
 
 def _sanitize_mcp_conf(name: str, conf: dict) -> dict:
@@ -3887,7 +3885,15 @@ async def api_app_import(body: dict):
     iid = uuid.uuid4().hex[:8]
     state["pending_installs"][iid] = pkg
     conflict = any(a["name"].lower() == man["name"].lower() for a in state["store"].list_apps())
-    return {"install_id": iid, "manifest": man, "missing": missing, "name_conflict": conflict}
+    # Say who (if anyone) vouches for this package, next to the permissions it
+    # asks for — the two facts a person needs at the same moment. "unsigned" is
+    # not a refusal: your own exports are unsigned, and installing them is fine.
+    from . import appregistry as regmod
+    vstatus, vwhy = regmod.verify_package(pkg, regmod.trusted_keys(state.machine_cfg()))
+    return {"install_id": iid, "manifest": man, "missing": missing, "name_conflict": conflict,
+            "verified": vstatus == "verified", "signature_status": vstatus,
+            "signature_note": vwhy,
+            "security": (man.get("security") or {}).get("verdict") or "unscanned"}
 
 
 @app.post("/api/apps/import/{iid}/confirm")

@@ -1,0 +1,38 @@
+# Every PR: prove the packages are intact, scanned, and honest about it.
+# Push to main: rebuild the derived index.
+# The checks import agentos.appregistry from the product repo — ONE implementation
+# of the checksum, the scan and the signature check, shared with every machine
+# that installs from here.
+name: validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - name: install the one true implementation
+        run: pip install "git+https://github.com/contact9prime-lab/bento-ai-os.git"
+      - run: python scripts/validate.py
+  index:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - run: pip install "git+https://github.com/contact9prime-lab/bento-ai-os.git"
+      - run: python scripts/build_index.py
+      - name: commit the derived index
+        run: |
+          git config user.name "registry-bot"
+          git config user.email "registry@users.noreply.github.com"
+          git add index.json
+          git diff --cached --quiet || git commit -m "Rebuild index"
+          git push

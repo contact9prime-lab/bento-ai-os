@@ -1,0 +1,34 @@
+{
+ "format": "agentos-app/1",
+ "manifest": {
+  "format": 1,
+  "name": "Hello Notes",
+  "icon": "\ud83d\udcdd",
+  "description": "The registry's example app: a private notepad. It asks for nothing beyond its own data store, which is the point.",
+  "version": "1",
+  "permissions": [
+   {
+    "action": "app.data.read",
+    "resource": "app:self/data",
+    "reason": "load your notes when the app opens",
+    "required": true
+   },
+   {
+    "action": "app.data.write",
+    "resource": "app:self/data",
+    "reason": "save your notes",
+    "required": true
+   }
+  ],
+  "prerequisites": {},
+  "security": {
+   "scanner": "static/1",
+   "scanned_at": 1787686440.5875614,
+   "verdict": "pass",
+   "findings": []
+  }
+ },
+ "html": "<style>\n  body{font:14px/1.5 system-ui;margin:0;padding:14px;background:transparent;color:inherit}\n  textarea{width:100%;min-height:220px;box-sizing:border-box;border-radius:8px;padding:10px;\n           background:rgba(127,127,127,.08);color:inherit;border:1px solid rgba(127,127,127,.25)}\n  .row{display:flex;gap:8px;margin-top:8px;align-items:center}\n  button{padding:6px 14px;border-radius:8px;border:1px solid rgba(127,127,127,.3);\n         background:rgba(127,127,127,.12);color:inherit;cursor:pointer}\n  .mut{opacity:.6;font-size:12px}\n</style>\n<textarea id=\"t\" placeholder=\"Notes live in this app's own private data \u2014 nothing else can read them.\"></textarea>\n<div class=\"row\"><button id=\"save\">Save</button><span class=\"mut\" id=\"st\"></span></div>\n<script>\n  const t=document.getElementById('t'), st=document.getElementById('st');\n  appData.load().then(d=>{ t.value=(d&&d.text)||''; });\n  document.getElementById('save').onclick=async()=>{\n    await appData.save({text:t.value, at:Date.now()});\n    st.textContent='saved '+new Date().toLocaleTimeString();\n  };\n</script>",
+ "checksum": "sha256:63473ad9c224981e3a800128d5a12e0aa4cd28e67aee31400f039d034448f0c0",
+ "signature": null
+}

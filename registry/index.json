@@ -1,0 +1,24 @@
+{
+ "registry": "contact9prime-lab/bento-app-registry",
+ "format": "bento-registry-index/1",
+ "apps": [
+  {
+   "id": "hello-notes",
+   "name": "Hello Notes",
+   "description": "The registry's example app: a private notepad. It asks for nothing beyond its own data store, which is the point.",
+   "icon": "\ud83d\udcdd",
+   "version": "1",
+   "checksum": "sha256:63473ad9c224981e3a800128d5a12e0aa4cd28e67aee31400f039d034448f0c0",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "app.data.read",
+    "app.data.write"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/hello-notes/hello-notes.agentapp.json"
+  }
+ ]
+}
