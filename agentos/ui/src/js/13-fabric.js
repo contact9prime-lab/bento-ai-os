@@ -621,6 +621,7 @@ function trigLabel(t){
     :c.type==='interval'?('every '+(c.minutes||60)+' min'):'once';
   if(t.kind==='message')return 'message "'+(c.pattern||'')+'"';
   if(t.kind==='os_event')return 'on '+(c.event||'event');
+  if(t.kind==='flow_done')return 'after '+(c.flow||'another flow')+(c.status&&c.status!=='any'?' ('+c.status+')':'');
   return 'webhook';
 }
 /* One flow, in full. Everything that used to be crammed into a card, with room to read it. */
@@ -966,9 +967,16 @@ function flwSink(kind,on){
 function flwAddTrigger(kind){
   const c=kind==='cron'?{type:'daily',at:'08:00'}
     :kind==='message'?{pattern:'',mode:'prefix',surfaces:['telegram','gui']}
-    :kind==='os_event'?{event:'notification',match:''}:{};
+    :kind==='os_event'?{event:flwFirstOsEvent(),match:''}
+    :kind==='flow_done'?{flow:'',status:'any'}:{};
   FLW.d.triggers=(FLW.d.triggers||[]).concat([{kind,config:c,cooldown_secs:60,enabled:1}]);
   drawFLW();
+}
+/* The first OS event this machine can actually fire. A new trigger must not
+   default to one that is greyed out on the box you are standing at. */
+function flwFirstOsEvent(){
+  const gone=(typeof PLATFORM!=='undefined'&&PLATFORM.os_events)||{};
+  return ['notification','file_change','login','idle'].find(x=>!gone[x])||'file_change';
 }
 function flwDelTrigger(i){FLW.d.triggers.splice(i,1);drawFLW()}
 function flwTrigSet(i,key,val){
@@ -1049,10 +1057,32 @@ function drawFLW(){
       <input data-trig="${i}" data-key="minutes" type="number" value="${c.minutes||60}" placeholder="minutes" style="width:80px">`;
     else if(t.kind==='message')f=`<input data-trig="${i}" data-key="pattern" value="${esc(c.pattern||'')}" placeholder="pattern e.g. vendor:">
       <select data-trig="${i}" data-key="mode" style="width:auto">${['prefix','substring','regex'].map(x=>`<option ${c.mode===x?'selected':''}>${x}</option>`).join('')}</select>`;
-    else if(t.kind==='os_event')f=`<select data-trig="${i}" data-key="event" style="width:auto">
-        ${['notification','file_change','login','idle'].map(x=>`<option ${c.event===x?'selected':''}>${x}</option>`).join('')}</select>
+    else if(t.kind==='os_event'){
+      // Two of the four OS events need AgentOS to BE the Linux session (the
+      // notification daemon claims org.freedesktop.Notifications only in DE mode;
+      // the login hook runs only in DE/KIOSK). /api/platform says which can fire
+      // here, so on a hosted or headless box they are disabled and say why —
+      // offering them would be a control that saves, looks armed, and never fires.
+      const gone=(typeof PLATFORM!=='undefined'&&PLATFORM.os_events)||{};
+      f=`<select data-trig="${i}" data-key="event" style="width:auto">
+        ${['notification','file_change','login','idle'].map(x=>`<option ${c.event===x?'selected':''} ${gone[x]?'disabled':''} title="${esc(gone[x]||'')}">${x}${gone[x]?' — not on this machine':''}</option>`).join('')}</select>
       <input data-trig="${i}" data-key="match" value="${esc(c.match||'')}" placeholder="match…" style="width:110px">
-      <input data-trig="${i}" data-key="path" value="${esc(c.path||'')}" placeholder="path…" style="width:110px">`;
+      <input data-trig="${i}" data-key="path" value="${esc(c.path||'')}" placeholder="path…" style="width:110px">`
+        +(gone[c.event]?`<div class="sub" style="flex-basis:100%;color:var(--warn,#f0b429)">${esc(gone[c.event])}</div>`:'');
+    }
+    else if(t.kind==='flow_done'){
+      // Chaining, expressed in the OS: this flow starts when another one ends. The
+      // list is every OTHER flow — a flow that followed itself would be a loop with
+      // no exit, which the save refuses anyway.
+      const others=(FLOWS_CACHE||[]).map(x=>x.name).filter(n=>n&&n!==FLOW_SEL);
+      f=`<span class="sub">after</span>
+      <select data-trig="${i}" data-key="flow" style="width:auto">
+        <option value="">— pick a flow —</option>
+        ${others.map(n=>`<option ${c.flow===n?'selected':''}>${esc(n)}</option>`).join('')}</select>
+      <select data-trig="${i}" data-key="status" style="width:auto">
+        ${['any','ok','failed'].map(x=>`<option ${c.status===x?'selected':''}>${x}</option>`).join('')}</select>
+      <span class="sub">its output becomes this flow's input</span>`;
+    }
     else f=`<span class="sub">a URL with its own secret is minted on save${t.secret?' (already minted)':''}</span>`;
     return `<div class="row" style="gap:5px;margin-bottom:5px;align-items:center">
       <span class="lbadge">${esc(t.kind)}</span>${f}
@@ -1107,7 +1137,7 @@ function drawFLW(){
     <div class="sawgrp">What starts it</div>
     ${trigs||'<p class="mut">Nothing yet — it runs when you press Run.</p>'}
     <div class="row" style="gap:6px;flex-wrap:wrap">
-      ${['cron','message','webhook','os_event'].map(k=>
+      ${['cron','message','webhook','os_event','flow_done'].map(k=>
         `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${k}')">＋ ${k}</button>`).join('')}
     </div>
 

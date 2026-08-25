@@ -230,6 +230,51 @@ runs (`agentos/flows.py` defines, `ControlPlane.run_flow` executes). Full reason
   `budget + approval_timeout + 60` must stay — a hung run holds `knowledge.turn_started()`
   and degrades the whole OS.
 
+**Triggers are the event side, and three rules keep them honest.** A flow starts on `cron`,
+`message`, `webhook`, `os_event` or `flow_done` — only the first is time-driven, and the rest
+are why "event-driven" is not a missing feature.
+
+- **A trigger this machine cannot fire is never offered.** `notification` needs AgentOS to own
+  the session and `login` needs DE/KIOSK; `file_change` and `idle` are polled and work headless.
+  `flows.os_event_problem()` is the one answer, carried on `/api/platform` as `os_events`, and
+  the save refuses what the editor greys. A stored trigger that can never fire reads as armed
+  forever, which is the dead control this file's honesty rules forbid.
+- **A webhook is the one door with no cookie**, so the trigger row records its owner and the
+  route enters `users.as_user(uid)` before reading anything. Without that the fire resolves to
+  the machine — and since accounts are isolated by directory, the trigger is not even in the
+  machine's database. `bento flow rotate` revokes a leaked URL without re-saving the flow.
+- **Chaining is `flow_done`, not one flow POSTing another's webhook.** That was an HTTP round
+  trip and a shared secret to say something local, and it made the second run look like it came
+  from the internet. A flow naming itself is refused at the save; `MAX_CHAIN_DEPTH` stops the
+  A→B→A cycle a self-check cannot see.
+
+**A hook's key is minted, rotatable, and only expires if you say so.** AgentOS mints the
+secret (`token_urlsafe(24)`) rather than letting a caller choose one, because a token
+somebody picks is a token somebody reuses. It does NOT expire by default — a key that dies
+on its own silently stops a standing job — but `bento flow rotate --days N` sets a lifetime,
+and the refusal after that date says *expired*, not *bad secret*: the difference between
+"rotate it" and hunting a leak that never happened.
+
+**Being ASKED too often is its own overflow, and it quarantines.** Grants answer *may it?*,
+the cooldown answers *how often may it run?*, and neither bounds how often a URL may be
+POSTed — a retry loop or somebody who found it costs a lookup and a compare every time.
+`_hook_overflowing` is the ceiling, in memory for the same reason `RateMeter` is (a gate
+that costs a write is one a flood turns into a disk problem), and the outcome is the one
+this OS already uses everywhere: held until a person releases it, ONE row per incident, with
+`forever` kept as an exemption so the next burst does not re-hold what was already judged.
+
+**A flow can be authored from a terminal.** `bento flow add/trigger/rotate/enable/disable` go
+through `flows.save` — the same door the editor uses — because a second authoring path would be
+a second permission model. `add` creates missing roster agents (`new_agents`, as the editor
+does) and leaves the flow DISABLED, since enabling is the act of granting.
+
+**And observed from one.** `bento flow runs` / `events <run-id>` read `fabric_runs` and
+`fabric_events` directly, so a headless box can see how its flows went with the server down.
+`bento flow doctor` is the one command that answers "is any of this actually working?": every
+trigger says whether it can fire HERE and why not — an OS event this mode cannot deliver, a
+`flow_done` following a flow that no longer exists, a quarantined or expired webhook — which
+is the honesty rule applied to a surface that had no way to state it.
+
 **A disabled flow holds nothing** — `reconcile_grants` returns no grants and
 `reconcile_triggers` removes the `tasks` rows while keeping the declarations. That is what
 makes it safe for the model to draft a flow into the list without asking: Enable is the act

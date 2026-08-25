@@ -1416,6 +1416,13 @@ async def api_platform(request: Request):
     state_["sui"] = bool(comp.SUI_HOST[0])
     state_["sui_available"] = shellhost.available()
     state_["sui_install_hint"] = "" if state_["sui_available"] else shellhost.install_hint()
+    # Which OS events a flow trigger could actually fire here, and why not. Two of
+    # the four need AgentOS to own the session (the notification daemon and the
+    # login hook above), so on a hosted or headless box the Flows editor must grey
+    # them with the reason rather than offer a control that can never fire.
+    from . import flows as flowsmod
+    state_["os_events"] = {ev: flowsmod.os_event_problem(ev, state_.get("mode"))
+                           for ev in flowsmod.OS_EVENTS}
     return state_
 
 
@@ -7334,17 +7341,85 @@ async def _start_flow(flow: dict, input_text: str, origin: dict, **kw) -> str:
     """
     fut: asyncio.Future = asyncio.get_event_loop().create_future()
 
+    depth = int(kw.pop("chain_depth", 0) or 0)
+
     async def go():
         try:
             res = await state["fabric"].run_flow(flow, input_text, origin=origin,
                                                  run_id_out=fut, **kw)
+            await _fire_flow_done(flow, res, depth)
             return res
         except Exception as e:
             if not fut.done():
                 fut.set_exception(e)
+            # a failed run is still a finished one: `status: failed` chains exist so
+            # somebody can be told, or a cleanup can run, precisely when it broke
+            with contextlib.suppress(Exception):
+                await _fire_flow_done(flow, {"status": "failed"}, depth)
             raise
     asyncio.create_task(go())
     return await fut
+
+
+#: How many flows one chain may start, end to end. A chain is a graph somebody drew
+#: and graphs get cycles: A→B→A is refused at the save only when a flow names ITSELF,
+#: which two flows pointing at each other slips past. The cooldown slows such a loop;
+#: this is what stops it, and it is deliberately small — a chain deeper than this is
+#: a workflow that should be one flow.
+MAX_CHAIN_DEPTH = 4
+
+
+async def _fire_flow_done(flow: dict, result, depth: int) -> None:
+    """Start the flows that were waiting for this one to finish.
+
+    Chaining lives here rather than in a flow POSTing another flow's webhook: that
+    was an HTTP round trip and a shared secret to say something entirely local, and
+    it left the second flow's run looking like it came from the internet (tainted,
+    with no memory of which run it followed).
+    """
+    status = "ok"
+    try:
+        status = str((result or {}).get("status") or "ok").lower()
+    except Exception:
+        status = "ok"
+    ok = status in ("ok", "success", "done", "")
+    store = state["store"]
+    try:
+        # `flow_triggers` already decodes config to a dict — json.loads on it raises.
+        waiting = [t for t in store.flow_triggers(kind="flow_done", enabled_only=True)
+                   if ((t.get("config") or {}).get("flow") or "").lower()
+                   == (flow.get("name") or "").lower()]
+    except Exception:
+        return
+    if not waiting:
+        return
+    if depth >= MAX_CHAIN_DEPTH:
+        store.log("error", f"flow chain stopped at depth {depth} after '{flow.get('name')}'",
+                  {"limit": MAX_CHAIN_DEPTH})
+        return
+    now = time.time()
+    for t in waiting:
+        want = ((t.get("config") or {}).get("status") or "any").lower()
+        if want == "ok" and not ok:
+            continue
+        if want == "failed" and ok:
+            continue
+        if (t.get("cooldown_secs") or 0) - (now - (t.get("last_fired") or 0)) > 0:
+            store.flow_trigger_fired(t["id"], dropped=True)
+            continue
+        nxt = store.get_flow(t["flow"])
+        if not nxt or not nxt.get("enabled"):
+            continue
+        store.flow_trigger_fired(t["id"])
+        # The upstream flow's own output is the input, so the chain carries its work
+        # forward rather than starting the next one blank.
+        text = ""
+        with contextlib.suppress(Exception):
+            text = str((result or {}).get("output") or "")[:16_000]
+        with contextlib.suppress(Exception):
+            await _start_flow(nxt, text,
+                              origin={"surface": "flow", "ref": flow.get("name") or ""},
+                              trigger_id=t["id"], chain_depth=depth + 1)
 
 
 @app.get("/api/flows/runs/{rid}/artifacts/{handle}")
@@ -7360,6 +7435,75 @@ async def api_flow_board(rid: str):
     return {"board": state["store"].artifact_index(rid)}
 
 
+#: How many times one webhook may be POSTed in a window before the OS stops trusting
+#: it. The cooldown already spaces out ACCEPTED fires; this is the ceiling on being
+#: ASKED, which a cooldown never bounds — a caller in a retry loop, a misconfigured
+#: CI job, or somebody who found the URL can hammer it forever and each attempt still
+#: costs a lookup, a compare and a row. Grants answer "may it?", the cooldown answers
+#: "how often may it run?", and this answers "how often may it be tried?" — the same
+#: gap `policy.RateMeter` closes for tools, which is why the outcome is the same one:
+#: quarantine, held until a person releases it.
+HOOK_BURST = (60, 60)          # (attempts, seconds)
+_hook_hits: dict = {}
+
+
+def _hook_overflowing(store, trigger_id: str, flow_name: str, addr: str) -> bool:
+    """Record an attempt; True once this hook has been asked too often to trust.
+
+    In memory, never the database, for the same reason the rate meter is: this runs on
+    every single attempt including the refused ones, and a gate that costs a write is a
+    gate a flood turns into a disk problem of its own.
+    """
+    limit, window = HOOK_BURST
+    now = time.time()
+    hits = [t for t in _hook_hits.get(trigger_id, []) if now - t < window]
+    hits.append(now)
+    _hook_hits[trigger_id] = hits[-(limit * 2):]        # bounded: never a leak
+    if len(hits) <= limit:
+        return False
+    if store.quarantine_exempt("hook", trigger_id):     # the user said allow, forever
+        return False
+    qid = store.quarantine_add(
+        "hook", trigger_id, kind="rate",
+        label=f"webhook for '{flow_name}'",
+        reason=(f"asked {len(hits)} times in {window}s — over the {limit} allowed. The URL "
+                f"is held until you release it; rotate the secret if it has leaked."),
+        evidence={"attempts": len(hits), "window_secs": window, "from": addr,
+                  "flow": flow_name})
+    if qid:
+        store.log("error", f"webhook for '{flow_name}' quarantined — {len(hits)} "
+                           f"attempts in {window}s", {"trigger": trigger_id, "from": addr})
+    return True
+
+
+def _hook_owner(trigger_id: str):
+    """(uid, store, trigger) for a webhook id, across every account on this machine.
+
+    A webhook is the one door into this OS that carries no cookie — the caller is
+    GitHub or a sensor, not a browser — so the acting account cannot come from the
+    request. It comes from the trigger row, which stamped its owner at creation.
+
+    The search is needed because a trigger LIVES in its owner's own database (users
+    are isolated by directory, not by a column), so the machine store simply does
+    not contain it. Ids are 128-bit random and unique, so finding one identifies its
+    owner unambiguously; the machine store is tried first because that is where a
+    single-user machine — and anything created before accounts existed — keeps them.
+    """
+    machine = dict.__getitem__(state, "store")
+    trig = machine.flow_trigger(trigger_id)
+    if trig or not usersmod.enabled():
+        return "", machine, trig
+    for row in usersmod.list_users():
+        uid = row.get("id") or ""
+        if not uid:
+            continue
+        st = usersmod.store_for(uid)
+        got = st.flow_trigger(trigger_id)
+        if got:
+            return uid, st, got
+    return "", machine, None
+
+
 @app.post("/api/hooks/{name}/{trigger_id}")
 async def api_flow_hook(name: str, trigger_id: str, request: Request):
     """Start a flow from outside this machine.
@@ -7371,31 +7515,79 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
     work by asking rudely. The body is content from outside this machine, so the run it
     starts is tainted: risky steps are shown to a person rather than assumed.
     """
-    store = state["store"]
-    trig = store.flow_trigger(trigger_id)
+    # Resolve WHOSE hook this is before anything else — the run has to happen in
+    # its owner's account, against their store, grants and budget.
+    uid, store, trig = _hook_owner(trigger_id)
     given = request.headers.get("x-agentos-hook-secret") or request.query_params.get("k") or ""
+    addr = _client_addr(request)
     if not trig or trig["kind"] != "webhook" or not trig["enabled"] or \
             (trig["flow"] or "").lower() != (name or "").lower():
         return JSONResponse({"error": "unknown hook"}, status_code=404)
+    # Being ASKED too often is its own overflow, and the cooldown never bounds it.
+    # Checked before the secret compare so a flood of GUESSES is held too, and after
+    # the 404 so it can only ever be charged to a hook that really exists.
+    if _hook_overflowing(store, trigger_id, name, addr):
+        return JSONResponse({"error": "this hook is quarantined — release it in "
+                                      "Settings → Quarantine, or `bento quarantine`"},
+                            status_code=429)
+    if store.quarantined("hook", trigger_id):
+        return JSONResponse({"error": "this hook is quarantined — release it in "
+                                      "Settings → Quarantine, or `bento quarantine`"},
+                            status_code=429)
     if not hmac.compare_digest(str(given), str(trig.get("secret") or "\0")):
         store.log("error", f"webhook: bad secret for flow '{name}'",
-                  {"trigger": trigger_id, "from": _client_addr(request)})
+                  {"trigger": trigger_id, "from": addr})
         return JSONResponse({"error": "bad secret"}, status_code=401)
+    # An expired key is not a wrong key, and saying so is the difference between
+    # "rotate it" and hunting a leak that never happened.
+    exp = float(trig.get("secret_expires_at") or 0)
+    if exp and time.time() > exp:
+        store.log("error", f"webhook: expired secret for flow '{name}'",
+                  {"trigger": trigger_id, "from": addr})
+        return JSONResponse({"error": "this hook's secret expired — rotate it "
+                                      f"(`bento flow rotate {name}`) and update the caller"},
+                            status_code=401)
     now = time.time()
     wait = (trig.get("cooldown_secs") or 0) - (now - (trig.get("last_fired") or 0))
     if wait > 0:
         store.flow_trigger_fired(trigger_id, dropped=True)
         return JSONResponse({"error": "cooling down", "retry_after": int(wait) + 1},
                             status_code=429)
-    flow = store.get_flow(trig["flow"])
-    if not flow or not flow.get("enabled"):
-        return JSONResponse({"error": "that flow is gone or disabled"}, status_code=409)
-    raw = (await request.body())[:64_000].decode("utf-8", "replace")
-    store.flow_trigger_fired(trigger_id)
-    run_id = await _start_flow(flow, raw,
-                               origin={"surface": "webhook", "ref": trigger_id},
-                               trigger_id=trigger_id, tainted=True)
+    # Everything from here reads and writes the OWNER's home. asyncio.create_task
+    # copies the context, so the run keeps this account for its whole life — the
+    # same reason `users.as_user` exists for scheduled work.
+    with usersmod.as_user(uid):
+        flow = store.get_flow(trig["flow"])
+        if not flow or not flow.get("enabled"):
+            return JSONResponse({"error": "that flow is gone or disabled"}, status_code=409)
+        raw = (await request.body())[:64_000].decode("utf-8", "replace")
+        store.flow_trigger_fired(trigger_id)
+        run_id = await _start_flow(flow, raw,
+                                   origin={"surface": "webhook", "ref": trigger_id},
+                                   trigger_id=trigger_id, tainted=True)
     return JSONResponse({"ok": True, "run_id": run_id, "flow": flow["name"]}, status_code=202)
+
+
+@app.post("/api/flows/{name}/hooks/{trigger_id}/rotate")
+async def api_flow_hook_rotate(name: str, trigger_id: str, request: Request):
+    """Revoke a webhook's secret and mint a new one. The old URL stops working now.
+
+    A normal `/api/*` route, so it is behind the remote-access gate and the CSRF
+    origin guard — unlike the hook itself, which must be reachable by a stranger.
+    Scoped to the acting account: you can only rotate a key on your own trigger.
+    """
+    if not _authed(request):
+        return JSONResponse({"error": "not signed in"}, status_code=401)
+    store = state["store"]
+    trig = store.flow_trigger(trigger_id)
+    if not trig or trig["kind"] != "webhook" or \
+            (trig["flow"] or "").lower() != (name or "").lower():
+        return JSONResponse({"error": "unknown hook"}, status_code=404)
+    store.rotate_hook_secret(trigger_id)
+    store.log("system", f"webhook secret rotated for flow '{name}'", {"trigger": trigger_id})
+    fresh = store.flow_trigger(trigger_id)
+    from . import flows as flowsmod
+    return {"ok": True, "url": flowsmod.hook_url(state["cfg"], name, fresh)}
 
 
 @app.get("/api/fabric/approvals")

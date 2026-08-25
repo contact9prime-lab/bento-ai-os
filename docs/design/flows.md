@@ -105,9 +105,92 @@ already owns due-polling, the claim-on-fire that prevents double-firing, cooldow
 file/idle/notification/login pollers; a second implementation of any of that is a second set
 of bugs. Flows also show up in the Tasks app, the TUI and the CLI for free.
 
-**Message** and **webhook** triggers have no time dimension and get no task row — a row with
-`next_run IS NULL` and no trigger kind is an invisible row nothing polls. They dispatch from
-`telegram._handle`, the chat turn path, and the hook route.
+**Message**, **webhook** and **flow_done** triggers have no time dimension and get no task
+row — a row with `next_run IS NULL` and no trigger kind is an invisible row nothing polls.
+They dispatch from `telegram._handle`, the chat turn path, the hook route, and (for
+`flow_done`) the moment the upstream run returns.
+
+Two of the four **OS events cannot fire on every machine**, and the editor must say so
+rather than offer them. `notification` needs AgentOS to own the session — the daemon claims
+`org.freedesktop.Notifications` only in DE mode, because claiming it as a guest would steal
+the host desktop's — and `login` runs only in DE/KIOSK. `file_change` and `idle` are polled
+by the scheduler and work headless. `flows.os_event_problem(event, mode)` is the one answer:
+`/api/platform` carries it as `os_events`, the editor greys the option with it, and the save
+refuses it. A stored trigger that can never fire reads as armed for the life of the flow.
+
+### The webhook key, and its life
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant OS as AgentOS
+    participant X as GitHub / CI / a sensor
+    U->>OS: bento flow trigger f --kind webhook
+    OS-->>U: URL + minted secret (token_urlsafe(24))
+    Note over U,X: you paste the URL into the external service
+    X->>OS: POST /api/hooks/f/{id}  (?k= or header)
+    OS->>OS: rate ceiling → quarantine?
+    OS->>OS: hmac.compare_digest(secret)
+    OS->>OS: expired?
+    OS->>OS: cooldown?
+    OS-->>X: 202 + run_id
+    Note over U,OS: leaked, or just old
+    U->>OS: bento flow rotate f --days 30
+    OS-->>U: new URL — the old one is dead now
+```
+
+The secret is **minted by AgentOS, never chosen by the caller**: a token somebody picks
+is a token somebody reuses. It does **not** expire by default, because a key that dies on
+its own would silently stop a standing job; `--days N` makes that a decision, and the
+refusal afterwards says *expired* rather than *bad secret* — the difference between
+"rotate it" and hunting a leak that never happened.
+
+### Overflow is quarantine, here as everywhere else
+
+```mermaid
+flowchart LR
+    A[POST arrives] --> B{hook exists?}
+    B -- no --> N[404]
+    B -- yes --> C{asked &gt; 60x / 60s?}
+    C -- yes --> Q[quarantine the hook<br/>one row, not one per attempt]
+    Q --> R[429 until a person releases it]
+    C -- no --> D{secret ok?}
+    D -- no --> E[401 bad secret]
+    D -- yes --> F{expired?}
+    F -- yes --> G[401 — rotate it]
+    F -- no --> H{cooling down?}
+    H -- yes --> I[429 + counted as dropped]
+    H -- no --> J[run the flow as its OWNER]
+```
+
+Grants answer *may it?*, the cooldown answers *how often may it run?*, and neither bounds
+how often it may be **asked**. That gap is the same one `policy.RateMeter` closes for tools,
+so it gets the same answer: held until a person releases it, with `forever` kept as an
+exemption so the next burst does not re-hold something already judged.
+
+### Chaining: `flow_done`
+
+```mermaid
+flowchart LR
+    T[cron / webhook / message] --> S[scan]
+    S -- ok --> R[report]
+    S -- failed --> A[alert]
+    S -- any --> L[log-it]
+    R --> D{depth &lt; MAX_CHAIN_DEPTH?}
+    D -- no --> STOP[chain stops, logged]
+```
+
+
+A flow that starts when another finishes, with `status` of `any` / `ok` / `failed`, and the
+upstream flow's output as its input. It exists because the alternative was the first flow
+POSTing the second one's webhook — an HTTP round trip and a shared secret to say something
+entirely local, which also made the second run look like it came from the internet (tainted,
+with no memory of which run it followed).
+
+Two things bound it. A flow naming **itself** is refused at the save, where the flow's own
+name is finally known (one trigger on its own cannot see it). And `MAX_CHAIN_DEPTH` stops the
+cycle a self-check cannot catch — A→B→A — because a chain is a graph somebody drew and graphs
+get cycles; the per-trigger cooldown only slows such a loop down.
 
 An explicit `@subagent` mention is always resolved **before** a message pattern: an address
 is not a pattern to be second-guessed.
@@ -125,7 +208,16 @@ get one. So:
 - refused fires are **counted**, not dropped — "it never ran" and "it ran less often than you
   think" look identical otherwise, and only one of those is a bug in the cooldown;
 - the secret survives a re-save (rotating on every edit would break every caller) and rotates
-  only when asked.
+  only when asked — `POST /api/flows/{name}/hooks/{id}/rotate` or `bento flow rotate <name>`,
+  which revokes the old URL immediately without re-saving (and so re-validating, and possibly
+  re-arming) the whole flow. `secret_rotated_at` records when, so "how old is this key?" has
+  an answer;
+- **the trigger row records its owner**, and this is what makes a hook work at all on a
+  multi-user machine. A webhook is the one door with no cookie behind it, so the acting
+  account cannot come from the request — and because accounts are isolated by DIRECTORY, the
+  trigger lives in its owner's own database, where the machine store cannot see it. The route
+  resolves the owner from the row (`_hook_owner`) and enters `users.as_user(uid)` before
+  reading anything, so the run happens in the right home, against the right grants and budget.
 
 A webhook body is content from outside this machine, so the run it starts is **tainted**:
 `agent.taint` is seeded, the input artefact is marked, and any child handed that handle
@@ -290,7 +382,9 @@ make a clock tick. So:
 | definition grants | none (revoked) | written |
 | `flow_triggers` rows | kept, `enabled=0`, no `task_id` | armed |
 | `tasks` rows | none | one per cron/os_event trigger |
+| `flow_done` chains | do not fire | fire |
 | webhook secret | kept | kept |
+| webhook POST | 409 | runs, as the trigger's owner |
 | manual run | 409 | runs |
 
 This is not a special "draft" state — it applies to any flow you turn off, which closes a

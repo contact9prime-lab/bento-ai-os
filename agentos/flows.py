@@ -26,9 +26,50 @@ import re
 import secrets
 import time
 
-TRIGGER_KINDS = ("cron", "message", "webhook", "os_event")
+TRIGGER_KINDS = ("cron", "message", "webhook", "os_event", "flow_done")
+FLOW_DONE_STATUSES = ("any", "ok", "failed")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
 CRON_TYPES = ("interval", "daily", "once")
+
+# Which run modes can actually DELIVER each OS event.
+#
+# Two of the four need AgentOS to own the Linux session, and the reason is in
+# server.py: the notification daemon only claims org.freedesktop.Notifications in
+# DE mode (claiming it as a guest would steal the host desktop's), and the
+# session-start hook that fires `login` runs only in DE or KIOSK. `file_change`
+# and `idle` are polled by the scheduler, so they work on a headless box too.
+#
+# An empty tuple means "every mode". Offering the other two on a hosted or
+# headless machine is exactly the dead control this repo's honesty rule forbids:
+# the trigger saves, sits in the editor looking armed, and can never once fire.
+OS_EVENT_MODES = {
+    "notification": ("de",),
+    "login": ("de", "kiosk"),
+    "file_change": (),
+    "idle": (),
+}
+
+
+def os_event_problem(event: str, mode: str | None = None) -> str:
+    """"" if this machine can deliver that OS event, else the sentence why not.
+
+    One answer for every surface — the Flows editor greys the option with it, the
+    save refuses with it, and the TUI and CLI can print it — so a machine can never
+    offer a trigger it cannot fire. `mode` is resolved from the machine when not
+    given, which is what lets a caller with no config ask.
+    """
+    need = OS_EVENT_MODES.get(event)
+    if not need:                       # unknown event, or one that works anywhere
+        return ""
+    if mode is None:
+        from . import runmode
+        mode = runmode.resolve()[0]
+    if mode in need:
+        return ""
+    return (f"'{event}' needs AgentOS to be your Linux session — this machine is "
+            f"running it as an app on another desktop. Install the session "
+            f"(`bento install-session`) and pick it at login, or use a webhook, a "
+            f"file_change or an idle trigger instead.")
 SINK_KINDS = ("origin", "telegram", "whatsapp", "gui", "notify", "report", "conversation")
 MEMORY_SCOPES = ("none", "read", "read-space", "read-write")
 
@@ -90,7 +131,7 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
     if mem not in MEMORY_SCOPES:
         raise ValueError(f"memory must be one of {', '.join(MEMORY_SCOPES)}")
     perms = {**perms, "memory": mem}
-    return {
+    out = {
         "name": name,
         "description": (body.get("description") or "").strip()[:500],
         "mission": mission,
@@ -111,6 +152,15 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
         "triggers": [_validate_trigger(t) for t in (body.get("triggers") or [])],
         "new_agents": [a for a in (body.get("new_agents") or []) if isinstance(a, dict)],
     }
+    # A flow that starts when it itself finishes is a loop with no exit, and the
+    # cooldown only slows it down. Refused at the save, where the flow's own name is
+    # finally known — _validate_trigger sees one trigger at a time and cannot.
+    for t in out["triggers"]:
+        if t["kind"] == "flow_done" and \
+                (t["config"].get("flow") or "").lower() == out["name"].lower():
+            raise ValueError("a flow cannot start itself when it finishes — that is a "
+                             "loop with no way out. Name the flow it should follow.")
+    return out
 
 
 def _at_time(v) -> str:
@@ -171,6 +221,23 @@ def _validate_trigger(t: dict) -> dict:
             raise ValueError("a notification trigger needs `match`")
         if ev == "file_change" and not str(conf.get("path") or "").strip():
             raise ValueError("a file_change trigger needs `path`")
+        # Refuse at the save, with the same sentence the editor greys it with. A
+        # stored trigger that can never fire is worse than no trigger: it reads as
+        # armed for as long as the flow lives.
+        problem = os_event_problem(ev)
+        if problem:
+            raise ValueError(problem)
+    elif kind == "flow_done":
+        # Chaining: this flow starts when ANOTHER one finishes. Expressed in the OS
+        # rather than by making the first flow POST the second one's webhook, which
+        # was an HTTP round trip (and a shared secret) to say something local.
+        upstream = str(conf.get("flow") or "").strip()
+        if not upstream:
+            raise ValueError("a flow_done trigger needs the name of the flow to follow")
+        st = (conf.get("status") or "any").strip().lower()
+        if st not in FLOW_DONE_STATUSES:
+            raise ValueError(f"a flow_done status is one of {', '.join(FLOW_DONE_STATUSES)}")
+        conf["flow"], conf["status"] = upstream, st
     return {"kind": kind, "config": conf,
             "cooldown_secs": max(0, int(t.get("cooldown_secs") or 60)),
             "enabled": int(bool(t.get("enabled", 1))),
@@ -304,6 +371,8 @@ def _canonical(kind: str, config: dict) -> str:
     if kind == "os_event":
         return (f"os_event:{c.get('event')}:{c.get('match') or c.get('path') or ''}"
                 f"{c.get('glob') or ''}{c.get('minutes') or ''}")
+    if kind == "flow_done":
+        return f"flow_done:{(c.get('flow') or '').lower()}:{c.get('status') or 'any'}"
     return "webhook"
 
 
@@ -332,7 +401,10 @@ def _task_fields(flow: dict, trig: dict) -> dict | None:
         tconf = {k: v for k, v in conf.items() if k in ("match", "path", "glob", "minutes")}
         return {**common, "schedule_type": "trigger", "interval_seconds": None, "at_time": None,
                 "next_run": None, "trigger": ev, "trigger_config": tconf}
-    return None  # message / webhook: nothing polls a clock for these
+    # message / webhook / flow_done: nothing polls a clock for these. flow_done is
+    # dispatched in-process the moment the upstream run ends, so a tasks row would
+    # only be a second thing to keep in step.
+    return None
 
 
 def reconcile_triggers(store, flow: dict, triggers: list[dict]) -> dict:
@@ -363,6 +435,7 @@ def reconcile_triggers(store, flow: dict, triggers: list[dict]) -> dict:
                    "enabled": int(bool(t["enabled"])) if live else 0}
             if t["kind"] == "webhook" and (t.get("rotate") or not old.get("secret")):
                 upd["secret"] = secrets.token_urlsafe(24)
+                upd["secret_rotated_at"] = time.time()   # so "how old is this key?" has an answer
             if not live and old.get("task_id"):
                 store.delete_task(old["task_id"])       # disarm the clock, keep the words
                 upd["task_id"] = ""

@@ -1,6 +1,6 @@
 [project]
 name = "agentos"
-version = "0.3.0"
+version = "0.4.0"
 description = "Bento Box AI — a local-first agentic OS: one interface, any AI (local or cloud), real actions on your machine."
 readme = "README.md"
 license = "MIT"
