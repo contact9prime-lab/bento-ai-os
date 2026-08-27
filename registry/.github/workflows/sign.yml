@@ -1,0 +1,34 @@
+# Maintainer-triggered signing. The private key lives ONLY in the Actions secret
+# REGISTRY_SIGNING_KEY (minted with `bento registry keygen`, file content pasted
+# in). Manual on purpose: a signature is a person vouching, not a side effect of
+# merging — the maintainer runs this after reading the scan on the PR.
+name: sign
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "app id (directory under apps/) to sign"
+        required: true
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - run: pip install "git+https://github.com/contact9prime-lab/bento-ai-os.git"
+      - name: sign
+        env: {REGISTRY_SIGNING_KEY: "${{ secrets.REGISTRY_SIGNING_KEY }}"}
+        run: |
+          test -n "$REGISTRY_SIGNING_KEY" || { echo "no REGISTRY_SIGNING_KEY secret"; exit 1; }
+          mkdir -p ~/.agentos && printf '%s' "$REGISTRY_SIGNING_KEY" > ~/.agentos/registry_signing.key
+          chmod 600 ~/.agentos/registry_signing.key
+          f="apps/${{ inputs.app }}/${{ inputs.app }}.agentapp.json"
+          python -m agentos registry sign "$f"
+          python scripts/build_index.py
+      - name: commit
+        run: |
+          git config user.name "registry-bot"
+          git config user.email "registry@users.noreply.github.com"
+          git add -A && git commit -m "Sign ${{ inputs.app }}" && git push

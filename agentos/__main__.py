@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -10,6 +11,7 @@ import sys
 import threading
 import time
 import webbrowser
+from pathlib import Path
 
 
 def _use_system_certs():
@@ -1656,6 +1658,226 @@ def _remote_desktop_cli(args):
         for a in (remotemod.lan_addresses(port) or [f"http://127.0.0.1:{port}"]):
             print(f"    {a.rstrip('/')}/remote-desktop")
         print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
+
+
+def _registry_cli(args):
+    """`agentos registry` — the app store's supply chain, from a terminal.
+
+    package → scan → sign → publish is the whole pipeline, and verify is what the
+    receiving side runs. Everything here is also what the registry's CI runs, so a
+    package that passes locally passes there.
+    """
+    import urllib.request
+
+    from . import appregistry as reg
+    from . import config as cfgmod
+
+    def load_pkg(target: str) -> tuple[dict, str]:
+        if Path(target).is_file():
+            return json.loads(Path(target).read_text()), target
+        last = ""
+        for cand in reg.resolve_source(target):        # URL, owner/repo, owner/repo@ref
+            try:
+                with urllib.request.urlopen(cand, timeout=30) as r:
+                    return json.loads(r.read()), ""
+            except Exception as e:                                # noqa: BLE001
+                last = str(e)
+        print(f"✗ no package at '{target}'"
+              + (f" ({last})" if last else "")
+              + f" — an app repo keeps it at {reg.WELL_KNOWN[0]}")
+        sys.exit(1)
+
+    act, target = args.action, args.target
+
+    if act == "keygen":
+        try:
+            path, key_id, pub = reg.keygen()
+        except FileExistsError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ signing key minted → {path}  (0600 — this file IS the registry's identity)")
+        print(f"\n  key id:      {key_id}")
+        print(f"  public key:  {pub}")
+        print("\n  To make packages signed with it show as VERIFIED:")
+        print(f"    · add to agentos/appregistry.py BUILTIN_KEYS:  \"{key_id}\": \"{pub}\"")
+        print("    · or per machine:  bento config registry.keys." + key_id + f" {pub}")
+        print("  For the registry's CI, add the FILE's content as the Actions secret "
+              "REGISTRY_SIGNING_KEY.")
+        print("  Never commit the private key; the public half is the only thing that travels.")
+        return
+
+    if not target:
+        print(f"what should I {act}? an app name, or a .agentapp.json path/URL")
+        sys.exit(1)
+
+    if act == "package":
+        # Through the RUNNING server's export route — the same door the UI uses, so
+        # there is one packaging path and the CLI cannot drift from it.
+        cfg = cfgmod.load_config()
+        base = f"http://127.0.0.1:{cfg.get('port', 8321)}"
+        try:
+            apps = json.loads(urllib.request.urlopen(base + "/api/apps", timeout=10).read())
+        except Exception:
+            print("✗ the server is not running — packaging goes through it "
+                  "(`agentos serve`) so the CLI and the UI produce identical packages")
+            sys.exit(1)
+        match = [a for a in apps.get("apps", []) if a["name"].lower() == target.lower()]
+        if not match:
+            print(f"✗ no app called '{target}' — `bento apps` lists them")
+            sys.exit(1)
+        pkg = json.loads(urllib.request.urlopen(
+            base + f"/api/apps/{match[0]['id']}/export", timeout=30).read())
+        slug = target.lower().replace(" ", "-")
+        out = Path(args.out) / f"{slug}.agentapp.json"
+        out.write_text(json.dumps(pkg, indent=1))
+        print(f"✓ packaged → {out}")
+        print(f"  checksum {pkg.get('checksum', '')[:23]}…  ·  unsigned, unscanned")
+        print(f"  next:  agentos registry scan {out}   then   agentos registry sign {out}")
+        return
+
+    if act == "scan":
+        pkg, path = load_pkg(target)
+        if not path:
+            print("✗ scan writes the verdict into the file — give it a path, not a URL")
+            sys.exit(1)
+        man, html = pkg.get("manifest") or {}, pkg.get("html") or ""
+        extra, scanner = [], "static/1"
+        if args.ai:
+            report = _ai_scan(man.get("description") or "", html)
+            scanner = report["scanner"]
+            if report["text"] and report["text"].strip().upper() != "CLEAN":
+                extra.append({"severity": "medium", "line": 0, "rule": "ai",
+                              "note": report["text"][:400]})
+        man["security"] = reg.scan_block(html, scanner=scanner, extra=extra)
+        pkg["manifest"] = man
+        pkg["checksum"] = reg.package_checksum(man, html)
+        pkg["signature"] = None          # the old signature covered a manifest without
+        Path(path).write_text(json.dumps(pkg, indent=1))   # this verdict — void it
+        sec = man["security"]
+        print(f"▲ scan: {sec['verdict']}  ({sec['scanner']}, "
+              f"{len(sec['findings'])} finding(s))")
+        for f in sec["findings"]:
+            where = f" (line {f['line']})" if f.get("line") else ""
+            print(f"  {'!' if f['severity'] == 'high' else '·'} [{f['severity']}]{where} {f['note'][:110]}")
+        print(f"✓ verdict written into the manifest → {path}  (signature cleared — re-sign)")
+        return
+
+    if act == "sign":
+        pkg, path = load_pkg(target)
+        if not path:
+            print("✗ sign writes into the file — give it a path, not a URL")
+            sys.exit(1)
+        if not (pkg.get("manifest") or {}).get("security"):
+            print("✗ refusing to sign an unscanned package — a signature vouches for the "
+                  "code AND its scan verdict together. Run `agentos registry scan` first.")
+            sys.exit(1)
+        try:
+            pkg = reg.sign_package(pkg)
+        except FileNotFoundError:
+            print(f"✗ no signing key at {reg.SIGNING_KEY_PATH} — `agentos registry keygen`")
+            sys.exit(1)
+        Path(path).write_text(json.dumps(pkg, indent=1))
+        print(f"✓ signed by {pkg['signature']['key_id']} → {path}")
+        return
+
+    if act == "verify":
+        pkg, _ = load_pkg(target)
+        cfg = {}
+        with contextlib.suppress(Exception):
+            cfg = cfgmod.load_config()
+        status, why = reg.verify_package(pkg, reg.trusted_keys(cfg))
+        man = pkg.get("manifest") or {}
+        sec = man.get("security") or {}
+        mark = {"verified": "✓", "unsigned": "○", "unknown-key": "?",
+                "bad-signature": "✗", "checksum-mismatch": "✗"}[status]
+        print(f"{mark} {status} — {why}")
+        print(f"  app:      {man.get('name') or '?'} · {(man.get('description') or '')[:60]}")
+        print(f"  checksum: {pkg.get('checksum', '(none)')[:71]}")
+        print(f"  security: {sec.get('verdict') or 'unscanned'}"
+              + (f" ({sec.get('scanner')}, {len(sec.get('findings') or [])} finding(s))"
+                 if sec else ""))
+        perms = sorted({p.get('action') or '' for p in man.get('permissions') or []})
+        print(f"  asks for: {', '.join(x for x in perms if x) or 'nothing beyond its own data'}")
+        if status in ("bad-signature", "checksum-mismatch"):
+            sys.exit(1)
+        return
+
+    if act == "search":
+        import urllib.parse
+        q = f"topic:{reg.DISCOVERY_TOPIC}" + (f" {target}" if target else "")
+        req = urllib.request.Request(
+            "https://api.github.com/search/repositories?sort=stars&per_page=30&q="
+            + urllib.parse.quote(q), headers={"Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                items = json.loads(r.read()).get("items") or []
+        except Exception as e:                                    # noqa: BLE001
+            print(f"✗ search failed: {e}")
+            sys.exit(1)
+        if not items:
+            print(f"nothing tagged '{reg.DISCOVERY_TOPIC}'"
+                  + (f" matching '{target}'" if target else "")
+                  + " — tag your app repo with the topic and it appears here, "
+                    "no registry needed")
+            return
+        for it in items:
+            print(f"\n▲ {it.get('full_name')}  ★{it.get('stargazers_count') or 0}")
+            if it.get("description"):
+                print(f"    {it['description'][:100]}")
+            print(f"    agentos registry verify {it.get('full_name')}")
+        return
+
+    if act == "publish":
+        slug = target.lower().replace(" ", "-")
+        print(f"Publishing '{target}' — YOUR repo is the host; nobody else runs anything:\n")
+        print(f"  agentos registry package {json.dumps(target)}")
+        print(f"  agentos registry scan {slug}.agentapp.json --ai")
+        print(f"  agentos registry sign {slug}.agentapp.json     # your own key: agentos registry keygen")
+        print(f"\n  gh repo create {slug} --public   # or make it on github.com")
+        print(f"  cp {slug}.agentapp.json {slug}/{reg.WELL_KNOWN[0]}")
+        print(f"  cd {slug} && git add -A && git commit -m 'Publish {slug}' && git push")
+        print(f"  gh repo edit --add-topic {reg.DISCOVERY_TOPIC}   # ← this line IS the listing")
+        print("\n  Done. Anyone installs it with:")
+        print(f"      Store → Import →  <you>/{slug}")
+        print(f"      (or pin a release forever:  <you>/{slug}@<commit-hash> — immutable)")
+        print("  Their machine re-scans the code itself and pins your key on first "
+              "install, so a hijacked repo or a swapped signer raises an alarm on update.")
+        print(f"\n  The curated registry ({reg.REGISTRY_REPO}) is optional on top: a PR "
+              "there gets a maintainer review and the official signature.")
+        return
+
+
+def _ai_scan(desc: str, html: str) -> dict:
+    """Read the app with this machine's own brain. Returns {scanner, text}."""
+    from . import config as cfgmod
+    from .agent import Agent
+    from .appregistry import AI_SCAN_PROMPT
+    from .memory import Store
+    from .tools import Toolbox
+    cfg = cfgmod.load_config()
+    store = Store(cfgmod.DB_PATH)
+    chunks: list[str] = []
+
+    async def emit(ev):
+        if ev.get("type") == "text_delta":
+            chunks.append(ev.get("text") or "")
+
+    async def approver(name, a, reason):
+        return False                       # an audit READS; it never needs a tool grant
+
+    async def go():
+        model = cfg.get("default_model", "")
+        agent = Agent(cfg, Toolbox(cfg, store), model, emit, approver)
+        await agent.run([{"role": "user",
+                          "content": AI_SCAN_PROMPT.format(desc=desc[:300],
+                                                           html=html[:60_000])}])
+        return model
+    try:
+        model = asyncio.run(go())
+        return {"scanner": f"ai/{model or 'unknown'}", "text": "".join(chunks)}
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  (ai scan unavailable: {e} — static verdict only)")
+        return {"scanner": "static/1", "text": ""}
 
 
 def _flow_cli(args):
@@ -3387,6 +3609,17 @@ def main():
     p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
     p_audit.add_argument("--limit", type=int, default=50)
 
+    p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
+    p_reg.add_argument("action", nargs="?", default="verify",
+                       choices=["keygen", "package", "scan", "sign", "verify", "publish",
+                                "search"])
+    p_reg.add_argument("target", nargs="?", default="",
+                       help="app name (package/publish), a .agentapp.json path/URL, "
+                            "owner/repo[@ref], or a search term")
+    p_reg.add_argument("-o", "--out", default=".", help="where package writes the file")
+    p_reg.add_argument("--ai", action="store_true",
+                       help="with `scan`: also read the code with this machine's brain")
+
     p_flow = verb("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",
                         choices=["list", "run", "show", "approvals", "allow", "deny", "hooks",
@@ -3593,6 +3826,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "registry":
+        _registry_cli(args)
     elif args.cmd == "flow":
         _flow_cli(args)
     elif args.cmd == "job":

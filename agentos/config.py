@@ -175,6 +175,10 @@ DEFAULTS = {
     # because full autonomy is trust placed in the user's own instructions.
     #   off | ask (default) | strict (refuse outright)
     "security": {"taint": "ask"},
+    # The app commons: publisher keys this user chose to trust ("keys") and the
+    # source+signer pinned at each app's first install ("pins", the SSH model).
+    # Personal on purpose — it is in users.USER_KEYS.
+    "registry": {"keys": {}, "pins": {}},
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

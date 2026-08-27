@@ -505,7 +505,12 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials",
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
              "autonomy", "default_model", "max_steps", "workspace",
-             "memory", "history", "tools", "steer_queued_messages")
+             "memory", "history", "tools", "steer_queued_messages",
+             # whom I trust: added registry publisher keys and the first-install
+             # pins of apps I installed. Personal by the USER_KEYS test — trusting
+             # a publisher costs nothing machine-wide and reconfigures nothing;
+             # it decides only what MY install screen alarms about.
+             "registry")
 
 
 def machine_view(cfg: dict) -> dict:

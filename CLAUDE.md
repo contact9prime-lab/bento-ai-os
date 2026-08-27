@@ -481,6 +481,50 @@ Four things about it that a port of the Telegram bridge gets wrong for free:
 Meta retries and redelivers, so message ids are remembered — otherwise one sentence
 becomes several agent runs and the user pays for each.
 
+## App distribution is FEDERATED; the registry is optional curation on top
+
+Nobody hosts the commons. An author's app lives in the author's own repo at
+`bento.agentapp.json` (see `appregistry.WELL_KNOWN`), discovery is the GitHub topic
+`bento-app` (`/api/store/federated`, `bento registry search`), and `owner/repo[@ref]`
+resolves across TWO CDNs (raw.githubusercontent + jsDelivr) so one outage does not take
+the commons down. `owner/repo@commit` is the chain, literally: a git hash is a Merkle
+root, so a pinned source names immutable bytes. Validity is decided by the RECEIVING
+machine — it re-scans the code (a recorded verdict that disagrees with a fresh scan is
+flagged: `scan_drift`), and pins source+signer on first install (`tofu_check`, the SSH
+model: `changed-key` is the loudest alarm because that is what a hijacked author account
+looks like). Pins live under the `registry` USER_KEY — whom I trust is personal.
+
+The commons is HYBRID: agents contribute on the same terms as people. Authorship is
+DERIVED from the app's version notes ("agent build" is what `create_app` has always
+written) and stamped as `manifest.author.kind` (human/agent/hybrid) at export — never
+declared, so it cannot be faked cheaply — and the consent screen says it. The registry's
+CI refuses a package without it; the product only warns (an old package is
+underdocumented, not hostile). The covenant (registry COVENANT.md) binds every author
+kind equally, and its checkable clauses are checked, not asked for.
+
+## The app registry is a Git repo of the packages the OS already speaks
+
+`agentos/appregistry.py` + `registry/` (the seed of `bento-app-registry`), full story in
+`docs/app-registry.md`. The load-bearing decisions:
+
+- **No second format.** The registry stores `.agentapp.json` exactly as export writes it
+  and Import reads it; propagation is a GitHub raw URL into the Import door that already
+  verified checksums and staged grants. A registry format of its own would mean a second
+  install path with a second review screen, and drift between them.
+- **The verdict lives INSIDE the manifest** so the checksum covers it, and the signature
+  (Ed25519 over the checksum) covers both. Editing code, permissions or the scan verdict
+  of a verified package fails verification; recomputing the checksum turns that into
+  `bad-signature`. `tests/test_appregistry.py` is mostly these attacks.
+- **One implementation everywhere.** server.py imports the checksum from appregistry, and
+  the registry's CI pip-installs this repo and imports the same module. Two definitions of
+  "what bytes does the signature cover?" is how valid packages become checksum-mismatches.
+- **`BUILTIN_KEYS` ships empty until the owner mints theirs** (`bento registry keygen`,
+  private key 0600 in their home, public half pinned in source). A trust root whose
+  private half ever existed on a build machine would make "verified" meaningless. Config
+  may ADD keys, never shadow a built-in.
+- **`unsigned` is not hostile** — your own exports are unsigned. Only `bad-signature` and
+  `checksum-mismatch` say do-not-install, and the consent banner colours them so.
+
 ## Quarantine: the ceiling that answers "how often?"
 
 Grants answer *may it?*, budgets answer *how long?* — neither answers *how often?*. A
