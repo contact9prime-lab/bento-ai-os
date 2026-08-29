@@ -116,7 +116,7 @@ _SPACE = {"list_spaces": ("space.read", "space:*"),
           "timeline": ("space.read", "")}
 
 
-def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
+def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     """Map a tool call to (action, resource) — the vocabulary grants are written in.
 
     Resources: tool:run_command git status · mcp:github/create_issue · skill:webapp-testing
@@ -124,6 +124,17 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
     agent:subagent/researcher · model:anthropic/claude-sonnet-5 · app:<id>/data
     """
     args = args or {}
+    # A tool a hosted OpenClaw plugin registered (agentos/ochost.py). It runs in a
+    # Node process AgentOS started, so unlike a plugin left inside OpenClaw's own
+    # gateway this call really does pass through here — which is the entire reason
+    # for hosting one. It gets its own action rather than another `tool.use`
+    # string: "may use the tools this plugin brought" has to be grantable apart
+    # from the OS's built-in tools, or installing a plugin would silently widen
+    # every grant somebody had already written.
+    if name.startswith("ocp_"):
+        target = ocp.resolve(name) if ocp else None
+        res = f"ocptool:{target[0]}/{target[1]}" if target else f"ocptool:{name[4:]}"
+        return "plugin.tool", res
     if name.startswith("mcp_"):
         target = mcp.resolve(name) if mcp else None
         res = f"mcp:{target[0]}/{target[1]}" if target else f"mcp:{name[4:]}"

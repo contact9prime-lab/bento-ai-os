@@ -419,6 +419,55 @@ inert with one sentence when the CLI is absent), TUI as `bento openclaw` (as `be
 mcp` is the MCP pane's terminal face), SUI identical to GUI — a page, no native
 process, nothing touching the compositor.
 
+## Hosting a plugin ourselves: the second bargain, and why it is a different one
+
+`ocplugins.py` governs a plugin that runs in OpenClaw's gateway, and can honestly
+claim only the lifecycle. `agentos/ochost.py` + `ocp_host/host.js` change who runs the
+plugin: AgentOS starts the Node process, hands the plugin its `api` object, and the
+tools it registers arrive in the agent loop as `ocp_<plugin>_<tool>` — so every call is
+a `PDP.decide`, an audit row and something quarantine can stop. Their ecosystem's reach,
+inside this OS's permissions. **Both integrations are kept**: one is interop with a
+machine that already runs OpenClaw, the other is absorption. They are not alternatives
+and must not be collapsed.
+
+The load-bearing parts, each of which was MEASURED rather than assumed:
+
+- **The api shim IS the sandbox.** Node's permission model (`--permission`) denies the
+  plugin filesystem and subprocess access — verified: `fs.readFileSync` and
+  `child_process.execSync` both raise `ERR_ACCESS_DENIED`. What a plugin cannot take, it
+  must ask for (`api.host.fetch`), and an ask is a round trip into Python and through the
+  PDP. That inversion is the whole design: a capability taken is invisible, one requested
+  is governable. An unwired `host_call` refuses everything, because an unwired embedding
+  must be a closed door.
+- **Network is NOT contained by Node and the report must keep saying so.** There is no
+  `--allow-net`; `fetch()` works inside a permission-restricted process. Only an OS jail
+  (`bwrap --unshare-net`, sandbox-exec) closes it, and on a machine with neither,
+  `sandbox_report()["network_note"]` says `CANNOT CONTAIN` in those words. A consent
+  screen claiming "sandboxed" where the network is open would be worse than no sandbox,
+  because somebody would believe it. `tests/test_ochost.py` pins the report to
+  `sandbox_mechanism()` so it cannot drift optimistic.
+- **A refused API is named out loud.** `registerHook`, `registerChannel`,
+  `registerTrustedToolPolicy` and the rest are defined as functions that REFUSE and
+  record, never left undefined — an undefined property throws a TypeError deep inside
+  the plugin with no explanation, while this reaches the user. The failure mode of every
+  compatibility layer is a plugin that installs, reports healthy and silently does most
+  of its job.
+- **The manifest audits the shim.** OpenClaw requires runtime `registerTool` calls to
+  match `contracts.tools`, so `discrepancy()` compares what the host caught against what
+  the plugin promised. A registration the shim missed becomes a visible gap instead of a
+  tool that quietly does not exist. This is what makes a compatibility layer auditable
+  rather than hopeful — do not remove it to make the report cleaner.
+- **stdout is the wire, so console is rebound before any plugin code runs.** A plugin's
+  `console.log` would desynchronise every frame after it. Same rule as `wa_bridge.js`.
+- **`plugin.tool` is its own action.** "May use the tools this plugin brought" has to be
+  grantable apart from the OS's built-in tools, or installing a plugin would silently
+  widen every grant somebody had already written.
+
+`HostSet` deliberately has the same seams as `mcp_client.MCP` (`tool_schemas` +
+`resolve`), because a hosted plugin tool and an MCP tool are the same KIND of thing — a
+third party's tool behind a gate — and giving them one shape means the tool loop, the PDP
+and the ledger need no new special case.
+
 ## The brain is one choice: an executor and one of ITS models
 
 `executors.brains(cfg, models)` is the whole list — local providers, cloud
