@@ -73,7 +73,10 @@ BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
 # the prompt. `enable_flow` is here because enabling a flow is the moment its standing
 # permissions are granted; that decision is the user's wherever they are, and over Telegram
 # the confirmation is the same inline keyboard as any other approval.
-ALWAYS_ASK = {"power_action", "enable_flow"}
+# `enable_openclaw_plugin` joins it for the same reason and one more: the plugin
+# runs inside OpenClaw's own process, so this confirmation is the LAST point at
+# which this OS can refuse anything about it.
+ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin"}
 
 
 def classify_command(command: str) -> str:
@@ -2064,6 +2067,90 @@ class Toolbox(usersmod.Scoped):
                 f"{g['added']} permission(s) granted, {g['revoked']} taken back, "
                 f"triggers {'armed' if enabled else 'disarmed'}")
 
+    # --- OpenClaw plugins ------------------------------------------------
+    # The same shape as flows, for the same reason: the model may put a candidate
+    # on the disk, and only a person may turn it on. An install here lands
+    # DISABLED and holds nothing (agentos/ocplugins.py); enabling is the act of
+    # granting, so `enable_openclaw_plugin` is in ALWAYS_ASK.
+
+    async def list_openclaw_plugins(self, query: str = "") -> str:
+        from . import ocplugins as ocp
+        if problem := ocp.problem():
+            return problem
+        if query:
+            rows, err = ocp.search(query, limit=15)
+            if err:
+                return f"[error] {err}"
+            if not rows:
+                return f"nothing on ClawHub for '{query}'"
+            return "\n".join(f"{r['name']}{'@' + r['version'] if r['version'] else ''} — "
+                              f"{r['summary'] or 'no summary'}\n    install: {r['spec']}"
+                              for r in rows)
+        rows, err = ocp.installed()
+        if err:
+            return f"[error] {err}"
+        if not rows:
+            return "OpenClaw has no plugins installed here"
+        return "\n".join(
+            f"{r['id']}{'@' + r['version'] if r['version'] else ''} — "
+            f"{'enabled' if r['enabled'] else 'disabled'}"
+            f"{' · bundled with OpenClaw' if r['bundled'] else ''}"
+            f"{' · from ' + r['source'] if r['source'] else ''}" for r in rows)
+
+    async def install_openclaw_plugin(self, spec: str) -> str:
+        """Put a plugin on the disk, DISABLED, and report what enabling it would grant."""
+        from . import ocplugins as ocp
+        if problem := ocp.problem():
+            return problem
+        info = ocp.parse_spec(spec)
+        # `--force` answers OpenClaw's own provenance question, and the model is not
+        # the one who gets to answer it. An untrusted source therefore fails here
+        # with the sentence a person needs, rather than being waved through.
+        ok, out = await asyncio.to_thread(ocp.install, spec, True, False)
+        if not ok:
+            hint = ("" if info["trusted"] else
+                    f"\n{ocp.source_sentence(info)} — OpenClaw refuses an unreviewed source "
+                    f"non-interactively. Open Settings \u2192 OpenClaw plugins, or run "
+                    f"`bento openclaw install {spec}` where you can see the source and say yes.")
+            return f"[error] install failed: {out[-400:]}{hint}"
+        pid = await asyncio.to_thread(ocp.installed_id, spec, out)
+        if not pid:
+            return ("installed, DISABLED — but I could not work out which id it took, so "
+                    "there is nothing to review yet. `bento openclaw list` will show it.")
+        pv = await asyncio.to_thread(ocp.preview, pid, self.cfg, self.store)
+        if pv.get("error"):
+            return f"installed, disabled. (could not read it back: {pv['error']})"
+        lines = [f"installed '{pid}' — DISABLED. It holds nothing until somebody enables it.",
+                 f"source: {pv['source_note']}",
+                 f"scan: {pv['security']['verdict']}"]
+        lines += [f"  [{f['severity']}] {f['note']}" for f in pv["security"]["findings"][:6]]
+        lines.append("enabling would let it: " + "; ".join(pv["capabilities"]))
+        lines.append("Enabling is the user's decision — point them at Settings \u2192 "
+                     "OpenClaw plugins, or ask and call enable_openclaw_plugin.")
+        return "\n".join(lines)
+
+    async def enable_openclaw_plugin(self, id: str, enabled: bool = True) -> str:
+        """Turn a plugin on or off. On is the moment its permissions are written."""
+        from . import ocplugins as ocp
+        if problem := ocp.problem():
+            return problem
+        if not enabled:
+            res = await asyncio.to_thread(ocp.disable_plugin, self.store, id)
+            if not res["ok"]:
+                return f"[error] {res['error']}"
+            return f"'{id}' is off — {res['revoked']} permission(s) taken back"
+        res = await asyncio.to_thread(ocp.enable_plugin, self.store, self.cfg, id)
+        if not res.get("ok"):
+            return f"[error] {res.get('error')}"
+        from . import config as cfgmod
+        with contextlib.suppress(Exception):
+            cfgmod.save_config(self.cfg)
+        if self.broadcast:
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "grants"})
+        return (f"'{id}' is on — {res['grants']['added']} permission(s) granted. "
+                f"It can now: {'; '.join(res['capabilities'])}. {res['restart_note']}")
+
     async def list_flows(self) -> str:
         rows = self.store.list_flows()
         if not rows:
@@ -2172,6 +2259,21 @@ class Toolbox(usersmod.Scoped):
             # definition other conversations can then use — a change to the OS.
             return "risky", (f"Defines a new agent '{args.get('name', '?')}'. It holds nothing "
                              f"until you approve its first use.")
+        if name == "install_openclaw_plugin":
+            # Grants nothing on its own — the install lands disabled — but it puts
+            # third-party code on the disk beside the agent, which is a change to
+            # the machine and not something to do without the user seeing it.
+            return "risky", (f"Installs the OpenClaw plugin '{args.get('spec', '?')}'. It lands "
+                             f"DISABLED and holds nothing until you enable it.")
+        if name == "enable_openclaw_plugin":
+            if args.get("enabled") is False:
+                return "risky", (f"Turns off the OpenClaw plugin '{args.get('id', '?')}' and "
+                                 f"takes its permissions back.")
+            return "risky", (f"Enables the OpenClaw plugin '{args.get('id', '?')}' — it then runs "
+                             f"inside OpenClaw, where this OS can no longer gate what it does "
+                             f"one call at a time.")
+        if name == "list_openclaw_plugins":
+            return "safe", ""
         if name == "enable_flow":
             if args.get("enabled") is False:
                 return "risky", f"Turns off '{args.get('name', '?')}' and revokes its permissions."
@@ -3099,6 +3201,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {type(e).__name__}: {e}"
 
 
+
 GIT_TOOL_SCHEMAS = [
     {
         "name": "git_status",
@@ -3806,6 +3909,46 @@ TOOL_SCHEMAS = [
                 "new_agents": {"type": "array", "items": {"type": "object"}, "description": "Specialists to create with it, when no existing subagent fits: [{\"name\":…,\"soul\":…,\"tools\":[…]}]. An existing name is never overwritten."},
             },
             "required": ["name", "mission", "roster"],
+        },
+    },
+    {
+        "name": "list_openclaw_plugins",
+        "description": "OpenClaw plugins — what is installed here, or, with a query, what is "
+                       "installable from ClawHub. Use it before install_openclaw_plugin so you "
+                       "name a real package. Only works when the `openclaw` CLI is installed; it "
+                       "says so plainly when it is not.",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "search ClawHub instead of listing what is installed"}},
+        },
+    },
+    {
+        "name": "install_openclaw_plugin",
+        "description": "Install an OpenClaw plugin. It is ALWAYS installed DISABLED and you "
+                       "cannot enable it: a plugin is third-party code running beside the agent, "
+                       "so enabling it is the user's decision. The reply gives AgentOS's own scan "
+                       "of the plugin's declarations and what enabling would let it reach — relay "
+                       "that, then point the user at Settings \u2192 OpenClaw plugins. Sources "
+                       "OpenClaw does not trust (npm, git, a local path) are refused here and need "
+                       "a person to vouch for them.",
+        "parameters": {
+            "type": "object",
+            "properties": {"spec": {"type": "string", "description": "clawhub:<package>, npm:<package>, git:github.com/<owner>/<repo>[@ref], or a path"}},
+            "required": ["spec"],
+        },
+    },
+    {
+        "name": "enable_openclaw_plugin",
+        "description": "Turn an installed OpenClaw plugin on (or off). Enabling is the moment its "
+                       "permissions are written and the last point at which this OS can refuse "
+                       "anything about it, so the user is asked to confirm every time. Say what it "
+                       "would be able to reach before you call it. OpenClaw loads plugin code at "
+                       "gateway start, so mention that its gateway needs restarting.",
+        "parameters": {
+            "type": "object",
+            "properties": {"id": {"type": "string"},
+                           "enabled": {"type": "boolean", "description": "false turns it off and takes its permissions back"}},
+            "required": ["id"],
         },
     },
     {

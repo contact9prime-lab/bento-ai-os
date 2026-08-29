@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+**OpenClaw plugins install through this OS's review.** OpenClaw has been an
+executor here for a while; it could not be extended. Its plugins — tools,
+providers, channels, hooks and MCP servers — now install through `bento openclaw`,
+Settings → Executors, or the agent, all reading one module (`agentos/ocplugins.py`)
+so there is one scan, one consent screen and one set of permissions however you
+arrive. An install lands DISABLED and holds nothing; enabling is the act of
+granting, and it is confirmed every time, at full autonomy included. The agent may
+install and may not enable, exactly as with flows.
+
+What that adds: a deterministic scan of the plugin's own `openclaw.plugin.json`,
+which names the tiers whose point is to sit in front of something — host-trusted
+pre-tool policies, tool-result middleware, in-process Gateway dispatch, a claimed
+`memory` slot, conversation hooks; real `grants` rows, where revoking the
+enablement makes AgentOS disable the plugin; trust on first use, so a plugin that
+changes origin or grows capabilities is held rather than upgraded — measured
+against the verdict you consented to, because `openclaw plugins update` run in a
+terminal never passes this screen; and the ordinary quarantine list, with the
+ordinary once/forever/deleted release.
+
+What it does not add, said plainly: an enabled plugin runs inside OpenClaw's own
+process, and nothing here can refuse an individual call it makes. AgentOS gates
+the lifecycle and enforces enablement; that is the whole boundary.
+`docs/openclaw-plugins.md` says the same thing to a user, and AgentOS still ships
+no OpenClaw installer — a machine without the CLI gets one honest sentence rather
+than a pane of dead buttons.
+
 ### 0.3.0 — several people, more places to work, and one brain to choose (2026-08-17)
 
 **Several people on one machine.** Accounts are isolated by DIRECTORY, not by a

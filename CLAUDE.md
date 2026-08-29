@@ -364,6 +364,61 @@ Three things that will bite whoever touches this next:
 - **An executor OWNS its models.** See the next section: one picker, and the model
   list belongs to whatever is answering.
 
+## OpenClaw plugins: the lifecycle is ours, the runtime is not
+
+`agentos/ocplugins.py` installs OpenClaw's plugins through this OS's review — scan,
+consent, grants, quarantine — by shelling out to the real `openclaw plugins ...` verbs
+rather than reimplementing any of them. Full reasoning in `docs/openclaw-plugins.md`.
+It exists because every other way code arrives here goes past a lock, and third-party
+code running beside the agent this machine answers with should not be the exception
+just because somebody else's CLI owns the door.
+
+**The boundary is stated, not implied, and it is the first thing to keep true.** An
+enabled plugin runs inside OpenClaw's process; its calls do not reach this PDP and
+nothing here can refuse one. What AgentOS gates is the LIFECYCLE (`plugin.install`,
+`plugin.enable` — their own actions, in `BUILTIN_DENY` for every non-user principal),
+and what it enforces afterwards is ENABLEMENT, through the one lever OpenClaw
+documents as absolute: `plugins.deny` wins over allow and over per-plugin enablement.
+Claiming more than that would be worse than the feature not existing.
+
+- **Install lands it DISABLED, and that is the design.** Scanning before the bytes
+  exist means re-implementing OpenClaw's resolver for npm, ClawHub, git, archives and
+  marketplaces — five ways to be subtly wrong about what is arriving. So the bytes
+  land first and the scan reads the real `openclaw.plugin.json` on disk. It is the
+  flows rule again ("a disabled flow holds nothing — Enable is the act of granting"),
+  which is the strongest argument for it: one idea twice, not two half-ideas. The
+  agent may install and may NOT enable, exactly as with `create_flow`.
+- **The `plugin.run` grant is load-bearing, not a receipt.** `reconcile()` reads it
+  back and turns a revoked grant into a real `openclaw plugins disable`. Remove that
+  binding and the Permissions app becomes a list of things it cannot actually do.
+  Reconciliation only ever turns things OFF — a reconciler that could enable is a way
+  to grant without being asked.
+- **Drift is measured against the PIN, not against the update.** AgentOS does not own
+  the `openclaw` CLI: somebody running `openclaw plugins update` in a terminal, or
+  editing a linked plugin's source, changes what it reaches without passing any screen
+  here. `record_pin` therefore stores the verdict that was CONSENTED to, and both
+  `update_plugin` and `reconcile` compare a fresh scan against that. Comparing across
+  our own update call only — which is what it did first — misses every change that
+  did not go through us. Only an ESCALATION holds; a plugin that got quieter is left
+  alone, because a hold that fires on every update is one people click through.
+- **`--force` is the person, never the caller.** It answers OpenClaw's own provenance
+  question about an untrusted source. `bento openclaw install` demands `--yes`, the
+  GUI asks, and the agent's tool cannot supply it at all. Defaulting it anywhere
+  silently answers for somebody.
+- **`--runtime` is never passed.** It imports the plugin's module to list what it
+  registers — running the code to decide whether to run the code. The manifest is the
+  static answer, and `contracts.tools` must match what the runtime registers anyway.
+- **One verdict function.** `verdict_of` is imported from `appregistry`, not copied.
+  Two definitions of "is this alarming?" is how one of them stops being read.
+
+Plugins are the MACHINE's, not a per-user preference — they install into OpenClaw's
+state directory and edit OpenClaw's config, both shared — so the routes are admin-only.
+The PINS are personal and live under the existing `registry` USER_KEY: whom I trust
+costs nothing machine-wide. Faces: GUI in Settings → Executors (`11b-openclaw.js`,
+inert with one sentence when the CLI is absent), TUI as `bento openclaw` (as `bento
+mcp` is the MCP pane's terminal face), SUI identical to GUI — a page, no native
+process, nothing touching the compositor.
+
 ## The brain is one choice: an executor and one of ITS models
 
 `executors.brains(cfg, models)` is the whole list — local providers, cloud
