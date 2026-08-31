@@ -194,6 +194,10 @@ function setTab(body,all){
         {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
       pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
     ],{f:'github git ship publish'}));
+    /* Sharing the agent belongs on the page that answers "who is my agent" —
+       11c-agentshare.js renders it, agentbundle.py decides everything. */
+    P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderAgentShare,0);
   }
   if(want('locale')){
     P.push(`<h2>Locale</h2><p class="lead">Where and when you are. The agent localises anything place- or time-dependent — news, weather, prices, holidays, units — and the AgentOS session inherits your timezone and language.</p>`);

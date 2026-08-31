@@ -278,6 +278,11 @@ asking for it by name. [More →](docs/desktop.md#automations)
   them behind its own permission engine, or has the agent **rebuild one natively** from the
   plugin's own manifest — ending in a signed-off report of what carried over, what did not, and
   what each gap costs you.
+- **Fork my agent** — [share the agent you shaped as one file](docs/agent-sharing.md) — skills,
+  teammates, flows, the apps you choose — and fork anybody else's. Your data and credentials
+  **never travel** (a leak scan refuses the export, with no override), and a fork lands with
+  everything disabled and **zero permissions granted**: you read the ceiling first, then enabling
+  each piece is the act of granting.
 
 ---
 
@@ -645,8 +650,9 @@ automatically. Switch models mid-flight from the chat window's dropdown.
 - **Folder sandbox** — with bubblewrap, the agent's shell/file tools and the Terminal are jailed to
   one folder; the rest of the filesystem is read-only.
 - **Snapshots** — restore points; the agent auto-snapshots before editing its own code.
-- **Every extension goes past a lock** — apps, MCP servers, flows and
-  [OpenClaw plugins](docs/openclaw-plugins.md) all arrive through a scan, a consent screen that
+- **Every extension goes past a lock** — apps, MCP servers, flows,
+  [OpenClaw plugins](docs/openclaw-plugins.md) and [forked agents](docs/agent-sharing.md) all
+  arrive through a scan, a consent screen that
   states the licence, real permission rows you can revoke, and a quarantine that can hold a
   misbehaving one. What a boundary *cannot* enforce is said in a sentence, never implied away.
 - **Private by default** — binds to `127.0.0.1`. Remote access is off until you turn it on with a

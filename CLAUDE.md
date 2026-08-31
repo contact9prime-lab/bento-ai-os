@@ -695,6 +695,36 @@ kind equally, and its checkable clauses are checked, not asked for.
 - **`unsigned` is not hostile** — your own exports are unsigned. Only `bad-signature` and
   `checksum-mismatch` say do-not-install, and the consent banner colours them so.
 
+## The agent itself is shareable, and the leak scan has no override
+
+`agentos/agentbundle.py` (format `agentos-agent/1`, file `bento.agent.json`, topic
+`bento-agent`; full story in `docs/agent-sharing.md`) packages skills, non-builtin
+subagents, flows, chosen apps and MCP server SHAPES into one forkable file. Surfaces:
+`bento agent`, Settings → Agent (`11c-agentshare.js`), `/api/agent/*`. The rails are the
+registry's — `canonical`/`tofu_check`/`trusted_keys` and a parametrized
+`appregistry.resolve_source(src, well_known=)` — not a second implementation.
+
+- **The export is a WHITELIST, and then the tripwire runs anyway.** `export()` reads named
+  fields out of named tables; memory/KG/conversation tables are never opened. But a
+  whitelist cannot know somebody pasted a key into a skill's text, so `leak_scan` runs
+  over the finished bytes and any finding raises `LeakRefusal` — **there is deliberately
+  no force flag**, because a shared credential cannot be unshared. Do not add one, and do
+  not "optimise" the scan away because the whitelist looks sufficient.
+- **A fork writes ZERO grants and everything lands disabled.** The bundle's `permissions`
+  list is DISCLOSURE (the ceiling, computed by `flows.declared_grants`), never rows.
+  `fork()` forces `enabled: False` on every flow whatever the file claims; MCP servers
+  land off with `<YOUR_KEY>` placeholder env/headers (`sanitize_mcp_conf` is the ONE
+  implementation — server.py imports it). Preview and fork are one computation
+  (`fork_preview` is what `fork` re-derives), the jobs.py rule again.
+- **The soul is opt-in out AND explicit in.** `--with-soul` to travel (report shows its
+  full text first); `adopt_soul` to be taken on a fork — a fork must never silently
+  replace the forker's agent identity.
+- **Collisions are skipped, never overwritten**, and said on the consent screen before
+  the fork. Pins live under the personal `registry` USER_KEY (`PINS_KEY="agents"`).
+- **There is deliberately NO agent-facing share/fork tool** — a model that could call
+  `share_agent` could be talked into it by a fetched page. If one is ever added it must
+  be ALWAYS_ASK.
+
 ## Quarantine: the ceiling that answers "how often?"
 
 Grants answer *may it?*, budgets answer *how long?* — neither answers *how often?*. A

@@ -46,6 +46,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [OpenClaw plugins](openclaw-plugins.md) | Extending OpenClaw from AgentOS — the scan, the consent screen, real permissions, and quarantine |
+| [Agent sharing](agent-sharing.md) | Share your agent as one file, fork somebody else's — no data, no credentials, nothing enabled |
 | [Models & Appearance](models.md) | Providers, the Ollama Model Manager, wallpapers & themes |
 | [Configuration](configuration.md) | `config.json`, the sandbox, Settings, environment variables |
 | [API Reference](api-reference.md) | REST endpoints, WebSocket streams, and the agent tool catalog |

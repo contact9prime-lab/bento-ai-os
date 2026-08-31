@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
+from . import agentbundle
 from . import appcheck
 from . import config as cfgmod
 from . import fabric as fabricmod
@@ -2915,6 +2916,122 @@ async def api_ocp_doctor():
     return {"available": True, "openclaw": d, "openclaw_error": err, "agentos": rec}
 
 
+# ---- Agent sharing — export this agent, fork somebody else's ----------------
+#
+# Deliberately NOT admin-gated: everything these routes touch is the signed-in
+# person's own — their store, and USER_KEYS config (`mcp_servers`, `registry`).
+# A fork writes ZERO grant rows, so there is no permission to gate; enabling
+# each forked flow later goes through the same doors as any flow.
+
+@app.get("/api/agent/shareables")
+async def api_agent_shareables():
+    """What COULD travel, so the share screen renders real choices — most
+    importantly the per-app checkboxes: shipping an app is a per-app decision,
+    never a default."""
+    from . import config as cfgmod
+    store, cfg = state["store"], state["cfg"]
+    return {
+        "skills": [s["name"] for s in store.list_skills()],
+        "subagents": [a["name"] for a in store.list_subagents() if not a.get("builtin")],
+        "flows": [f["name"] for f in (store.list_flows() or [])],
+        "apps": [{"name": a["name"], "icon": a.get("icon") or ""} for a in store.list_apps()],
+        "mcp_servers": sorted((cfg.get("mcp_servers") or {})),
+        "has_soul": bool(cfgmod.load_soul().strip()),
+        "can_sign": agentbundle.signing_key_exists(),
+        "agent_name": cfg.get("agent_name") or "Aria",
+        "well_known": agentbundle.WELL_KNOWN[0],
+        "topic": agentbundle.DISCOVERY_TOPIC,
+    }
+
+
+@app.post("/api/agent/share")
+async def api_agent_share(body: dict):
+    """Build the bundle and its report in ONE computation — what the person
+    reads is what the file contains (the jobs.py rule). A leak finding refuses
+    with the findings named; there is no force parameter, by design."""
+    store, cfg = state["store"], state["cfg"]
+    apps = body.get("apps", "none")
+    if isinstance(apps, list):
+        apps = [str(a) for a in apps]
+    try:
+        bundle, report = agentbundle.export(
+            store, cfg, name=str(body.get("name") or ""),
+            description=str(body.get("description") or ""),
+            apps=apps if apps in ("none", "all") or isinstance(apps, list) else "none",
+            with_soul=bool(body.get("with_soul")),
+            mcp=body.get("mcp", "used"))
+    except agentbundle.LeakRefusal as e:
+        return JSONResponse({"error": str(e), "leak": e.findings}, status_code=409)
+    if body.get("sign"):
+        try:
+            bundle = agentbundle.sign_bundle(bundle)
+        except FileNotFoundError:
+            return JSONResponse({"error": "no signing key on this machine — mint one "
+                                          "with `bento registry keygen` first"},
+                                status_code=400)
+    return {"bundle": bundle, "report": report,
+            "filename": agentbundle.WELL_KNOWN[0]}
+
+
+async def _agent_bundle_of(body: dict):
+    """(bundle, source_label, error_response) — inline bytes or a fetched source."""
+    bundle = body.get("bundle")
+    source = (body.get("source") or "").strip()
+    if not bundle and source:
+        candidates = agentbundle.resolve_source(source)
+        if not candidates:
+            return None, "", JSONResponse(
+                {"error": f"'{source}' is not a URL or an owner/repo"}, status_code=400)
+        import httpx
+        last = ""
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            for cand in candidates:
+                try:
+                    r = await client.get(cand)
+                    if r.status_code == 200:
+                        bundle = r.json()
+                        break
+                    last = f"HTTP {r.status_code}"
+                except Exception as e:                            # noqa: BLE001
+                    last = str(e)
+        if not bundle:
+            return None, "", JSONResponse(
+                {"error": f"no shared agent at '{source}' ({last}) — a sharing repo "
+                          f"keeps it at {agentbundle.WELL_KNOWN[0]}"}, status_code=400)
+    if not isinstance(bundle, dict) or bundle.get("format") != agentbundle.FORMAT:
+        return None, "", JSONResponse({"error": f"not an {agentbundle.FORMAT} bundle"},
+                                      status_code=400)
+    return bundle, source, None
+
+
+@app.post("/api/agent/fork/preview")
+async def api_agent_fork_preview(body: dict):
+    """The consent screen: integrity, provenance, every item with its collision,
+    the permissions CEILING (disclosure — the fork writes none of it), the soul's
+    full text, and which MCP placeholders will need filling."""
+    bundle, source, err = await _agent_bundle_of(body)
+    if err:
+        return err
+    return agentbundle.fork_preview(bundle, state["store"], state["cfg"], source=source)
+
+
+@app.post("/api/agent/fork")
+async def api_agent_fork(body: dict):
+    """Create everything disabled, grant nothing, overwrite nothing. The soul is
+    adopted only when `adopt_soul` says so — never silently."""
+    from . import config as cfgmod
+    bundle, source, err = await _agent_bundle_of(body)
+    if err:
+        return err
+    res = agentbundle.fork(bundle, state["store"], state["cfg"], source=source,
+                           adopt_soul=bool(body.get("adopt_soul")))
+    if not res.get("ok"):
+        return JSONResponse({"error": res.get("error", "fork refused")}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "flows"})
+    return res
+
+
 # ---- Telegram ---------------------------------------------------------------
 
 @app.get("/api/telegram")
@@ -4056,18 +4173,9 @@ from .appregistry import canonical as _canonical                    # noqa: E402
 from .appregistry import package_checksum as _package_checksum      # noqa: E402
 
 
-def _sanitize_mcp_conf(name: str, conf: dict) -> dict:
-    """A shareable MCP prerequisite: connection shape only — secrets become placeholders
-    the installing user fills in themselves. Real env/headers values NEVER leave this OS."""
-    out = {"name": name}
-    for k in ("transport", "command", "args", "url"):
-        if conf.get(k):
-            out[k] = conf[k]
-    if conf.get("env"):
-        out["env_template"] = {k: f"<YOUR_{k}>" for k in conf["env"]}
-    if conf.get("headers"):
-        out["headers_template"] = {k: "<your value>" for k in conf["headers"]}
-    return out
+# One definition of "what may an MCP config share?" — the agent bundle needs the
+# same answer, and two copies is how one of them starts sharing the key.
+from .agentbundle import sanitize_mcp_conf as _sanitize_mcp_conf  # noqa: E402
 
 
 @app.get("/api/apps/{aid}/export")

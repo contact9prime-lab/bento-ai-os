@@ -2189,6 +2189,170 @@ def _registry_cli(args):
         return
 
 
+def _agent_cli(args):
+    """`bento agent` — share this agent, fork somebody else's.
+
+    The protocol is two verbs and one refusal. `share` writes a bundle built by
+    WHITELIST — skills, subagents, flows (disabled, secrets stripped), the apps
+    you name, MCP server shapes with placeholder credentials — and then runs a
+    leak scan over the finished bytes; a credential anywhere in them refuses the
+    export with no override flag, because the one thing that must never travel
+    is data and keys. `fork` creates everything DISABLED with ZERO grant rows:
+    the bundle's permission list is disclosure, and enabling each flow later is
+    the act of granting, exactly as if you had written it yourself.
+    """
+    import urllib.request
+
+    from . import agentbundle as ab
+    from . import config as cfgmod
+
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act, target = args.action, (getattr(args, "target", "") or "").strip()
+
+    def load_bundle(src: str) -> tuple[dict, str]:
+        """(bundle, source-label). A file path, a URL, or owner/repo[@ref]."""
+        p = Path(os.path.expanduser(src))
+        if p.is_file():
+            try:
+                return json.loads(p.read_text()), str(p)
+            except Exception as e:                             # noqa: BLE001
+                print(f"✗ {src} is not a bundle: {e}")
+                sys.exit(1)
+        last = ""
+        for cand in ab.resolve_source(src):
+            try:
+                with urllib.request.urlopen(cand, timeout=30) as r:
+                    return json.loads(r.read()), src
+            except Exception as e:                             # noqa: BLE001
+                last = str(e)
+        print(f"✗ no shared agent at '{src}'"
+              + (f" ({last})" if last else "")
+              + f"\n  a sharing repo keeps it at {ab.WELL_KNOWN[0]}"
+              f" (discovery: GitHub topic '{ab.DISCOVERY_TOPIC}')")
+        sys.exit(1)
+
+    def show_preview(pv: dict):
+        print(f"\n  {pv['name']}" + (f" — {pv['description']}" if pv["description"] else ""))
+        print(f"  integrity:  {pv['verify']['status']} — {pv['verify']['note']}")
+        print(f"  provenance: {pv['tofu']['status']} — {pv['tofu']['note']}")
+        v = pv["security"]["verdict"]
+        print(f"  app scan:   {v}" if pv.get("items") else "", end="")
+        print()
+        for i in pv["items"]:
+            mark = "· skipped" if i["skipped"] else "·"
+            note = f"  ({i['note']})" if i["note"] else ""
+            print(f"    {mark} {i['kind']}: {i['name']}{note}")
+        ceil = pv["permissions_ceiling"]
+        print(f"\n  permissions written by the fork NOW: {pv['grants_written_now']}")
+        if ceil:
+            print(f"  ceiling — what enabling EVERY flow would grant ({len(ceil)}):")
+            for g in ceil:
+                who = f"{g.get('principal_kind','?')}:{g.get('principal_id','?')}"
+                print(f"    · {who} may {g.get('action','?')}"
+                      + (f" on {g['resource']}" if g.get("resource") else ""))
+        for m in pv["mcp_needs"]:
+            if m["fill"]:
+                print(f"  mcp '{m['name']}' will need you to fill: {', '.join(m['fill'])}")
+        if pv["soul_included"]:
+            print("\n  a soul IS included — it is NOT adopted unless you say --adopt-soul."
+                  "\n  read it first:\n")
+            for ln in (pv["soul_text"] or "").splitlines():
+                print(f"    {ln}")
+
+    if act == "share":
+        apps = getattr(args, "apps", "") or "none"
+        if apps not in ("none", "all"):
+            apps = [a for a in apps.split(",") if a.strip()]
+        mcp = getattr(args, "mcp", "") or "used"
+        if mcp not in ("used", "none"):
+            mcp = [m for m in mcp.split(",") if m.strip()]
+        try:
+            bundle, report = ab.export(
+                store, cfg, name=target, description=getattr(args, "desc", ""),
+                apps=apps, with_soul=getattr(args, "with_soul", False), mcp=mcp)
+        except ab.LeakRefusal as e:
+            print("⛔ refusing to share — the leak scan found what looks like a "
+                  "credential in the bundle:")
+            for f in e.findings:
+                print(f"    · {f['looks_like']} (line {f['line']} of the bundle, "
+                      f"starts {f['excerpt']})")
+            print("\n  Remove it from the skill/flow/app it lives in and share again."
+                  "\n  There is deliberately no --force: a shared credential cannot "
+                  "be unshared.")
+            sys.exit(1)
+        if getattr(args, "sign", False):
+            try:
+                bundle = ab.sign_bundle(bundle)
+            except FileNotFoundError:
+                print("✗ no signing key — mint one first: bento registry keygen")
+                sys.exit(1)
+        out = Path(getattr(args, "out", ".") or ".") / ab.WELL_KNOWN[0]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(bundle, indent=2))
+        t = report["traveled"]
+        print(f"✓ wrote {out}")
+        print(f"\n  traveled: {t['skills']} skill(s), {t['subagents']} subagent(s), "
+              f"{t['flows']} flow(s) (all disabled), "
+              f"{len(t['apps'])} app(s){' (' + ', '.join(t['apps']) + ')' if t['apps'] else ''}, "
+              f"{len(t['mcp_servers'])} MCP shape(s)"
+              + (", the soul" if t["soul"] else ""))
+        print("  withheld:")
+        for w in report["withheld"]:
+            print(f"    · {w}")
+        if report["soul_text"]:
+            print("\n  the soul travels with it — this is the exact text:\n")
+            for ln in report["soul_text"].splitlines():
+                print(f"    {ln}")
+        print(f"\n  leak scan: {report['leak_scan']}"
+              + ("  |  signed" if bundle.get("signature") else "  |  unsigned "
+                 "(fine for your own shares; --sign to prove identity)"))
+        print(f"\n  To publish: commit {ab.WELL_KNOWN[0]} to a repo and add the "
+              f"GitHub topic '{ab.DISCOVERY_TOPIC}'.\n"
+              f"  Anyone forks it with:  bento agent fork <owner>/<repo>")
+        return
+
+    if not target:
+        print(f"what should I {act}? a {ab.WELL_KNOWN[0]} path, a URL, or owner/repo[@ref]"
+              if act != "share" else "")
+        sys.exit(1)
+
+    bundle, src_label = load_bundle(target)
+
+    if act == "verify":
+        status, note = ab.verify_bundle(bundle, cfg)
+        print(f"{status}: {note}")
+        sys.exit(0 if status in ("verified", "unsigned") else 1)
+
+    if act == "show":
+        show_preview(ab.fork_preview(bundle, store, cfg, source=src_label))
+        print(f"\n  To take it:  bento agent fork {target} --yes")
+        return
+
+    if act == "fork":
+        pv = ab.fork_preview(bundle, store, cfg, source=src_label)
+        show_preview(pv)
+        if pv["verify"]["status"] in ("checksum-mismatch", "bad-signature"):
+            print(f"\n⛔ not forking: {pv['verify']['note']}")
+            sys.exit(1)
+        if not getattr(args, "yes", False):
+            print(f"\n  Nothing written. To proceed:  bento agent fork {target} --yes"
+                  + ("  [--adopt-soul]" if pv["soul_included"] else ""))
+            return
+        res = ab.fork(bundle, store, cfg, source=src_label,
+                      adopt_soul=getattr(args, "adopt_soul", False))
+        if not res["ok"]:
+            print(f"⛔ {res['error']}")
+            sys.exit(1)
+        cfgmod.save_config(cfg)
+        print(f"\n✓ forked — {len(res['created'])} thing(s) created, "
+              f"{len(res['skipped'])} skipped, {res['grants_written']} permission(s) "
+              "granted (that number is the design)")
+        if res["soul"]:
+            print(f"  soul: {res['soul']}")
+        print(f"  next: {res['next']}")
+        return
+
+
 def _ai_scan(desc: str, html: str) -> dict:
     """Read the app with this machine's own brain. Returns {scanner, text}."""
     from . import config as cfgmod
@@ -3962,6 +4126,34 @@ def main():
     p_reg.add_argument("--ai", action="store_true",
                        help="with `scan`: also read the code with this machine's brain")
 
+    p_agent = verb("agent",
+                   help="share this agent as a bundle, or fork somebody else's — "
+                        "no data, no credentials, nothing enabled")
+    p_agent.add_argument("action", nargs="?", default="show",
+                         choices=["share", "show", "fork", "verify"])
+    p_agent.add_argument("target", nargs="?", default="",
+                         help="share: a name for the bundle; show/fork/verify: a "
+                              "bento.agent.json path, a URL, or owner/repo[@ref]")
+    p_agent.add_argument("-o", "--out", default=".", help="where `share` writes the file")
+    p_agent.add_argument("--desc", default="", help="with `share`: one sentence on what "
+                                                    "this agent is for")
+    p_agent.add_argument("--apps", default="none",
+                         help="with `share`: which apps travel — none (default), all, "
+                              "or names a,b,c. Shipping an app is a per-app choice.")
+    p_agent.add_argument("--mcp", default="used",
+                         help="with `share`: which MCP server SHAPES travel — used "
+                              "(default), none, or names. Values never travel.")
+    p_agent.add_argument("--with-soul", action="store_true",
+                         help="with `share`: include the soul — off by default; the "
+                              "report shows you its exact text before you publish")
+    p_agent.add_argument("--sign", action="store_true",
+                         help="with `share`: sign with this machine's registry key")
+    p_agent.add_argument("--yes", action="store_true",
+                         help="with `fork`: I have read the preview — write it")
+    p_agent.add_argument("--adopt-soul", action="store_true", dest="adopt_soul",
+                         help="with `fork`: replace this agent's identity with the "
+                              "shared one (never happens silently)")
+
     p_ocp = verb("openclaw",
                  help="OpenClaw plugins — install, scan, grant and hold third-party extensions")
     p_ocp.add_argument("action", nargs="?", default="list",
@@ -4200,6 +4392,8 @@ def main():
         _flow_cli(args)
     elif args.cmd == "openclaw":
         _openclaw_cli(args)
+    elif args.cmd == "agent":
+        _agent_cli(args)
     elif args.cmd == "job":
         _job_cli(args)
     elif args.cmd == "user":

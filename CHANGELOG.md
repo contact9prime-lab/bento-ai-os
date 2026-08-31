@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+**Your agent is now something you can share — and fork.** `bento agent share`
+(GUI: Settings → Agent) packages the agent you shaped — skills, teammates, flows,
+the apps you tick, MCP server shapes — into one `bento.agent.json` anybody can
+fork; publish it in a repo under the GitHub topic `bento-agent` and it resolves
+as `owner/repo[@ref]` across two CDNs, like apps. The vital rule is structural:
+the bundle is built by whitelist (memory, conversations and the knowledge graph
+are never even read), MCP credentials become `<YOUR_KEY>` placeholders, webhook
+secrets are stripped — and then a leak scan runs over the finished bytes anyway,
+and anything key-shaped REFUSES the export with no override flag, because a
+shared credential cannot be unshared. The soul is opt-in and its full text is
+shown before you publish; shipping each app is a per-app checkbox. A fork is the
+flows rule applied to a whole agent: everything lands disabled, ZERO permission
+rows are written (`grants_written_now: 0` on the consent screen is the design),
+nothing of yours is overwritten, and the bundle's permission list is disclosure
+— the ceiling enabling everything would reach — computed by the same
+`flows.declared_grants` the editor uses. Integrity and identity ride the app
+registry's rails: SHA-256 checksum, optional Ed25519 signature from the same
+`bento registry keygen` key, and first-fork TOFU pins where `changed-key` is
+the loudest alarm. (`agentos/agentbundle.py`, `docs/agent-sharing.md`.)
+
 **OpenClaw plugins install through this OS's review.** OpenClaw has been an
 executor here for a while; it could not be extended. Its plugins — tools,
 providers, channels, hooks and MCP servers — now install through `bento openclaw`,

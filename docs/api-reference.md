@@ -176,6 +176,10 @@ stopped on a headless box could be seen in the logs and never released.
 | GET | `/api/openclaw/plugins/{id}/verify` | check a native build against the brief it was built from |
 | GET | `/api/openclaw/plugins/{id}/report` | the report: ported / outstanding / not portable with each gap's cost, ending in a proposal |
 | GET | `/api/openclaw/plugins-doctor` | OpenClaw's own check, plus: does its enablement still match what was granted here? |
+| GET | `/api/agent/shareables` | what COULD travel in an agent bundle — the share screen's real choices ([doc](agent-sharing.md)) |
+| POST | `/api/agent/share` | build the `agentos-agent/1` bundle + its report in one computation; a leak finding refuses (409, no force) |
+| POST | `/api/agent/fork/preview` | the fork consent screen: verify, TOFU, collisions, the permissions CEILING, the soul's full text |
+| POST | `/api/agent/fork` | create everything DISABLED, grant nothing, overwrite nothing; soul adopted only if `adopt_soul` |
 | GET | `/api/native/apps`, `/api/native/icon/{id}`, POST `/api/native/launch` | native app launcher |
 | GET/POST | `/api/control` | sound/battery/network state; set volume/mute/open settings |
 
