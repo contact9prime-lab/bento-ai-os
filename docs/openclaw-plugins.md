@@ -28,9 +28,38 @@ set of permissions however you arrive.
 
 ---
 
-## What AgentOS adds, and what it cannot
+## Three ways to run a plugin here, and their different limits
 
-Being clear about the boundary first, because everything else depends on it.
+This is the first thing to get straight, because each path has its **own** limit
+and it is easy to carry one path's caveat onto another.
+
+| | Who runs the code | What AgentOS can enforce | The limit |
+|---|---|---|---|
+| **1. Leave it in OpenClaw** `ocplugins.py` | OpenClaw's own gateway process | the lifecycle (install/enable/update/uninstall) and enablement | **cannot refuse an individual call** — the code is in another process |
+| **2. Host it here** `ochost.py` | a Node process AgentOS starts | **every tool call** — PDP, ledger, rate meter, quarantine | its own filesystem and subprocess are closed by Node; **its network is not**, without an OS jail |
+| **3. Port it natively** `ocnative.py` | nothing foreign — MCP servers, flows and skills AgentOS already runs | **everything**, exactly as for any other MCP tool or flow | not everything is portable, and what is not is **named** rather than approximated |
+
+**The two limits in rows 1 and 2 do not apply to row 3.** That is the whole
+reason the port exists. A ported plugin is not a plugin any more — it is an MCP
+server, a flow and a skill, each already behind the permission engine. There is
+no gateway to be outside of and no Node host whose network to worry about.
+
+What row 3 costs instead is **coverage, not control**: some OpenClaw concepts
+have no equivalent here (host-trusted tool policies, tool-result middleware,
+providers, channels, the memory slot, in-turn hooks). Those are reported in the
+[report](#coming-from-openclaw-the-report) with what losing each one costs you —
+they are a visible gap, not a silent one.
+
+So: choose row 1 for interop with a machine that already runs OpenClaw, row 2
+when you want the calls gated but the plugin's own code intact, and row 3 when
+you want the capability with no foreign runtime at all.
+
+---
+
+## Path 1 in detail: what AgentOS adds, and what it cannot
+
+Everything in this section is about **leaving the plugin in OpenClaw's gateway**.
+Paths 2 and 3 above have different answers; do not carry this one onto them.
 
 **AgentOS gates the lifecycle.** Install, enable, update and uninstall each go
 past the policy decision point and leave a row in the ledger saying who did it.
