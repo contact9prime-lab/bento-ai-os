@@ -9064,6 +9064,7 @@ async function ocpReview(pid){
       <button class="endbtn" onclick="ocpUpdate('${esc(p.id)}')">Update</button>
       ${((p.native||{}).buildable)?`<button class="endbtn" onclick="ocpNative('${esc(p.id)}')">Build it natively instead</button>`:''}
       <button class="endbtn" onclick="ocpVerify('${esc(p.id)}')">Check the native build</button>
+      <button class="endbtn" onclick="ocpReport('${esc(p.id)}')">Migration report</button>
       ${p.enabled?`<button class="endbtn" onclick="ocpHold('${esc(p.id)}')">Hold it now</button>`:''}
       <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
@@ -9088,9 +9089,11 @@ function ocpDisclaimer(p){
   const row = g => `<div class="mtool"><code>${esc(g.severity)}</code><span>
       <b>${esc(g.what)}</b><br>${esc(g.why)}
       ${g.remedy?`<br><i>→ ${esc(g.remedy)}</i>`:''}</span></div>`;
+  const li = p.licence_install || {};
   return `<div class="pgroup" style="border-left:3px solid var(--err);padding-left:10px">
     <h3>⚠ Before you turn this on</h3>
     <div class="ghint">${esc(c.headline||'')}</div>
+    ${li.headline?`<div class="ghint"><b>${esc(li.headline)}</b> — ${esc(li.implication||'')}</div>`:''}
     ${gaps.map(row).join('')}
     ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild what this
       plugin declares out of its own parts — MCP servers, flows and skills — so it runs
@@ -9106,9 +9109,20 @@ async function ocpNative(pid){
   let d = null;
   try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/native')).json() }catch(e){}
   if(!d || d.error){ toast((d&&d.error)||'could not build the brief'); return }
+  /* The licence question, asked at the moment it bites. Porting is not the same
+     act as installing — a rewrite of copyleft source raises a derivative-work
+     question that running it never does — so it gets its own acknowledgement.
+     AgentOS states the facts and asks; it does not answer a legal question. */
+  const lp = d.licence_port || {};
+  if(lp.needs_ack && !confirm(
+      lp.ask + '\n\n' + (lp.implication||'') +
+      '\n\nAgentOS cannot answer this for you — this is not legal advice.')){
+    toast('Left as it is — nothing was built'); return;
+  }
   const out = document.getElementById('ocp-review');
   if(out) out.innerHTML = `<div class="pgroup">
     <h3>Native build brief — ${esc(pid)}</h3>
+    ${lp.headline?`<div class="ghint"><b>${esc(lp.headline)}</b> — ${esc(lp.implication||'')}</div>`:''}
     <div class="ghint">This is what the agent will be asked to build. It is derived from
       the plugin's own manifest, so it asks for nothing the plugin did not declare.</div>
     <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
@@ -9154,6 +9168,42 @@ async function ocpVerify(pid){
     <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
   </div>`;
   toast(d.line || '');
+}
+
+/* The migration report — the document somebody moving off OpenClaw signs off on.
+   It ends in a PROPOSAL, not a result: a gap is not a verdict, it is a thing the
+   user can decide to have built, live with, or keep the original for. */
+async function ocpReport(pid){
+  const out = document.getElementById('ocp-review');
+  if(out) out.innerHTML = '<p class="mut">putting the report together…</p>';
+  let d = null;
+  try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/report')).json() }catch(e){}
+  if(!d || d.error){ toast((d&&d.error)||'could not build the report'); return }
+  const rows = (list, mark) => list.map(x=>`<div class="mtool"><code>${mark} ${esc(x.target)}</code>
+      <span>${esc(x.item)} — ${esc(x.note)}</span></div>`).join('');
+  const lost = (d.not_portable||[]).map(g=>`<div class="mtool"><code>—</code><span>
+      <b>${esc(g.what)}</b><br>${esc(g.why)}<br><i>What that costs: ${esc(g.implication)}</i>
+    </span></div>`).join('');
+  if(out) out.innerHTML = `<div class="pgroup">
+    <h3>Migration report — ${esc(pid)}
+      ${d.complete?'<span class="badge ok">complete</span>':'<span class="badge">partial</span>'}</h3>
+    <div class="ghint">${esc(d.headline||'')}</div>
+    <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b> — ${esc((d.licence||{}).implication||'')}</div>
+    ${(d.ported||[]).length?`<details class="mtools" open><summary>Ported and reachable</summary>
+        ${rows(d.ported,'✓')}</details>`:''}
+    ${(d.outstanding||[]).length?`<details class="mtools" open><summary>Declared, not built yet</summary>
+        ${rows(d.outstanding,'✗')}</details>`:''}
+    ${lost?`<details class="mtools" open><summary>Cannot be carried across, and what that costs</summary>
+        ${lost}</details>`:''}
+    <h3 style="margin-top:12px">What would you like to do?</h3>
+    <div class="prow" style="flex-wrap:wrap">
+      ${(d.proposal||{}).build_the_rest?`<button class="endbtn" onclick="ocpNative('${esc(pid)}')">Have the agent build the rest</button>`:''}
+      <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Continue as it is</button>
+      ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" onclick="ocpReview('${esc(pid)}')">Keep running the original</button>`:''}
+    </div>
+    <div class="ghint mut">Continuing as it is is a real answer — a partial port that
+      covers what you actually use is a fine place to stop.</div>
+  </div>`;
 }
 
 async function ocpPost(path, body){

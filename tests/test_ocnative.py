@@ -210,3 +210,157 @@ def test_the_agent_is_told_to_relay_the_check_rather_than_its_own_opinion():
     assert "not what you believe you did" in d
     b = by["port_openclaw_plugin"]["description"]
     assert "never invent behaviour" in b and "lands disabled" in b
+
+
+# --------------------------------------------------------------- licensing
+
+def test_the_licence_classifier_does_not_conflate_the_gpl_family():
+    """"AGPL" is not "GPL" is not "LGPL". A substring match that conflated them
+    would give exactly the wrong sentence about the most consequential one."""
+    from agentos.ocplugins import classify_licence as c
+    assert c("MIT") == c("Apache-2.0") == c("ISC") == "permissive"
+    assert c("LGPL-3.0") == c("MPL-2.0") == "weak-copyleft"
+    assert c("GPL-3.0") == c("AGPL-3.0") == c("SSPL-1.0") == "copyleft"
+    assert c("UNLICENSED") == "proprietary"
+    assert c("") == c("WTFPL-9000") == "unknown"
+
+
+def test_a_dual_licence_is_read_the_way_it_actually_works():
+    """OR lets you choose the best branch; AND binds you to the worst."""
+    from agentos.ocplugins import classify_licence as c
+    assert c("MIT OR GPL-3.0") == "permissive"
+    assert c("MIT AND GPL-3.0") == "copyleft"
+
+
+def test_no_declared_licence_is_never_softened_into_probably_fine():
+    """The strongest statement, not the weakest: with no grant, the default is
+    that you have no rights to copy or adapt it."""
+    pos = N.licence_position({"spdx": "", "klass": "unknown"}, "port")
+    assert pos["needs_ack"]
+    assert "not the same as permissive" in pos["implication"]
+
+
+def test_installing_and_porting_get_different_answers():
+    """Running someone's GPL software is what the GPL is for and needs nobody's
+    permission. Rebuilding it is a different question, and conflating the two
+    would either nag on every install or stay silent on the one that matters."""
+    lic = {"spdx": "GPL-3.0", "klass": "copyleft"}
+    install = N.licence_position(lic, "install")
+    port = N.licence_position(lic, "port")
+    assert not install["needs_ack"], "running copyleft software is not a decision"
+    assert port["needs_ack"], "rebuilding it is"
+    assert install["implication"] != port["implication"]
+
+
+def test_permissive_never_stops_anybody():
+    for action in ("install", "port"):
+        assert not N.licence_position({"spdx": "MIT", "klass": "permissive"},
+                                      action)["needs_ack"]
+
+
+def test_the_ask_names_the_licence_and_the_act():
+    """"Would you like to continue?" on its own is a question nobody can answer."""
+    ask = N.licence_position({"spdx": "AGPL-3.0", "klass": "copyleft"}, "port")["ask"]
+    assert "AGPL-3.0" in ask
+    assert "does not copy its source" in ask
+    assert "cannot make for you" in ask
+
+
+def test_what_a_port_reads_is_stated_once_for_every_surface():
+    assert "does not copy" in N.PORT_READS
+
+
+def test_a_licence_is_read_from_the_plugins_own_files(tmp_path, monkeypatch):
+    from agentos import ocplugins as ocp
+    root = tmp_path / "ext" / "p"
+    root.mkdir(parents=True)
+    (root / ocp.MANIFEST_NAME).write_text('{"id":"p","configSchema":{}}')
+    (root / "package.json").write_text('{"name":"p","license":"AGPL-3.0"}')
+    lic = ocp.licence_of("p", {"id": "p", "path": str(root)})
+    assert lic["spdx"] == "AGPL-3.0" and lic["klass"] == "copyleft"
+    assert lic["where"] == "package.json"
+
+
+def test_a_licence_file_is_read_when_nothing_declares_one(tmp_path):
+    from agentos import ocplugins as ocp
+    root = tmp_path / "ext" / "p"
+    root.mkdir(parents=True)
+    (root / ocp.MANIFEST_NAME).write_text('{"id":"p","configSchema":{}}')
+    (root / "LICENSE").write_text("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3")
+    lic = ocp.licence_of("p", {"id": "p", "path": str(root)})
+    assert lic["klass"] == "copyleft" and lic["where"] == "LICENSE"
+
+
+# --------------------------------------------------------------- the report
+
+def _report(store, cfg=None, mcp=None, lic=None):
+    b = N.brief("loud", LOUD)
+    v = N.verify(b, store, cfg or {}, mcp=mcp)
+    return N.report("loud", b, v, lic or {"spdx": "MIT", "klass": "permissive"})
+
+
+def test_the_report_separates_ported_outstanding_and_never(store):
+    store.save_flow({"name": "loud", "mission": "x",
+                     "roster": [{"subagent": "c"}], "enabled": False})
+    r = _report(store, {"mcp_servers": {"twilio": {}}}, FakeMCP(["mcp_twilio_place_call"]))
+    assert [p["item"] for p in r["ported"]] == ["twilio", "place_call", "loud"]
+    assert r["outstanding"] == []
+    assert r["not_portable"], "the things with no equivalent must still be listed"
+
+
+def test_every_unportable_thing_says_what_LOSING_it_costs(store):
+    """A list of names with no consequence attached is a list people skim. This is
+    the half a migration decision actually turns on."""
+    r = _report(store)
+    assert r["not_portable"]
+    for g in r["not_portable"]:
+        assert g["implication"] and len(g["implication"]) > 30, g
+    joined = " ".join(g["implication"] for g in r["not_portable"])
+    assert "Permissions" in joined          # the budget/guardrail row names the fix
+    assert "flow that runs around the turn" in joined
+
+
+def test_the_report_ends_in_a_proposal_not_a_verdict(store):
+    """A gap is not a verdict — it is a thing somebody can decide to have built,
+    live with, or keep the original for. All three are always offered."""
+    r = _report(store)
+    p = r["proposal"]
+    assert p["build_the_rest"] is True          # nothing built yet
+    assert p["continue_as_is"] is True          # always a real answer
+    assert p["keep_the_plugin"] is True
+    text = N.report_text(r)
+    assert "What would you like to do?" in text
+    assert "continue as it is" in text
+    assert "keep running the original" in text
+
+
+def test_continue_as_is_is_offered_even_when_the_port_is_complete(store):
+    store.save_flow({"name": "loud", "mission": "x",
+                     "roster": [{"subagent": "c"}], "enabled": False})
+    r = _report(store, {"mcp_servers": {"twilio": {}}}, FakeMCP(["mcp_twilio_place_call"]))
+    assert r["complete"] is True
+    assert r["proposal"]["continue_as_is"] is True
+    assert r["proposal"]["build_the_rest"] is False   # nothing left to build
+
+
+def test_the_report_carries_the_licence_position(store):
+    r = _report(store, lic={"spdx": "AGPL-3.0", "klass": "copyleft"})
+    assert r["licence"]["needs_ack"]
+    assert "AGPL-3.0" in N.report_text(r)
+
+
+def test_the_terminal_and_the_gui_read_one_report(store):
+    """A migration where the desktop and the terminal disagree about what got
+    carried is a migration nobody can sign off."""
+    r = _report(store)
+    text = N.report_text(r)
+    for g in r["not_portable"]:
+        assert g["what"] in text
+    assert r["headline"] in text
+
+
+def test_the_agent_is_told_to_put_the_choice_to_the_user():
+    from agentos.tools import TOOL_SCHEMAS
+    d = {t["name"]: t for t in TOOL_SCHEMAS}["openclaw_migration_report"]["description"]
+    assert "Do not decide for them" in d
+    assert "COSTS" in d

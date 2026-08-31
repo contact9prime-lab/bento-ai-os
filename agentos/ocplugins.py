@@ -396,6 +396,110 @@ def manifest_of(pid: str, record: dict | None = None) -> tuple[dict, str]:
     return {}, f"no {MANIFEST_NAME} found for '{pid}' — nothing was scanned"
 
 
+# ---------------------------------------------------------------------------
+# What licence is this thing under
+# ---------------------------------------------------------------------------
+# AgentOS already refuses to ship anything non-permissive and states the licence
+# of everything it merely OFFERS (`components.py`, `packaging/audit-licenses.sh`).
+# A plugin arriving from ClawHub or npm is the same question wearing different
+# clothes, and it is asked at two different moments with two different answers —
+# see `ocnative.licence_position`. Detection lives here because it is a fact read
+# off the plugin's own files, next to `manifest_of` and `package_json_of`.
+
+#: SPDX id (upper) -> class. Deliberately a table rather than a regex: "AGPL" is
+#: not "GPL" is not "LGPL", and a substring match that conflates them would give
+#: exactly the wrong sentence about the most consequential one.
+LICENCE_CLASS: dict[str, str] = {
+    **{k: "permissive" for k in (
+        "MIT", "MIT-0", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "0BSD",
+        "ISC", "UNLICENSE", "CC0-1.0", "ZLIB", "PYTHON-2.0", "BSL-1.0",
+        "APACHE 2.0", "BSD")},
+    **{k: "weak-copyleft" for k in (
+        "LGPL-2.1", "LGPL-2.1-ONLY", "LGPL-2.1-OR-LATER", "LGPL-3.0",
+        "LGPL-3.0-ONLY", "LGPL-3.0-OR-LATER", "MPL-2.0", "EPL-2.0", "CDDL-1.0")},
+    **{k: "copyleft" for k in (
+        "GPL-2.0", "GPL-2.0-ONLY", "GPL-2.0-OR-LATER", "GPL-3.0", "GPL-3.0-ONLY",
+        "GPL-3.0-OR-LATER", "AGPL-3.0", "AGPL-3.0-ONLY", "AGPL-3.0-OR-LATER",
+        "SSPL-1.0", "BUSL-1.1", "ELASTIC-2.0")},
+    "UNLICENSED": "proprietary", "PROPRIETARY": "proprietary", "SEE LICENSE IN": "proprietary",
+}
+
+
+def classify_licence(spdx: str) -> str:
+    """One of permissive | weak-copyleft | copyleft | proprietary | unknown."""
+    s = (spdx or "").strip().upper().strip("()")
+    if not s:
+        return "unknown"
+    if s.startswith("SEE LICENSE"):
+        return "proprietary"
+    # An expression like "MIT OR Apache-2.0" is as permissive as its best branch;
+    # "MIT AND GPL-3.0" is as constrained as its worst. Splitting on the operator
+    # is the only way to answer either honestly.
+    if " OR " in s:
+        parts = [classify_licence(p) for p in s.split(" OR ")]
+        for best in ("permissive", "weak-copyleft", "copyleft", "proprietary"):
+            if best in parts:
+                return best
+        return "unknown"
+    if " AND " in s:
+        parts = [classify_licence(p) for p in s.split(" AND ")]
+        for worst in ("proprietary", "copyleft", "weak-copyleft", "permissive"):
+            if worst in parts:
+                return worst
+        return "unknown"
+    return LICENCE_CLASS.get(s, "unknown")
+
+
+#: First-line fingerprints for a LICENSE file with no SPDX id anywhere.
+_LICENCE_TEXT = (
+    ("GNU AFFERO GENERAL PUBLIC LICENSE", "AGPL-3.0"),
+    ("GNU LESSER GENERAL PUBLIC LICENSE", "LGPL-3.0"),
+    ("GNU GENERAL PUBLIC LICENSE", "GPL-3.0"),
+    ("MOZILLA PUBLIC LICENSE", "MPL-2.0"),
+    ("APACHE LICENSE", "Apache-2.0"),
+    ("MIT LICENSE", "MIT"),
+    ("ISC LICENSE", "ISC"),
+    ("BSD ", "BSD-3-Clause"),
+)
+
+
+def licence_of(pid: str, record: dict | None = None) -> dict:
+    """The plugin's licence, and where that was read from.
+
+    Three places, best first: the manifest, package.json, then a LICENSE file on
+    disk. `unknown` is a real answer and must not be softened into "probably
+    fine" — no declared licence means no permission granted by default, which is
+    a stronger statement than a permissive one, not a weaker one.
+    """
+    rec = record if record is not None else inspect(pid)[0]
+    man, _ = manifest_of(pid, rec)
+    pkg = package_json_of(pid, rec)
+
+    for value, where in ((man.get("license") or man.get("licence"), MANIFEST_NAME),
+                         (pkg.get("license") or pkg.get("licence"), "package.json")):
+        if isinstance(value, dict):
+            value = value.get("type") or ""
+        if value:
+            return {"spdx": str(value), "where": where,
+                    "klass": classify_licence(str(value))}
+
+    root = str(_first(rec, "path", "dir", "installPath", "root")) or \
+        str(extensions_root() / pid)
+    for name in ("LICENSE", "LICENSE.md", "LICENCE", "LICENSE.txt", "COPYING"):
+        p = Path(root).expanduser() / name
+        try:
+            if not p.is_file():
+                continue
+            head = p.read_text(errors="replace")[:400].upper()
+            for needle, spdx in _LICENCE_TEXT:
+                if needle in head:
+                    return {"spdx": spdx, "where": name, "klass": classify_licence(spdx)}
+            return {"spdx": "", "where": name, "klass": "unknown"}
+        except Exception:                                          # noqa: BLE001
+            continue
+    return {"spdx": "", "where": "", "klass": "unknown"}
+
+
 def package_json_of(pid: str, record: dict | None = None) -> dict:
     """The plugin's package.json, if it has one. Read for install scripts only."""
     rec = record if record is not None else inspect(pid)[0]
@@ -980,6 +1084,14 @@ def preview(pid: str, cfg: dict, store=None) -> dict:
     from . import ocnative
     out["compatibility"] = ocnative.compatibility(man, hosted=False)
     out["native"] = ocnative.brief(pid, man, src)
+    # The licence, and what it means at each of the two moments it matters.
+    # Carried on the preview so no surface can offer an install or a port without
+    # the answer in hand — `components.py` states a licence before every optional
+    # download for the same reason.
+    lic = licence_of(pid, rec)
+    out["licence"] = lic
+    out["licence_install"] = ocnative.licence_position(lic, "install")
+    out["licence_port"] = ocnative.licence_position(lic, "port")
     if store is not None:
         q = held(store, pid)
         out["quarantined"] = bool(q)

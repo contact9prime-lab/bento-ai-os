@@ -504,6 +504,28 @@ brief forbids.
 are the ones whose target is `None`. A concept with no equivalent must be reported as
 unportable, not quietly mapped onto the nearest thing that compiles.
 
+**A port ends in a REPORT that ends in a PROPOSAL.** The audience is somebody moving off
+OpenClaw, and what they need is not a green tick: `report()` gives ported / outstanding /
+cannot-be-carried, and every unportable row carries what LOSING it costs in their terms
+("any budget rule it enforced is gone — write it as a grant in Permissions instead"). A
+list of names with no consequence attached is a list people skim. It closes with three
+answers, never one — build the rest, continue as it is, or keep the original running —
+because a gap is not a verdict, and a partial port covering what somebody actually uses
+is a fine place to stop.
+
+**Licensing asks twice, and the two answers differ.** Installing is RUNNING, which is what
+a licence is for and needs nobody's permission — only a missing or proprietary one stops
+anybody. Porting has the agent write new code doing the same job, which for copyleft
+raises a derivative-work question, so `licence_position(lic, "port")` demands an
+acknowledgement (`--accept-licence`) that install does not. Conflating them would either
+nag on every install or stay silent on the one that matters. Three rules: `classify_licence`
+is a TABLE not a regex (AGPL is not GPL is not LGPL, and a substring match gets the worst
+one wrong); `OR` takes the best branch while `AND` takes the worst; and **no declared
+licence is never softened into "probably fine"** — with no grant the default is no rights,
+which is a stronger statement than permissive, not a weaker one. AgentOS states the
+licence and what the port actually reads (`PORT_READS`), and says out loud that it is not
+legal advice.
+
 The disclaimer is one computation shown by every surface (`preview()["compatibility"]`),
 because a warning that differs between the terminal and the desktop is one somebody has
 already got wrong — and it always names both roads. A disclaimer whose only way forward

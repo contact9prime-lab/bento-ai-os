@@ -104,6 +104,109 @@ def _contracts(manifest: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Licensing: the same licence means two different things here
+# ---------------------------------------------------------------------------
+# AgentOS already refuses to SHIP anything non-permissive and states the licence
+# of everything it merely offers (`components.py`). A plugin raises that question
+# twice, and the two answers are genuinely different:
+#
+#   installing  you RUN it. Running someone's GPL software is what the GPL is for
+#               and needs no permission from anybody. The licence still matters
+#               for what you may do with it later, so it is stated, but it is
+#               rarely a reason to stop.
+#   porting     the agent reads the plugin's declarations and writes NEW code that
+#               does the same job. For a copyleft plugin that raises a derivative-
+#               work question, and that is a decision for the person, not for us.
+#
+# AgentOS is not qualified to answer the legal question and does not try. It
+# states what the licence is, what the port would actually read, and why the
+# combination is worth a look — then asks. Saying nothing would be worse: this is
+# the one place where a wrong assumption costs somebody a licence violation
+# rather than a broken feature.
+
+#: klass -> (may we proceed without asking?, what it means for a PORT)
+_PORT_POSITION = {
+    "permissive": (
+        True,
+        "Permissive. Rebuilding its ideas as your own code is what this licence "
+        "is for. Keep the attribution its terms ask for."),
+    "weak-copyleft": (
+        False,
+        "Weak copyleft. Its terms generally attach to the file or library rather "
+        "than to everything that touches it — but a rewrite that closely follows "
+        "its source is a different question from merely using it."),
+    "copyleft": (
+        False,
+        "Strong copyleft. If the port ends up a derivative of that source, its "
+        "terms would attach to what AgentOS writes — which, for AGPL, can extend "
+        "to software you only ever run as a service."),
+    "proprietary": (
+        False,
+        "Not an open-source licence. Re-implementing it may be exactly what its "
+        "terms forbid, and there is no public grant to fall back on."),
+    "unknown": (
+        False,
+        "No licence is declared. That is not the same as permissive: with no "
+        "grant, the default is that you have no rights to copy or adapt it."),
+}
+
+_INSTALL_POSITION = {
+    "permissive": "Permissive — nothing here constrains you.",
+    "weak-copyleft": "Weak copyleft. Running it is fine; redistributing a machine "
+                     "image containing it carries its terms.",
+    "copyleft": "Copyleft. Running it is fine and always has been; shipping it on "
+                "to somebody else carries its terms with it.",
+    "proprietary": "Not an open-source licence — check that your use is one its "
+                   "terms allow.",
+    "unknown": "No licence declared, so nothing states what you may do with it.",
+}
+
+
+def licence_position(lic: dict, action: str = "port") -> dict:
+    """What this licence means for what is about to happen. Never legal advice.
+
+    Returns {klass, spdx, where, headline, implication, needs_ack, ask}. The
+    `ask` is the sentence a person is answering — it names the licence and the
+    act, because "would you like to continue?" on its own is a question nobody
+    can answer well.
+    """
+    klass = (lic or {}).get("klass") or "unknown"
+    spdx = (lic or {}).get("spdx") or ""
+    where = (lic or {}).get("where") or ""
+    named = spdx or "no declared licence"
+    if action == "install":
+        return {
+            "klass": klass, "spdx": spdx, "where": where,
+            "headline": f"Licence: {named}" + (f" (from {where})" if where else ""),
+            "implication": _INSTALL_POSITION[klass],
+            # Installing is running, and running is what a licence is for. Only a
+            # complete absence of one is worth stopping a person over.
+            "needs_ack": klass in ("proprietary", "unknown"),
+            "ask": (f"This plugin declares {named}. Installing it means running it here. "
+                    f"Continue?"),
+        }
+    ok, implication = _PORT_POSITION[klass]
+    return {
+        "klass": klass, "spdx": spdx, "where": where,
+        "headline": f"Licence: {named}" + (f" (from {where})" if where else ""),
+        "implication": implication,
+        "needs_ack": not ok,
+        "ask": (f"This plugin declares {named}. A native build reads what it DECLARES — "
+                f"the names of its tools, MCP servers, events and settings — and writes "
+                f"new code to do that job; it does not copy its source. Whether the "
+                f"result is a derivative work is a judgement about your situation that "
+                f"AgentOS cannot make for you. Continue?"),
+    }
+
+
+#: What a port actually reads, stated once so every surface says the same thing
+#: and nobody has to infer it from the word "port".
+PORT_READS = ("the plugin's own manifest — the names of the tools it provides, the MCP "
+              "servers it starts, the events it wants and the settings it needs. It does "
+              "not copy the plugin's source code.")
+
+
+# ---------------------------------------------------------------------------
 # The disclaimer: what will NOT work here, in the user's terms
 # ---------------------------------------------------------------------------
 
@@ -395,6 +498,130 @@ def verify(brief_doc: dict, store, cfg: dict, mcp=None) -> dict:
                  "MCP tool is offered. It does not prove the tool does the right thing; "
                  "run it once and look."),
     }
+
+
+def report(pid: str, brief_doc: dict, verification: dict, lic: dict,
+           compat: dict | None = None) -> dict:
+    """The migration report: what came across, what did not, and what to do next.
+
+    This is the document somebody moving off OpenClaw actually needs, and the
+    reason it is one function rather than three surfaces each summarising: a
+    migration where the desktop and the terminal disagree about what got carried
+    is a migration nobody can sign off.
+
+    It ends in a PROPOSAL rather than a result. Three answers, and the middle one
+    is why this exists — a gap is not a verdict, it is a thing somebody can decide
+    to have built.
+    """
+    v, b = verification or {}, brief_doc or {}
+    ported = [{"target": r["target"], "item": r["item"], "note": r["note"]}
+              for r in v.get("results", []) if r["ok"] and r["target"] != "config"]
+    outstanding = [{"target": r["target"], "item": r["item"], "note": r["note"]}
+                   for r in v.get("results", []) if not r["ok"]]
+
+    # What could never be carried, each with what LOSING it actually costs. A list
+    # of names with no consequence attached is a list people skim.
+    not_portable = []
+    for g in b.get("not_portable") or []:
+        not_portable.append({"what": g["what"], "why": g["why"],
+                             "implication": _implication(g["what"])})
+
+    lp = licence_position(lic, "port")
+    done = bool(ported) and not outstanding
+    return {
+        "plugin": pid,
+        "licence": lp,
+        "ported": ported,
+        "outstanding": outstanding,
+        "not_portable": not_portable,
+        "complete": done,
+        "headline": _report_headline(pid, ported, outstanding, not_portable),
+        # The proposal. `continue_as_is` is always available because a partial
+        # port that covers what somebody actually uses is a fine place to stop.
+        "proposal": {
+            "build_the_rest": bool(outstanding),
+            "continue_as_is": True,
+            "keep_the_plugin": bool(not_portable) or bool(outstanding),
+        },
+    }
+
+
+#: What losing an unportable concept COSTS, in the user's terms. Keyed on the
+#: leading words of the `what` sentence rather than an id, because these come
+#: from `compatibility()` and one table of prose beats two ids to keep in step.
+_IMPLICATIONS = (
+    ("host-trusted pre-tool policies",
+     "any budget or guardrail rule it enforced is gone — write it as a grant or a "
+     "deny policy in Permissions instead, where it is enforced for everything, not "
+     "just for this plugin"),
+    ("rewriting tool results",
+     "anything it did to tool output before the model saw it no longer happens; if "
+     "that was formatting or redaction, it has to move into the tool itself"),
+    ("model providers",
+     "the models it offered are not available under this name — add the provider in "
+     "Settings → AI providers, where AgentOS manages its keys and its budget"),
+    ("messaging channels",
+     "conversations will not arrive over that channel. AgentOS carries Telegram and "
+     "WhatsApp itself; anything else is not reachable this way"),
+    ("memory or the context engine",
+     "it no longer decides what is remembered. AgentOS's own memory and spaces take "
+     "that over, which is what makes memory visible in the Memory app and scoped by "
+     "space"),
+    ("inside the turn",
+     "it cannot see or alter a turn as it happens. Work that has to react to a "
+     "conversation must become a flow that runs around the turn instead of within it"),
+)
+
+
+def _implication(what: str) -> str:
+    low = (what or "").lower()
+    for needle, says in _IMPLICATIONS:
+        if needle in low:
+            return says
+    return "this capability has no equivalent here and is simply not carried across"
+
+
+def _report_headline(pid, ported, outstanding, not_portable) -> str:
+    if not ported and not outstanding:
+        return f"Nothing of '{pid}' has been rebuilt yet."
+    bits = [f"{len(ported)} of {len(ported) + len(outstanding)} part(s) of '{pid}' "
+            f"are in place"]
+    if outstanding:
+        bits.append(f"{len(outstanding)} still to build")
+    if not_portable:
+        bits.append(f"{len(not_portable)} cannot be carried at all")
+    return " · ".join(bits) + "."
+
+
+def report_text(r: dict) -> str:
+    """The report as it reads in a terminal. Same content as the GUI's, one source."""
+    out = [f"Migration report — {r['plugin']}", "=" * (20 + len(r["plugin"])), "",
+           r["headline"], "",
+           f"  {r['licence']['headline']}", f"  {r['licence']['implication']}", ""]
+    if r["ported"]:
+        out.append("Ported and reachable:")
+        out += [f"  ✓ [{p['target']:5}] {p['item']} — {p['note']}" for p in r["ported"]]
+        out.append("")
+    if r["outstanding"]:
+        out.append("Declared, not built yet:")
+        out += [f"  ✗ [{o['target']:5}] {o['item']} — {o['note']}" for o in r["outstanding"]]
+        out.append("")
+    if r["not_portable"]:
+        out.append("Cannot be carried across, and what that costs:")
+        for g in r["not_portable"]:
+            out += [f"  · {g['what']}", f"      why:  {g['why']}",
+                    f"      cost: {g['implication']}"]
+        out.append("")
+    out.append("What would you like to do?")
+    if r["proposal"]["build_the_rest"]:
+        out.append(f"  · have the agent build the rest   "
+                   f"bento openclaw native {r['plugin']} --yes")
+    out.append("  · continue as it is — a partial port that covers what you use is "
+               "a fine place to stop")
+    if r["proposal"]["keep_the_plugin"]:
+        out.append(f"  · keep running the original alongside it   "
+                   f"bento openclaw enable {r['plugin']} --yes")
+    return "\n".join(out)
 
 
 def verdict_line(v: dict) -> str:

@@ -2864,7 +2864,11 @@ async def api_ocp_native(pid: str):
         return JSONResponse({"error": pv["error"]}, status_code=404)
     b = pv["native"]
     return {"brief": b, "prompt": ocn.brief_prompt(b),
-            "compatibility": pv.get("compatibility") or {}}
+            "compatibility": pv.get("compatibility") or {},
+            # The licence question in its PORT form — a different answer from the
+            # install one, and the surface must not have to work that out itself.
+            "licence_port": pv.get("licence_port") or {},
+            "reads": ocn.PORT_READS}
 
 
 @app.get("/api/openclaw/plugins/{pid}/verify")
@@ -2879,6 +2883,22 @@ async def api_ocp_verify(pid: str):
     v = await asyncio.to_thread(ocn.verify, pv["native"], state["store"],
                                 state["cfg"], state["mcp"])
     return {**v, "line": ocn.verdict_line(v)}
+
+
+@app.get("/api/openclaw/plugins/{pid}/report")
+async def api_ocp_report(pid: str):
+    """The migration report: what came across, what did not, what each gap costs,
+    and the three ways forward. One computation, so the desktop and the terminal
+    cannot disagree about what got carried."""
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    v = await asyncio.to_thread(ocn.verify, pv["native"], state["store"],
+                                state["cfg"], state["mcp"])
+    r = ocn.report(pid, pv["native"], v, pv["licence"], pv.get("compatibility"))
+    return {**r, "text": ocn.report_text(r)}
 
 
 @app.get("/api/openclaw/plugins-doctor")

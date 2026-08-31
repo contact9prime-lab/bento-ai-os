@@ -1492,7 +1492,21 @@ def _openclaw_cli(args):
         if args.print_brief:
             print(prompt)
             return
-        print(f"Handing this brief to the agent:\n\n{prompt}\n")
+        # The licence question, asked at the moment it actually bites. Porting is
+        # not the same act as installing — see ocnative.licence_position — so it
+        # gets its own answer and its own acknowledgement.
+        lp = pv["licence_port"]
+        print(f"  {lp['headline']}")
+        print(f"  {lp['implication']}")
+        print(f"\n  A native build reads {ocnative.PORT_READS}")
+        if lp["needs_ack"] and not args.accept_licence:
+            print(f"\n✗ {lp['ask']}")
+            print("  AgentOS cannot answer that for you — it is not legal advice and this "
+                  "is not a lawyer.\n  If you have considered it and want to go ahead, "
+                  f"re-run with --accept-licence:\n    bento openclaw native {args.target} "
+                  f"--yes --accept-licence")
+            sys.exit(1)
+        print(f"\nHanding this brief to the agent:\n\n{prompt}\n")
         if not args.yes:
             print("Re-run with --yes to start the build (everything it creates lands "
                   "disabled), or --print-brief to keep the brief and drive it yourself.")
@@ -1504,6 +1518,23 @@ def _openclaw_cli(args):
         ask(prompt, "", False)
         print(f"\nWhen it says it is done, check it yourself:  "
               f"bento openclaw verify {args.target}")
+        return
+
+    if act == "report":
+        # The document somebody moving off OpenClaw signs off on: what came
+        # across, what did not, what each gap costs, and three ways forward.
+        from . import ocnative
+        if not args.target:
+            print("report on what? `bento openclaw report <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        v = ocnative.verify(pv["native"], store, cfg)
+        print(ocnative.report_text(
+            ocnative.report(args.target, pv["native"], v, pv["licence"],
+                            pv.get("compatibility"))))
         return
 
     if act == "verify":
@@ -3905,8 +3936,9 @@ def main():
     p_ocp.add_argument("action", nargs="?", default="list",
                        choices=["list", "search", "show", "install", "enable", "disable",
                                 "update", "uninstall", "hold", "doctor",
-                                # the fork the disclaimer offers, and its check
-                                "native", "verify"])
+                                # the fork the disclaimer offers, its check, and
+                                # the migration report a person signs off on
+                                "native", "verify", "report"])
     p_ocp.add_argument("target", nargs="?", default="",
                        help="a plugin id, an install spec (clawhub:… npm:… git:… a path), "
                             "or a search term")
@@ -3917,6 +3949,10 @@ def main():
                        help="with `install`: do NOT pin the resolved npm version")
     p_ocp.add_argument("--limit", type=int, default=20, help="with `search`")
     p_ocp.add_argument("--reason", default="", help="with `hold`: why")
+    p_ocp.add_argument("--accept-licence", "--accept-license", action="store_true",
+                       dest="accept_licence",
+                       help="with `native`: I have considered what this plugin's licence "
+                            "means for rebuilding it, and I want to proceed")
     p_ocp.add_argument("--print-brief", action="store_true",
                        help="with `native`: print the build brief and stop, rather than "
                             "handing it to the agent")

@@ -2185,6 +2185,24 @@ class Toolbox(usersmod.Scoped):
                  for r in v["results"]]
         return "\n".join(lines + ["", ocnative.verdict_line(v)])
 
+    async def openclaw_migration_report(self, id: str) -> str:
+        """What came across from a plugin, what did not, and what each gap costs.
+
+        The document somebody moving off OpenClaw signs off on. It ends in a
+        proposal rather than a result, because a gap is not a verdict — it is a
+        thing the user can decide to have built, live with, or keep the original
+        for.
+        """
+        from . import ocnative
+        from . import ocplugins as ocp
+        pv = await asyncio.to_thread(ocp.preview, id, self.cfg, self.store)
+        if pv.get("error"):
+            return f"[error] {pv['error']}"
+        v = await asyncio.to_thread(ocnative.verify, pv["native"], self.store,
+                                    self.cfg, self.mcp)
+        r = ocnative.report(id, pv["native"], v, pv["licence"], pv.get("compatibility"))
+        return ocnative.report_text(r)
+
     async def list_flows(self) -> str:
         rows = self.store.list_flows()
         if not rows:
@@ -3997,6 +4015,20 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {"id": {"type": "string", "description": "the installed plugin's id"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "openclaw_migration_report",
+        "description": "The migration report for someone moving a plugin off OpenClaw: what "
+                       "was ported and is reachable, what is still to build, what cannot be "
+                       "carried at all and what each of those gaps COSTS them, plus the "
+                       "plugin's licence and what it means for rebuilding it. Relay it and "
+                       "then put the choice to the user — build the rest, continue as it is, "
+                       "or keep running the original alongside. Do not decide for them.",
+        "parameters": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
             "required": ["id"],
         },
     },

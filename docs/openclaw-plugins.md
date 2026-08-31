@@ -279,6 +279,76 @@ look. Overclaiming here would make "verified" the most dangerous word on the scr
 
 ---
 
+## Coming from OpenClaw: the migration report
+
+The point of all of this is that people already running OpenClaw can move without
+losing what they built. So a port ends in a document you can sign off on, not a
+green tick:
+
+```
+bento openclaw report <id>
+```
+
+It has four parts, and the third is the one that matters:
+
+- **Ported and reachable** — checked, not claimed
+- **Declared, not built yet** — what the brief asked for and is still missing
+- **Cannot be carried across, and what that costs** — each unportable thing with
+  its **implication**, in your terms. Not "trusted tool policies: unsupported",
+  but *"any budget or guardrail rule it enforced is gone — write it as a grant or
+  a deny policy in Permissions instead, where it is enforced for everything, not
+  just for this plugin."*
+- **What would you like to do?** — three answers, always
+
+The report ends in a **proposal, not a verdict**. A gap is a thing you can decide
+to have built, live with, or keep the original for:
+
+| | |
+|---|---|
+| have the agent build the rest | `bento openclaw native <id> --yes` |
+| continue as it is | a partial port covering what you actually use is a fine place to stop |
+| keep running the original alongside | `bento openclaw enable <id> --yes` |
+
+---
+
+## Licences: the same one means two different things here
+
+AgentOS already refuses to ship anything non-permissive and states the licence of
+everything it merely offers ([Licensing](licensing.md)). A plugin raises that
+question twice, and the honest answers differ:
+
+**Installing it** means *running* it. Running someone's GPL software is what the
+GPL is for and needs nobody's permission. The licence is stated, and only a
+missing or proprietary one is worth stopping you over.
+
+**Porting it** means the agent writes new code that does the same job. For a
+copyleft plugin that raises a derivative-work question, and it is asked before
+anything is built:
+
+```
+Licence: AGPL-3.0 (from package.json)
+Strong copyleft. If the port ends up a derivative of that source, its terms
+would attach to what AgentOS writes — which, for AGPL, can extend to software
+you only ever run as a service.
+
+✗ This plugin declares AGPL-3.0. A native build reads what it DECLARES — the
+  names of its tools, MCP servers, events and settings — and writes new code to
+  do that job; it does not copy its source. Whether the result is a derivative
+  work is a judgement about your situation that AgentOS cannot make for you.
+  AgentOS cannot answer that for you — it is not legal advice.
+    bento openclaw native <id> --yes --accept-licence
+```
+
+A permissive licence never stops anybody. `MIT OR GPL-3.0` is read as permissive
+(you may take the MIT branch); `MIT AND GPL-3.0` as copyleft (you are bound by
+both). **No declared licence is not "probably fine"** — with no grant, the
+default is that you have no rights to copy or adapt it, so it asks too.
+
+AgentOS states what the licence is and what the port would read. It does not give
+legal advice, and it says so.
+
+---
+
 ## Command reference
 
 | Command | What it does |
@@ -295,6 +365,7 @@ look. Overclaiming here would make "verified" the most dangerous word on the scr
 | `bento openclaw doctor` | OpenClaw's own check, plus: does its enablement still match what was granted here? |
 | `bento openclaw native <id> [--yes] [--print-brief]` | rebuild what it declares out of AgentOS's own parts, behind the PDP |
 | `bento openclaw verify <id>` | check a native build against the brief it was built from |
+| `bento openclaw report <id>` | the migration report: ported, outstanding, not portable and what each gap costs, ending in a proposal |
 
 A spec is `clawhub:<package>`, `npm:<package>`, `npm-pack:<file.tgz>`,
 `git:github.com/<owner>/<repo>[@ref]`, a local path or archive, or
