@@ -1398,6 +1398,318 @@ def _doctor_session_handover(compmod, effective, runmode, ok, warn, bad):
         bad(f"the compositor rejected a launch command: {e}")
 
 
+def _openclaw_cli(args):
+    """`bento openclaw` — extend OpenClaw, through this OS's review.
+
+    A headless machine is exactly where this earns its keep: `openclaw plugins
+    install` already works there, and this is the same install with a scan, a
+    consent screen you can read in a terminal, a grant row and a way to hold it.
+    It goes through `ocplugins`, the same module the desktop and the agent use,
+    because a second install path would be a second permission model.
+
+    Nothing here runs through the server: the module is HTTP-free on purpose, so
+    a Pi with the server down can still see and stop what it is running.
+    """
+    import json as _json
+
+    from . import config as cfgmod
+    from . import ocplugins as ocp
+
+    act = args.action
+    if problem := ocp.problem():
+        print(f"✗ {problem}")
+        sys.exit(1)
+
+    cfg, store = _open_store(getattr(args, "user", ""))
+
+    def show(pv: dict, header: str = "") -> None:
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            return
+        if header:
+            print(header)
+        print(f"  {pv['id']}" + (f"@{pv['version']}" if pv["version"] else "")
+              + f" — {'enabled' if pv['enabled'] else 'disabled'}"
+              + (" · bundled with OpenClaw" if pv["bundled"] else ""))
+        print(f"  source:  {pv['source_note']}")
+        print(f"  history: {pv['tofu_note']}")
+        if pv.get("manifest_note"):
+            print(f"  note:    {pv['manifest_note']}")
+        sec = pv["security"]
+        print(f"  scan:    {sec['verdict']}  ({sec['scanner']})")
+        for f in sec["findings"]:
+            print(f"    [{f['severity']:6}] {f['note']}")
+        print("  enabling would let it:")
+        for c in pv["capabilities"]:
+            print(f"    · {c}")
+        if pv.get("quarantined"):
+            print(f"  ⛔ HELD: {pv['quarantine']['reason']}")
+        disclaim(pv)
+
+    def disclaim(pv: dict) -> bool:
+        """The honest part: what will NOT work here, and the way out.
+
+        Printed on every surface that offers to install or enable, from the one
+        computation in `ocnative` — a disclaimer that differs between the CLI and
+        the desktop is one somebody has already got wrong. Returns True when there
+        is something worth stopping for.
+        """
+        comp = pv.get("compatibility") or {}
+        gaps = comp.get("gaps") or []
+        if not gaps:
+            return False
+        print(f"\n  ⚠ {comp.get('headline', '')}")
+        for g in gaps:
+            print(f"    [{g['severity']:6}] {g['what']}")
+            print(f"             {g['why']}")
+            if g.get("remedy"):
+                print(f"             → {g['remedy']}")
+        if (pv.get("native") or {}).get("buildable"):
+            print(f"\n  Instead of living with that, AgentOS can rebuild this out of its own "
+                  f"parts —\n  MCP servers, flows and skills, all behind the permission "
+                  f"engine:\n    bento openclaw native {pv['id']}")
+        return True
+
+    if act == "native":
+        # The fork the disclaimer offers. It does NOT build anything here: the
+        # brief goes to the agent, which builds with the ordinary tools and then
+        # checks its own work. A second build path would be a second set of bugs,
+        # which is the argument jobs.py makes about not having a job engine.
+        from . import ocnative
+        if not args.target:
+            print("which plugin? `bento openclaw native <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        b = pv["native"]
+        if not b.get("buildable"):
+            print(f"✗ '{args.target}' declares nothing in its manifest that a native build "
+                  f"could be derived from. AgentOS will not guess what it does.")
+            sys.exit(1)
+        prompt = ocnative.brief_prompt(b)
+        if args.print_brief:
+            print(prompt)
+            return
+        # The licence question, asked at the moment it actually bites. Porting is
+        # not the same act as installing — see ocnative.licence_position — so it
+        # gets its own answer and its own acknowledgement.
+        lp = pv["licence_port"]
+        print(f"  {lp['headline']}")
+        print(f"  {lp['implication']}")
+        print(f"\n  A native build reads {ocnative.PORT_READS}")
+        if lp["needs_ack"] and not args.accept_licence:
+            print(f"\n✗ {lp['ask']}")
+            print("  AgentOS cannot answer that for you — it is not legal advice and this "
+                  "is not a lawyer.\n  If you have considered it and want to go ahead, "
+                  f"re-run with --accept-licence:\n    bento openclaw native {args.target} "
+                  f"--yes --accept-licence")
+            sys.exit(1)
+        print(f"\nHanding this brief to the agent:\n\n{prompt}\n")
+        if not args.yes:
+            print("Re-run with --yes to start the build (everything it creates lands "
+                  "disabled), or --print-brief to keep the brief and drive it yourself.")
+            sys.exit(1)
+        # `ask` is the ordinary agent turn, which is the point: the build uses the
+        # same tools, the same PDP and the same approvals as anything else the
+        # agent does. Every create_flow / add_mcp_server it reaches for is gated
+        # exactly as it would be if the user had asked in chat.
+        ask(prompt, "", False)
+        print(f"\nWhen it says it is done, check it yourself:  "
+              f"bento openclaw verify {args.target}")
+        return
+
+    if act == "report":
+        # The document somebody moving off OpenClaw signs off on: what came
+        # across, what did not, what each gap costs, and three ways forward.
+        # One name for it everywhere — see `ocnative.report`.
+        from . import ocnative
+        if not args.target:
+            print("report on what? `bento openclaw report <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        v = ocnative.verify(pv["native"], store, cfg)
+        print(ocnative.report_text(
+            ocnative.report(args.target, pv["native"], v, pv["licence"],
+                            pv.get("compatibility"))))
+        return
+
+    if act == "verify":
+        from . import ocnative
+        if not args.target:
+            print("verify what? `bento openclaw verify <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        v = ocnative.verify(pv["native"], store, cfg)
+        for r in v["results"]:
+            print(f"  {'✓' if r['ok'] else '✗'} [{r['target']:6}] {r['item']} — {r['note']}")
+        print(f"\n{ocnative.verdict_line(v)}")
+        sys.exit(0 if v["ok"] else 1)
+
+    if act == "search":
+        if not args.target:
+            print("search for what? `bento openclaw search calendar`")
+            sys.exit(2)
+        rows, err = ocp.search(args.target, limit=args.limit)
+        if err:
+            print(f"✗ {err}")
+            sys.exit(1)
+        if not rows:
+            print(f"nothing on ClawHub for {args.target!r}")
+            return
+        for r in rows:
+            print(f"{r['name']}" + (f"@{r['version']}" if r["version"] else ""))
+            print(f"    {r['summary'] or 'no summary'}")
+            print(f"    bento openclaw install {r['spec']}")
+        return
+
+    if act == "list":
+        rows, err = ocp.installed()
+        if err:
+            print(f"✗ {err}")
+            sys.exit(1)
+        if not rows:
+            print("OpenClaw has no plugins installed here.")
+            return
+        for r in rows:
+            flag = "⛔" if ocp.held(store, r["id"]) else ("●" if r["enabled"] else "○")
+            print(f"{flag} {r['id']}" + (f"@{r['version']}" if r["version"] else "")
+                  + ("  bundled" if r["bundled"] else "")
+                  + (f"  {r['source']}" if r["source"] else ""))
+        print("\n● enabled  ○ disabled  ⛔ held by AgentOS   ·   "
+              "`bento openclaw show <id>` for the scan")
+        return
+
+    if act == "doctor":
+        # OpenClaw's own diagnosis, then ours. Two questions: is the plugin tree
+        # healthy, and does OpenClaw's enablement still agree with what this OS
+        # was told to allow? The second is the one nothing else asks.
+        d, err = ocp.doctor()
+        print("OpenClaw's own check:")
+        if err:
+            print(f"  {err}")
+        else:
+            for ln in _json.dumps(d, indent=2)[:1500].splitlines():
+                print(f"  {ln}")
+        res = ocp.reconcile(store, cfg)
+        if res.get("error"):
+            print(f"\n✗ {res['error']}")
+            sys.exit(1)
+        print(f"\nAgentOS: {res['checked']} plugin(s) checked.")
+        if not res["disabled"]:
+            print("  every enabled plugin still has the permission it was given.")
+        for d2 in res["disabled"]:
+            print(f"  ⛔ {d2['id']} — {d2['why']}; "
+                  + ("turned off" if d2["ok"] else f"could NOT turn off: {d2['detail']}"))
+        return
+
+    if not args.target:
+        print(f"which plugin? `bento openclaw {act} <id>`  "
+              f"(`bento openclaw list` shows them)")
+        sys.exit(2)
+    pid = args.target
+
+    if act == "install":
+        info = ocp.parse_spec(pid)
+        print(f"About to install: {info['spec']}")
+        print(f"  {ocp.source_sentence(info)}")
+        if not info["trusted"] and not args.yes:
+            # OpenClaw asks this question itself and refuses non-interactively
+            # without --force. Passing --force is answering it, so the answer has
+            # to come from a person — not from the fact that a command was typed.
+            print("\nOpenClaw will not install an unreviewed source without being told to.\n"
+                  "Re-run with --yes if you have looked at it and vouch for it.")
+            sys.exit(1)
+        ok, out = ocp.install(info["spec"], pin=not args.no_pin, force=args.yes)
+        if not ok:
+            print(f"✗ install failed:\n{out}")
+            sys.exit(1)
+        print("✓ installed — and DISABLED. It holds nothing until you enable it.\n")
+        got = ocp.installed_id(info["spec"], out)
+        if not got:
+            print("Installed, but I could not work out which id it took. "
+                  "`bento openclaw list` will show it.")
+            return
+        show(ocp.preview(got, cfg, store), "What it declares:")
+        print(f"\nTo turn it on:  bento openclaw enable {got} --yes")
+        return
+
+    if act == "show":
+        show(ocp.preview(pid, cfg, store))
+        return
+
+    if act == "enable":
+        pv = ocp.preview(pid, cfg, store)
+        show(pv, "You are about to enable:")
+        if pv.get("error"):
+            sys.exit(1)
+        if not args.yes:
+            # `show` has already printed the gaps. The refusal names BOTH ways
+            # forward, because a disclaimer whose only button is "proceed" is not a
+            # choice — it is a formality people learn to click through.
+            print("\nEnabling writes those permissions and lets it run inside OpenClaw, "
+                  "where AgentOS can no longer refuse individual calls.")
+            print("  · accept that and go ahead:   "
+                  f"bento openclaw enable {pid} --yes")
+            if (pv.get("native") or {}).get("buildable"):
+                print("  · or have AgentOS rebuild it out of its own parts, behind the "
+                      f"permission engine:\n      bento openclaw native {pid} --yes")
+            sys.exit(1)
+        res = ocp.enable_plugin(store, cfg, pid)
+        if not res.get("ok"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        cfgmod.save_config(cfg)
+        print(f"\n✓ '{pid}' is on — {res['grants']['added']} permission(s) written "
+              f"(see them in `bento config` \u2192 Permissions).")
+        print(f"  {res['restart_note']}")
+        return
+
+    if act == "disable":
+        res = ocp.disable_plugin(store, pid)
+        print(f"✓ '{pid}' is off — {res['revoked']} permission(s) taken back"
+              if res["ok"] else f"✗ {res['error']}")
+        sys.exit(0 if res["ok"] else 1)
+
+    if act == "uninstall":
+        res = ocp.uninstall_plugin(store, cfg, pid)
+        if res["ok"]:
+            cfgmod.save_config(cfg)
+        print(f"✓ '{pid}' removed — {res['revoked']} permission(s) taken back"
+              if res["ok"] else f"✗ {res['error']}")
+        sys.exit(0 if res["ok"] else 1)
+
+    if act == "update":
+        res = ocp.update_plugin(store, cfg, pid)
+        if not res.get("ok"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        if res.get("held"):
+            print(f"⛔ '{pid}' updated and was HELD: {res['reason']}\n"
+                  f"   It is disabled and its permissions are taken back. "
+                  f"Review it, then `bento quarantine release <id>`.")
+            show(res["preview"])
+            sys.exit(1)
+        cfgmod.save_config(cfg)
+        print(f"✓ '{pid}' updated.")
+        show(res["preview"])
+        return
+
+    if act == "hold":
+        qid = ocp.hold(store, pid, args.reason or "held by hand", kind="manual")
+        print(f"⛔ '{pid}' held, disabled, and its permissions taken back "
+              f"({qid or 'was already held'}). "
+              f"Release it with `bento quarantine release <id>`.")
+        return
+
+
 def _quarantine_cli(args):
     """Quarantine from a terminal.
 
@@ -3620,6 +3932,32 @@ def main():
     p_reg.add_argument("--ai", action="store_true",
                        help="with `scan`: also read the code with this machine's brain")
 
+    p_ocp = verb("openclaw",
+                 help="OpenClaw plugins — install, scan, grant and hold third-party extensions")
+    p_ocp.add_argument("action", nargs="?", default="list",
+                       choices=["list", "search", "show", "install", "enable", "disable",
+                                "update", "uninstall", "hold", "doctor",
+                                # the fork the disclaimer offers, its check, and
+                                # the report a person signs off on
+                                "native", "verify", "report"])
+    p_ocp.add_argument("target", nargs="?", default="",
+                       help="a plugin id, an install spec (clawhub:… npm:… git:… a path), "
+                            "or a search term")
+    p_ocp.add_argument("--yes", action="store_true",
+                       help="I have read the source and the scan and I vouch for it. Required "
+                            "to install from a source OpenClaw does not trust, and to enable.")
+    p_ocp.add_argument("--no-pin", action="store_true",
+                       help="with `install`: do NOT pin the resolved npm version")
+    p_ocp.add_argument("--limit", type=int, default=20, help="with `search`")
+    p_ocp.add_argument("--reason", default="", help="with `hold`: why")
+    p_ocp.add_argument("--accept-licence", "--accept-license", action="store_true",
+                       dest="accept_licence",
+                       help="with `native`: I have considered what this plugin's licence "
+                            "means for rebuilding it, and I want to proceed")
+    p_ocp.add_argument("--print-brief", action="store_true",
+                       help="with `native`: print the build brief and stop, rather than "
+                            "handing it to the agent")
+
     p_flow = verb("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",
                         choices=["list", "run", "show", "approvals", "allow", "deny", "hooks",
@@ -3830,6 +4168,8 @@ def main():
         _registry_cli(args)
     elif args.cmd == "flow":
         _flow_cli(args)
+    elif args.cmd == "openclaw":
+        _openclaw_cli(args)
     elif args.cmd == "job":
         _job_cli(args)
     elif args.cmd == "user":

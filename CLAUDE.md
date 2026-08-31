@@ -364,6 +364,176 @@ Three things that will bite whoever touches this next:
 - **An executor OWNS its models.** See the next section: one picker, and the model
   list belongs to whatever is answering.
 
+## OpenClaw plugins: the lifecycle is ours, the runtime is not
+
+`agentos/ocplugins.py` installs OpenClaw's plugins through this OS's review — scan,
+consent, grants, quarantine — by shelling out to the real `openclaw plugins ...` verbs
+rather than reimplementing any of them. Full reasoning in `docs/openclaw-plugins.md`.
+It exists because every other way code arrives here goes past a lock, and third-party
+code running beside the agent this machine answers with should not be the exception
+just because somebody else's CLI owns the door.
+
+**The boundary is stated, not implied, and it is the first thing to keep true.** An
+enabled plugin runs inside OpenClaw's process; its calls do not reach this PDP and
+nothing here can refuse one. What AgentOS gates is the LIFECYCLE (`plugin.install`,
+`plugin.enable` — their own actions, in `BUILTIN_DENY` for every non-user principal),
+and what it enforces afterwards is ENABLEMENT, through the one lever OpenClaw
+documents as absolute: `plugins.deny` wins over allow and over per-plugin enablement.
+Claiming more than that would be worse than the feature not existing.
+
+- **Install lands it DISABLED, and that is the design.** Scanning before the bytes
+  exist means re-implementing OpenClaw's resolver for npm, ClawHub, git, archives and
+  marketplaces — five ways to be subtly wrong about what is arriving. So the bytes
+  land first and the scan reads the real `openclaw.plugin.json` on disk. It is the
+  flows rule again ("a disabled flow holds nothing — Enable is the act of granting"),
+  which is the strongest argument for it: one idea twice, not two half-ideas. The
+  agent may install and may NOT enable, exactly as with `create_flow`.
+- **The `plugin.run` grant is load-bearing, not a receipt.** `reconcile()` reads it
+  back and turns a revoked grant into a real `openclaw plugins disable`. Remove that
+  binding and the Permissions app becomes a list of things it cannot actually do.
+  Reconciliation only ever turns things OFF — a reconciler that could enable is a way
+  to grant without being asked.
+- **Drift is measured against the PIN, not against the update.** AgentOS does not own
+  the `openclaw` CLI: somebody running `openclaw plugins update` in a terminal, or
+  editing a linked plugin's source, changes what it reaches without passing any screen
+  here. `record_pin` therefore stores the verdict that was CONSENTED to, and both
+  `update_plugin` and `reconcile` compare a fresh scan against that. Comparing across
+  our own update call only — which is what it did first — misses every change that
+  did not go through us. Only an ESCALATION holds; a plugin that got quieter is left
+  alone, because a hold that fires on every update is one people click through.
+- **`--force` is the person, never the caller.** It answers OpenClaw's own provenance
+  question about an untrusted source. `bento openclaw install` demands `--yes`, the
+  GUI asks, and the agent's tool cannot supply it at all. Defaulting it anywhere
+  silently answers for somebody.
+- **`--runtime` is never passed.** It imports the plugin's module to list what it
+  registers — running the code to decide whether to run the code. The manifest is the
+  static answer, and `contracts.tools` must match what the runtime registers anyway.
+- **One verdict function.** `verdict_of` is imported from `appregistry`, not copied.
+  Two definitions of "is this alarming?" is how one of them stops being read.
+
+Plugins are the MACHINE's, not a per-user preference — they install into OpenClaw's
+state directory and edit OpenClaw's config, both shared — so the routes are admin-only.
+The PINS are personal and live under the existing `registry` USER_KEY: whom I trust
+costs nothing machine-wide. Faces: GUI in Settings → Executors (`11b-openclaw.js`,
+inert with one sentence when the CLI is absent), TUI as `bento openclaw` (as `bento
+mcp` is the MCP pane's terminal face), SUI identical to GUI — a page, no native
+process, nothing touching the compositor.
+
+## Hosting a plugin ourselves: the second bargain, and why it is a different one
+
+`ocplugins.py` governs a plugin that runs in OpenClaw's gateway, and can honestly
+claim only the lifecycle. `agentos/ochost.py` + `ocp_host/host.js` change who runs the
+plugin: AgentOS starts the Node process, hands the plugin its `api` object, and the
+tools it registers arrive in the agent loop as `ocp_<plugin>_<tool>` — so every call is
+a `PDP.decide`, an audit row and something quarantine can stop. Their ecosystem's reach,
+inside this OS's permissions. **Both integrations are kept**: one is interop with a
+machine that already runs OpenClaw, the other is absorption. They are not alternatives
+and must not be collapsed.
+
+The load-bearing parts, each of which was MEASURED rather than assumed:
+
+- **The api shim IS the sandbox.** Node's permission model (`--permission`) denies the
+  plugin filesystem and subprocess access — verified: `fs.readFileSync` and
+  `child_process.execSync` both raise `ERR_ACCESS_DENIED`. What a plugin cannot take, it
+  must ask for (`api.host.fetch`), and an ask is a round trip into Python and through the
+  PDP. That inversion is the whole design: a capability taken is invisible, one requested
+  is governable. An unwired `host_call` refuses everything, because an unwired embedding
+  must be a closed door.
+- **Network is NOT contained by Node and the report must keep saying so.** There is no
+  `--allow-net`; `fetch()` works inside a permission-restricted process. Only an OS jail
+  (`bwrap --unshare-net`, sandbox-exec) closes it, and on a machine with neither,
+  `sandbox_report()["network_note"]` says `CANNOT CONTAIN` in those words. A consent
+  screen claiming "sandboxed" where the network is open would be worse than no sandbox,
+  because somebody would believe it. `tests/test_ochost.py` pins the report to
+  `sandbox_mechanism()` so it cannot drift optimistic.
+- **A refused API is named out loud.** `registerHook`, `registerChannel`,
+  `registerTrustedToolPolicy` and the rest are defined as functions that REFUSE and
+  record, never left undefined — an undefined property throws a TypeError deep inside
+  the plugin with no explanation, while this reaches the user. The failure mode of every
+  compatibility layer is a plugin that installs, reports healthy and silently does most
+  of its job.
+- **The manifest audits the shim.** OpenClaw requires runtime `registerTool` calls to
+  match `contracts.tools`, so `discrepancy()` compares what the host caught against what
+  the plugin promised. A registration the shim missed becomes a visible gap instead of a
+  tool that quietly does not exist. This is what makes a compatibility layer auditable
+  rather than hopeful — do not remove it to make the report cleaner.
+- **stdout is the wire, so console is rebound before any plugin code runs.** A plugin's
+  `console.log` would desynchronise every frame after it. Same rule as `wa_bridge.js`.
+- **`plugin.tool` is its own action.** "May use the tools this plugin brought" has to be
+  grantable apart from the OS's built-in tools, or installing a plugin would silently
+  widen every grant somebody had already written.
+
+`HostSet` deliberately has the same seams as `mcp_client.MCP` (`tool_schemas` +
+`resolve`), because a hosted plugin tool and an MCP tool are the same KIND of thing — a
+third party's tool behind a gate — and giving them one shape means the tool loop, the PDP
+and the ledger need no new special case.
+
+## A gap is a fork, not a dead end: `ocnative.py`
+
+Both plugin integrations have gaps — the gateway one cannot gate a call, the hosted one
+refuses part of OpenClaw's API and cannot contain the network without a jail. Saying so
+was already the rule. What `ocnative.py` adds is the second answer: **build it natively
+instead**, out of parts this OS already governs (MCP for tools, a flow for standing work,
+a skill for know-how), where there is no shim and no ungoverned reach.
+
+The plugin's manifest is a specification — it names the tools, the MCP servers, the events
+and the config — so it is enough to brief the agent with. Three rules keep that from
+becoming a machine for confident nonsense:
+
+- **The brief is DERIVED, never invented.** Everything traces to something the manifest
+  declares; a manifest that says nothing yields `buildable: False` and a sentence saying
+  so. Guessing what a plugin called `voice-call` probably does would produce a plausible
+  implementation of something nobody asked for, and nothing downstream could tell.
+- **The same brief is the acceptance test.** `verify()` checks item by item against the
+  document the build was given, which is what stops "done" meaning "the agent said done" —
+  the same argument `preview()`/`enable_plugin()` share one computation. It checks
+  REACHABILITY and says so: it can prove a flow exists and an MCP tool is offered, not
+  that the tool does the right thing. Claiming more would make "verified" the most
+  dangerous word on the screen.
+- **A port is a proposal.** Everything it writes lands DISABLED. Porting must not be a way
+  to acquire permissions without being asked.
+
+Two traps found by building it. An in-turn hook (`llm_output`) has no equivalent, so it
+must leave the buildable steps AND appear in `not_portable` — left as a step it becomes a
+demand for a flow named `llm_output` that fails its own check forever, which is how a
+verification step stops being believed. And a declined config setting is never a
+failure: failing it would push the agent to invent a credential, the exact thing the
+brief forbids.
+
+`MAPPING` is the table of OpenClaw concept → Bento primitive, and its most important rows
+are the ones whose target is `None`. A concept with no equivalent must be reported as
+unportable, not quietly mapped onto the nearest thing that compiles.
+
+**A port ends in a REPORT that ends in a PROPOSAL, and the report has ONE name.**
+`bento openclaw report`, the `openclaw_report` tool and the GUI's Report button all
+print the same document — a second name for it ("migration report" was the one that
+slipped in) is how two surfaces end up describing one thing differently. The audience is somebody moving off
+OpenClaw, and what they need is not a green tick: `report()` gives ported / outstanding /
+cannot-be-carried, and every unportable row carries what LOSING it costs in their terms
+("any budget rule it enforced is gone — write it as a grant in Permissions instead"). A
+list of names with no consequence attached is a list people skim. It closes with three
+answers, never one — build the rest, continue as it is, or keep the original running —
+because a gap is not a verdict, and a partial port covering what somebody actually uses
+is a fine place to stop.
+
+**Licensing asks twice, and the two answers differ.** Installing is RUNNING, which is what
+a licence is for and needs nobody's permission — only a missing or proprietary one stops
+anybody. Porting has the agent write new code doing the same job, which for copyleft
+raises a derivative-work question, so `licence_position(lic, "port")` demands an
+acknowledgement (`--accept-licence`) that install does not. Conflating them would either
+nag on every install or stay silent on the one that matters. Three rules: `classify_licence`
+is a TABLE not a regex (AGPL is not GPL is not LGPL, and a substring match gets the worst
+one wrong); `OR` takes the best branch while `AND` takes the worst; and **no declared
+licence is never softened into "probably fine"** — with no grant the default is no rights,
+which is a stronger statement than permissive, not a weaker one. AgentOS states the
+licence and what the port actually reads (`PORT_READS`), and says out loud that it is not
+legal advice.
+
+The disclaimer is one computation shown by every surface (`preview()["compatibility"]`),
+because a warning that differs between the terminal and the desktop is one somebody has
+already got wrong — and it always names both roads. A disclaimer whose only way forward
+is Proceed is a formality people learn to click through.
+
 ## The brain is one choice: an executor and one of ITS models
 
 `executors.brains(cfg, models)` is the whole list — local providers, cloud

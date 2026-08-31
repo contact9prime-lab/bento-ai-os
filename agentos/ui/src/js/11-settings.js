@@ -143,7 +143,13 @@ function setTab(body,all){
     ],{f:'forwarding engine'}));
     P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
     P.push(`<div id="exec-offers"></div>`);
+    /* OpenClaw's plugins belong here rather than in a pane of their own: OpenClaw
+       is an executor, and this is the screen somebody is already on when they
+       decide to extend it. Inert with an honest sentence when the CLI is absent —
+       11b-openclaw.js. */
+    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
     setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
+    setTimeout(renderOcPlugins,0);
   }
   if(want('channels')){
     P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);

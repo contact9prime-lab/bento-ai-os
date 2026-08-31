@@ -1,5 +1,80 @@
 # Changelog
 
+## Unreleased
+
+**OpenClaw plugins install through this OS's review.** OpenClaw has been an
+executor here for a while; it could not be extended. Its plugins — tools,
+providers, channels, hooks and MCP servers — now install through `bento openclaw`,
+Settings → Executors, or the agent, all reading one module (`agentos/ocplugins.py`)
+so there is one scan, one consent screen and one set of permissions however you
+arrive. An install lands DISABLED and holds nothing; enabling is the act of
+granting, and it is confirmed every time, at full autonomy included. The agent may
+install and may not enable, exactly as with flows.
+
+What that adds: a deterministic scan of the plugin's own `openclaw.plugin.json`,
+which names the tiers whose point is to sit in front of something — host-trusted
+pre-tool policies, tool-result middleware, in-process Gateway dispatch, a claimed
+`memory` slot, conversation hooks; real `grants` rows, where revoking the
+enablement makes AgentOS disable the plugin; trust on first use, so a plugin that
+changes origin or grows capabilities is held rather than upgraded — measured
+against the verdict you consented to, because `openclaw plugins update` run in a
+terminal never passes this screen; and the ordinary quarantine list, with the
+ordinary once/forever/deleted release.
+
+What it does not add, said plainly: an enabled plugin runs inside OpenClaw's own
+process, and nothing here can refuse an individual call it makes. AgentOS gates
+the lifecycle and enforces enablement; that is the whole boundary.
+`docs/openclaw-plugins.md` says the same thing to a user, and AgentOS still ships
+no OpenClaw installer — a machine without the CLI gets one honest sentence rather
+than a pane of dead buttons.
+
+**A compatibility gap is now a fork, not a dead end.** Every install and enable
+screen — CLI, desktop, agent — first states what will NOT work on this machine,
+from one computation so the sentences never differ by surface, and then offers the
+other road: have AgentOS rebuild what the plugin declares out of its own parts —
+MCP servers, flows, skills — where every call is already behind the permission
+engine. A disclaimer whose only way forward is Proceed is a formality people learn
+to click through, so there are always two.
+
+The plugin's manifest is the specification, and three rules keep the port honest.
+The brief is DERIVED, never invented: everything traces to something the manifest
+declares, and a manifest that declares nothing produces no brief and says so
+rather than guessing what the plugin probably does. A port is a proposal —
+everything it writes lands disabled, so porting cannot become a way to acquire
+permissions without being asked. And the agent checks its own work against the
+same brief it was built from (`bento openclaw verify`), item by item, reporting
+reachability and saying plainly that reachability is not behaviour.
+
+`ocnative.MAPPING` is the table of OpenClaw concept → Bento primitive, and its
+most important rows are the ones with no target: trusted tool policies, tool-result
+middleware, providers, channels, the memory slot and in-turn hooks are reported as
+not portable rather than approximated onto the nearest thing that compiles.
+
+**`bento openclaw report` is the document you sign off on, and it has ONE name.**
+The same report is printed by the CLI, by `GET /api/openclaw/plugins/{id}/report`
+and by the agent's `openclaw_report` — a second name for it would be how two
+surfaces end up describing one thing differently. Four parts: what was ported and
+is reachable, what is still to build, what cannot be carried at all *and what
+losing each of those costs you*, and three ways forward. A list of names with no
+consequence attached is a list people skim, so every unportable row says what it
+means — "any budget rule it enforced is gone; write it as a grant in Permissions
+instead, where it applies to everything and not just this plugin". It ends in a
+proposal, never a verdict: build the rest, continue as it is, or keep the original
+running. Continuing as it is is offered unconditionally, because a partial port
+covering what somebody actually uses is a fine place to stop.
+
+**Licensing asks twice, and the answers differ.** Installing a plugin is RUNNING
+it, which is what a licence is for and needs nobody's permission — only a missing
+or proprietary one stops you. Porting has the agent write new code doing the same
+job, which for copyleft raises a derivative-work question, so that path demands an
+acknowledgement (`--accept-licence`) the install path does not. Conflating them
+would either nag on every install or stay silent on the one that matters. The
+classifier is a table rather than a regex, because AGPL is not GPL is not LGPL;
+`OR` takes the best branch and `AND` the worst; and no declared licence is never
+softened into "probably fine" — with no grant the default is no rights. AgentOS
+states the licence and what a port actually reads, and says out loud that it is
+not legal advice.
+
 ### 0.3.0 — several people, more places to work, and one brain to choose (2026-08-17)
 
 **Several people on one machine.** Accounts are isolated by DIRECTORY, not by a

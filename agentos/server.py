@@ -2664,6 +2664,257 @@ async def api_put_mcp(body: dict):
     return {"ok": True}
 
 
+# ---- OpenClaw plugins -------------------------------------------------------
+# The GUI half of `bento openclaw`. Everything decided here is decided in
+# `ocplugins`, never in the route: the CLI, the desktop and the agent share one
+# scan, one consent computation and one set of grants, because a second one would
+# be a second permission model.
+#
+# ADMIN ONLY, and that is a considered answer rather than a reflex. A plugin is
+# not a per-user preference: it installs code into OpenClaw's state directory and
+# edits OpenClaw's config, both of which are shared by everyone who uses this
+# machine's OpenClaw. Users are isolated by directory here — an OpenClaw plugin is
+# not, and the honest response to something that cannot be isolated is to say it
+# is the machine's, not to let each account pretend it owns a copy.
+#
+# The lifecycle verbs also go past the PDP, so every install and every enable
+# leaves a ledger row saying who did it. `asyncio.to_thread` because ocplugins is
+# deliberately synchronous — it spawns node, which is slow, and blocking the loop
+# for 900s of an npm install would take the whole desktop with it.
+
+def _ocp_gate(action: str, resource: str):
+    """(error_response, decision) — admin, then the ledger.
+
+    Only a DENY refuses. An `ask` is answered by the click that got here: the
+    review screen in front of this route is the confirmation, shown before the
+    button exists, and refusing it would make the button never work — the same
+    reason `api_enable_flow` treats a person pressing Enable as the consent.
+    What an ask must NOT do is be silent, and it is not: `decide()` writes the
+    ledger row either way, which is the whole reason this goes past the PDP
+    rather than checking `is_admin` and getting on with it. A deny grant written
+    in the Permissions app still refuses, here as everywhere.
+    """
+    if (r := _require_admin()):
+        return r, None
+    dec = state["pdp"].decide(MAIN, action, resource,
+                              {"surface": "gui", "risk": "risky"})
+    if dec.effect == "deny":
+        return JSONResponse({"error": dec.reason or "not allowed", "rule": dec.rule},
+                            status_code=403), None
+    return None, dec
+
+
+@app.get("/api/openclaw/plugins")
+async def api_ocp_list():
+    """What is installed, plus whether this machine can do any of this at all.
+
+    `problem` is the honesty rule in one field: a machine without the `openclaw`
+    CLI gets a sentence saying so and the UI greys the pane, rather than a list of
+    buttons that answer a tap by doing nothing.
+    """
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return {"available": False, "problem": problem, "plugins": []}
+    rows, err = await asyncio.to_thread(ocp.installed)
+    store = state["store"]
+    for r in rows:
+        q = ocp.held(store, r["id"])
+        r["held"] = bool(q)
+        r["held_reason"] = q["reason"] if q else ""
+    return {"available": True, "problem": "", "plugins": rows, "error": err}
+
+
+@app.get("/api/openclaw/plugins/search")
+async def api_ocp_search(q: str = "", limit: int = 20):
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return {"available": False, "problem": problem, "results": []}
+    rows, err = await asyncio.to_thread(ocp.search, q, limit)
+    return {"available": True, "results": rows, "error": err}
+
+
+@app.get("/api/openclaw/plugins/{pid}")
+async def api_ocp_preview(pid: str):
+    """The consent screen. The SAME computation the enable runs — see ocplugins."""
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return JSONResponse({"error": problem}, status_code=503)
+    return await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+
+
+@app.post("/api/openclaw/plugins/install")
+async def api_ocp_install(body: dict):
+    """Install a plugin. It lands DISABLED — enabling is a separate decision.
+
+    `force` is the user saying they looked at an untrusted source and vouch for
+    it. It is only ever passed on from an explicit flag in the request body; it is
+    never defaulted, because it answers OpenClaw's own provenance question.
+    """
+    import agentos.ocplugins as ocp
+    spec = str((body or {}).get("spec") or "").strip()
+    if not spec:
+        return JSONResponse({"error": "which plugin? a ClawHub name, npm:…, git:… or a path"},
+                            status_code=400)
+    err, _ = _ocp_gate("plugin.install", f"ocplugin:{spec}")
+    if err:
+        return err
+    info = ocp.parse_spec(spec)
+    ok, out = await asyncio.to_thread(ocp.install, spec, True, bool((body or {}).get("force")))
+    if not ok:
+        return JSONResponse({"error": out[-1200:], "source_note": ocp.source_sentence(info),
+                             "needs_force": not info["trusted"]}, status_code=400)
+    pid = await asyncio.to_thread(ocp.installed_id, spec, out)
+    state["store"].log("policy", f"OpenClaw plugin installed (disabled): {spec}")
+    if not pid:
+        return {"ok": True, "id": "", "note": "installed, but its id could not be read back"}
+    return {"ok": True, "id": pid,
+            "preview": await asyncio.to_thread(ocp.preview, pid,
+                                               state["cfg"], state["store"])}
+
+
+@app.post("/api/openclaw/plugins/{pid}/enable")
+async def api_ocp_enable(pid: str, body: dict | None = None):
+    """On, or off. On is the moment the grants are written."""
+    import agentos.ocplugins as ocp
+    on = bool((body or {}).get("enabled", True))
+    err, _ = _ocp_gate("plugin.enable", f"ocplugin:{pid}")
+    if err:
+        return err
+    if not on:
+        res = await asyncio.to_thread(ocp.disable_plugin, state["store"], pid)
+        state["store"].log("policy", f"OpenClaw plugin '{pid}' disabled — "
+                                     f"{res['revoked']} permission(s) taken back")
+        await state["broadcast"]({"type": "grants"})
+        return res
+    res = await asyncio.to_thread(ocp.enable_plugin, state["store"], state["cfg"], pid)
+    if res.get("ok"):
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("policy", f"OpenClaw plugin '{pid}' enabled — "
+                                     f"{res['grants']['added']} permission(s) granted")
+        await state["broadcast"]({"type": "grants"})
+    return res
+
+
+@app.post("/api/openclaw/plugins/{pid}/update")
+async def api_ocp_update(pid: str):
+    """Update, re-scan, and HOLD it if the new version asks for more than the old.
+
+    That is the supply-chain case this whole surface exists for, so it is the one
+    thing the route does not delegate the decision on — `update_plugin` quarantines
+    and disables, and the answer says so rather than reporting a clean upgrade.
+    """
+    import agentos.ocplugins as ocp
+    err, _ = _ocp_gate("plugin.install", f"ocplugin:{pid}")
+    if err:
+        return err
+    res = await asyncio.to_thread(ocp.update_plugin, state["store"], state["cfg"], pid)
+    if res.get("ok") and not res.get("held"):
+        cfgmod.save_config(state["cfg"])
+    if res.get("held"):
+        state["store"].log("policy", f"OpenClaw plugin '{pid}' HELD after update: "
+                                     f"{res['reason']}")
+        await state["broadcast"]({"type": "quarantine"})
+    await state["broadcast"]({"type": "grants"})
+    return res
+
+
+@app.delete("/api/openclaw/plugins/{pid}")
+async def api_ocp_uninstall(pid: str):
+    import agentos.ocplugins as ocp
+    err, _ = _ocp_gate("plugin.install", f"ocplugin:{pid}")
+    if err:
+        return err
+    res = await asyncio.to_thread(ocp.uninstall_plugin, state["store"], state["cfg"], pid)
+    if res.get("ok"):
+        cfgmod.save_config(state["cfg"])
+        state["store"].log("policy", f"OpenClaw plugin '{pid}' uninstalled")
+        await state["broadcast"]({"type": "grants"})
+    return res
+
+
+@app.post("/api/openclaw/plugins/{pid}/hold")
+async def api_ocp_hold(pid: str, body: dict | None = None):
+    """Stop a plugin now. Releasing goes through the ordinary quarantine surface."""
+    import agentos.ocplugins as ocp
+    err, _ = _ocp_gate("plugin.enable", f"ocplugin:{pid}")
+    if err:
+        return err
+    qid = await asyncio.to_thread(ocp.hold, state["store"], pid,
+                                 str((body or {}).get("reason") or "held by the user"),
+                                 "manual", None)
+    await state["broadcast"]({"type": "quarantine"})
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "quarantine_id": qid}
+
+
+@app.get("/api/openclaw/plugins/{pid}/native")
+async def api_ocp_native(pid: str):
+    """The build brief, and what the disclaimer said could not be carried.
+
+    Read-only: it writes nothing. The building happens in an ordinary agent turn
+    through create_flow / add_mcp_server / save_skill, each gated on its own
+    terms — a second build path here would be a second permission model.
+    """
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return JSONResponse({"error": problem}, status_code=503)
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    b = pv["native"]
+    return {"brief": b, "prompt": ocn.brief_prompt(b),
+            "compatibility": pv.get("compatibility") or {},
+            # The licence question in its PORT form — a different answer from the
+            # install one, and the surface must not have to work that out itself.
+            "licence_port": pv.get("licence_port") or {},
+            "reads": ocn.PORT_READS}
+
+
+@app.get("/api/openclaw/plugins/{pid}/verify")
+async def api_ocp_verify(pid: str):
+    """Did the native build deliver the brief? Checked against the same document
+    it was built from, which is what stops 'done' meaning 'the agent said done'."""
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    v = await asyncio.to_thread(ocn.verify, pv["native"], state["store"],
+                                state["cfg"], state["mcp"])
+    return {**v, "line": ocn.verdict_line(v)}
+
+
+@app.get("/api/openclaw/plugins/{pid}/report")
+async def api_ocp_report(pid: str):
+    """The report: what came across, what did not, what each gap costs,
+    and the three ways forward. One computation, so the desktop and the terminal
+    cannot disagree about what got carried."""
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    v = await asyncio.to_thread(ocn.verify, pv["native"], state["store"],
+                                state["cfg"], state["mcp"])
+    r = ocn.report(pid, pv["native"], v, pv["licence"], pv.get("compatibility"))
+    return {**r, "text": ocn.report_text(r)}
+
+
+@app.get("/api/openclaw/plugins-doctor")
+async def api_ocp_doctor():
+    """OpenClaw's own diagnosis, plus the one question only this OS asks: does
+    OpenClaw's enablement still agree with what it was granted here?"""
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return {"available": False, "problem": problem}
+    d, err = await asyncio.to_thread(ocp.doctor)
+    rec = await asyncio.to_thread(ocp.reconcile, state["store"], state["cfg"])
+    if rec.get("disabled"):
+        await state["broadcast"]({"type": "grants"})
+    return {"available": True, "openclaw": d, "openclaw_error": err, "agentos": rec}
+
+
 # ---- Telegram ---------------------------------------------------------------
 
 @app.get("/api/telegram")

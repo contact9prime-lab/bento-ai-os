@@ -74,7 +74,14 @@ _NO_FLOW_WRITE = [("flow.write", "*")]
 # agent and then calling it. Only the user's own agent may define one — and
 # defining grants nothing by itself, because `agent.invoke` is what asks.
 _NO_AGENT_WRITE = [("agent.write", "*")]
-_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE
+# Installing or enabling an OpenClaw plugin is third-party code landing beside the
+# agent this machine answers with, and it runs inside OpenClaw's process rather than
+# behind this gate — so unlike a tool call, there is no second chance to refuse it
+# once it is on. Only the user's own agent may reach the lifecycle at all, and even
+# then `plugin.enable` is `risky` and the install lands DISABLED, because enabling
+# is what grants. See agentos/ocplugins.py.
+_NO_PLUGIN_WRITE = [("plugin.install", "*"), ("plugin.enable", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE
 BUILTIN_DENY = {
     "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
     "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
@@ -109,7 +116,7 @@ _SPACE = {"list_spaces": ("space.read", "space:*"),
           "timeline": ("space.read", "")}
 
 
-def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
+def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     """Map a tool call to (action, resource) — the vocabulary grants are written in.
 
     Resources: tool:run_command git status · mcp:github/create_issue · skill:webapp-testing
@@ -117,6 +124,17 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
     agent:subagent/researcher · model:anthropic/claude-sonnet-5 · app:<id>/data
     """
     args = args or {}
+    # A tool a hosted OpenClaw plugin registered (agentos/ochost.py). It runs in a
+    # Node process AgentOS started, so unlike a plugin left inside OpenClaw's own
+    # gateway this call really does pass through here — which is the entire reason
+    # for hosting one. It gets its own action rather than another `tool.use`
+    # string: "may use the tools this plugin brought" has to be grantable apart
+    # from the OS's built-in tools, or installing a plugin would silently widen
+    # every grant somebody had already written.
+    if name.startswith("ocp_"):
+        target = ocp.resolve(name) if ocp else None
+        res = f"ocptool:{target[0]}/{target[1]}" if target else f"ocptool:{name[4:]}"
+        return "plugin.tool", res
     if name.startswith("mcp_"):
         target = mcp.resolve(name) if mcp else None
         res = f"mcp:{target[0]}/{target[1]}" if target else f"mcp:{name[4:]}"
@@ -161,6 +179,21 @@ def action_of(name: str, args: dict, mcp=None) -> tuple[str, str]:
         return "agent.write", f"agent:subagent/{args.get('name', '') or '*'}"
     if name == "list_flows":
         return "flow.read", "flow:*"
+    # OpenClaw plugins. Three actions, not one, because the three decisions are
+    # genuinely different sizes: reading the catalogue costs nothing, installing
+    # puts code on the disk (disabled), and enabling is the moment it can act.
+    if name == "install_openclaw_plugin":
+        return "plugin.install", f"ocplugin:{args.get('spec', '') or '*'}"
+    if name == "enable_openclaw_plugin":
+        return "plugin.enable", f"ocplugin:{args.get('id', '') or '*'}"
+    if name in ("list_openclaw_plugins", "port_openclaw_plugin", "verify_openclaw_port",
+                "openclaw_report"):
+        # All three only READ: the brief and the check write nothing, and the
+        # building they lead to happens through create_flow / add_mcp_server /
+        # save_skill, each already gated on its own terms. Giving the brief its own
+        # write-shaped action would be a permission for something that does not
+        # happen here.
+        return "plugin.read", f"ocplugin:{args.get('id', '') or '*'}"
     # Machine verbs get their own actions rather than another `tool.use` string.
     # "May update my machine" and "may read a file" have to be grantable apart, or
     # a grant written for one silently carries the other — which is the whole

@@ -1,0 +1,8 @@
+{
+  "name": "agentos-ocp-host",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgentOS hosts an OpenClaw plugin: it registers into this OS's tool loop and every call goes through this OS's PDP. Zero dependencies on purpose — the host must not be a supply chain of its own.",
+  "license": "MIT",
+  "main": "host.js"
+}
