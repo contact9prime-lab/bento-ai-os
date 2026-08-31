@@ -1416,11 +1416,40 @@ def _openclaw_cli(args):
     from . import ocplugins as ocp
 
     act = args.action
-    if problem := ocp.problem():
+
+    # A plugin DIRECTORY is a first-class source, and the actions that only read
+    # it need no `openclaw` CLI at all. Requiring one made somebody migrating OFF
+    # OpenClaw install OpenClaw to do it — backwards for exactly the person this
+    # is for. So the CLI gate applies to the verbs that genuinely drive it
+    # (acquire, enable, update, uninstall, hold, doctor, list, search) and not to
+    # the ones that read bytes already here.
+    local, local_err = ({}, "")
+    if getattr(args, "target", "") and act in ("show", "report", "native", "verify"):
+        cand = Path(os.path.expanduser(args.target))
+        if cand.is_dir():
+            local, local_err = ocp.local_record(args.target)
+            if local_err:
+                print(f"✗ {local_err}")
+                sys.exit(1)
+
+    if not local and (problem := ocp.problem()):
         print(f"✗ {problem}")
+        if act in ("show", "report", "native", "verify"):
+            print("\n  You do NOT need OpenClaw to read, report on or port a plugin —\n"
+                  "  only to fetch one. Point at a plugin folder instead and this works\n"
+                  "  with no OpenClaw here:\n"
+                  f"    bento openclaw {act} ./path/to/the-plugin\n"
+                  "  (a git clone, an unpacked tarball, or a copy of\n"
+                  "   ~/.openclaw/extensions/<id> from the machine you are leaving)")
         sys.exit(1)
 
     cfg, store = _open_store(getattr(args, "user", ""))
+
+    def preview_of(target: str) -> dict:
+        """The review for either an installed id or a local directory."""
+        if local:
+            return ocp.preview(local["id"], cfg, store, record=local)
+        return ocp.preview(target, cfg, store)
 
     def show(pv: dict, header: str = "") -> None:
         if pv.get("error"):
@@ -1479,14 +1508,15 @@ def _openclaw_cli(args):
         if not args.target:
             print("which plugin? `bento openclaw native <id>`")
             sys.exit(2)
-        pv = ocp.preview(args.target, cfg, store)
+        pv = preview_of(args.target)
         if pv.get("error"):
             print(f"✗ {pv['error']}")
             sys.exit(1)
         b = pv["native"]
         if not b.get("buildable"):
-            print(f"✗ '{args.target}' declares nothing in its manifest that a native build "
-                  f"could be derived from. AgentOS will not guess what it does.")
+            print(f"✗ '{pv.get('id') or args.target}' declares nothing in its manifest "
+                  f"that a native build could be derived from. AgentOS will not guess what "
+                  f"it does.")
             sys.exit(1)
         prompt = ocnative.brief_prompt(b)
         if args.print_brief:
@@ -1528,14 +1558,14 @@ def _openclaw_cli(args):
         if not args.target:
             print("report on what? `bento openclaw report <id>`")
             sys.exit(2)
-        pv = ocp.preview(args.target, cfg, store)
+        pv = preview_of(args.target)
         if pv.get("error"):
             print(f"✗ {pv['error']}")
             sys.exit(1)
         v = ocnative.verify(pv["native"], store, cfg)
         print(ocnative.report_text(
-            ocnative.report(args.target, pv["native"], v, pv["licence"],
-                            pv.get("compatibility"))))
+            ocnative.report(pv.get("id") or args.target, pv["native"], v,
+                            pv["licence"], pv.get("compatibility"))))
         return
 
     if act == "verify":
@@ -1543,7 +1573,7 @@ def _openclaw_cli(args):
         if not args.target:
             print("verify what? `bento openclaw verify <id>`")
             sys.exit(2)
-        pv = ocp.preview(args.target, cfg, store)
+        pv = preview_of(args.target)
         if pv.get("error"):
             print(f"✗ {pv['error']}")
             sys.exit(1)
@@ -1642,7 +1672,7 @@ def _openclaw_cli(args):
         return
 
     if act == "show":
-        show(ocp.preview(pid, cfg, store))
+        show(preview_of(pid))
         return
 
     if act == "enable":

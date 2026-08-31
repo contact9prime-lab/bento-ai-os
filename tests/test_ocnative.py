@@ -377,3 +377,64 @@ def test_the_agent_is_told_to_put_the_choice_to_the_user():
     d = {t["name"]: t for t in TOOL_SCHEMAS}["openclaw_report"]["description"]
     assert "Do not decide for them" in d
     assert "COSTS" in d
+
+
+# --------------------------------------------------- porting needs no OpenClaw
+
+def _plugin_dir(tmp_path, manifest, licence="MIT"):
+    import json
+    d = tmp_path / "a-plugin"
+    d.mkdir()
+    (d / "openclaw.plugin.json").write_text(json.dumps(manifest))
+    (d / "package.json").write_text(json.dumps({"name": manifest["id"],
+                                                "version": "1.2.3",
+                                                "license": licence}))
+    return d
+
+
+def test_a_plugin_folder_is_readable_with_no_openclaw_cli(tmp_path, monkeypatch):
+    """The whole point. Someone migrating OFF OpenClaw should not have to install
+    OpenClaw to do it — the CLI is needed to ACQUIRE a plugin and for nothing
+    else. A folder they already have is enough to scan, report on and port."""
+    from agentos import ocplugins as ocp
+    monkeypatch.setattr(ocp, "cli", lambda: "")          # no OpenClaw anywhere
+    assert ocp.problem(), "precondition: the CLI really is absent"
+
+    rec, err = ocp.local_record(str(_plugin_dir(tmp_path, LOUD)))
+    assert not err and rec["id"] == "loud"
+    assert rec["_local"] and rec["enabled"] is False
+
+
+def test_the_scan_report_and_brief_all_work_from_a_folder(tmp_path, monkeypatch, store):
+    from agentos import ocplugins as ocp
+    monkeypatch.setattr(ocp, "cli", lambda: "")
+    rec, _ = ocp.local_record(str(_plugin_dir(tmp_path, LOUD, licence="AGPL-3.0")))
+
+    pv = ocp.preview(rec["id"], {}, store, record=rec)
+    assert not pv.get("error")
+    assert pv["security"]["verdict"] == "caution"        # the scan ran
+    assert pv["native"]["buildable"]                     # the brief was derived
+    assert pv["licence"]["klass"] == "copyleft"          # the licence was read
+
+    r = N.report(rec["id"], pv["native"], N.verify(pv["native"], store, {}), pv["licence"])
+    assert r["not_portable"] and "voice" not in r["headline"]
+    assert N.report_text(r).startswith("Report — loud")
+
+
+def test_a_folder_without_a_manifest_says_which_file_is_missing(tmp_path, monkeypatch):
+    """A directory is not a plugin. The refusal has to name the file that would
+    make it one, or somebody points at a repo root and gets a shrug."""
+    from agentos import ocplugins as ocp
+    monkeypatch.setattr(ocp, "cli", lambda: "")
+    d = tmp_path / "not-a-plugin"; d.mkdir()
+    rec, err = ocp.local_record(str(d))
+    assert rec == {} and ocp.MANIFEST_NAME in err
+
+
+def test_a_local_plugin_is_never_reported_as_enabled(tmp_path, monkeypatch, store):
+    """Nothing on this machine is running it. Saying `enabled` would make the
+    review look like it was describing a live plugin."""
+    from agentos import ocplugins as ocp
+    monkeypatch.setattr(ocp, "cli", lambda: "")
+    rec, _ = ocp.local_record(str(_plugin_dir(tmp_path, QUIET)))
+    assert ocp.preview(rec["id"], {}, store, record=rec)["enabled"] is False

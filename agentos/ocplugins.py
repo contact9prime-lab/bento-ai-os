@@ -500,6 +500,50 @@ def licence_of(pid: str, record: dict | None = None) -> dict:
     return {"spdx": "", "where": "", "klass": "unknown"}
 
 
+def local_record(path: str) -> tuple[dict, str]:
+    """A plugin on disk, read WITHOUT the `openclaw` CLI. (record, error).
+
+    The CLI is needed to ACQUIRE a plugin — to resolve `clawhub:`, `npm:`, `git:`
+    and unpack it — and for nothing else. Reading a manifest, hosting the plugin
+    (`ochost.py` runs node directly) and porting it (`ocnative.py` reads only the
+    manifest) all work on bytes that are already here.
+
+    Gating those behind the CLI made somebody migrating OFF OpenClaw install
+    OpenClaw to do it, which is backwards for exactly the person this is for. So
+    a directory is a first-class source: point at a plugin folder — a git clone,
+    an unpacked tarball, a copy of `~/.openclaw/extensions/<id>` from the machine
+    you are leaving — and the scan, the report and the port all work with no
+    OpenClaw on this machine at all.
+    """
+    p = Path(os.path.expanduser(str(path or ""))).resolve()
+    if not p.is_dir():
+        return {}, f"{p} is not a directory"
+    man_file = p / MANIFEST_NAME
+    if not man_file.is_file():
+        return {}, (f"no {MANIFEST_NAME} in {p} — that file is what makes a directory an "
+                    f"OpenClaw plugin, so there is nothing here to read")
+    try:
+        man = json.loads(man_file.read_text())
+    except Exception as e:                                         # noqa: BLE001
+        return {}, f"{man_file} is not readable JSON: {e}"
+    pkg = {}
+    try:
+        if (p / "package.json").is_file():
+            pkg = json.loads((p / "package.json").read_text())
+    except Exception:                                              # noqa: BLE001
+        pass
+    return {
+        "id": str(man.get("id") or pkg.get("name") or p.name),
+        "version": str(pkg.get("version") or ""),
+        # A local directory is never "enabled": nothing on this machine is running
+        # it. Saying otherwise would make the review look like it was describing a
+        # live plugin.
+        "enabled": False, "bundled": False, "format": "openclaw",
+        "source": str(p), "path": str(p),
+        "manifest": man, "_local": True,
+    }, ""
+
+
 def package_json_of(pid: str, record: dict | None = None) -> dict:
     """The plugin's package.json, if it has one. Read for install scripts only."""
     rec = record if record is not None else inspect(pid)[0]
@@ -1043,16 +1087,24 @@ def doctor() -> tuple[dict, str]:
 # The consent screen, and the save that must agree with it
 # ---------------------------------------------------------------------------
 
-def preview(pid: str, cfg: dict, store=None) -> dict:
-    """Everything a person needs to decide about ONE installed plugin.
+def preview(pid: str, cfg: dict, store=None, record: dict | None = None) -> dict:
+    """Everything a person needs to decide about ONE plugin.
 
     This is the screen AND the input to the save: `enable_plugin` calls it again
     rather than trusting anything handed back, so the permission somebody agreed
     to is the permission they get.
+
+    `record` lets a caller supply a plugin read straight off disk
+    (`local_record`), so the scan, the report and the port work on a machine with
+    no `openclaw` CLI. Everything below reads the manifest and the package.json;
+    none of it needs OpenClaw to be installed.
     """
-    rec, err = inspect(pid)
-    if err and not rec:
-        return {"id": pid, "error": err}
+    if record is None:
+        rec, err = inspect(pid)
+        if err and not rec:
+            return {"id": pid, "error": err}
+    else:
+        rec, err = record, ""
     man, man_err = manifest_of(pid, rec)
     pkg = package_json_of(pid, rec)
     src = str(_first(rec, "source", "spec", "installSpec"))

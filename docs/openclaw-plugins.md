@@ -54,6 +54,28 @@ So: choose row 1 for interop with a machine that already runs OpenClaw, row 2
 when you want the calls gated but the plugin's own code intact, and row 3 when
 you want the capability with no foreign runtime at all.
 
+### You do not need OpenClaw installed to port a plugin
+
+The `openclaw` CLI is needed to **acquire** one — to resolve `clawhub:`, `npm:`
+and `git:` specs and unpack them — and for nothing else. Reading a manifest,
+hosting the plugin (path 2 runs `node` directly) and porting it (path 3 reads
+only the manifest) all work on bytes that are already on disk.
+
+So a plugin **directory** is a first-class source. Point at a folder and the
+scan, the report and the port all work with no OpenClaw on this machine:
+
+```
+bento openclaw show   ./path/to/the-plugin
+bento openclaw report ./path/to/the-plugin
+bento openclaw native ./path/to/the-plugin --yes
+```
+
+That folder can be a git clone, an unpacked tarball, or a copy of
+`~/.openclaw/extensions/<id>` from the machine you are leaving. Which is the
+point: **somebody migrating off OpenClaw should not have to install OpenClaw to
+do it.** Only `install`, `enable`, `update`, `uninstall`, `hold`, `doctor`,
+`list` and `search` genuinely drive the CLI, and those say so.
+
 ---
 
 ## Path 1 in detail: what AgentOS adds, and what it cannot
