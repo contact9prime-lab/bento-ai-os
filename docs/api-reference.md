@@ -172,6 +172,9 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/openclaw/plugins/{id}/update` | update, re-scan, and HOLD it if it now asks for more |
 | POST | `/api/openclaw/plugins/{id}/hold` | quarantine and disable it now |
 | DELETE | `/api/openclaw/plugins/{id}` | uninstall and revoke everything it held |
+| GET | `/api/openclaw/plugins/{id}/native` | the brief for rebuilding it out of Bento's own parts, plus the licence position for a PORT |
+| GET | `/api/openclaw/plugins/{id}/verify` | check a native build against the brief it was built from |
+| GET | `/api/openclaw/plugins/{id}/report` | the report: ported / outstanding / not portable with each gap's cost, ending in a proposal |
 | GET | `/api/openclaw/plugins-doctor` | OpenClaw's own check, plus: does its enablement still match what was granted here? |
 | GET | `/api/native/apps`, `/api/native/icon/{id}`, POST `/api/native/launch` | native app launcher |
 | GET/POST | `/api/control` | sound/battery/network state; set volume/mute/open settings |
@@ -194,6 +197,6 @@ itself. Risk level determines whether they need approval (see [Safety](agent.md#
 `create_app`, `pin_widget`, `configure_agentos`, `add_mcp_server`, `manage_models`, `use_skill`,
 `save_skill`, `delete_skill`, `schedule_task`, `launch_native_app`, `system_control`,
 `telegram_send`, `whatsapp_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
-`set_wallpaper`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin` — plus every connected MCP tool as `mcp_<server>_<tool>`.
+`set_wallpaper`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
 
 Get the live list (including MCP tools) from `GET /api/tools`.
