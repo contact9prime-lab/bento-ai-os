@@ -187,7 +187,7 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     if name == "enable_openclaw_plugin":
         return "plugin.enable", f"ocplugin:{args.get('id', '') or '*'}"
     if name in ("list_openclaw_plugins", "port_openclaw_plugin", "verify_openclaw_port",
-                "openclaw_migration_report"):
+                "openclaw_report"):
         # All three only READ: the brief and the check write nothing, and the
         # building they lead to happens through create_flow / add_mcp_server /
         # save_skill, each already gated on its own terms. Giving the brief its own

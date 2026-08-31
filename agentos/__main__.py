@@ -1523,6 +1523,7 @@ def _openclaw_cli(args):
     if act == "report":
         # The document somebody moving off OpenClaw signs off on: what came
         # across, what did not, what each gap costs, and three ways forward.
+        # One name for it everywhere — see `ocnative.report`.
         from . import ocnative
         if not args.target:
             print("report on what? `bento openclaw report <id>`")
@@ -3937,7 +3938,7 @@ def main():
                        choices=["list", "search", "show", "install", "enable", "disable",
                                 "update", "uninstall", "hold", "doctor",
                                 # the fork the disclaimer offers, its check, and
-                                # the migration report a person signs off on
+                                # the report a person signs off on
                                 "native", "verify", "report"])
     p_ocp.add_argument("target", nargs="?", default="",
                        help="a plugin id, an install spec (clawhub:… npm:… git:… a path), "

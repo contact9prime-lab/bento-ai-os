@@ -359,8 +359,21 @@ def test_the_terminal_and_the_gui_read_one_report(store):
     assert r["headline"] in text
 
 
+def test_the_report_has_exactly_one_name(store):
+    """`bento openclaw report`, `openclaw_report` and the GUI's Report button all
+    print this one document. A second name for it — "migration report" was the
+    one that slipped in — is how two surfaces end up describing the same thing
+    differently and somebody compares them across machines."""
+    from agentos.tools import TOOL_SCHEMAS
+    names = {t["name"] for t in TOOL_SCHEMAS}
+    assert "openclaw_report" in names
+    assert not [n for n in names if "migration" in n]
+    # and the document does not title itself something else either
+    assert N.report_text(_report(store)).startswith("Report — loud")
+
+
 def test_the_agent_is_told_to_put_the_choice_to_the_user():
     from agentos.tools import TOOL_SCHEMAS
-    d = {t["name"]: t for t in TOOL_SCHEMAS}["openclaw_migration_report"]["description"]
+    d = {t["name"]: t for t in TOOL_SCHEMAS}["openclaw_report"]["description"]
     assert "Do not decide for them" in d
     assert "COSTS" in d

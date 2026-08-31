@@ -173,7 +173,7 @@ async function ocpReview(pid){
       <button class="endbtn" onclick="ocpUpdate('${esc(p.id)}')">Update</button>
       ${((p.native||{}).buildable)?`<button class="endbtn" onclick="ocpNative('${esc(p.id)}')">Build it natively instead</button>`:''}
       <button class="endbtn" onclick="ocpVerify('${esc(p.id)}')">Check the native build</button>
-      <button class="endbtn" onclick="ocpReport('${esc(p.id)}')">Migration report</button>
+      <button class="endbtn" onclick="ocpReport('${esc(p.id)}')">Report</button>
       ${p.enabled?`<button class="endbtn" onclick="ocpHold('${esc(p.id)}')">Hold it now</button>`:''}
       <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
@@ -279,7 +279,9 @@ async function ocpVerify(pid){
   toast(d.line || '');
 }
 
-/* The migration report — the document somebody moving off OpenClaw signs off on.
+/* The report — the document somebody moving off OpenClaw signs off on. Same
+   name and same content as `bento openclaw report` and the agent's
+   openclaw_report, because it is one document.
    It ends in a PROPOSAL, not a result: a gap is not a verdict, it is a thing the
    user can decide to have built, live with, or keep the original for. */
 async function ocpReport(pid){
@@ -294,7 +296,7 @@ async function ocpReport(pid){
       <b>${esc(g.what)}</b><br>${esc(g.why)}<br><i>What that costs: ${esc(g.implication)}</i>
     </span></div>`).join('');
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Migration report — ${esc(pid)}
+    <h3>Report — ${esc(pid)}
       ${d.complete?'<span class="badge ok">complete</span>':'<span class="badge">partial</span>'}</h3>
     <div class="ghint">${esc(d.headline||'')}</div>
     <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b> — ${esc((d.licence||{}).implication||'')}</div>

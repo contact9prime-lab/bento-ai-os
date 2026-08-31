@@ -504,7 +504,10 @@ brief forbids.
 are the ones whose target is `None`. A concept with no equivalent must be reported as
 unportable, not quietly mapped onto the nearest thing that compiles.
 
-**A port ends in a REPORT that ends in a PROPOSAL.** The audience is somebody moving off
+**A port ends in a REPORT that ends in a PROPOSAL, and the report has ONE name.**
+`bento openclaw report`, the `openclaw_report` tool and the GUI's Report button all
+print the same document — a second name for it ("migration report" was the one that
+slipped in) is how two surfaces end up describing one thing differently. The audience is somebody moving off
 OpenClaw, and what they need is not a green tick: `report()` gives ported / outstanding /
 cannot-be-carried, and every unportable row carries what LOSING it costs in their terms
 ("any budget rule it enforced is gone — write it as a grant in Permissions instead"). A

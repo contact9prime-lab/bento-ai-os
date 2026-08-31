@@ -279,7 +279,7 @@ look. Overclaiming here would make "verified" the most dangerous word on the scr
 
 ---
 
-## Coming from OpenClaw: the migration report
+## Coming from OpenClaw: the report
 
 The point of all of this is that people already running OpenClaw can move without
 losing what they built. So a port ends in a document you can sign off on, not a
@@ -365,7 +365,7 @@ legal advice, and it says so.
 | `bento openclaw doctor` | OpenClaw's own check, plus: does its enablement still match what was granted here? |
 | `bento openclaw native <id> [--yes] [--print-brief]` | rebuild what it declares out of AgentOS's own parts, behind the PDP |
 | `bento openclaw verify <id>` | check a native build against the brief it was built from |
-| `bento openclaw report <id>` | the migration report: ported, outstanding, not portable and what each gap costs, ending in a proposal |
+| `bento openclaw report <id>` | ported, outstanding, not portable and what each gap costs, ending in a proposal |
 
 A spec is `clawhub:<package>`, `npm:<package>`, `npm-pack:<file.tgz>`,
 `git:github.com/<owner>/<repo>[@ref]`, a local path or archive, or

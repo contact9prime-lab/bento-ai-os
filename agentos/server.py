@@ -2887,7 +2887,7 @@ async def api_ocp_verify(pid: str):
 
 @app.get("/api/openclaw/plugins/{pid}/report")
 async def api_ocp_report(pid: str):
-    """The migration report: what came across, what did not, what each gap costs,
+    """The report: what came across, what did not, what each gap costs,
     and the three ways forward. One computation, so the desktop and the terminal
     cannot disagree about what got carried."""
     import agentos.ocnative as ocn

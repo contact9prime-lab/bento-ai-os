@@ -502,12 +502,17 @@ def verify(brief_doc: dict, store, cfg: dict, mcp=None) -> dict:
 
 def report(pid: str, brief_doc: dict, verification: dict, lic: dict,
            compat: dict | None = None) -> dict:
-    """The migration report: what came across, what did not, and what to do next.
+    """The report: what came across, what did not, and what to do next.
 
     This is the document somebody moving off OpenClaw actually needs, and the
-    reason it is one function rather than three surfaces each summarising: a
-    migration where the desktop and the terminal disagree about what got carried
-    is a migration nobody can sign off.
+    reason it is one function rather than three surfaces each summarising: a move
+    where the desktop and the terminal disagree about what got carried is one
+    nobody can sign off.
+
+    ONE name for one thing. `bento openclaw report`, `openclaw_report` and the
+    GUI's Report button all print this — calling it something else on any surface
+    would be a second name for a document people have to compare across
+    machines.
 
     It ends in a PROPOSAL rather than a result. Three answers, and the middle one
     is why this exists — a gap is not a verdict, it is a thing somebody can decide
@@ -595,7 +600,7 @@ def _report_headline(pid, ported, outstanding, not_portable) -> str:
 
 def report_text(r: dict) -> str:
     """The report as it reads in a terminal. Same content as the GUI's, one source."""
-    out = [f"Migration report — {r['plugin']}", "=" * (20 + len(r["plugin"])), "",
+    out = [f"Report — {r['plugin']}", "=" * (9 + len(r["plugin"])), "",
            r["headline"], "",
            f"  {r['licence']['headline']}", f"  {r['licence']['implication']}", ""]
     if r["ported"]:
