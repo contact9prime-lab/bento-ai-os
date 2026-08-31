@@ -28,6 +28,28 @@ the lifecycle and enforces enablement; that is the whole boundary.
 no OpenClaw installer — a machine without the CLI gets one honest sentence rather
 than a pane of dead buttons.
 
+**A compatibility gap is now a fork, not a dead end.** Every install and enable
+screen — CLI, desktop, agent — first states what will NOT work on this machine,
+from one computation so the sentences never differ by surface, and then offers the
+other road: have AgentOS rebuild what the plugin declares out of its own parts —
+MCP servers, flows, skills — where every call is already behind the permission
+engine. A disclaimer whose only way forward is Proceed is a formality people learn
+to click through, so there are always two.
+
+The plugin's manifest is the specification, and three rules keep the port honest.
+The brief is DERIVED, never invented: everything traces to something the manifest
+declares, and a manifest that declares nothing produces no brief and says so
+rather than guessing what the plugin probably does. A port is a proposal —
+everything it writes lands disabled, so porting cannot become a way to acquire
+permissions without being asked. And the agent checks its own work against the
+same brief it was built from (`bento openclaw verify`), item by item, reporting
+reachability and saying plainly that reachability is not behaviour.
+
+`ocnative.MAPPING` is the table of OpenClaw concept → Bento primitive, and its
+most important rows are the ones with no target: trusted tool policies, tool-result
+middleware, providers, channels, the memory slot and in-turn hooks are reported as
+not portable rather than approximated onto the nearest thing that compiles.
+
 ### 0.3.0 — several people, more places to work, and one brain to choose (2026-08-17)
 
 **Several people on one machine.** Accounts are isolated by DIRECTORY, not by a

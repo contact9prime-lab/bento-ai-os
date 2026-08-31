@@ -974,6 +974,12 @@ def preview(pid: str, cfg: dict, store=None) -> dict:
         "tofu": tofu,
         "tofu_note": tofu_note,
     }
+    # What will NOT work here, and the offer to build it properly instead. Carried
+    # on the preview so the CLI, the GUI and the agent all show the same sentences
+    # — a disclaimer that differs by surface is one somebody has already got wrong.
+    from . import ocnative
+    out["compatibility"] = ocnative.compatibility(man, hosted=False)
+    out["native"] = ocnative.brief(pid, man, src)
     if store is not None:
         q = held(store, pid)
         out["quarantined"] = bool(q)

@@ -2847,6 +2847,40 @@ async def api_ocp_hold(pid: str, body: dict | None = None):
     return {"ok": True, "quarantine_id": qid}
 
 
+@app.get("/api/openclaw/plugins/{pid}/native")
+async def api_ocp_native(pid: str):
+    """The build brief, and what the disclaimer said could not be carried.
+
+    Read-only: it writes nothing. The building happens in an ordinary agent turn
+    through create_flow / add_mcp_server / save_skill, each gated on its own
+    terms — a second build path here would be a second permission model.
+    """
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    if problem := ocp.problem():
+        return JSONResponse({"error": problem}, status_code=503)
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    b = pv["native"]
+    return {"brief": b, "prompt": ocn.brief_prompt(b),
+            "compatibility": pv.get("compatibility") or {}}
+
+
+@app.get("/api/openclaw/plugins/{pid}/verify")
+async def api_ocp_verify(pid: str):
+    """Did the native build deliver the brief? Checked against the same document
+    it was built from, which is what stops 'done' meaning 'the agent said done'."""
+    import agentos.ocnative as ocn
+    import agentos.ocplugins as ocp
+    pv = await asyncio.to_thread(ocp.preview, pid, state["cfg"], state["store"])
+    if pv.get("error"):
+        return JSONResponse({"error": pv["error"]}, status_code=404)
+    v = await asyncio.to_thread(ocn.verify, pv["native"], state["store"],
+                                state["cfg"], state["mcp"])
+    return {**v, "line": ocn.verdict_line(v)}
+
+
 @app.get("/api/openclaw/plugins-doctor")
 async def api_ocp_doctor():
     """OpenClaw's own diagnosis, plus the one question only this OS asks: does

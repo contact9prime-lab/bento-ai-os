@@ -468,6 +468,47 @@ The load-bearing parts, each of which was MEASURED rather than assumed:
 third party's tool behind a gate — and giving them one shape means the tool loop, the PDP
 and the ledger need no new special case.
 
+## A gap is a fork, not a dead end: `ocnative.py`
+
+Both plugin integrations have gaps — the gateway one cannot gate a call, the hosted one
+refuses part of OpenClaw's API and cannot contain the network without a jail. Saying so
+was already the rule. What `ocnative.py` adds is the second answer: **build it natively
+instead**, out of parts this OS already governs (MCP for tools, a flow for standing work,
+a skill for know-how), where there is no shim and no ungoverned reach.
+
+The plugin's manifest is a specification — it names the tools, the MCP servers, the events
+and the config — so it is enough to brief the agent with. Three rules keep that from
+becoming a machine for confident nonsense:
+
+- **The brief is DERIVED, never invented.** Everything traces to something the manifest
+  declares; a manifest that says nothing yields `buildable: False` and a sentence saying
+  so. Guessing what a plugin called `voice-call` probably does would produce a plausible
+  implementation of something nobody asked for, and nothing downstream could tell.
+- **The same brief is the acceptance test.** `verify()` checks item by item against the
+  document the build was given, which is what stops "done" meaning "the agent said done" —
+  the same argument `preview()`/`enable_plugin()` share one computation. It checks
+  REACHABILITY and says so: it can prove a flow exists and an MCP tool is offered, not
+  that the tool does the right thing. Claiming more would make "verified" the most
+  dangerous word on the screen.
+- **A port is a proposal.** Everything it writes lands DISABLED. Porting must not be a way
+  to acquire permissions without being asked.
+
+Two traps found by building it. An in-turn hook (`llm_output`) has no equivalent, so it
+must leave the buildable steps AND appear in `not_portable` — left as a step it becomes a
+demand for a flow named `llm_output` that fails its own check forever, which is how a
+verification step stops being believed. And a declined config setting is never a
+failure: failing it would push the agent to invent a credential, the exact thing the
+brief forbids.
+
+`MAPPING` is the table of OpenClaw concept → Bento primitive, and its most important rows
+are the ones whose target is `None`. A concept with no equivalent must be reported as
+unportable, not quietly mapped onto the nearest thing that compiles.
+
+The disclaimer is one computation shown by every surface (`preview()["compatibility"]`),
+because a warning that differs between the terminal and the desktop is one somebody has
+already got wrong — and it always names both roads. A disclaimer whose only way forward
+is Proceed is a formality people learn to click through.
+
 ## The brain is one choice: an executor and one of ITS models
 
 `executors.brains(cfg, models)` is the whole list — local providers, cloud

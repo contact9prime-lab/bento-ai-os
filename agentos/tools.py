@@ -2151,6 +2151,40 @@ class Toolbox(usersmod.Scoped):
         return (f"'{id}' is on — {res['grants']['added']} permission(s) granted. "
                 f"It can now: {'; '.join(res['capabilities'])}. {res['restart_note']}")
 
+    async def port_openclaw_plugin(self, id: str) -> str:
+        """The build brief for rebuilding a plugin out of this OS's own parts."""
+        from . import ocnative
+        from . import ocplugins as ocp
+        if problem := ocp.problem():
+            return problem
+        pv = await asyncio.to_thread(ocp.preview, id, self.cfg, self.store)
+        if pv.get("error"):
+            return f"[error] {pv['error']}"
+        b = pv["native"]
+        if not b.get("buildable"):
+            return (f"'{id}' declares nothing in its manifest that a native build could be "
+                    f"derived from. Say so — do not guess what it does.")
+        return ocnative.brief_prompt(b) + (
+            f"\n\nWhen you have built it, call verify_openclaw_port('{id}') and report what "
+            f"it says. Do not claim anything works that the check did not confirm.")
+
+    async def verify_openclaw_port(self, id: str) -> str:
+        """Check a native port against the brief it was built from, item by item.
+
+        The agent checks its OWN work here, which only means anything because the
+        check reads the brief rather than the agent's opinion of what it did.
+        """
+        from . import ocnative
+        from . import ocplugins as ocp
+        pv = await asyncio.to_thread(ocp.preview, id, self.cfg, self.store)
+        if pv.get("error"):
+            return f"[error] {pv['error']}"
+        v = await asyncio.to_thread(ocnative.verify, pv["native"], self.store,
+                                    self.cfg, self.mcp)
+        lines = [f"{'✓' if r['ok'] else '✗'} [{r['target']}] {r['item']} — {r['note']}"
+                 for r in v["results"]]
+        return "\n".join(lines + ["", ocnative.verdict_line(v)])
+
     async def list_flows(self) -> str:
         rows = self.store.list_flows()
         if not rows:
@@ -3948,6 +3982,33 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {"id": {"type": "string"},
                            "enabled": {"type": "boolean", "description": "false turns it off and takes its permissions back"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "port_openclaw_plugin",
+        "description": "Get the brief for rebuilding an OpenClaw plugin out of THIS OS's own "
+                       "parts — MCP servers, flows, skills — so it runs behind the permission "
+                       "engine instead of beside it. Use this when the user would rather have a "
+                       "native equivalent than live with what a foreign plugin cannot do here. "
+                       "The brief is derived from the plugin's own manifest: build only what it "
+                       "declares, ask when it is silent, and never invent behaviour. Everything "
+                       "you create lands disabled.",
+        "parameters": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "the installed plugin's id"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "verify_openclaw_port",
+        "description": "Check a native port against the brief it was built from, item by item. "
+                       "Call this after building and relay the result verbatim — it reports what "
+                       "is actually reachable, not what you believe you did. Never tell the user "
+                       "something works that this did not confirm.",
+        "parameters": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
             "required": ["id"],
         },
     },

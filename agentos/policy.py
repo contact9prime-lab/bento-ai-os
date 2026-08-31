@@ -186,8 +186,13 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "plugin.install", f"ocplugin:{args.get('spec', '') or '*'}"
     if name == "enable_openclaw_plugin":
         return "plugin.enable", f"ocplugin:{args.get('id', '') or '*'}"
-    if name == "list_openclaw_plugins":
-        return "plugin.read", "ocplugin:*"
+    if name in ("list_openclaw_plugins", "port_openclaw_plugin", "verify_openclaw_port"):
+        # All three only READ: the brief and the check write nothing, and the
+        # building they lead to happens through create_flow / add_mcp_server /
+        # save_skill, each already gated on its own terms. Giving the brief its own
+        # write-shaped action would be a permission for something that does not
+        # happen here.
+        return "plugin.read", f"ocplugin:{args.get('id', '') or '*'}"
     # Machine verbs get their own actions rather than another `tool.use` string.
     # "May update my machine" and "may read a file" have to be grantable apart, or
     # a grant written for one silently carries the other — which is the whole

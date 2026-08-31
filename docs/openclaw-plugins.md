@@ -214,6 +214,71 @@ not pretend to.
 
 ---
 
+## When it does not fit: build it natively instead
+
+Every install and enable screen — CLI, desktop, and the agent — first says **what will
+not work here**, from one computation, so the sentences never differ by surface:
+
+```
+⚠ 4 things about this plugin will not work here. AgentOS could rebuild 4 of the
+  things it declares out of its own parts instead.
+  [high  ] AgentOS cannot refuse what this plugin does
+           left in OpenClaw's gateway it runs in OpenClaw's process, so its calls
+           never reach this OS's permission engine.
+           → build it natively instead, and every call goes through the PDP
+  [medium] it wants host-trusted pre-tool policies
+           AgentOS's PDP IS that tier and is not delegable to a plugin.
+```
+
+Then it offers the other road. A disclaimer whose only button is *Proceed* is a
+formality people learn to click through, so there are always two:
+
+```
+bento openclaw enable <id> --yes     # accept the caveats
+bento openclaw native <id> --yes     # have AgentOS rebuild it out of its own parts
+```
+
+### What "natively" means
+
+The plugin's manifest is a specification — it names the tools it provides, the MCP
+servers it starts, the events it wants and the config it needs. That is enough to
+brief the agent to build the same capability from primitives this OS already governs:
+
+| The plugin declares | AgentOS builds |
+|---|---|
+| `mcpServers` | the same MCP servers, in AgentOS's own config — these port across **unchanged**, and are already gated per call |
+| `contracts.tools` | an MCP server, or a flow whose mission does the job |
+| `cliCommands` | a flow, runnable by name |
+| `activation.onHooks` | a flow trigger — cron, message, webhook, os_event |
+| `configSchema` | what the build asks you for, once |
+| trusted tool policies · tool-result middleware · providers · channels · the memory slot · in-turn hooks | **nothing** — these are reported as not portable rather than approximated |
+
+That last row is the important one. A concept with no equivalent here is named as
+unportable; it is never quietly mapped onto the nearest thing that compiles.
+
+### Three rules the build runs under
+
+- **The brief is derived, never invented.** Everything in it traces to something the
+  manifest declares. A manifest that declares nothing produces no brief and says so —
+  AgentOS will not guess what a plugin called `voice-call` probably does.
+- **A port is a proposal.** Every flow, skill and MCP entry it writes lands
+  **disabled**. Enabling is still the act of granting.
+- **The agent checks its own work**, against the same brief it was built from:
+
+```
+bento openclaw verify <id>
+  ✓ [mcp   ] twilio     — configured as an MCP server; 1 tool(s) live
+  ✓ [mcp   ] place_call — reachable as an MCP tool
+  ✓ [flow  ] loud       — a flow of this name exists
+  all 3 part(s) of the brief are in place
+```
+
+That check proves **reachability** — that a flow exists, that an MCP tool is offered —
+and says so plainly. It does not prove the tool does the right thing; run it once and
+look. Overclaiming here would make "verified" the most dangerous word on the screen.
+
+---
+
 ## Command reference
 
 | Command | What it does |
@@ -228,6 +293,8 @@ not pretend to.
 | `bento openclaw uninstall <id>` | remove it and revoke everything it held |
 | `bento openclaw hold <id> --reason …` | stop it now |
 | `bento openclaw doctor` | OpenClaw's own check, plus: does its enablement still match what was granted here? |
+| `bento openclaw native <id> [--yes] [--print-brief]` | rebuild what it declares out of AgentOS's own parts, behind the PDP |
+| `bento openclaw verify <id>` | check a native build against the brief it was built from |
 
 A spec is `clawhub:<package>`, `npm:<package>`, `npm-pack:<file.tgz>`,
 `git:github.com/<owner>/<repo>[@ref]`, a local path or archive, or

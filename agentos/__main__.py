@@ -1444,6 +1444,82 @@ def _openclaw_cli(args):
             print(f"    · {c}")
         if pv.get("quarantined"):
             print(f"  ⛔ HELD: {pv['quarantine']['reason']}")
+        disclaim(pv)
+
+    def disclaim(pv: dict) -> bool:
+        """The honest part: what will NOT work here, and the way out.
+
+        Printed on every surface that offers to install or enable, from the one
+        computation in `ocnative` — a disclaimer that differs between the CLI and
+        the desktop is one somebody has already got wrong. Returns True when there
+        is something worth stopping for.
+        """
+        comp = pv.get("compatibility") or {}
+        gaps = comp.get("gaps") or []
+        if not gaps:
+            return False
+        print(f"\n  ⚠ {comp.get('headline', '')}")
+        for g in gaps:
+            print(f"    [{g['severity']:6}] {g['what']}")
+            print(f"             {g['why']}")
+            if g.get("remedy"):
+                print(f"             → {g['remedy']}")
+        if (pv.get("native") or {}).get("buildable"):
+            print(f"\n  Instead of living with that, AgentOS can rebuild this out of its own "
+                  f"parts —\n  MCP servers, flows and skills, all behind the permission "
+                  f"engine:\n    bento openclaw native {pv['id']}")
+        return True
+
+    if act == "native":
+        # The fork the disclaimer offers. It does NOT build anything here: the
+        # brief goes to the agent, which builds with the ordinary tools and then
+        # checks its own work. A second build path would be a second set of bugs,
+        # which is the argument jobs.py makes about not having a job engine.
+        from . import ocnative
+        if not args.target:
+            print("which plugin? `bento openclaw native <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        b = pv["native"]
+        if not b.get("buildable"):
+            print(f"✗ '{args.target}' declares nothing in its manifest that a native build "
+                  f"could be derived from. AgentOS will not guess what it does.")
+            sys.exit(1)
+        prompt = ocnative.brief_prompt(b)
+        if args.print_brief:
+            print(prompt)
+            return
+        print(f"Handing this brief to the agent:\n\n{prompt}\n")
+        if not args.yes:
+            print("Re-run with --yes to start the build (everything it creates lands "
+                  "disabled), or --print-brief to keep the brief and drive it yourself.")
+            sys.exit(1)
+        # `ask` is the ordinary agent turn, which is the point: the build uses the
+        # same tools, the same PDP and the same approvals as anything else the
+        # agent does. Every create_flow / add_mcp_server it reaches for is gated
+        # exactly as it would be if the user had asked in chat.
+        ask(prompt, "", False)
+        print(f"\nWhen it says it is done, check it yourself:  "
+              f"bento openclaw verify {args.target}")
+        return
+
+    if act == "verify":
+        from . import ocnative
+        if not args.target:
+            print("verify what? `bento openclaw verify <id>`")
+            sys.exit(2)
+        pv = ocp.preview(args.target, cfg, store)
+        if pv.get("error"):
+            print(f"✗ {pv['error']}")
+            sys.exit(1)
+        v = ocnative.verify(pv["native"], store, cfg)
+        for r in v["results"]:
+            print(f"  {'✓' if r['ok'] else '✗'} [{r['target']:6}] {r['item']} — {r['note']}")
+        print(f"\n{ocnative.verdict_line(v)}")
+        sys.exit(0 if v["ok"] else 1)
 
     if act == "search":
         if not args.target:
@@ -1543,9 +1619,16 @@ def _openclaw_cli(args):
         if pv.get("error"):
             sys.exit(1)
         if not args.yes:
+            # `show` has already printed the gaps. The refusal names BOTH ways
+            # forward, because a disclaimer whose only button is "proceed" is not a
+            # choice — it is a formality people learn to click through.
             print("\nEnabling writes those permissions and lets it run inside OpenClaw, "
-                  "where AgentOS can no longer refuse individual calls.\n"
-                  "Re-run with --yes to go ahead.")
+                  "where AgentOS can no longer refuse individual calls.")
+            print("  · accept that and go ahead:   "
+                  f"bento openclaw enable {pid} --yes")
+            if (pv.get("native") or {}).get("buildable"):
+                print("  · or have AgentOS rebuild it out of its own parts, behind the "
+                      f"permission engine:\n      bento openclaw native {pid} --yes")
             sys.exit(1)
         res = ocp.enable_plugin(store, cfg, pid)
         if not res.get("ok"):
@@ -3821,7 +3904,9 @@ def main():
                  help="OpenClaw plugins — install, scan, grant and hold third-party extensions")
     p_ocp.add_argument("action", nargs="?", default="list",
                        choices=["list", "search", "show", "install", "enable", "disable",
-                                "update", "uninstall", "hold", "doctor"])
+                                "update", "uninstall", "hold", "doctor",
+                                # the fork the disclaimer offers, and its check
+                                "native", "verify"])
     p_ocp.add_argument("target", nargs="?", default="",
                        help="a plugin id, an install spec (clawhub:… npm:… git:… a path), "
                             "or a search term")
@@ -3832,6 +3917,9 @@ def main():
                        help="with `install`: do NOT pin the resolved npm version")
     p_ocp.add_argument("--limit", type=int, default=20, help="with `search`")
     p_ocp.add_argument("--reason", default="", help="with `hold`: why")
+    p_ocp.add_argument("--print-brief", action="store_true",
+                       help="with `native`: print the build brief and stop, rather than "
+                            "handing it to the agent")
 
     p_flow = verb("flow", help="flows — standing missions run by a master orchestrator")
     p_flow.add_argument("action", nargs="?", default="list",

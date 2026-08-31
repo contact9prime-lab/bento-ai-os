@@ -165,11 +165,14 @@ async function ocpReview(pid){
       ${(p.capabilities||[]).map(c=>`<div class="mtool"><span>${esc(c)}</span></div>`).join('')}</details>
     <details class="mtools"><summary>and write ${(p.grants||[]).length} permission(s)</summary>
       ${(p.grants||[]).map(g=>line(g.action, g.resource)).join('')}</details>
+    ${ocpDisclaimer(p)}
     <div class="prow" style="margin-top:12px;flex-wrap:wrap">
       ${p.enabled
         ? `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',false)">Turn off</button>`
         : `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',true)">Turn on</button>`}
       <button class="endbtn" onclick="ocpUpdate('${esc(p.id)}')">Update</button>
+      ${((p.native||{}).buildable)?`<button class="endbtn" onclick="ocpNative('${esc(p.id)}')">Build it natively instead</button>`:''}
+      <button class="endbtn" onclick="ocpVerify('${esc(p.id)}')">Check the native build</button>
       ${p.enabled?`<button class="endbtn" onclick="ocpHold('${esc(p.id)}')">Hold it now</button>`:''}
       <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
@@ -178,6 +181,88 @@ async function ocpReview(pid){
       before expecting a change here to be live.</div>
   </div>`;
   out.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+
+/* The disclaimer. Every surface prints the same sentences, from the one
+   computation in ocnative.py — a warning that differs between the terminal and
+   the desktop is one somebody has already got wrong.
+
+   It is deliberately not a "⚠ are you sure?" with one button. A disclaimer whose
+   only way forward is Proceed is a formality people learn to click through; this
+   one names the other road (build it natively, where every call is gated) beside
+   the risk it is asking you to accept. */
+function ocpDisclaimer(p){
+  const c = p.compatibility || {}, gaps = c.gaps || [];
+  if(!gaps.length) return '';
+  const row = g => `<div class="mtool"><code>${esc(g.severity)}</code><span>
+      <b>${esc(g.what)}</b><br>${esc(g.why)}
+      ${g.remedy?`<br><i>→ ${esc(g.remedy)}</i>`:''}</span></div>`;
+  return `<div class="pgroup" style="border-left:3px solid var(--err);padding-left:10px">
+    <h3>⚠ Before you turn this on</h3>
+    <div class="ghint">${esc(c.headline||'')}</div>
+    ${gaps.map(row).join('')}
+    ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild what this
+      plugin declares out of its own parts — MCP servers, flows and skills — so it runs
+      behind the permission engine instead of beside it. It builds, then checks its own
+      work, and everything it makes lands disabled.</div>`:''}
+  </div>`;
+}
+
+/* The fork. Nothing is built here: the brief goes to the agent, which builds with
+   the ordinary tools (so every create_flow and add_mcp_server is gated exactly as
+   it would be from chat) and then verifies itself. */
+async function ocpNative(pid){
+  let d = null;
+  try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/native')).json() }catch(e){}
+  if(!d || d.error){ toast((d&&d.error)||'could not build the brief'); return }
+  const out = document.getElementById('ocp-review');
+  if(out) out.innerHTML = `<div class="pgroup">
+    <h3>Native build brief — ${esc(pid)}</h3>
+    <div class="ghint">This is what the agent will be asked to build. It is derived from
+      the plugin's own manifest, so it asks for nothing the plugin did not declare.</div>
+    <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
+    <div class="prow" style="flex-wrap:wrap">
+      <button class="endbtn" onclick="ocpSendBrief(${JSON.stringify(pid).replace(/"/g,'&quot;')})">Hand it to the agent</button>
+      <button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button>
+    </div></div>`;
+  window.__ocpBrief = window.__ocpBrief || {};
+  window.__ocpBrief[pid] = d.prompt;
+}
+
+function ocpSendBrief(pid){
+  const prompt = (window.__ocpBrief||{})[pid];
+  if(!prompt){ toast('no brief to send'); return }
+  /* Into an ordinary conversation — same agent, same tools, same approvals. A
+     dedicated "port a plugin" pipeline would be a second build path and a second
+     set of bugs, which is the argument jobs.py makes about not having a job engine.
+
+     PREFILLED, not sent, following testSubagent(): this brief asks the agent to
+     build several things, and the last chance to read it is before it runs, not
+     after. The same reason a flow is drafted disabled. */
+  openApp('chat');
+  setTimeout(()=>{
+    const i = document.getElementById('input');
+    if(!i){ navigator.clipboard?.writeText(prompt);
+            toast('Brief copied — paste it into Chat to start the build'); return }
+    i.value = prompt; i.focus(); i.dispatchEvent(new Event('input'));
+    toast('Read it, then send — the agent builds, then checks its own work');
+  }, 250);
+}
+
+async function ocpVerify(pid){
+  const out = document.getElementById('ocp-review');
+  let d = null;
+  try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/verify')).json() }catch(e){}
+  if(!d || d.error){ toast((d&&d.error)||'could not check'); return }
+  if(out) out.innerHTML = `<div class="pgroup">
+    <h3>Native build — ${esc(pid)} ${d.ok?'<span class="badge ok">all in place</span>'
+                                        :'<span class="badge err">incomplete</span>'}</h3>
+    ${(d.results||[]).map(r=>`<div class="mtool"><code>${r.ok?'✓':'✗'} ${esc(r.target)}</code>
+        <span>${esc(r.item)} — ${esc(r.note)}</span></div>`).join('')}
+    <div class="ghint mut">${esc(d.note||'')}</div>
+    <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
+  </div>`;
+  toast(d.line || '');
 }
 
 async function ocpPost(path, body){
