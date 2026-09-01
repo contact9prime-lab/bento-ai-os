@@ -80,6 +80,19 @@ STEPS: list[Step] = [
                "step that turns a configuration into a machine that works.",
          produces="a real reply, from your model, in front of you",
          panel="ai"),
+    # Right after the machine first works, because this is the moment somebody
+    # who ARRIVED WITH A LINK is here for: a friend's "fork my agent", a team's
+    # shared setup. Optional and skippable — most machines start from nothing —
+    # but offered before the build steps, since a fork can satisfy several of
+    # them at once (the skills, agents, flows and apps it brings tick their own
+    # steps through the same probes).
+    Step("fork", "Start from a shared agent", icon="⑂",
+         blurb="Somebody shared their agent? Point at it — a file, a link, "
+               "owner/repo, or their hosted share with the key they minted. "
+               "Everything arrives disabled and nothing is granted.",
+         produces="their skills, teammates, flows and apps on your machine — "
+                  "off, ungranted, and yours to switch on",
+         panel="agent"),
     # Third on purpose, right after the first real answer. Everything below it is
     # about work the machine does WITHOUT you watching — an agent, a mission, a
     # schedule — and none of that is a thing you can point at on a screen. An app is:
@@ -184,6 +197,11 @@ def state(cfg: dict, store=None) -> dict:
             # Evidence, not a flag: a conversation exists because a turn happened.
             n = _count(store, "conversations")
             return ("done", f"{n} conversation{'' if n == 1 else 's'}") if n else ("todo", "")
+        if sid == "fork":
+            # Evidence: a fork records a pin under registry.agents (whom I took
+            # from), so the step is done exactly when an import ever happened.
+            pins = (cfg.get("registry") or {}).get("agents") or {}
+            return ("done", ", ".join(sorted(pins)[:3])) if pins else ("todo", "")
         if sid == "app":
             # Evidence, like every other step: an app exists because one was built.
             # Nothing ships pre-installed in `user_apps`, so any row here is theirs.

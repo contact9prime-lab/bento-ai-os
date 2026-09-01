@@ -724,6 +724,13 @@ registry's — `canonical`/`tofu_check`/`trusted_keys` and a parametrized
 - **There is deliberately NO agent-facing share/fork tool** — a model that could call
   `share_agent` could be talked into it by a fetched page. If one is ever added it must
   be ALWAYS_ASK.
+- **A fork ends on the ARRIVAL, and it is one computation.** `fork()["arrival"]` is
+  what changed / what did not / a suggested first chat message, rendered by Settings
+  (`agsArrivalHTML`), the wizard step `fork` and the CLI alike — the test message is
+  PREFILLED in chat, never auto-sent. Two lessons pinned there: a flow that failed
+  validation is "did not arrive", never "your existing flow"; and the fork route must
+  broadcast `apps`/`fabric_defs` (not a type nothing listens for) or a forked app sits
+  in the store while App Studio shows stale — found by a real user's first fork.
 
 **Hosting a share is the OTHER intention, and a peer is a real principal.** A published
 file is a copy the taker owns; `bento agent host` serves the bundle live through

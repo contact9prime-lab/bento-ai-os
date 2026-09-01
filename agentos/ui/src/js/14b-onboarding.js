@@ -252,6 +252,23 @@ var OB_PANES={
     <div class="job-go"><button class="wiz-next" id="ob-hello-go">Ask it something</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
 
+  /* The viral entry point: the person who arrived holding a link to somebody's
+     shared agent should not have to discover Settings → Agent to use it. Preview
+     and fork call the same routes as that pane, and the arrival card is the same
+     agsArrivalHTML — one computation, one experience, two doors. */
+  fork:s=>`<p class="mut">A shared agent is one file — its skills, teammates, flows
+      and chosen apps, with no data and no credentials in it. You read exactly what
+      it contains first; the fork writes <b>zero</b> permissions and everything
+      lands disabled.</p>
+    <div class="prow" style="margin-top:10px">
+      <input id="ob-fork-src" placeholder="owner/repo · https://… · bento.agent.json URL" autocomplete="off" style="flex:1">
+      <input id="ob-fork-key" placeholder="peer key (hosted shares only)" autocomplete="off" style="max-width:200px">
+    </div>
+    <div class="job-go"><button class="wiz-next" id="ob-fork-read">Read it first</button>
+      <label class="wiz-back" style="cursor:pointer">from a file<input type="file" accept=".json"
+        style="display:none" id="ob-fork-file"></label></div>
+    <div id="ob-fork-out"></div>`,
+
   /* Three suggestions, not a free text box with no floor. "Describe an app" in front
      of somebody who has never seen this OS build one is a blank page; a sentence they
      can press is a demonstration. The box is still there, seeded from whichever chip
@@ -383,6 +400,67 @@ var OB_WIRE={
     go.onclick=save;
     inp.onkeydown=e=>{if(e.key==='Enter')save()};
     inp.focus();inp.select();
+  },
+
+  fork(){
+    const out=$('#ob-fork-out');
+    /* The refresh after a fork re-renders this pane (that is what ticks the
+       rail), so the arrival card must be re-drawn from state or it flashes for
+       a frame and vanishes — which is exactly what it did first. */
+    if(OB.forkArrival){
+      out.innerHTML=agsArrivalHTML(OB.forkArrival);
+      const btn=[...out.querySelectorAll('button')].find(x=>x.textContent.includes('Test it'));
+      if(btn){const orig=btn.onclick;btn.onclick=()=>{obClose();if(orig)orig.call(btn)}}
+    }
+    let bundle=null;                       // set when the source is a local file
+    const read=async(b)=>{
+      const src=($('#ob-fork-src')||{}).value.trim(),
+            key=($('#ob-fork-key')||{}).value.trim();
+      if(!b&&!src)return obMsg('where is it? a link, owner/repo, or a file','warn');
+      out.innerHTML='<p class="mut">reading it…</p>';obMsg('');
+      let d=null;
+      try{d=await (await fetch('/api/agent/fork/preview',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(b?{bundle:b}:{source:src,key})})).json()}catch(e){}
+      if(!d){out.innerHTML='<p class="mut">could not read it</p>';return}
+      if(d.error){out.innerHTML=`<div class="ghint" style="border-color:var(--err)">${esc(d.error)}</div>`;return}
+      bundle=b||null;
+      const bad=d.verify.status==='checksum-mismatch'||d.verify.status==='bad-signature';
+      const items=d.items.map(i=>`<div class="sub ${i.skipped?'mut':''}">· ${esc(i.kind)}: <b>${esc(i.name)}</b>${i.skipped?' — exists here, skipped':''}</div>`).join('');
+      out.innerHTML=`<div class="ghint"><b>${esc(d.name)}</b>${d.description?` — ${esc(d.description)}`:''}
+        <div class="sub">integrity: ${esc(d.verify.status)} · provenance: ${esc(d.tofu.status)} · app scan: ${esc(d.security.verdict)}</div>
+        <div style="margin-top:6px">${items}</div>
+        <div class="sub" style="margin-top:6px"><b>Permissions written now: ${d.grants_written_now}.</b>
+          Enabling each flow later is what grants${(d.permissions_ceiling||[]).length?` — the ceiling is ${d.permissions_ceiling.length} grant(s), listed in Settings → Agent`:''}.</div>
+        ${d.soul_included?'<div class="sub">a soul is included — it is NOT adopted from here; adopt it later in Settings → Agent after reading it</div>':''}
+        ${bad?'<div class="sub" style="color:var(--err)">This will not fork: the bytes are not what the sharer shared.</div>'
+             :'<div class="job-go" style="margin-top:6px"><button class="wiz-next" id="ob-fork-go">Fork it — disabled, nothing granted</button></div>'}
+      </div>`;
+      const go=$('#ob-fork-go');
+      if(go)go.onclick=async()=>{
+        obMsg('forking…');
+        let r=null;
+        try{r=await (await fetch('/api/agent/fork',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(bundle?{bundle}:{source:src,key})})).json()}catch(e){}
+        if(!r||r.error){obMsg((r&&r.error)||'the fork failed','warn');return}
+        obMsg('');
+        /* The arrival: the same card Settings shows — what changed, what did
+           not, and the chat door. Held in OB state, because the refresh that
+           ticks the rail re-renders this pane and would erase a card that only
+           lived in the DOM. The wizard closes when they take the chat door —
+           the point of the test is the machine, not the wizard. */
+        OB.forkArrival=r;
+        obRefresh(false);
+      };
+    };
+    $('#ob-fork-read').onclick=()=>read(null);
+    $('#ob-fork-file').onchange=function(){
+      const f=this.files&&this.files[0];if(!f)return;
+      const rd=new FileReader();
+      rd.onload=()=>{try{read(JSON.parse(rd.result))}catch(e){obMsg('that file is not a bundle','warn')}};
+      rd.readAsText(f);
+    };
   },
 
   async model(){

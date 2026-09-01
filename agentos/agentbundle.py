@@ -471,9 +471,62 @@ def fork(bundle: dict, store, cfg: dict, source: str = "",
 
     return {"ok": True, "created": created, "skipped": skipped,
             "grants_written": 0, "soul": soul_note,
+            "arrival": _arrival(man.get("name") or "?", created, skipped, soul_note),
             "next": ("nothing is live yet: enable each flow in Workflows (that is when "
                      "its permissions are granted), fill the MCP placeholders and switch "
                      "the servers on, and open each app to review what it may do")}
+
+
+def _arrival(name: str, created: list[dict], skipped: list[dict],
+             soul_note: str) -> dict:
+    """The moment after a fork, as one computation every face shows.
+
+    An import is disorienting in a specific way: eleven things just appeared and
+    nothing on screen says which parts of your machine were touched and which
+    were not. So the arrival answers exactly two questions — WHAT CHANGED (by
+    name) and WHAT DID NOT (the things a forker worries about, said as facts) —
+    and ends with the one action that turns a pile of definitions into an agent
+    you believe in: talk to it. The suggested first message is part of the
+    computation so chat, the wizard, the CLI and Settings all offer the same
+    test, not four drifting paraphrases.
+    """
+    by_kind: dict = {}
+    for c in created:
+        by_kind.setdefault(c["kind"], []).append(c["name"])
+    changed = [{"kind": k, "names": v,
+                "note": {"flow": "arrived DISABLED — enabling is when its permissions "
+                                 "are granted",
+                         "mcp server": "arrived OFF, credentials are <placeholders> "
+                                       "for you to fill",
+                         "app": "opens from the desktop and App Studio; its "
+                                "permissions stage like any app's"}.get(k, "")}
+               for k, v in by_kind.items()]
+    unchanged = [
+        "your memory, conversations and knowledge graph — untouched, and none of "
+        "the sharer's came: a bundle never carries data",
+        "your brain and API keys — the fork answers with THIS machine's model and "
+        "spends nothing of theirs",
+        "your permissions — 0 rows were written by the import",
+    ]
+    if soul_note and "NOT adopted" in soul_note:
+        unchanged.append("your agent's identity — the shared soul came along but was "
+                         "not adopted; adopt it deliberately or leave it")
+    for s in skipped:
+        note = s.get("note") or ""
+        if note.startswith("did not validate"):
+            # Not a collision: the item failed to arrive, and saying "your
+            # existing X" about it would claim a thing that is not there.
+            unchanged.append(f"the {s['kind']} '{s['name']}' did not arrive — {note}")
+        else:
+            unchanged.append(f"your existing {s['kind']} '{s['name']}' — "
+                             f"{note or 'kept, never overwritten'}")
+    return {
+        "changed": changed, "unchanged": unchanged,
+        "try_message": (f"I just forked you from the shared agent '{name}'. "
+                        f"Introduce yourself: what arrived — skills, teammates, "
+                        f"flows, apps — what is still disabled, and what should I "
+                        f"enable or fill in first?"),
+    }
 
 
 # ---------------------------------------------------------------------------

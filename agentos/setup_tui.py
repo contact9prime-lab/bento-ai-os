@@ -190,6 +190,74 @@ def _step_hello(cfg, store) -> None:
     print(f"\n  ✓ that came from {model}, through the whole agent")
 
 
+def _step_fork(cfg, store) -> None:
+    """Start life as a fork of somebody's shared agent — the arc's version of
+    `bento agent fork`, through the same module and the same consent."""
+    import json
+    import os
+    from pathlib import Path
+
+    from . import agentbundle as ab
+    src = _ask("Where is it? (a bento.agent.json path, URL, owner/repo — or blank to skip)")
+    if not src.strip():
+        print("  (nothing imported — `bento agent fork <source>` works any time)")
+        return
+    key = _ask("Peer key, if it is a hosted share (blank for a published file)")
+    if key.strip():
+        bundle, err = ab.fetch_peer(src.strip(), key.strip())
+    else:
+        p = Path(os.path.expanduser(src.strip()))
+        bundle, err = ({}, "")
+        if p.is_file():
+            try:
+                bundle = json.loads(p.read_text())
+            except Exception as e:                             # noqa: BLE001
+                err = f"{src} is not a bundle: {e}"
+        else:
+            import urllib.request
+            last = ""
+            for cand in ab.resolve_source(src.strip()):
+                try:
+                    with urllib.request.urlopen(cand, timeout=30) as r:
+                        bundle = json.loads(r.read())
+                        break
+                except Exception as e:                         # noqa: BLE001
+                    last = str(e)
+            if not bundle:
+                err = f"no shared agent at '{src}' ({last})"
+    if err:
+        print(f"  ✗ {err}")
+        return
+    pv = ab.fork_preview(bundle, store, cfg, source=src.strip())
+    print(f"\n  {pv['name']}" + (f" — {pv['description']}" if pv["description"] else ""))
+    print(f"  integrity: {pv['verify']['status']} · provenance: {pv['tofu']['status']}"
+          f" · app scan: {pv['security']['verdict']}")
+    for i in pv["items"]:
+        print(f"    · {i['kind']}: {i['name']}" + ("  (skipped — exists)" if i["skipped"] else ""))
+    print(f"  permissions written now: {pv['grants_written_now']} — enabling each "
+          f"flow later is what grants")
+    if pv["verify"]["status"] in ("checksum-mismatch", "bad-signature"):
+        print(f"  ✗ not forking: {pv['verify']['note']}")
+        return
+    if not _yes("Fork it — everything disabled, nothing granted?"):
+        return
+    res = ab.fork(bundle, store, cfg, source=src.strip())
+    if not res["ok"]:
+        print(f"  ✗ {res['error']}")
+        return
+    _save(cfg)
+    arr = res["arrival"]
+    print("\n  What changed:")
+    for c in arr["changed"]:
+        print(f"    · {c['kind']}: {', '.join(c['names'])}"
+              + (f" — {c['note']}" if c["note"] else ""))
+    print("  What did not:")
+    for u in arr["unchanged"]:
+        print(f"    · {u}")
+    print(f"\n  Test it — the `hello` step, or:  bento ask "
+          f"\"{arr['try_message'][:60]}…\"")
+
+
 def _step_agent(cfg, store) -> None:
     d = ob.starter_agent(store)
     print(f"\n  {d['name']} — researches, verifies against a second source, and says "
@@ -386,7 +454,7 @@ def _step_account(cfg, store) -> None:
 
 HANDLERS = {
     "name": _step_name, "model": _step_model, "hello": _step_hello,
-    "app": _step_app,
+    "fork": _step_fork, "app": _step_app,
     "agent": _step_agent, "flow": _step_flow, "schedule": _step_schedule,
     "channel": _step_channel, "look": _step_look, "account": _step_account,
 }

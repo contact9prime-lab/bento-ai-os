@@ -3036,7 +3036,15 @@ async def api_agent_fork(body: dict):
     if not res.get("ok"):
         return JSONResponse({"error": res.get("error", "fork refused")}, status_code=400)
     cfgmod.save_config(state["cfg"])
-    await state["broadcast"]({"type": "flows"})
+    # Announce what actually arrived, in the vocabularies the desktop listens
+    # for. "apps" is the one that was missing and it mattered: a forked app was
+    # in the store but App Studio and the launcher had no idea until a full
+    # page reload — reported as "the app is not available in App Studio".
+    kinds = {c["kind"] for c in res.get("created") or ()}
+    if "app" in kinds:
+        await state["broadcast"]({"type": "apps"})
+    if kinds & {"subagent", "flow"}:
+        await state["broadcast"]({"type": "fabric_defs"})
     return res
 
 

@@ -271,11 +271,36 @@ async function agsFork(){
   }catch(e){}
   if(!d){ toast('the fork failed — is the server reachable?'); return }
   if(d.error){ out.innerHTML = `<div class="ghint" style="border-color:var(--err)">${esc(d.error)}</div>`; return }
-  const made = d.created.map(c=>`<div class="sub">· ${esc(c.kind)}: ${esc(c.name)}</div>`).join('');
-  const skip = d.skipped.map(s=>`<div class="sub mut">· ${esc(s.kind)}: ${esc(s.name)} — ${esc(s.note)}</div>`).join('');
-  out.innerHTML = `<div class="ghint"><b>Forked.</b> ${d.created.length} thing(s) created,
+  out.innerHTML = agsArrivalHTML(d);
+}
+
+/* The moment after a fork, drawn the same wherever the fork happened (Settings,
+   the setup wizard). The content is the server's `arrival` — ONE computation —
+   so this only lays it out: what changed, what did not, and the door into chat
+   to actually test the thing. */
+function agsArrivalHTML(d){
+  const arr = d.arrival || {changed:[], unchanged:[], try_message:''};
+  const changed = arr.changed.map(c =>
+    `<div class="sub">· <b>${esc(c.kind)}</b>: ${esc(c.names.join(', '))}${c.note?` — ${esc(c.note)}`:''}</div>`).join('')
+    || '<div class="sub mut">· nothing — every name already existed here</div>';
+  const unchanged = arr.unchanged.map(u=>`<div class="sub mut">· ${esc(u)}</div>`).join('');
+  return `<div class="ghint"><b>It arrived.</b> ${d.created.length} thing(s) created,
       ${d.skipped.length} skipped, <b>${d.grants_written} permission(s) granted</b> — that
       number is the design.${d.soul?`<div class="sub">soul: ${esc(d.soul)}</div>`:''}
-      <div style="margin-top:6px">${made}${skip}</div>
-      <div class="sub" style="margin-top:6px">${esc(d.next)}</div></div>`;
+      <div style="margin-top:8px"><b>What changed:</b>${changed}</div>
+      <div style="margin-top:8px"><b>What did not:</b>${unchanged}</div>
+      <div class="prow" style="margin-top:8px">
+        <button class="endbtn" onclick='agsTestChat(${JSON.stringify(arr.try_message||'')})'>
+          Test it — start chatting</button>
+        <span class="mut">the question is prefilled; press Enter to send it</span>
+      </div>
+      <div class="sub mut" style="margin-top:6px">${esc(d.next||'')}</div></div>`;
+}
+
+function agsTestChat(msg){
+  /* Prefilled, never auto-sent — the testSubagent pattern: the first message a
+     forked agent receives should still be one its new owner chose to send. */
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');
+    if(i){i.value=msg||'';i.focus();i.dispatchEvent(new Event('input'))}},250);
 }

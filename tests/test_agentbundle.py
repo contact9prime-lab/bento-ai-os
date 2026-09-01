@@ -286,3 +286,58 @@ def test_a_shared_agent_resolves_like_a_shared_app(monkeypatch):
                for u in urls)
     assert any("cdn.jsdelivr.net" in u for u in urls)
     assert len({u for u in urls}) == len(urls)
+
+
+# ---------------------------------------------------------------------------
+# The arrival — what an import must SAY, everywhere the same
+# ---------------------------------------------------------------------------
+
+def test_fork_returns_the_arrival(machine, tmp_path):
+    """After an import, every face answers the same two questions — what changed
+    and what did not — plus one suggested first message to test it with. One
+    computation, or the wizard, Settings and the CLI drift into three stories."""
+    bundle, _ = ab.export(machine, dict(POISONED_CFG), name="Invoicer", apps="all")
+    dst = Store(tmp_path / "taker.db")
+    res = ab.fork(bundle, dst, {})
+    arr = res["arrival"]
+    kinds = {c["kind"] for c in arr["changed"]}
+    assert "app" in kinds and "mcp server" in kinds
+    joined = " ".join(arr["unchanged"])
+    assert "memory" in joined and "API keys" in joined and "0 rows" in joined
+    assert "Invoicer" in arr["try_message"]
+
+
+def test_arrival_never_calls_a_failed_flow_yours(machine, tmp_path):
+    """A flow that failed validation did not arrive; the arrival must say that,
+    not 'your existing flow' about a thing that is not there."""
+    bundle, _ = ab.export(machine, dict(POISONED_CFG), name="Invoicer")
+    # break the roster so the flow cannot validate on the taker
+    man = bundle["manifest"]
+    man["flows"][0]["roster"] = [{"subagent": "nobody-of-that-name"}]
+    man["subagents"] = []
+    bundle["checksum"] = ab.bundle_checksum(man)
+    res = ab.fork(bundle, Store(tmp_path / "t.db"), {})
+    lines = [u for u in res["arrival"]["unchanged"] if "monthly-invoices" in u]
+    assert lines and lines[0].startswith("the flow") and "did not arrive" in lines[0]
+
+
+def test_onboarding_offers_the_fork_step(machine):
+    """The wizard is the viral entry point: the step exists, is optional, needs
+    nothing, and is ticked by the evidence a fork leaves (its pin)."""
+    from agentos import onboarding as ob_mod
+    step = ob_mod.BY_ID.get("fork")
+    assert step and step.optional and not step.needs
+    st = ob_mod.state({}, machine)
+    row = next(s for s in st["steps"] if s["id"] == "fork")
+    assert row["status"] == "todo"
+    st = ob_mod.state({"registry": {"agents": {"invoicer": {"at": 1}}}}, machine)
+    row = next(s for s in st["steps"] if s["id"] == "fork")
+    assert row["status"] == "done" and "invoicer" in row["detail"]
+
+
+def test_every_step_has_a_terminal_handler():
+    """The three-faces rule, pinned: a step in the catalogue with nothing behind
+    it in `bento setup` is a silent gap the runtime only mentions in passing."""
+    from agentos import onboarding as ob_mod
+    from agentos import setup_tui
+    assert [s.id for s in ob_mod.STEPS if s.id not in setup_tui.HANDLERS] == []
