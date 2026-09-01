@@ -106,6 +106,57 @@ The rails are the app registry's, reused rather than re-invented:
   personal `registry` config key): `changed-key` on a later fork is the loudest
   alarm, because that is what a hijacked author account looks like.
 
+## Two intentions: a published file, or "it stays with me — take it"
+
+Share and fork are not the same decision seen from two sides. A **fork of a
+published file** is a copy the taker owns forever — nothing the author does
+later can reach it. A **hosted share** is the other intention: the agent stays
+with its owner, and a peer takes it through an authenticated door on the
+owner's running machine.
+
+```
+bento agent host --on                    # start serving my share
+bento agent peers --add laptop-b         # mint a key (shown once) — this IS the grant
+bento agent peers                        # who holds keys, and when they last took it
+bento agent peers --revoke laptop-b      # end the arrangement: key and grant together
+
+# on the taking machine:
+bento agent fork http://host:8321 --key bap_… --yes
+```
+
+What the hosted intention buys, that a file in a repo cannot express:
+
+- **Always current.** The bundle is built fresh on every take — the same
+  `export()` computation as `bento agent share`, so the whitelist holds and
+  **the leak scan runs on every single fetch**: a key pasted into a skill
+  yesterday refuses today's take too, with the finding named to the peer.
+- **Revocable.** Revoking the key ends it. So does revoking the peer's grant in
+  the Permissions app — minting a key writes a real `peer:<name> may
+  agent.share` grant row, every take is a `PDP.decide` under that principal
+  (ledger row included), and the door re-reads the grant each time. Two ways to
+  end it, both of which actually end it.
+- **Authenticated, with honest refusals.** Keys are minted by the owner
+  (`bap_…`, shown once, optional `--days` lifetime), compared in constant time,
+  and the three refusals have three different sentences — `unknown key`,
+  `revoked`, and `expired` (which says "rotate it — this is not a leak"),
+  because they call for three different actions. A guess flood trips an
+  in-memory ceiling before any work happens, the webhook's rule.
+
+### The door speaks MCP
+
+`POST /api/agent/mcp` is a minimal MCP server (JSON-RPC over HTTP, `Bearer`
+auth), so the taker does not have to be a Bento machine — any agent that can
+call an MCP server can take a hosted share. It offers exactly two tools:
+`agent_card` (what a fetch would contain — counts and checksum, never content)
+and `fetch_agent` (the bundle itself). A peer principal is denied **everything
+else by default** at the policy layer — the minted grant is its entire reach,
+and even a hand-written grant cannot take a peer past the built-in denies.
+
+The door sits outside the remote-access gate (a machine caller has no cookie
+jar), which also means: if remote access is off, the door is reachable only
+from the machine itself, and every surface says so rather than letting a key
+open nothing silently.
+
 ## Where a shared agent lives: federation, no central host
 
 Nobody hosts the commons — the same design as app distribution. A shared agent

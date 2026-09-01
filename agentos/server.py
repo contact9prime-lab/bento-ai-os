@@ -2977,6 +2977,14 @@ async def _agent_bundle_of(body: dict):
     """(bundle, source_label, error_response) — inline bytes or a fetched source."""
     bundle = body.get("bundle")
     source = (body.get("source") or "").strip()
+    key = (body.get("key") or "").strip()
+    if not bundle and source and key:
+        # A key names the OTHER intention: not a published file but a hosted
+        # share — "it stays with me, take it" — fetched through the peer's own
+        # authenticated MCP door and revocable by them at any time.
+        bundle, perr = await asyncio.to_thread(agentbundle.fetch_peer, source, key)
+        if perr:
+            return None, "", JSONResponse({"error": perr}, status_code=400)
     if not bundle and source:
         candidates = agentbundle.resolve_source(source)
         if not candidates:
@@ -3030,6 +3038,237 @@ async def api_agent_fork(body: dict):
     cfgmod.save_config(state["cfg"])
     await state["broadcast"]({"type": "flows"})
     return res
+
+
+# ---- Hosted share: the authenticated MCP door -------------------------------
+#
+# Share and fork are two intentions. Fork is "you have my everything" — a copy
+# the taker owns. THIS is the other one: "it is hosted with me — take it". The
+# bundle is served live, so a peer always takes the CURRENT agent; the key was
+# minted by the owner and revoking it (or its grant, in Permissions) ends the
+# arrangement. The door speaks MCP so the caller can be another Bento, or any
+# agent that can call an MCP server.
+
+PEER_BURST = (60, 60)              # (attempts, seconds) — same shape as the hooks
+_peer_hits: dict = {}
+
+
+def _peer_overflowing(addr: str) -> bool:
+    """In memory for the hook gate's reason: this runs on every attempt including
+    refused ones, and it is charged to the ADDRESS because a guesser has no key
+    to charge it to."""
+    limit, window = PEER_BURST
+    now = time.time()
+    hits = [t for t in _peer_hits.get(addr, []) if now - t < window]
+    hits.append(now)
+    _peer_hits[addr] = hits[-(limit * 2):]
+    return len(hits) > limit
+
+
+def _share_fresh(uid: str) -> dict:
+    """The share config as it is ON DISK right now. Deliberately not the live
+    in-memory copy: `bento agent peers --add/--revoke` runs in another process
+    while this server is up, and a door answering from memory would refuse a
+    key minted a minute ago — and worse, keep honouring one revoked a minute
+    ago. Keys and revocations are the kind of state that must never answer
+    from yesterday."""
+    if uid:
+        try:
+            return json.loads(usersmod.cfg_path_for(uid).read_text())
+        except Exception:                                          # noqa: BLE001
+            return {}
+    return cfgmod.load_config()
+
+
+def _peer_owner(key: str):
+    """(uid, cfg, peer_name, problem). A peer key carries no cookie, so the
+    acting account comes from the key itself — the webhook's rule. Keys are
+    128-bit random, so a match identifies the owner unambiguously; the machine
+    config is tried first because that is where a single-user machine keeps
+    them. The cfg returned is the FRESH disk copy the key was found in."""
+    mach = _share_fresh("")
+    name, problem = agentbundle.peer_for_key(mach, key)
+    if name or problem != "unknown key":
+        return "", mach, name, problem
+    if usersmod.enabled():
+        for row in usersmod.list_users():
+            uid = row.get("id") or ""
+            if not uid:
+                continue
+            ucfg = _share_fresh(uid)
+            name, problem = agentbundle.peer_for_key(ucfg, key)
+            if name or problem != "unknown key":
+                return uid, ucfg, name, problem
+    return "", mach, "", "unknown key"
+
+
+@app.post("/api/agent/mcp")
+async def api_agent_mcp(request: Request):
+    """The share door, speaking MCP (JSON-RPC over HTTP).
+
+    Auth is the minted peer key and nothing else — this path sits outside the
+    remote-access gate because the caller is a machine with no cookie jar.
+    Everything cheap happens before anything expensive: the guess ceiling and
+    the key compare answer before any export runs. Every take is a PDP decision
+    under the peer's own principal, so it lands in the ledger and a revocation
+    made in the Permissions app refuses here too.
+    """
+    addr = _client_addr(request)
+    if _peer_overflowing(addr):
+        return JSONResponse({"error": "too many attempts — this door is briefly closed "
+                                      "to your address"}, status_code=429)
+    auth = request.headers.get("authorization") or ""
+    key = auth[7:].strip() if auth.lower().startswith("bearer ") else \
+        request.query_params.get("k", "")
+    uid, ocfg, peer, problem = _peer_owner(key)
+    if not peer:
+        return JSONResponse({"error": problem}, status_code=401)
+    if not agentbundle.hosting(ocfg):
+        return JSONResponse({"error": "this machine is not hosting its agent right now "
+                                      "— its owner can turn it on with `bento agent "
+                                      "host --on`"}, status_code=404)
+    try:
+        msg = await request.json()
+    except Exception:                                              # noqa: BLE001
+        return JSONResponse({"jsonrpc": "2.0", "id": None,
+                             "error": {"code": -32700, "message": "not JSON"}})
+    rid = msg.get("id")
+    method = msg.get("method") or ""
+
+    def err(code, text):
+        return JSONResponse({"jsonrpc": "2.0", "id": rid,
+                             "error": {"code": code, "message": text}})
+
+    if rid is None:                       # a notification asks for no answer
+        return JSONResponse({}, status_code=202)
+    if method == "initialize":
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {
+            "protocolVersion": "2025-06-18", "capabilities": {"tools": {}},
+            "serverInfo": {"name": "bento-agent-share",
+                           "version": agentbundle.FORMAT}}})
+    if method == "ping":
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {}})
+    if method == "tools/list":
+        return JSONResponse({"jsonrpc": "2.0", "id": rid,
+                             "result": {"tools": agentbundle.share_tools()}})
+    if method != "tools/call":
+        return err(-32601, f"unknown method '{method}'")
+
+    tool = ((msg.get("params") or {}).get("name")) or ""
+    if tool not in ("agent_card", "fetch_agent"):
+        return err(-32602, f"no tool called '{tool}' here")
+
+    def tool_text(text, is_error=False):
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {
+            "content": [{"type": "text", "text": text}], "isError": is_error}})
+
+    # The take itself, in the owner's account: the store read, the PDP decision
+    # and the ledger row all belong to whoever minted the key.
+    with usersmod.as_user(uid):
+        dec = state["pdp"].decide(Principal("peer", peer), "agent.share",
+                                  "agent:bundle", {"surface": "api", "risk": "risky",
+                                                   "reason": f"peer '{peer}' fetching "
+                                                             f"the shared agent"})
+        if dec.effect != "allow":
+            return tool_text(f"refused: {dec.reason or 'not granted'} — the owner can "
+                             f"re-grant it in Permissions", is_error=True)
+        bundle, berr = await asyncio.to_thread(
+            agentbundle.build_hosted, state["store"], state["cfg"])
+        if berr:
+            # The host's own protection is the peer's refusal too: a key pasted
+            # into a skill refuses every fetch until it is removed.
+            return tool_text(f"the host refused to build its share: {berr}",
+                             is_error=True)
+        # Stamp the take on the same fresh disk copy the key was found in, and
+        # save THAT — writing the server's in-memory config here would clobber
+        # a mint or revocation made from the CLI while this server ran.
+        sc = agentbundle.share_conf(ocfg)
+        if peer in sc["peers"]:
+            sc["peers"][peer]["last_fetch"] = time.time()
+            cfgmod.save_config(ocfg)
+            state["cfg"][agentbundle.SHARE_KEY] = sc      # keep the live view current
+        if tool == "agent_card":
+            man = bundle["manifest"]
+            return tool_text(json.dumps({
+                "name": man["name"], "description": man["description"],
+                "format": bundle["format"], "checksum": bundle["checksum"],
+                "signed": bool(bundle.get("signature")),
+                "skills": len(man["skills"]), "subagents": len(man["subagents"]),
+                "flows": len(man["flows"]), "apps": len(man["apps"]),
+                "mcp_servers": len(man["mcp_servers"]),
+                "soul_included": bool(man["soul"])}, indent=1))
+        return tool_text(json.dumps(bundle))
+
+
+def _share_sync() -> dict:
+    """Refresh the live view of `agent_share` from disk and return it. Every
+    management route starts here so a key minted or revoked from the CLI while
+    this server runs is seen — and, on the write routes, so a stale in-memory
+    copy is never what gets saved back over it."""
+    fresh = _share_fresh(usersmod.current() if usersmod.enabled() else "")
+    state["cfg"][agentbundle.SHARE_KEY] = agentbundle.share_conf(fresh)
+    return state["cfg"]
+
+
+@app.get("/api/agent/host")
+async def api_agent_host():
+    """The hosting pane's one read: state, peers, and an honest reachability
+    sentence — a share that is on but unreachable must say so, not be found out."""
+    cfg = _share_sync()
+    remote_on = remotemod.enabled(state.machine_cfg())
+    port = state.machine_cfg().get("port", 8321)
+    return {
+        "enabled": agentbundle.hosting(cfg),
+        "include": agentbundle.share_conf(cfg).get("include") or {},
+        "peers": agentbundle.list_peers(cfg),
+        "endpoint": f"/api/agent/mcp (port {port})",
+        "reachability": ("peers can reach this door from other machines"
+                         if remote_on else
+                         "remote access is OFF, so this door is reachable only from "
+                         "this machine — `bento remote --on` (or Settings → System) "
+                         "opens it"),
+    }
+
+
+@app.put("/api/agent/host")
+async def api_agent_put_host(body: dict):
+    sc = agentbundle.share_conf(_share_sync())
+    if "enabled" in body:
+        sc["enabled"] = bool(body["enabled"])
+    inc = body.get("include")
+    if isinstance(inc, dict):
+        if "apps" in inc:
+            a = inc["apps"]
+            sc["include"]["apps"] = a if a in ("none", "all") or isinstance(a, list) \
+                else "none"
+        if "with_soul" in inc:
+            sc["include"]["with_soul"] = bool(inc["with_soul"])
+    cfgmod.save_config(state["cfg"])
+    return await api_agent_host()
+
+
+@app.post("/api/agent/peers")
+async def api_agent_add_peer(body: dict):
+    """Mint a key — shown ONCE, in this response, never stored anywhere it can
+    be read back out. Minting writes the peer's grant; that row in Permissions
+    is the same arrangement seen from the other side."""
+    key, err = agentbundle.mint_peer(_share_sync(), state["store"],
+                                     str(body.get("name") or ""),
+                                     days=float(body.get("days") or 0))
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "key": key, "peers": agentbundle.list_peers(state["cfg"])}
+
+
+@app.delete("/api/agent/peers/{name}")
+async def api_agent_revoke_peer(name: str):
+    if not agentbundle.revoke_peer(_share_sync(), state["store"], name):
+        return JSONResponse({"error": f"no live peer called '{name}'"}, status_code=404)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "peers": agentbundle.list_peers(state["cfg"])}
 
 
 # ---- Telegram ---------------------------------------------------------------
@@ -5123,7 +5362,13 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # secret compared in constant time, plus a cooldown enforced before
                      # any work starts — both live in api_flow_hook, and the run it starts
                      # is tainted so the payload cannot spend a permission unseen.
-                     "/api/hooks/")
+                     "/api/hooks/",
+                     # The agent-share MCP door. Same argument as the webhook: the
+                     # caller is another MACHINE holding a minted peer key, not a
+                     # browser with a cookie. Its defence lives in api_agent_mcp —
+                     # the key compared in constant time, an in-memory guess
+                     # ceiling, and a PDP decision (ledger row included) per take.
+                     "/api/agent/mcp")
 
 
 def _client_addr(request: Request) -> str:

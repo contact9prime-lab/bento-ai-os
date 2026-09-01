@@ -22,6 +22,21 @@ registry's rails: SHA-256 checksum, optional Ed25519 signature from the same
 `bento registry keygen` key, and first-fork TOFU pins where `changed-key` is
 the loudest alarm. (`agentos/agentbundle.py`, `docs/agent-sharing.md`.)
 
+**And sharing has a second intention: hosted, not published.** A published file
+is a copy the taker owns forever; `bento agent host --on` is the other
+arrangement — "it stays with me, take it". The machine serves its share through
+an authenticated MCP door (`POST /api/agent/mcp`, two tools: `agent_card`,
+`fetch_agent`), so a peer — another Bento with `bento agent fork http://host
+--key …`, or any agent that speaks MCP — always takes the CURRENT agent, built
+fresh with the leak scan running on every single take. Minting a key (`bento
+agent peers --add`, shown once) writes a real `peer:<name> may agent.share`
+grant; every take is a PDP decision in the ledger, and the arrangement ends two
+ways that both work: revoke the key, or revoke the grant in Permissions. A peer
+principal is denied everything else by default at the policy layer. Three
+refusals carry three sentences — unknown key, revoked, and expired ("rotate it
+— this is not a leak") — and a guess flood is held in memory before any work
+happens, the webhook's rule.
+
 **OpenClaw plugins install through this OS's review.** OpenClaw has been an
 executor here for a while; it could not be extended. Its plugins — tools,
 providers, channels, hooks and MCP servers — now install through `bento openclaw`,

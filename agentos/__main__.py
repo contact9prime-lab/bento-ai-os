@@ -2210,7 +2210,14 @@ def _agent_cli(args):
     act, target = args.action, (getattr(args, "target", "") or "").strip()
 
     def load_bundle(src: str) -> tuple[dict, str]:
-        """(bundle, source-label). A file path, a URL, or owner/repo[@ref]."""
+        """(bundle, source-label). A file path, a URL, or owner/repo[@ref] — or,
+        with --key, another machine's HOSTED share through its MCP door."""
+        if getattr(args, "key", ""):
+            b, perr = ab.fetch_peer(src, args.key)
+            if perr:
+                print(f"✗ {perr}")
+                sys.exit(1)
+            return b, src
         p = Path(os.path.expanduser(src))
         if p.is_file():
             try:
@@ -2258,6 +2265,83 @@ def _agent_cli(args):
                   "\n  read it first:\n")
             for ln in (pv["soul_text"] or "").splitlines():
                 print(f"    {ln}")
+
+    if act == "host":
+        # "Hosted with me — take it": the standing arrangement, distinct from a
+        # published file. Serving is live, so a peer always takes the CURRENT
+        # agent, and revoking their key or grant ends it.
+        sc = ab.share_conf(cfg)
+        if getattr(args, "on", False) or getattr(args, "off", False):
+            sc["enabled"] = bool(getattr(args, "on", False))
+            apps = getattr(args, "apps", "") or sc["include"].get("apps", "none")
+            sc["include"]["apps"] = apps if apps in ("none", "all") \
+                else [a for a in str(apps).split(",") if a.strip()]
+            if getattr(args, "with_soul", False):
+                sc["include"]["with_soul"] = True
+            cfgmod.save_config(cfg)
+        from . import remote as remotemod
+        on = ab.hosting(cfg)
+        port = cfg.get("port", 8321)
+        print(f"hosting: {'ON' if on else 'off'}  —  door: POST /api/agent/mcp "
+              f"(port {port}, Bearer <peer key>)")
+        inc = sc["include"]
+        print(f"  a fetch serves: skills, subagents, flows (disabled), apps={inc['apps']}"
+              f"{', the soul' if inc.get('with_soul') else ''} — leak-scanned every time")
+        if on and not remotemod.enabled(cfgmod.load_config()):
+            print("  ⚠ remote access is OFF, so this door is reachable only from this "
+                  "machine.\n    `bento remote --on` (or Settings → System) is what "
+                  "makes it reachable by peers.")
+        live = [p for p in ab.list_peers(cfg) if not p["revoked"]]
+        print(f"  peers with live keys: {len(live)}"
+              + (f" ({', '.join(p['name'] for p in live)})" if live else
+                 " — mint one:  bento agent peers --add <name>"))
+        return
+
+    if act == "peers":
+        if getattr(args, "add", ""):
+            key, err = ab.mint_peer(cfg, store, args.add, days=getattr(args, "days", 0))
+            if err:
+                print(f"✗ {err}")
+                sys.exit(1)
+            cfgmod.save_config(cfg)
+            print(f"✓ '{args.add.strip().lower()}' may now take this agent — its grant "
+                  f"is in Permissions, revocable there or here.")
+            print(f"\n  Their key (shown ONCE — hand it over yourself):\n    {key}")
+            print(f"\n  They take it with:\n    bento agent fork http://<this-host>:"
+                  f"{cfg.get('port', 8321)} --key {key[:12]}… --yes")
+            if not ab.hosting(cfg):
+                print("\n  ⚠ hosting is off — the key opens nothing until "
+                      "`bento agent host --on`.")
+            return
+        if getattr(args, "revoke", ""):
+            if not ab.revoke_peer(cfg, store, args.revoke):
+                print(f"✗ no live peer called '{args.revoke}'")
+                sys.exit(1)
+            cfgmod.save_config(cfg)
+            print(f"✓ '{args.revoke}' revoked — the key and its grant died together.")
+            return
+        if getattr(args, "rotate", ""):
+            key, err = ab.rotate_peer(cfg, store, args.rotate,
+                                      days=getattr(args, "days", 0))
+            if err:
+                print(f"✗ {err}")
+                sys.exit(1)
+            cfgmod.save_config(cfg)
+            print(f"✓ rotated — the old key is dead. New key (shown once):\n    {key}")
+            return
+        ps = ab.list_peers(cfg)
+        if not ps:
+            print("nobody holds a key to this agent.\n"
+                  "  bento agent peers --add <name>   mints one (and its grant)")
+            return
+        for p in ps:
+            state_txt = "revoked" if p["revoked"] else (
+                "expires " + time.strftime("%Y-%m-%d", time.localtime(p["expires_at"]))
+                if p["expires_at"] else "no expiry")
+            last = time.strftime("%Y-%m-%d %H:%M", time.localtime(p["last_fetch"])) \
+                if p["last_fetch"] else "never"
+            print(f"  {p['name']:<20} {state_txt:<20} last fetch: {last}")
+        return
 
     if act == "share":
         apps = getattr(args, "apps", "") or "none"
@@ -4130,7 +4214,10 @@ def main():
                    help="share this agent as a bundle, or fork somebody else's — "
                         "no data, no credentials, nothing enabled")
     p_agent.add_argument("action", nargs="?", default="show",
-                         choices=["share", "show", "fork", "verify"])
+                         choices=["share", "show", "fork", "verify",
+                                  # the OTHER intention: not a published file but a
+                                  # standing arrangement — hosted with me, take it
+                                  "host", "peers"])
     p_agent.add_argument("target", nargs="?", default="",
                          help="share: a name for the bundle; show/fork/verify: a "
                               "bento.agent.json path, a URL, or owner/repo[@ref]")
@@ -4153,6 +4240,21 @@ def main():
     p_agent.add_argument("--adopt-soul", action="store_true", dest="adopt_soul",
                          help="with `fork`: replace this agent's identity with the "
                               "shared one (never happens silently)")
+    p_agent.add_argument("--key", default="",
+                         help="with `show`/`fork`/`verify` and an http(s) target: the "
+                              "peer key its owner minted — takes their HOSTED share "
+                              "through the authenticated door instead of a published file")
+    p_agent.add_argument("--on", action="store_true", help="with `host`: start hosting")
+    p_agent.add_argument("--off", action="store_true", help="with `host`: stop hosting")
+    p_agent.add_argument("--add", default="", metavar="NAME",
+                         help="with `peers`: mint a key for NAME (shown once)")
+    p_agent.add_argument("--revoke", default="", metavar="NAME",
+                         help="with `peers`: end the arrangement — key and grant together")
+    p_agent.add_argument("--rotate", default="", metavar="NAME",
+                         help="with `peers`: new key, same arrangement; the old key dies")
+    p_agent.add_argument("--days", type=float, default=0,
+                         help="with `peers --add/--rotate`: key lifetime (default: none — "
+                              "a key that dies on its own strands a standing arrangement)")
 
     p_ocp = verb("openclaw",
                  help="OpenClaw plugins — install, scan, grant and hold third-party extensions")

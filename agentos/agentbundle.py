@@ -486,3 +486,217 @@ def resolve_source(src: str) -> list[str]:
     argument for @commit pins, one implementation."""
     from .appregistry import resolve_source as _resolve
     return _resolve(src, well_known=WELL_KNOWN)
+
+
+# ---------------------------------------------------------------------------
+# Hosted share — "it stays with me, take it", over an authenticated MCP door
+# ---------------------------------------------------------------------------
+#
+# Share and fork are two different intentions and they get two different doors.
+# A FORK is "you have my everything": a copy the taker now owns, which no later
+# decision of mine can reach. A hosted SHARE is "it is hosted with me — take
+# it": the bundle is served live by MY machine, so it is always the CURRENT
+# agent, every take is authenticated with a key I minted, and revoking that key
+# ends the arrangement. Publishing a file to a repo cannot express that second
+# intention; this can.
+#
+# The door speaks MCP (JSON-RPC over HTTP), so the caller does not have to be a
+# Bento machine: another agent adds it as an MCP server and calls `fetch_agent`.
+# What travels through it is EXACTLY the export above — same whitelist, same
+# placeholder credentials, and the leak scan runs on every single take, so a
+# key pasted into a skill yesterday refuses today's fetch too.
+#
+# A peer is a real PRINCIPAL. Minting a key writes a `peer:<name> may
+# agent.share` grant row (source='peer'); every fetch goes through PDP.decide,
+# which writes the ledger row and honours a revocation made in the Permissions
+# app — the same load-bearing binding as plugin.run. A peer's defaults deny
+# everything else (policy._default), so the grant IS the whole reach.
+
+SHARE_KEY = "agent_share"
+PEER_GRANT_SOURCE = "peer"
+
+
+def share_conf(cfg: dict) -> dict:
+    c = cfg.setdefault(SHARE_KEY, {})
+    c.setdefault("enabled", False)
+    c.setdefault("peers", {})
+    c.setdefault("include", {"apps": "none", "with_soul": False})
+    return c
+
+
+def hosting(cfg: dict) -> bool:
+    return bool(share_conf(cfg).get("enabled"))
+
+
+def mint_peer(cfg: dict, store, name: str, days: float = 0) -> tuple[str, str]:
+    """(key, error). Minting is the act of granting: the key is the credential,
+    and the grant row is the permission the Permissions app can later revoke.
+    The key does NOT expire unless asked to — a key that dies on its own
+    silently strands a standing arrangement — but --days sets a lifetime, and
+    the refusal after that date says *expired*, not *bad key*."""
+    import secrets
+    name = (name or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", name or ""):
+        return "", "a peer needs a simple name (letters, digits, . _ -)"
+    ps = share_conf(cfg)["peers"]
+    if name in ps and not ps[name].get("revoked_at"):
+        return "", f"'{name}' already has a live key — revoke or rotate it instead"
+    key = "bap_" + secrets.token_urlsafe(24)
+    ps[name] = {"key": key, "created_at": time.time(),
+                "expires_at": (time.time() + days * 86400) if days else 0,
+                "revoked_at": 0, "last_fetch": 0}
+    store.add_grant("peer", name, "agent.share", "agent:bundle",
+                    source=PEER_GRANT_SOURCE, source_ref=f"peer:{name}",
+                    note=f"may fetch this agent's shared bundle (key minted "
+                         f"{time.strftime('%Y-%m-%d')})")
+    return key, ""
+
+
+def revoke_peer(cfg: dict, store, name: str) -> bool:
+    """The end of the arrangement: the key stops opening the door AND the grant
+    is revoked, so neither half can be forgotten. The record is kept, not
+    deleted — a refusal that can say 'revoked' beats one that says 'unknown'."""
+    name = (name or "").strip().lower()
+    p = share_conf(cfg)["peers"].get(name)
+    if not p or p.get("revoked_at"):
+        return False
+    p["revoked_at"] = time.time()
+    for g in store.list_grants():
+        if g.get("source") == PEER_GRANT_SOURCE and \
+                (g.get("source_ref") or "") == f"peer:{name}":
+            store.revoke_grant(g["id"])
+    return True
+
+
+def rotate_peer(cfg: dict, store, name: str, days: float = 0) -> tuple[str, str]:
+    """A new key for the same arrangement — the grant stays, the old key dies."""
+    name = (name or "").strip().lower()
+    p = share_conf(cfg)["peers"].get(name)
+    if not p or p.get("revoked_at"):
+        return "", f"no live peer called '{name}'"
+    import secrets
+    p["key"] = "bap_" + secrets.token_urlsafe(24)
+    p["expires_at"] = (time.time() + days * 86400) if days else 0
+    return p["key"], ""
+
+
+def list_peers(cfg: dict) -> list[dict]:
+    out = []
+    for name, p in sorted(share_conf(cfg)["peers"].items()):
+        out.append({"name": name, "created_at": p.get("created_at") or 0,
+                    "expires_at": p.get("expires_at") or 0,
+                    "revoked": bool(p.get("revoked_at")),
+                    "last_fetch": p.get("last_fetch") or 0})
+    return out
+
+
+def peer_for_key(cfg: dict, key: str) -> tuple[str, str]:
+    """(peer_name, problem). Three refusals with three different sentences,
+    because they call for three different actions: 'unknown key' is a caller to
+    distrust, 'revoked' is an arrangement that ended, and 'expired' means
+    rotate it — hunting a leak that never happened is the failure mode a vague
+    refusal buys."""
+    import hmac as _hmac
+    key = (key or "").strip()
+    if not key:
+        return "", "no key presented"
+    for name, p in share_conf(cfg)["peers"].items():
+        if _hmac.compare_digest(str(p.get("key") or "\0"), key):
+            if p.get("revoked_at"):
+                return "", f"the key for '{name}' was revoked — this share has ended"
+            exp = float(p.get("expires_at") or 0)
+            if exp and time.time() > exp:
+                return "", (f"the key for '{name}' expired — its owner can rotate it "
+                            f"(`bento agent peers --rotate {name}`); this is not a leak")
+            return name, ""
+    return "", "unknown key"
+
+
+def share_tools() -> list[dict]:
+    """What the MCP door offers. Two tools, deliberately: discovery that costs
+    the host nothing to answer honestly, and the take itself."""
+    return [
+        {"name": "agent_card",
+         "description": "What this machine shares: the agent's name, description "
+                        "and what a fetch would contain — counts and checksum, "
+                        "never the content. Cheap, call it first.",
+         "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "fetch_agent",
+         "description": "The shared agentos-agent/1 bundle, built fresh from the "
+                        "live agent: skills, subagents, flows (disabled), chosen "
+                        "apps, MCP server shapes with placeholder credentials. "
+                        "No memory, no conversations, no keys — a leak scan runs "
+                        "on every fetch and refuses rather than serves. Fork it "
+                        "with `bento agent fork` — everything lands disabled and "
+                        "nothing is granted.",
+         "inputSchema": {"type": "object", "properties": {}}},
+    ]
+
+
+def build_hosted(store, cfg: dict, *, name: str = "") -> tuple[dict, str]:
+    """(bundle, error) — the export, with the host's stored include choices.
+    One computation with `export()`, so what a peer takes is exactly what the
+    owner's own share screen would build, leak scan included."""
+    inc = share_conf(cfg).get("include") or {}
+    try:
+        bundle, _report = export(store, cfg, name=name,
+                                 apps=inc.get("apps", "none"),
+                                 with_soul=bool(inc.get("with_soul")))
+    except LeakRefusal as e:
+        return {}, str(e)
+    if signing_key_exists():
+        try:
+            bundle = sign_bundle(bundle)     # hosting IS publishing; sign if we can
+        except Exception:                                          # noqa: BLE001
+            pass                             # unsigned is honest, a crash is not
+    return bundle, ""
+
+
+def fetch_peer(url: str, key: str, timeout: int = 30) -> tuple[dict, str]:
+    """(bundle, error) — take a hosted share from another machine, as a client.
+    Speaks the same MCP door `/api/agent/mcp`; a bare host[:port] is completed."""
+    import urllib.request
+    u = (url or "").strip().rstrip("/")
+    if not u.startswith(("http://", "https://")):
+        u = "http://" + u
+    if not u.endswith("/api/agent/mcp"):
+        u += "/api/agent/mcp"
+
+    def rpc(method: str, params: dict, rid: int):
+        req = urllib.request.Request(
+            u, data=json.dumps({"jsonrpc": "2.0", "id": rid, "method": method,
+                                "params": params}).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+
+    try:
+        rpc("initialize", {"protocolVersion": "2025-06-18",
+                           "clientInfo": {"name": "bento-agent", "version": "1"},
+                           "capabilities": {}}, 1)
+        res = rpc("tools/call", {"name": "fetch_agent", "arguments": {}}, 2)
+    except urllib.error.HTTPError as e:
+        # The door's refusals are sentences worth relaying — "revoked" and
+        # "expired — rotate it" call for different actions than a bare 401.
+        try:
+            detail = json.loads(e.read()).get("error") or ""
+        except Exception:                                          # noqa: BLE001
+            detail = ""
+        return {}, f"the host refused ({e.code}): {detail or e.reason}"
+    except Exception as e:                                         # noqa: BLE001
+        return {}, f"could not reach the share at {u}: {e}"
+    if res.get("error"):
+        return {}, str(res["error"].get("message") or res["error"])
+    result = res.get("result") or {}
+    if result.get("isError"):
+        parts = result.get("content") or []
+        return {}, "; ".join(p.get("text", "") for p in parts) or "the host refused"
+    try:
+        text = (result.get("content") or [{}])[0].get("text") or ""
+        bundle = json.loads(text)
+    except Exception:                                              # noqa: BLE001
+        return {}, "the host answered, but not with a bundle"
+    if not isinstance(bundle, dict) or bundle.get("format") != FORMAT:
+        return {}, f"the host answered, but not with an {FORMAT} bundle"
+    return bundle, ""

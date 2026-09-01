@@ -282,7 +282,8 @@ asking for it by name. [More →](docs/desktop.md#automations)
   teammates, flows, the apps you choose — and fork anybody else's. Your data and credentials
   **never travel** (a leak scan refuses the export, with no override), and a fork lands with
   everything disabled and **zero permissions granted**: you read the ceiling first, then enabling
-  each piece is the act of granting.
+  each piece is the act of granting. Or **host** your share instead of publishing it: peers take
+  the live version through an authenticated MCP door with a key you minted — and can revoke.
 
 ---
 

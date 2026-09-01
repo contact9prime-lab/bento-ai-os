@@ -56,6 +56,14 @@ async function renderAgentShare(){
       <button class="endbtn" onclick="agsShare()">Build the bundle</button>
     </div>
     <div id="ags-report"></div>
+    <h3 style="margin-top:14px">Host it — "it stays with me, take it"</h3>
+    <div class="ghint">Sharing a file and hosting a share are two different intentions.
+      A fork of a published file is a copy the taker owns forever. Hosting keeps the
+      agent <em>with you</em>: peers take the <b>current</b> version through an
+      authenticated MCP door on this machine, each take is a ledger row, and revoking a
+      peer's key — here or in Permissions — ends the arrangement. The same leak scan
+      runs on every single take.</div>
+    <div id="ags-host"><p class="mut">checking…</p></div>
     <h3 style="margin-top:14px">Fork a shared agent</h3>
     <div class="ghint">Point at a <code>${esc(d.well_known)}</code> — a URL, <code>owner/repo[@ref]</code>
       (discovery: GitHub topic <code>${esc(d.topic)}</code>), or a file. You read exactly what it
@@ -64,11 +72,80 @@ async function renderAgentShare(){
       placeholder credentials for you to fill, and nothing of yours is overwritten.</div>
     <div class="prow">
       <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" style="flex:1">
+      <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" style="max-width:220px">
       <button class="endbtn" onclick="agsPreview()">Read it first</button>
       <label class="endbtn" style="cursor:pointer">from a file<input type="file" accept=".json"
         style="display:none" onchange="agsFromFile(this)"></label>
     </div>
+    <div class="sub mut">With a key, the source is another machine hosting its share
+      (<code>http://host:port</code>) — you take their live version through their door,
+      and they can end it. Without one, it is a published file.</div>
     <div id="ags-fork"></div>`;
+  renderAgsHost();
+}
+
+async function renderAgsHost(){
+  const box = document.getElementById('ags-host');
+  if(!box) return;
+  let d = null;
+  try{ d = await (await fetch('/api/agent/host')).json() }catch(e){}
+  if(!d){ box.innerHTML = '<p class="mut">could not read the hosting state</p>'; return }
+  const peers = (d.peers||[]).map(p => {
+    const st = p.revoked ? '<span class="badge err">revoked</span>'
+             : p.expires_at ? `<span class="badge">expires ${new Date(p.expires_at*1000).toLocaleDateString()}</span>`
+             : '<span class="badge ok">live</span>';
+    const last = p.last_fetch ? new Date(p.last_fetch*1000).toLocaleString() : 'never';
+    return `<div class="item"><div class="grow"><b>${esc(p.name)}</b>
+        <span class="mut"> last take: ${esc(last)}</span></div>${st}
+      ${p.revoked?'':`<button class="endbtn" onclick="agsRevokePeer('${esc(p.name)}')">Revoke</button>`}
+    </div>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="prow">
+      <label class="ck"><input type="checkbox" id="ags-host-on" ${d.enabled?'checked':''}
+        onchange="agsHostToggle(this.checked)"> host my share at <code>${esc(d.endpoint)}</code></label>
+    </div>
+    <div class="sub ${d.enabled && d.reachability.indexOf('OFF')>=0?'':'mut'}">${esc(d.reachability)}</div>
+    <div class="prow" style="margin-top:6px">
+      <input id="ags-peer-name" placeholder="who gets a key? e.g. laptop-b, priya" autocomplete="off" style="flex:1">
+      <button class="endbtn" onclick="agsMintPeer()">Mint a key</button>
+    </div>
+    <div id="ags-peer-key"></div>
+    ${peers || '<p class="mut">nobody holds a key yet</p>'}`;
+}
+
+async function agsHostToggle(on){
+  try{ await fetch('/api/agent/host', {method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({enabled: !!on})}) }catch(e){}
+  renderAgsHost();
+}
+
+async function agsMintPeer(){
+  const name = ((document.getElementById('ags-peer-name')||{}).value||'').trim();
+  if(!name){ toast('Who is this key for? A short name'); return }
+  let d = null;
+  try{
+    d = await (await fetch('/api/agent/peers', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})})).json();
+  }catch(e){}
+  if(!d || d.error){ toast((d&&d.error)||'minting failed'); return }
+  /* Shown ONCE, here — it is never readable again, so the person hands it over
+     themselves rather than this OS remembering it for anyone who asks later.
+     The list re-render runs first, then the key lands in the fresh box. */
+  await renderAgsHost();
+  const box = document.getElementById('ags-peer-key');
+  if(box) box.innerHTML = `<div class="ghint" style="border-color:var(--warn)"><b>The key for
+      ${esc(name)} — shown once, hand it over yourself:</b>
+    <pre style="user-select:all">${esc(d.key)}</pre>
+    <div class="sub mut">They take your agent with:
+      <code>bento agent fork http://&lt;this-host&gt; --key &lt;key&gt; --yes</code> —
+      or paste both into the Fork box on their machine.</div></div>`;
+}
+
+async function agsRevokePeer(name){
+  if(!confirm(`End the arrangement with '${name}'? Their key and its grant die together.`)) return;
+  try{ await fetch('/api/agent/peers/' + encodeURIComponent(name), {method:'DELETE'}) }catch(e){}
+  renderAgsHost();
 }
 
 async function agsShare(){
@@ -142,11 +219,12 @@ async function agsPreview(bundle, label){
   const src = bundle ? '' : ((document.getElementById('ags-src')||{}).value||'').trim();
   if(!bundle && !src){ toast('Where is the shared agent? A URL, owner/repo, or a file'); return }
   out.innerHTML = '<p class="mut">reading it…</p>';
+  const pkey = ((document.getElementById('ags-key')||{}).value||'').trim();
   let d = null;
   try{
     d = await (await fetch('/api/agent/fork/preview', {method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(bundle?{bundle}:{source:src})})).json();
+      body: JSON.stringify(bundle?{bundle}:{source:src, key:pkey})})).json();
   }catch(e){}
   if(!d){ out.innerHTML = '<p class="mut">could not read it</p>'; return }
   if(d.error){ out.innerHTML = `<div class="ghint" style="border-color:var(--err)">${esc(d.error)}</div>`; return }
@@ -182,7 +260,9 @@ async function agsPreview(bundle, label){
 
 async function agsFork(){
   const out = document.getElementById('ags-fork');
-  const body = AGS_FORKPV ? {bundle: AGS_FORKPV} : {source: AGS_FORKSRC};
+  const body = AGS_FORKPV ? {bundle: AGS_FORKPV}
+             : {source: AGS_FORKSRC,
+                key: ((document.getElementById('ags-key')||{}).value||'').trim()};
   body.adopt_soul = !!(document.getElementById('ags-adopt')||{}).checked;
   let d = null;
   try{

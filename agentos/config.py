@@ -179,6 +179,10 @@ DEFAULTS = {
     # source+signer pinned at each app's first install ("pins", the SSH model).
     # Personal on purpose — it is in users.USER_KEYS.
     "registry": {"keys": {}, "pins": {}},
+    # the hosted agent-share: off until switched on, and the minted peer keys.
+    # A USER_KEY — whom I share MY agent with is personal (see agentbundle.py).
+    "agent_share": {"enabled": False, "peers": {},
+                    "include": {"apps": "none", "with_soul": False}},
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

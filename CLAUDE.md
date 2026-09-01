@@ -725,6 +725,20 @@ registry's — `canonical`/`tofu_check`/`trusted_keys` and a parametrized
   `share_agent` could be talked into it by a fetched page. If one is ever added it must
   be ALWAYS_ASK.
 
+**Hosting a share is the OTHER intention, and a peer is a real principal.** A published
+file is a copy the taker owns; `bento agent host` serves the bundle live through
+`POST /api/agent/mcp` (a minimal MCP server, Bearer = minted key, outside the remote
+gate like the flow webhooks and with the same in-memory guess ceiling). Four things
+keep it honest: minting a key WRITES the `peer:<name> may agent.share` grant and
+revoking either one ends the arrangement — the door re-reads the grant on every take
+via `PDP.decide`, so Permissions can actually refuse it (the plugin.run lesson);
+`policy._default` denies a `peer` everything ungranted BEFORE the model.use default —
+never ask, nobody is at a peer's end to answer; every take rebuilds the export so the
+leak scan runs per fetch (a pasted key refuses peers too); and the three refusals keep
+three sentences (unknown / revoked / expired-rotate-it, the webhook lesson). Peer keys
+live under the `agent_share` USER_KEY; the route finds a key's owner by searching
+accounts, as `_hook_owner` does.
+
 ## Quarantine: the ceiling that answers "how often?"
 
 Grants answer *may it?*, budgets answer *how long?* — neither answers *how often?*. A

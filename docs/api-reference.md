@@ -180,6 +180,10 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/agent/share` | build the `agentos-agent/1` bundle + its report in one computation; a leak finding refuses (409, no force) |
 | POST | `/api/agent/fork/preview` | the fork consent screen: verify, TOFU, collisions, the permissions CEILING, the soul's full text |
 | POST | `/api/agent/fork` | create everything DISABLED, grant nothing, overwrite nothing; soul adopted only if `adopt_soul` |
+| POST | `/api/agent/mcp` | the hosted-share door: a minimal MCP server (Bearer = minted peer key; outside the remote gate) offering `agent_card` and `fetch_agent` |
+| GET/PUT | `/api/agent/host` | hosting state, include choices, peers, and an honest reachability sentence |
+| POST | `/api/agent/peers` | mint a peer key (shown once) — writes the `peer:<name> may agent.share` grant |
+| DELETE | `/api/agent/peers/{name}` | end the arrangement: the key and its grant die together |
 | GET | `/api/native/apps`, `/api/native/icon/{id}`, POST `/api/native/launch` | native app launcher |
 | GET/POST | `/api/control` | sound/battery/network state; set volume/mute/open settings |
 
