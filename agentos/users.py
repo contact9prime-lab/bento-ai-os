@@ -510,7 +510,13 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials",
              # pins of apps I installed. Personal by the USER_KEYS test — trusting
              # a publisher costs nothing machine-wide and reconfigures nothing;
              # it decides only what MY install screen alarms about.
-             "registry")
+             "registry",
+             # whom I share MY agent with: the hosted-share toggle and its minted
+             # peer keys. Personal by the same test — a share serves MY skills and
+             # flows out of MY store, spends nothing and reconfigures nothing
+             # machine-wide. The share route finds a key's owner by searching
+             # accounts, the same way a flow webhook finds its trigger's.
+             "agent_share")
 
 
 def machine_view(cfg: dict) -> dict:

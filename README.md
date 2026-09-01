@@ -273,6 +273,17 @@ asking for it by name. [More →](docs/desktop.md#automations)
   learned automatically after every conversation.
 - **Safe by design** — autonomy levels, approval prompts, allow/deny policies, a bubblewrap folder
   sandbox, hard-blocked destructive commands, and one-click restore points.
+- **A landing place, not a walled garden** — coming from an OpenClaw-class assistant? Bento
+  [installs its plugins through a scan and a consent screen](docs/openclaw-plugins.md), can run
+  them behind its own permission engine, or has the agent **rebuild one natively** from the
+  plugin's own manifest — ending in a signed-off report of what carried over, what did not, and
+  what each gap costs you.
+- **Fork my agent** — [share the agent you shaped as one file](docs/agent-sharing.md) — skills,
+  teammates, flows, the apps you choose — and fork anybody else's. Your data and credentials
+  **never travel** (a leak scan refuses the export, with no override), and a fork lands with
+  everything disabled and **zero permissions granted**: you read the ceiling first, then enabling
+  each piece is the act of granting. Or **host** your share instead of publishing it: peers take
+  the live version through an authenticated MCP door with a key you minted — and can revoke.
 
 ---
 
@@ -608,6 +619,10 @@ Telegram:
 - **Automate** — `schedule_task` creates headless **jobs** that deliver to a report and/or Telegram.
 - **Extend itself** — `read_source` / `develop_agentos` let it modify Bento's **own source code**;
   it auto-snapshots first and syntax-checks before writing.
+- **Absorb other ecosystems** — it can install an [OpenClaw plugin](docs/openclaw-plugins.md)
+  (always landing **disabled** — enabling stays your decision), or take the plugin's manifest as a
+  brief and rebuild the same capability out of Bento's own parts, then check its own work item by
+  item and hand you the report.
 
 Ask in plain language: *"add the github MCP channel", "build me a habit tracker and pin it to desktop
 2", "every morning report social-media trends to my Telegram", "install inkscape".*
@@ -636,6 +651,11 @@ automatically. Switch models mid-flight from the chat window's dropdown.
 - **Folder sandbox** — with bubblewrap, the agent's shell/file tools and the Terminal are jailed to
   one folder; the rest of the filesystem is read-only.
 - **Snapshots** — restore points; the agent auto-snapshots before editing its own code.
+- **Every extension goes past a lock** — apps, MCP servers, flows,
+  [OpenClaw plugins](docs/openclaw-plugins.md) and [forked agents](docs/agent-sharing.md) all
+  arrive through a scan, a consent screen that
+  states the licence, real permission rows you can revoke, and a quarantine that can hold a
+  misbehaving one. What a boundary *cannot* enforce is said in a sentence, never implied away.
 - **Private by default** — binds to `127.0.0.1`. Remote access is off until you turn it on with a
   passphrase, and installing software is refused from anywhere but the machine itself.
 

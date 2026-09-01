@@ -28,9 +28,60 @@ set of permissions however you arrive.
 
 ---
 
-## What AgentOS adds, and what it cannot
+## Three ways to run a plugin here, and their different limits
 
-Being clear about the boundary first, because everything else depends on it.
+This is the first thing to get straight, because each path has its **own** limit
+and it is easy to carry one path's caveat onto another.
+
+| | Who runs the code | What AgentOS can enforce | The limit |
+|---|---|---|---|
+| **1. Leave it in OpenClaw** `ocplugins.py` | OpenClaw's own gateway process | the lifecycle (install/enable/update/uninstall) and enablement | **cannot refuse an individual call** — the code is in another process |
+| **2. Host it here** `ochost.py` | a Node process AgentOS starts | **every tool call** — PDP, ledger, rate meter, quarantine | its own filesystem and subprocess are closed by Node; **its network is not**, without an OS jail |
+| **3. Port it natively** `ocnative.py` | nothing foreign — MCP servers, flows and skills AgentOS already runs | **everything**, exactly as for any other MCP tool or flow | not everything is portable, and what is not is **named** rather than approximated |
+
+**The two limits in rows 1 and 2 do not apply to row 3.** That is the whole
+reason the port exists. A ported plugin is not a plugin any more — it is an MCP
+server, a flow and a skill, each already behind the permission engine. There is
+no gateway to be outside of and no Node host whose network to worry about.
+
+What row 3 costs instead is **coverage, not control**: some OpenClaw concepts
+have no equivalent here (host-trusted tool policies, tool-result middleware,
+providers, channels, the memory slot, in-turn hooks). Those are reported in the
+[report](#coming-from-openclaw-the-report) with what losing each one costs you —
+they are a visible gap, not a silent one.
+
+So: choose row 1 for interop with a machine that already runs OpenClaw, row 2
+when you want the calls gated but the plugin's own code intact, and row 3 when
+you want the capability with no foreign runtime at all.
+
+### You do not need OpenClaw installed to port a plugin
+
+The `openclaw` CLI is needed to **acquire** one — to resolve `clawhub:`, `npm:`
+and `git:` specs and unpack them — and for nothing else. Reading a manifest,
+hosting the plugin (path 2 runs `node` directly) and porting it (path 3 reads
+only the manifest) all work on bytes that are already on disk.
+
+So a plugin **directory** is a first-class source. Point at a folder and the
+scan, the report and the port all work with no OpenClaw on this machine:
+
+```
+bento openclaw show   ./path/to/the-plugin
+bento openclaw report ./path/to/the-plugin
+bento openclaw native ./path/to/the-plugin --yes
+```
+
+That folder can be a git clone, an unpacked tarball, or a copy of
+`~/.openclaw/extensions/<id>` from the machine you are leaving. Which is the
+point: **somebody migrating off OpenClaw should not have to install OpenClaw to
+do it.** Only `install`, `enable`, `update`, `uninstall`, `hold`, `doctor`,
+`list` and `search` genuinely drive the CLI, and those say so.
+
+---
+
+## Path 1 in detail: what AgentOS adds, and what it cannot
+
+Everything in this section is about **leaving the plugin in OpenClaw's gateway**.
+Paths 2 and 3 above have different answers; do not carry this one onto them.
 
 **AgentOS gates the lifecycle.** Install, enable, update and uninstall each go
 past the policy decision point and leave a row in the ledger saying who did it.

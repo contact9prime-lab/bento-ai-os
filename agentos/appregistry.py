@@ -65,7 +65,7 @@ WELL_KNOWN = ("bento.agentapp.json", ".bento/app.agentapp.json")
 DISCOVERY_TOPIC = "bento-app"
 
 
-def resolve_source(src: str) -> list[str]:
+def resolve_source(src: str, well_known: tuple = ()) -> list[str]:
     """Candidate URLs for a package, from any of the ways a person names one.
 
     - a full URL is itself;
@@ -84,10 +84,13 @@ def resolve_source(src: str) -> list[str]:
     if not m:
         return []
     owner, repo, ref = m.group(1), m.group(2), m.group(3) or "HEAD"
+    # `well_known` lets another package format (the agent bundle) reuse this
+    # resolver rather than copy it — one Merkle argument, one pair of CDNs.
+    wks = well_known or WELL_KNOWN
     out = [f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{wk}"
-           for wk in WELL_KNOWN]
+           for wk in wks]
     jd = f"@{m.group(3)}" if m.group(3) else ""
-    out += [f"https://cdn.jsdelivr.net/gh/{owner}/{repo}{jd}/{wk}" for wk in WELL_KNOWN]
+    out += [f"https://cdn.jsdelivr.net/gh/{owner}/{repo}{jd}/{wk}" for wk in wks]
     return out
 
 

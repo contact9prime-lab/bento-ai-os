@@ -94,6 +94,12 @@ BUILTIN_DENY = {
     # denied above — which is what makes the tree exactly two deep, enforced by the gate
     # rather than by a counter somebody has to remember to increment.
     "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
+    # A peer is another machine holding a minted key to this one's agent-share
+    # door. Its entire legitimate reach is `agent.share` — written as a grant
+    # when its key is minted, revoked with it — and `_default` denies a peer
+    # everything ungranted, so these rows are belt on top of braces: even a
+    # hand-written grant must never let a peer near the OS or another agent.
+    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -766,6 +772,16 @@ class PDP(usersmod.Scoped):
         risk = ctx.get("risk", "safe")
         reason = ctx.get("reason", "")
         offer = self._offer(principal, action, resource, ctx)
+        if principal.kind == "peer":
+            # Checked before every other default, model.use included: a peer is
+            # not a person at this machine, and "safe" calls are not free for a
+            # caller on the network. What a mint granted is the whole reach;
+            # everything else is a deny with the reason in the ledger, never an
+            # ask — there is nobody at a peer's end this machine should ask.
+            return Decision("deny",
+                            f"a peer reaches only what minting its key granted "
+                            f"(agent.share) — '{action}' was not part of that",
+                            rule="peer-default")
         if action == "model.use":
             # models default open for everyone; restrict per principal with deny grants
             # (e.g. deny model.use model:anthropic/* for a subagent or app)
