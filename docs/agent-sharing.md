@@ -93,6 +93,36 @@ the app store runs.
 - the consent screen and the fork are **one computation** (`fork_preview` is
   what `fork` re-derives), so the sentence agreed to is what happens.
 
+## Arriving: what changed, what did not, and the first conversation
+
+Eleven things appearing at once is disorienting in a specific way, so every
+fork ends on the same **arrival** — one computation (`fork()["arrival"]`),
+shown identically by Settings, the setup wizard and the CLI:
+
+- **What changed**, by name and kind — with each kind's caveat attached (flows
+  arrived *disabled*, MCP servers arrived *off with placeholder credentials*).
+- **What did not** — the facts a forker worries about, stated as facts: your
+  memory, conversations and knowledge graph are untouched (and none of the
+  sharer's came); your brain and API keys answer every turn; 0 permission rows
+  were written; your agent's identity survives unless you adopt the soul; a
+  name collision was kept, never overwritten; and a flow that failed
+  validation is reported as *did not arrive*, never as something you own.
+- **Test it — start chatting**: a suggested first message ("I just forked you
+  from '<name>'. Introduce yourself…") lands *prefilled* in Chat, never
+  auto-sent — the first thing a forked agent hears should still be something
+  its new owner chose to say. The CLI prints the same message as a
+  `bento ask` line.
+
+## The wizard offers it on day one
+
+**Start from a shared agent** is a step in the first-run arc (browser wizard
+and `bento setup` alike, both reading `onboarding.STEPS`), right after the
+machine first answers — because the person who arrived holding a friend's
+link should not have to discover Settings → Agent. It accepts a file, a URL,
+`owner/repo`, or a hosted share with its peer key; shows the same consent
+preview; and a fork can tick several later steps at once, since the apps,
+agents and flows it brings satisfy those steps' own probes.
+
 ## Integrity, identity, and first-contact trust
 
 The rails are the app registry's, reused rather than re-invented:

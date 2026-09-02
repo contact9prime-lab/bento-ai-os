@@ -2433,6 +2433,16 @@ def _agent_cli(args):
               "granted (that number is the design)")
         if res["soul"]:
             print(f"  soul: {res['soul']}")
+        arr = res["arrival"]
+        print("\n  What changed:")
+        for c in arr["changed"] or [{"kind": "nothing", "names": ["every name already "
+                                                                  "existed here"], "note": ""}]:
+            print(f"    · {c['kind']}: {', '.join(c['names'])}"
+                  + (f" — {c['note']}" if c.get("note") else ""))
+        print("  What did not:")
+        for u in arr["unchanged"]:
+            print(f"    · {u}")
+        print(f"\n  Test it:  bento ask \"{arr['try_message']}\"")
         print(f"  next: {res['next']}")
         return
 

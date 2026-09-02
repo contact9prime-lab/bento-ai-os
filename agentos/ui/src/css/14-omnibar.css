@@ -425,3 +425,10 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
    exactly like a hang. */
 .bthink{color:var(--dim2);font-style:italic;font-size:var(--fs-sm);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}
+
+/* Agent share pane layout. Classes, not inline styles, deliberately: an inline
+   `flex:1` beats every stylesheet, including the phone rules in 15-responsive
+   that stack these rows — which is exactly how the share pane's inputs stayed
+   half-width boxes on a 390px screen. */
+.prow>.ags-grow{flex:1;min-width:0}
+.prow>.ags-key{max-width:220px}

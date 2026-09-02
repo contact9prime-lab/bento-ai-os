@@ -37,6 +37,20 @@ refusals carry three sentences — unknown key, revoked, and expired ("rotate it
 — this is not a leak") — and a guess flood is held in memory before any work
 happens, the webhook's rule.
 
+**A fork now ends on an arrival, and the wizard offers forking on day one.**
+Every import closes with the same two answers on every surface — WHAT CHANGED
+(by name, with each kind's caveat: flows disabled, MCP off with placeholders)
+and WHAT DID NOT (your memory, your keys, your brain, your identity, 0
+permissions written, collisions kept) — plus a "Test it — start chatting"
+door that prefills a first question in Chat without sending it. One
+computation (`fork()["arrival"]`) feeds Settings, the CLI and the new
+first-run step **Start from a shared agent** (browser wizard and `bento
+setup`), where a fork can tick several later steps at once because what it
+brings satisfies their probes. Fixed alongside: a forked app now appears in
+App Studio and the launcher immediately — the fork route broadcast an event
+the desktop never listened for, so the app existed in the store while every
+pane showed stale until a full reload.
+
 **OpenClaw plugins install through this OS's review.** OpenClaw has been an
 executor here for a while; it could not be extended. Its plugins — tools,
 providers, channels, hooks and MCP servers — now install through `bento openclaw`,

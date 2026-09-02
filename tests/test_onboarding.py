@@ -199,6 +199,9 @@ def test_everything_answered_counts_as_finished(store):
     # A machine that stays single-user is a finished machine, not an unfinished
     # one — which is the whole reason the account step is optional.
     ob.skip(cfg, "account")
+    # Same shape: a machine that built everything itself never forked anybody's
+    # agent, and that is a finished life for the step, said deliberately.
+    ob.skip(cfg, "fork")
     store.create_conversation("hi")
     store.save_app("Scratchpad", "", "notes that stay", "<p>notes</p>")
     store.save_subagent({"name": "mine"})
