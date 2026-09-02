@@ -554,7 +554,7 @@ loop, and that is the state worth being able to see.
 | `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
 | `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
 | `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
-| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart |
+| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart — `--repo you/fork --branch x` follows a fork, `--official` goes back |
 | `uv run bento config [key] [value]` | read or change `~/.agentos/config.json` (`--edit`, `--path`) |
 | `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
 | `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |

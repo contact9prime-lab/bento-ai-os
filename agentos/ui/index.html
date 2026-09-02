@@ -8332,6 +8332,14 @@ function setTab(body,all){
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+      ${/* Where updates come from is a setting, so a fork under test is followed
+            here, by the background check and by `bento update` alike. */''}
+      pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
+          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
+          <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
+        </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
+        {desc:'The repository and branch updates are pulled from. Point it at a fork to test one; `bento update --official` or the fields above put it back. A fork gets its own git remote — origin is never rewritten.',
+         f:'update source repository fork branch remote'}),
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
@@ -8416,6 +8424,12 @@ async function paintVersion(check){
   try{d=await (await fetch('/api/update'+(check?'?check=true':''))).json()}catch(e){
     el.textContent='could not check';return}
   const sw=document.getElementById('s-upd-on'); if(sw)sw.checked=d.enabled!==false;
+  const rp=document.getElementById('s-upd-repo'),br=document.getElementById('s-upd-branch'),srcNote=document.getElementById('s-upd-src');
+  if(rp&&document.activeElement!==rp)rp.value=d.repo||'';
+  if(br&&document.activeElement!==br)br.value=d.branch||'';
+  if(srcNote)srcNote.textContent=d.official===false
+    ?`a fork — pulled from git remote '${d.remote||''}'; origin still points at the official repository`
+    :'the official repository';
   const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
@@ -8585,6 +8599,10 @@ async function saveSettings(){
      again with the page-wide Save is a second writer for one setting, and the
      one that wins is whichever ran last. */
   if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
+  const urp=document.getElementById('s-upd-repo'),ubr=document.getElementById('s-upd-branch');
+  if(urp||ubr){patch.updates=patch.updates||{};
+    if(urp&&urp.value.trim())patch.updates.repo=urp.value.trim();
+    if(ubr&&ubr.value.trim())patch.updates.branch=ubr.value.trim();}
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
   if(document.getElementById('s-exec-on')!==null){

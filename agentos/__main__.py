@@ -3512,19 +3512,38 @@ def _update_cli(args) -> int:
     cfg = cfgmod.load_config()
     root = upd.install_dir()
 
+    # Where updates come from is a setting, so a fork under test is followed by
+    # the watcher and Settings too — not only by this one invocation.
+    if getattr(args, "official", False):
+        src = upd.set_source(cfg, upd.DEFAULT_REPO, upd.DEFAULT_BRANCH)
+        cfgmod.save_config(cfg)
+        print(f"  updates now track the official repository: {src['repo']} @ {src['branch']}")
+    elif getattr(args, "repo", None) or getattr(args, "branch", None):
+        try:
+            src = upd.set_source(cfg, getattr(args, "repo", None), getattr(args, "branch", None))
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        cfgmod.save_config(cfg)
+        print(f"  updates now track github.com/{src['repo']} @ {src['branch']}"
+              + (f"  (git remote '{src['remote']}')" if src["remote"] != "origin" else ""))
+
     state = asyncio.run(upd.check(cfg, force=True))
     cfgmod.save_config(cfg)          # check() stamps last_check on the conf dict
+    remote = state.get("remote") or "origin"
+    tracked = f"{remote}/{state.get('tracks')}"
 
-    print(f"AgentOS {upd.current()}")
+    print(f"Bento Box AI {upd.current()}")
     print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
+    print(f"  source:    github.com/{state.get('repo') or upd.DEFAULT_REPO} @ {state.get('tracks')}"
+          + ("" if remote == "origin" else f"  — a fork; `bento update --official` goes back"))
     print(f"  branch:    {state.get('on_branch') or '(unknown)'}"
           + (f"  → updates track '{state.get('tracks')}'"
              if state.get("mismatch") else "  (the branch updates track)"))
     if state.get("ahead"):
         # Somebody's own commits. Worth naming: it is the other half of "I pushed
         # and nothing happened" — the code is here, it is just not upstream.
-        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on "
-              f"origin/{state.get('tracks')}")
+        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on {tracked}")
 
     # An error is not a reason to stop reporting: the version file may be
     # unreachable while git knows exactly how far behind this copy is, and vice
@@ -3534,11 +3553,11 @@ def _update_cli(args) -> int:
 
     if not state.get("update_available"):
         if state.get("mismatch"):
-            print(f"\n✓ up to date with origin/{state.get('tracks')} — but this checkout is "
+            print(f"\n✓ up to date with {tracked} — but this checkout is "
                   f"on '{state.get('on_branch')}', so commits you pushed to another branch "
                   f"will never show up here")
         else:
-            print(f"\n✓ up to date with origin/{state.get('tracks')} "
+            print(f"\n✓ up to date with {tracked} "
                   f"(published version {state.get('latest') or 'unknown'})")
         return 0 if not state.get("error") else 1
 
@@ -3555,8 +3574,11 @@ def _update_cli(args) -> int:
                     print(f"    {line.strip()[:100]}")
     else:
         n = state.get("behind") or 0
-        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on origin/"
-              f"{state.get('tracks')} — same version ({upd.current()}), newer code")
+        # The number in VERSION moves only at a release; the code moves every
+        # push. "Same version" was read as "nothing new" — say what it means.
+        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on {tracked} — "
+              f"still version {upd.current()} (that number only moves at a release), "
+              f"but newer code")
 
     # The changelog nobody maintains by hand: the commits themselves, already
     # fetched by the check rather than fetched a second time here.
@@ -3569,14 +3591,23 @@ def _update_cli(args) -> int:
     # Whether it COULD be installed is worth saying even on a bare check: a machine
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
-    ok, why = upd.can_apply(cfg)
+    # A rewritten lockfile or a rebuilt UI bundle is this machine's doing, not
+    # the user's: it is put back, said once, and never a reason to ask to stash.
+    # (This is what made `bento update` ask to stash on every run: its own
+    # `uv sync` rewrote uv.lock, and the next check found "1 uncommitted change".)
+    for path in upd.restore_derived():
+        print(f"  restored {path} — rewritten by this machine, not one of your edits")
+    # The new options are passed only when used, so every older caller — and
+    # every fake in the tests — keeps the shape it had.
+    sw = bool(getattr(args, "switch", False))
+    ok, why = upd.can_apply(cfg, switch=True) if sw else upd.can_apply(cfg)
     stashed = ""
     if not ok:
         # "1 uncommitted change(s)" and a full stop is a dead end: the one thing
         # the user needs — WHICH file, and what to do about it — is the thing the
         # refusal did not say, so every hit meant leaving the command and running
         # git by hand. Name them, then offer the one answer that loses nothing.
-        dirty = upd.local_changes()
+        dirty = upd.own_changes()
         if not dirty:
             print(f"\n✗ cannot install it here: {why}")     # wrong branch, no git, …
             return 1
@@ -3598,7 +3629,7 @@ def _update_cli(args) -> int:
         if not okz:
             return 1
         stashed = msg
-        ok, why = upd.can_apply(cfg)
+        ok, why = upd.can_apply(cfg, switch=True) if sw else upd.can_apply(cfg)
         if not ok:
             print(f"\n✗ still cannot install it here: {why}")
             return 1
@@ -3620,8 +3651,9 @@ def _update_cli(args) -> int:
             print(f"\n  your parked changes: {stashed.split('with: ')[-1]}")
 
     print()
+    extra = {"switch": True} if sw else {}
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
-                                   log=lambda m: print(f"  {m}")))
+                                   log=lambda m: print(f"  {m}"), **extra))
     if not result.get("ok"):
         print(f"✗ {result.get('error')}")
         parked()
@@ -3630,8 +3662,11 @@ def _update_cli(args) -> int:
         print("✓ already at the newest commit — nothing changed")
         parked()
         return 0
+    if result.get("switched"):
+        print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
     print(f"✓ updated {result['from']} → {result['to']} "
-          f"({result['files']} files, now {result.get('version') or '?'})")
+          f"({result['files']} files, now {result.get('version') or '?'}, "
+          f"from {result.get('source') or tracked})")
     # What actually landed. Printed after the fact as well as before it, because
     # an unattended update (a watcher, a cron line) is one nobody read the preview
     # of — this is the only place that machine's operator ever sees what changed.
@@ -4100,6 +4135,19 @@ def main():
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
                        help="leave the restart to you")
+    # Testing a fork: point updates at another repository and branch. Persisted,
+    # so Settings and the background check follow the same source until
+    # --official puts it back.
+    p_upd.add_argument("--repo", metavar="OWNER/NAME",
+                       help="take updates from this GitHub repository (a fork) from now on — "
+                            "owner/name or a github.com URL")
+    p_upd.add_argument("--branch", metavar="NAME",
+                       help="take updates from this branch from now on")
+    p_upd.add_argument("--switch", action="store_true",
+                       help="with --apply: if the checkout is on another branch, check "
+                            "the tracked one out (the tree must be clean)")
+    p_upd.add_argument("--official", action="store_true",
+                       help="go back to the official repository and branch")
 
     p_svc = verb("service",
                            help="the background server: status, start, stop, restart, logs, uninstall")

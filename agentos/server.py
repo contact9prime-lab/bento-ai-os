@@ -796,6 +796,8 @@ async def api_update_status(check: bool = False):
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
+            "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
+            "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
             "enabled": updmod.conf(cfg).get("enabled", True)}
 
 
