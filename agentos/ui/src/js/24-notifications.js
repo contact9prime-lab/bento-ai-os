@@ -43,10 +43,9 @@ async function renderNotifList(){
 }
 async function openNotifPanel(){
   const p=$('#notifpanel');
-  if(p.classList.contains('show')){p.classList.remove('show');return}
-  $('#powermenu').classList.remove('show');
+  if(p.classList.contains('show')){popClose(p);return}
   await renderNotifList();
-  p.classList.add('show');
+  popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
   await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();

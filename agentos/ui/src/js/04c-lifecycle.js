@@ -85,6 +85,12 @@ function stopWinTicks(w){(w._ticks||[]).forEach(t=>{t.alive=false;clearInterval(
    idempotent — call it from anything that changes what is visible. */
 function applyWindowActivity(){
   let asleep=0,awake=0,stopped=0;
+  // `has-win`: a window is open on this desktop. On a phone that means a sheet
+  // covers the screen, and the prompt bar under it stands down — otherwise Chat
+  // showed its own composer 60px above the desktop's, two boxes asking the same
+  // question in different words.
+  document.body.classList.toggle('has-win',
+    [...WM.wins.values()].some(w=>!w.min&&(typeof deskVisible!=='function'||deskVisible(w))));
   WM.wins.forEach(w=>{
     const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
     w._awake=on;

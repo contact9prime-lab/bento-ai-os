@@ -393,6 +393,10 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   margin-left:2px;border-left:1px solid rgba(255,255,255,.2);text-transform:uppercase}
 #fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
   border-left:1px solid rgba(0,0,0,.28)}
+/* the machine's one line of state when nothing can answer yet */
+#fwdchip.nobrain{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn,#f5a524) 45%,transparent);color:var(--txt)}
+#fwdchip.nobrain .fwdmdl{color:var(--warn,#f5a524);opacity:1}
 /* ================= dock (floating, centered) ================= */
 #taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;height:auto;max-width:min(94vw,1100px);
   display:flex;align-items:flex-end;gap:4px;padding:7px 10px;border-radius:var(--r-xl);
@@ -471,18 +475,30 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 
 :root[data-theme=light] #mbmenus button:hover{background:rgba(0,0,0,.07)}
 /* ================= start menu (launcher) ================= */
+/* The launcher is clamped to the screen it is on. It used to be lifted above the
+   deck (`body.deck-open` in 14-omnibar.css) so the two would not overlap, and on
+   a 1440x900 laptop with the deck's two rows of groups that put its top edge at
+   y=-419: the header, the search box and the first four rows of apps were above
+   the screen. A transient menu may cover the deck; it may not leave the screen.
+   Flex column so the grid takes what is left after the header and the footer. */
 #startmenu{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tbh) + 16px);width:min(680px,92vw);z-index:9500;display:none;
+  max-height:calc(100vh - var(--mbh) - var(--tbh) - 32px);flex-direction:column;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline);border-radius:var(--r-xl);
   box-shadow:var(--el-5);overflow:hidden}
-#startmenu.show{display:block;animation:smpop .14s ease-out}
+#startmenu.show{display:flex;animation:smpop .14s ease-out}
 @keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
 #smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
 #smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
 #smhead b{font-size:var(--fs-base)}
 #smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
-#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;max-height:52vh;overflow-y:auto}
-.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:var(--r-lg);text-align:center}
+#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;flex:1;min-height:0;max-height:52vh;overflow-y:auto;align-content:start;grid-auto-rows:minmax(92px,auto)}
+/* A tile is a flex column holding a 48px icon and a label. Without a floor on
+   the tile's height the label — `overflow:hidden`, so free to shrink — was the
+   part that gave way: measured 0px tall on a phone, and gone from the desktop's
+   last row too. Thirty-three unlabeled squares is a memory test. */
+.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:var(--r-lg);text-align:center;min-height:92px}
+.smapp .n{flex:none}
 .smapp:hover{background:rgba(255,255,255,.07)}
 .smapp .aicon{width:48px;height:48px}
 .smapp .n{font-size:var(--fs-xs);font-weight:500;color:var(--txt);line-height:1.2;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -743,6 +759,11 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
   background:var(--bg2)}
 .doc-ans.on{display:block}
 .doc-ans .mf-user{margin-bottom:8px}
+/* the door on a failed turn: what to do about it, next to what went wrong */
+.errmsg{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
+  background:var(--acc);color:#04211c;min-height:30px}
+.errmsg .err-door:hover{filter:brightness(1.08)}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -1240,6 +1261,9 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 .ab-entry{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;margin-bottom:8px;background:var(--bg2)}
 .ab-entry summary{cursor:pointer;font-weight:600;color:var(--txt);font-size:var(--fs-md)}
 .ab-entry .body{margin-top:8px;font-size:var(--fs-sm);line-height:1.6;color:var(--dim)}
+
+/* a link inside Settings is one of ours, not the browser's blue underline */
+.prefs a{color:var(--acc)}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -1429,7 +1453,7 @@ body.exposing .win.exp-win{z-index:200!important;box-shadow:var(--el-4)}
 .space.add:hover{color:var(--acc);border-color:var(--acc)}
 #expose-grid{position:absolute;inset:0;z-index:250}
 .exp-empty{position:absolute;top:52%;left:0;right:0;text-align:center;color:var(--dim);font-size:var(--fs-md)}
-#expose-hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
+#expose-hint{position:absolute;bottom:calc(var(--tbh) + 6px);left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
 .exp-catch{position:absolute;z-index:300;cursor:pointer;border-radius:var(--r-md);
   outline:2px solid transparent;transition:outline-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .exp-catch:hover{outline-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
@@ -1746,7 +1770,11 @@ body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
 /* surfaces that sit above the dock must clear the deck too */
 body.deck-open #omnicards{bottom:calc(142px + var(--deckh))}
 body.deck-open #toasts{bottom:calc(var(--tbh) + var(--deckh) + 12px)}
-body.deck-open #startmenu{bottom:calc(var(--tbh) + var(--deckh) + 16px)}
+/* The launcher deliberately does NOT move up with the deck — see 07-startmenu-ctx.css.
+   Lifting a 600px menu above a 560px deck on a 900px screen put it off the top. */
+/* Key hints are for a keyboard. On a touch screen ⇧⏎ and alt+1…9 are noise under
+   the one result somebody can actually tap. */
+body.dev-touch .omni-hint{display:none}
 body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 
 /* ================= AI presence bubble (bottom-right) ================= */
@@ -1889,6 +1917,20 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
    half-width boxes on a 390px screen. */
 .prow>.ags-grow{flex:1;min-width:0}
 .prow>.ags-key{max-width:220px}
+
+/* ---- folded groups: one line with a count, for the groups nobody has used yet ---- */
+.deck-group.folded{padding:8px 12px;justify-content:center;gap:8px;min-width:150px}
+.deck-gname.deck-unfold{cursor:pointer;color:var(--dim);padding:6px 4px;border-radius:var(--r-md);
+  text-transform:uppercase;letter-spacing:.09em;font-weight:700;font-size:var(--fs-2xs);text-align:left}
+.deck-gname.deck-unfold:hover{color:var(--txt);background:rgba(255,255,255,.06)}
+.deck-gname.deck-unfold .mut{font-weight:500;letter-spacing:0}
+.deck-caret{margin-left:auto;font-size:var(--fs-xs)}
+.deck-peek{display:flex;gap:6px;padding:0 4px;opacity:.7}
+.deck-peek .aicon{width:18px;height:18px}
+.deck-fold{margin-left:auto;font-size:var(--fs-xs);color:var(--dim2);opacity:0;padding:0 4px;border-radius:4px}
+.deck-group:hover .deck-fold{opacity:1}
+.deck-fold:hover{color:var(--txt);background:rgba(255,255,255,.08)}
+body.dev-mobile .deck-group.folded{min-width:0}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -2202,6 +2244,46 @@ body.dev-mobile #js-orb .core{width:66px;height:66px}
 body.dev-mobile .js-node{width:60px;height:60px}
 body.dev-mobile #js-top{padding:10px 14px}
 body.dev-mobile #js-bottom{padding:0 14px calc(16px + var(--safe-b))}
+
+/* ================================================================
+   PHONE — the conventions the review found missing (docs/design/ux-review-2026-09.md)
+   ================================================================ */
+/* One composer. A sheet with its own input (Chat) covers the prompt bar; the
+   bottom chrome shrinks to the dock alone so the sheet gets the room back.
+   Measured before: Chat's composer 60px above "Ask Aria anything", two boxes
+   asking the same question in different words. */
+body.dev-mobile.has-win{--chrome-b:calc(80px + var(--safe-b))}
+body.dev-mobile.has-win #omnibar,body.dev-mobile.has-win #omnicards{display:none}
+/* Chat's header: the brain stays, the three controls past it go behind ⋯ */
+#tb-more{display:none}
+body.dev-mobile #tb-more{display:inline-flex;flex:none;min-width:var(--tap)}
+body.dev-mobile #topbar:not(.more) #autosel,body.dev-mobile #topbar:not(.more) #ttsbtn,
+body.dev-mobile #topbar:not(.more) #clearses{display:none}
+/* list → detail: one pane at a time, with a way back */
+.tp-back{display:none}
+body.dev-mobile .two-pane{flex-direction:column}
+body.dev-mobile .two-pane .tp-list{flex:1 1 auto!important;width:100%;min-width:0!important}
+body.dev-mobile .two-pane .tp-detail{width:100%}
+body.dev-mobile .two-pane:not(.detail) .tp-detail{display:none}
+body.dev-mobile .two-pane.detail .tp-list{display:none}
+body.dev-mobile .two-pane .tp-back{display:inline-flex;align-items:center;min-height:var(--tap);
+  padding:0 12px 0 6px;margin-bottom:8px;border-radius:var(--r-md);background:var(--bg3);font-weight:600}
+/* the detail's side-by-side facts stack rather than wrapping word by word */
+body.dev-mobile .two-pane .row{flex-wrap:wrap}
+body.dev-mobile .two-pane .row>*{flex:1 1 100%;min-width:0}
+/* toasts: `body.deck-open #toasts` lifts them by the deck's height, and on a
+   phone the deck is the screen — the toast came out at y=-18, over the clock */
+body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px}
+/* the dock rests on a whole icon at its LEFT edge; `end` snapping kept the
+   right edge whole and left the first icon half clipped instead */
+body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:start}
+/* the tap floor above (`#startmenu button{min-height:var(--tap)}`) outranks the
+   tile's own floor, and a 40px tile is a 48px icon with its label pushed out of
+   the row — measured: every launcher label on a phone was 0px tall */
+body.dev-touch #startmenu .smapp{min-height:92px}
+/* the ⋯ must share the row with the two pickers, not take a row of its own */
+body.dev-mobile #topbar>select{flex:1 1 34%}
+body.dev-mobile #tb-more{flex:0 0 var(--tap)}
 /* ================= glass quality =================
    Loads last so it out-orders the themes, which inject their own <style>.
    See 04d-glass.js for why this knob exists and what picks a level.
@@ -2419,7 +2501,12 @@ body.glass-off .win{background:var(--bg)!important}
   .ob-stage{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .ob-rail{flex-direction:row;overflow-x:auto;border-right:none;
     border-bottom:1px solid var(--hairline);padding:var(--sp-3);align-items:center}
-  .ob-head,.ob-leave{display:none}
+  .ob-head{display:none}
+  /* "Finish later" stays. It was hidden with the head, and it is the only way
+     out of the first-run screen — a phone user who cannot paste an API key from
+     where they are was inside the wizard with no door. */
+  .ob-leave{margin:0 0 0 auto;padding:var(--sp-2) var(--sp-3);white-space:nowrap;flex:none;
+    border:1px solid var(--hairline);border-radius:var(--r-md)}
   .ob-item{flex:none;flex-direction:column;align-items:center;gap:4px;width:78px}
   .ob-t{font-size:var(--fs-2xs);text-align:center;white-space:normal}
   .ob-t em{display:none}
@@ -2463,6 +2550,17 @@ body.glass-off .win{background:var(--bg)!important}
 .job-way.is-off{opacity:.62}
 .job-way .ob-cmd{display:block;margin-top:6px;padding:5px 8px;border-radius:var(--r-sm);
   background:var(--bg4);color:var(--dim);font-size:var(--fs-sm);overflow-wrap:anywhere}
+
+/* A step that needs another step first is shown, not refused: the rail row stays
+   tappable and the pane says what it needs and where. `disabled` made a greyed
+   row that answered a click with nothing. */
+.ob-item.blocked{opacity:.55}
+.ob-item.blocked:hover{opacity:.8}
+.ob-needs{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);
+  border:1px dashed var(--hairline-strong);border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm)}
+.ob-needs button{border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 10px;color:var(--txt)}
+/* the second and third choice on the brain step sat flush under the card above */
+.ob-body .job-q{margin-top:var(--sp-4)}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -3838,20 +3936,23 @@ function dockBounce(appId){
 }
 
 /* ---- context menu: one animated positioner for every menu in the shell ---- */
-function ctxShow(e,m){
+function ctxShow(e,m,opts){
   m=m||$('#ctxmenu');
-  m.classList.add('show');
+  // registered with the popover manager: opening this closes any other popover,
+  // Escape and a click outside close it, and a click on its anchor is left to
+  // the anchor (the menu-bar title, the dock icon) to toggle it
+  popOpen(m,{anchor:opts&&opts.anchor,close:opts&&opts.close});
   const mw=m.offsetWidth||200, mh=m.offsetHeight||200;
   m.style.left=Math.min(e.clientX,innerWidth-mw-8)+'px';
   m.style.top=Math.max(34,Math.min(e.clientY,innerHeight-mh-8))+'px';
   m.style.transformOrigin=(e.clientY+mh>innerHeight?'bottom':'top')+' '+(e.clientX+mw>innerWidth?'right':'left');
   Motion.run(m,[{transform:'scale(.92)',opacity:0},{transform:'none',opacity:1}],{duration:150,easing:EASE.out});
 }
-function showCtxItems(e,items){
+function showCtxItems(e,items,opts){
   const m=$('#ctxmenu');
   m.innerHTML=items.map((it,i)=>it===null?'<hr>':`<button data-i="${i}"${it.danger?' style="color:var(--err)"':''}>${it.label}</button>`).join('');
-  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{m.classList.remove('show');const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
-  ctxShow(e,m);
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{popClose(m);const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
+  ctxShow(e,m,opts);
 }
 
 /* ---- modal dialogs: AgentOS sheets instead of window.confirm/alert ---- */
@@ -3927,6 +4028,7 @@ function openApp(id,opts){
   dockBounce(id);
   const w=createWin(app);
   sessionSave();   // the arrangement changed
+  if(typeof deckUsed==='function')deckUsed(id);   // a folded deck group you open into unfolds
   return w;
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
@@ -4056,6 +4158,7 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  if(typeof omniCardsYield==='function')omniCardsYield();   // a card never covers the window you just took
   // raising a window can bury (or uncover) another one — re-check who is visible
   applyWindowActivity();
   if(typeof deckAuto==='function')deckAuto();
@@ -4375,7 +4478,8 @@ function segTabs(id,labels,active,fn){
    - copilot panels: a ✦ conversation inside every app window, scoped to that app
    The Chat window remains the full-history surface; these are the in-place hands. */
 
-let PENDING_SINKS=[];   // sinks waiting for their server-created conversation id, by origin
+let PENDING_SINKS=[];
+var ERRED={};           // conversations whose current turn hit an error (09-websocket.js reads it)
 function claimConversation(ev){
   // Returns true when this new conversation belongs to an embedded surface
   // (omnibar/copilot) — the Chat window must not adopt it as currentConv.
@@ -4559,8 +4663,7 @@ function miniFeed(box,opts){
     },
     error(ev){
       clearWorking();
-      const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
-      box.appendChild(d);scroll();
+      box.appendChild(errBox(ev));scroll();
     },
     end(ev){clearWorking();actSync();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
@@ -4713,6 +4816,33 @@ async function initCopilot(w,panel){
     go();
   };
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
+}
+
+/* ---- a failed turn, as a sentence with a door ----
+   The server says WHAT went wrong in words (`message`) and, when there is one
+   thing to do about it, names the door (`action`). The first message on a fresh
+   install used to come back as "ConnectError: All connection attempts failed",
+   in red, from the agent, with a toast saying it had replied: no model was set,
+   the provider layer fell through to an Ollama that was not running, and the
+   exception's class name was the whole explanation. Now the sentence says there
+   is no brain and the button opens the step that gives it one. Used by Chat,
+   the prompt-bar cards and every copilot panel, so one shape everywhere. */
+function errBox(ev){
+  const d=document.createElement('div');d.className='errmsg';
+  const t=document.createElement('span');t.textContent=ev.message||'the turn failed';
+  d.appendChild(t);
+  const doors={
+    brain:{label:'Give it a brain',go:()=>{if(typeof obShow==='function')obShow({step:'model'});else openApp('setup')}},
+    providers:{label:'Open AI providers',go:()=>{if(typeof openModelSettings==='function')openModelSettings();else openApp('settings')}},
+    models:{label:'Open Model Manager',go:()=>openApp('models')},
+  };
+  const door=doors[ev.action];
+  if(door){
+    const b=document.createElement('button');b.className='err-door';b.textContent=door.label;
+    b.onclick=e=>{e.stopPropagation();door.go()};
+    d.appendChild(b);
+  }
+  return d;
 }
 /* ================= application menus =================
    Every window gets File · Edit · View · Window · Help in the menu bar, the way
@@ -4875,6 +5005,13 @@ function buildAppMenus(){
 }
 function paintMenuBar(box,menus,live){
   box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  /* The dropdown is a popover with the title as its anchor. Before the manager,
+     the title's click opened the menu and the document-level "click outside the
+     context menu" listener closed it in the SAME event — so no menu ever opened
+     by clicking, the title kept its pressed state, and the mouseenter path below
+     re-opened it later on a hover, where it then outlived Escape and window
+     switches. Now: click opens, click again closes, Escape closes, another
+     popover opening closes it, and the title's state follows the menu. */
   box.querySelectorAll('button').forEach(b=>{
     const open=()=>{
       const r=b.getBoundingClientRect();
@@ -4884,12 +5021,12 @@ function paintMenuBar(box,menus,live){
       const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
         items.map(it=>it&&({...it,
-          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})));
-      const clear=()=>{b.classList.remove('on');document.removeEventListener('click',clear,true)};
-      setTimeout(()=>document.addEventListener('click',clear,true),0);
+          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})),
+        {anchor:b,close:()=>b.classList.remove('on')});
     };
-    b.onclick=open;
-    b.onmouseenter=()=>{if(box.querySelector('button.on'))open()};   // slide across like a real menu bar
+    b.onclick=()=>{if(b.classList.contains('on'))popClose($('#ctxmenu'));else open()};
+    // slide across like a real menu bar: hovering a sibling while one is open moves the menu
+    b.onmouseenter=()=>{if(!b.classList.contains('on')&&box.querySelector('button.on'))open()};
   });
 }
 /* ================= window lifecycle: sleep and wake =================
@@ -4979,6 +5116,12 @@ function stopWinTicks(w){(w._ticks||[]).forEach(t=>{t.alive=false;clearInterval(
    idempotent — call it from anything that changes what is visible. */
 function applyWindowActivity(){
   let asleep=0,awake=0,stopped=0;
+  // `has-win`: a window is open on this desktop. On a phone that means a sheet
+  // covers the screen, and the prompt bar under it stands down — otherwise Chat
+  // showed its own composer 60px above the desktop's, two boxes asking the same
+  // question in different words.
+  document.body.classList.toggle('has-win',
+    [...WM.wins.values()].some(w=>!w.min&&(typeof deskVisible!=='function'||deskVisible(w))));
   WM.wins.forEach(w=>{
     const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
     w._awake=on;
@@ -5099,6 +5242,67 @@ window.addEventListener('beforeunload', () => {
       draftSave(currentConv, input.value);
   } catch (e) {}
 });
+/* ================= popovers: one rule for every one of them =================
+   The launcher, the notification panel, the power menu, Quick Settings, the
+   context menu and the menu-bar menus each owned a document-level click
+   listener and a `.show` class, and none of them knew about the others.
+   Measured on a fresh desktop: the power menu opened UNDER a still-open
+   notification panel with Lock and Restart hidden; the palette opened beside
+   Quick Settings; Escape closed none of them; and a menu-bar title's click was
+   closed by another popover's listener in the same event, so File · Edit · View
+   never opened by clicking at all.
+
+   Three rules, written once:
+   - opening one closes the rest (a menu and a panel are never both open);
+   - Escape closes the one opened last (see the key handler);
+   - a click outside closes whatever is open — decided in the CAPTURE phase,
+     before the target's own handler runs, so a title's click can open its menu
+     after the previous one has gone rather than being eaten by it.
+
+   `anchor` is the control that toggles a popover: a click on it is left to that
+   control's own handler, which is what makes a second click close it.
+   TUI: not applicable. SUI: identical — these are page surfaces.
+   GUI on a phone: the same elements are bottom sheets; the rules hold. */
+var POPS=[];   // open popovers in the order they opened: {el, anchor, close}
+
+function popOpen(el,opts){
+  if(!el)return;
+  opts=opts||{};
+  popCloseAll(el);
+  el.classList.add('show');
+  POPS=POPS.filter(p=>p.el!==el);
+  POPS.push({el,anchor:opts.anchor||null,close:opts.close||null});
+}
+function popClose(el){
+  if(!el)return false;
+  const i=POPS.findIndex(p=>p.el===el);
+  el.classList.remove('show');
+  if(i<0)return false;
+  const p=POPS.splice(i,1)[0];
+  if(p.close){try{p.close()}catch(e){}}
+  return true;
+}
+function popCloseAll(except){
+  POPS.slice().forEach(p=>{if(p.el!==except)popClose(p.el)});
+}
+function popIsOpen(el){return !!el&&POPS.some(p=>p.el===el)&&el.classList.contains('show')}
+/* Escape: the most recently opened popover goes first. Returns whether one was
+   there to close, so the caller can stop and not also leave full screen. */
+function popCloseTop(){
+  const p=POPS[POPS.length-1];
+  if(!p)return false;
+  popClose(p.el);
+  return true;
+}
+document.addEventListener('click',e=>{
+  if(!POPS.length)return;
+  POPS.slice().forEach(p=>{
+    if(!p.el.isConnected){popClose(p.el);return}
+    if(p.el.contains(e.target))return;
+    if(p.anchor&&p.anchor.contains&&p.anchor.contains(e.target))return;
+    popClose(p.el);
+  });
+},true);
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -5535,10 +5739,8 @@ function buildDesktop(){
   rebuildLaunchers();
   $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
   $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
-  document.addEventListener('click',e=>{
-    if(!e.target.closest('#startmenu'))toggleStart(false);
-    if(!e.target.closest('#ctxmenu'))$('#ctxmenu').classList.remove('show');
-  });
+  // closing on a click outside, and closing the context menu, is the popover
+  // manager's job now (04e-popover.js) — one listener for every popover
   $('#desktop').addEventListener('contextmenu',e=>{
     if(e.target.closest('.win'))return;
     // A text field keeps the platform's own menu — right-clicking the prompt bar
@@ -5573,8 +5775,10 @@ function buildDesktop(){
   });
 }
 function toggleStart(force){
-  const on=force!==undefined?force:!$('#startmenu').classList.contains('show');
-  $('#startmenu').classList.toggle('show',on);
+  const sm=$('#startmenu');
+  const on=force!==undefined?force:!sm.classList.contains('show');
+  if(on)popOpen(sm,{anchor:$('#startbtn'),close:()=>$('#startbtn').classList.remove('on')});
+  else popClose(sm);
   $('#startbtn').classList.toggle('on',on);
   if(on){const q=$('#smq');if(q){q.value='';smRender('');setTimeout(()=>q.focus(),10)}}
 }
@@ -5677,6 +5881,8 @@ const DECK_DEFAULTS=[
   ['System',['taskmgr','control','syssettings','settings','setup','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
+// folded until used: what these hold is empty on a machine nobody has talked to
+const DECK_FOLDED_AT_FIRST=['Intelligence','System','Library'];
 let DECK=null;
 /* ---- the full app wall ----
    Scrolling up over the tiles (or over bare wallpaper) grows the deck into the
@@ -5701,8 +5907,15 @@ var DECK_LASTOPEN=false;    // tiles animate in when the deck APPEARS, not on ev
 function deckIconPx(){return DECKFULL?54:46}
 function deckLoad(){
   try{DECK=JSON.parse(localStorage.getItem('deck')||'null')}catch(e){DECK=null}
+  /* Day one is not week four. A fresh desktop showed six groups and 43 tiles —
+     Quarantine, Audit, Snapshots and Token Analytics at the same weight as Chat —
+     on a machine that could not yet answer a question. The groups that hold
+     nothing until the machine has been used start folded to one line with a
+     count, and unfold the first time one of their apps is opened, or on a click.
+     A stored deck is left exactly as the person arranged it. */
   if(!DECK||!Array.isArray(DECK.groups))
-    DECK={open:true,groups:DECK_DEFAULTS.map(([name,apps],i)=>({id:'g'+i,name,apps:apps.slice()}))};
+    DECK={open:true,groups:DECK_DEFAULTS.map(([name,apps],i)=>({id:'g'+i,name,apps:apps.slice(),
+      collapsed:DECK_FOLDED_AT_FIRST.includes(name)}))};
   if(DECK.open===undefined)DECK.open=true;
   if(DECK.auto===undefined)DECK.auto=true;   // step aside while you're working in a window
   return DECK;
@@ -5817,6 +6030,9 @@ function buildDeck(fresh){
   });
   box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
+  });
+  box.querySelectorAll('.deck-unfold,.deck-fold').forEach(b=>{
+    b.onclick=e=>{e.stopPropagation();deckFold(b.dataset.g,b.classList.contains('deck-fold'))};
   });
   // on the wall, the space around the tiles is a way out, like any overview
   box.onclick=e=>{if(DECKFULL&&(e.target===box||e.target.id==='deck-scroll'))deckFull(false)};
@@ -6014,8 +6230,17 @@ function deckMeasure(open){
 }
 addEventListener('resize',()=>{if(DECK)deckMeasure(document.body.classList.contains('deck-open'))});
 function deckGroupHTML(g){
+  // the wall shows everything: folding is a property of the shelf, not of the overview
+  const folded=!!g.collapsed&&!DECKFULL;
+  const n=g.apps.filter(id=>APPS[id]).length;
+  if(folded)return `<div class="deck-group folded" data-g="${esc(g.id)}">
+    <button class="deck-gname deck-unfold" data-g="${esc(g.id)}" title="Show the ${n} apps in ${esc(g.name)}">
+      ${esc(g.name)} <span class="mut">${n}</span><span class="deck-caret">▸</span></button>
+    <div class="deck-peek">${g.apps.filter(id=>APPS[id]).slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
+  </div>`;
   return `<div class="deck-group" data-g="${esc(g.id)}">
-    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}</div>
+    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}${g.collapsed!==undefined?
+      `<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
     <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
       <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
         ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
@@ -6098,9 +6323,22 @@ function deckTileMenu(e,id){
   }
   showCtxItems(e,items);
 }
+/* fold/unfold one group; `deckUsed(id)` unfolds the group an app was just opened
+   from any other door (launcher, prompt bar, dock) — a group you have been into
+   is not one that holds nothing */
+function deckFold(gid,on){
+  const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
+  g.collapsed=!!on;deckSave();buildDeck();
+}
+function deckUsed(id){
+  if(!DECK)return;
+  const g=deckGroupOf(id);
+  if(g&&g.collapsed){g.collapsed=false;deckSave();if(DECK._shown)buildDeck()}
+}
 function deckGroupMenu(e,gid){
   const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
   showCtxItems(e,[
+    {label:g.collapsed?'Unfold group':'Fold group to one line',fn:()=>deckFold(gid,!g.collapsed)},
     {label:'Rename group…',fn:async()=>{
       const v=await osPrompt('Rename group',{value:g.name,confirmText:'Rename'});
       if(v&&v.trim()){g.name=v.trim();deckSave();buildDeck()}}},
@@ -7034,6 +7272,7 @@ function handle(ev){
       }
       toast('approval needed'); scrollDown(); break;}
     case 'error':{
+      ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
         _s.html+='<div class="errmsg">'+esc(ev.message)+'</div>';}
       if(_sk&&_sk.error){_sk.error(ev);if(!_cur)break}
@@ -7041,12 +7280,14 @@ function handle(ev){
       if(!curBody)startAssistant();
       if(!curBody){toast('error: '+ev.message);break}
       flushText();
-      const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
-      curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
+      curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
-      if(!_cur){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
+      // "Aria replied" is for a reply. A turn that ended on an error is not one —
+      // the bubble announced a reply over "ConnectError: All connection attempts failed".
+      const erred=!!ERRED[_cid||''];delete ERRED[_cid||''];
+      if(!_cur&&!erred){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
       if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
       if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
@@ -7247,6 +7488,9 @@ function renderChat(body){
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
+        ${/* phone only: the three controls past the brain go behind one button —
+              five controls in two rows before any content was the header. */''}
+        <button id="tb-more" class="endbtn" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
@@ -7543,6 +7787,10 @@ function showWelcome(){
     <button class="chip">Remember that I prefer concise answers.</button>
   </div>`;
   w.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent.trim();input.dispatchEvent(new Event('input'));input.focus()});
+  // The empty chat is where somebody types their first message. If nothing can
+  // answer it, say so HERE, before they do — not as a red exception afterwards.
+  if(typeof curExecutor==='function'&&BRAINS.executors&&!curExecutor())
+    w.appendChild(errBox({message:'Nothing can answer yet — this machine has no brain.',action:'brain'}));
   feed.appendChild(w);
 }
 async function loadModels(){
@@ -7595,7 +7843,7 @@ function paintBrainChips(){
     /* Nothing chosen yet is its own state and has to be visible: without a
        placeholder the browser shows the first option, which reads as a machine
        already set to something it is not. */
-    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    const none=cur.executor?'':'<option value="" selected>Choose a brain…</option>';
     ex.innerHTML=none+grp('Models — answered by '+agentName(),'provider')
                 +grp('Agents — they answer instead','agent');
     const sel=curExecutor();
@@ -7666,7 +7914,19 @@ async function loadConfig(){
 function paintForwardChip(){
   const chip=$('#fwdchip');if(!chip)return;
   const ex=curExecutor(),cur=BRAINS.current||{};
-  if(!ex){chip.hidden=true;return}
+  /* No brain is a state of the machine, and the menu bar is where the machine
+     says what state it is in. Hidden, the chip left a desktop of 43 apps with
+     nothing on it saying the one thing a new person needs to know. This is the
+     door; the chip's usual click (AI providers) is the wrong room for it. */
+  if(!ex){
+    if(!BRAINS.executors){chip.hidden=true;return}   // not loaded yet: say nothing rather than the wrong thing
+    chip.hidden=false;chip.classList.add('nobrain');chip.classList.remove('engine');
+    chip.innerHTML='◌ No brain yet<span class="fwdmdl">give it one →</span>';
+    chip.title='Nothing can answer yet. Click to choose a model on this machine, a cloud key, or another agent.';
+    chip.onclick=()=>{if(typeof obShow==='function')obShow({step:'model'});else openApp('setup')};
+    return;
+  }
+  chip.classList.remove('nobrain');chip.onclick=()=>openModelSettings();
   chip.hidden=false;
   const agent=ex.kind==='agent';
   // For an agent executor the model it actually woke up on is reported back by
@@ -10474,9 +10734,15 @@ async function renderFabFlows(body,w){
           run?' · last '+esc(run.status):''}</div></div></div>`;
   }).join('')||'<p class="mut" style="padding:6px">nothing yet</p>';
 
+  /* `.two-pane`: list beside detail on a desktop; on a phone one at a time — the
+     list, then the detail pushed over it with a way back. This was the desktop
+     layout squeezed into 390px: a 300px column of wrapped prose, and "Starts /
+     Granted (10)" wrapping word by word. Settings turned its rail sideways for
+     the same reason; this is the same rule for list/detail apps. */
+  const detailView=FLOW_VIEW==='detail'&&!!sel;
   body.innerHTML=`<div class="pad">${fabTabs()}
-    <div class="row" style="align-items:flex-start;gap:14px">
-      <div style="flex:0 0 210px;min-width:180px">
+    <div class="row two-pane${detailView?' detail':''}" style="align-items:flex-start;gap:14px">
+      <div class="tp-list" style="flex:0 0 210px;min-width:180px">
         <textarea id="flw-ask" rows="3" placeholder="Every morning check my disk and tell me on Telegram if it is filling up"></textarea>
         <button class="save" style="margin:6px 0 0" onclick="composeFlow()">✦ Draft a flow</button>
         <button style="width:100%;margin-top:4px" onclick="openFLW()">＋ Build one by hand</button>
@@ -10484,12 +10750,16 @@ async function renderFabFlows(body,w){
         <div class="sawgrp">Flows</div>
         ${list}
       </div>
-      <div style="flex:1;min-width:0" id="flow-detail">${sel?flowDetail(sel,latest[sel.name]):
+      <div class="tp-detail" style="flex:1;min-width:0" id="flow-detail">
+        <button class="tp-back" onclick="flowBack()">‹ Flows</button>
+        ${sel?flowDetail(sel,latest[sel.name]):
         `<p class="mut">No flows yet. A flow is a standing mission: what you want, who may work on it,
          what it may touch, and what starts it. The orchestrator picks the agents and the order while it runs.</p>`}</div>
     </div></div>`;
 }
-function flowSelect(name){FLOW_SEL=name;refreshApp('fabric')}
+var FLOW_VIEW='list';   // phone only: which pane is on screen
+function flowSelect(name){FLOW_SEL=name;FLOW_VIEW='detail';refreshApp('fabric')}
+function flowBack(){FLOW_VIEW='list';refreshApp('fabric')}
 function trigLabel(t){
   const c=t.config||{};
   if(t.kind==='cron')return c.type==='daily'?('cron '+(c.at||'08:00'))
@@ -11866,8 +12136,11 @@ function obRender(){
       <span>${S.done} of ${S.total} done</span>
       <div class="ob-bar"><i style="width:${Math.round(S.done/S.total*100)}%"></i></div>
     </div>
-    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.id===OB.open?' on':''}"
-        data-step="${esc(s.id)}" ${s.blocked.length?'disabled':''}>
+    ${/* A blocked step is dimmed, not disabled: the row still opens, and the pane
+          says what it needs and where. `disabled` answered a tap with nothing —
+          on a phone, indistinguishable from the OS being broken. */''}
+    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.id===OB.open?' on':''}"
+        data-step="${esc(s.id)}">
       <span class="ob-tick">${s.status==='done'?'✓':s.status==='skipped'?'–':esc(s.icon)}</span>
       <span class="ob-t">${esc(s.title)}
         ${s.detail?`<em>${esc(s.detail)}</em>`
@@ -11896,7 +12169,13 @@ function obRender(){
    asking somebody to fill in a field and telling them what they are about to get. */
 function obPane(pane,s){
   if(!s)return;
-  const body=OB_PANES[s.id]?OB_PANES[s.id](s):'<p class="mut">Nothing to do here.</p>';
+  const blocked=(s.blocked||[]).length?s.blocked:null;
+  const needs=blocked?`<div class="ob-needs">This step needs ${blocked.map(id=>{
+        const st=obStep(id);return `<b>${esc(st?st.title.toLowerCase():id)}</b>`}).join(' and ')} first.
+      ${blocked.map(id=>{const st=obStep(id);return st
+        ?`<button data-go="${esc(id)}">${esc(st.title)} →</button>`:''}).join('')}</div>`:'';
+  const body=blocked?needs
+    :OB_PANES[s.id]?OB_PANES[s.id](s):'<p class="mut">Nothing to do here.</p>';
   pane.innerHTML=`<div class="ob-step" data-step="${esc(s.id)}">
     <div class="ob-kicker">${esc(s.icon)} ${esc(s.title)}</div>
     <p class="ob-blurb">${esc(s.blurb)}</p>
@@ -11911,6 +12190,8 @@ function obPane(pane,s){
   Motion.run(pane.firstElementChild,
     [{opacity:0,transform:'translateY(12px)'},{opacity:1,transform:'none'}],
     {duration:240,easing:EASE.out});
+  pane.querySelectorAll('.ob-needs button[data-go]').forEach(b=>b.onclick=()=>{OB.open=b.dataset.go;obRender()});
+  if(blocked)return;             // nothing below is wired for a step that cannot run yet
   const sk=$('#ob-skip');
   if(sk)sk.onclick=()=>obSkip(s.id,s.status==='skipped');
   const pn=$('#ob-panel');
@@ -14730,15 +15011,10 @@ async function installComponent(id){
    Quick Settings app, in a menubar-anchored panel instead of a window */
 function toggleControlCenter(){
   let p=$('#ccpop');
-  if(!p){p=document.createElement('div');p.id='ccpop';document.body.appendChild(p);
-    document.addEventListener('click',e=>{
-      if(!e.target.closest('#ccpop')&&!e.target.closest('#tray-ctl'))p.classList.remove('show');
-    });
-  }
+  if(!p){p=document.createElement('div');p.id='ccpop';document.body.appendChild(p)}
   const on=!p.classList.contains('show');
-  if(!on){p.classList.remove('show');return}
-  $('#powermenu').classList.remove('show');$('#notifpanel').classList.remove('show');
-  p.classList.add('show');
+  if(!on){popClose(p);return}
+  popOpen(p,{anchor:$('#tray-ctl')});
   renderControl(p);
   popIn(p,{origin:'top right'});
 }
@@ -14748,7 +15024,20 @@ async function renderControl(body){
   const d=await (await fetch('/api/control')).json();
   const a=d.audio||{},b=d.battery||{},n=d.network||{};
   const deMode=PLATFORM.mode==='de';
+  /* One sentence, once. On a hosted desktop every card's reason is the same —
+     "Your desktop environment owns this…" — and it was printed under Sound,
+     Brightness, Network and Power in one 380px panel, then a variant under
+     Notifications. The honest answer said five times is noise: it goes at the
+     top, and a card repeats it only when its reason is a different one. */
+  const reasons={};['audio.devices','brightness.set','net.wifi.join','power.profile'].forEach(id=>{
+    const c=cap(id);if(!c.available&&c.reason)reasons[c.reason]=(reasons[c.reason]||0)+1});
+  const common=Object.keys(reasons).sort((x,y)=>reasons[y]-reasons[x])[0];
+  const shared=common&&reasons[common]>=2?common:'';
+  const ccNote=id=>{const c=cap(id);return (!c.available&&shared&&c.reason===shared)?'':capNote(id)};
+  const sharedComp=shared?(['audio.devices','brightness.set','net.wifi.join','power.profile']
+    .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
+    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
     <div class="provbox"><div class="ptitle">Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
@@ -14789,7 +15078,7 @@ async function renderControl(body){
         $('#c-sink').onchange=async e=>{await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id:+e.target.value})});toast('✓ audio output switched')};
       }
     }catch(e){}
-  }else sinks.innerHTML=capNote('audio.devices');
+  }else sinks.innerHTML=ccNote('audio.devices');
 
   // brightness
   const br=$('#c-bright');
@@ -14803,13 +15092,13 @@ async function renderControl(body){
             onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
-  }else br.innerHTML=capNote('brightness.set');
+  }else br.innerHTML=ccNote('brightness.set');
 
   // radios: wifi + bluetooth quick toggles
   const radios=$('#c-radios');let rhtml='';
   if(cap('net.wifi.scan').available)rhtml+=`<button class="endbtn" id="c-wifi">Wi-Fi…</button>`;
   if(cap('bt.status').available)rhtml+=`<button class="endbtn" id="c-bt">Bluetooth…</button>`;
-  if(!rhtml)rhtml=cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button><button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>`:capNote('net.wifi.join');
+  if(!rhtml)rhtml=cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button><button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>`:ccNote('net.wifi.join');
   radios.innerHTML=rhtml;
   const wob=$('#c-wifi');if(wob)wob.onclick=()=>{openApp('syssettings');SYS.tab=0;refreshApp('syssettings')};
   const bob=$('#c-bt');if(bob)bob.onclick=()=>{openApp('syssettings');SYS.tab=1;refreshApp('syssettings')};
@@ -14822,7 +15111,7 @@ async function renderControl(body){
       prof.innerHTML=(p.profiles||[]).map(x=>
         `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${esc(x)}</button>`).join('');
     }catch(e){}
-  }else prof.innerHTML=capNote('power.profile');
+  }else prof.innerHTML=ccNote('power.profile');
 
   // DND
   const dnd=$('#c-dnd');
@@ -15792,10 +16081,9 @@ async function renderNotifList(){
 }
 async function openNotifPanel(){
   const p=$('#notifpanel');
-  if(p.classList.contains('show')){p.classList.remove('show');return}
-  $('#powermenu').classList.remove('show');
+  if(p.classList.contains('show')){popClose(p);return}
   await renderNotifList();
-  p.classList.add('show');
+  popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
   await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();
@@ -17582,7 +17870,7 @@ function renderAbout(body){
   body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
     <div style="text-align:center;padding-top:26px">
       <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
-      <div style="font-size:20px;font-weight:800">AgentOS</div>
+      <div style="font-size:20px;font-weight:800">Bento Box AI</div>
       <div id="ab-ver" class="ab-ver">…</div>
       <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
       <p class="mut" id="ab-info">…</p>
@@ -17679,6 +17967,7 @@ function omniPop(on){
     // typing IS the other way to find an app, so the wall stands down rather
     // than sitting invisible behind the results it was just replaced by
     if(typeof deckFull==='function')deckFull(false);
+    if(changed)popCloseAll();     // the palette is a popover too: not beside Quick Settings
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
     if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
@@ -17758,7 +18047,7 @@ function omniPaint(){
   list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
     ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
     ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
-    +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
+    +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{
     el.onmousedown=e=>{e.preventDefault();omniRun(+el.dataset.i)};      // keep focus in the input
@@ -17813,7 +18102,19 @@ function omniCard(question){
     if(!wrap.children.length){wrap.classList.remove('raised');if(!OMNI.pop)omniSummon(false)}})};
   card.querySelector('.oc-x').onclick=close;
   card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
+  card._close=close;
   return {card,feed:card.querySelector('.oc-feed'),close};
+}
+/* A window coming to the front takes the cards with it — under it. A card is
+   raised above windows while it answers (so an answer is never behind your work),
+   and it used to stay there for its whole 30s linger: ask from the bar, open the
+   app the card suggests, and the card sat over that app's composer. Finished
+   cards leave on the next focus; a card still streaming just drops below the
+   window and is there again when the window goes. */
+function omniCardsYield(){
+  const wrap=$('#omnicards');if(!wrap||!wrap.children.length)return;
+  wrap.classList.remove('raised');
+  [...wrap.children].forEach(c=>{if(c.dataset.done&&c._close&&!c.matches(':hover'))c._close()});
 }
 function omniContext(){
   const open=[];WM.wins.forEach(w=>{if(!w.min)open.push(w.app.title)});
@@ -17874,6 +18175,7 @@ async function omniAsk(q){
     onStart:()=>{stopBtn.style.display='';stopBtn.disabled=false;stopBtn.textContent='◼ Stop'},
     onEnd:()=>{
     stopBtn.style.display='none';
+    card.dataset.done='1';
     // linger, then fade — unless the pointer is on it or an approval is pending
     setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
   }});
@@ -18419,6 +18721,10 @@ document.addEventListener('keydown',e=>{
   if((cmd(e)||e.altKey)&&e.key==='Tab'){e.preventDefault();switcherOpen(e.shiftKey?-1:1);return}
   const fsw=[...WM.wins.values()].find(w=>w.fs);
   if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
+  // a popover (menu, panel, launcher) goes before anything else: it is the thing on top
+  if(e.key==='Escape'&&popCloseTop()){e.preventDefault();return}
+  // F1 is what a newcomer presses for help; Ctrl+/ is what the overlay documents
+  if(e.key==='F1'){e.preventDefault();keysHelp();return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
     if($('#keyshelp').classList.contains('show')){keysHelp(false);return}
     // Esc clears a search before it closes the wall — losing the whole surface
@@ -18487,7 +18793,7 @@ $('#tray-voice').innerHTML=svgMic(14);
 function powerMenuOpen(force){
   const m=$('#powermenu');if(!m)return false;
   const on=force!==undefined?!!force:!m.classList.contains('show');
-  m.classList.toggle('show',on);
+  if(on)popOpen(m,{anchor:$('#tray-power')});else popClose(m);
   if(on){
     // Ctrl+Alt+Delete is reached for when something is already covering the
     // screen, so the desktop has to come forward with the menu or the menu is
@@ -18498,11 +18804,8 @@ function powerMenuOpen(force){
   return true;
 }
 $('#tray-power').onclick=e=>{e.stopPropagation();powerMenuOpen()};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('#powermenu')&&!e.target.closest('#tray-power'))$('#powermenu').classList.remove('show');
-});
 async function powerDo(action,confirmMsg){
-  $('#powermenu').classList.remove('show');
+  popClose($('#powermenu'));
   const danger=['logout','restart','poweroff'].includes(action);
   if(confirmMsg&&!await osConfirm(confirmMsg,danger?'Anything unsaved in other apps will be lost.':'',
     {confirmText:{lock:'Lock',suspend:'Suspend',logout:'Log out',restart:'Restart',poweroff:'Power off','agentos-restart':'Restart'}[action]||'OK',danger}))return;
@@ -18518,9 +18821,6 @@ $('#j-mic').innerHTML=svgMic(22);
 $('#j-mic').onclick=()=>{if(JARVIS.phase==='listening'){try{JARVIS.rec.stop()}catch(e){}}else jarvisListen()};
 $('#j-close').onclick=()=>jarvisMode(false);
 $('#tray-bell').onclick=e=>{e.stopPropagation();openNotifPanel()};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('#notifpanel')&&!e.target.closest('#tray-bell'))$('#notifpanel').classList.remove('show');
-});
 updateTray();setInterval(updateTray,15000);
 // Polling is the fallback; the first compositor 'wm' event switches the
 // taskbar to event-driven updates (see the WebSocket handler).

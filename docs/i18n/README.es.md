@@ -41,20 +41,20 @@ referencia de la API y resolución de problemas.
 
 ---
 
-## La configuración son nueve pasos, y cada uno deja algo tras de sí
+## La configuración son once pasos, y cada uno deja algo tras de sí
 
 No es un formulario de ajustes con una barra de progreso. Cada paso **produce algo real** — un modelo
 que responde, un agente que existe, un flujo que se ejecuta, una programación que se dispara — y dice
 con qué acabarás antes de pedirte nada.
 
-![La pantalla de configuración inicial: un riel de nueve pasos a la izquierda, y a la derecha "Ponle nombre a tu agente" con la línea "Acabarás con: el nombre en la barra de menú y en cada respuesta"](../screenshots/onboarding-1-name.png)
+![La pantalla de configuración inicial: un riel de once pasos a la izquierda, y a la derecha "Ponle nombre a tu agente" con la línea "Acabarás con: el nombre en la barra de menú y en cada respuesta"](../screenshots/onboarding-1-name.png)
 
 Cada paso se **sondea, nunca se recuerda**: se marca porque la máquina tiene la cosa. Elimina el agente
 y el paso vuelve a pendiente. Eso es lo que hace seguro volver a ejecutarlo — y volver a ejecutarlo es
 algo normal aquí, porque **la Configuración también es una app**. Ábrela en cualquier momento para ver
 qué hace un paso, en una máquina que configuraste hace meses.
 
-![La app de Configuración en una ventana: el riel de nueve pasos a la izquierda, y el paso "Construir un especialista" abierto a la derecha](../screenshots/setup-app.png)
+![La app de Configuración en una ventana: el riel de once pasos a la izquierda, y el paso "Construir un especialista" abierto a la derecha](../screenshots/setup-app.png)
 
 El mismo catálogo, el mismo sondeo, los mismos paneles — incluso en una terminal, donde `bento setup`
 por SSH retoma exactamente donde el navegador lo dejó.
@@ -292,7 +292,7 @@ activa, una programación, o pidiéndola por su nombre. [Más →](../desktop.md
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Después abre **http://127.0.0.1:8321**, o ejecuta `bento setup` para los mismos nueve pasos en una terminal.
+Después abre **http://127.0.0.1:8321**, o ejecuta `bento setup` para los mismos once pasos en una terminal.
 
 Si hay una terminal en la que preguntar, el instalador pregunta dos cosas antes de terminar: si esta
 máquina debe ser alcanzable desde tus otros dispositivos y — de ser así — si inicias sesión con una

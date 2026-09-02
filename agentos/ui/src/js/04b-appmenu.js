@@ -159,6 +159,13 @@ function buildAppMenus(){
 }
 function paintMenuBar(box,menus,live){
   box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  /* The dropdown is a popover with the title as its anchor. Before the manager,
+     the title's click opened the menu and the document-level "click outside the
+     context menu" listener closed it in the SAME event — so no menu ever opened
+     by clicking, the title kept its pressed state, and the mouseenter path below
+     re-opened it later on a hover, where it then outlived Escape and window
+     switches. Now: click opens, click again closes, Escape closes, another
+     popover opening closes it, and the title's state follows the menu. */
   box.querySelectorAll('button').forEach(b=>{
     const open=()=>{
       const r=b.getBoundingClientRect();
@@ -168,11 +175,11 @@ function paintMenuBar(box,menus,live){
       const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
         items.map(it=>it&&({...it,
-          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})));
-      const clear=()=>{b.classList.remove('on');document.removeEventListener('click',clear,true)};
-      setTimeout(()=>document.addEventListener('click',clear,true),0);
+          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})),
+        {anchor:b,close:()=>b.classList.remove('on')});
     };
-    b.onclick=open;
-    b.onmouseenter=()=>{if(box.querySelector('button.on'))open()};   // slide across like a real menu bar
+    b.onclick=()=>{if(b.classList.contains('on'))popClose($('#ctxmenu'));else open()};
+    // slide across like a real menu bar: hovering a sibling while one is open moves the menu
+    b.onmouseenter=()=>{if(!b.classList.contains('on')&&box.querySelector('button.on'))open()};
   });
 }

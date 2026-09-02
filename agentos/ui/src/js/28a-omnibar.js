@@ -32,6 +32,7 @@ function omniPop(on){
     // typing IS the other way to find an app, so the wall stands down rather
     // than sitting invisible behind the results it was just replaced by
     if(typeof deckFull==='function')deckFull(false);
+    if(changed)popCloseAll();     // the palette is a popover too: not beside Quick Settings
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
     if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
@@ -111,7 +112,7 @@ function omniPaint(){
   list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
     ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
     ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
-    +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
+    +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{
     el.onmousedown=e=>{e.preventDefault();omniRun(+el.dataset.i)};      // keep focus in the input
@@ -166,7 +167,19 @@ function omniCard(question){
     if(!wrap.children.length){wrap.classList.remove('raised');if(!OMNI.pop)omniSummon(false)}})};
   card.querySelector('.oc-x').onclick=close;
   card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
+  card._close=close;
   return {card,feed:card.querySelector('.oc-feed'),close};
+}
+/* A window coming to the front takes the cards with it — under it. A card is
+   raised above windows while it answers (so an answer is never behind your work),
+   and it used to stay there for its whole 30s linger: ask from the bar, open the
+   app the card suggests, and the card sat over that app's composer. Finished
+   cards leave on the next focus; a card still streaming just drops below the
+   window and is there again when the window goes. */
+function omniCardsYield(){
+  const wrap=$('#omnicards');if(!wrap||!wrap.children.length)return;
+  wrap.classList.remove('raised');
+  [...wrap.children].forEach(c=>{if(c.dataset.done&&c._close&&!c.matches(':hover'))c._close()});
 }
 function omniContext(){
   const open=[];WM.wins.forEach(w=>{if(!w.min)open.push(w.app.title)});
@@ -227,6 +240,7 @@ async function omniAsk(q){
     onStart:()=>{stopBtn.style.display='';stopBtn.disabled=false;stopBtn.textContent='◼ Stop'},
     onEnd:()=>{
     stopBtn.style.display='none';
+    card.dataset.done='1';
     // linger, then fade — unless the pointer is on it or an approval is pending
     setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
   }});

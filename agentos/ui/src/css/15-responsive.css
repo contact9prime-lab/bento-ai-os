@@ -311,3 +311,43 @@ body.dev-mobile #js-orb .core{width:66px;height:66px}
 body.dev-mobile .js-node{width:60px;height:60px}
 body.dev-mobile #js-top{padding:10px 14px}
 body.dev-mobile #js-bottom{padding:0 14px calc(16px + var(--safe-b))}
+
+/* ================================================================
+   PHONE — the conventions the review found missing (docs/design/ux-review-2026-09.md)
+   ================================================================ */
+/* One composer. A sheet with its own input (Chat) covers the prompt bar; the
+   bottom chrome shrinks to the dock alone so the sheet gets the room back.
+   Measured before: Chat's composer 60px above "Ask Aria anything", two boxes
+   asking the same question in different words. */
+body.dev-mobile.has-win{--chrome-b:calc(80px + var(--safe-b))}
+body.dev-mobile.has-win #omnibar,body.dev-mobile.has-win #omnicards{display:none}
+/* Chat's header: the brain stays, the three controls past it go behind ⋯ */
+#tb-more{display:none}
+body.dev-mobile #tb-more{display:inline-flex;flex:none;min-width:var(--tap)}
+body.dev-mobile #topbar:not(.more) #autosel,body.dev-mobile #topbar:not(.more) #ttsbtn,
+body.dev-mobile #topbar:not(.more) #clearses{display:none}
+/* list → detail: one pane at a time, with a way back */
+.tp-back{display:none}
+body.dev-mobile .two-pane{flex-direction:column}
+body.dev-mobile .two-pane .tp-list{flex:1 1 auto!important;width:100%;min-width:0!important}
+body.dev-mobile .two-pane .tp-detail{width:100%}
+body.dev-mobile .two-pane:not(.detail) .tp-detail{display:none}
+body.dev-mobile .two-pane.detail .tp-list{display:none}
+body.dev-mobile .two-pane .tp-back{display:inline-flex;align-items:center;min-height:var(--tap);
+  padding:0 12px 0 6px;margin-bottom:8px;border-radius:var(--r-md);background:var(--bg3);font-weight:600}
+/* the detail's side-by-side facts stack rather than wrapping word by word */
+body.dev-mobile .two-pane .row{flex-wrap:wrap}
+body.dev-mobile .two-pane .row>*{flex:1 1 100%;min-width:0}
+/* toasts: `body.deck-open #toasts` lifts them by the deck's height, and on a
+   phone the deck is the screen — the toast came out at y=-18, over the clock */
+body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px}
+/* the dock rests on a whole icon at its LEFT edge; `end` snapping kept the
+   right edge whole and left the first icon half clipped instead */
+body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:start}
+/* the tap floor above (`#startmenu button{min-height:var(--tap)}`) outranks the
+   tile's own floor, and a 40px tile is a 48px icon with its label pushed out of
+   the row — measured: every launcher label on a phone was 0px tall */
+body.dev-touch #startmenu .smapp{min-height:92px}
+/* the ⋯ must share the row with the two pickers, not take a row of its own */
+body.dev-mobile #topbar>select{flex:1 1 34%}
+body.dev-mobile #tb-more{flex:0 0 var(--tap)}

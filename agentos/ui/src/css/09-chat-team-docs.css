@@ -228,3 +228,8 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
   background:var(--bg2)}
 .doc-ans.on{display:block}
 .doc-ans .mf-user{margin-bottom:8px}
+/* the door on a failed turn: what to do about it, next to what went wrong */
+.errmsg{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
+  background:var(--acc);color:#04211c;min-height:30px}
+.errmsg .err-door:hover{filter:brightness(1.08)}

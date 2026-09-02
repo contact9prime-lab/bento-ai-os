@@ -15,6 +15,105 @@ days, not months, and both are worth more than any new feature.
 
 ---
 
+## What was fixed, and what it measures now
+
+Every defect below was fixed on the same branch, rebuilt, and re-measured the
+same way (fresh home, real browser, 1440×900 and 390×844). The after-shots are
+in [`ux-review/after/`](ux-review/after/). Pinned by `tests/test_ux_review_fixes.py`.
+
+| | Before (measured) | After (measured) |
+|---|---|---|
+| **D1** first message, no brain | `ConnectError: All connection attempts failed`; toast "Aria replied"; turn logged and counted | "Nothing can answer yet — this machine has no brain. Give it one…" with a **Give it a brain** button, in Chat, the prompt-bar card and the copilot panel; nothing saved, billed or logged; no "replied" toast. Every other failure (Ollama down, refused key, rate limit, model not pulled) is a sentence too (`agentos/turnerrors.py`) |
+| **D2** launcher | top edge at y = −419 | top = 145, bottom = 744; header and search box on screen |
+| **D3** menu-bar menus | never opened on click; title stuck `.on` | click opens (3 items), Escape closes, title state follows; hover slides across; second click closes |
+| **D4** popovers | notifications + power open together; Escape closed neither | one popover manager (`04e-popover.js`): opening one closes the rest, Escape closes the top one, Ctrl+Space closes Quick Settings |
+| **D5** answer card | raised above windows for 30 s | drops below the window that takes focus (`raised` removed, z = 8); a finished card leaves |
+| **D6** phone wizard exit | `display:none` | "Finish later" at 93×34 px in the rail; blocked steps open and say what they need, with a button to it |
+| **D7** phone Chat | two composers; five header controls in two rows | prompt bar hidden while a sheet is open (`has-win`); header is two pickers + ⋯ in one row |
+| **D8** phone launcher labels | 35 labels at 0 px | 35 labels at 14 px, tiles 92 px, no overlap |
+| **D9** phone Workflows | two panes in 390 px | list first (362 px wide); tap pushes the detail with **‹ Flows** back |
+| **D10** key hints on touch | shown | hidden; desktop legend reads "⏎ ask · ⇧⏎ always ask" |
+| **D11** phone toast | y = −18…20 (over the clock) | y = 620…658, above the dock |
+| **D12** Quick Settings | the ownership sentence 4× | once, as a banner at the top |
+| **D13** sign-in page | "AgentOS · This desktop is locked." | "Bento Box AI · Sign in to open this desktop." (locked wording only when locked); About and the CLI banner say Bento Box AI |
+| **D14** docs, F1, Exposé hint, links, spacing | nine steps; F1 dead; hint behind dock | eleven steps in all 12 READMEs (pinned to `onboarding.STEPS`); F1 opens shortcuts; hint bottom at 754 vs dock top 828; Settings links use the accent; the brain step's choices have breathing room; the phone dock rests whole at its left edge |
+| **S1** day-one desktop | 43 tiles, nothing saying "no brain" | 19 tiles: Intelligence, System and Library start folded to one line with a count and a peek of their icons, and unfold on a click or the first time one of their apps is opened (Intelligence unfolded when Memory was opened: 19 → 26 tiles); the menu bar carries **"◌ No brain yet · give it one →"** which opens the brain step |
+
+### Before / after
+
+**D1 — the first message.** Left: the exception. Right: the sentence and the door.
+
+![before](ux-review/12-chat-sent.jpg)
+![after](ux-review/after/a-chat-sent.jpg)
+
+The same turn from the prompt bar, and the empty Chat before anything is typed:
+
+![after: the prompt-bar card](ux-review/after/a-omni-answer.jpg)
+![after: the empty chat says so first](ux-review/after/a-chat-empty.jpg)
+
+**D2 — the launcher.**
+
+![before](ux-review/08-startmenu.jpg)
+![after](ux-review/after/a-startmenu.jpg)
+
+**D3 — the menu bar.** File opened by a click, and closed by Escape afterwards.
+
+![after](ux-review/after/a-filemenu.jpg)
+
+**D4 — one popover at a time.** Notifications was open; ⏻ closed it.
+
+![before](ux-review/16-power.jpg)
+![after](ux-review/after/a-power.jpg)
+
+**D12 — Quick Settings says it once.**
+
+![before](ux-review/17-palette.jpg)
+![after](ux-review/after/a-quick.jpg)
+
+**S1 — the desktop on day one.** 43 tiles and no state line; 19 tiles, three folded groups, and the menu bar saying the one thing that matters.
+
+![before](ux-review/07-desktop.jpg)
+![after](ux-review/after/a-desktop.jpg)
+
+**D6 — the phone wizard has its exit, and a blocked step explains itself.**
+
+![before](ux-review/p01-firstload.jpg)
+![after](ux-review/after/p-wizard.jpg)
+![after: a blocked step](ux-review/after/a-wiz-blocked.jpg)
+
+**D7 — one composer on a phone.**
+
+![before](ux-review/p04-chat.jpg)
+![after](ux-review/after/p-chat.jpg)
+
+**D8 — the phone launcher has names.**
+
+![before](ux-review/p03-startmenu.jpg)
+![after](ux-review/after/p-startmenu.jpg)
+
+**D9 — Workflows on a phone: the list, then the detail.**
+
+![before](ux-review/p06-workflows.jpg)
+![after: list](ux-review/after/p-flows-list.jpg)
+![after: detail](ux-review/after/p-flows-detail.jpg)
+
+**D10 — no key hints on a touch screen.**
+
+![before](ux-review/p08-omni.jpg)
+![after](ux-review/after/p-omni.jpg)
+
+**D13 — the sign-in page.**
+
+![after](ux-review/after/a-login.jpg)
+
+**Left for later, deliberately.** S2 (merging the four-apps-per-concept into
+tabs) changes the app registry and every surface that lists apps; S4's
+six-failure table is done for turns but not yet for builds and flows; S5 is
+done (the manager) and S6 has two of its three conventions (list→detail and
+header overflow; one composer is done for Chat only).
+
+---
+
 ## How this was done
 
 | | |

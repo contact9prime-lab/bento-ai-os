@@ -15,6 +15,7 @@ function openApp(id,opts){
   dockBounce(id);
   const w=createWin(app);
   sessionSave();   // the arrangement changed
+  if(typeof deckUsed==='function')deckUsed(id);   // a folded deck group you open into unfolds
   return w;
 }
 function openAppNew(id){return openApp(id,{fresh:true})}
@@ -144,6 +145,7 @@ function focusWin(w){
   WM.wins.forEach(o=>{o.el.classList.toggle('active',o===w);o.tb.classList.toggle('on',o===w&&!o.min)});
   setMenubarApp(w.app.title);
   updateDockHide();
+  if(typeof omniCardsYield==='function')omniCardsYield();   // a card never covers the window you just took
   // raising a window can bury (or uncover) another one — re-check who is visible
   applyWindowActivity();
   if(typeof deckAuto==='function')deckAuto();

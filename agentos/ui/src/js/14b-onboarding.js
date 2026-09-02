@@ -137,8 +137,11 @@ function obRender(){
       <span>${S.done} of ${S.total} done</span>
       <div class="ob-bar"><i style="width:${Math.round(S.done/S.total*100)}%"></i></div>
     </div>
-    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.id===OB.open?' on':''}"
-        data-step="${esc(s.id)}" ${s.blocked.length?'disabled':''}>
+    ${/* A blocked step is dimmed, not disabled: the row still opens, and the pane
+          says what it needs and where. `disabled` answered a tap with nothing —
+          on a phone, indistinguishable from the OS being broken. */''}
+    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.id===OB.open?' on':''}"
+        data-step="${esc(s.id)}">
       <span class="ob-tick">${s.status==='done'?'✓':s.status==='skipped'?'–':esc(s.icon)}</span>
       <span class="ob-t">${esc(s.title)}
         ${s.detail?`<em>${esc(s.detail)}</em>`
@@ -167,7 +170,13 @@ function obRender(){
    asking somebody to fill in a field and telling them what they are about to get. */
 function obPane(pane,s){
   if(!s)return;
-  const body=OB_PANES[s.id]?OB_PANES[s.id](s):'<p class="mut">Nothing to do here.</p>';
+  const blocked=(s.blocked||[]).length?s.blocked:null;
+  const needs=blocked?`<div class="ob-needs">This step needs ${blocked.map(id=>{
+        const st=obStep(id);return `<b>${esc(st?st.title.toLowerCase():id)}</b>`}).join(' and ')} first.
+      ${blocked.map(id=>{const st=obStep(id);return st
+        ?`<button data-go="${esc(id)}">${esc(st.title)} →</button>`:''}).join('')}</div>`:'';
+  const body=blocked?needs
+    :OB_PANES[s.id]?OB_PANES[s.id](s):'<p class="mut">Nothing to do here.</p>';
   pane.innerHTML=`<div class="ob-step" data-step="${esc(s.id)}">
     <div class="ob-kicker">${esc(s.icon)} ${esc(s.title)}</div>
     <p class="ob-blurb">${esc(s.blurb)}</p>
@@ -182,6 +191,8 @@ function obPane(pane,s){
   Motion.run(pane.firstElementChild,
     [{opacity:0,transform:'translateY(12px)'},{opacity:1,transform:'none'}],
     {duration:240,easing:EASE.out});
+  pane.querySelectorAll('.ob-needs button[data-go]').forEach(b=>b.onclick=()=>{OB.open=b.dataset.go;obRender()});
+  if(blocked)return;             // nothing below is wired for a step that cannot run yet
   const sk=$('#ob-skip');
   if(sk)sk.onclick=()=>obSkip(s.id,s.status==='skipped');
   const pn=$('#ob-panel');

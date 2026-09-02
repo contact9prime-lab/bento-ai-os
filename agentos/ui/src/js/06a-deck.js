@@ -12,6 +12,8 @@ const DECK_DEFAULTS=[
   ['System',['taskmgr','control','syssettings','settings','setup','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
+// folded until used: what these hold is empty on a machine nobody has talked to
+const DECK_FOLDED_AT_FIRST=['Intelligence','System','Library'];
 let DECK=null;
 /* ---- the full app wall ----
    Scrolling up over the tiles (or over bare wallpaper) grows the deck into the
@@ -36,8 +38,15 @@ var DECK_LASTOPEN=false;    // tiles animate in when the deck APPEARS, not on ev
 function deckIconPx(){return DECKFULL?54:46}
 function deckLoad(){
   try{DECK=JSON.parse(localStorage.getItem('deck')||'null')}catch(e){DECK=null}
+  /* Day one is not week four. A fresh desktop showed six groups and 43 tiles —
+     Quarantine, Audit, Snapshots and Token Analytics at the same weight as Chat —
+     on a machine that could not yet answer a question. The groups that hold
+     nothing until the machine has been used start folded to one line with a
+     count, and unfold the first time one of their apps is opened, or on a click.
+     A stored deck is left exactly as the person arranged it. */
   if(!DECK||!Array.isArray(DECK.groups))
-    DECK={open:true,groups:DECK_DEFAULTS.map(([name,apps],i)=>({id:'g'+i,name,apps:apps.slice()}))};
+    DECK={open:true,groups:DECK_DEFAULTS.map(([name,apps],i)=>({id:'g'+i,name,apps:apps.slice(),
+      collapsed:DECK_FOLDED_AT_FIRST.includes(name)}))};
   if(DECK.open===undefined)DECK.open=true;
   if(DECK.auto===undefined)DECK.auto=true;   // step aside while you're working in a window
   return DECK;
@@ -152,6 +161,9 @@ function buildDeck(fresh){
   });
   box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
+  });
+  box.querySelectorAll('.deck-unfold,.deck-fold').forEach(b=>{
+    b.onclick=e=>{e.stopPropagation();deckFold(b.dataset.g,b.classList.contains('deck-fold'))};
   });
   // on the wall, the space around the tiles is a way out, like any overview
   box.onclick=e=>{if(DECKFULL&&(e.target===box||e.target.id==='deck-scroll'))deckFull(false)};
@@ -349,8 +361,17 @@ function deckMeasure(open){
 }
 addEventListener('resize',()=>{if(DECK)deckMeasure(document.body.classList.contains('deck-open'))});
 function deckGroupHTML(g){
+  // the wall shows everything: folding is a property of the shelf, not of the overview
+  const folded=!!g.collapsed&&!DECKFULL;
+  const n=g.apps.filter(id=>APPS[id]).length;
+  if(folded)return `<div class="deck-group folded" data-g="${esc(g.id)}">
+    <button class="deck-gname deck-unfold" data-g="${esc(g.id)}" title="Show the ${n} apps in ${esc(g.name)}">
+      ${esc(g.name)} <span class="mut">${n}</span><span class="deck-caret">▸</span></button>
+    <div class="deck-peek">${g.apps.filter(id=>APPS[id]).slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
+  </div>`;
   return `<div class="deck-group" data-g="${esc(g.id)}">
-    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}</div>
+    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}${g.collapsed!==undefined?
+      `<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
     <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
       <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
         ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
@@ -433,9 +454,22 @@ function deckTileMenu(e,id){
   }
   showCtxItems(e,items);
 }
+/* fold/unfold one group; `deckUsed(id)` unfolds the group an app was just opened
+   from any other door (launcher, prompt bar, dock) — a group you have been into
+   is not one that holds nothing */
+function deckFold(gid,on){
+  const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
+  g.collapsed=!!on;deckSave();buildDeck();
+}
+function deckUsed(id){
+  if(!DECK)return;
+  const g=deckGroupOf(id);
+  if(g&&g.collapsed){g.collapsed=false;deckSave();if(DECK._shown)buildDeck()}
+}
 function deckGroupMenu(e,gid){
   const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
   showCtxItems(e,[
+    {label:g.collapsed?'Unfold group':'Fold group to one line',fn:()=>deckFold(gid,!g.collapsed)},
     {label:'Rename group…',fn:async()=>{
       const v=await osPrompt('Rename group',{value:g.name,confirmText:'Rename'});
       if(v&&v.trim()){g.name=v.trim();deckSave();buildDeck()}}},

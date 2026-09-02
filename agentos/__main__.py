@@ -140,7 +140,7 @@ def _resolve_running_instance(host: str, port: int, url: str, mode: str,
         raise SystemExit(3)
 
     if mode == "open":
-        print(f"▲ AgentOS is already running — {url}")
+        print(f"▲ Bento Box AI is already running — {url}")
         webbrowser.open(url)
         raise SystemExit(0)
 
@@ -158,7 +158,7 @@ def _resolve_running_instance(host: str, port: int, url: str, mode: str,
 
     # ---- ask ---------------------------------------------------------------
     alt = _next_free_port(host, port + 1)
-    print(f"\n▲ AgentOS is already running.\n"
+    print(f"\n▲ Bento Box AI is already running.\n"
           f"    {url}   ({owner}"
           + (f", pid {st['pid']}" if st["pid"] else "") + ")\n")
     print("  [o] open it in a browser                        (default)")
@@ -322,7 +322,7 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     url = _display_url(host, port)
     print(f"""
   ┌─────────────────────────────────────┐
-  │   ▲ AgentOS                         │
+  │   ▲ Bento Box AI                    │
   │   your machine, with a brain        │
   │                                     │
   │   {url:<34}│

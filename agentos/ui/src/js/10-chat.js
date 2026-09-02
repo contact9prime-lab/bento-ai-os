@@ -26,6 +26,9 @@ function renderChat(body){
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
+        ${/* phone only: the three controls past the brain go behind one button —
+              five controls in two rows before any content was the header. */''}
+        <button id="tb-more" class="endbtn" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
@@ -322,6 +325,10 @@ function showWelcome(){
     <button class="chip">Remember that I prefer concise answers.</button>
   </div>`;
   w.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent.trim();input.dispatchEvent(new Event('input'));input.focus()});
+  // The empty chat is where somebody types their first message. If nothing can
+  // answer it, say so HERE, before they do — not as a red exception afterwards.
+  if(typeof curExecutor==='function'&&BRAINS.executors&&!curExecutor())
+    w.appendChild(errBox({message:'Nothing can answer yet — this machine has no brain.',action:'brain'}));
   feed.appendChild(w);
 }
 async function loadModels(){
@@ -374,7 +381,7 @@ function paintBrainChips(){
     /* Nothing chosen yet is its own state and has to be visible: without a
        placeholder the browser shows the first option, which reads as a machine
        already set to something it is not. */
-    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
+    const none=cur.executor?'':'<option value="" selected>Choose a brain…</option>';
     ex.innerHTML=none+grp('Models — answered by '+agentName(),'provider')
                 +grp('Agents — they answer instead','agent');
     const sel=curExecutor();
@@ -445,7 +452,19 @@ async function loadConfig(){
 function paintForwardChip(){
   const chip=$('#fwdchip');if(!chip)return;
   const ex=curExecutor(),cur=BRAINS.current||{};
-  if(!ex){chip.hidden=true;return}
+  /* No brain is a state of the machine, and the menu bar is where the machine
+     says what state it is in. Hidden, the chip left a desktop of 43 apps with
+     nothing on it saying the one thing a new person needs to know. This is the
+     door; the chip's usual click (AI providers) is the wrong room for it. */
+  if(!ex){
+    if(!BRAINS.executors){chip.hidden=true;return}   // not loaded yet: say nothing rather than the wrong thing
+    chip.hidden=false;chip.classList.add('nobrain');chip.classList.remove('engine');
+    chip.innerHTML='◌ No brain yet<span class="fwdmdl">give it one →</span>';
+    chip.title='Nothing can answer yet. Click to choose a model on this machine, a cloud key, or another agent.';
+    chip.onclick=()=>{if(typeof obShow==='function')obShow({step:'model'});else openApp('setup')};
+    return;
+  }
+  chip.classList.remove('nobrain');chip.onclick=()=>openModelSettings();
   chip.hidden=false;
   const agent=ex.kind==='agent';
   // For an agent executor the model it actually woke up on is reported back by

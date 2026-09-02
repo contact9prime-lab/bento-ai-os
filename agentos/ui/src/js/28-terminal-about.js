@@ -40,7 +40,7 @@ function renderAbout(body){
   body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
     <div style="text-align:center;padding-top:26px">
       <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
-      <div style="font-size:20px;font-weight:800">AgentOS</div>
+      <div style="font-size:20px;font-weight:800">Bento Box AI</div>
       <div id="ab-ver" class="ab-ver">…</div>
       <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>
       <p class="mut" id="ab-info">…</p>

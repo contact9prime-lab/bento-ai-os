@@ -41,20 +41,20 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 ---
 
-## सेटअप नौ कदमों का है, और हर एक कुछ पीछे छोड़ जाता है
+## सेटअप ग्यारह कदमों का है, और हर एक कुछ पीछे छोड़ जाता है
 
 यह प्रोग्रेस बार वाला कोई सेटिंग्स फ़ॉर्म नहीं है। हर कदम **कुछ वास्तविक चीज़ बनाता है** — एक मॉडल
 जो जवाब देता है, एक एजेंट जो मौजूद है, एक फ़्लो जो चलता है, एक शेड्यूल जो फ़ायर होता है — और आपसे कुछ
 भी माँगने से पहले बताता है कि आप अंत में किसके साथ रहेंगे।
 
-![The first-run setup screen: a rail of nine steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](../screenshots/onboarding-1-name.png)
+![The first-run setup screen: a rail of eleven steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](../screenshots/onboarding-1-name.png)
 
 हर कदम **प्रोब किया जाता है, कभी याद नहीं रखा जाता**: वह इसलिए टिक होता है क्योंकि मशीन के पास वह चीज़
 है। एजेंट को डिलीट करें और कदम वापस todo पर चला जाता है। यही चीज़ इसे दोबारा चलाने के लिए सुरक्षित बनाती है — और
 दोबारा चलाना यहाँ एक सामान्य बात है, क्योंकि **सेटअप एक ऐप भी है।** कभी भी इसे खोलें और देखें कि कोई कदम क्या
 करता है, उस मशीन पर जिसे आपने महीनों पहले सेटअप किया था।
 
-![The Setup app in a window: the nine-step rail on the left, and the "Build a specialist" step open on the right](../screenshots/setup-app.png)
+![The Setup app in a window: the eleven-step rail on the left, and the "Build a specialist" step open on the right](../screenshots/setup-app.png)
 
 वही कैटलॉग, वही प्रोब, वही पैन — टर्मिनल में भी, जहाँ SSH पर `bento setup` ठीक वहीं से उठाता है जहाँ
 ब्राउज़र ने छोड़ा था।
@@ -285,7 +285,7 @@ native ऐप के लिए पूरा विंडो प्रबंध�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-फिर **http://127.0.0.1:8321** खोलें, या टर्मिनल में उन्हीं नौ कदमों के लिए `bento setup` चलाएँ।
+फिर **http://127.0.0.1:8321** खोलें, या टर्मिनल में उन्हीं ग्यारह कदमों के लिए `bento setup` चलाएँ।
 
 अगर पूछने के लिए कोई टर्मिनल मौजूद है, तो installer ख़त्म होने से पहले दो चीज़ें पूछता है: क्या यह मशीन आपके
 बाक़ी उपकरणों से पहुँच योग्य होनी चाहिए, और — अगर हाँ — तो आप **passphrase** से sign in करेंगे या किसी

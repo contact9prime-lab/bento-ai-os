@@ -41,20 +41,20 @@ l'API et le dépannage.
 
 ---
 
-## L'installation tient en neuf étapes, et chacune laisse quelque chose derrière elle
+## L'installation tient en onze étapes, et chacune laisse quelque chose derrière elle
 
 Pas un formulaire de réglages avec une barre de progression. Chaque étape **produit quelque chose de réel** — un
 modèle qui répond, un agent qui existe, un flow qui s'exécute, une planification qui se déclenche — et dit ce que
 vous obtiendrez avant de vous demander quoi que ce soit.
 
-![L'écran d'installation au premier lancement : une barre de neuf étapes sur la gauche, et à droite « Nommez votre agent » avec la phrase « Vous obtiendrez : le nom dans la barre de menu et dans chaque réponse »](../screenshots/onboarding-1-name.png)
+![L'écran d'installation au premier lancement : une barre de onze étapes sur la gauche, et à droite « Nommez votre agent » avec la phrase « Vous obtiendrez : le nom dans la barre de menu et dans chaque réponse »](../screenshots/onboarding-1-name.png)
 
 Chaque étape est **sondée, jamais mémorisée** : elle est cochée parce que la machine possède la chose. Supprimez
 l'agent et l'étape repasse à « à faire ». C'est ce qui rend sûr de la relancer — et la relancer est une chose
 normale ici, parce que **l'installation est aussi une application**. Ouvrez-la à tout moment pour voir ce que fait
 une étape, sur une machine que vous avez configurée il y a des mois.
 
-![L'application Installation dans une fenêtre : la barre de neuf étapes sur la gauche, et l'étape « Construire un spécialiste » ouverte sur la droite](../screenshots/setup-app.png)
+![L'application Installation dans une fenêtre : la barre de onze étapes sur la gauche, et l'étape « Construire un spécialiste » ouverte sur la droite](../screenshots/setup-app.png)
 
 Même catalogue, même sonde, mêmes volets — y compris dans un terminal, où `bento setup` par SSH reprend exactement
 là où le navigateur s'était arrêté.
@@ -292,7 +292,7 @@ ou en la demandant par son nom. [Plus →](../desktop.md#automations)
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Puis ouvrez **http://127.0.0.1:8321**, ou exécutez `bento setup` pour les mêmes neuf étapes dans un terminal.
+Puis ouvrez **http://127.0.0.1:8321**, ou exécutez `bento setup` pour les mêmes onze étapes dans un terminal.
 
 S'il y a un terminal pour poser la question, l'installateur en pose deux avant de finir : si cette machine
 doit être joignable depuis vos autres appareils et — si oui — si vous vous connectez avec une **phrase de

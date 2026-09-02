@@ -62,20 +62,23 @@ function dockBounce(appId){
 }
 
 /* ---- context menu: one animated positioner for every menu in the shell ---- */
-function ctxShow(e,m){
+function ctxShow(e,m,opts){
   m=m||$('#ctxmenu');
-  m.classList.add('show');
+  // registered with the popover manager: opening this closes any other popover,
+  // Escape and a click outside close it, and a click on its anchor is left to
+  // the anchor (the menu-bar title, the dock icon) to toggle it
+  popOpen(m,{anchor:opts&&opts.anchor,close:opts&&opts.close});
   const mw=m.offsetWidth||200, mh=m.offsetHeight||200;
   m.style.left=Math.min(e.clientX,innerWidth-mw-8)+'px';
   m.style.top=Math.max(34,Math.min(e.clientY,innerHeight-mh-8))+'px';
   m.style.transformOrigin=(e.clientY+mh>innerHeight?'bottom':'top')+' '+(e.clientX+mw>innerWidth?'right':'left');
   Motion.run(m,[{transform:'scale(.92)',opacity:0},{transform:'none',opacity:1}],{duration:150,easing:EASE.out});
 }
-function showCtxItems(e,items){
+function showCtxItems(e,items,opts){
   const m=$('#ctxmenu');
   m.innerHTML=items.map((it,i)=>it===null?'<hr>':`<button data-i="${i}"${it.danger?' style="color:var(--err)"':''}>${it.label}</button>`).join('');
-  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{m.classList.remove('show');const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
-  ctxShow(e,m);
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{popClose(m);const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
+  ctxShow(e,m,opts);
 }
 
 /* ---- modal dialogs: AgentOS sheets instead of window.confirm/alert ---- */
