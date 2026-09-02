@@ -210,7 +210,11 @@ def test_a_job_edited_and_re_saved_stays_a_job(store):
 
 
 @pytest.mark.parametrize("recipe,answers,expect", [
-    ("morning-brief", {"topics": "rust"}, "hours"),
+    # "in about …" and not "hours": a daily job installed 64 minutes before its
+    # fire hour truthfully says "in about 64 minutes", so pinning the unit made
+    # this test red every day between 06:30 and 08:00 UTC. The promise being
+    # tested is that the sentence is CONCRETE, not which unit it lands on.
+    ("morning-brief", {"topics": "rust"}, "in about"),
     ("page-watch", {"url": "https://x.dev", "minutes": "30"}, "minutes"),
     ("folder-watch", None, "lands in that folder"),
 ])
