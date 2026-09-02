@@ -453,3 +453,9 @@ body.dev-mobile .deck-group.folded{min-width:0}
 /* the copilot composer: an attachment strip above the input, then input + buttons */
 .cp-inbar{flex-wrap:wrap;align-items:center}
 .cp-inbar .cp-in{flex:1 1 120px;min-width:0}
+/* A tool card is `overflow:hidden`, which strips the automatic minimum size a
+   flex item otherwise keeps — so the moment a long turn made the feed taller
+   than the panel, every card was squeezed to its 2px border while the text
+   bodies (overflow visible) kept their height. Measured on a real Claude Code
+   turn: `.tool` at h=2. The feed scrolls; its children never shrink. */
+.cp-feed>*{flex:none}

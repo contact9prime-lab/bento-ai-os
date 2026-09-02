@@ -282,3 +282,10 @@ def test_snap_this_app_is_honest_where_the_screen_cannot_be_captured():
     assert "Paste a screenshot instead" in cp, "a snap button that does nothing is a dead control"
     assert "function copilotVisionNote" in cp
     assert "take_screenshot" in cp and "ask for a screenshot" in cp
+
+
+def test_copilot_feed_children_never_shrink():
+    """Measured on a real Claude Code turn: once the feed overflowed the panel,
+    every tool card (overflow:hidden, so no automatic min size) was squeezed to
+    a 2px border — a row of blank pills where the steps should be."""
+    assert ".cp-feed>*{flex:none}" in css("14-omnibar.css")
