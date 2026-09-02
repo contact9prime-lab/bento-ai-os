@@ -87,6 +87,33 @@ ledger. On a headless box: `bento job recipes`, then `bento job add morning-brie
 
 ---
 
+## Day one is lighter than week four
+
+The desktop used to open onto 43 tiles on a machine that could not yet answer a question. Now:
+
+![The desktop on day one: three groups open, three folded to one line with a count, and a "No brain yet · give it one" chip in the menu bar](docs/design/ux-review/after/a-desktop.jpg)
+
+- **The deck folds what you have not used.** Intelligence, System and Library start as one line
+  with a count and a peek of their icons; they unfold on a click, or the first time you open one of
+  their apps. A deck you have arranged is left exactly as you left it.
+- **The menu bar says what state the machine is in.** With nothing set to answer it reads
+  *No brain yet · give it one →*, and clicking it opens that step of setup.
+- **A failed turn is a sentence with a door.** No model, Ollama not running, a refused key, a rate
+  limit, a model not pulled — each is one sentence and one button (*Give it a brain*, *Open AI
+  providers*, *Open Model Manager*), in Chat, in the prompt bar's card and in every copilot panel.
+  The exception's name goes to Logs, where it belongs.
+- **One rule for every popover.** The launcher, the menus, notifications, power and Quick Settings
+  open one at a time, close on Escape and on a click outside, and the launcher fits the screen it is on.
+- **On a phone, one composer.** A sheet with its own input hides the prompt bar; list/detail apps
+  push one pane at a time with a way back; the setup wizard keeps its exit.
+
+![The first message on a fresh install: "Nothing can answer yet — this machine has no brain" with a Give it a brain button, instead of a Python exception](docs/design/ux-review/after/a-chat-sent.jpg)
+
+Every one of these was measured in a real browser before and after. The review that found them,
+with the numbers, is [docs/design/ux-review-2026-09.md](docs/design/ux-review-2026-09.md).
+
+---
+
 ## Three faces, one program
 
 Bento runs in three places, and **every feature is built for all three**. This is the first

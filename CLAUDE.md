@@ -1020,7 +1020,10 @@ failing the same way — by telling the truth at a volume nobody can read.
 
 ## The README is eleven files now
 
-`docs/i18n/README.<lang>.md` — eleven hand-written translations of the front page,
+`docs/i18n/README.<lang>.md` — eleven AI-generated translations of the front page,
+each carrying a notice at the top (`<!-- ai-translated -->` plus a sentence in its own
+language) that it is machine-made, unproofread, and that the English README is the
+reference — `tests/test_i18n_readme.py` pins the notice. They are eleven translations
 each with a switcher to the other ten and back to English. Two things follow, and
 the first one is a real cost to accept before editing:
 

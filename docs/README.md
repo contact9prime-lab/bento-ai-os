@@ -1,7 +1,7 @@
 # AgentOS Documentation
 
 <p align="right"><sub>
-The overview is translated —
+The overview is translated by AI (not yet proofread — the English README is the reference) —
 <a href="i18n/README.zh-CN.md">简体中文</a> ·
 <a href="i18n/README.zh-TW.md">繁體中文</a> ·
 <a href="i18n/README.ja.md">日本語</a> ·
