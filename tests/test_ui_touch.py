@@ -151,3 +151,30 @@ def test_the_prompt_bar_input_is_tall_enough_to_hit():
     m = re.search(r"min-height:\s*(\d+)px", block)
     assert m and int(m.group(1)) >= 30, (
         "the prompt bar's input is back to a mouse-sized target")
+
+
+def test_the_settings_rail_turns_sideways_not_just_flexible():
+    """The mobile rule said `display:flex` and assumed the default direction —
+    but the BASE rail is `flex-direction:column`, so the "strip above the
+    content" rendered as a 390x425px vertical wall of tabs: more than half the
+    phone spent before a single setting was visible. Measured with the computed
+    style at 390x844, reported as "on the phone it looks very cluttered". The
+    direction has to be said out loud, and so does the snap — a strip that can
+    rest half-way puts a button's centre outside its own box (the dock's rule)."""
+    block = _rule("body.dev-mobile .prefs-side")
+    assert "flex-direction:row" in block, (
+        "the rail inherits the base column direction and becomes a wall of tabs")
+    assert "scroll-snap-type:x" in block, (
+        "the rail strip can rest between chips")
+
+
+def test_a_checkbox_label_is_a_real_target_on_touch():
+    """A checkbox is a shape, so its LABEL is the tap target. Measured on the
+    share pane at 390x844: the box was 13x13 with a 16px label — 'ship this
+    app?' decided by whichever tap lands nearest. The label gets the real floor
+    (never a halo) and the box grows enough to read as one."""
+    block = _exact("body.dev-touch .win label.ck")
+    assert "min-height:var(--tap)" in block, (
+        "checkbox labels are back under the touch floor")
+    box = _exact("body.dev-touch .win label.ck input[type=checkbox]")
+    assert box, "the checkbox itself no longer grows on touch"

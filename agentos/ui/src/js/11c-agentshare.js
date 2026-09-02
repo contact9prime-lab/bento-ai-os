@@ -45,8 +45,8 @@ async function renderAgentShare(){
       secret. A credential found in the bundle refuses the share outright; there is no
       override, because a shared credential cannot be unshared.</div>
     <div class="prow"><input id="ags-name" placeholder="a name for it (default: ${esc(d.agent_name)})"
-        autocomplete="off" style="flex:1">
-      <input id="ags-desc" placeholder="one sentence on what it is for" autocomplete="off" style="flex:1"></div>
+        autocomplete="off" class="ags-grow">
+      <input id="ags-desc" placeholder="one sentence on what it is for" autocomplete="off" class="ags-grow"></div>
     <div class="prow"><div class="pl"><small>Ship apps with it? Each is a choice — an app is the
       piece most likely to have something personal built in.</small><div>${apps}</div></div></div>
     <div class="prow">
@@ -71,8 +71,8 @@ async function renderAgentShare(){
       writes <b>zero</b> permissions: every flow lands disabled, MCP servers land off with
       placeholder credentials for you to fill, and nothing of yours is overwritten.</div>
     <div class="prow">
-      <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" style="flex:1">
-      <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" style="max-width:220px">
+      <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" class="ags-grow">
+      <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" class="ags-key">
       <button class="endbtn" onclick="agsPreview()">Read it first</button>
       <label class="endbtn" style="cursor:pointer">from a file<input type="file" accept=".json"
         style="display:none" onchange="agsFromFile(this)"></label>
@@ -107,7 +107,7 @@ async function renderAgsHost(){
     </div>
     <div class="sub ${d.enabled && d.reachability.indexOf('OFF')>=0?'':'mut'}">${esc(d.reachability)}</div>
     <div class="prow" style="margin-top:6px">
-      <input id="ags-peer-name" placeholder="who gets a key? e.g. laptop-b, priya" autocomplete="off" style="flex:1">
+      <input id="ags-peer-name" placeholder="who gets a key? e.g. laptop-b, priya" autocomplete="off" class="ags-grow">
       <button class="endbtn" onclick="agsMintPeer()">Mint a key</button>
     </div>
     <div id="ags-peer-key"></div>

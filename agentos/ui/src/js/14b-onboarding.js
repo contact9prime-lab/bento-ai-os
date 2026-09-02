@@ -261,8 +261,8 @@ var OB_PANES={
       it contains first; the fork writes <b>zero</b> permissions and everything
       lands disabled.</p>
     <div class="prow" style="margin-top:10px">
-      <input id="ob-fork-src" placeholder="owner/repo · https://… · bento.agent.json URL" autocomplete="off" style="flex:1">
-      <input id="ob-fork-key" placeholder="peer key (hosted shares only)" autocomplete="off" style="max-width:200px">
+      <input id="ob-fork-src" placeholder="owner/repo · https://… · bento.agent.json URL" autocomplete="off" class="ags-grow">
+      <input id="ob-fork-key" placeholder="peer key (hosted shares only)" autocomplete="off" class="ags-key">
     </div>
     <div class="job-go"><button class="wiz-next" id="ob-fork-read">Read it first</button>
       <label class="wiz-back" style="cursor:pointer">from a file<input type="file" accept=".json"

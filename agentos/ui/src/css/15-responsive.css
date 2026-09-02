@@ -52,6 +52,14 @@ body.dev-touch #palbox button,body.dev-touch #swbox button{
    meant to sit in a row makes it wrap for no reason. */
 body.dev-touch .win input:not([type=checkbox]):not([type=radio]):not([type=range]),
 body.dev-touch .win select,body.dev-touch .win textarea{min-width:0}
+/* A checkbox is a shape, so its LABEL is the tap target — measured at 13×13px
+   with a 16px-tall label on the share pane's "ship this app?" boxes, which on a
+   phone is a decision made by whichever tap lands nearest. The label gets the
+   real floor and the box grows enough to read as one; the floor is real size,
+   never a halo, same as everything above. */
+body.dev-touch .win label.ck{display:inline-flex;align-items:center;gap:8px;
+  min-height:var(--tap);padding:2px 4px}
+body.dev-touch .win label.ck input[type=checkbox]{width:20px;height:20px;flex:none}
 /* The exceptions, each because the control is a shape rather than a hit area.
    They get a hit area anyway — just their own. */
 body.dev-touch .win .tbtns button{width:17px;height:17px;min-width:0;min-height:0}
@@ -144,17 +152,29 @@ body.dev-mobile .cside,body.dev-mobile .stside{display:none!important}
    so it turns on its side: a scrolling strip above the content, which is what a
    phone does with tabs anyway. */
 body.dev-mobile .prefs{flex-direction:column}
-body.dev-mobile .prefs-side{flex:none;width:auto;display:flex;gap:6px;
-  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+/* `flex-direction:row` is load-bearing, not the default: the BASE rail is a
+   column, so without it this rule produced a full-width vertical wall of tabs
+   above the content — 425px of a phone's 844 spent before a single setting was
+   visible, reported as "on the phone it looks very cluttered". The snap type
+   pairs with the buttons' snap-align below, the dock's rule: a strip that can
+   rest half-way puts a button's centre outside its own box. */
+body.dev-mobile .prefs-side{flex:none;width:auto;display:flex;flex-direction:row;gap:6px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;scroll-snap-type:x proximity;
   border-right:none;border-bottom:1px solid var(--line);padding:8px 10px}
 body.dev-mobile .prefs-side::-webkit-scrollbar{display:none}
 body.dev-mobile .prefs-side button{flex:0 0 auto;white-space:nowrap;
   scroll-snap-align:center;padding:8px 12px}
 body.dev-mobile .prefs-side .psi{display:none}   /* the label is the target here */
 body.dev-mobile #prefs-main{width:auto}
-/* and the rows inside it stack rather than run off the side */
-body.dev-mobile .prefs .pc,body.dev-mobile .prefs .s-modelrow{flex-wrap:wrap;max-width:100%}
+/* and the rows inside it stack rather than run off the side. `.prow` is in the
+   list for the share pane's name/description and source/key pairs: two half
+   width text fields on a 390px screen are boxes nobody can read what they are
+   typing into, and stacking is what the row means on a phone. */
+body.dev-mobile .prefs .pc,body.dev-mobile .prefs .s-modelrow,
+body.dev-mobile .prefs .prow{flex-wrap:wrap;max-width:100%}
 body.dev-mobile .prefs .pc>input,body.dev-mobile .prefs .pc>select,
+body.dev-mobile .prefs .prow>input:not([type=checkbox]),
+body.dev-mobile .prow>.ags-grow,body.dev-mobile .prow>.ags-key,
 body.dev-mobile .prefs .s-modelrow>select{flex:1 1 100%;min-width:0;max-width:100%}
 body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;padding-right:12px}
 body.dev-mobile .msg.user .bubble{max-width:92%}
