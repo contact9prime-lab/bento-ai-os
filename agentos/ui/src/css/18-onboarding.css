@@ -92,7 +92,12 @@
   .ob-stage{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .ob-rail{flex-direction:row;overflow-x:auto;border-right:none;
     border-bottom:1px solid var(--hairline);padding:var(--sp-3);align-items:center}
-  .ob-head,.ob-leave{display:none}
+  .ob-head{display:none}
+  /* "Finish later" stays. It was hidden with the head, and it is the only way
+     out of the first-run screen — a phone user who cannot paste an API key from
+     where they are was inside the wizard with no door. */
+  .ob-leave{margin:0 0 0 auto;padding:var(--sp-2) var(--sp-3);white-space:nowrap;flex:none;
+    border:1px solid var(--hairline);border-radius:var(--r-md)}
   .ob-item{flex:none;flex-direction:column;align-items:center;gap:4px;width:78px}
   .ob-t{font-size:var(--fs-2xs);text-align:center;white-space:normal}
   .ob-t em{display:none}
@@ -136,3 +141,14 @@
 .job-way.is-off{opacity:.62}
 .job-way .ob-cmd{display:block;margin-top:6px;padding:5px 8px;border-radius:var(--r-sm);
   background:var(--bg4);color:var(--dim);font-size:var(--fs-sm);overflow-wrap:anywhere}
+
+/* A step that needs another step first is shown, not refused: the rail row stays
+   tappable and the pane says what it needs and where. `disabled` made a greyed
+   row that answered a click with nothing. */
+.ob-item.blocked{opacity:.55}
+.ob-item.blocked:hover{opacity:.8}
+.ob-needs{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);
+  border:1px dashed var(--hairline-strong);border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm)}
+.ob-needs button{border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 10px;color:var(--txt)}
+/* the second and third choice on the brain step sat flush under the card above */
+.ob-body .job-q{margin-top:var(--sp-4)}

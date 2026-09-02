@@ -358,6 +358,7 @@ function handle(ev){
       }
       toast('approval needed'); scrollDown(); break;}
     case 'error':{
+      ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
         _s.html+='<div class="errmsg">'+esc(ev.message)+'</div>';}
       if(_sk&&_sk.error){_sk.error(ev);if(!_cur)break}
@@ -365,12 +366,14 @@ function handle(ev){
       if(!curBody)startAssistant();
       if(!curBody){toast('error: '+ev.message);break}
       flushText();
-      const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
-      curBody.parentNode.insertBefore(d,curBody); scrollDown(); break;}
+      curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
-      if(!_cur){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
+      // "Aria replied" is for a reply. A turn that ended on an error is not one —
+      // the bubble announced a reply over "ConnectError: All connection attempts failed".
+      const erred=!!ERRED[_cid||''];delete ERRED[_cid||''];
+      if(!_cur&&!erred){AIB.seen++;setTimeout(()=>{if(!RUNNING.size){AIB.seen=0;aiBubble()}},20000)}
       if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
       if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;

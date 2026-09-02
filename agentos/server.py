@@ -18,6 +18,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
 from . import agentbundle
+from . import turnerrors
 from . import appcheck
 from . import config as cfgmod
 from . import fabric as fabricmod
@@ -9013,6 +9014,16 @@ async def _run_chat(cid: str, data: dict):
     if engine != "aria":
         model = engine
     result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
+    # Nothing set to answer is a state of the machine, not a failure of the
+    # turn: say so in a sentence with a door, before anything is saved, billed
+    # or logged. Without this the empty model fell through to Ollama on
+    # localhost and the first message on every fresh install was answered with
+    # "ConnectError: All connection attempts failed".
+    if engine == "aria" and not model:
+        await evsend({"type": "error", **turnerrors.no_brain()})
+        await evsend({"type": "turn_end", "conversation_id": cid})
+        turns.pop(cid, None)
+        return
     # A cloud model nobody has priced does not get to run first and be costed
     # later. Asked once per model, then remembered either way.
     if usagemod.needs_price(cfg, model):
@@ -9224,8 +9235,11 @@ async def _run_chat(cid: str, data: dict):
         with contextlib.suppress(Exception):
             await evsend({"type": "error", "message": "turn stopped"})
     except Exception as e:
+        # The reply is a sentence and a door (turnerrors.explain); the exception's
+        # name and text go to Logs, where somebody debugging wants them.
+        why = turnerrors.explain(e, model, cfg)
         with contextlib.suppress(Exception):
-            await evsend({"type": "error", "message": f"{type(e).__name__}: {e}"})
+            await evsend({"type": "error", **why})
         with contextlib.suppress(Exception):
             store.log("error", f"chat turn failed: {type(e).__name__}: {e}"[:400],
                       {"conversation_id": cid})
@@ -9233,7 +9247,7 @@ async def _run_chat(cid: str, data: dict):
         # assistant bubble is the worst outcome: reloading the conversation shows
         # nothing at all, and the reason lives only in a log nobody opened.
         if not (result.get("content") or "").strip():
-            result["content"] = f"[error] {type(e).__name__}: {e}"
+            result["content"] = f"[error] {why['message']}"
     finally:
         if started:
             knowledge.turn_ended()

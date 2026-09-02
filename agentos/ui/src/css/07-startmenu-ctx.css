@@ -1,16 +1,28 @@
 /* ================= start menu (launcher) ================= */
+/* The launcher is clamped to the screen it is on. It used to be lifted above the
+   deck (`body.deck-open` in 14-omnibar.css) so the two would not overlap, and on
+   a 1440x900 laptop with the deck's two rows of groups that put its top edge at
+   y=-419: the header, the search box and the first four rows of apps were above
+   the screen. A transient menu may cover the deck; it may not leave the screen.
+   Flex column so the grid takes what is left after the header and the footer. */
 #startmenu{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tbh) + 16px);width:min(680px,92vw);z-index:9500;display:none;
+  max-height:calc(100vh - var(--mbh) - var(--tbh) - 32px);flex-direction:column;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline);border-radius:var(--r-xl);
   box-shadow:var(--el-5);overflow:hidden}
-#startmenu.show{display:block;animation:smpop .14s ease-out}
+#startmenu.show{display:flex;animation:smpop .14s ease-out}
 @keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
 #smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
 #smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
 #smhead b{font-size:var(--fs-base)}
 #smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
-#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;max-height:52vh;overflow-y:auto}
-.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:var(--r-lg);text-align:center}
+#smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;flex:1;min-height:0;max-height:52vh;overflow-y:auto;align-content:start;grid-auto-rows:minmax(92px,auto)}
+/* A tile is a flex column holding a 48px icon and a label. Without a floor on
+   the tile's height the label — `overflow:hidden`, so free to shrink — was the
+   part that gave way: measured 0px tall on a phone, and gone from the desktop's
+   last row too. Thirty-three unlabeled squares is a memory test. */
+.smapp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:var(--r-lg);text-align:center;min-height:92px}
+.smapp .n{flex:none}
 .smapp:hover{background:rgba(255,255,255,.07)}
 .smapp .aicon{width:48px;height:48px}
 .smapp .n{font-size:var(--fs-xs);font-weight:500;color:var(--txt);line-height:1.2;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

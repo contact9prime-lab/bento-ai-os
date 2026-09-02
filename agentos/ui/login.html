@@ -11,7 +11,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>AgentOS — sign in</title>
+<title>Bento Box AI — sign in</title>
 <style>
 /* Standalone on purpose: the desktop is 600KB and none of it should load for
    someone who has not signed in yet. */
@@ -54,8 +54,8 @@ button.link:hover{color:var(--txt)}
     <path d="M12 4.3 L19.6 18.4 Q20.1 19.3 19.1 19.3 L4.9 19.3 Q3.9 19.3 4.4 18.4 Z" fill="#04211c"/>
     <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
     <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/></svg></div>
-  <h1>AgentOS</h1>
-  <p class="sub" id="sub">This desktop is locked. Sign in to continue.</p>
+  <h1>Bento Box AI</h1>
+  <p class="sub" id="sub">Sign in to open this desktop.</p>
   <input id="who" type="text" name="username" placeholder="Username" hidden
          autocomplete="username" autocapitalize="none" spellcheck="false" enterkeyhint="next">
   <input id="pw" type="password" name="password" placeholder="Passphrase"
@@ -91,7 +91,7 @@ fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(d.locked){
     mode='lock';
     const nm=(d.display||d.name||'').trim();
-    document.title='AgentOS — locked';
+    document.title='Bento Box AI — locked';
     sub.textContent=nm?'Locked. Signed in as '+nm+'.':'Locked.';
     pw.placeholder=d.lock==='passphrase'?'Passphrase':'Password';
     go.textContent='Unlock';
@@ -129,7 +129,7 @@ f.addEventListener('submit',async e=>{
     // pointing at /login, and reloading turns this back into a sign-in page.
     if(d.login&&mode==='lock')return location.replace('/login');
     err.textContent=d.error||'sign-in failed';
-  }catch(e){err.textContent='could not reach AgentOS'}
+  }catch(e){err.textContent='could not reach Bento Box AI'}
   go.disabled=false;go.textContent=label;pw.select();
 });
 </script>

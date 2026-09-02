@@ -452,6 +452,10 @@ document.addEventListener('keydown',e=>{
   if((cmd(e)||e.altKey)&&e.key==='Tab'){e.preventDefault();switcherOpen(e.shiftKey?-1:1);return}
   const fsw=[...WM.wins.values()].find(w=>w.fs);
   if((e.key==='Escape'||(e.key.toLowerCase()==='f'&&!typing&&!inTerm))&&fsw){e.preventDefault();toggleFullWin(fsw);return}
+  // a popover (menu, panel, launcher) goes before anything else: it is the thing on top
+  if(e.key==='Escape'&&popCloseTop()){e.preventDefault();return}
+  // F1 is what a newcomer presses for help; Ctrl+/ is what the overlay documents
+  if(e.key==='F1'){e.preventDefault();keysHelp();return}
   if(e.key==='Escape'){if(EXPO.on){exposeToggle(false);return}if(SW.open){switcherCommit();return}
     if($('#keyshelp').classList.contains('show')){keysHelp(false);return}
     // Esc clears a search before it closes the wall — losing the whole surface

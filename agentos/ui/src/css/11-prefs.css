@@ -103,3 +103,6 @@
 .ab-entry{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;margin-bottom:8px;background:var(--bg2)}
 .ab-entry summary{cursor:pointer;font-weight:600;color:var(--txt);font-size:var(--fs-md)}
 .ab-entry .body{margin-top:8px;font-size:var(--fs-sm);line-height:1.6;color:var(--dim)}
+
+/* a link inside Settings is one of ours, not the browser's blue underline */
+.prefs a{color:var(--acc)}

@@ -599,9 +599,15 @@ async function renderFabFlows(body,w){
           run?' · last '+esc(run.status):''}</div></div></div>`;
   }).join('')||'<p class="mut" style="padding:6px">nothing yet</p>';
 
+  /* `.two-pane`: list beside detail on a desktop; on a phone one at a time — the
+     list, then the detail pushed over it with a way back. This was the desktop
+     layout squeezed into 390px: a 300px column of wrapped prose, and "Starts /
+     Granted (10)" wrapping word by word. Settings turned its rail sideways for
+     the same reason; this is the same rule for list/detail apps. */
+  const detailView=FLOW_VIEW==='detail'&&!!sel;
   body.innerHTML=`<div class="pad">${fabTabs()}
-    <div class="row" style="align-items:flex-start;gap:14px">
-      <div style="flex:0 0 210px;min-width:180px">
+    <div class="row two-pane${detailView?' detail':''}" style="align-items:flex-start;gap:14px">
+      <div class="tp-list" style="flex:0 0 210px;min-width:180px">
         <textarea id="flw-ask" rows="3" placeholder="Every morning check my disk and tell me on Telegram if it is filling up"></textarea>
         <button class="save" style="margin:6px 0 0" onclick="composeFlow()">✦ Draft a flow</button>
         <button style="width:100%;margin-top:4px" onclick="openFLW()">＋ Build one by hand</button>
@@ -609,12 +615,16 @@ async function renderFabFlows(body,w){
         <div class="sawgrp">Flows</div>
         ${list}
       </div>
-      <div style="flex:1;min-width:0" id="flow-detail">${sel?flowDetail(sel,latest[sel.name]):
+      <div class="tp-detail" style="flex:1;min-width:0" id="flow-detail">
+        <button class="tp-back" onclick="flowBack()">‹ Flows</button>
+        ${sel?flowDetail(sel,latest[sel.name]):
         `<p class="mut">No flows yet. A flow is a standing mission: what you want, who may work on it,
          what it may touch, and what starts it. The orchestrator picks the agents and the order while it runs.</p>`}</div>
     </div></div>`;
 }
-function flowSelect(name){FLOW_SEL=name;refreshApp('fabric')}
+var FLOW_VIEW='list';   // phone only: which pane is on screen
+function flowSelect(name){FLOW_SEL=name;FLOW_VIEW='detail';refreshApp('fabric')}
+function flowBack(){FLOW_VIEW='list';refreshApp('fabric')}
 function trigLabel(t){
   const c=t.config||{};
   if(t.kind==='cron')return c.type==='daily'?('cron '+(c.at||'08:00'))

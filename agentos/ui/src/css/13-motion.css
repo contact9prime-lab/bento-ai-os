@@ -124,7 +124,7 @@ body.exposing .win.exp-win{z-index:200!important;box-shadow:var(--el-4)}
 .space.add:hover{color:var(--acc);border-color:var(--acc)}
 #expose-grid{position:absolute;inset:0;z-index:250}
 .exp-empty{position:absolute;top:52%;left:0;right:0;text-align:center;color:var(--dim);font-size:var(--fs-md)}
-#expose-hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
+#expose-hint{position:absolute;bottom:calc(var(--tbh) + 6px);left:0;right:0;text-align:center;color:var(--dim2);font-size:var(--fs-sm);z-index:300}
 .exp-catch{position:absolute;z-index:300;cursor:pointer;border-radius:var(--r-md);
   outline:2px solid transparent;transition:outline-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
 .exp-catch:hover{outline-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}

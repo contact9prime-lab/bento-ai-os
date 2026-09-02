@@ -23,7 +23,7 @@ $('#tray-voice').innerHTML=svgMic(14);
 function powerMenuOpen(force){
   const m=$('#powermenu');if(!m)return false;
   const on=force!==undefined?!!force:!m.classList.contains('show');
-  m.classList.toggle('show',on);
+  if(on)popOpen(m,{anchor:$('#tray-power')});else popClose(m);
   if(on){
     // Ctrl+Alt+Delete is reached for when something is already covering the
     // screen, so the desktop has to come forward with the menu or the menu is
@@ -34,11 +34,8 @@ function powerMenuOpen(force){
   return true;
 }
 $('#tray-power').onclick=e=>{e.stopPropagation();powerMenuOpen()};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('#powermenu')&&!e.target.closest('#tray-power'))$('#powermenu').classList.remove('show');
-});
 async function powerDo(action,confirmMsg){
-  $('#powermenu').classList.remove('show');
+  popClose($('#powermenu'));
   const danger=['logout','restart','poweroff'].includes(action);
   if(confirmMsg&&!await osConfirm(confirmMsg,danger?'Anything unsaved in other apps will be lost.':'',
     {confirmText:{lock:'Lock',suspend:'Suspend',logout:'Log out',restart:'Restart',poweroff:'Power off','agentos-restart':'Restart'}[action]||'OK',danger}))return;
@@ -54,9 +51,6 @@ $('#j-mic').innerHTML=svgMic(22);
 $('#j-mic').onclick=()=>{if(JARVIS.phase==='listening'){try{JARVIS.rec.stop()}catch(e){}}else jarvisListen()};
 $('#j-close').onclick=()=>jarvisMode(false);
 $('#tray-bell').onclick=e=>{e.stopPropagation();openNotifPanel()};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('#notifpanel')&&!e.target.closest('#tray-bell'))$('#notifpanel').classList.remove('show');
-});
 updateTray();setInterval(updateTray,15000);
 // Polling is the fallback; the first compositor 'wm' event switches the
 // taskbar to event-driven updates (see the WebSocket handler).

@@ -40,20 +40,20 @@ troubleshooting.
 
 ---
 
-## Setup is nine steps, and each one leaves something behind
+## Setup is eleven steps, and each one leaves something behind
 
 Not a settings form with a progress bar. Every step **produces something real** — a model
 that answers, an agent that exists, a flow that runs, a schedule that fires — and says what
 you will end up with before it asks you for anything.
 
-![The first-run setup screen: a rail of nine steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](docs/screenshots/onboarding-1-name.png)
+![The first-run setup screen: a rail of eleven steps down the left, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply"](docs/screenshots/onboarding-1-name.png)
 
 Every step is **probed, never remembered**: it is ticked because the machine has the thing.
 Delete the agent and the step goes back to todo. That is what makes it safe to re-run — and
 re-running is a normal thing to do here, because **Setup is also an app**. Open it any time to
 see what a step does, on a machine you set up months ago.
 
-![The Setup app in a window: the nine-step rail on the left, and the "Build a specialist" step open on the right](docs/screenshots/setup-app.png)
+![The Setup app in a window: the eleven-step rail on the left, and the "Build a specialist" step open on the right](docs/screenshots/setup-app.png)
 
 Same catalogue, same probe, same panes — including in a terminal, where `bento setup` over
 SSH picks up exactly where the browser left off.
@@ -84,6 +84,33 @@ fire is a promise, and a new user has no reason to believe one.
 
 A job is a *flow*, not a new kind of thing: same scheduler, same permission gate, same audit
 ledger. On a headless box: `bento job recipes`, then `bento job add morning-brief --topics "…"`.
+
+---
+
+## Day one is lighter than week four
+
+The desktop used to open onto 43 tiles on a machine that could not yet answer a question. Now:
+
+![The desktop on day one: three groups open, three folded to one line with a count, and a "No brain yet · give it one" chip in the menu bar](docs/design/ux-review/after/a-desktop.jpg)
+
+- **The deck folds what you have not used.** Intelligence, System and Library start as one line
+  with a count and a peek of their icons; they unfold on a click, or the first time you open one of
+  their apps. A deck you have arranged is left exactly as you left it.
+- **The menu bar says what state the machine is in.** With nothing set to answer it reads
+  *No brain yet · give it one →*, and clicking it opens that step of setup.
+- **A failed turn is a sentence with a door.** No model, Ollama not running, a refused key, a rate
+  limit, a model not pulled — each is one sentence and one button (*Give it a brain*, *Open AI
+  providers*, *Open Model Manager*), in Chat, in the prompt bar's card and in every copilot panel.
+  The exception's name goes to Logs, where it belongs.
+- **One rule for every popover.** The launcher, the menus, notifications, power and Quick Settings
+  open one at a time, close on Escape and on a click outside, and the launcher fits the screen it is on.
+- **On a phone, one composer.** A sheet with its own input hides the prompt bar; list/detail apps
+  push one pane at a time with a way back; the setup wizard keeps its exit.
+
+![The first message on a fresh install: "Nothing can answer yet — this machine has no brain" with a Give it a brain button, instead of a Python exception](docs/design/ux-review/after/a-chat-sent.jpg)
+
+Every one of these was measured in a real browser before and after. The review that found them,
+with the numbers, is [docs/design/ux-review-2026-09.md](docs/design/ux-review-2026-09.md).
 
 ---
 
@@ -296,7 +323,7 @@ Bento, and then *proves it works* by asking the running server a question before
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Then open **http://127.0.0.1:8321**, or run `bento setup` for the same nine steps in a terminal.
+Then open **http://127.0.0.1:8321**, or run `bento setup` for the same eleven steps in a terminal.
 
 If there is a terminal to ask on, the installer asks two things before it finishes: whether this
 machine should be reachable from your other devices, and — if so — whether you sign in with a

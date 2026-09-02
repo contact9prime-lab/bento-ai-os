@@ -1,7 +1,7 @@
 # AgentOS Documentation
 
 <p align="right"><sub>
-The overview is translated —
+The overview is translated by AI (not yet proofread — the English README is the reference) —
 <a href="i18n/README.zh-CN.md">简体中文</a> ·
 <a href="i18n/README.zh-TW.md">繁體中文</a> ·
 <a href="i18n/README.ja.md">日本語</a> ·
@@ -52,6 +52,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [API Reference](api-reference.md) | REST endpoints, WebSocket streams, and the agent tool catalog |
 | [Architecture](architecture.md) | How it's built — modules, data, request flow |
 | [Roadmap](roadmap.md) | Product vision, differentiation vs chat-first assistants, feature pillars |
+| [UX review, Sept 2026](design/ux-review-2026-09.md) | What a new person meets on a fresh install, measured in a real browser — defects, structural issues, and a plan |
 | [Design: Subagents](design/subagents.md) | The execution fabric — subagents, task envelopes, mTLS enrollment, docker/remote workers |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 

@@ -5,7 +5,8 @@
    - copilot panels: a ✦ conversation inside every app window, scoped to that app
    The Chat window remains the full-history surface; these are the in-place hands. */
 
-let PENDING_SINKS=[];   // sinks waiting for their server-created conversation id, by origin
+let PENDING_SINKS=[];
+var ERRED={};           // conversations whose current turn hit an error (09-websocket.js reads it)
 function claimConversation(ev){
   // Returns true when this new conversation belongs to an embedded surface
   // (omnibar/copilot) — the Chat window must not adopt it as currentConv.
@@ -189,8 +190,7 @@ function miniFeed(box,opts){
     },
     error(ev){
       clearWorking();
-      const d=document.createElement('div');d.className='errmsg';d.textContent=ev.message;
-      box.appendChild(d);scroll();
+      box.appendChild(errBox(ev));scroll();
     },
     end(ev){clearWorking();actSync();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
@@ -343,4 +343,31 @@ async function initCopilot(w,panel){
     go();
   };
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
+}
+
+/* ---- a failed turn, as a sentence with a door ----
+   The server says WHAT went wrong in words (`message`) and, when there is one
+   thing to do about it, names the door (`action`). The first message on a fresh
+   install used to come back as "ConnectError: All connection attempts failed",
+   in red, from the agent, with a toast saying it had replied: no model was set,
+   the provider layer fell through to an Ollama that was not running, and the
+   exception's class name was the whole explanation. Now the sentence says there
+   is no brain and the button opens the step that gives it one. Used by Chat,
+   the prompt-bar cards and every copilot panel, so one shape everywhere. */
+function errBox(ev){
+  const d=document.createElement('div');d.className='errmsg';
+  const t=document.createElement('span');t.textContent=ev.message||'the turn failed';
+  d.appendChild(t);
+  const doors={
+    brain:{label:'Give it a brain',go:()=>{if(typeof obShow==='function')obShow({step:'model'});else openApp('setup')}},
+    providers:{label:'Open AI providers',go:()=>{if(typeof openModelSettings==='function')openModelSettings();else openApp('settings')}},
+    models:{label:'Open Model Manager',go:()=>openApp('models')},
+  };
+  const door=doors[ev.action];
+  if(door){
+    const b=document.createElement('button');b.className='err-door';b.textContent=door.label;
+    b.onclick=e=>{e.stopPropagation();door.go()};
+    d.appendChild(b);
+  }
+  return d;
 }

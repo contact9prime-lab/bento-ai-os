@@ -182,10 +182,8 @@ function buildDesktop(){
   rebuildLaunchers();
   $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
   $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
-  document.addEventListener('click',e=>{
-    if(!e.target.closest('#startmenu'))toggleStart(false);
-    if(!e.target.closest('#ctxmenu'))$('#ctxmenu').classList.remove('show');
-  });
+  // closing on a click outside, and closing the context menu, is the popover
+  // manager's job now (04e-popover.js) — one listener for every popover
   $('#desktop').addEventListener('contextmenu',e=>{
     if(e.target.closest('.win'))return;
     // A text field keeps the platform's own menu — right-clicking the prompt bar
@@ -220,8 +218,10 @@ function buildDesktop(){
   });
 }
 function toggleStart(force){
-  const on=force!==undefined?force:!$('#startmenu').classList.contains('show');
-  $('#startmenu').classList.toggle('show',on);
+  const sm=$('#startmenu');
+  const on=force!==undefined?force:!sm.classList.contains('show');
+  if(on)popOpen(sm,{anchor:$('#startbtn'),close:()=>$('#startbtn').classList.remove('on')});
+  else popClose(sm);
   $('#startbtn').classList.toggle('on',on);
   if(on){const q=$('#smq');if(q){q.value='';smRender('');setTimeout(()=>q.focus(),10)}}
 }

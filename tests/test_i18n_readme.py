@@ -169,3 +169,22 @@ def test_the_docs_app_titles_translations_by_language():
         assert d["title"].startswith("README — "), (
             f"{d['file']} is listed as {d['title']!r} rather than by its language")
         assert LANGUAGES[d["lang"]].split()[0] in d["title"]
+
+
+# ------------------------------------------------------------------ honesty
+
+AI_MARK = "<!-- ai-translated"
+
+
+def test_each_translation_says_it_was_made_by_an_ai():
+    """These are machine translations nobody on the team has proofread. A reader
+    who chose their language deliberately is owed that sentence, in that
+    language, before the first paragraph — and a link to the English original
+    it defers to."""
+    for code, path in _files().items():
+        text = path.read_text()
+        top = text.split("\n## ", 1)[0]          # everything before the first section
+        assert AI_MARK in top, f"{code}: no ai-translated notice at the top"
+        after = top.split("</sub>", 1)[1]
+        assert "../../README.md" in after, f"{code}: the notice does not point at the English README"
+        assert top.index(AI_MARK) < len(top) // 2, f"{code}: the notice is buried"

@@ -34,15 +34,10 @@ async function installComponent(id){
    Quick Settings app, in a menubar-anchored panel instead of a window */
 function toggleControlCenter(){
   let p=$('#ccpop');
-  if(!p){p=document.createElement('div');p.id='ccpop';document.body.appendChild(p);
-    document.addEventListener('click',e=>{
-      if(!e.target.closest('#ccpop')&&!e.target.closest('#tray-ctl'))p.classList.remove('show');
-    });
-  }
+  if(!p){p=document.createElement('div');p.id='ccpop';document.body.appendChild(p)}
   const on=!p.classList.contains('show');
-  if(!on){p.classList.remove('show');return}
-  $('#powermenu').classList.remove('show');$('#notifpanel').classList.remove('show');
-  p.classList.add('show');
+  if(!on){popClose(p);return}
+  popOpen(p,{anchor:$('#tray-ctl')});
   renderControl(p);
   popIn(p,{origin:'top right'});
 }
@@ -52,7 +47,20 @@ async function renderControl(body){
   const d=await (await fetch('/api/control')).json();
   const a=d.audio||{},b=d.battery||{},n=d.network||{};
   const deMode=PLATFORM.mode==='de';
+  /* One sentence, once. On a hosted desktop every card's reason is the same —
+     "Your desktop environment owns this…" — and it was printed under Sound,
+     Brightness, Network and Power in one 380px panel, then a variant under
+     Notifications. The honest answer said five times is noise: it goes at the
+     top, and a card repeats it only when its reason is a different one. */
+  const reasons={};['audio.devices','brightness.set','net.wifi.join','power.profile'].forEach(id=>{
+    const c=cap(id);if(!c.available&&c.reason)reasons[c.reason]=(reasons[c.reason]||0)+1});
+  const common=Object.keys(reasons).sort((x,y)=>reasons[y]-reasons[x])[0];
+  const shared=common&&reasons[common]>=2?common:'';
+  const ccNote=id=>{const c=cap(id);return (!c.available&&shared&&c.reason===shared)?'':capNote(id)};
+  const sharedComp=shared?(['audio.devices','brightness.set','net.wifi.join','power.profile']
+    .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
+    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
     <div class="provbox"><div class="ptitle">Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
@@ -93,7 +101,7 @@ async function renderControl(body){
         $('#c-sink').onchange=async e=>{await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id:+e.target.value})});toast('✓ audio output switched')};
       }
     }catch(e){}
-  }else sinks.innerHTML=capNote('audio.devices');
+  }else sinks.innerHTML=ccNote('audio.devices');
 
   // brightness
   const br=$('#c-bright');
@@ -107,13 +115,13 @@ async function renderControl(body){
             onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
-  }else br.innerHTML=capNote('brightness.set');
+  }else br.innerHTML=ccNote('brightness.set');
 
   // radios: wifi + bluetooth quick toggles
   const radios=$('#c-radios');let rhtml='';
   if(cap('net.wifi.scan').available)rhtml+=`<button class="endbtn" id="c-wifi">Wi-Fi…</button>`;
   if(cap('bt.status').available)rhtml+=`<button class="endbtn" id="c-bt">Bluetooth…</button>`;
-  if(!rhtml)rhtml=cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button><button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>`:capNote('net.wifi.join');
+  if(!rhtml)rhtml=cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('wifi')">Wi-Fi ↗</button><button class="endbtn" onclick="ctlSettings('bluetooth')">Bluetooth ↗</button>`:ccNote('net.wifi.join');
   radios.innerHTML=rhtml;
   const wob=$('#c-wifi');if(wob)wob.onclick=()=>{openApp('syssettings');SYS.tab=0;refreshApp('syssettings')};
   const bob=$('#c-bt');if(bob)bob.onclick=()=>{openApp('syssettings');SYS.tab=1;refreshApp('syssettings')};
@@ -126,7 +134,7 @@ async function renderControl(body){
       prof.innerHTML=(p.profiles||[]).map(x=>
         `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${esc(x)}</button>`).join('');
     }catch(e){}
-  }else prof.innerHTML=capNote('power.profile');
+  }else prof.innerHTML=ccNote('power.profile');
 
   // DND
   const dnd=$('#c-dnd');
