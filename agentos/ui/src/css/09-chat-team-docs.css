@@ -233,3 +233,15 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
   background:var(--acc);color:#04211c;min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
+/* ---- attached images: one strip on every agent surface ---- */
+.att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}
+.att-strip.on{display:flex}
+.att{position:relative;width:64px;height:64px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);flex:none}
+.att img{width:100%;height:100%;object-fit:cover;display:block}
+.att button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-sm);line-height:1;cursor:pointer}
+.att-sent{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.att-sent img{height:72px;max-width:160px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--hairline)}
+.cp-inbar .att-strip{padding:6px 0 0;width:100%}
+.cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
+.cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+#composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}

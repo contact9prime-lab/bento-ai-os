@@ -199,18 +199,9 @@ function omniShots(){
   box.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();OMNI.imgs.splice(+b.dataset.i,1);omniShots()});
 }
 function omniAddImage(fileOrUrl){
-  const done=u=>{if(OMNI.imgs.length>=4)return toast('up to 4 images');OMNI.imgs.push(u);omniShots()};
+  const done=u=>{if(OMNI.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images`);OMNI.imgs.push(u);omniShots()};
   if(typeof fileOrUrl==='string')return done(fileOrUrl);
-  const img=new Image();
-  img.onload=()=>{   // downscale big screenshots so a turn stays light
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    done(sc<1||fileOrUrl.size>800000?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);
-  };
-  img.src=URL.createObjectURL(fileOrUrl);
+  downscaleImage(fileOrUrl,done);     // the one downscale every surface uses (04a-copilot.js)
 }
 async function omniShoot(){
   if(!cap('screen.capture').available)return toast('screen capture is not available here');
@@ -265,9 +256,8 @@ async function omniAsk(q){
   if(shot){shot.innerHTML='▣';shot.onmousedown=e=>{e.preventDefault();omniShoot()}}
   // paste or drop an image straight onto the bar
   inp.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();items.forEach(it=>omniAddImage(it.getAsFile()));
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(omniAddImage);
   });
   ['dragover','drop'].forEach(ev=>bar.addEventListener(ev,e=>{
     if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;

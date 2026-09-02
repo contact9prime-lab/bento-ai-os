@@ -450,3 +450,6 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-group:hover .deck-fold{opacity:1}
 .deck-fold:hover{color:var(--txt);background:rgba(255,255,255,.08)}
 body.dev-mobile .deck-group.folded{min-width:0}
+/* the copilot composer: an attachment strip above the input, then input + buttons */
+.cp-inbar{flex-wrap:wrap;align-items:center}
+.cp-inbar .cp-in{flex:1 1 120px;min-width:0}

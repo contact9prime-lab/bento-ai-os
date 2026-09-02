@@ -283,10 +283,37 @@ async function initCopilot(w,panel){
       <button class="cp-open" title="Open in Chat">⤢</button></div>
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
-    <div class="cp-inbar"><textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea><button class="cp-send">↑</button></div>`;
+    <div class="cp-inbar"><div class="att-strip cp-att"></div>
+      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
+      <button class="cp-attach cp-snap" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
+      <button class="cp-attach cp-pick" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
+      <button class="cp-send">↑</button></div>`;
   const feedEl=panel.querySelector('.cp-feed');
   const input=panel.querySelector('.cp-in');
   const sendBtn2=panel.querySelector('.cp-send');
+  // Images, the same three doors as Chat and the prompt bar: paste, drop, pick.
+  const att=imageAttach({input,zone:panel.querySelector('.cp-inbar'),button:panel.querySelector('.cp-pick'),
+    strip:panel.querySelector('.cp-att')});
+  // "Snap this app": a picture of the screen, attached, where this machine can
+  // take one. Where it cannot, the button says so and names the way that works —
+  // never a control that answers a click with nothing.
+  panel.querySelector('.cp-snap').onclick=async e=>{
+    e.preventDefault();
+    const c=cap('screen.capture');
+    if(!c.available){
+      toast((c.reason||'This machine cannot capture its own screen here.')
+        +' Paste a screenshot instead (Ctrl+V / Cmd+V), or drop one on this panel.');
+      input.focus();return;
+    }
+    toast('capturing the screen…');
+    try{
+      const r=await fetch('/api/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({area:'full',inline:true})});
+      const d=await r.json();
+      if(!r.ok||!d.data_url)return toast(d.error||'could not capture the screen');
+      att.add(d.data_url);input.focus();
+    }catch(err){toast('screenshot failed')}
+  };
   const startersEl=panel.querySelector('.cp-starters');
   // starters: the panel invites action the moment it opens
   startersEl.innerHTML=copilotStarters(w.id).map(s=>`<button class="cp-chip">${esc(s)}</button>`).join('');
@@ -325,16 +352,21 @@ async function initCopilot(w,panel){
     return live;
   }
   function go(){
-    const text=input.value.trim();if(!text)return;
+    const text=input.value.trim();
+    const imgs=att.take();
+    if(!text&&!imgs.length)return;
     input.value='';
-    feedEl.insertAdjacentHTML('beforeend',`<div class="mf-user">${esc(text)}</div>`);
+    const bubble=document.createElement('div');bubble.className='mf-user';
+    bubble.textContent=text||'What do you see here?';
+    attachThumbs(bubble,imgs);
+    feedEl.appendChild(bubble);
     // the starters were an invitation; leaving them under a question in flight
     // is the panel still offering to begin something it has already begun
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
-    agentTurn({text,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
-      title:'✦ '+w.app.title,context:copilotContext(w),sink,
+    agentTurn({text:text||'What do you see here?',images:imgs,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
+      title:'✦ '+w.app.title,context:copilotContext(w)+'\n'+copilotVisionNote(),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
@@ -370,4 +402,94 @@ function errBox(ev){
     d.appendChild(b);
   }
   return d;
+}
+
+/* ---- images on every agent surface ----------------------------------------
+   A screenshot is often the whole question ("fix this, it is not working"), and
+   it must be attachable wherever the agent is asked: Chat, the prompt bar and
+   the copilot panel inside every window — including the panels user-built apps
+   mount. One implementation, three doors: paste (Ctrl+V), drop, and a button
+   that opens the file picker (which on a phone is the camera and the photos).
+   The same downscale everywhere, so a 4K screenshot costs the turn the same on
+   each surface. TUI: not applicable — a terminal has no clipboard image. */
+var IMG_MAX_PER_TURN=4;
+function downscaleImage(file,done){
+  if(!file||!String(file.type||'').startsWith('image/'))return;
+  const img=new Image();
+  img.onload=()=>{
+    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    // large pastes (screenshots) are recompressed so history stays light
+    done((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+}
+function clipboardImages(e){
+  return [...((e.clipboardData||{}).items||[])].filter(it=>it.type.startsWith('image/')).map(it=>it.getAsFile()).filter(Boolean);
+}
+function droppedImages(e){
+  return [...((e.dataTransfer||{}).files||[])].filter(f=>f.type.startsWith('image/'));
+}
+/* Wire one composer: `input` takes the paste, `zone` takes the drop, `button`
+   opens the picker, `strip` shows what is attached. Returns the attachment
+   state; `take()` hands the images to the turn and clears the strip. */
+function imageAttach(o){
+  const st={imgs:[]};
+  const strip=o.strip;
+  const render=()=>{
+    if(!strip)return;
+    strip.innerHTML=st.imgs.map((u,i)=>`<div class="att"><img src="${u}" alt="attached image ${i+1}"><button data-i="${i}" title="Remove">×</button></div>`).join('');
+    strip.classList.toggle('on',st.imgs.length>0);
+    strip.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();st.imgs.splice(+b.dataset.i,1);render()});
+    if(o.onChange)o.onChange(st.imgs);
+  };
+  const add=file=>{
+    if(typeof file==='string'){if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);st.imgs.push(file);render();return}
+    if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);
+    downscaleImage(file,u=>{if(st.imgs.length<IMG_MAX_PER_TURN){st.imgs.push(u);render()}});
+  };
+  if(o.input)o.input.addEventListener('paste',e=>{
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(add);
+  });
+  if(o.zone){
+    ['dragover','drop'].forEach(ev=>o.zone.addEventListener(ev,e=>{
+      if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;
+      e.preventDefault();
+      if(ev==='drop'){droppedImages(e).forEach(add);o.zone.classList.remove('dropping')}
+      else o.zone.classList.add('dropping');
+    }));
+    o.zone.addEventListener('dragleave',()=>o.zone.classList.remove('dropping'));
+  }
+  if(o.button){
+    o.button.title=o.button.title||'Add an image — or paste one (Ctrl+V), or drop it here';
+    o.button.onclick=e=>{
+      e.preventDefault();
+      const f=document.createElement('input');f.type='file';f.accept='image/*';f.multiple=true;
+      f.onchange=()=>{[...f.files].forEach(add);if(o.input)o.input.focus()};
+      f.click();
+    };
+  }
+  return {add,render,get imgs(){return st.imgs},
+    take(){const out=st.imgs.slice();st.imgs=[];render();return out}};
+}
+/* thumbnails under a sent message, on any surface */
+function attachThumbs(el,imgs){
+  if(!imgs||!imgs.length||!el)return;
+  const g=document.createElement('div');g.className='att-sent';
+  imgs.forEach(u=>{const im=document.createElement('img');im.src=u;im.alt='attached image';g.appendChild(im)});
+  el.appendChild(g);
+}
+
+/* What the agent should know about SEEING this app. It has eyes only where the
+   machine can capture its own screen; elsewhere the person's paste is the way,
+   and the agent must ask for it rather than claim to have looked. */
+function copilotVisionNote(){
+  const c=(typeof cap==='function')?cap('screen.capture'):{available:false};
+  return c.available
+    ?'If the question is about how this app LOOKS (layout, a blank panel, an error on screen), call take_screenshot to see the screen before deciding — the app window is open in front of you.'
+    :'You cannot capture the screen on this machine. If the question is about how this app looks and no image is attached, ask for a screenshot (they can paste one into this panel) instead of guessing.';
 }

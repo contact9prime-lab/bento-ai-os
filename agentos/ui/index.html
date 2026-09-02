@@ -764,6 +764,18 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
   background:var(--acc);color:#04211c;min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
+/* ---- attached images: one strip on every agent surface ---- */
+.att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}
+.att-strip.on{display:flex}
+.att{position:relative;width:64px;height:64px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);flex:none}
+.att img{width:100%;height:100%;object-fit:cover;display:block}
+.att button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-sm);line-height:1;cursor:pointer}
+.att-sent{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.att-sent img{height:72px;max-width:160px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--hairline)}
+.cp-inbar .att-strip{padding:6px 0 0;width:100%}
+.cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
+.cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+#composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -1931,6 +1943,9 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-group:hover .deck-fold{opacity:1}
 .deck-fold:hover{color:var(--txt);background:rgba(255,255,255,.08)}
 body.dev-mobile .deck-group.folded{min-width:0}
+/* the copilot composer: an attachment strip above the input, then input + buttons */
+.cp-inbar{flex-wrap:wrap;align-items:center}
+.cp-inbar .cp-in{flex:1 1 120px;min-width:0}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -4756,10 +4771,37 @@ async function initCopilot(w,panel){
       <button class="cp-open" title="Open in Chat">⤢</button></div>
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
-    <div class="cp-inbar"><textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea><button class="cp-send">↑</button></div>`;
+    <div class="cp-inbar"><div class="att-strip cp-att"></div>
+      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
+      <button class="cp-attach cp-snap" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
+      <button class="cp-attach cp-pick" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
+      <button class="cp-send">↑</button></div>`;
   const feedEl=panel.querySelector('.cp-feed');
   const input=panel.querySelector('.cp-in');
   const sendBtn2=panel.querySelector('.cp-send');
+  // Images, the same three doors as Chat and the prompt bar: paste, drop, pick.
+  const att=imageAttach({input,zone:panel.querySelector('.cp-inbar'),button:panel.querySelector('.cp-pick'),
+    strip:panel.querySelector('.cp-att')});
+  // "Snap this app": a picture of the screen, attached, where this machine can
+  // take one. Where it cannot, the button says so and names the way that works —
+  // never a control that answers a click with nothing.
+  panel.querySelector('.cp-snap').onclick=async e=>{
+    e.preventDefault();
+    const c=cap('screen.capture');
+    if(!c.available){
+      toast((c.reason||'This machine cannot capture its own screen here.')
+        +' Paste a screenshot instead (Ctrl+V / Cmd+V), or drop one on this panel.');
+      input.focus();return;
+    }
+    toast('capturing the screen…');
+    try{
+      const r=await fetch('/api/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({area:'full',inline:true})});
+      const d=await r.json();
+      if(!r.ok||!d.data_url)return toast(d.error||'could not capture the screen');
+      att.add(d.data_url);input.focus();
+    }catch(err){toast('screenshot failed')}
+  };
   const startersEl=panel.querySelector('.cp-starters');
   // starters: the panel invites action the moment it opens
   startersEl.innerHTML=copilotStarters(w.id).map(s=>`<button class="cp-chip">${esc(s)}</button>`).join('');
@@ -4798,16 +4840,21 @@ async function initCopilot(w,panel){
     return live;
   }
   function go(){
-    const text=input.value.trim();if(!text)return;
+    const text=input.value.trim();
+    const imgs=att.take();
+    if(!text&&!imgs.length)return;
     input.value='';
-    feedEl.insertAdjacentHTML('beforeend',`<div class="mf-user">${esc(text)}</div>`);
+    const bubble=document.createElement('div');bubble.className='mf-user';
+    bubble.textContent=text||'What do you see here?';
+    attachThumbs(bubble,imgs);
+    feedEl.appendChild(bubble);
     // the starters were an invitation; leaving them under a question in flight
     // is the panel still offering to begin something it has already begun
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
-    agentTurn({text,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
-      title:'✦ '+w.app.title,context:copilotContext(w),sink,
+    agentTurn({text:text||'What do you see here?',images:imgs,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
+      title:'✦ '+w.app.title,context:copilotContext(w)+'\n'+copilotVisionNote(),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
@@ -4843,6 +4890,96 @@ function errBox(ev){
     d.appendChild(b);
   }
   return d;
+}
+
+/* ---- images on every agent surface ----------------------------------------
+   A screenshot is often the whole question ("fix this, it is not working"), and
+   it must be attachable wherever the agent is asked: Chat, the prompt bar and
+   the copilot panel inside every window — including the panels user-built apps
+   mount. One implementation, three doors: paste (Ctrl+V), drop, and a button
+   that opens the file picker (which on a phone is the camera and the photos).
+   The same downscale everywhere, so a 4K screenshot costs the turn the same on
+   each surface. TUI: not applicable — a terminal has no clipboard image. */
+var IMG_MAX_PER_TURN=4;
+function downscaleImage(file,done){
+  if(!file||!String(file.type||'').startsWith('image/'))return;
+  const img=new Image();
+  img.onload=()=>{
+    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    // large pastes (screenshots) are recompressed so history stays light
+    done((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+}
+function clipboardImages(e){
+  return [...((e.clipboardData||{}).items||[])].filter(it=>it.type.startsWith('image/')).map(it=>it.getAsFile()).filter(Boolean);
+}
+function droppedImages(e){
+  return [...((e.dataTransfer||{}).files||[])].filter(f=>f.type.startsWith('image/'));
+}
+/* Wire one composer: `input` takes the paste, `zone` takes the drop, `button`
+   opens the picker, `strip` shows what is attached. Returns the attachment
+   state; `take()` hands the images to the turn and clears the strip. */
+function imageAttach(o){
+  const st={imgs:[]};
+  const strip=o.strip;
+  const render=()=>{
+    if(!strip)return;
+    strip.innerHTML=st.imgs.map((u,i)=>`<div class="att"><img src="${u}" alt="attached image ${i+1}"><button data-i="${i}" title="Remove">×</button></div>`).join('');
+    strip.classList.toggle('on',st.imgs.length>0);
+    strip.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();st.imgs.splice(+b.dataset.i,1);render()});
+    if(o.onChange)o.onChange(st.imgs);
+  };
+  const add=file=>{
+    if(typeof file==='string'){if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);st.imgs.push(file);render();return}
+    if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);
+    downscaleImage(file,u=>{if(st.imgs.length<IMG_MAX_PER_TURN){st.imgs.push(u);render()}});
+  };
+  if(o.input)o.input.addEventListener('paste',e=>{
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(add);
+  });
+  if(o.zone){
+    ['dragover','drop'].forEach(ev=>o.zone.addEventListener(ev,e=>{
+      if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;
+      e.preventDefault();
+      if(ev==='drop'){droppedImages(e).forEach(add);o.zone.classList.remove('dropping')}
+      else o.zone.classList.add('dropping');
+    }));
+    o.zone.addEventListener('dragleave',()=>o.zone.classList.remove('dropping'));
+  }
+  if(o.button){
+    o.button.title=o.button.title||'Add an image — or paste one (Ctrl+V), or drop it here';
+    o.button.onclick=e=>{
+      e.preventDefault();
+      const f=document.createElement('input');f.type='file';f.accept='image/*';f.multiple=true;
+      f.onchange=()=>{[...f.files].forEach(add);if(o.input)o.input.focus()};
+      f.click();
+    };
+  }
+  return {add,render,get imgs(){return st.imgs},
+    take(){const out=st.imgs.slice();st.imgs=[];render();return out}};
+}
+/* thumbnails under a sent message, on any surface */
+function attachThumbs(el,imgs){
+  if(!imgs||!imgs.length||!el)return;
+  const g=document.createElement('div');g.className='att-sent';
+  imgs.forEach(u=>{const im=document.createElement('img');im.src=u;im.alt='attached image';g.appendChild(im)});
+  el.appendChild(g);
+}
+
+/* What the agent should know about SEEING this app. It has eyes only where the
+   machine can capture its own screen; elsewhere the person's paste is the way,
+   and the agent must ask for it rather than claim to have looked. */
+function copilotVisionNote(){
+  const c=(typeof cap==='function')?cap('screen.capture'):{available:false};
+  return c.available
+    ?'If the question is about how this app LOOKS (layout, a blank panel, an error on screen), call take_screenshot to see the screen before deciding — the app window is open in front of you.'
+    :'You cannot capture the screen on this machine. If the question is about how this app looks and no image is attached, ask for a screenshot (they can paste one into this panel) instead of guessing.';
 }
 /* ================= application menus =================
    Every window gets File · Edit · View · Window · Help in the menu bar, the way
@@ -7495,8 +7632,10 @@ function renderChat(body){
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="queue"></div>
+        <div id="attach" class="att-strip"></div>
         <div id="combox">
           <textarea id="input" rows="1" placeholder="${PLACEHOLDER_IDLE}"></textarea>
+          <button id="attach-btn" class="cp-attach" title="Add an image — or paste one (Ctrl+V), or drop it here">▣</button>
           <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
@@ -7508,12 +7647,9 @@ function renderChat(body){
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
   input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend();
     draftSave(currentConv,input.value)});   // a half-typed message is work too
-  input.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();
-    items.forEach(it=>addPastedImage(it.getAsFile()));
-  });
+  // paste, drop, or the ▣ button — the same three doors every agent surface has
+  CHAT_ATT=imageAttach({input,zone:$('#composer'),button:$('#attach-btn'),strip:$('#attach'),
+    onChange:syncSend});
   $('#newchat').onclick=newChat;
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
@@ -7555,7 +7691,7 @@ function setRunning(r){running=r;
    empty, it is the stop button it has always been. */
 function syncSend(){
   if(!sendBtn||!input)return;
-  const has=!!input.value.trim()||PENDING_IMGS.length>0;
+  const has=!!input.value.trim()||!!(CHAT_ATT&&CHAT_ATT.imgs.length);
   const stop=running&&!has;
   sendBtn.classList.toggle('stop',stop);
   sendBtn.textContent=stop?'◼':'➤';
@@ -7583,36 +7719,18 @@ function renderQueue(){
     box.appendChild(el);
   });
 }
-let PENDING_IMGS=[];
 function bubbleImgs(el,urls){
   if(!urls||!urls.length)return;
   const g=document.createElement('div');g.className='bimgs';
   urls.forEach(u=>{const im=document.createElement('img');im.src=u;g.appendChild(im)});
   el.appendChild(g);
 }
-function addPastedImage(file){
-  if(!file)return;
-  if(PENDING_IMGS.length>=4){toast('up to 4 images per message');return}
-  const img=new Image();
-  img.onload=()=>{
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    // downscale/recompress large pastes (screenshots) so history stays light
-    PENDING_IMGS.push((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);renderAttach();
-  };
-  img.src=URL.createObjectURL(file);
-}
-function renderAttach(){
-  let a=$('#attach');
-  if(!PENDING_IMGS.length){a?.remove();syncSend();return}
-  if(!a){a=document.createElement('div');a.id='attach';const cb=$('#combox');cb.parentNode.insertBefore(a,cb)}
-  a.innerHTML=PENDING_IMGS.map((u,i)=>`<div class="att"><img src="${u}"><button onclick="rmAttach(${i})" title="remove">×</button></div>`).join('');
-  syncSend();
-}
-function rmAttach(i){PENDING_IMGS.splice(i,1);renderAttach()}
+/* The pending images live in the shared attachment helper (04a-copilot.js);
+   these names stay for the callers that still use them. */
+var CHAT_ATT=null;
+function addPastedImage(file){if(CHAT_ATT)CHAT_ATT.add(file)}
+function renderAttach(){if(CHAT_ATT)CHAT_ATT.render()}
+function rmAttach(i){if(CHAT_ATT){CHAT_ATT.imgs.splice(i,1);CHAT_ATT.render()}}
 function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
@@ -7623,7 +7741,7 @@ function userBubble(text,imgs){
   return m;
 }
 function send(){
-  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
+  const text=input.value.trim();const imgs=CHAT_ATT?CHAT_ATT.take():[];
   // nothing typed while a turn runs → the button is the stop button
   if(running&&!text&&!imgs.length){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
   if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
@@ -7634,7 +7752,7 @@ function send(){
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
   draftClear(currentConv);
-  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
+  input.value='';input.style.height='auto';renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
 }
@@ -8332,8 +8450,8 @@ function setTab(body,all){
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
-      ${/* Where updates come from is a setting, so a fork under test is followed
-            here, by the background check and by `bento update` alike. */''}
+      // Where updates come from is a setting, so a fork under test is followed
+      // here, by the background check and by `bento update` alike.
       pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
           <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
           <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
@@ -18152,18 +18270,9 @@ function omniShots(){
   box.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();OMNI.imgs.splice(+b.dataset.i,1);omniShots()});
 }
 function omniAddImage(fileOrUrl){
-  const done=u=>{if(OMNI.imgs.length>=4)return toast('up to 4 images');OMNI.imgs.push(u);omniShots()};
+  const done=u=>{if(OMNI.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images`);OMNI.imgs.push(u);omniShots()};
   if(typeof fileOrUrl==='string')return done(fileOrUrl);
-  const img=new Image();
-  img.onload=()=>{   // downscale big screenshots so a turn stays light
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    done(sc<1||fileOrUrl.size>800000?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);
-  };
-  img.src=URL.createObjectURL(fileOrUrl);
+  downscaleImage(fileOrUrl,done);     // the one downscale every surface uses (04a-copilot.js)
 }
 async function omniShoot(){
   if(!cap('screen.capture').available)return toast('screen capture is not available here');
@@ -18218,9 +18327,8 @@ async function omniAsk(q){
   if(shot){shot.innerHTML='▣';shot.onmousedown=e=>{e.preventDefault();omniShoot()}}
   // paste or drop an image straight onto the bar
   inp.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();items.forEach(it=>omniAddImage(it.getAsFile()));
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(omniAddImage);
   });
   ['dragover','drop'].forEach(ev=>bar.addEventListener(ev,e=>{
     if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;

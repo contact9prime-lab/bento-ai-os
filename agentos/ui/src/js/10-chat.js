@@ -33,8 +33,10 @@ function renderChat(body){
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="queue"></div>
+        <div id="attach" class="att-strip"></div>
         <div id="combox">
           <textarea id="input" rows="1" placeholder="${PLACEHOLDER_IDLE}"></textarea>
+          <button id="attach-btn" class="cp-attach" title="Add an image — or paste one (Ctrl+V), or drop it here">▣</button>
           <button id="mic" title="dictate (mic)"></button>
           <button id="send" disabled>➤</button>
         </div>
@@ -46,12 +48,9 @@ function renderChat(body){
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
   input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend();
     draftSave(currentConv,input.value)});   // a half-typed message is work too
-  input.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();
-    items.forEach(it=>addPastedImage(it.getAsFile()));
-  });
+  // paste, drop, or the ▣ button — the same three doors every agent surface has
+  CHAT_ATT=imageAttach({input,zone:$('#composer'),button:$('#attach-btn'),strip:$('#attach'),
+    onChange:syncSend});
   $('#newchat').onclick=newChat;
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
@@ -93,7 +92,7 @@ function setRunning(r){running=r;
    empty, it is the stop button it has always been. */
 function syncSend(){
   if(!sendBtn||!input)return;
-  const has=!!input.value.trim()||PENDING_IMGS.length>0;
+  const has=!!input.value.trim()||!!(CHAT_ATT&&CHAT_ATT.imgs.length);
   const stop=running&&!has;
   sendBtn.classList.toggle('stop',stop);
   sendBtn.textContent=stop?'◼':'➤';
@@ -121,36 +120,18 @@ function renderQueue(){
     box.appendChild(el);
   });
 }
-let PENDING_IMGS=[];
 function bubbleImgs(el,urls){
   if(!urls||!urls.length)return;
   const g=document.createElement('div');g.className='bimgs';
   urls.forEach(u=>{const im=document.createElement('img');im.src=u;g.appendChild(im)});
   el.appendChild(g);
 }
-function addPastedImage(file){
-  if(!file)return;
-  if(PENDING_IMGS.length>=4){toast('up to 4 images per message');return}
-  const img=new Image();
-  img.onload=()=>{
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    // downscale/recompress large pastes (screenshots) so history stays light
-    PENDING_IMGS.push((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);renderAttach();
-  };
-  img.src=URL.createObjectURL(file);
-}
-function renderAttach(){
-  let a=$('#attach');
-  if(!PENDING_IMGS.length){a?.remove();syncSend();return}
-  if(!a){a=document.createElement('div');a.id='attach';const cb=$('#combox');cb.parentNode.insertBefore(a,cb)}
-  a.innerHTML=PENDING_IMGS.map((u,i)=>`<div class="att"><img src="${u}"><button onclick="rmAttach(${i})" title="remove">×</button></div>`).join('');
-  syncSend();
-}
-function rmAttach(i){PENDING_IMGS.splice(i,1);renderAttach()}
+/* The pending images live in the shared attachment helper (04a-copilot.js);
+   these names stay for the callers that still use them. */
+var CHAT_ATT=null;
+function addPastedImage(file){if(CHAT_ATT)CHAT_ATT.add(file)}
+function renderAttach(){if(CHAT_ATT)CHAT_ATT.render()}
+function rmAttach(i){if(CHAT_ATT){CHAT_ATT.imgs.splice(i,1);CHAT_ATT.render()}}
 function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
@@ -161,7 +142,7 @@ function userBubble(text,imgs){
   return m;
 }
 function send(){
-  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
+  const text=input.value.trim();const imgs=CHAT_ATT?CHAT_ATT.take():[];
   // nothing typed while a turn runs → the button is the stop button
   if(running&&!text&&!imgs.length){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
   if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
@@ -172,7 +153,7 @@ function send(){
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
   draftClear(currentConv);
-  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
+  input.value='';input.style.height='auto';renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
 }

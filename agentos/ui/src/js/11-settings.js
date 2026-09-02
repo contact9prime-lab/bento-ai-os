@@ -265,8 +265,8 @@ function setTab(body,all){
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
-      ${/* Where updates come from is a setting, so a fork under test is followed
-            here, by the background check and by `bento update` alike. */''}
+      // Where updates come from is a setting, so a fork under test is followed
+      // here, by the background check and by `bento update` alike.
       pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
           <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
           <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">

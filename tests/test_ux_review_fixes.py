@@ -259,3 +259,26 @@ def test_the_menu_bar_says_when_nothing_can_answer():
     assert "No brain yet" in src
     assert "chip.classList.add('nobrain')" in src
     assert "#fwdchip.nobrain" in css("04-menubar.css")
+
+
+# ---- images on every agent surface ------------------------------------------
+
+def test_every_agent_surface_takes_an_image_the_same_three_ways():
+    """Paste, drop, pick — Chat, the prompt bar and every copilot panel, through
+    one helper. "Fix this app, it is not working" is usually a screenshot."""
+    cp = js("04a-copilot.js")
+    assert "function imageAttach(" in cp and "function downscaleImage(" in cp
+    assert "imageAttach({input,zone:$('#composer')" in js("10-chat.js")
+    assert "imageAttach({input,zone:panel.querySelector('.cp-inbar')" in cp
+    assert "downscaleImage(fileOrUrl,done)" in js("28a-omnibar.js")
+    # one downscale, not three: a second copy is the one that drifts
+    srcs = "".join((SRC / "js" / f).read_text() for f in ["04a-copilot.js", "10-chat.js", "28a-omnibar.js"])
+    assert srcs.count("toDataURL('image/jpeg',.9)") == 1
+
+
+def test_snap_this_app_is_honest_where_the_screen_cannot_be_captured():
+    cp = js("04a-copilot.js")
+    assert "cap('screen.capture')" in cp
+    assert "Paste a screenshot instead" in cp, "a snap button that does nothing is a dead control"
+    assert "function copilotVisionNote" in cp
+    assert "take_screenshot" in cp and "ask for a screenshot" in cp
