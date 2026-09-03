@@ -459,3 +459,29 @@ body.dev-mobile .deck-group.folded{min-width:0}
    bodies (overflow visible) kept their height. Measured on a real Claude Code
    turn: `.tool` at h=2. The feed scrolls; its children never shrink. */
 .cp-feed>*{flex:none}
+
+/* ---- rearranging: drag a tile, drag a group ---- */
+.deck-gname[data-g]{cursor:grab}
+body.deck-dragging{cursor:grabbing;user-select:none}
+body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
+/* the element left in the flow is the LANDING SLOT — it keeps its size, so the
+   tiles around it settle into the arrangement you are about to get */
+.deck-tile{position:relative}
+.deck-tile.dragging,.deck-group.dragging{opacity:.25;filter:grayscale(1)}
+.deck-ghost{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;margin:0;
+  opacity:.95;transform:scale(1.04) rotate(-1.5deg);transform-origin:center;
+  box-shadow:var(--el-5);border-radius:var(--r-lg);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.deck-group.deck-ghost{padding:8px 10px 10px}
+/* a folded group can still take a tile: it says so, and opens when it does */
+.deck-group.dropinto{outline:2px dashed var(--acc);outline-offset:2px;background:var(--bg3)}
+/* a hidden app, on the wall where it can be found and put back */
+.deck-tile.hidden-app{opacity:.42}
+/* `.deck-tile{position:relative}` has to be declared BEFORE `.deck-ghost`, or it
+   wins on source order and the floating clone lands at the end of the body
+   instead of under the pointer. */
+.deck-tile.hidden-app::after{content:'hidden';position:absolute;top:2px;right:4px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;color:var(--dim2)}
+.deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--dim2);opacity:.75}
+@media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}

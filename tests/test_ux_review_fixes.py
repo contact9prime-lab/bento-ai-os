@@ -289,3 +289,65 @@ def test_copilot_feed_children_never_shrink():
     every tool card (overflow:hidden, so no automatic min size) was squeezed to
     a 2px border — a row of blank pills where the steps should be."""
     assert ".cp-feed>*{flex:none}" in css("14-omnibar.css")
+
+
+# ---- rearranging the bento, and hiding a tile --------------------------------
+
+def test_the_drag_listens_on_the_window_and_never_captures_the_pointer():
+    """Measured: the tile reordered on screen and the drop never committed.
+    This drag MOVES the dragged node between siblings, and a DOM move is a
+    remove plus an insert, which releases pointer capture — so `pointerup`
+    stopped arriving at the element the listener was on."""
+    src = js("06a-deck.js")
+    assert ".setPointerCapture(" not in src, "capture does not survive moving the dragged node"
+    for needle in ["window.addEventListener('pointermove'", "window.addEventListener('pointerup'",
+                   "window.addEventListener('pointercancel'"]:
+        assert needle in src, needle
+
+
+def test_a_finger_that_moves_is_scrolling_and_only_a_held_one_rearranges():
+    src = js("06a-deck.js")
+    assert "DRAG_HOLD_MS" in src and "pointerType==='touch'" in src
+    assert "if(far>10){clearTimeout(hold);done()}" in src, "a quick swipe must stay a scroll"
+    # scrolling is stopped by a non-passive touchmove, not by a pointer event
+    assert "'touchmove',noscroll,{passive:false}" in src
+
+
+def test_a_drag_is_not_a_click():
+    assert "t.onclick=()=>{if(t._moved)return;" in js("06a-deck.js")
+
+
+def test_committing_the_order_never_eats_a_folded_group_or_a_hidden_app():
+    """A folded group has no tiles in the DOM and a hidden app has no tile, so a
+    wholesale read-back would delete both from the person's arrangement."""
+    src = js("06a-deck.js")
+    fn = src[src.index("function deckCommitOrder"):]
+    fn = fn[:fn.index("\n}")]
+    assert "if(!tiles)return;" in fn, "a folded group's apps are not on screen and must not move"
+    assert "g.apps.filter(id=>!shown.includes(id))" in fn, "unrendered ids keep their place"
+    assert "DECK.groups.filter(g=>!order.includes(g))" in fn, "a group not on screen keeps its place"
+
+
+def test_hiding_a_tile_keeps_the_app_and_says_where_it_went():
+    src = js("06a-deck.js")
+    assert "function deckSetHidden" in src and "DECK.hidden" in src
+    assert "still in the launcher" in src, "a hidden app that cannot be found again is a dead end"
+    # the shelf hides it; the wall keeps drawing it so it can be given back
+    assert "deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}" in src
+    assert "Show on the desktop" in src and "Hide from the desktop" in src
+    assert ".deck-tile.hidden-app" in css("14-omnibar.css")
+
+
+def test_there_is_a_way_to_rearrange_without_a_pointer():
+    src = js("06a-deck.js")
+    assert "function deckMoveTile" in src
+    assert "Move earlier" in src and "Move later" in src
+
+
+def test_the_floating_ghost_is_not_overridden_by_the_tile_rule():
+    """`.deck-tile{position:relative}` and `.deck-ghost{position:fixed}` have the
+    same specificity, so source order decides which one places the clone."""
+    s = css("14-omnibar.css")
+    assert s.index(".deck-tile{position:relative}") < s.index(".deck-ghost{position:fixed")
+    assert "pointer-events:none" in s[s.index(".deck-ghost{position:fixed"):][:400], \
+        "the ghost must not be what elementFromPoint finds"

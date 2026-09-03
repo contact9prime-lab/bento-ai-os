@@ -40,14 +40,35 @@ apps** group lists the applications installed on the machine itself, with their 
 every run mode, whether AgentOS *is* your session or a window inside someone else's. Click one to
 launch it on the host; right-click for *Show all applications*, or to hide the group.
 
+### Arranging it: drag a tile, drag a group, hide what you never open
+The deck is yours to arrange, and it is arranged by dragging rather than by a menu.
+
+- **Drag a tile** to reorder it inside its group, or onto another group to move it there. The
+  tiles around it part as you go, so what is on screen is the arrangement you are about to get.
+  Drop it on a **folded** group and that group takes the app and opens.
+- **Drag a group by its name** to reorder the groups themselves.
+- **On a phone**, press and hold a tile for a moment first. A finger that moves straight away is
+  scrolling the deck, which is what you want nine times out of ten.
+- **Right-click a tile** for the same moves without a pointer: *Move earlier*, *Move later*,
+  *Move to <group>*, *Pin to dock*.
+
+**Hiding** is on the same menu: *Hide from the desktop*. The tile leaves the shelf and the app
+stays installed — it is still in the launcher, still in the prompt bar, and still on the app wall
+(scroll up over the tiles), where it shows dimmed and marked `hidden` so you can put it back with
+*Show on the desktop*. A group whose apps you have hidden says how many, and its right-click menu
+offers them all back at once. Nothing here deletes anything.
+
+Your arrangement, your folded groups and your hidden list live in this browser's local storage, so
+they are per-machine and instant. `bento apps` in a terminal always lists every app, hidden or not.
+
 ### Start menu & dock
 - **Start** (bottom-left) opens the full app menu with descriptions.
 - The **dock** next to Start holds quick-launch shortcuts for your favorite apps, each showing a dot
   when running. Right-click a dock icon to remove it.
 
 ### Desktop icons
-Every app has a desktop icon. **Drag icons anywhere** — positions are remembered. Single-click
-selects; double-click launches.
+There are none, deliberately: the desktop is wallpaper and the apps live in the deck above the
+prompt bar, where they are grouped, searchable and arrangeable. See **Arranging it** above.
 
 ### Virtual desktops
 A pager in the taskbar (`1 2 +`) gives you multiple desktops:

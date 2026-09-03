@@ -1952,6 +1952,32 @@ body.dev-mobile .deck-group.folded{min-width:0}
    bodies (overflow visible) kept their height. Measured on a real Claude Code
    turn: `.tool` at h=2. The feed scrolls; its children never shrink. */
 .cp-feed>*{flex:none}
+
+/* ---- rearranging: drag a tile, drag a group ---- */
+.deck-gname[data-g]{cursor:grab}
+body.deck-dragging{cursor:grabbing;user-select:none}
+body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
+/* the element left in the flow is the LANDING SLOT — it keeps its size, so the
+   tiles around it settle into the arrangement you are about to get */
+.deck-tile{position:relative}
+.deck-tile.dragging,.deck-group.dragging{opacity:.25;filter:grayscale(1)}
+.deck-ghost{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;margin:0;
+  opacity:.95;transform:scale(1.04) rotate(-1.5deg);transform-origin:center;
+  box-shadow:var(--el-5);border-radius:var(--r-lg);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.deck-group.deck-ghost{padding:8px 10px 10px}
+/* a folded group can still take a tile: it says so, and opens when it does */
+.deck-group.dropinto{outline:2px dashed var(--acc);outline-offset:2px;background:var(--bg3)}
+/* a hidden app, on the wall where it can be found and put back */
+.deck-tile.hidden-app{opacity:.42}
+/* `.deck-tile{position:relative}` has to be declared BEFORE `.deck-ghost`, or it
+   wins on source order and the floating clone lands at the end of the body
+   instead of under the pointer. */
+.deck-tile.hidden-app::after{content:'hidden';position:absolute;top:2px;right:4px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;color:var(--dim2)}
+.deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--dim2);opacity:.75}
+@media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -6065,6 +6091,29 @@ function deckLoad(){
 }
 function deckSave(){localStorage.setItem('deck',JSON.stringify(DECK))}
 function deckGroupOf(id){return DECK.groups.find(g=>g.apps.includes(id))}
+/* ---- hiding an app from the desktop ----------------------------------------
+   A tile you never use is clutter on the one surface that is meant to be YOURS,
+   and the honest answer to "I don't want to see this" is not "delete the app" —
+   these are built-ins, and half of them are how the OS explains itself. So the
+   deck keeps a hidden list: the tile leaves the shelf, the app stays installed
+   and stays reachable from the launcher, the prompt bar and the app wall.
+   Hiding is never a one-way door: the wall still draws hidden apps, dimmed and
+   marked, and their menu offers them back. A hidden app that could not be found
+   again is the dead control this project's honesty rules forbid. */
+function deckHidden(){return (DECK&&DECK.hidden)||[]}
+function deckIsHidden(id){return deckHidden().includes(id)}
+function deckSetHidden(id,on){
+  if(!DECK)return;
+  const h=new Set(deckHidden());
+  on?h.add(id):h.delete(id);
+  DECK.hidden=[...h];
+  deckSave();buildDeck();
+  const name=(APPS[id]&&APPS[id].title)||id;
+  toast(on?`${name} hidden — still in the launcher, and on the app wall (scroll up)`
+          :`${name} is back on the desktop`);
+}
+/* the apps of a group that actually belong on the shelf right now */
+function deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}
 /* every launchable app has a home: new built-ins land in More, user apps in Your apps */
 function deckReconcile(){
   const ids=(typeof launcherIds==='function'?launcherIds():Object.keys(APPS)).filter(id=>APPS[id]);
@@ -6151,8 +6200,11 @@ function buildDeck(fresh){
   if(st)st.onclick=()=>{deckFull(false);openApp('studio')};
   if(so)so.onclick=()=>{deckFull(false);openApp('store')};
   box.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
-    t.onclick=()=>{deckFull(false);openApp(t.dataset.app)};
+    // a drag is not a click: `_moved` is set by the drag and read here, the same
+    // rule the desktop icons have always used
+    t.onclick=()=>{if(t._moved)return;deckFull(false);openApp(t.dataset.app)};
     t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
+    deckDragWire(t,'tile');
   });
   box.querySelectorAll('.deck-nat').forEach(t=>{
     t.onclick=()=>{deckFull(false);launchNative(t.dataset.nat,t.dataset.natname)};
@@ -6173,6 +6225,9 @@ function buildDeck(fresh){
   });
   box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
+    // the group's NAME is its handle — dragging from the tiles moves a tile
+    const g=h.closest('.deck-group[data-g]');
+    if(g&&!h.classList.contains('deck-unfold'))deckDragWire(g,'group',h);
   });
   box.querySelectorAll('.deck-unfold,.deck-fold').forEach(b=>{
     b.onclick=e=>{e.stopPropagation();deckFold(b.dataset.g,b.classList.contains('deck-fold'))};
@@ -6375,18 +6430,22 @@ addEventListener('resize',()=>{if(DECK)deckMeasure(document.body.classList.conta
 function deckGroupHTML(g){
   // the wall shows everything: folding is a property of the shelf, not of the overview
   const folded=!!g.collapsed&&!DECKFULL;
-  const n=g.apps.filter(id=>APPS[id]).length;
+  const shown=deckShown(g);
+  const n=shown.length;
   if(folded)return `<div class="deck-group folded" data-g="${esc(g.id)}">
     <button class="deck-gname deck-unfold" data-g="${esc(g.id)}" title="Show the ${n} apps in ${esc(g.name)}">
       ${esc(g.name)} <span class="mut">${n}</span><span class="deck-caret">▸</span></button>
-    <div class="deck-peek">${g.apps.filter(id=>APPS[id]).slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
+    <div class="deck-peek">${shown.slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
   </div>`;
+  const hid=g.apps.filter(id=>APPS[id]&&deckIsHidden(id)).length;
   return `<div class="deck-group" data-g="${esc(g.id)}">
-    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}${g.collapsed!==undefined?
-      `<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
-    <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
-      <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
-        ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
+    <div class="deck-gname" data-g="${esc(g.id)}" title="Drag to move this group">${esc(g.name)}${
+      hid&&!DECKFULL?`<span class="deck-hidn" title="${hid} app${hid>1?'s':''} hidden from the desktop — right-click to show ${hid>1?'them':'it'}">${hid} hidden</span>`:''}${
+      g.collapsed!==undefined?`<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
+    <div class="deck-tiles">${shown.map(id=>`
+      <button class="deck-tile${deckIsHidden(id)?' hidden-app':''}" data-app="${esc(id)}"
+        title="${esc(APPS[id].desc||APPS[id].title)}${deckIsHidden(id)?' · hidden from the desktop':''}">
+        ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`).join('')}</div>
   </div>`;
 }
 /* ---- system apps ----
@@ -6459,7 +6518,20 @@ function deckTileMenu(e,id){
     if(cur)cur.apps=cur.apps.filter(x=>x!==id);
     g.apps.push(id);deckSave();buildDeck();
   }}));
-  items.push(null,{label:'Pin to dock',fn:()=>pinToDock(id)});
+  items.push(null);
+  // Rearranging without a pointer, and the one thing a menu can do that a drag
+  // cannot: say what it will do before you commit to it.
+  if(cur){
+    const i=cur.apps.indexOf(id);
+    const prev=cur.apps.slice(0,i).reverse().find(x=>APPS[x]&&(DECKFULL||!deckIsHidden(x)));
+    const next=cur.apps.slice(i+1).find(x=>APPS[x]&&(DECKFULL||!deckIsHidden(x)));
+    if(prev)items.push({label:'Move earlier',fn:()=>deckMoveTile(id,-1)});
+    if(next)items.push({label:'Move later',fn:()=>deckMoveTile(id,1)});
+  }
+  items.push({label:'Pin to dock',fn:()=>pinToDock(id)});
+  items.push(deckIsHidden(id)
+    ?{label:'Show on the desktop',fn:()=>deckSetHidden(id,false)}
+    :{label:'Hide from the desktop',fn:()=>deckSetHidden(id,true)});
   if(id.startsWith('ua_')){
     items.push({label:'Pin as widget',fn:()=>{setWidgetPlace(id.slice(3),'');if(DECKFULL)deckTab('widgets')}});
     items.push({label:'Pin as widget (deck)',fn:()=>setWidgetPlace(id.slice(3),'deck')});
@@ -6480,8 +6552,12 @@ function deckUsed(id){
 }
 function deckGroupMenu(e,gid){
   const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
+  const hidden=g.apps.filter(id=>APPS[id]&&deckIsHidden(id));
   showCtxItems(e,[
     {label:g.collapsed?'Unfold group':'Fold group to one line',fn:()=>deckFold(gid,!g.collapsed)},
+    ...(hidden.length?[{label:`Show ${hidden.length} hidden app${hidden.length>1?'s':''}`,fn:()=>{
+      DECK.hidden=deckHidden().filter(id=>!hidden.includes(id));deckSave();buildDeck();
+      toast(`${hidden.length} app${hidden.length>1?'s are':' is'} back on the desktop`)}}]:[]),
     {label:'Rename group…',fn:async()=>{
       const v=await osPrompt('Rename group',{value:g.name,confirmText:'Rename'});
       if(v&&v.trim()){g.name=v.trim();deckSave();buildDeck()}}},
@@ -6585,6 +6661,220 @@ addEventListener('touchmove',e=>{
   else deckFull(true,up?'apps':'widgets');
 },{passive:true});
 addEventListener('touchend',()=>{DTOUCH=null},{passive:true});
+
+/* ================= rearranging the bento: drag a tile, drag a group ==========
+   The deck is the desktop's one arrangeable surface, and until now the only way
+   to move anything was a context menu ("Move to Automation"), which is a way to
+   RELOCATE a tile and no way at all to ORDER one. So tiles and groups drag.
+
+   Pointer events, not HTML5 drag-and-drop: DnD has no touch story at all, and
+   the phone is a first-class face here. One code path therefore serves a mouse,
+   a trackpad and a finger.
+
+   The DOM is the model while a drag is in flight — the dragged element itself is
+   moved between siblings, so what you see IS the arrangement — and the order is
+   read back out of it and committed on drop. That is what keeps the preview and
+   the result the same computation instead of two that can disagree.
+
+   Two rules that are easy to get wrong and expensive to debug:
+   - A FOLDED group has no `.deck-tiles` in the DOM, and a hidden app has no tile.
+     Reading a group's order back from the DOM must therefore never be a wholesale
+     replacement: the ids that were not rendered are still that person's
+     arrangement, and dropping them silently deletes apps from the deck.
+   - On touch the drag must not start on contact. The deck scrolls, and a finger
+     that moves is scrolling; only a finger that STAYS is rearranging. Hence the
+     long press, and hence pointercancel (the browser taking the gesture for a
+     scroll) abandons the drag rather than fighting it.
+
+   TUI: not applicable — no pointer, and `bento apps` lists everything.
+   SUI: identical, this is all inside the page.  */
+var DRAG=null;
+const DRAG_HOLD_MS=320;      // touch: hold this long, still, to pick a tile up
+const DRAG_SLOP=5;           // mouse: move this far before it is a drag, not a click
+
+/* Which way a container lays its children out, measured rather than assumed —
+   the shelf flows in columns, the wall in rows, and a phone in one column. */
+function deckAxis(box){
+  const kids=[...box.children].filter(el=>el.offsetParent!==null);
+  if(kids.length<2)return 'x';
+  const a=kids[0].getBoundingClientRect(),b=kids[1].getBoundingClientRect();
+  return Math.abs(b.left-a.left)>=Math.abs(b.top-a.top)?'x':'y';
+}
+function deckDragWire(el,kind,handle){
+  (handle||el).addEventListener('pointerdown',e=>{
+    if(e.button!==undefined&&e.button!==0)return;
+    if(e.target.closest('.deck-fold,.deck-wx,.deck-unfold'))return;   // a button is a button
+    deckDragArm(el,kind,e);
+  });
+}
+function deckDragArm(el,kind,e){
+  const touch=e.pointerType==='touch';
+  const sx=e.clientX,sy=e.clientY;
+  let started=false,hold=null;
+  el._moved=false;
+  /* WINDOW, not the element, and deliberately no setPointerCapture: this drag
+     MOVES the dragged element between siblings, and a DOM move is a remove plus
+     an insert, which releases pointer capture. Measured: the tile reordered on
+     screen and then the drop never committed, because `pointerup` had stopped
+     arriving at the element the listener was on. Listening on the window is
+     immune to whatever happens to the node. */
+  const begin=()=>{if(!started){started=true;deckDragStart(el,kind,{clientX:sx,clientY:sy})}};
+  const move=ev=>{
+    const far=Math.hypot(ev.clientX-sx,ev.clientY-sy);
+    if(!started){
+      if(touch){if(far>10){clearTimeout(hold);done()}return}   // a finger that moves is scrolling
+      if(far<DRAG_SLOP)return;
+      begin();
+    }
+    el._moved=true;
+    deckDragMove(ev.clientX,ev.clientY);
+  };
+  const up=()=>{done();if(started)deckDragDrop()};
+  const cancel=()=>{done();if(started)deckDragDrop(true)};
+  // Touch scrolling is stopped by a non-passive touchmove, not by preventing a
+  // pointer event: by the time the browser is scrolling, the pointer stream is
+  // already lost. The long press means it has not started scrolling yet.
+  const noscroll=ev=>{if(started)ev.preventDefault()};
+  function done(){
+    clearTimeout(hold);
+    window.removeEventListener('pointermove',move);
+    window.removeEventListener('pointerup',up);
+    window.removeEventListener('pointercancel',cancel);
+    window.removeEventListener('touchmove',noscroll);
+  }
+  window.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',up);
+  window.addEventListener('pointercancel',cancel);
+  window.addEventListener('touchmove',noscroll,{passive:false});
+  if(touch)hold=setTimeout(begin,DRAG_HOLD_MS);
+}
+function deckDragStart(el,kind,e){
+  const r=el.getBoundingClientRect();
+  const ghost=el.cloneNode(true);
+  ghost.classList.add('deck-ghost');
+  ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
+  document.body.appendChild(ghost);
+  el.classList.add('dragging');
+  document.body.classList.add('deck-dragging');
+  DRAG={el,kind,ghost,dx:e.clientX-r.left,dy:e.clientY-r.top,into:null,
+        home:{parent:el.parentNode,next:el.nextSibling}};
+  deckDragMove(e.clientX,e.clientY);
+  if(navigator.vibrate)try{navigator.vibrate(8)}catch(err){}
+}
+function deckDragMove(x,y){
+  if(!DRAG)return;
+  DRAG.ghost.style.left=(x-DRAG.dx)+'px';
+  DRAG.ghost.style.top=(y-DRAG.dy)+'px';
+  deckDragAutoScroll(x,y);
+  const under=document.elementFromPoint(x,y);
+  if(!under)return;
+  if(DRAG.kind==='group'){
+    const g=under.closest('.deck-group[data-g]');
+    if(!g||g===DRAG.el)return;
+    return deckDragPlace(DRAG.el,g,x,y);
+  }
+  // a tile: onto another tile, into an open group, or onto a folded one
+  const folded=under.closest('.deck-group.folded[data-g]');
+  deckDropInto(folded?folded.dataset.g:null);
+  if(folded)return;
+  const tile=under.closest('.deck-tile[data-app]');
+  if(tile&&tile!==DRAG.el)return deckDragPlace(DRAG.el,tile,x,y);
+  const grp=under.closest('.deck-group[data-g] .deck-tiles');
+  if(grp&&!grp.contains(DRAG.el))grp.appendChild(DRAG.el);
+}
+/* put the dragged element before or after the thing under the pointer, along
+   whichever axis that container actually runs in */
+function deckDragPlace(el,target,x,y){
+  const box=target.parentNode;
+  if(!box)return;
+  const r=target.getBoundingClientRect();
+  const before=deckAxis(box)==='x'?x<r.left+r.width/2:y<r.top+r.height/2;
+  const ref=before?target:target.nextSibling;
+  if(ref!==el)box.insertBefore(el,ref===el?el.nextSibling:ref);
+}
+function deckDropInto(gid){
+  if(DRAG.into===gid)return;
+  const old=DRAG.into&&document.querySelector(`.deck-group[data-g="${CSS.escape(DRAG.into)}"]`);
+  if(old)old.classList.remove('dropinto');
+  DRAG.into=gid;
+  const now=gid&&document.querySelector(`.deck-group[data-g="${CSS.escape(gid)}"]`);
+  if(now)now.classList.add('dropinto');
+}
+/* the wall can be taller than the screen — a drag that cannot reach the bottom
+   of it is a drag that cannot do the one thing it is for */
+function deckDragAutoScroll(x,y){
+  const sc=$('#deck-scroll');if(!sc)return;
+  const r=sc.getBoundingClientRect(),edge=48;
+  if(sc.scrollHeight>sc.clientHeight+2){
+    if(y<r.top+edge)sc.scrollTop-=14; else if(y>r.bottom-edge)sc.scrollTop+=14;
+  }
+  if(sc.scrollWidth>sc.clientWidth+2){
+    if(x<r.left+edge)sc.scrollLeft-=14; else if(x>r.right-edge)sc.scrollLeft+=14;
+  }
+}
+function deckDragDrop(abandon){
+  if(!DRAG)return;
+  const {el,kind,ghost,into,home}=DRAG;
+  const drag=DRAG;DRAG=null;
+  ghost.remove();
+  el.classList.remove('dragging');
+  document.body.classList.remove('deck-dragging');
+  document.querySelectorAll('.deck-group.dropinto').forEach(g=>g.classList.remove('dropinto'));
+  if(abandon){                                   // the browser took the gesture: put it back
+    if(home.parent)home.parent.insertBefore(el,home.next);
+    return;
+  }
+  if(kind==='tile'&&into)return deckDropIntoGroup(el.dataset.app,into);
+  deckCommitOrder();
+  buildDeck();
+}
+/* Commit what the DOM now says. Only groups that are actually SHOWING their
+   tiles are re-read; a folded group's apps are not on screen and must be left
+   alone, and every id that is hidden (or otherwise unrendered) keeps its place
+   rather than being dropped on the floor. */
+function deckCommitOrder(){
+  const sc=$('#deck-scroll');if(!sc||!DECK)return;
+  const order=[];
+  sc.querySelectorAll('.deck-group[data-g]').forEach(gel=>{
+    const g=DECK.groups.find(x=>x.id===gel.dataset.g);
+    if(!g)return;
+    order.push(g);
+    const tiles=gel.querySelector('.deck-tiles');
+    if(!tiles)return;                                   // folded: nothing was shown, nothing moves
+    const shown=[...tiles.querySelectorAll('.deck-tile[data-app]')].map(t=>t.dataset.app);
+    const rest=g.apps.filter(id=>!shown.includes(id));   // hidden, or not rendered here
+    g.apps=[...shown,...rest];
+  });
+  // a tile that moved between groups leaves the group it came from
+  const claimed=new Set();
+  order.forEach(g=>g.apps=g.apps.filter(id=>{
+    if(claimed.has(id))return false;
+    claimed.add(id);return true;
+  }));
+  DECK.groups.filter(g=>!order.includes(g)).forEach(g=>order.push(g));
+  DECK.groups=order;
+  deckSave();
+}
+/* dropped onto a group that is folded shut: it takes the app and opens */
+function deckDropIntoGroup(id,gid){
+  const g=DECK.groups.find(x=>x.id===gid);if(!g)return buildDeck();
+  DECK.groups.forEach(x=>{if(x!==g)x.apps=x.apps.filter(a=>a!==id)});
+  if(!g.apps.includes(id))g.apps.push(id);
+  g.collapsed=false;
+  deckSave();buildDeck();
+  toast(`moved to ${g.name}`);
+}
+/* the menu's way to reorder, for anyone not using a pointer */
+function deckMoveTile(id,dir){
+  const g=deckGroupOf(id);if(!g)return;
+  const i=g.apps.indexOf(id);
+  const vis=x=>APPS[x]&&(DECKFULL||!deckIsHidden(x));
+  const j=dir<0?g.apps.slice(0,i).reduce((p,x,k)=>vis(x)?k:p,-1)
+               :(()=>{const k=g.apps.slice(i+1).findIndex(vis);return k<0?-1:i+1+k})();
+  if(j<0)return;
+  g.apps.splice(i,1);g.apps.splice(j,0,id);
+  deckSave();buildDeck();
+}
 /* ================= desktop widgets =================
    Every app has two surfaces: the desktop window (the whole application) and a
    widget (the one glanceable fact). The widget's size is a property of the APP —
