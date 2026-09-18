@@ -229,6 +229,19 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* A look laid over the theme, not a theme: it is a switch here rather than
+       a card in the gallery so that it composes with whichever theme is on.
+       Applied the moment it is flipped, like the theme select above — Save is
+       for the machine's settings, and this one lives in this browser. */
+    P.push(pGroup('Immersive experience',[
+      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+        {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
+             +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
+             +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
+             +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
+         f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
+    ],{f:'immersive experience beta look'}));
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
@@ -297,6 +310,8 @@ function setTab(body,all){
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
   const th=main.querySelector('#s-theme');
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
+  const im=main.querySelector('#s-imm');
+  if(im)im.onchange=()=>setImmersive(im.checked);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#v-voice'))settingsVoices();

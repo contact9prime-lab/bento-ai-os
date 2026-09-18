@@ -1,0 +1,278 @@
+/* ================= immersive experience (beta) =================
+   One body class, `immersive`, switched from Settings → Appearance and kept
+   per browser like the theme (01b-immersive.js owns the switch; this file is
+   every rule). It is a LOOK laid over whatever theme is on — materials, depth,
+   radius, type, colour in Settings, a wallpaper that follows the pointer — and
+   deliberately not a theme: a theme owns its hues, and an immersive Dracula
+   should still be Dracula. Every colour here is therefore mixed from the theme's
+   own tokens (`--txt`, `--bg2`, `--acc`) rather than written as a white or a
+   black, which is also what makes one set of rules hold up in a light theme.
+
+   Numbered 20 so it loads after the themes' base CSS and after 16-glass, whose
+   `body.glass-off` rules it must still lose to — the one blurred surface this
+   look adds (the focused window) has to switch off with the rest on a machine
+   that cannot draw it. 02-themes injects its own <style> later in the head, so
+   a theme that sets a window background with !important still wins there; that
+   is correct, the theme designed that window.
+
+   What it costs, measured with five windows open on the default theme in the
+   headless Chromium the tests use: one more backdrop-filter than the standard
+   desktop (the ACTIVE window; the inactive ones stay opaque, the 16-glass
+   convention), and a transform on the wallpaper layer that is composited, not
+   painted. The parallax is off on touch and under prefers-reduced-motion.
+
+   Faces: GUI and SUI are this file. TUI — not applicable: a terminal has no
+   wallpaper, no glass and no shadows, and the switch says so in its own text. */
+
+/* ---- type: the same Inter, set like a system face ---- */
+body.immersive{font-feature-settings:"cv11","ss03";letter-spacing:-.004em}
+body.immersive .prefs-main > h2,body.immersive #welcome h1,body.immersive .sawh,body.immersive .ob-pane h1{letter-spacing:-.022em}
+body.immersive .win .tname{font-weight:600;font-size:var(--fs-md);letter-spacing:-.006em}
+body.immersive #tbclock .tm{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ---- the wallpaper: alive, and with grain ---- */
+body.immersive #desktop::after{display:none}
+body.immersive #wall{will-change:transform;transition:transform .55s var(--ease-out);transform:scale(1.04)}
+body.immersive #wall.has::after{background:linear-gradient(rgba(4,5,12,.02),rgba(4,5,12,.22))}
+:root[data-theme=light] body.immersive #wall.has::after{background:linear-gradient(rgba(250,249,248,.06),rgba(250,249,248,.22))}
+/* film grain: a 160px noise tile, drawn once and repeated — not a filter over
+   the whole screen, which would be re-run on every frame the wallpaper moves */
+body.immersive #wall.has::before{content:'';position:absolute;inset:-4%;opacity:.055;pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+
+/* ---- menu bar: a strip of the wallpaper, not a bar over it ---- */
+body.immersive #menubar{background:color-mix(in srgb,var(--bg2) 34%,transparent);
+  backdrop-filter:blur(44px) saturate(1.9);-webkit-backdrop-filter:blur(44px) saturate(1.9);
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 -.5px 0 rgba(255,255,255,.04)}
+body.immersive #mb-brand{font-weight:700}
+body.immersive #mb-brand .mark{box-shadow:0 1px 3px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.4)}
+body.immersive #mbmenus button:hover,body.immersive .pgb:hover,body.immersive #tray-ctl:hover,
+body.immersive #tray-voice:hover,body.immersive #tray-bell:hover,body.immersive #tray-power:hover{background:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
+body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
+body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
+
+/* ---- windows: the one you are in is glass, the rest recede ---- */
+body.immersive .win{border-radius:16px;border-color:color-mix(in srgb,var(--txt) 10%,transparent);
+  box-shadow:0 12px 40px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.35);
+  transition:box-shadow var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out),background var(--d-slow) var(--ease-out)}
+/* 88%, measured: at 76% the text of the window underneath still read through
+   the blur in a stacked screenshot — four windows of text legible through each
+   other is the failure 16-glass.css names, and it is worse than an opaque
+   window. The wallpaper's colour still comes through at 88%; words do not. */
+/* The active window is also a LIGHTER surface than the ones behind it (bg3 at
+   the top falling to bg), because on a dark wallpaper a black shadow under a
+   black window is invisible — round two of the agent's critique: "depth exists
+   only on the desktop layer, not where you actually work". Lightness is what
+   reads; the shadow is there for the light themes. */
+body.immersive .win.active{background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 88%,transparent),color-mix(in srgb,var(--bg) 88%,transparent));
+  backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);
+  border-color:color-mix(in srgb,var(--txt) 18%,transparent);
+  box-shadow:0 44px 120px rgba(0,0,0,.72),0 14px 34px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.16)}
+/* Measured with five windows open in software-rendered Chromium: this one blur
+   is the whole cost of the look — 83ms a frame with it, 16.7ms without, while
+   the deck, dock and menu bar blurs together cost nothing measurable. So the
+   "reduced" level from Themes → Effects (which the probe reaches first) drops
+   THIS blur and keeps the rest: the window stays tinted, at 94% so nothing
+   beneath reads through unblurred, and the desktop is back at 60fps. */
+body.immersive.glass-lite .win.active{backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 94%,transparent),color-mix(in srgb,var(--bg) 94%,transparent))}
+body.immersive .win.dragging{box-shadow:0 44px 120px rgba(0,0,0,.66),0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+/* 16-glass's knob still wins: no blur is no blur, and a tint left behind would
+   be four windows of text legible through each other */
+body.immersive.glass-off .win.active{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
+body.immersive .win.maxed{border-radius:0}
+body.immersive .win .ttl{height:40px;background:color-mix(in srgb,var(--txt) 2.5%,transparent);border-bottom:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .win.active .ttl{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 10%,transparent),color-mix(in srgb,var(--txt) 3%,transparent));
+  border-bottom-color:color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+body.immersive .win:not(.active){border-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .win:not(.active) .tname{color:var(--dim2)}
+body.immersive .win .tbtns{gap:8px}
+body.immersive .win .tbtns button{width:12px;height:12px;border-color:rgba(0,0,0,.18);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3)}
+body.immersive .win:not(.active) .tbtns button{background:color-mix(in srgb,var(--txt) 22%,transparent);box-shadow:none}
+/* in-window surfaces that were painted opaque: let the glass through */
+body.immersive .prefs{background:transparent}
+body.immersive .prefs-side{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .cside{background:color-mix(in srgb,var(--bg2) 38%,transparent);border-right-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .apptop,body.immersive #topbar,body.immersive .phead{border-bottom-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+
+/* ---- Settings: colour where a grey glyph was ----
+   macOS System Settings' one unmistakable tell is the coloured tile beside
+   each category. The rail buttons already carry data-t, so the colour is CSS. */
+body.immersive .prefs-side button{padding:7px 10px;gap:10px;border-radius:10px;font-weight:500;color:var(--txt)}
+body.immersive .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive .prefs-side button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:600;
+  box-shadow:0 4px 14px color-mix(in srgb,var(--acc) 30%,transparent)}
+body.immersive .prefs-side .psi{width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:var(--fs-sm);color:#fff;opacity:1;background:linear-gradient(135deg,#8b93a3,#586170);
+  box-shadow:inset 0 .5px 0 rgba(255,255,255,.4),0 1px 2px rgba(0,0,0,.35)}
+body.immersive .prefs-side button.on .psi{box-shadow:inset 0 .5px 0 rgba(255,255,255,.5),0 1px 3px rgba(0,0,0,.3)}
+body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a78bfa,#6d28d9)}
+body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
+body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
+body.immersive .prefs-side [data-t=locale] .psi{background:linear-gradient(135deg,#fb923c,#c2410c)}
+body.immersive .prefs-side [data-t=keys] .psi{background:linear-gradient(135deg,#94a3b8,#475569)}
+body.immersive .prefs-side [data-t=voice] .psi{background:linear-gradient(135deg,#f472b6,#be185d)}
+body.immersive .prefs-side [data-t=look] .psi{background:linear-gradient(135deg,#818cf8,#4338ca)}
+body.immersive .prefs-side [data-t=system] .psi{background:linear-gradient(135deg,#a1a1aa,#52525b)}
+body.immersive .pgroup{background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-radius:14px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.05)}
+body.immersive .pgroup > h3{color:var(--dim);letter-spacing:.06em}
+body.immersive .prow{border-top-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .prefs-main > .lead{color:var(--dim)}
+body.immersive .psw i{background:color-mix(in srgb,var(--txt) 16%,transparent);border-color:transparent}
+body.immersive .psw i::after{opacity:1;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+body.immersive .psw input:checked + i{background:var(--acc)}
+body.immersive .psw input:checked + i::after{background:#fff}
+
+/* ---- controls: rounder, lit from above ---- */
+body.immersive input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+body.immersive textarea,body.immersive select{border-radius:10px;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border-color:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive input:focus,body.immersive textarea:focus,body.immersive select:focus{border-color:var(--acc);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+body.immersive .endbtn{border-radius:9px;padding:4px 11px;background:color-mix(in srgb,var(--txt) 6%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 12%,transparent);color:var(--txt);
+  transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
+body.immersive .endbtn:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 50%,transparent);color:var(--txt)}
+body.immersive .save,body.immersive .pact,body.immersive .dlg-b .dlg-ok,body.immersive #send{border-radius:12px;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--acc) 32%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body.immersive .catcard,body.immersive .item,body.immersive .provbox,body.immersive .stat,body.immersive .teamcard,body.immersive .sawrow{
+  border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive ::-webkit-scrollbar{width:10px;height:10px}
+body.immersive ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--txt) 22%,transparent);border:3px solid transparent;background-clip:padding-box;border-radius:8px}
+
+/* ---- one light source, from above ----
+   The OS's own agent, asked to judge the first cut, said the panels still read
+   as "a flat fill with a hard 1px outline"; its fix was the right one — a lit
+   top edge and a shadowed bottom edge, so every surface is lit from the same
+   place. It is a border, so it costs nothing. */
+body.immersive .win,body.immersive .deck-group,body.immersive #taskbar,body.immersive #omnibar,body.immersive #startmenu,
+body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist,
+body.immersive .ocard,body.immersive .dlg,body.immersive .procard,body.immersive .toast,body.immersive .pgroup{
+  border-top-color:color-mix(in srgb,var(--txt) 26%,transparent);border-bottom-color:rgba(0,0,0,.42)}
+body.immersive .win.active{border-top-color:color-mix(in srgb,var(--txt) 34%,transparent)}
+:root[data-theme=light] body.immersive .win,:root[data-theme=light] body.immersive .deck-group,:root[data-theme=light] body.immersive #taskbar,
+:root[data-theme=light] body.immersive #omnibar,:root[data-theme=light] body.immersive #startmenu,:root[data-theme=light] body.immersive .pgroup{
+  border-top-color:rgba(255,255,255,.9);border-bottom-color:rgba(0,0,0,.14)}
+
+/* ---- dock: a shelf of glass with a lit rim ---- */
+body.immersive #taskbar{background:color-mix(in srgb,var(--txt) 9%,transparent);
+  backdrop-filter:blur(44px) saturate(1.9);-webkit-backdrop-filter:blur(44px) saturate(1.9);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);
+  box-shadow:0 26px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(0,0,0,.2)}
+body.immersive:not(.dev-mobile) #taskbar{border-radius:24px;padding:8px 12px}
+body.immersive .dsep{background:color-mix(in srgb,var(--txt) 18%,transparent)}
+body.immersive .dockb .aicon,body.immersive .tbwin .aicon,body.immersive .tbnat .aicon,body.immersive #startbtn .mark{
+  box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive .dockb::before,body.immersive .tbwin::before,body.immersive .tbnat::before,body.immersive #startbtn::before{
+  background:color-mix(in srgb,var(--bg2) 72%,transparent);backdrop-filter:blur(20px);border-radius:9px;
+  border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+
+/* ---- the prompt bar: the hero, so it gets the most light ---- */
+body.immersive #omnibar{height:48px;background:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 18%,transparent);
+  backdrop-filter:blur(44px) saturate(1.8);-webkit-backdrop-filter:blur(44px) saturate(1.8);
+  box-shadow:0 20px 50px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.2)}
+body.immersive #omnibar:focus-within,body.immersive #omnibar.pop,body.immersive #omnibar.summoned{
+  border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 40px color-mix(in srgb,var(--acc) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.22)}
+body.immersive #omni-in{font-size:15px}
+body.immersive #omni-in::placeholder{color:color-mix(in srgb,var(--txt) 58%,transparent)}
+body.immersive #omni-orb{box-shadow:0 0 14px color-mix(in srgb,var(--acc) 70%,transparent),0 0 0 4px color-mix(in srgb,var(--acc) 14%,transparent)}
+
+/* ---- the deck: tiles of light on the wallpaper ---- */
+body.immersive .deck-group{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 11%,transparent),color-mix(in srgb,var(--txt) 5%,transparent));
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);border-radius:20px;padding:10px 12px 12px;
+  backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);
+  box-shadow:0 20px 50px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.16)}
+body.immersive .deck-group:hover{border-color:color-mix(in srgb,var(--txt) 20%,transparent);
+  box-shadow:0 26px 60px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.2)}
+body.immersive .deck-gname{color:color-mix(in srgb,var(--txt) 62%,transparent);letter-spacing:.08em}
+body.immersive .deck-tile{border-radius:14px;transition:background var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .deck-tile:hover{background:color-mix(in srgb,var(--txt) 12%,transparent);transform:translateY(-3px) scale(1.03)}
+body.immersive .deck-tile span{color:color-mix(in srgb,var(--txt) 92%,transparent)}
+body.immersive .deck-tile .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive .deck-tile:hover .aicon{box-shadow:0 16px 30px rgba(0,0,0,.55),0 3px 6px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.5)}
+body.immersive .deck-new{border-radius:20px;border-color:color-mix(in srgb,var(--txt) 16%,transparent)}
+body.immersive #deck-toggle{background:color-mix(in srgb,var(--txt) 9%,transparent);border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive.deck-full #deck{backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5)}
+
+/* ---- launcher, popovers, menus, dialogs, toasts: one material ---- */
+body.immersive #startmenu,body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,
+body.immersive #omnilist,body.immersive .ocard,body.immersive .dlg,body.immersive .procard,body.immersive #swbox,body.immersive #keysbox,body.immersive #palbox{
+  background:color-mix(in srgb,var(--bg2) 58%,transparent);
+  backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.14)}
+body.immersive #startmenu{border-radius:24px}
+body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist{border-radius:14px;padding:6px}
+body.immersive #ctxmenu button,body.immersive #powermenu button{border-radius:8px;padding:7px 12px}
+body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:#04211c}
+body.immersive #powermenu button.danger:hover{background:var(--err);color:#fff}
+body.immersive #ctxmenu hr,body.immersive #powermenu hr{border-top-color:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive #smhead .mark{box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+body.immersive #smsearch input{height:40px;border-radius:12px;font-size:var(--fs-base);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive .smapp{border-radius:16px;transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .smapp:hover{background:color-mix(in srgb,var(--txt) 10%,transparent);transform:translateY(-2px)}
+body.immersive .smapp .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive #smfoot{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .np-item{border-radius:12px;background:color-mix(in srgb,var(--txt) 5%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive .palitem{border-radius:10px}
+body.immersive .palitem.sel{background:var(--acc);color:#04211c;outline:none}
+body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:#04211c}
+body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
+  backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-left:3px solid var(--acc);border-radius:14px;
+  box-shadow:0 18px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
+body.immersive .dlg{border-radius:20px}
+body.immersive .dlg-b button{border-radius:11px}
+
+/* ---- Chat: a composer that floats, replies with room to breathe ---- */
+body.immersive #combox{border-radius:20px;background:color-mix(in srgb,var(--txt) 6%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+body.immersive #combox:focus-within{border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 16%,transparent),0 14px 40px rgba(0,0,0,.28)}
+body.immersive .msg.user .bubble{border-radius:18px 18px 6px 18px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 26%,var(--bg3)),color-mix(in srgb,var(--acc2) 18%,var(--bg3)));
+  border-color:color-mix(in srgb,var(--acc) 28%,transparent)}
+body.immersive .chip{border-radius:14px;background:color-mix(in srgb,var(--txt) 6%,transparent);border-color:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive .chip:hover{background:color-mix(in srgb,var(--acc) 14%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent);transform:translateY(-2px)}
+body.immersive #welcome h1{filter:drop-shadow(0 0 26px color-mix(in srgb,var(--acc) 32%,transparent))}
+body.immersive #newchat,body.immersive .conv{border-radius:12px}
+body.immersive .conv.active{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+body.immersive .body pre{border-radius:12px;background:color-mix(in srgb,var(--bg) 60%,transparent)}
+body.immersive .errmsg,body.immersive .approval{border-radius:14px}
+
+/* ---- the copilot panel and the omnibar cards share the chat's material ---- */
+body.immersive .cp-inbar{border-radius:16px}
+body.immersive .mf-user{border-radius:16px 6px 16px 16px}
+body.immersive .cp-feed .tool{border-radius:10px}
+
+/* ---- setup (the wizard): the wallpaper shows through the rail ---- */
+body.immersive .wiz.ob{background:color-mix(in srgb,var(--bg) 55%,transparent);
+  backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6)}
+body.immersive .ob-rail{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .ob-item{border-radius:12px}
+body.immersive .ob-item.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+body.immersive .ob-item.on .ob-t{color:#04211c}
+body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:#04211c}
+
+/* ---- overview & switcher ---- */
+body.immersive #expose{backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4)}
+body.immersive .space{border-radius:14px}
+body.immersive .swcard{border-radius:16px}
+body.immersive .swcard.sel{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+
+/* ---- the sign-in / lock sheet and other full-bleed surfaces keep their own
+   look: they are drawn before the theme is known, and a login page that changes
+   material with a setting stored in the desktop it guards would be a tell. ---- */
+
+/* ---- phone: sheets are edge to edge, so the radius goes and the dock is a
+   bar; everything else (materials, colour, type) is the same experience in a
+   hand. Tap sizes are untouched by this file on purpose — --tap is the floor. */
+body.immersive.dev-mobile .win{border-radius:0}
+body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}

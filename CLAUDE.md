@@ -872,6 +872,35 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 
 ---
 
+## The immersive look is a MODE over the theme, not a theme
+
+`body.immersive` (`01b-immersive.js` owns the switch, `20-immersive.css` is every rule, Settings →
+Appearance is the only door) lays materials, depth and motion over whichever theme is on. Full
+reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things that have to stay true:
+
+- **Every rule is scoped to the body class**, and every colour is mixed from the theme's tokens
+  (`--txt`, `--bg2`, `--acc`), never written as a white or a black. That is what lets one file hold
+  up on Dracula and on Ember (light) alike, and what keeps the beta opt-in: a selector that escapes
+  the prefix restyles the standard desktop for everybody. `tests/test_immersive.py` checks it.
+- **It adds exactly one blurred surface — the active window — and that is the whole cost.** Measured
+  with five windows open in software-rendered Chromium: 16.7ms a frame without it, 83ms with it,
+  while the deck, dock and menu-bar blurs together cost nothing measurable. So `glass-lite`
+  (the probe's first step down) drops THAT blur and keeps everything else, at a 94% tint so nothing
+  beneath reads through unblurred — 16.7ms again. `glass-off` still wins outright.
+- **The active tint floor is 88%.** At 76% the text of the window underneath read through the
+  blur in a stacked screenshot — the 16-glass failure ("four windows of text legible through each
+  other"). Depth on a dark wallpaper comes from the active window being LIGHTER (bg3 falling to bg,
+  a lit title bar), not from a black shadow nobody can see.
+- **The parallax is a transform on the wallpaper layer**, throttled to a frame, never armed on a
+  touch screen or under reduced motion, and never a filter — a filter over the whole screen would
+  be re-run on every frame the wallpaper moves.
+
+Its wallpaper ranks BELOW a theme's own and above the wizard's preset: the theme designed its scene,
+the look only dresses whatever is there. The OS's own agent was asked to judge it (three rounds,
+Claude Code reading the screenshots from the workspace); its first two fixes — a lit top edge and a
+shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
+ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

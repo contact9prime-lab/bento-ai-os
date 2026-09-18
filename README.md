@@ -206,6 +206,11 @@ Glass is the most expensive thing a desktop can draw, and the cost compounds wit
 open. **Themes → Effects** measures your machine and turns it down only if it has to — five windows
 in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
 
+**Immersive experience (beta)** — one switch in Settings → Appearance lays a richer look over
+whichever theme is on: an aurora wallpaper with depth that follows the pointer, glass on the window
+you are working in, one light source across every panel, colour in Settings. It costs one blurred
+surface, and the Effects knob still turns it down. [More →](docs/desktop.md#immersive-experience-beta)
+
 ### It reaches you where you already are
 
 ![The WhatsApp channel in Settings: the four Cloud API fields, the callback URL to paste into Meta's console, the paired number, and whether the 24-hour window is open](docs/screenshots/channels-whatsapp.png)

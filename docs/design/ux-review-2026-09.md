@@ -114,6 +114,80 @@ header overflow; one composer is done for Chat only).
 
 ---
 
+## The immersive experience (beta): why would anyone leave Ubuntu for this?
+
+The defects above were fixed and the desktop was still, in the owner's words, "1995 kind of OS
+look and feel — bland". Fair: a flat near-black mesh with a watermark triangle, opaque black
+rectangles for windows, grey glyphs in Settings. So a second pass, on a different question: not
+"what is broken" but "would a 16-to-40-year-old who lives in macOS *want* this on their screen".
+
+The answer is an opt-in look — **Settings → Appearance → Immersive experience (beta)** — laid over
+whichever theme is on. What it is and what it costs is in [`docs/desktop.md`](../desktop.md#immersive-experience-beta);
+the rules that keep it honest are in `CLAUDE.md` and `tests/test_immersive.py`. This section is the
+proof: every image below is a real browser at 1440×900 or 390×844, and the judge was not only me.
+
+**Before and after, the desktop.** Left: the standard look. Right: the switch on.
+
+![before: the standard desktop](ux-review/after/imm-before-desktop.jpg)
+![after: immersive — aurora wallpaper with depth, tiles of glass lit from above, a shelf of a dock](ux-review/after/imm-desktop.jpg)
+
+**Settings.** Colour beside every category, the active one filled with the accent, the window a lit
+glass surface over the wallpaper, the switch itself at the bottom of Appearance saying what it costs
+and that the terminal has no equivalent.
+
+![before: Settings → Appearance](ux-review/before-immersive-settings.jpg)
+![after: Settings → Appearance with the switch](ux-review/after/imm-settings.jpg)
+
+**The launcher, Chat, a menu, and a stack of windows.**
+
+![after: the launcher](ux-review/after/imm-launcher.jpg)
+![after: Chat](ux-review/after/imm-chat.jpg)
+![after: the power menu, and a toast](ux-review/after/imm-power.jpg)
+![after: five windows — the focused one is a lighter, top-lit glass surface; the rest go dark and lose their border](ux-review/after/imm-stack.jpg)
+
+**It composes with a light theme** (Ember light) because every colour is mixed from the theme's
+tokens rather than written as a white or a black:
+
+![after: Ember (light) with the immersive look](ux-review/after/imm-light-settings.jpg)
+
+**On a phone** the same materials apply and no tap target changes:
+
+![after: phone desktop](ux-review/after/imm-phone-desktop.jpg)
+![after: phone Settings — the rail is a row of coloured tiles](ux-review/after/imm-phone-settings.jpg)
+
+### Judged by the OS's own agent, three rounds
+
+The brief was "use the AI on the sandbox OS to try it". So the screenshots were dropped into the
+workspace and **Claude Code, running as this machine's brain, was asked through Chat** to judge them
+as a 26-year-old designer who lives in macOS and is deciding whether to switch. Each round took
+under twenty seconds; each answer changed the code.
+
+| round | verdict | what it asked for | what changed |
+|---|---|---|---|
+| 1 — first cut | "Closer, not there … reads as old UI with a colourful wallpaper behind it. **Would I switch? Not yet.**" | glass that actually bleeds the wallpaper; a lit top edge and a shadowed bottom edge instead of a flat 1px outline; elevation on the icons | a light source: every panel, dock, menu and card lit from above; a top-to-bottom gradient inside the deck tiles; icons with a real shadow; the wallpaper's scrim lifted |
+| 2 — desktop | "Better. The panels now actually sit off the wallpaper… Still wrong: the stacked windows lose it completely — depth exists only on the desktop layer, not where you work. **No.**" | elevation cues in the window stack | the focused window became a *lighter*, top-lit surface (bg3 falling to bg, a lit title bar); the windows behind it go dark and lose their border |
+| 3 — the stack | "Yes, it reads clearly now — Files is unmistakably on top… **I'd switch** — the lit-vs-dark treatment gives instant, unambiguous top-window recognition." | a touch more shadow spread | the focused window's shadow widened |
+
+![round 1: the agent reads the four screenshots and answers](ux-review/after/imm-ai-round1.jpg)
+![round 3: the verdict](ux-review/after/imm-ai-round3.jpg)
+
+### What it costs, measured
+
+Five windows open, the default theme, the headless software-rendered Chromium the tests use (the
+Raspberry Pi case — a laptop GPU draws one blur in a few milliseconds):
+
+| | median frame |
+|---|---|
+| standard desktop | 16.7 ms (60 fps) |
+| immersive, Effects → Full | 83 ms — the focused window's blur is the entire difference; the deck, dock and menu-bar blurs cost nothing measurable |
+| immersive, Effects → Reduced | 16.7 ms (60 fps) — that one blur goes; the tint (94%, so nothing reads through) and everything else stays |
+
+So the existing Effects knob governs it: Automatic steps to Reduced on a machine that cannot keep
+up and the look survives the step. Two more measurements that became rules: at a 76% tint the text
+of the window underneath was legible through the blur (the floor is 88%), and the parallax is a
+transform on the wallpaper layer that is never armed on a touch screen (`IMMERSIVE.bound` false on
+the phone run above).
+
 ## How this was done
 
 | | |

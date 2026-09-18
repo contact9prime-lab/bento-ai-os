@@ -174,6 +174,39 @@ transparency and you get four windows of text legible through each other.
 
 Flat themes cost nothing to begin with, so none of this applies to them.
 
+### Immersive experience (beta)
+
+**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays materials,
+depth and motion over whichever theme is on, so an immersive Dracula is still Dracula. What it
+changes, on every surface at once:
+
+- **a wallpaper with depth** — an aurora over deep indigo (SVG, gradients only, sharp at 4K) that
+  drifts a few pixels against the pointer. A theme's own wallpaper, or one you picked, still wins.
+- **glass on the window you are working in**, and only that one; the windows behind it go dark and
+  lose their border, and the focused one is a lighter, top-lit surface, so a stack reads at a glance.
+- **one light source** — every panel, dock, menu and card has a lit top edge and a shadowed bottom
+  edge; icons sit on the surface with real elevation.
+- **colour in Settings** — a coloured tile beside every category, as System Settings has.
+- **rounder, quieter chrome** — 16px windows, a 24px dock and launcher, pill inputs, an accent-filled
+  highlight in menus, and Inter set with its single-storey *a*.
+
+It is remembered by the browser, like the theme, so a phone looking at the same desktop can keep the
+plain one. On a phone the same materials apply; nothing about tap sizes changes.
+
+What it costs, measured with five windows open in software-rendered Chromium (the Pi case; a laptop
+GPU draws a blur for a few milliseconds):
+
+| | frame time |
+|---|---|
+| standard desktop | 16.7 ms (60 fps) |
+| immersive, **Effects → Full** | 83 ms — the focused window's blur is the whole cost |
+| immersive, **Effects → Reduced** | 16.7 ms (60 fps) — that one blur goes, the tint and everything else stays |
+
+So the Effects knob above still governs it: Automatic steps to Reduced on a machine that cannot keep
+up, and the look survives the step. The parallax is never armed on a touch screen or under
+prefers-reduced-motion. There is no terminal equivalent — a TUI has no wallpaper or glass — and the
+switch says so.
+
 ---
 
 ## Hot corners
