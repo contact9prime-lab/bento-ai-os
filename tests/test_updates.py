@@ -25,14 +25,21 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_the_version_lives_in_exactly_one_place():
     """A release should be one edit. Two copies means the day one of them is
     forgotten, the updater compares the wrong number against the world."""
-    import tomllib
+    # Read by regex rather than tomllib, which is 3.11+ while requires-python is
+    # >=3.10 — so on the floor of our own support window this test could not run
+    # at all. It is the same one-line read that packaging/build-all.sh and the
+    # release workflow do, which is the other reason to match it here: those are
+    # what name the artifacts, so this checks the string they will actually use.
+    import re
 
     from agentos import __version__
     f = ROOT / "agentos" / "VERSION"
     assert f.is_file(), "agentos/VERSION is the source of truth and must exist"
     assert f.read_text().strip() == __version__
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert pyproject["project"]["version"] == __version__, (
+    declared = re.search(r'(?m)^version\s*=\s*"([^"]+)"',
+                         (ROOT / "pyproject.toml").read_text())
+    assert declared, "pyproject.toml has no version line"
+    assert declared.group(1) == __version__, (
         "pyproject.toml and agentos/VERSION disagree — bump both, or the update "
         "checker and the package metadata describe different builds")
 

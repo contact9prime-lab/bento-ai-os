@@ -45,7 +45,19 @@ jobs:
         # nothing to refuse. A real Linux install has it — the installer offers
         # it and the packaging Suggests it — so this is the runner being made to
         # resemble the machine, not the suite being loosened.
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        #
+        # Installing it is not enough: Ubuntu 24.04 restricts unprivileged user
+        # namespaces through AppArmor, so `bwrap` is present, `sandbox_mechanism()`
+        # reports it, and every jailed run then dies on "setting up uid map:
+        # Permission denied". A machine where the jail exists and cannot be
+        # entered is the one configuration neither branch of the code is written
+        # for, so the sysctl is what makes the runner a real Linux desktop rather
+        # than a third thing.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --ro-bind / / --unshare-net true && echo "bwrap works"
 
       - name: Sync
         run: uv sync --group dev --python ${{ matrix.python }}
