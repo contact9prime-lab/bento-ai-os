@@ -243,7 +243,17 @@ function setTab(body,all){
              +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
              +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
-    ],{f:'immersive experience beta look'}));
+      /* The second scene draws the machine's own moving parts. Its cost is
+         stated in the row, and so is the terminal's answer: none. */
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — a watch movement that shows what is running']],
+          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
+        {desc:'Movement draws this machine as an automatic watch: the mainspring is the soul (engraved with your agent\'s name, the calibre is the brain), '
+             +'the gear train turns while a turn runs, each enabled workflow is a wheel that turns when it runs, the rotor swings on every tool call, '
+             +'and the balance wheel beats slow and gentle idle, fast while something is running. A tool\'s name fades in beside the part that did it. '
+             +'Slow on purpose. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
+             +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
+         f:'scene movement watch automatic aurora wallpaper live'}),
+    ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
@@ -314,6 +324,8 @@ function setTab(body,all){
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
   const im=main.querySelector('#s-imm');
   if(im)im.onchange=()=>setImmersive(im.checked);
+  const sc=main.querySelector('#s-imm-scene');
+  if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#v-voice'))settingsVoices();

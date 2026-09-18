@@ -224,6 +224,16 @@ with the numbers. The result is what the switch in Settings → Appearance now t
 ![after: phone Settings](ux-review/after/imm2-phone-settings.jpg)
 ![after: phone Chat](ux-review/after/imm2-phone-chat.jpg)
 
+**A second scene: Movement.** The owner's idea — "an automatic watch movement, slowly and subtly
+highlighting the things running". Built as the Scene picker's second entry: a graphite plate and a
+movement drawn on a canvas, where the mainspring is the soul, the train turns with the turn, each
+workflow is a wheel, the rotor swings on every tool call and the balance beats with the run. Measured:
+20 frames a second on the home scene at 16.7 ms a frame, zero frames drawn while a maximised window
+covers it, and a real tool call (Glob, from a Claude Code turn) caught mid-swing.
+
+![Movement, idle: the soul, the train, one workflow wheel, the rotor at rest](ux-review/after/imm2-movement.jpg)
+![Movement, during a turn: the barrel glows, a glimpse names the tool, the rotor has swung](ux-review/after/imm2-movement-running.jpg)
+
 **Round four with the agent.** The same brief, the four new screenshots read from the workspace:
 "premium — the assistant isn't bolted onto the desktop, it's structural (prompt bar on home,
 drawer + tool cards in chat, provider config in Settings), so it feels like one designed system

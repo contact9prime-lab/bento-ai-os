@@ -267,6 +267,7 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
+      if(typeof movementPulse==='function')movementPulse('tool',ev.name);   // the rotor swings (Movement scene)
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -432,6 +433,8 @@ function handle(ev){
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
     case 'fabric_event':
+      // a flow moved: its wheel turns in the Movement scene (heartbeats are not movement)
+      if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);
       // State first, painting second: the graph must stay correct even when the Team
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
@@ -444,6 +447,7 @@ function handle(ev){
       refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
     case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
+      if(typeof movementPulse==='function')movementPulse('done',ev.flow);
       toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
     case 'setup': location.reload(); break;

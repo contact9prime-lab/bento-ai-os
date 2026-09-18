@@ -13,13 +13,28 @@
    Faces — GUI: this. SUI: identical, plus suiSyncStruts() because the dock
    grows by 2px. TUI: not applicable — a terminal has no wallpaper or glass; the
    switch's own text says so. */
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
+  document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
+  // the second scene: the machine as a watch movement (01c-movement.js)
+  // 01c loads after this file: at first paint MOVEMENT is still undefined and
+  // 01c starts itself; from then on the switch is handled here
+  if(typeof MOVEMENT==='undefined')return;
+  if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop();
+}
+/* Which scene: 'aurora' (a sky that follows the day) or 'movement' (a watch
+   movement that shows what is running). Per browser, like the look itself. */
+function setImmersiveScene(scene){
+  scene=scene==='movement'?'movement':'aurora';
+  IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
+  applyImmersive();
+  if(typeof loadWallpaper==='function')loadWallpaper();
+  if(typeof refreshApp==='function')refreshApp('settings');
 }
 /* A window opened: the prompt bar stands down (CSS), but a caret left in it —
    the wall hands focus back to the bar when it closes — would keep the bar up
@@ -31,12 +46,19 @@ function immersiveWinChange(){
   if(!inp||!bar)return;
   if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
 }
+/* The brain chip's text, as words. Its two spans (executor, model) have no
+   separator between them in the DOM, so textContent reads "Claude Codedefault". */
+function immersiveBrainText(){
+  const chip=document.getElementById('fwdchip');
+  if(!chip||chip.hidden)return '';
+  return [...chip.childNodes].map(n=>n.textContent.replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+/u,'')).filter(Boolean).join(' · ');
+}
 /* The look's wallpaper follows the day: first light until late morning, the
    aurora through the afternoon and evening, the cold sky after dark. The home
    scene's minute tick re-checks the band and reloads only when it changes —
    a wallpaper that swaps under an open window every minute would be a bug. */
 function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
-function immersiveWall(){return IMMERSIVE.on?immersiveWallBand():''}
+function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':immersiveWallBand()}
 /* ---- the home scene ----
    With no window open the desktop is a place, not a tile board: a greeting by
    the hour (and by name on a machine with accounts), the date, the prompt bar
@@ -71,12 +93,11 @@ function homeRender(){
       const n=inp.value.length;try{inp.setSelectionRange(n,n)}catch(e){}});}
   const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
   const who=(typeof agentName==='function')?agentName():'Aria';
-  const chip=document.getElementById('fwdchip');
-  const brain=chip&&!chip.hidden?chip.textContent.replace(/\s+/g,' ').trim():'';
+  const brain=immersiveBrainText();
   h.querySelector('.hm-now').textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(brain?`${who} · ${brain}`:`${who} is ready`);
   h.hidden=false;
   const band=immersiveWallBand();
-  if(IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
+  if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
   IMMERSIVE.band=band;
   if(!IMMERSIVE.homeT)IMMERSIVE.homeT=setInterval(homeRender,60000);
 }

@@ -181,3 +181,51 @@ def test_wallpaper_follows_the_hour_and_only_reloads_on_a_band_change():
 
 def test_home_chips_meet_the_tap_floor_on_touch():
     assert re.search(r"body\.immersive\.dev-touch \.hm-chip\{[^}]*min-height:44px", CODE)
+
+
+# ---- the Movement scene: the machine drawn as an automatic watch ----
+
+MOVE = (UI / "src" / "js" / "01c-movement.js").read_text()
+WS = (UI / "src" / "js" / "09-websocket.js").read_text()
+
+
+def test_movement_is_a_scene_of_the_look_picked_in_settings():
+    look = SETTINGS.split("if(want('look'))")[1].split("if(want('system'))")[0]
+    assert "pSelect('s-imm-scene'" in look and "'movement'" in look and "'aurora'" in look
+    assert "setImmersiveScene(sc.value)" in SETTINGS
+    assert "function setImmersiveScene" in JS and "localStorage.setItem('immersive.scene'" in JS
+    # the honesty in the row: what it costs, and when it does not draw
+    assert "twenty times a second" in look and "reduced motion" in look and "no blur" in look
+
+
+def test_movement_costs_what_it_says():
+    """≤20 fps, no drawing when nobody can see it, one still frame under
+    reduced motion, no filter or shadow (a canvas shadow is a blur)."""
+    assert "requestAnimationFrame(movementFrame)" in MOVE and "setInterval" not in MOVE
+    assert "if(dt<0.048)" in MOVE                                  # the 20 fps throttle
+    assert "if(!movementCovered())movementDraw(dt)" in MOVE
+    assert "document.hidden" in MOVE and "has-fullwin" in MOVE and "w.max&&!w.min" in MOVE
+    assert "prefers-reduced-motion" in MOVE and "if(MOVEMENT.static){movementDraw(0);return}" in MOVE
+    assert "shadowBlur" not in MOVE and "filter" not in MOVE.split("/* ---- drawing ---- */")[1]
+    for line in MOVE.splitlines():
+        assert not line.startswith(("let ", "const ")), line
+
+
+def test_movement_parts_are_the_machine_s_parts():
+    """Every moving part maps to something real, and the events come from the
+    stream the page already has — nothing polls for animation's sake."""
+    assert "movementPulse('tool',ev.name)" in WS
+    assert "movementPulse('flow'" in WS and "ev.event!=='heartbeat'" in WS
+    assert "movementPulse('done',ev.flow)" in WS
+    assert "RUNNING.size" in MOVE                                   # the train and the balance follow the turn
+    assert "fetch('/api/flows')" in MOVE and "60000" in MOVE         # one wheel per enabled flow, once a minute
+    assert "agentName()" in MOVE and "'SOUL · '" in MOVE and "'CAL. '" in MOVE
+    # the canvas rides the wallpaper (parallax) and never takes a pointer
+    assert "wall.appendChild(cv)" in MOVE
+    assert re.search(r"body\.immersive #movement\{[^}]*pointer-events:none", CODE)
+    # 01c loads after 01b: the scene starts itself at first paint, and 01b
+    # never touches MOVEMENT before it exists
+    assert "if(typeof MOVEMENT==='undefined')return;" in JS
+    assert MOVE.rstrip().endswith("movementStart();")
+    assert (UI / "assets" / "wallpapers" / "immersive-movement.svg").exists()
+    assert "'immersive-movement'" in WALLS.split("const BUILTIN_WALLS")[1].split("\n")[0]

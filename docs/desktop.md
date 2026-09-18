@@ -202,6 +202,15 @@ It was built ground-up in five phases, each judged in a real browser and by the 
 - **A wallpaper that follows the day.** First light until late morning, the aurora through the
   afternoon and evening, the cold sky after dark — SVG, gradients only, sharp at 4K — and it
   drifts a few pixels against the pointer. A theme's own wallpaper, or one you picked, still wins.
+- **A second scene: Movement.** The Scene picker beside the switch swaps the sky for a graphite
+  plate with a watch movement drawn on it, and every part is a real part of this machine: the
+  mainspring barrel is the soul (engraved with your agent's name; the calibre line is the brain),
+  the gear train creeps while idle and turns while a turn runs, each enabled workflow is a small
+  wheel that turns when it runs, the rotor swings on every tool call and settles, the balance wheel
+  beats slow and gentle idle and fast while something is running, and a tool's name fades in beside
+  the part that did it. Slow on purpose: idle, the train takes minutes to go round. Drawn at most
+  twenty times a second while the desktop is visible; it pauses under a full-screen or maximised
+  window and when the tab is hidden, holds still under reduced motion, and uses no blur or shadow.
 - **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
   and the kit all work at 390px, and every new control meets the 44px tap floor.
 

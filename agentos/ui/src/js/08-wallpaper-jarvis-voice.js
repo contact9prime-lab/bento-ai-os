@@ -7,7 +7,7 @@
      4. the wizard's preset gradient, or the stylesheet's mesh.
    The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
    cheap to rasterise on slow GPUs (no blur filters — gradients only). */
-const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night'];
+const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement'];
 const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
 function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
 function themeWall(){
