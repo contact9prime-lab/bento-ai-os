@@ -1,0 +1,111 @@
+# The installers in docs/installation.md exist and are good. Until this workflow
+# they were also something the reader had to build themselves, which is a hard
+# stop for exactly the person an AI desktop is for. Tagging is now the whole act:
+#
+#   git tag v0.4.0 && git push origin v0.4.0
+#
+# One Linux runner produces every distributable except the macOS .pkg, which
+# genuinely needs a Mac and gets its own job.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: wheel · debs · linux .run · macos .command · windows .exe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build tools
+        # nsis cross-builds the Windows setup.exe; fakeroot and dpkg-deb build the
+        # two .debs and are already present on the runner.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis fakeroot
+
+      - name: The tag must be the version
+        # The installers name themselves from pyproject.toml, so a tag that
+        # disagrees ships v0.4.1 assets called 0.4.0 — and the version file is
+        # half of what updates.check() reads to decide a machine is behind.
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          ver="$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')"
+          if [ "$tag" != "v$ver" ]; then
+            echo "tag $tag does not match pyproject version $ver" >&2
+            exit 1
+          fi
+          if [ "$(cat agentos/VERSION)" != "$ver" ]; then
+            echo "agentos/VERSION $(cat agentos/VERSION) does not match pyproject $ver" >&2
+            exit 1
+          fi
+
+      - name: Wheel
+        # Every installer copies dist/agentos-<ver>-py3-none-any.whl, so this
+        # comes first or they all skip.
+        run: uv build --wheel
+
+      - name: Build everything this machine can
+        run: ./packaging/build-all.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-built
+          path: |
+            dist/*.whl
+            packaging/dist/*
+
+  macos:
+    name: macos .pkg
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Wheel
+        run: uv build --wheel
+      - name: Package
+        run: ./packaging/macos/build-macos-pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-built
+          path: packaging/dist/*.pkg
+
+  publish:
+    name: publish
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/**/*.whl
+            artifacts/**/*.run
+            artifacts/**/*.command
+            artifacts/**/*.exe
+            artifacts/**/*.deb
+            artifacts/**/*.pkg

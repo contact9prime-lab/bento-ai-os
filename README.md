@@ -22,6 +22,7 @@ cloud models (Anthropic Claude, OpenAI, OpenRouter, or any OpenAI-compatible end
 your approval. The agent can browse, build its own apps, schedule jobs, remember what it learns,
 extend its own source code, and reach you on Telegram or WhatsApp.
 
+[![CI](https://github.com/contact9prime-lab/bento-ai-os/actions/workflows/ci.yml/badge.svg)](https://github.com/contact9prime-lab/bento-ai-os/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
 ![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
