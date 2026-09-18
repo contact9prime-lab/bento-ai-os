@@ -128,7 +128,14 @@ body.immersive .win:has(> .wbody > .pshell > .phead) .ttl,body.immersive .win:ha
 body.immersive .win:not(.active){border-color:color-mix(in srgb,var(--txt) 7%,transparent)}
 body.immersive .win:not(.active) .tname{color:var(--dim2)}
 body.immersive .win .tbtns{gap:8px}
-body.immersive .win .tbtns button{width:12px;height:12px;border-color:rgba(0,0,0,.18);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3)}
+/* round four of the agent's critique: the traffic lights "look pasted from a
+   web mockup" — a flat disc. A lit sphere instead: a highlight off-centre, a
+   darker rim, the same three hues. */
+body.immersive .win .tbtns button{width:12px;height:12px;border-color:rgba(0,0,0,.22);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.45),0 1px 1px rgba(0,0,0,.3)}
+body.immersive .win .tbtns .cls{background:radial-gradient(circle at 35% 30%,#ff8a80,#e0443e)}
+body.immersive .win .tbtns .mn{background:radial-gradient(circle at 35% 30%,#ffd76a,#e0a300)}
+body.immersive .win .tbtns .mx{background:radial-gradient(circle at 35% 30%,#6fe08a,#1fa83a)}
 body.immersive .win:not(.active) .tbtns button{background:color-mix(in srgb,var(--txt) 22%,transparent);box-shadow:none}
 /* in-window surfaces that were painted opaque: let the glass through */
 body.immersive .prefs{background:transparent}
@@ -492,5 +499,9 @@ body.immersive .swcard.sel{background:color-mix(in srgb,var(--acc) 18%,transpare
 /* ---- phone: sheets are edge to edge, so the radius goes and the dock is a
    bar; everything else (materials, colour, type) is the same experience in a
    hand. Tap sizes are untouched by this file on purpose — --tap is the floor. */
+body.immersive.dev-touch .hm-chip{min-height:44px;padding:0 16px}   /* --tap is the floor: measured 36px before */
+/* the phone hides the chat sidebar outright (15-responsive); here it is the
+   drawer, so it comes back only while the drawer is open */
+body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
 body.immersive.dev-mobile .win{border-radius:0}
 body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}

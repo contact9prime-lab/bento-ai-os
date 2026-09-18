@@ -176,36 +176,52 @@ Flat themes cost nothing to begin with, so none of this applies to them.
 
 ### Immersive experience (beta)
 
-**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays materials,
-depth and motion over whichever theme is on, so an immersive Dracula is still Dracula. What it
-changes, on every surface at once:
+**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays a design
+system, a scene and motion over whichever theme is on, so an immersive Dracula is still Dracula.
+It was built ground-up in five phases, each judged in a real browser and by the OS's own agent:
 
-- **a wallpaper with depth** — an aurora over deep indigo (SVG, gradients only, sharp at 4K) that
+- **A design system under it.** Body type at 15px with the small sizes lifted, radii up a step, a
+  deeper elevation ladder, and one control kit — 36px fields with a drawn chevron, 32px secondary
+  and 36px primary buttons, iOS-shaped switches, a glass segmented control, one card, one list row,
+  unified toolbars, vibrant sidebars. The apps already share those classes, so all forty-five
+  reflow from one stylesheet.
+- **Icons, not glyphs.** A small stroke icon set drawn for this OS replaces ⚙ ✦ ⏻ and friends in
+  the Settings rail (a coloured tile per category), the tray, the prompt bar, Chat and the deck.
+  The standard desktop keeps its glyphs.
+- **The desktop is a scene.** With no window open: a greeting by the hour (and by first name on a
+  machine with accounts), the date, the prompt bar in the upper third with three things to try,
+  and one line of what the agent is doing. The app deck leaves the desktop and becomes the wall
+  (Launchpad) behind the dock's launcher button. Open a window and the scene fades; the bar stands
+  down until Ctrl+Space, the brand mark, or a running turn brings it back.
+- **Windows.** The focused window is a lighter, top-lit glass surface with a layered shadow; the
+  ones behind it go dark and lose their border; the title bar and an app's toolbar are one band.
+  Windows open with a touch of overshoot. Every panel, dock, menu and card is lit from above.
+- **Spotlight and Chat.** The prompt bar's results read as sections (Actions, Apps, On this
+  machine, Ask). Chat is one column: the conversation list is a drawer, replies carry an avatar,
+  tool calls are cards with a status dot, the composer floats, and the empty state greets you.
+- **A wallpaper that follows the day.** First light until late morning, the aurora through the
+  afternoon and evening, the cold sky after dark — SVG, gradients only, sharp at 4K — and it
   drifts a few pixels against the pointer. A theme's own wallpaper, or one you picked, still wins.
-- **glass on the window you are working in**, and only that one; the windows behind it go dark and
-  lose their border, and the focused one is a lighter, top-lit surface, so a stack reads at a glance.
-- **one light source** — every panel, dock, menu and card has a lit top edge and a shadowed bottom
-  edge; icons sit on the surface with real elevation.
-- **colour in Settings** — a coloured tile beside every category, as System Settings has.
-- **rounder, quieter chrome** — 16px windows, a 24px dock and launcher, pill inputs, an accent-filled
-  highlight in menus, and Inter set with its single-storey *a*.
+- **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
+  and the kit all work at 390px, and every new control meets the 44px tap floor.
 
-It is remembered by the browser, like the theme, so a phone looking at the same desktop can keep the
-plain one. On a phone the same materials apply; nothing about tap sizes changes.
+It is remembered by the browser, like the theme, so a phone looking at the same desktop can keep
+the plain one. There is no terminal equivalent — a TUI has no wallpaper or glass — and the switch
+says so.
 
-What it costs, measured with five windows open in software-rendered Chromium (the Pi case; a laptop
-GPU draws a blur for a few milliseconds):
+What it costs, measured with five windows open in software-rendered Chromium (the Pi case; a
+laptop GPU draws a blur in a few milliseconds):
 
 | | frame time |
 |---|---|
-| standard desktop | 16.7 ms (60 fps) |
-| immersive, **Effects → Full** | 83 ms — the focused window's blur is the whole cost |
-| immersive, **Effects → Reduced** | 16.7 ms (60 fps) — that one blur goes, the tint and everything else stays |
+| standard desktop, five windows | 16.7 ms (60 fps) |
+| immersive, home scene, idle | 16.7 ms (60 fps) |
+| immersive, five windows, **Effects → Full** | 50 ms — the focused window's blur is the whole cost |
+| immersive, five windows, **Effects → Reduced** | 16.7 ms (60 fps) — that one blur goes, everything else stays |
 
 So the Effects knob above still governs it: Automatic steps to Reduced on a machine that cannot keep
 up, and the look survives the step. The parallax is never armed on a touch screen or under
-prefers-reduced-motion. There is no terminal equivalent — a TUI has no wallpaper or glass — and the
-switch says so.
+prefers-reduced-motion.
 
 ---
 

@@ -896,7 +896,31 @@ reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things th
   be re-run on every frame the wallpaper moves.
 
 Its wallpaper ranks BELOW a theme's own and above the wizard's preset: the theme designed its scene,
-the look only dresses whatever is there. The OS's own agent was asked to judge it (three rounds,
+the look only dresses whatever is there — and it follows the hour (dawn / day / night), reloading
+only when the band changes, because a wallpaper swapping under an open window every minute is a bug.
+
+The ground-up pass added four more things that are easy to undo by accident:
+
+- **The kit is the classes the apps already share.** `.endbtn`, `.pact`, `.item`, `.catcard`,
+  `.apptop`, `.phead`, `.seg`, `.psw`, `.prow`… are restyled once under `body.immersive`, and the
+  field rule uses `:where()` — the plain `:not()` chain had specificity (0,5,1), out-ranked
+  `.psearch input`, and put the magnifier over the placeholder in every search box. A new app that
+  invents its own button class is a new app the look does not reach.
+- **Icons are `data-ic`, glyphs stay.** `00d-icons.js` (`UI_ICONS` — `ICONS` is the app-icon table
+  in `01-app-icons.js`) is drawn here, nothing copied. A glyph button carries `data-ic="name"`; the
+  look swaps it and keeps the glyph in `data-gl` so switching back is byte-for-byte; a
+  MutationObserver catches what apps render later and what is rewritten in place (`#omni-shot`).
+  Emit both forms (the Settings rail, `.omni-sec`, `#cs-toggle`) and let CSS choose, rather than
+  branching markup on the look.
+- **The scene yields to windows, and the bar's caret goes with it.** `#home` and the deck are
+  CSS-hidden under `has-win`/`deck-full`; the bar stands down unless `.summoned`/`.pop`/busy.
+  The wall hands focus back to the bar when it closes, which kept the bar up through
+  `:focus-within` and would have swallowed keystrokes meant for the window —
+  `immersiveWinChange()` (called from `applyWindowActivity`) drops the caret. The launcher
+  button opens the wall in this look and the start menu otherwise; both stay.
+- **The drawer's button sits above the drawer** (`z-index:4`), or it can never close it — measured:
+  the open drawer intercepted every click on the button underneath. On a phone the sidebar is
+  `display:none!important`; the drawer rule re-shows it only while open. The OS's own agent was asked to judge it (three rounds,
 Claude Code reading the screenshots from the workspace); its first two fixes — a lit top edge and a
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".

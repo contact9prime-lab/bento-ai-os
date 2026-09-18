@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Immersive (dawn): first light — rose and amber low, a pale sky high. Radial gradients only — no blur
+       filters — so it rasterises in one pass on a Pi and stays sharp at 4K.
+       Teal (the brand) top-right, violet across the middle, a warm ember low
+       and left, and two long silk bands so the light has a direction. The
+       vignette keeps the corners dark enough for white chrome to read. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2140"/><stop offset="0.55" stop-color="#2a1f3d"/><stop offset="1" stop-color="#3a1f33"/>
+    </linearGradient>
+    <radialGradient id="teal" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#bae6fd" stop-opacity="0.9"/><stop offset="0.45" stop-color="#7dd3fc" stop-opacity="0.4"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fbcfe8" stop-opacity="0.9"/><stop offset="0.4" stop-color="#f472b6" stop-opacity="0.5"/><stop offset="1" stop-color="#be185d" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.7"/><stop offset="0.5" stop-color="#3b82f6" stop-opacity="0.25"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ember" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fde68a" stop-opacity="0.95"/><stop offset="0.45" stop-color="#fb923c" stop-opacity="0.5"/><stop offset="1" stop-color="#be123c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rose" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f472b6" stop-opacity="0.55"/><stop offset="1" stop-color="#db2777" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="silk1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#e0e7ff" stop-opacity="0.16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="silk2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5eead4" stop-opacity="0"/><stop offset="0.5" stop-color="#99f6e4" stop-opacity="0.14"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="0.5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#1a0f1e" stop-opacity="0.55"/>
+    </radialGradient>
+    <radialGradient id="star" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#base)"/>
+  <!-- the aurora -->
+  <ellipse cx="1180" cy="120" rx="760" ry="420" fill="url(#teal)"/>
+  <ellipse cx="620" cy="520" rx="820" ry="360" fill="url(#violet)" transform="rotate(-14 620 520)"/>
+  <ellipse cx="1320" cy="640" rx="560" ry="300" fill="url(#blue)" transform="rotate(18 1320 640)"/>
+  <ellipse cx="260" cy="900" rx="700" ry="330" fill="url(#ember)"/>
+  <ellipse cx="980" cy="960" rx="520" ry="220" fill="url(#rose)"/>
+  <!-- silk: two long bands of light with a direction -->
+  <path d="M-200 760 C 300 520, 700 520, 1000 380 S 1500 120, 1900 60 L1900 160 C 1500 220, 1100 480, 800 560 S 200 720, -200 860 Z" fill="url(#silk1)"/>
+  <path d="M-200 300 C 400 260, 800 60, 1300 -40 L1500 -40 C 1000 120, 600 380, -200 420 Z" fill="url(#silk2)"/>
+  <!-- a few points of light, so the sky has depth -->
+  <g opacity="0.7">
+    <circle cx="1410" cy="88" r="3" fill="url(#star)"/><circle cx="1490" cy="210" r="2" fill="url(#star)"/>
+    <circle cx="1240" cy="40" r="2" fill="url(#star)"/><circle cx="1080" cy="150" r="1.6" fill="url(#star)"/>
+    <circle cx="920" cy="60" r="2.2" fill="url(#star)"/><circle cx="1530" cy="360" r="1.6" fill="url(#star)"/>
+    <circle cx="140" cy="120" r="2" fill="url(#star)"/><circle cx="330" cy="70" r="1.4" fill="url(#star)"/>
+    <circle cx="70" cy="330" r="1.4" fill="url(#star)"/><circle cx="1350" cy="470" r="1.5" fill="url(#star)"/>
+  </g>
+  <rect width="1600" height="1000" fill="url(#vig)"/>
+</svg>

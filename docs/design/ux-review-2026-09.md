@@ -188,6 +188,55 @@ of the window underneath was legible through the blur (the floor is 88%), and th
 transform on the wallpaper layer that is never armed on a touch screen (`IMMERSIVE.bound` false on
 the phone run above).
 
+## Ground up: five phases, four rounds of judgement
+
+The first immersive pass earned "it's ok" from the owner and "I'd switch" from the agent, and both
+were right about different things: the surfaces were better and the structure underneath was the
+same. So a second pass, ground up, in five phases, each verified in a real browser and committed
+with the numbers. The result is what the switch in Settings → Appearance now turns on.
+
+| phase | what changed | proof |
+|---|---|---|
+| 1 — design system | 15px body type and a lifted small-size scale, radii and elevation tokens, one control kit on the classes every app already shares, an icon set drawn for this OS replacing every unicode glyph | 45 apps reflowed from one stylesheet; the Settings rail's nine tiles carry SVGs |
+| 2 — the scene | greeting, date, prompt bar in the upper third, three chips that fill the bar, the deck gone from the desktop and opened as the wall from the dock, the bar standing down when a window opens | greeting/date/3 chips render; Ctrl+Space + "mem" lists Memory first; the wall shows 43 tiles; bar opacity 0 with a window open, 1 when summoned |
+| 3 — windows and apps | title bar + app toolbar as one band; all 45 apps screenshot on contact sheets and read as one product | twelve contact sheets, four apps each |
+| 4 — Spotlight and Chat | grouped results; Chat with a drawer, avatar, tool cards, a greeting empty state; a touch of overshoot on open | the drawer's right edge at 281px open, off-screen closed; sections ["Apps","Ask"] |
+| 5 — phone, wallpaper, cost | the same scene at 390px, chips at the 44px tap floor, the drawer on a phone, three wallpapers by the hour | 16.7 ms a frame on the home scene and in Reduced with five windows |
+
+**The desktop, before and after the ground-up pass.**
+
+![before: the first immersive pass — tiles on an aurora](ux-review/after/imm-desktop.jpg)
+![after: the home scene](ux-review/after/imm2-home.jpg)
+![after: Spotlight from the prompt bar](ux-review/after/imm2-spotlight.jpg)
+![after: the wall (Launchpad) behind the dock's launcher button](ux-review/after/imm2-launchpad.jpg)
+![after: a window open — the scene has faded, the bar stands down](ux-review/after/imm2-window.jpg)
+
+**Settings and Chat through the kit.**
+
+![after: Settings — icon tiles, the kit, a unified toolbar](ux-review/after/imm2-settings.jpg)
+![after: Chat — greeting, drawer, avatar](ux-review/after/imm2-chat.jpg)
+![after: Chat with the drawer open](ux-review/after/imm2-chat-drawer.jpg)
+![after: the control centre as tiles](ux-review/after/imm2-control.jpg)
+
+**On a phone.**
+
+![after: phone home](ux-review/after/imm2-phone-home.jpg)
+![after: phone Settings](ux-review/after/imm2-phone-settings.jpg)
+![after: phone Chat](ux-review/after/imm2-phone-chat.jpg)
+
+**Round four with the agent.** The same brief, the four new screenshots read from the workspace:
+"premium — the assistant isn't bolted onto the desktop, it's structural (prompt bar on home,
+drawer + tool cards in chat, provider config in Settings), so it feels like one designed system
+rather than macOS plus a chatbot window. **Would I switch: yes.**" Its one remaining fix — the
+traffic lights "look pasted from a web mockup" — went in as a lit sphere with an off-centre
+highlight.
+
+![round 4: the verdict](ux-review/after/imm2-ai-round4.jpg)
+
+**What it costs now**, five windows open in software-rendered Chromium: standard 16.7 ms; immersive
+at Effects → Full 50 ms (down from 83 in the first pass); immersive at Reduced 16.7 ms; the home
+scene idle 16.7 ms.
+
 ## How this was done
 
 | | |

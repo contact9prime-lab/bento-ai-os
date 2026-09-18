@@ -31,6 +31,12 @@ function immersiveWinChange(){
   if(!inp||!bar)return;
   if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
 }
+/* The look's wallpaper follows the day: first light until late morning, the
+   aurora through the afternoon and evening, the cold sky after dark. The home
+   scene's minute tick re-checks the band and reloads only when it changes —
+   a wallpaper that swaps under an open window every minute would be a bug. */
+function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
+function immersiveWall(){return IMMERSIVE.on?immersiveWallBand():''}
 /* ---- the home scene ----
    With no window open the desktop is a place, not a tile board: a greeting by
    the hour (and by name on a machine with accounts), the date, the prompt bar
@@ -69,6 +75,9 @@ function homeRender(){
   const brain=chip&&!chip.hidden?chip.textContent.replace(/\s+/g,' ').trim():'';
   h.querySelector('.hm-now').textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(brain?`${who} · ${brain}`:`${who} is ready`);
   h.hidden=false;
+  const band=immersiveWallBand();
+  if(IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
+  IMMERSIVE.band=band;
   if(!IMMERSIVE.homeT)IMMERSIVE.homeT=setInterval(homeRender,60000);
 }
 /* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
