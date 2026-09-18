@@ -436,10 +436,23 @@ def test_forwarding_is_off_until_asked_for():
     assert ex.forwarding({}) == ""
 
 
-def test_a_forwarding_machine_forwards_by_default():
+def test_a_forwarding_machine_forwards_by_default(monkeypatch):
+    """The premise has to be stated. `resolve_engine` probes before answering, so
+    without this patch the test asserts that Claude Code is installed on whoever
+    is running it — green on the author's laptop and red on a CI runner, for a
+    reason that is about the machine and not about the code."""
+    monkeypatch.setattr(ex, "probe", lambda e, refresh=False: {"installed": True})
     cfg = {"engine": "claude-code"}
     assert ex.resolve_engine(cfg) == "claude-code"
     assert ex.forwarding(cfg) == "claude-code"
+
+
+def test_an_engine_that_is_not_installed_is_never_returned(monkeypatch):
+    """The setting outlives the binary — uninstalled later, edited by hand, a
+    backup restored onto a machine that never had it. Falling back to the
+    built-in agent is the only answer that leaves the machine ANSWERING."""
+    monkeypatch.setattr(ex, "probe", lambda e, refresh=False: {"installed": False})
+    assert ex.resolve_engine({"engine": "claude-code"}) == "aria"
 
 
 def test_an_explicit_choice_beats_the_machine_setting():

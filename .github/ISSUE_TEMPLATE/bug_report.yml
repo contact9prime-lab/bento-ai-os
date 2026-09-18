@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work, or works differently than it says it does.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `bento doctor` answers most of what we would otherwise ask you for —
+        please paste it rather than filling in a machine description by hand.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: face
+    attributes:
+      label: Which face
+      description: >
+        A feature is meant to work in all three. Knowing which one you were in
+        usually narrows this to a handful of files.
+      options:
+        - GUI — a browser or an app window
+        - TUI — a terminal, over SSH or on a headless box
+        - SUI — Bento is my Linux session
+        - A phone or tablet, over remote access
+        - Telegram or WhatsApp
+        - The CLI (`bento …`)
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `bento doctor`
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything in the log
+      description: >
+        Server output, or the browser console if the desktop is involved.
+        Please take a moment to remove API keys and tokens.
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you post
+      options:
+        - label: I have removed any API keys, tokens or passphrases from what I pasted.
+          required: true
