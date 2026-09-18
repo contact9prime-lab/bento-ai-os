@@ -3250,6 +3250,17 @@ body.immersive .swcard.sel{background:color-mix(in srgb,var(--acc) 18%,transpare
    bar; everything else (materials, colour, type) is the same experience in a
    hand. Tap sizes are untouched by this file on purpose — --tap is the floor. */
 body.immersive.dev-touch .hm-chip{min-height:44px;padding:0 16px}   /* --tap is the floor: measured 36px before */
+/* The phone's prompt bar: measured, the input was 130px of a 340px bar — the
+   orb, three 36px buttons and the desktop's gaps took the rest, and the
+   placeholder was cut at "Ask Aria anythin". Tighter gaps, a smaller orb, and
+   the screenshot button goes (it captures the SERVER's screen, and the phone
+   has the same door in Chat's ＋); the two buttons that stay keep the 36px floor. */
+body.immersive.dev-mobile #omnibar{left:12px;right:12px;width:auto;padding:0 8px 0 12px;gap:6px;transform:none}
+body.immersive.dev-mobile #omnibar.pop{width:auto}
+body.immersive.dev-mobile #omni-orb{width:18px;height:18px}
+body.immersive.dev-mobile #omni-shot{display:none}
+body.immersive.dev-mobile #omni-in{font-size:16px;min-width:0;flex:1 1 0}
+body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12px;right:12px;width:auto;transform:none}
 /* the phone hides the chat sidebar outright (15-responsive); here it is the
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
@@ -19153,6 +19164,7 @@ function omniPresence(){
   const live=n===1?actLine([...RUNNING][0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
+             :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
              :`Ask ${agentName()} anything — or press Ctrl+Space`;
   if(inp.placeholder!==want)inp.placeholder=want;   // once a second, only when it changed
 }

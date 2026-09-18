@@ -16,6 +16,7 @@ function omniPresence(){
   const live=n===1?actLine([...RUNNING][0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
+             :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
              :`Ask ${agentName()} anything — or press Ctrl+Space`;
   if(inp.placeholder!==want)inp.placeholder=want;   // once a second, only when it changed
 }
