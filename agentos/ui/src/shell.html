@@ -32,7 +32,7 @@
     <button id="fwdchip" hidden onclick="openModelSettings()"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
-    <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
+    <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
 <div id="powermenu">
@@ -91,9 +91,9 @@
     <div id="omni-orb" title="your agent"></div>
     <div id="omnilist"></div>
     <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
-    <button id="omni-shot" title="Attach a screenshot"></button>
+    <button id="omni-shot" data-ic="camera" title="Attach a screenshot"></button>
     <button id="omni-mic" title="Voice"></button>
-    <button id="omni-chat" title="Open Chat">⤢</button>
+    <button id="omni-chat" data-ic="expand" title="Open Chat">⤢</button>
   </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>

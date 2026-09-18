@@ -31,16 +31,18 @@ const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="$
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
+// [id, glyph, label, icon]: the glyph is the standard desktop's, the icon
+// (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
-  ['ai','✦','AI providers'],
-  ['agent','◈','Agent'],
-  ['executors','⇥','Executors'],
-  ['channels','◇','Channels'],
-  ['locale','◐','Locale'],
-  ['keys','⌘','Shortcuts'],
-  ['voice','◉','Voice'],
-  ['look','◧','Appearance'],
-  ['system','⚙','System'],
+  ['ai','✦','AI providers','sparkles'],
+  ['agent','◈','Agent','agent'],
+  ['executors','⇥','Executors','executors'],
+  ['channels','◇','Channels','channels'],
+  ['locale','◐','Locale','locale'],
+  ['keys','⌘','Shortcuts','keys'],
+  ['voice','◉','Voice','voice'],
+  ['look','◧','Appearance','look'],
+  ['system','⚙','System','system'],
 ];
 let SETTAB=localStorage.getItem('settab')||'ai';
 
@@ -54,8 +56,8 @@ async function renderSettings(body){
               one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
-          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi">${ic}</span>${esc(label)}</button>`).join('')}</div>
+        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span>${esc(label)}</button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
     </div>`;

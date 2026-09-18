@@ -13,11 +13,36 @@
    Faces — GUI: this. SUI: identical, plus suiSyncStruts() because the dock
    grows by 2px. TUI: not applicable — a terminal has no wallpaper or glass; the
    switch's own text says so. */
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',raf:0,tx:0,ty:0,bound:false};
+var IMMERSIVE={on:localStorage.getItem('immersive')==='1',raf:0,tx:0,ty:0,bound:false,mo:null};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
   immersiveParallax(IMMERSIVE.on);
+  immersiveIcons(IMMERSIVE.on);
+}
+/* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
+   standard desktop and the matching SVG (00d-icons.js) in this look. The glyph
+   is kept on the element so switching back restores it byte for byte. Apps
+   render their own markup whenever they open, so a MutationObserver swaps
+   what arrives later — one query per added subtree, nothing per frame. */
+function immersiveIconize(root){
+  const els=root.querySelectorAll?root.querySelectorAll('[data-ic]'):[];
+  els.forEach(el=>{
+    if(IMMERSIVE.on){
+      if(el.dataset.gl===undefined)el.dataset.gl=el.innerHTML;
+      const svg=typeof uiIcon==='function'?uiIcon(el.dataset.ic,el.dataset.icpx?+el.dataset.icpx:15):'';
+      if(svg&&!el.querySelector('svg.ic'))el.innerHTML=svg;
+    }else if(el.dataset.gl!==undefined){el.innerHTML=el.dataset.gl;delete el.dataset.gl}
+  });
+}
+function immersiveIcons(on){
+  immersiveIconize(document);
+  if(on&&!IMMERSIVE.mo&&window.MutationObserver){
+    IMMERSIVE.mo=new MutationObserver(ms=>{if(!IMMERSIVE.on)return;
+      ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1){if(n.dataset&&n.dataset.ic!==undefined)immersiveIconize({querySelectorAll:()=>[n]});immersiveIconize(n)}}))});
+    IMMERSIVE.mo.observe(document.body,{childList:true,subtree:true});
+  }
+  if(!on&&IMMERSIVE.mo){IMMERSIVE.mo.disconnect();IMMERSIVE.mo=null}
 }
 function setImmersive(on){
   on=!!on;

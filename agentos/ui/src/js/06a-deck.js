@@ -144,7 +144,7 @@ function buildDeck(fresh){
       ${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
       ${deckNativeHTML()}
       ${deckWidgetsHTML()}
-      <button class="deck-new" title="New group">＋<span>New group</span></button>`}
+      <button class="deck-new" title="New group"><b data-ic="plus">＋</b><span>New group</span></button>`}
     </div>`;
   $('#deck-toggle').onclick=DECKFULL?(()=>deckFull(false)):deckToggle;
   if(DECKFULL)deckHeadWire();
@@ -219,7 +219,7 @@ function deckHeadHTML(){
       aria-label="Search apps">`:''}
     <span class="dh-hint">${DECKTAB==='apps'?'scroll down or press Esc to go back'
                                             :'scroll up for your apps · Esc to go back'}</span>
-    <button id="deck-toggle" title="Back to the desktop (Esc)">✕</button></div>`;
+    <button id="deck-toggle" data-ic="x" title="Back to the desktop (Esc)">✕</button></div>`;
 }
 function deckHeadWire(){
   const box=$('#deck');

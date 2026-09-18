@@ -4,7 +4,7 @@ const PLACEHOLDER_BUSY='Say what comes next — it decides whether that changes 
 function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
-      <button id="newchat">＋ New chat</button>
+      <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
       <div id="convs"></div>
     </div>
     <div class="cmain">
@@ -28,7 +28,7 @@ function renderChat(body){
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
               five controls in two rows before any content was the header. */''}
-        <button id="tb-more" class="endbtn" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
+        <button id="tb-more" class="endbtn" data-ic="more" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
@@ -36,9 +36,9 @@ function renderChat(body){
         <div id="attach" class="att-strip"></div>
         <div id="combox">
           <textarea id="input" rows="1" placeholder="${PLACEHOLDER_IDLE}"></textarea>
-          <button id="attach-btn" class="cp-attach" title="Add an image — or paste one (Ctrl+V), or drop it here">▣</button>
+          <button id="attach-btn" class="cp-attach" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">▣</button>
           <button id="mic" title="dictate (mic)"></button>
-          <button id="send" disabled>➤</button>
+          <button id="send" data-ic="send" disabled>➤</button>
         </div>
       </div>
     </div>

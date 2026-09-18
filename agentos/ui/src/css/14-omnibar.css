@@ -336,6 +336,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
 .prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
 .prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}
+.prefs-side .psi svg{display:none}   /* the immersive look shows this instead of the glyph */
 .prefs-main{flex:1;min-width:0;overflow-y:auto;padding:22px 26px 30px}
 .prefs-main > h2{font-size:var(--fs-xl);font-weight:750;margin-bottom:4px}
 .prefs-main > .lead{font-size:var(--fs-md);color:var(--dim);margin-bottom:18px;max-width:62ch;line-height:1.5}

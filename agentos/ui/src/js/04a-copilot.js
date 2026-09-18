@@ -280,14 +280,14 @@ async function initCopilot(w,panel){
   panel.dataset.ready='1';
   panel.innerHTML=`<div class="cp-head"><span class="cp-ava">✦</span><span class="cp-name">${esc(agentName())}</span>
       <span class="cp-app">${esc(w.app.title)}</span><span style="flex:1"></span>
-      <button class="cp-open" title="Open in Chat">⤢</button></div>
+      <button class="cp-open" data-ic="expand" title="Open in Chat">⤢</button></div>
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
     <div class="cp-inbar"><div class="att-strip cp-att"></div>
       <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
-      <button class="cp-attach cp-snap" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
-      <button class="cp-attach cp-pick" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
-      <button class="cp-send">↑</button></div>`;
+      <button class="cp-attach cp-snap" data-ic="camera" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
+      <button class="cp-attach cp-pick" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
+      <button class="cp-send" data-ic="send">↑</button></div>`;
   const feedEl=panel.querySelector('.cp-feed');
   const input=panel.querySelector('.cp-in');
   const sendBtn2=panel.querySelector('.cp-send');
