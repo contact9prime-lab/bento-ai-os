@@ -2867,6 +2867,12 @@ body.immersive .win.maxed{border-radius:0}
 body.immersive .win .ttl{height:40px;background:color-mix(in srgb,var(--txt) 2.5%,transparent);border-bottom:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}
 body.immersive .win.active .ttl{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 10%,transparent),color-mix(in srgb,var(--txt) 3%,transparent));
   border-bottom-color:color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+/* unified toolbar: when the app's first row is a toolbar (.phead / .apptop /
+   the chat header), the title bar and that row are one band — no hairline
+   between them, one divider under the toolbar */
+body.immersive .win:has(> .wbody > .pshell > .phead) .ttl,body.immersive .win:has(> .wbody > .apptop) .ttl,
+body.immersive .win:has(> .wbody > .pad > .apptop:first-child) .ttl,body.immersive .win:has(> .wbody > .chatwrap) .ttl{border-bottom-color:transparent}
+body.immersive .win:has(> .wbody > .pshell > .phead) .ttl,body.immersive .win:has(> .wbody > .apptop) .ttl{box-shadow:none}
 body.immersive .win:not(.active){border-color:color-mix(in srgb,var(--txt) 7%,transparent)}
 body.immersive .win:not(.active) .tname{color:var(--dim2)}
 body.immersive .win .tbtns{gap:8px}
@@ -5148,7 +5154,7 @@ function listFilter(scope,q){
 }
 function emptyBox(title,hint,action,askApp,askPrompt){
   // every empty state is an invitation: the ✦ chip opens this app's copilot
-  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
   return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
 }
 /* open (if needed) an app + its copilot panel, prefill and send */

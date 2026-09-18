@@ -434,7 +434,7 @@ function listFilter(scope,q){
 }
 function emptyBox(title,hint,action,askApp,askPrompt){
   // every empty state is an invitation: the ✦ chip opens this app's copilot
-  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
   return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
 }
 /* open (if needed) an app + its copilot panel, prefill and send */
