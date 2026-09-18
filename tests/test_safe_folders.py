@@ -388,6 +388,10 @@ def test_a_caution_is_never_a_refusal(tmp_path):
     """It is the admin's machine. An OS that refuses a deliberate decision teaches
     people to stop reading its warnings — the two hard refusals are the two that
     break somebody ELSE'S isolation, and they live in check_safe_folder."""
+    # `check_safe_folder` returns the REALPATH, and on macOS /etc is a symlink to
+    # /private/etc — so asserting the literal string made this the one test that
+    # was red on every Mac, for a reason about the filesystem rather than the
+    # gate. What matters here is that a system directory came back accepted.
     p, why = check_safe_folder("/etc")
-    assert p == "/etc" and not why
+    assert p == os.path.realpath("/etc") and not why
     assert toolsmod.folder_risk("/etc", "rw")
