@@ -37,6 +37,16 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Sandbox mechanism
+        # tools.sandbox_conf() reports the folder jail as OFF unless a jail
+        # mechanism exists for the OS, and sandbox_mechanism() is `which bwrap`.
+        # Without bubblewrap the runner is a machine where the safe-folder gate
+        # cannot switch on, so the refusals in tests/test_safe_folders.py have
+        # nothing to refuse. A real Linux install has it — the installer offers
+        # it and the packaging Suggests it — so this is the runner being made to
+        # resemble the machine, not the suite being loosened.
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
       - name: Sync
         run: uv sync --group dev --python ${{ matrix.python }}
 

@@ -15,29 +15,216 @@
 <a href="docs/i18n/README.ar.md">العربية</a>
 </sub></p>
 
-**Your machine, with a brain.** Bento Box AI is a self-hosted **AI desktop environment**: a full
-desktop — windows, apps, files, terminal — driven by an **autonomous AI agent** that takes **real
-actions** on your computer. Use local models via [Ollama](https://ollama.com) for total privacy, or
-cloud models (Anthropic Claude, OpenAI, OpenRouter, or any OpenAI-compatible endpoint) — always with
-your approval. The agent can browse, build its own apps, schedule jobs, remember what it learns,
-extend its own source code, and reach you on Telegram or WhatsApp.
+> **Chat-first assistants answer you. Bento builds you an operating system** — apps,
+> automations, memory and a knowledge graph that compound the longer you use it.
+
+A self-hosted **AI desktop** — real windows, files, a terminal — driven by an agent that takes
+**real actions** on your machine, always with your approval. Runs entirely on your own hardware
+with [Ollama](https://ollama.com), or on Claude, OpenAI, OpenRouter or any OpenAI-compatible
+endpoint. It browses, builds its own apps, schedules jobs, remembers what it learns, extends its
+own source, and reaches you on Telegram or WhatsApp.
+
+Week four does not look like week one. That is the point.
 
 [![CI](https://github.com/contact9prime-lab/bento-ai-os/actions/workflows/ci.yml/badge.svg)](https://github.com/contact9prime-lab/bento-ai-os/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
 ![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
 
-Runs at `http://127.0.0.1:8321` — private by default, installable as a boot-time service.
+**One command, on macOS or Linux.** It installs everything it needs — including Python — starts
+Bento, and then proves it works by asking the running server a question before it says "done".
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
+
+Then open **http://127.0.0.1:8321**. Private by default: it binds to localhost and stays there
+until you deliberately turn on [remote access](docs/remote-access.md). No account, no telemetry,
+no cloud unless you add a key yourself.
 
 ![The Bento Box AI desktop — AI agent chat, file manager, and quick settings in a browser-based desktop environment](docs/screenshots/desktop.png)
 
 **Full documentation is in [`docs/`](docs/README.md)** — installation, a user guide to the desktop
 and every app, the agent and its tools, building apps, integrations, the API reference, and
 troubleshooting.
+
+---
+
+## Three faces, one program
+
+Bento runs in three places, and **every feature is built for all three**. This is the first
+question asked of any change, not the last.
+
+| | What it is | Start it with |
+|---|---|---|
+| **GUI** | a window (or tab) on macOS, Windows or Linux. Nothing extra to install | `bento` |
+| **TUI** | the whole OS in a terminal — for a server, or a headless Pi over SSH | `bento tui` |
+| **SUI** | Bento **is** your Linux session: it owns the machine | `bento installer` |
+
+> The command is `bento`. `agentos` still works and always will — it is in people's shell history,
+> systemd units and scripts, and a rename we chose should not cost them that.
+
+---
+
+## Quickstart
+
+**One command, on macOS or Linux.** It installs everything — including Python, via `uv` — starts
+Bento, and then *proves it works* by asking the running server a question before it says "done".
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+Then open **http://127.0.0.1:8321**, or run `bento setup` for the same eleven steps in a terminal.
+
+If there is a terminal to ask on, the installer asks two things before it finishes: whether this
+machine should be reachable from your other devices, and — if so — whether you sign in with a
+**passphrase** or an **account**. On a machine with no screen that first question is the
+difference between an install you can look at and one you cannot. `--yes` deliberately does not
+answer it: an open port here is an open shell.
+
+It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
+was not there — open a new terminal afterwards). `bento --help` shows the ten commands a new
+machine needs; `bento help --all` is the rest.
+
+<details>
+<summary><b>Installing it on a chosen address and port</b></summary>
+
+### Installing it on a chosen address and port
+
+On a server you reach over SSH, `127.0.0.1:8321` means "reachable by nothing". Give the
+installer a passphrase and an address and it comes up ready, with the boot service already
+pointed at the right port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=0.0.0.0 --port=8080
+```
+
+That machine now answers on **every** interface at port 8080, and asks for that passphrase
+before it will do anything. Local use through `127.0.0.1:8080` is unchanged.
+
+The installer says which of the two it left you with — `AgentOS is running` only when something
+is genuinely listening. On a box with no service manager to hand (a container, a non-systemd
+distro, SSH with no user D-Bus) it says so instead, and `bento service start` finishes the job.
+
+One interface rather than all of them — a private VLAN, a Tailscale address:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --passphrase='something long and unguessable' --bind=192.168.1.20 --port=8080
+```
+
+Just a different port, still loopback-only:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
+  | sh -s -- --port=8080
+```
+
+> **`-s --` is not optional.** `curl … | sh --port=8080` hands the flag to `sh`, which rejects
+> it — a piped script gets no arguments of its own. `-s --` means "the rest is for the script".
+> This is the single most common way these flags get lost, and the error names `sh`, so it
+> reads as a broken installer.
+
+**All the flags:**
+
+| flag | what it does |
+|---|---|
+| `--passphrase=SECRET` | require this to sign in, and allow binding off loopback — given here, the installer does not ask |
+| `--bind=ADDR` | which interface to listen on (default `0.0.0.0`); needs `--passphrase` |
+| `--port=N` | which port (default `8321`); saved to the config, so the boot service uses it |
+| `--yes` | answer yes to every optional component — **not** to opening the port |
+| `--no-service` | no launcher and no boot service (containers, CI) |
+| `--no-verify` | skip the "prove it works" step |
+
+</details>
+
+<details>
+<summary><b>Changing the address, port or passphrase afterwards</b></summary>
+
+### Changing it afterwards
+
+Everything above lives in **`~/.agentos/config.json`** (or under `$AGENTOS_HOME`), and
+`bento config` reads and writes it without you having to find it:
+
+```bash
+bento config                       # the whole file, secrets masked
+bento config port                  # one setting
+bento config port 8080             # change it
+bento config remote.bind 0.0.0.0   # dotted paths for nested settings
+bento config --path                # where the file is
+bento config --edit                # open it in $EDITOR — refuses to save invalid JSON
+```
+
+`bento remote` is the same settings with the reachability ones grouped together:
+
+```bash
+bento remote --on --passphrase 'something long' --bind 0.0.0.0   # one shared secret
+bento user add alice && bento remote --on --bind 0.0.0.0          # or an account each
+bento remote --port 8080                                          # the port
+bento remote                                                      # what it is now, and who signs in
+```
+
+**A port change does not reach an installed boot service by itself** — the systemd unit
+and the LaunchAgent bake it into `ExecStart`. Both commands tell you when that applies:
+
+```bash
+bento service install && bento service restart
+```
+
+> **Reachable from other machines is a deliberate choice, not a default.** Bento listens on
+> `127.0.0.1` only until it has a lock — a passphrase, or an account somebody signs in as —
+> because the agent has a real shell, and an open port here is an open shell. `--bind` on its
+> own is refused for that reason, and so is `bento serve --host 0.0.0.0` with remote access off.
+> The two locks are alternatives, not layers: once an account exists it *is* the lock, and a
+> passphrase in front of it is config nothing reads.
+
+**About ports below 1024.** They are refused to a non-root process on Linux, and on macOS the
+refusal is per-address — it grants `0.0.0.0:80` and denies `127.0.0.1:80`. So nothing here
+guesses from the number: `--port` attempts the real bind and, if the kernel says no, prints the
+`sysctl` line, the redirect rule, or the proxy option that fixes it. On Linux, port 80 usually
+means one command:
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
+sudo sysctl --system
+```
+
+Running the server as root is not advised — the agent has a real shell.
+
+<details>
+<summary><b>From a git checkout instead</b></summary>
+
+```bash
+uv sync                 # install dependencies (or: pip install -e .)
+uv run bento            # start the server and open the desktop in your browser
+```
+</details>
+
+<details>
+<summary><b>In Docker</b></summary>
+
+```bash
+docker build -t bento .
+docker run -d --name bento -p 8321:8321 -v bento-data:/data \
+  -e AGENTOS_PASSPHRASE='something long and unguessable' bento
+```
+
+A container has to bind `0.0.0.0` to be reachable at all, so the passphrase is required rather
+than optional — the entrypoint refuses to start unreachable *or* insecure and tells you which.
+Everything that would be lost lives in the `/data` volume. Build a specific branch with
+`--build-arg SOURCE=git --build-arg REF=my-branch`.
+</details>
+
+If **Ollama** is running, your local models are picked up automatically. Add cloud API keys under
+**Settings** if you want them. That's the whole setup.
+
+> **Tip:** builds, tool-calling, and multi-step tasks are far more reliable with a **tool-capable
+> model** (any `qwen*` model, or a cloud model). Weaker local models like `gemma` won't reliably
+> call tools.
+
+</details>
 
 ---
 
@@ -112,22 +299,6 @@ The desktop used to open onto 43 tiles on a machine that could not yet answer a 
 
 Every one of these was measured in a real browser before and after. The review that found them,
 with the numbers, is [docs/design/ux-review-2026-09.md](docs/design/ux-review-2026-09.md).
-
----
-
-## Three faces, one program
-
-Bento runs in three places, and **every feature is built for all three**. This is the first
-question asked of any change, not the last.
-
-| | What it is | Start it with |
-|---|---|---|
-| **GUI** | a window (or tab) on macOS, Windows or Linux. Nothing extra to install | `bento` |
-| **TUI** | the whole OS in a terminal — for a server, or a headless Pi over SSH | `bento tui` |
-| **SUI** | Bento **is** your Linux session: it owns the machine | `bento installer` |
-
-> The command is `bento`. `agentos` still works and always will — it is in people's shell history,
-> systemd units and scripts, and a rename we chose should not cost them that.
 
 ---
 
@@ -315,276 +486,6 @@ asking for it by name. [More →](docs/desktop.md#automations)
 
 ---
 
-## Quickstart
-
-**One command, on macOS or Linux.** It installs everything — including Python, via `uv` — starts
-Bento, and then *proves it works* by asking the running server a question before it says "done".
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
-```
-
-Then open **http://127.0.0.1:8321**, or run `bento setup` for the same eleven steps in a terminal.
-
-If there is a terminal to ask on, the installer asks two things before it finishes: whether this
-machine should be reachable from your other devices, and — if so — whether you sign in with a
-**passphrase** or an **account**. On a machine with no screen that first question is the
-difference between an install you can look at and one you cannot. `--yes` deliberately does not
-answer it: an open port here is an open shell.
-
-It leaves a `bento` command on your `PATH` (in `~/.local/bin`, added to your shell profile if it
-was not there — open a new terminal afterwards). `bento --help` shows the ten commands a new
-machine needs; `bento help --all` is the rest.
-
-### Installing it on a chosen address and port
-
-On a server you reach over SSH, `127.0.0.1:8321` means "reachable by nothing". Give the
-installer a passphrase and an address and it comes up ready, with the boot service already
-pointed at the right port:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
-  | sh -s -- --passphrase='something long and unguessable' --bind=0.0.0.0 --port=8080
-```
-
-That machine now answers on **every** interface at port 8080, and asks for that passphrase
-before it will do anything. Local use through `127.0.0.1:8080` is unchanged.
-
-The installer says which of the two it left you with — `AgentOS is running` only when something
-is genuinely listening. On a box with no service manager to hand (a container, a non-systemd
-distro, SSH with no user D-Bus) it says so instead, and `bento service start` finishes the job.
-
-One interface rather than all of them — a private VLAN, a Tailscale address:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
-  | sh -s -- --passphrase='something long and unguessable' --bind=192.168.1.20 --port=8080
-```
-
-Just a different port, still loopback-only:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh \
-  | sh -s -- --port=8080
-```
-
-> **`-s --` is not optional.** `curl … | sh --port=8080` hands the flag to `sh`, which rejects
-> it — a piped script gets no arguments of its own. `-s --` means "the rest is for the script".
-> This is the single most common way these flags get lost, and the error names `sh`, so it
-> reads as a broken installer.
-
-**All the flags:**
-
-| flag | what it does |
-|---|---|
-| `--passphrase=SECRET` | require this to sign in, and allow binding off loopback — given here, the installer does not ask |
-| `--bind=ADDR` | which interface to listen on (default `0.0.0.0`); needs `--passphrase` |
-| `--port=N` | which port (default `8321`); saved to the config, so the boot service uses it |
-| `--yes` | answer yes to every optional component — **not** to opening the port |
-| `--no-service` | no launcher and no boot service (containers, CI) |
-| `--no-verify` | skip the "prove it works" step |
-
-### Changing it afterwards
-
-Everything above lives in **`~/.agentos/config.json`** (or under `$AGENTOS_HOME`), and
-`bento config` reads and writes it without you having to find it:
-
-```bash
-bento config                       # the whole file, secrets masked
-bento config port                  # one setting
-bento config port 8080             # change it
-bento config remote.bind 0.0.0.0   # dotted paths for nested settings
-bento config --path                # where the file is
-bento config --edit                # open it in $EDITOR — refuses to save invalid JSON
-```
-
-`bento remote` is the same settings with the reachability ones grouped together:
-
-```bash
-bento remote --on --passphrase 'something long' --bind 0.0.0.0   # one shared secret
-bento user add alice && bento remote --on --bind 0.0.0.0          # or an account each
-bento remote --port 8080                                          # the port
-bento remote                                                      # what it is now, and who signs in
-```
-
-**A port change does not reach an installed boot service by itself** — the systemd unit
-and the LaunchAgent bake it into `ExecStart`. Both commands tell you when that applies:
-
-```bash
-bento service install && bento service restart
-```
-
-> **Reachable from other machines is a deliberate choice, not a default.** Bento listens on
-> `127.0.0.1` only until it has a lock — a passphrase, or an account somebody signs in as —
-> because the agent has a real shell, and an open port here is an open shell. `--bind` on its
-> own is refused for that reason, and so is `bento serve --host 0.0.0.0` with remote access off.
-> The two locks are alternatives, not layers: once an account exists it *is* the lock, and a
-> passphrase in front of it is config nothing reads.
-
-**About ports below 1024.** They are refused to a non-root process on Linux, and on macOS the
-refusal is per-address — it grants `0.0.0.0:80` and denies `127.0.0.1:80`. So nothing here
-guesses from the number: `--port` attempts the real bind and, if the kernel says no, prints the
-`sysctl` line, the redirect rule, or the proxy option that fixes it. On Linux, port 80 usually
-means one command:
-
-```bash
-echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/50-agentos.conf
-sudo sysctl --system
-```
-
-Running the server as root is not advised — the agent has a real shell.
-
-<details>
-<summary><b>From a git checkout instead</b></summary>
-
-```bash
-uv sync                 # install dependencies (or: pip install -e .)
-uv run bento            # start the server and open the desktop in your browser
-```
-</details>
-
-<details>
-<summary><b>In Docker</b></summary>
-
-```bash
-docker build -t bento .
-docker run -d --name bento -p 8321:8321 -v bento-data:/data \
-  -e AGENTOS_PASSPHRASE='something long and unguessable' bento
-```
-
-A container has to bind `0.0.0.0` to be reachable at all, so the passphrase is required rather
-than optional — the entrypoint refuses to start unreachable *or* insecure and tells you which.
-Everything that would be lost lives in the `/data` volume. Build a specific branch with
-`--build-arg SOURCE=git --build-arg REF=my-branch`.
-</details>
-
-If **Ollama** is running, your local models are picked up automatically. Add cloud API keys under
-**Settings** if you want them. That's the whole setup.
-
-> **Tip:** builds, tool-calling, and multi-step tasks are far more reliable with a **tool-capable
-> model** (any `qwen*` model, or a cloud model). Weaker local models like `gemma` won't reliably
-> call tools.
-
----
-
-## Run it as your Linux desktop (SUI)
-
-```bash
-uv run bento installer      # detects your distro, installs what's missing, adds it to the login screen
-```
-
-Then log out and pick **Bento Box AI** at the login screen. Your existing desktop is untouched —
-switching back is logging out and picking Ubuntu again.
-
-The installer detects the distribution, names every package it wants and why, and asks before
-installing anything. Two groups: the compositor engine (sway and friends, MIT), and the native
-desktop surface (`python3-gi`, `python3-gi-cairo`, gtk-layer-shell, WebKitGTK) that lets the desktop
-be a real Wayland surface rather than a browser window.
-
-**Bento ships and redistributes none of them.** gtk-layer-shell is MIT, but GTK, PyGObject and
-WebKitGTK are LGPL, and what this project *depends* on stays permissive — so they are asked for, with
-the licences in view. Without them the session still runs, drawing the desktop in a Chromium window.
-[Licensing →](docs/licensing.md) · [The session UI →](docs/session-ui.md)
-
-If anything about the desktop misbehaves, one command tells you why:
-
-```bash
-uv run bento doctor --session   # probes what can actually draw on THIS machine, and says so
-```
-
-It checks the interpreter, GTK's display, the compositor's layer-shell support, and whether WebKit
-can render *and keep rendering* — in a window and on a layer surface — then gives a verdict. Probes
-run in subprocesses, because the failures it looks for are aborts and segfaults, and a probe that
-crashes the doctor cannot report that it crashed.
-
----
-
-## Install as a Debian/Ubuntu package (.deb)
-
-A self-contained `.deb` (bundles the app **and** a Python venv with all dependencies — no network
-needed at install):
-
-```bash
-./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
-sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + launcher + service
-systemctl --user enable --now agentos                      # start at login (per user)
-bento app                                                  # or launch it from your menu
-```
-
-`apt`/`dpkg` handles updates and removal. It **Recommends** `bubblewrap` (sandbox) and `xdg-utils`,
-and **Suggests** `ollama`, `nodejs`, and `git`. The desktop package additionally **Suggests** the
-session-UI stack and `wayvnc`/`novnc` — suggested rather than depended on, because apt installs
-Recommends by default and that would be bundling with a softer name.
-
-## Install as a real app (auto-start on boot) — from source
-
-```bash
-uv run bento install      # app launcher + a background service that starts at login/boot
-```
-
-The right native mechanism is used automatically: a `.desktop` launcher plus a **systemd user
-service** on Linux (with linger, so it starts at boot), an app bundle plus **LaunchAgents** on
-macOS, a Start Menu shortcut plus **Startup entries** on Windows.
-
-One set of commands drives all three — you should not have to know whether this box
-uses systemd or launchd to control your own agent:
-
-```bash
-bento service status       # is it running, will it come back at boot, is the port answering
-bento service start        # …stop, restart
-bento service logs -f      # journalctl or the log file, whichever this machine uses
-bento service uninstall    # remove the background service only — launcher and data stay
-bento uninstall            # remove launcher + service (your data stays)
-bento app                  # open as a chromeless desktop window any time
-```
-
-`bento service status` reports what the supervisor believes **and** whether the port
-answers, separately: a unit that is "active" while nothing is listening is a crash
-loop, and that is the state worth being able to see.
-
----
-
-## Launch modes
-
-| Command | What it does |
-|---|---|
-| `uv run bento` | start the server **and** open the desktop in your browser |
-| `uv run bento serve --no-browser --port 8321` | headless server (used by the boot service) |
-| `uv run bento app` | open the desktop as a native-feel window |
-| `uv run bento tui` | the whole OS in a terminal (**TUI**) |
-| `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
-| `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
-| `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
-| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart |
-| `uv run bento config [key] [value]` | read or change `~/.agentos/config.json` (`--edit`, `--path`) |
-| `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
-| `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |
-| `uv run bento apps search \| install \| remove` | native applications, from a terminal |
-| `uv run bento remote --on --passphrase '…'` | reach this desktop from your phone |
-| `uv run bento remote-desktop --on` | the browser remote desktop (real screen, native apps) |
-| `uv run bento ask "…"` | one-shot agent run in the terminal (`--full`, `--model …`) |
-| `uv run bento user add <name>` | accounts — the first one adopts this machine and is an admin |
-| `uv run bento help --all` | every command; `bento --help` shows the ten a new machine needs |
-
----
-
-## Requirements
-
-- **Python ≥ 3.10** and [**uv**](https://docs.astral.sh/uv/) (or pip).
-- **A model provider** — either [Ollama](https://ollama.com) locally (recommended: a tool-capable
-  model such as `qwen3.5:9b`), or a cloud API key.
-
-Optional, unlock extra features when present — `bento installer` offers each with its licence:
-
-- **The Linux session (SUI)** — `sway` and friends, plus `python3-gi`, `python3-gi-cairo`,
-  `gir1.2-gtklayershell-0.1` and `gir1.2-webkit2-4.1`. [Details →](docs/session-ui.md)
-- **wayvnc + novnc** — Remote Desktop from a phone browser, relayed on loopback.
-- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent and terminal to one folder.
-- **Node/npx** and/or **uvx** — to run **MCP servers** (Playwright, filesystem, git, …).
-- **git** — to install **skills** from repositories.
-
----
-
 ## The desktop
 
 - **Windows** — every app opens in a draggable, resizable window with minimize/maximize/close and
@@ -701,6 +602,143 @@ agent as `mcp_<server>_<tool>`, and to built apps via `POST /api/tool`.
 **Programmable** — `bento ask "…"` for one-shot runs; a REST API (`POST /api/chat`, `GET /api/system`,
 `POST /api/tool`, …); WebSockets at `/ws` (streaming chat + approvals) and `/ws/terminal` (host PTY).
 Apps you build run in a same-origin iframe and can call all of it.
+
+---
+
+<details>
+<summary><b>Run it as your whole Linux desktop (SUI)</b></summary>
+
+## Run it as your Linux desktop (SUI)
+
+```bash
+uv run bento installer      # detects your distro, installs what's missing, adds it to the login screen
+```
+
+Then log out and pick **Bento Box AI** at the login screen. Your existing desktop is untouched —
+switching back is logging out and picking Ubuntu again.
+
+The installer detects the distribution, names every package it wants and why, and asks before
+installing anything. Two groups: the compositor engine (sway and friends, MIT), and the native
+desktop surface (`python3-gi`, `python3-gi-cairo`, gtk-layer-shell, WebKitGTK) that lets the desktop
+be a real Wayland surface rather than a browser window.
+
+**Bento ships and redistributes none of them.** gtk-layer-shell is MIT, but GTK, PyGObject and
+WebKitGTK are LGPL, and what this project *depends* on stays permissive — so they are asked for, with
+the licences in view. Without them the session still runs, drawing the desktop in a Chromium window.
+[Licensing →](docs/licensing.md) · [The session UI →](docs/session-ui.md)
+
+If anything about the desktop misbehaves, one command tells you why:
+
+```bash
+uv run bento doctor --session   # probes what can actually draw on THIS machine, and says so
+```
+
+It checks the interpreter, GTK's display, the compositor's layer-shell support, and whether WebKit
+can render *and keep rendering* — in a window and on a layer surface — then gives a verdict. Probes
+run in subprocesses, because the failures it looks for are aborts and segfaults, and a probe that
+crashes the doctor cannot report that it crashed.
+
+</details>
+
+<details>
+<summary><b>Install as a Debian/Ubuntu package (.deb)</b></summary>
+
+## Install as a Debian/Ubuntu package (.deb)
+
+A self-contained `.deb` (bundles the app **and** a Python venv with all dependencies — no network
+needed at install):
+
+```bash
+./packaging/build-deb.sh                                   # → packaging/dist/agentos_<ver>_<arch>.deb
+sudo dpkg -i packaging/dist/agentos_0.1.0_amd64.deb        # installs to /opt/agentos + launcher + service
+systemctl --user enable --now agentos                      # start at login (per user)
+bento app                                                  # or launch it from your menu
+```
+
+`apt`/`dpkg` handles updates and removal. It **Recommends** `bubblewrap` (sandbox) and `xdg-utils`,
+and **Suggests** `ollama`, `nodejs`, and `git`. The desktop package additionally **Suggests** the
+session-UI stack and `wayvnc`/`novnc` — suggested rather than depended on, because apt installs
+Recommends by default and that would be bundling with a softer name.
+
+</details>
+
+<details>
+<summary><b>Install as a real app that starts on boot, from source</b></summary>
+
+## Install as a real app (auto-start on boot) — from source
+
+```bash
+uv run bento install      # app launcher + a background service that starts at login/boot
+```
+
+The right native mechanism is used automatically: a `.desktop` launcher plus a **systemd user
+service** on Linux (with linger, so it starts at boot), an app bundle plus **LaunchAgents** on
+macOS, a Start Menu shortcut plus **Startup entries** on Windows.
+
+One set of commands drives all three — you should not have to know whether this box
+uses systemd or launchd to control your own agent:
+
+```bash
+bento service status       # is it running, will it come back at boot, is the port answering
+bento service start        # …stop, restart
+bento service logs -f      # journalctl or the log file, whichever this machine uses
+bento service uninstall    # remove the background service only — launcher and data stay
+bento uninstall            # remove launcher + service (your data stays)
+bento app                  # open as a chromeless desktop window any time
+```
+
+`bento service status` reports what the supervisor believes **and** whether the port
+answers, separately: a unit that is "active" while nothing is listening is a crash
+loop, and that is the state worth being able to see.
+
+</details>
+
+<details>
+<summary><b>Launch modes — window, browser, kiosk, session</b></summary>
+
+## Launch modes
+
+| Command | What it does |
+|---|---|
+| `uv run bento` | start the server **and** open the desktop in your browser |
+| `uv run bento serve --no-browser --port 8321` | headless server (used by the boot service) |
+| `uv run bento app` | open the desktop as a native-feel window |
+| `uv run bento tui` | the whole OS in a terminal (**TUI**) |
+| `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
+| `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
+| `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
+| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart |
+| `uv run bento config [key] [value]` | read or change `~/.agentos/config.json` (`--edit`, `--path`) |
+| `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
+| `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |
+| `uv run bento apps search \| install \| remove` | native applications, from a terminal |
+| `uv run bento remote --on --passphrase '…'` | reach this desktop from your phone |
+| `uv run bento remote-desktop --on` | the browser remote desktop (real screen, native apps) |
+| `uv run bento ask "…"` | one-shot agent run in the terminal (`--full`, `--model …`) |
+| `uv run bento user add <name>` | accounts — the first one adopts this machine and is an admin |
+| `uv run bento help --all` | every command; `bento --help` shows the ten a new machine needs |
+
+</details>
+
+<details>
+<summary><b>Requirements, and what each optional piece unlocks</b></summary>
+
+## Requirements
+
+- **Python ≥ 3.10** and [**uv**](https://docs.astral.sh/uv/) (or pip).
+- **A model provider** — either [Ollama](https://ollama.com) locally (recommended: a tool-capable
+  model such as `qwen3.5:9b`), or a cloud API key.
+
+Optional, unlock extra features when present — `bento installer` offers each with its licence:
+
+- **The Linux session (SUI)** — `sway` and friends, plus `python3-gi`, `python3-gi-cairo`,
+  `gir1.2-gtklayershell-0.1` and `gir1.2-webkit2-4.1`. [Details →](docs/session-ui.md)
+- **wayvnc + novnc** — Remote Desktop from a phone browser, relayed on loopback.
+- **bubblewrap** (`bwrap`) — the folder **sandbox** that jails the agent and terminal to one folder.
+- **Node/npx** and/or **uvx** — to run **MCP servers** (Playwright, filesystem, git, …).
+- **git** — to install **skills** from repositories.
+
+</details>
 
 ---
 
