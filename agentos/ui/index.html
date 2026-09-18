@@ -544,6 +544,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .conv .del:hover{color:var(--err)}
 .cmain{flex:1;display:flex;flex-direction:column;min-width:0}
 #topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+#cs-toggle{display:none}   /* the immersive look's drawer button */
 #modelsel{max-width:240px;font-size:var(--fs-sm);padding:5px 8px;flex:1}
 #autosel{font-size:var(--fs-sm);padding:5px 8px}
 #chat{flex:1;overflow-y:auto;padding:18px 0 10px;user-select:text}
@@ -1528,6 +1529,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
 #omnilist .palitem{position:relative}
+.omni-sec{display:none}   /* the immersive look shows the group labels */
 #omnilist .palitem .ptext{flex:1;min-width:0}
 #omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);
@@ -3147,6 +3149,57 @@ body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
 body.immersive .dlg{border-radius:20px}
 body.immersive .dlg-b button{border-radius:11px}
 
+/* ---- Spotlight: the results read as sections, with room ---- */
+body.immersive .omni-sec{display:block;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--txt) 45%,transparent);padding:10px 12px 4px}
+body.immersive .omni-sec:first-child{padding-top:6px}
+body.immersive #omnilist{padding:6px 8px 4px}
+body.immersive #omnilist .palitem{padding:9px 12px;gap:14px;border-radius:12px}
+body.immersive #omnilist .palitem .pl{font-size:var(--fs-md);font-weight:600}
+body.immersive #omnilist .palitem .ph{font-size:var(--fs-xs)}
+body.immersive #omnilist .palitem .pi{width:34px;height:34px;border-radius:10px;font-size:var(--fs-lg);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive #omnilist .palitem .aicon{width:34px;height:34px}
+body.immersive .omni-hint{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent);padding:10px 12px 6px}
+
+/* ---- Chat: a modern client — one column, a drawer, avatars, floating composer ---- */
+/* raised above the drawer it opens, or it could never close it (measured: the
+   open drawer intercepted every click on the button underneath) */
+body.immersive #cs-toggle{display:inline-flex;width:34px;min-height:34px;padding:0;flex:none;position:relative;z-index:4}
+body.immersive .chatwrap.drawer #cs-toggle{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 55%,transparent)}
+body.immersive .chatwrap{position:relative}
+body.immersive .cside{position:absolute;left:0;top:0;bottom:0;width:280px;z-index:3;transform:translateX(-104%);padding-top:52px;
+  background:color-mix(in srgb,var(--bg2) 82%,transparent);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border-right:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 20px 60px rgba(0,0,0,.45);
+  transition:transform var(--d-slow) var(--ease-out)}
+body.immersive .chatwrap.drawer .cside{transform:none}
+body.immersive .cmain{min-width:0}
+body.immersive #chat{padding:24px 0 12px}
+body.immersive .inner{max-width:760px}
+body.immersive .msg{margin-bottom:22px}
+body.immersive .msg .who{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:var(--fs-xs);font-weight:600;color:var(--dim);margin-bottom:8px}
+body.immersive .msg.assistant .who::before{content:'';width:22px;height:22px;border-radius:50%;flex:none;
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 50%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+body.immersive .msg.user .who{justify-content:flex-end}
+body.immersive .msg.assistant .body{font-size:var(--fs-base);line-height:1.65}
+body.immersive .tool{border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 14%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.18);margin-bottom:10px}
+body.immersive .tool .head{padding:9px 14px;gap:10px}
+body.immersive .tool .head::before{content:'';width:8px;height:8px;border-radius:50%;flex:none;background:color-mix(in srgb,var(--txt) 30%,transparent)}
+body.immersive .tool:has(.tstat.run) .head::before{background:var(--acc2);box-shadow:0 0 8px var(--acc2)}
+body.immersive .tool:has(.tstat.ok) .head::before{background:var(--ok)}
+body.immersive .tool:has(.tstat.fail) .head::before{background:var(--err)}
+body.immersive .tool .tname2{font-family:var(--sans);font-weight:650;color:var(--txt)}
+body.immersive .tool .tstat{border-radius:999px;background:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .tool .out{border-top-color:color-mix(in srgb,var(--txt) 7%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent)}
+body.immersive .think{border-left-color:color-mix(in srgb,var(--acc) 40%,transparent)}
+body.immersive #composer{padding:10px 20px 18px}
+body.immersive #welcome{padding-top:9vh}
+body.immersive #welcome h1{font-size:var(--fs-3xl);font-weight:650;letter-spacing:-.03em;-webkit-text-fill-color:initial;color:var(--txt);background:none;filter:none;text-shadow:0 2px 24px rgba(0,0,0,.3)}
+body.immersive #welcome p{font-size:var(--fs-lg);color:color-mix(in srgb,var(--txt) 62%,transparent)}
+body.immersive .chips{max-width:640px;gap:10px}
+body.immersive .chip{padding:10px 16px;font-size:var(--fs-md)}
+
 /* ---- Chat: a composer that floats, replies with room to breathe ---- */
 body.immersive #combox{border-radius:20px;background:color-mix(in srgb,var(--txt) 6%,transparent);
   border-color:color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
@@ -3157,7 +3210,6 @@ body.immersive .msg.user .bubble{border-radius:18px 18px 6px 18px;
   border-color:color-mix(in srgb,var(--acc) 28%,transparent)}
 body.immersive .chip{border-radius:14px;background:color-mix(in srgb,var(--txt) 6%,transparent);border-color:color-mix(in srgb,var(--txt) 10%,transparent)}
 body.immersive .chip:hover{background:color-mix(in srgb,var(--acc) 14%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent);transform:translateY(-2px)}
-body.immersive #welcome h1{filter:drop-shadow(0 0 26px color-mix(in srgb,var(--acc) 32%,transparent))}
 body.immersive #newchat,body.immersive .conv{border-radius:12px}
 body.immersive .conv.active{background:color-mix(in srgb,var(--acc) 18%,transparent)}
 body.immersive .body pre{border-radius:12px;background:color-mix(in srgb,var(--bg) 60%,transparent)}
@@ -4609,7 +4661,9 @@ function zoomWin(el,appId,dir){
   const at=`translate(${dx}px,${dy}px) scale(.06)`;
   const frames=dir>0?[{transform:at,opacity:.2},{transform:'none',opacity:1}]
                     :[{transform:'none',opacity:1},{transform:at,opacity:.15}];
-  return Motion.run(el,frames,{duration:dir>0?300:230,easing:dir>0?EASE.out:EASE.in}).finished;
+  // the immersive look opens with a touch of overshoot — weight, not decoration
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  return Motion.run(el,frames,{duration:dir>0?(imm?380:300):230,easing:dir>0?(imm?'cubic-bezier(.2,1.15,.35,1)':EASE.out):EASE.in}).finished;
 }
 /* FLIP a window between two layout states: call with a fn that mutates geometry */
 function flipWin(el,mutate){
@@ -8571,6 +8625,11 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
+        ${/* Immersive: the conversation list is a drawer, and this opens it.
+              Rendered always, shown only by that look (CSS) — the standard
+              desktop keeps its permanent sidebar. */''}
+        <button id="cs-toggle" class="endbtn" data-ic="layers" title="Conversations"
+          onclick="this.closest('.chatwrap').classList.toggle('drawer')">☰</button>
         ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
               holding both — engines in an optgroup above the models — could show
               Claude Code chosen and a Gemini model selected underneath it, which
@@ -8614,6 +8673,8 @@ function renderChat(body){
   CHAT_ATT=imageAttach({input,zone:$('#composer'),button:$('#attach-btn'),strip:$('#attach'),
     onChange:syncSend});
   $('#newchat').onclick=newChat;
+  // the drawer (immersive) closes once a conversation is picked — it is a menu, not a pane
+  body.querySelector('#convs').addEventListener('click',e=>{if(e.target.closest('.conv'))body.querySelector('.chatwrap').classList.remove('drawer')});
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
   const tb=$('#ttsbtn');
@@ -8858,7 +8919,12 @@ async function clearSession(){
 function showWelcome(){
   if(!feed)return;
   const w=document.createElement('div');w.id='welcome';
-  w.innerHTML=`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>
+  // Immersive: the empty chat greets like the desktop does, and asks the question
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  const hr=new Date().getHours(),part=hr<5?'Good night':hr<12?'Good morning':hr<17?'Good afternoon':hr<22?'Good evening':'Good night';
+  w.innerHTML=imm?`<h1>${esc(part)}</h1><p>What should ${esc(agentName())} do?</p>`
+    :`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>`;
+  w.innerHTML+=`
   <div class="chips">
     <button class="chip">How is this machine doing? Check CPU, memory, disk.</button>
     <button class="chip">What's taking up the most space in my home folder?</button>
@@ -19160,9 +19226,13 @@ function omniDefaultIdx(q,direct){
 function omniPaint(){
   const list=$('#omnilist');if(!list)return;
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
-  list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
+  // section labels between groups (actions · apps · on this machine · ask):
+  // emitted always, shown by the immersive look — see .omni-sec
+  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.nat?'On this machine':'More';
+  let last='';
+  list.innerHTML=OMNI.matches.map((it,i)=>{const k=kind(it);const sec=k!==last?`<div class="omni-sec">${k}</div>`:'';last=k;return sec+`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
     ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
-    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
+    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`}).join('')
     +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{

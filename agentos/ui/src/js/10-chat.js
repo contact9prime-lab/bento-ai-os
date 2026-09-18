@@ -9,6 +9,11 @@ function renderChat(body){
     </div>
     <div class="cmain">
       <div id="topbar">
+        ${/* Immersive: the conversation list is a drawer, and this opens it.
+              Rendered always, shown only by that look (CSS) — the standard
+              desktop keeps its permanent sidebar. */''}
+        <button id="cs-toggle" class="endbtn" data-ic="layers" title="Conversations"
+          onclick="this.closest('.chatwrap').classList.toggle('drawer')">☰</button>
         ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
               holding both — engines in an optgroup above the models — could show
               Claude Code chosen and a Gemini model selected underneath it, which
@@ -52,6 +57,8 @@ function renderChat(body){
   CHAT_ATT=imageAttach({input,zone:$('#composer'),button:$('#attach-btn'),strip:$('#attach'),
     onChange:syncSend});
   $('#newchat').onclick=newChat;
+  // the drawer (immersive) closes once a conversation is picked — it is a menu, not a pane
+  body.querySelector('#convs').addEventListener('click',e=>{if(e.target.closest('.conv'))body.querySelector('.chatwrap').classList.remove('drawer')});
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
   const tb=$('#ttsbtn');
@@ -296,7 +303,12 @@ async function clearSession(){
 function showWelcome(){
   if(!feed)return;
   const w=document.createElement('div');w.id='welcome';
-  w.innerHTML=`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>
+  // Immersive: the empty chat greets like the desktop does, and asks the question
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  const hr=new Date().getHours(),part=hr<5?'Good night':hr<12?'Good morning':hr<17?'Good afternoon':hr<22?'Good evening':'Good night';
+  w.innerHTML=imm?`<h1>${esc(part)}</h1><p>What should ${esc(agentName())} do?</p>`
+    :`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>`;
+  w.innerHTML+=`
   <div class="chips">
     <button class="chip">How is this machine doing? Check CPU, memory, disk.</button>
     <button class="chip">What's taking up the most space in my home folder?</button>

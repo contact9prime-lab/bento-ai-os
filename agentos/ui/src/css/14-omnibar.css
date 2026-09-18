@@ -35,6 +35,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
 #omnilist .palitem{position:relative}
+.omni-sec{display:none}   /* the immersive look shows the group labels */
 #omnilist .palitem .ptext{flex:1;min-width:0}
 #omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);

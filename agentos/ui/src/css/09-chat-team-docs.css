@@ -13,6 +13,7 @@
 .conv .del:hover{color:var(--err)}
 .cmain{flex:1;display:flex;flex-direction:column;min-width:0}
 #topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+#cs-toggle{display:none}   /* the immersive look's drawer button */
 #modelsel{max-width:240px;font-size:var(--fs-sm);padding:5px 8px;flex:1}
 #autosel{font-size:var(--fs-sm);padding:5px 8px}
 #chat{flex:1;overflow-y:auto;padding:18px 0 10px;user-select:text}
