@@ -70,6 +70,22 @@ body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
 body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
 body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
 
+body.immersive #fwdchip{background:color-mix(in srgb,var(--txt) 9%,transparent);color:var(--txt);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  box-shadow:none;font-weight:600;padding:2px 10px 2px 8px}
+body.immersive #fwdchip::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px var(--acc);margin-right:2px}
+body.immersive #fwdchip .fwdmdl{border-left-color:color-mix(in srgb,var(--txt) 20%,transparent);opacity:.65}
+body.immersive #fwdchip.nobrain::before{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+body.immersive #mbapp{font-weight:650;font-size:var(--fs-sm)}
+body.immersive #mbmenus button{font-size:var(--fs-sm)}
+/* Control Centre: tiles, the way a control centre reads, instead of a form */
+body.immersive #ccpop{width:400px;padding:0}
+body.immersive #ccpop .pad{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+body.immersive #ccpop .cc-owned,body.immersive #ccpop .provbox:nth-of-type(1),body.immersive #ccpop .provbox:nth-of-type(2),body.immersive #ccpop > .pad > .row{grid-column:1/-1}
+body.immersive #ccpop .provbox{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);font-weight:650}
+body.immersive #ccpop .cc-owned{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:var(--fs-xs)}
+body.immersive #ccpop > .pad > .row{flex-wrap:wrap}
+
 /* ---- windows: the one you are in is glass, the rest recede ---- */
 body.immersive .win{border-radius:16px;border-color:color-mix(in srgb,var(--txt) 10%,transparent);
   box-shadow:0 12px 40px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.35);
@@ -162,7 +178,7 @@ body.immersive :where(textarea){min-height:0}
 body.immersive :where(select){appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat:no-repeat;background-position:right 10px center;background-size:14px}
-body.immersive :where(input,textarea,select):focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent);
+body.immersive :where(input):focus,body.immersive :where(textarea):focus,body.immersive :where(select):focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent);
   box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
 body.immersive ::placeholder{color:color-mix(in srgb,var(--txt) 42%,transparent)}
 /* secondary button */
@@ -274,8 +290,60 @@ body.immersive #omnibar:focus-within,body.immersive #omnibar.pop,body.immersive 
   border-color:color-mix(in srgb,var(--acc) 60%,transparent);
   box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 40px color-mix(in srgb,var(--acc) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.22)}
 body.immersive #omni-in{font-size:15px}
+/* the bar itself glows on focus; a second ring drawn inside it by :focus-visible
+   read as a box inside a pill (seen on the home scene at first paint) */
+body.immersive #omni-in:focus-visible,body.immersive #deck-q:focus-visible,body.immersive #smq:focus-visible{outline:none}
 body.immersive #omni-in::placeholder{color:color-mix(in srgb,var(--txt) 58%,transparent)}
 body.immersive #omni-orb{box-shadow:0 0 14px color-mix(in srgb,var(--acc) 70%,transparent),0 0 0 4px color-mix(in srgb,var(--acc) 14%,transparent)}
+
+/* ---- the desktop scene ----
+   Three bands of chrome stacked at the bottom (deck, prompt bar, dock) is what
+   made the desktop read as a tile board. Here: with no window open, the prompt
+   bar sits in the upper third under a greeting, with three things to try; the
+   deck leaves the desktop and becomes the wall (Launchpad) behind the dock's
+   launcher button; the moment a window opens the scene fades and the desktop
+   is wallpaper and dock, with the bar one Ctrl+Space away. */
+body.immersive:not(.deck-full) #deck{display:none}
+body.immersive #home{position:absolute;inset:0;pointer-events:none;z-index:5;
+  transition:opacity var(--d-slow) var(--ease-out)}
+body.immersive #home[hidden]{display:none}
+body.immersive.has-win #home,body.immersive.deck-full #home,body.immersive.exposing #home{opacity:0}
+body.immersive .hm-greet{position:absolute;left:0;right:0;top:20%;text-align:center;transform:translateY(-100%);padding-bottom:26px}
+body.immersive .hm-hi{font-size:44px;font-weight:650;letter-spacing:-.03em;line-height:1.1;
+  color:color-mix(in srgb,var(--txt) 96%,transparent);text-shadow:0 2px 24px rgba(0,0,0,.35)}
+body.immersive .hm-date{margin-top:8px;font-size:var(--fs-lg);font-weight:500;color:color-mix(in srgb,var(--txt) 70%,transparent);text-shadow:0 1px 12px rgba(0,0,0,.35)}
+body.immersive .hm-below{position:absolute;left:0;right:0;top:calc(20% + 74px);display:flex;flex-direction:column;align-items:center;gap:18px;padding:0 16px}
+body.immersive .hm-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:760px;pointer-events:auto;
+  transition:opacity var(--d-base) var(--ease-out)}
+body.immersive.omni-pop .hm-chips{opacity:0;pointer-events:none}
+body.immersive .hm-chip{min-height:36px;padding:0 15px;border-radius:999px;font-size:var(--fs-sm);font-weight:500;color:color-mix(in srgb,var(--txt) 88%,transparent);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 24%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 8px 24px rgba(0,0,0,.25);transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .hm-chip:hover{background:color-mix(in srgb,var(--txt) 14%,transparent);transform:translateY(-2px)}
+body.immersive .hm-now{font-size:var(--fs-sm);color:color-mix(in srgb,var(--txt) 55%,transparent);text-shadow:0 1px 8px rgba(0,0,0,.4)}
+/* the prompt bar in the scene: upper third, wide, the results list drops below it */
+body.immersive:not(.has-win):not(.deck-full) #omnibar{bottom:auto;top:20%;width:min(720px,88vw);height:56px;padding:0 18px;gap:12px}
+body.immersive:not(.has-win):not(.deck-full) #omnibar.pop{width:min(760px,90vw);height:58px}
+body.immersive:not(.has-win):not(.deck-full) #omni-in{font-size:var(--fs-lg)}
+body.immersive:not(.has-win):not(.deck-full) #omnilist{top:calc(100% + 10px);bottom:auto}
+body.immersive:not(.has-win):not(.deck-full) #omnicards{bottom:auto;top:calc(20% + 70px);flex-direction:column-reverse}
+body.immersive:not(.has-win):not(.deck-full) #omni-orb{width:22px;height:22px}
+/* a window open: the bar stands down until it is summoned (Ctrl+Space, the
+   brand mark) or something is happening in it */
+body.immersive.has-win #omnibar:not(.summoned):not(.pop):not(:focus-within):not(:has(.busy)):not(:has(#omni-shots img)){opacity:0;pointer-events:none;
+  transform:translateX(-50%) translateY(10px);transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+body.immersive.has-win #omnibar{transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+/* the wall (Launchpad): the whole screen, the search pill centred at the top */
+body.immersive.deck-full #deck{background:color-mix(in srgb,var(--bg) 58%,transparent);backdrop-filter:blur(40px) saturate(1.5);-webkit-backdrop-filter:blur(40px) saturate(1.5)}
+body.immersive.deck-full #deck-head{justify-content:center;padding:26px 4px 18px;position:relative}
+body.immersive.deck-full #deck-q{max-width:520px;height:44px;border-radius:14px;font-size:var(--fs-base);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive.deck-full .dh-hint{position:absolute;right:52px;top:50%;transform:translateY(-50%);margin:0}
+body.immersive.deck-full #deck-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px}
+body.immersive.deck-full .deck-tile{padding:12px 4px 10px;gap:8px}
+body.immersive.deck-full .deck-tile .aicon{width:56px;height:56px}
+body.immersive.deck-full .deck-tile span{font-size:var(--fs-sm)}
 
 /* ---- the deck: tiles of light on the wallpaper ---- */
 body.immersive .deck-group{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 11%,transparent),color-mix(in srgb,var(--txt) 5%,transparent));

@@ -89,7 +89,7 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <span class="tright"><button class="cp-btn" data-ic="sparkles" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
     <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);

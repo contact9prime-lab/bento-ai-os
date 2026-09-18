@@ -2818,6 +2818,22 @@ body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
 body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
 body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
 
+body.immersive #fwdchip{background:color-mix(in srgb,var(--txt) 9%,transparent);color:var(--txt);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  box-shadow:none;font-weight:600;padding:2px 10px 2px 8px}
+body.immersive #fwdchip::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px var(--acc);margin-right:2px}
+body.immersive #fwdchip .fwdmdl{border-left-color:color-mix(in srgb,var(--txt) 20%,transparent);opacity:.65}
+body.immersive #fwdchip.nobrain::before{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+body.immersive #mbapp{font-weight:650;font-size:var(--fs-sm)}
+body.immersive #mbmenus button{font-size:var(--fs-sm)}
+/* Control Centre: tiles, the way a control centre reads, instead of a form */
+body.immersive #ccpop{width:400px;padding:0}
+body.immersive #ccpop .pad{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+body.immersive #ccpop .cc-owned,body.immersive #ccpop .provbox:nth-of-type(1),body.immersive #ccpop .provbox:nth-of-type(2),body.immersive #ccpop > .pad > .row{grid-column:1/-1}
+body.immersive #ccpop .provbox{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);font-weight:650}
+body.immersive #ccpop .cc-owned{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:var(--fs-xs)}
+body.immersive #ccpop > .pad > .row{flex-wrap:wrap}
+
 /* ---- windows: the one you are in is glass, the rest recede ---- */
 body.immersive .win{border-radius:16px;border-color:color-mix(in srgb,var(--txt) 10%,transparent);
   box-shadow:0 12px 40px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.35);
@@ -2910,7 +2926,7 @@ body.immersive :where(textarea){min-height:0}
 body.immersive :where(select){appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat:no-repeat;background-position:right 10px center;background-size:14px}
-body.immersive :where(input,textarea,select):focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent);
+body.immersive :where(input):focus,body.immersive :where(textarea):focus,body.immersive :where(select):focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent);
   box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
 body.immersive ::placeholder{color:color-mix(in srgb,var(--txt) 42%,transparent)}
 /* secondary button */
@@ -3022,8 +3038,60 @@ body.immersive #omnibar:focus-within,body.immersive #omnibar.pop,body.immersive 
   border-color:color-mix(in srgb,var(--acc) 60%,transparent);
   box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 40px color-mix(in srgb,var(--acc) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.22)}
 body.immersive #omni-in{font-size:15px}
+/* the bar itself glows on focus; a second ring drawn inside it by :focus-visible
+   read as a box inside a pill (seen on the home scene at first paint) */
+body.immersive #omni-in:focus-visible,body.immersive #deck-q:focus-visible,body.immersive #smq:focus-visible{outline:none}
 body.immersive #omni-in::placeholder{color:color-mix(in srgb,var(--txt) 58%,transparent)}
 body.immersive #omni-orb{box-shadow:0 0 14px color-mix(in srgb,var(--acc) 70%,transparent),0 0 0 4px color-mix(in srgb,var(--acc) 14%,transparent)}
+
+/* ---- the desktop scene ----
+   Three bands of chrome stacked at the bottom (deck, prompt bar, dock) is what
+   made the desktop read as a tile board. Here: with no window open, the prompt
+   bar sits in the upper third under a greeting, with three things to try; the
+   deck leaves the desktop and becomes the wall (Launchpad) behind the dock's
+   launcher button; the moment a window opens the scene fades and the desktop
+   is wallpaper and dock, with the bar one Ctrl+Space away. */
+body.immersive:not(.deck-full) #deck{display:none}
+body.immersive #home{position:absolute;inset:0;pointer-events:none;z-index:5;
+  transition:opacity var(--d-slow) var(--ease-out)}
+body.immersive #home[hidden]{display:none}
+body.immersive.has-win #home,body.immersive.deck-full #home,body.immersive.exposing #home{opacity:0}
+body.immersive .hm-greet{position:absolute;left:0;right:0;top:20%;text-align:center;transform:translateY(-100%);padding-bottom:26px}
+body.immersive .hm-hi{font-size:44px;font-weight:650;letter-spacing:-.03em;line-height:1.1;
+  color:color-mix(in srgb,var(--txt) 96%,transparent);text-shadow:0 2px 24px rgba(0,0,0,.35)}
+body.immersive .hm-date{margin-top:8px;font-size:var(--fs-lg);font-weight:500;color:color-mix(in srgb,var(--txt) 70%,transparent);text-shadow:0 1px 12px rgba(0,0,0,.35)}
+body.immersive .hm-below{position:absolute;left:0;right:0;top:calc(20% + 74px);display:flex;flex-direction:column;align-items:center;gap:18px;padding:0 16px}
+body.immersive .hm-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:760px;pointer-events:auto;
+  transition:opacity var(--d-base) var(--ease-out)}
+body.immersive.omni-pop .hm-chips{opacity:0;pointer-events:none}
+body.immersive .hm-chip{min-height:36px;padding:0 15px;border-radius:999px;font-size:var(--fs-sm);font-weight:500;color:color-mix(in srgb,var(--txt) 88%,transparent);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 24%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 8px 24px rgba(0,0,0,.25);transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .hm-chip:hover{background:color-mix(in srgb,var(--txt) 14%,transparent);transform:translateY(-2px)}
+body.immersive .hm-now{font-size:var(--fs-sm);color:color-mix(in srgb,var(--txt) 55%,transparent);text-shadow:0 1px 8px rgba(0,0,0,.4)}
+/* the prompt bar in the scene: upper third, wide, the results list drops below it */
+body.immersive:not(.has-win):not(.deck-full) #omnibar{bottom:auto;top:20%;width:min(720px,88vw);height:56px;padding:0 18px;gap:12px}
+body.immersive:not(.has-win):not(.deck-full) #omnibar.pop{width:min(760px,90vw);height:58px}
+body.immersive:not(.has-win):not(.deck-full) #omni-in{font-size:var(--fs-lg)}
+body.immersive:not(.has-win):not(.deck-full) #omnilist{top:calc(100% + 10px);bottom:auto}
+body.immersive:not(.has-win):not(.deck-full) #omnicards{bottom:auto;top:calc(20% + 70px);flex-direction:column-reverse}
+body.immersive:not(.has-win):not(.deck-full) #omni-orb{width:22px;height:22px}
+/* a window open: the bar stands down until it is summoned (Ctrl+Space, the
+   brand mark) or something is happening in it */
+body.immersive.has-win #omnibar:not(.summoned):not(.pop):not(:focus-within):not(:has(.busy)):not(:has(#omni-shots img)){opacity:0;pointer-events:none;
+  transform:translateX(-50%) translateY(10px);transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+body.immersive.has-win #omnibar{transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+/* the wall (Launchpad): the whole screen, the search pill centred at the top */
+body.immersive.deck-full #deck{background:color-mix(in srgb,var(--bg) 58%,transparent);backdrop-filter:blur(40px) saturate(1.5);-webkit-backdrop-filter:blur(40px) saturate(1.5)}
+body.immersive.deck-full #deck-head{justify-content:center;padding:26px 4px 18px;position:relative}
+body.immersive.deck-full #deck-q{max-width:520px;height:44px;border-radius:14px;font-size:var(--fs-base);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive.deck-full .dh-hint{position:absolute;right:52px;top:50%;transform:translateY(-50%);margin:0}
+body.immersive.deck-full #deck-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px}
+body.immersive.deck-full .deck-tile{padding:12px 4px 10px;gap:8px}
+body.immersive.deck-full .deck-tile .aicon{width:56px;height:56px}
+body.immersive.deck-full .deck-tile span{font-size:var(--fs-sm)}
 
 /* ---- the deck: tiles of light on the wallpaper ---- */
 body.immersive .deck-group{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 11%,transparent),color-mix(in srgb,var(--txt) 5%,transparent));
@@ -3200,6 +3268,13 @@ body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bot
   <div id="jarvis-shell"></div>
   <div id="custom-shell"></div>
   <div id="icons"></div>
+  <!-- the home scene (immersive look only): a greeting, what the agent is up to,
+       and three things to try under the prompt bar. Hidden the moment a window
+       opens — the desktop is then wallpaper and dock, nothing else. -->
+  <div id="home" hidden>
+    <div class="hm-greet"><div class="hm-hi"></div><div class="hm-date"></div></div>
+    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div></div>
+  </div>
   <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
        #desktop is position:fixed, which creates a stacking context, so a deck
        outside it would paint over every window regardless of z-index. -->
@@ -3935,12 +4010,63 @@ applyGlass();
    Faces — GUI: this. SUI: identical, plus suiSyncStruts() because the dock
    grows by 2px. TUI: not applicable — a terminal has no wallpaper or glass; the
    switch's own text says so. */
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',raf:0,tx:0,ty:0,bound:false,mo:null};
+var IMMERSIVE={on:localStorage.getItem('immersive')==='1',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
+  homeRender();
+}
+/* A window opened: the prompt bar stands down (CSS), but a caret left in it —
+   the wall hands focus back to the bar when it closes — would keep the bar up
+   through :focus-within and, worse, swallow the keystrokes meant for the window.
+   So the caret leaves the bar unless the bar was deliberately summoned. */
+function immersiveWinChange(){
+  if(!IMMERSIVE.on)return;
+  const inp=document.getElementById('omni-in'),bar=document.getElementById('omnibar');
+  if(!inp||!bar)return;
+  if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
+}
+/* ---- the home scene ----
+   With no window open the desktop is a place, not a tile board: a greeting by
+   the hour (and by name on a machine with accounts), the date, the prompt bar
+   in the upper third, three things to try, and one line of what the agent is
+   doing. It re-renders once a minute — the greeting and the date are the only
+   things that move — and whenever the look is switched. Chips fill the prompt
+   bar rather than sending, so the first message is still the person's. */
+var HOME_CHIPS=['How is this machine doing? Check CPU, memory and disk.',
+  'What is taking up the most space in my home folder?',
+  'Every morning at 9, check disk space and tell me if it is low.',
+  'Fetch the top Hacker News stories and summarise them.',
+  'Create a project folder with a starter README in my workspace.',
+  'Remember that I prefer concise answers.',
+  'Watch my Downloads folder and tell me what lands there.',
+  'Draft a flow that briefs me every morning.'];
+function homeRender(){
+  const h=document.getElementById('home');if(!h)return;
+  if(!IMMERSIVE.on){h.hidden=true;clearInterval(IMMERSIVE.homeT);IMMERSIVE.homeT=0;return}
+  const now=new Date(),hr=now.getHours();
+  const part=hr<5?'Good night':hr<12?'Good morning':hr<17?'Good afternoon':hr<22?'Good evening':'Good night';
+  const me=(typeof USERS!=='undefined'&&USERS.me&&USERS.me.multiuser)?String(USERS.me.display||USERS.me.name||'').trim().split(/\s+/)[0]:'';
+  h.querySelector('.hm-hi').textContent=part+(me?', '+me:'');
+  let date='';try{date=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}catch(e){date=now.toDateString()}
+  h.querySelector('.hm-date').textContent=date;
+  const day=Math.floor(now/864e5);
+  const chips=[0,1,2].map(i=>HOME_CHIPS[(day*3+i)%HOME_CHIPS.length]);
+  const box=h.querySelector('.hm-chips');
+  if(box.dataset.day!==String(day)){box.dataset.day=String(day);
+    box.innerHTML=chips.map(c=>`<button class="hm-chip">${esc(c)}</button>`).join('');
+    box.querySelectorAll('.hm-chip').forEach((b,i)=>b.onclick=()=>{const inp=document.getElementById('omni-in');if(!inp)return;
+      inp.value=chips[i];inp.dispatchEvent(new Event('input'));inp.focus();
+      const n=inp.value.length;try{inp.setSelectionRange(n,n)}catch(e){}});}
+  const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
+  const who=(typeof agentName==='function')?agentName():'Aria';
+  const chip=document.getElementById('fwdchip');
+  const brain=chip&&!chip.hidden?chip.textContent.replace(/\s+/g,' ').trim():'';
+  h.querySelector('.hm-now').textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(brain?`${who} · ${brain}`:`${who} is ready`);
+  h.hidden=false;
+  if(!IMMERSIVE.homeT)IMMERSIVE.homeT=setInterval(homeRender,60000);
 }
 /* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
    standard desktop and the matching SVG (00d-icons.js) in this look. The glyph
@@ -3961,7 +4087,13 @@ function immersiveIcons(on){
   immersiveIconize(document);
   if(on&&!IMMERSIVE.mo&&window.MutationObserver){
     IMMERSIVE.mo=new MutationObserver(ms=>{if(!IMMERSIVE.on)return;
-      ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1){if(n.dataset&&n.dataset.ic!==undefined)immersiveIconize({querySelectorAll:()=>[n]});immersiveIconize(n)}}))});
+      ms.forEach(m=>{
+        // a button whose glyph was (re)written in place — #omni-shot is set by
+        // the omnibar after this file ran — is the parent of the mutation
+        const t=m.target;
+        if(t&&t.nodeType===1&&t.dataset&&t.dataset.ic!==undefined&&!t.querySelector('svg.ic')){delete t.dataset.gl;immersiveIconize({querySelectorAll:()=>[t]})}
+        m.addedNodes.forEach(n=>{if(n.nodeType===1){if(n.dataset&&n.dataset.ic!==undefined)immersiveIconize({querySelectorAll:()=>[n]});immersiveIconize(n)}});
+      })});
     IMMERSIVE.mo.observe(document.body,{childList:true,subtree:true});
   }
   if(!on&&IMMERSIVE.mo){IMMERSIVE.mo.disconnect();IMMERSIVE.mo=null}
@@ -4671,7 +4803,7 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <span class="tright"><button class="cp-btn" data-ic="sparkles" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
     <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);
@@ -5813,6 +5945,7 @@ function applyWindowActivity(){
   // question in different words.
   document.body.classList.toggle('has-win',
     [...WM.wins.values()].some(w=>!w.min&&(typeof deskVisible!=='function'||deskVisible(w))));
+  if(typeof immersiveWinChange==='function')immersiveWinChange();
   WM.wins.forEach(w=>{
     const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
     w._awake=on;
@@ -6429,7 +6562,11 @@ function renderBento(){
 function buildDesktop(){
   rebuildLaunchers();
   $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
-  $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
+  // Immersive: the deck leaves the desktop and the launcher button opens it as a
+  // wall (Launchpad) — one launcher, not a start menu beside an app wall
+  $('#startbtn').onclick=e=>{e.stopPropagation();
+    if(typeof immersiveOn==='function'&&immersiveOn()&&typeof deckFull==='function')deckFull(!(typeof DECKFULL!=='undefined'&&DECKFULL));
+    else toggleStart()};
   // closing on a click outside, and closing the context menu, is the popover
   // manager's job now (04e-popover.js) — one listener for every popover
   $('#desktop').addEventListener('contextmenu',e=>{
