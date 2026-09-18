@@ -306,6 +306,9 @@ body.immersive #omni-in{font-size:15px}
 /* the bar itself glows on focus; a second ring drawn inside it by :focus-visible
    read as a box inside a pill (seen on the home scene at first paint) */
 body.immersive #omni-in:focus-visible,body.immersive #deck-q:focus-visible,body.immersive #smq:focus-visible{outline:none}
+/* …and the kit's field glow is the same second ring by another route (measured
+   on the phone: a 3px accent box-shadow on the input inside the glowing bar) */
+body.immersive #omni-in:focus{box-shadow:none}
 body.immersive #omni-in::placeholder{color:color-mix(in srgb,var(--txt) 58%,transparent)}
 body.immersive #omni-orb{box-shadow:0 0 14px color-mix(in srgb,var(--acc) 70%,transparent),0 0 0 4px color-mix(in srgb,var(--acc) 14%,transparent)}
 
