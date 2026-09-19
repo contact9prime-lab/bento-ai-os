@@ -202,8 +202,8 @@ def test_movement_costs_what_it_says():
     """≤20 fps, no drawing when nobody can see it, one still frame under
     reduced motion, no filter or shadow (a canvas shadow is a blur)."""
     assert "requestAnimationFrame(movementFrame)" in MOVE and "setInterval" not in MOVE
-    assert "if(dt<0.048)" in MOVE                                  # the 20 fps throttle
-    assert "if(!movementCovered())movementDraw(dt)" in MOVE
+    assert "if(dt<(busy?0.048:0.083))" in MOVE                    # 20 fps busy, 12 idle
+    assert "if(!movementCovered()){const t0=performance.now();movementDraw(dt)" in MOVE
     assert "document.hidden" in MOVE and "has-fullwin" in MOVE and "w.max&&!w.min" in MOVE
     assert "prefers-reduced-motion" in MOVE and "if(MOVEMENT.static){movementDraw(0);return}" in MOVE
     assert "shadowBlur" not in MOVE and "filter" not in MOVE.split("/* ---- drawing ---- */")[1]

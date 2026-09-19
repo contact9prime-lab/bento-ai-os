@@ -921,10 +921,12 @@ The ground-up pass added four more things that are easy to undo by accident:
 - **Movement (the second scene) is a canvas that draws only what can be seen.** `01c-movement.js`:
   ≤20 fps by a dt gate on requestAnimationFrame (never setInterval), no frame at all when
   `document.hidden`, under `has-fullwin`, or under a maximised window, one still frame under
-  reduced motion, and no filter or canvas shadow (a shadow is a blur). Its parts are the machine's
-  — RUNNING drives the train and the balance, `tool_start`/`fabric_event`/`flow_done` swing the
-  rotor and light a flow's wheel, `/api/flows` once a minute — so it must never poll for the sake
-  of animation. It rides inside `#wall` (the parallax carries it) with `pointer-events:none`.
+  reduced motion, and no filter or canvas shadow (a shadow is a blur). It is ONE dial turning once
+  an hour with the machine's events stamped on it — the first cut, an exploded watch movement with
+  gears and a rotor, was "weird"; one slow dial is what read — and its parts are the machine's:
+  RUNNING drives the activity ring and the soul's breath, `turn_start`/`turn_end` open and close an
+  arc, `tool_start`/`fabric_event`/`flow_done` stamp a tick or light a flow's mark, `/api/flows`
+  once a minute — so it must never poll for the sake of animation. It rides inside `#wall` (the parallax carries it) with `pointer-events:none`.
   01c loads after 01b, so `applyImmersive` returns before touching `MOVEMENT` at first paint and
   01c starts itself — found because `openApp` threw "APPS before initialization" on every load.
 - **The drawer's button sits above the drawer** (`z-index:4`), or it can never close it — measured:

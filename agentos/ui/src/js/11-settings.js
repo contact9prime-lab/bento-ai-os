@@ -245,12 +245,12 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — a watch movement that shows what is running']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
-        {desc:'Movement draws this machine as an automatic watch: the mainspring is the soul (engraved with your agent\'s name, the calibre is the brain), '
-             +'the gear train turns while a turn runs, each enabled workflow is a wheel that turns when it runs, the rotor swings on every tool call, '
-             +'and the balance wheel beats slow and gentle idle, fast while something is running. A tool\'s name fades in beside the part that did it. '
-             +'Slow on purpose. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
+        {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
+             +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
+             +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
+             +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
              +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
          f:'scene movement watch automatic aurora wallpaper live'}),
     ],{f:'immersive experience beta look scene movement'}));

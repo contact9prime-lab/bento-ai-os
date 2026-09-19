@@ -203,12 +203,14 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   afternoon and evening, the cold sky after dark — SVG, gradients only, sharp at 4K — and it
   drifts a few pixels against the pointer. A theme's own wallpaper, or one you picked, still wins.
 - **A second scene: Movement.** The Scene picker beside the switch swaps the sky for a graphite
-  plate with a watch movement drawn on it, and every part is a real part of this machine: the
-  mainspring barrel is the soul (engraved with your agent's name; the calibre line is the brain),
-  the gear train creeps while idle and turns while a turn runs, each enabled workflow is a small
-  wheel that turns when it runs, the rotor swings on every tool call and settles, the balance wheel
-  beats slow and gentle idle and fast while something is running, and a tool's name fades in beside
-  the part that did it. Slow on purpose: idle, the train takes minutes to go round. Drawn at most
+  plate with one big dial drawn on it, turning once an hour like a bezel, and everything the machine
+  does is stamped on the dial the moment it happens, at twelve o'clock, then rides round with it: a
+  tool call is a tick with its name (the name stays for seven minutes, the tick for the hour), a turn
+  is an arc as long as it took and glows while it runs, every enabled workflow has a mark on the
+  inner ring that lights while it runs, an activity ring creeps idle and turns while something runs,
+  and the soul is the centre — the agent's name, the brain as calibre — breathing while a turn runs.
+  So fifteen minutes ago is at a quarter past, and an hour of the machine's life is on the dial at
+  once. Hairlines, brass and one ruby: the greeting and the prompt bar sit inside it. Drawn at most
   twenty times a second while the desktop is visible; it pauses under a full-screen or maximised
   window and when the tab is hidden, holds still under reduced motion, and uses no blur or shadow.
 - **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer

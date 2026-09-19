@@ -225,14 +225,17 @@ with the numbers. The result is what the switch in Settings → Appearance now t
 ![after: phone Chat](ux-review/after/imm2-phone-chat.jpg)
 
 **A second scene: Movement.** The owner's idea — "an automatic watch movement, slowly and subtly
-highlighting the things running". Built as the Scene picker's second entry: a graphite plate and a
-movement drawn on a canvas, where the mainspring is the soul, the train turns with the turn, each
-workflow is a wheel, the rotor swings on every tool call and the balance beats with the run. Measured:
-20 frames a second on the home scene at 16.7 ms a frame, zero frames drawn while a maximised window
-covers it, and a real tool call (Glob, from a Claude Code turn) caught mid-swing.
+highlighting the things running". The first cut was an exploded movement (barrel, train, rotor,
+balance) and the owner's verdict was "weird": too many parts, too much going on. The second cut is
+one big dial that turns once an hour, with everything the machine does stamped on it as it
+happens — a tool call is a tick with its name, a turn is an arc as long as it took, a workflow's
+mark lights while it runs, the soul is the centre. Hairlines and brass; the greeting and the
+prompt bar sit inside it. Measured: 20 frames a second at 16.7 ms a frame, zero frames drawn
+while a maximised window covers it, and a real Claude Code turn caught as an arc with its tool
+ticks named.
 
-![Movement, idle: the soul, the train, one workflow wheel, the rotor at rest](ux-review/after/imm2-movement.jpg)
-![Movement, during a turn: the barrel glows, a glimpse names the tool, the rotor has swung](ux-review/after/imm2-movement-running.jpg)
+![Movement, idle: the dial, its bezel, the soul at the centre](ux-review/after/imm2-movement.jpg)
+![Movement, during a turn: the arc glows, the tool ticks are named, the soul breathes](ux-review/after/imm2-movement-running.jpg)
 
 **Round four with the agent.** The same brief, the four new screenshots read from the workspace:
 "premium — the assistant isn't bolted onto the desktop, it's structural (prompt bar on home,
