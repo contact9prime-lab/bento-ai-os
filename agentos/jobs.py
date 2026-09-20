@@ -655,6 +655,14 @@ def readiness(cfg: dict) -> dict:
     prov_on = bool(((cfg.get("providers") or {}).get(provider) or {}).get("enabled")) if provider else False
     engine = executors.resolve_engine(cfg)
     title = next((e["title"] for e in executors.EXECUTOR_CATALOGUE if e["id"] == engine), engine)
+    if executors.runs_missions(engine):
+        # The bridge (mcpbridge.py): the executor is started with its own tools off
+        # and this OS's tools served to it over MCP, so every call passes the PDP.
+        return {"ok": True, "model": executors.executor_model(cfg, engine), "engine": engine,
+                "note": (f"Missions run on {title} — its own tools are switched off and "
+                         f"every tool it uses is this OS's, over MCP, so every step passes "
+                         f"the permission gate and lands in the ledger."),
+                "fix": ""}
     if model and prov_on:
         return {"ok": True, "model": model, "engine": engine,
                 "note": (f"Missions run on {model} through the built-in loop, so every "
@@ -664,9 +672,10 @@ def readiness(cfg: dict) -> dict:
     why = ("No provider model is set" if not model else
            f"The model '{model}' belongs to a provider that is not enabled")
     if engine != "aria":
-        why += (f", and {title} — your brain — answers chats but cannot run a mission: "
-                f"a mission is a flow, run step by step through this OS's permissions, "
-                f"which only the built-in loop does")
+        why += (f", and {title} — your brain — answers chats but cannot run a mission "
+                f"yet: a mission is a flow, run step by step through this OS's "
+                f"permissions, which needs an agent that can take this OS's tools over "
+                f"MCP (Claude Code can; {title} cannot yet)")
     return {"ok": False, "model": model, "engine": engine,
             "note": why + ".",
             "fix": "Settings → AI providers: enable a provider (Ollama is free and local) "

@@ -709,3 +709,35 @@ and puts a name on the person asking.
 **Left open, deliberately.** Mail and calendar. Nothing here can read either, so
 there is no "triage my inbox" recipe — it would be a dead control. It is the
 first mission to add for all three personas once a connector exists.
+
+## Addendum — the run bridge (20 September, later)
+
+The missions pass ended on a banner: a machine whose brain is Claude Code could
+chat and could not run a mission, because a flow's consent block is a promise
+about every step and only the built-in loop passed every step through the gate.
+That is fixed by changing who thinks, not what is checked.
+
+- **`agentos/mcpbridge.py`.** When the brain is Claude Code, a mission's master
+  and its specialists run on it — started with every native tool off, every
+  other MCP server ignored, and exactly one allowed: this OS's tools, served
+  over HTTP for that one run under a minted token. Each call comes back through
+  `Agent.call_tool`, the run loop's own tool step lifted into a method, so both
+  loops pass one gate and write the same ledger row.
+- **Measured on this machine, real CLI, no provider model at all:** the standup
+  mission ran in 55 seconds. The master (Claude Code) delegated once; the
+  engineer (Claude Code) called `list_dir`, `git_log` and `git_status` through
+  the gate — seven `fs.read` and `tool.use` rows in the ledger, every path under
+  the one folder the mission was granted — and the master read the handle and
+  finished with a three-line standup that named the day's commit and the
+  uncommitted work. Spend landed in Usage under `claude-code/claude-sonnet-5`.
+- **Two honest failures the first runs taught, both now errors on the row.**
+  A bridge that did not connect (the URL was built from config's port while the
+  server listened on another) used to end "ok" with the word "delegate" as the
+  deliverable; the CLI's own init event now reports the bridge status into the
+  run log and the run fails if it is anything but connected. And a master that
+  ends without delegating or finishing is an error, whichever loop ran it.
+
+![The Missions app after the bridge run: the row reads ok with the standup's first
+line, the banner says missions run on Claude Code](ux-review/after/missions-bridge-run.jpg)
+![The run inspector: master on Claude Code, one engineer delegation, the handle and
+the finish](ux-review/after/missions-bridge-inspector.jpg)

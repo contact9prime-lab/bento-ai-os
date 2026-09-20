@@ -31,6 +31,7 @@ from . import users as usersmod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
+from . import mcpbridge
 from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
@@ -3113,6 +3114,46 @@ def _peer_owner(key: str):
     return "", mach, "", "unknown key"
 
 
+@app.post("/api/mcp/run/{token}")
+async def api_mcp_run(token: str, request: Request):
+    """The run bridge: this OS's tools, for one flow run, to the executor that is
+    running it (mcpbridge.py). The door is thin on purpose — loopback, the token
+    twice, then hand the message to the bridge, which owns the session and the
+    gate."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "the run bridge answers only this machine"},
+                            status_code=403)
+    auth = request.headers.get("authorization") or ""
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if mcpbridge.get(token) is None or not secrets.compare_digest(bearer, token):
+        return JSONResponse({"error": "unknown or expired run token — this bridge answers "
+                                      "only the run it was minted for, and only while it "
+                                      "runs"}, status_code=401)
+    try:
+        msg = await request.json()
+    except Exception:                                              # noqa: BLE001
+        return JSONResponse({"jsonrpc": "2.0", "id": None,
+                             "error": {"code": -32700, "message": "not JSON"}})
+    if isinstance(msg, list):                 # a JSON-RPC batch
+        out = []
+        for m in msg:
+            _code, body = await mcpbridge.handle(token, m)
+            if body is not None:
+                out.append(body)
+        return JSONResponse(out) if out else Response(status_code=202)
+    code, body = await mcpbridge.handle(token, msg)
+    if body is None:
+        return Response(status_code=code)
+    return JSONResponse(body, status_code=code)
+
+
+@app.delete("/api/mcp/run/{token}")
+async def api_mcp_run_end(token: str, request: Request):
+    """A client ending its MCP session. The session is the RUN's, not the
+    client's, so this acknowledges and changes nothing."""
+    return Response(status_code=200)
+
+
 @app.post("/api/agent/mcp")
 async def api_agent_mcp(request: Request):
     """The share door, speaking MCP (JSON-RPC over HTTP).
@@ -5379,7 +5420,12 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # browser with a cookie. Its defence lives in api_agent_mcp —
                      # the key compared in constant time, an in-memory guess
                      # ceiling, and a PDP decision (ledger row included) per take.
-                     "/api/agent/mcp")
+                     "/api/agent/mcp",
+                     # The run bridge: an executor (a child process of THIS server)
+                     # calling this OS's tools over MCP for one flow run. Loopback
+                     # only, a per-run token in the URL and as Bearer, forgotten
+                     # when the run ends — see mcpbridge.py.
+                     "/api/mcp/run/")
 
 
 def _client_addr(request: Request) -> str:

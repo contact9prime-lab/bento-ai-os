@@ -64,13 +64,22 @@ ConnectError` — not softened.
 
 ## Can it run here?
 
-A mission runs on the **built-in loop with a provider model**, never forwarded
-to an executor such as Claude Code, because that is the only loop whose every
-step passes the permission gate — which is what the consent block promises. A
-machine whose brain is Claude Code with no provider set can chat and cannot run
-a mission. The Missions app, the wizard and `bento job list` say so before the
-Run button, with the fix (enable a provider — Ollama is free and local — and
-pick a model; chats keep their brain).
+A mission's consent block is a promise about every step, so a mission only runs
+where every step passes the permission gate. Two ways do:
+
+- **The built-in loop on a provider model** (Ollama, Anthropic, OpenAI…), which
+  is what the gate was written for.
+- **Claude Code through the run bridge.** When your brain is Claude Code, the
+  mission's master and specialists run on it — started with its own tools
+  switched off and exactly one MCP server allowed: this OS's tools, bound to
+  that one run. Every call Claude Code makes is one of ours, checked against the
+  mission's permissions and written to the ledger; the model is Claude Code's,
+  the hands are this OS's. Nothing to configure: the Missions app says
+  "Missions run on Claude Code" when it applies.
+
+An executor that cannot take this OS's tools over MCP (Hermes, OpenClaw today)
+can answer chats but not run a mission, and the Missions app, the wizard and
+`bento job list` say so before the Run button, with the fix.
 
 ## Schedules
 

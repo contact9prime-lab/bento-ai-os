@@ -662,6 +662,138 @@ class Agent:
         )
         return (base + "\n\n" + self.extra_system) if self.extra_system else base
 
+    async def call_tool(self, name: str, args: dict, call_id: str = "") -> tuple:
+        """ONE tool call through the whole gate: scope injection, risk, the PDP
+        decision, approval, execution, the ledger row, the log, taint, and the
+        tool_start / tool_end events. Returns (output, ok, image_path, untrusted).
+
+        This is the body of the run loop's tool step, lifted out so that a call
+        arriving from OUTSIDE the loop — an executor such as Claude Code using
+        this OS's tools over MCP (mcpbridge.py) — passes exactly the same gate.
+        Two copies of "may it, and did it" is how one of them stops being read.
+        """
+        args = dict(args or {})
+        # Once used, a tool stays offered: a turn that ran git_status will
+        # want git_commit, and the user's original words named neither.
+        self._pinned_tools.add(name)
+        if name == "find_tools":
+            # the way back from a narrowed tool set — the matches are on
+            # the table from the next step, which is why tool sets are
+            # rebuilt per step rather than once per turn
+            self._pinned_tools |= set(toolscope.match_names(
+                self.toolbox.schemas(), str(args.get("need") or "")))
+        if name in ("remember", "delegate", "run_workflow") and self.conversation_id:
+            # session scope flows through: saves attach to this conversation and
+            # delegated subagents inherit its session memory
+            args = {**args, "conversation_id": self.conversation_id}
+        if name.startswith("mcp_"):
+            # Where this call is happening, so anything the server hands
+            # back (an image, a clip) is filed against this conversation
+            # and this space instead of landing context-free in the
+            # gallery. Underscore-prefixed keys are stripped before the
+            # tool itself is called — the existing convention in
+            # Toolbox.execute.
+            args = {**args, "_ctx": {"conversation_id": self.conversation_id,
+                                     "space_id": self.space_id}}
+        elif name in SPACE_SCOPED_TOOLS and self.space_id and "space_id" not in args:
+            # The space is the turn's, not the model's to choose. It is
+            # injected rather than declared in the schema so a model
+            # cannot reach into another project by inventing an id — and
+            # `everywhere: true` stays the one honest way out, which the
+            # gate can see and a grant can refuse.
+            args = {**args, "space_id": self.space_id}
+        level, reason = self.toolbox.risk_of(name, args)
+        if self.toolbox.pdp:
+            dec = self.toolbox.pdp.decide_tool(
+                self.principal, name, args, level, reason=reason,
+                autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
+                space_id=self.space_id, conversation_id=self.conversation_id,
+                taint=self.taint)
+        else:  # no policy engine wired (tests / embedding): legacy autonomy gate
+            from .policy import Decision
+            if level == "blocked":
+                dec = Decision("deny", reason)
+            elif level == "risky" and self.cfg.get("autonomy") != "full":
+                dec = Decision("ask", reason)
+            else:
+                dec = Decision("allow")
+        if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
+            # power/session actions confirm EVERY time — full autonomy included;
+            # only an explicit user-written grant (rule != default) skips the ask
+            dec.effect = "ask"
+
+        approved = None
+        _started = time.time()
+        if dec.effect == "deny":
+            output = f"[denied] {dec.reason or reason}"
+        elif dec.effect == "ask":
+            await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
+                             "args": args, "detail": tool_detail(name, args),
+                             "pending_approval": True})
+            approved = await self.approver(name, args, dec.reason or reason,
+                                           dec.grant_offer)
+            if approved:
+                output = await self.toolbox.execute(name, args)
+            else:
+                output = ("[denied] This action was not approved for "
+                          f"{self.principal.label} at the current autonomy level. Try a "
+                          "read-only alternative, or tell the user what you wanted to do "
+                          "and why.")
+        else:
+            await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
+                             "args": args, "detail": tool_detail(name, args),
+                             "pending_approval": False})
+            output = await self.toolbox.execute(name, args)
+        if dec.effect != "allow":  # every gate decision is auditable in Logs
+            self.toolbox.store.log(
+                "policy",
+                f"{dec.effect}: {self.principal.label} → {dec.action} {dec.resource}"[:400],
+                {"principal": self.principal.label, "action": dec.action,
+                 "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
+                 "reason": dec.reason or reason, "tool": name, "approved": approved,
+                 "surface": self.surface})
+        if dec.rule == "io-gate":  # surface-blocked IO is an explicit error entry
+            self.toolbox.store.log(
+                "error", f"IO gate blocked {dec.action} {dec.resource} on "
+                         f"'{self.surface}'"[:400],
+                {"principal": self.principal.label, "surface": self.surface,
+                 "rule": "io-gate"})
+
+        output, image_path = _media_result(output)
+        ok = not output.startswith(("[error]", "[denied]", "[exit code"))
+        # Close the ledger entry the PDP opened: the decision said what was
+        # permitted, this says what actually happened. An approval that was
+        # granted and then failed, and one that was never asked for, must not
+        # look the same afterwards.
+        if getattr(dec, "audit_id", ""):
+            self.toolbox.store.audit_finish(
+                dec.audit_id,
+                outcome=("ok" if ok else ("denied" if output.startswith("[denied]") else "error")),
+                detail="" if ok else output[:400],
+                duration_ms=int((time.time() - _started) * 1000))
+        self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
+                                              "principal": self.principal.label,
+                                              "decision": dec.rule},
+                               conversation_id=self.conversation_id,
+                               space_id=self.space_id)
+        # Content this machine did not write enters here. Mark it before it
+        # reaches the model, and remember it for the rest of the turn: from
+        # this point on the PDP holds risky steps back for a human.
+        untrusted = ok and is_untrusted(name) and bool(output.strip())
+        if untrusted:
+            src = _untrusted_source(name, args)
+            self.taint.append({"tool": name, "source": src})
+            if not any(t["source"] == src for t in self.taint[:-1]):
+                await self.emit({"type": "status",
+                                 "message": f"read untrusted content from {src} — "
+                                            f"actions that change things will ask first"})
+            output = fence(src, output)
+        await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
+                         "output": output[:4000], "ok": ok,
+                         **({"untrusted": True} if untrusted else {}),
+                         **({"image": image_path} if image_path else {})})
+        return output, ok, image_path, untrusted
+
     async def run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence."""
@@ -840,125 +972,7 @@ class Agent:
                     self.aborted = True
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
-                # Once used, a tool stays offered: a turn that ran git_status will
-                # want git_commit, and the user's original words named neither.
-                self._pinned_tools.add(name)
-                if name == "find_tools":
-                    # the way back from a narrowed tool set — the matches are on
-                    # the table from the next step, which is why tool sets are
-                    # rebuilt per step rather than once per turn
-                    self._pinned_tools |= set(toolscope.match_names(
-                        self.toolbox.schemas(), str(args.get("need") or "")))
-                if name in ("remember", "delegate", "run_workflow") and self.conversation_id:
-                    # session scope flows through: saves attach to this conversation and
-                    # delegated subagents inherit its session memory
-                    args = {**args, "conversation_id": self.conversation_id}
-                if name.startswith("mcp_"):
-                    # Where this call is happening, so anything the server hands
-                    # back (an image, a clip) is filed against this conversation
-                    # and this space instead of landing context-free in the
-                    # gallery. Underscore-prefixed keys are stripped before the
-                    # tool itself is called — the existing convention in
-                    # Toolbox.execute.
-                    args = {**args, "_ctx": {"conversation_id": self.conversation_id,
-                                             "space_id": self.space_id}}
-                elif name in SPACE_SCOPED_TOOLS and self.space_id and "space_id" not in args:
-                    # The space is the turn's, not the model's to choose. It is
-                    # injected rather than declared in the schema so a model
-                    # cannot reach into another project by inventing an id — and
-                    # `everywhere: true` stays the one honest way out, which the
-                    # gate can see and a grant can refuse.
-                    args = {**args, "space_id": self.space_id}
-                level, reason = self.toolbox.risk_of(name, args)
-                if self.toolbox.pdp:
-                    dec = self.toolbox.pdp.decide_tool(
-                        self.principal, name, args, level, reason=reason,
-                        autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
-                        space_id=self.space_id, conversation_id=self.conversation_id,
-                        taint=self.taint)
-                else:  # no policy engine wired (tests / embedding): legacy autonomy gate
-                    from .policy import Decision
-                    if level == "blocked":
-                        dec = Decision("deny", reason)
-                    elif level == "risky" and self.cfg.get("autonomy") != "full":
-                        dec = Decision("ask", reason)
-                    else:
-                        dec = Decision("allow")
-                if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
-                    # power/session actions confirm EVERY time — full autonomy included;
-                    # only an explicit user-written grant (rule != default) skips the ask
-                    dec.effect = "ask"
-
-                approved = None
-                _started = time.time()
-                if dec.effect == "deny":
-                    output = f"[denied] {dec.reason or reason}"
-                elif dec.effect == "ask":
-                    await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
-                                     "args": args, "detail": tool_detail(name, args),
-                                     "pending_approval": True})
-                    approved = await self.approver(name, args, dec.reason or reason,
-                                                   dec.grant_offer)
-                    if approved:
-                        output = await self.toolbox.execute(name, args)
-                    else:
-                        output = ("[denied] This action was not approved for "
-                                  f"{self.principal.label} at the current autonomy level. Try a "
-                                  "read-only alternative, or tell the user what you wanted to do "
-                                  "and why.")
-                else:
-                    await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
-                                     "args": args, "detail": tool_detail(name, args),
-                                     "pending_approval": False})
-                    output = await self.toolbox.execute(name, args)
-                if dec.effect != "allow":  # every gate decision is auditable in Logs
-                    self.toolbox.store.log(
-                        "policy",
-                        f"{dec.effect}: {self.principal.label} → {dec.action} {dec.resource}"[:400],
-                        {"principal": self.principal.label, "action": dec.action,
-                         "resource": dec.resource, "effect": dec.effect, "rule": dec.rule,
-                         "reason": dec.reason or reason, "tool": name, "approved": approved,
-                         "surface": self.surface})
-                if dec.rule == "io-gate":  # surface-blocked IO is an explicit error entry
-                    self.toolbox.store.log(
-                        "error", f"IO gate blocked {dec.action} {dec.resource} on "
-                                 f"'{self.surface}'"[:400],
-                        {"principal": self.principal.label, "surface": self.surface,
-                         "rule": "io-gate"})
-
-                output, image_path = _media_result(output)
-                ok = not output.startswith(("[error]", "[denied]", "[exit code"))
-                # Close the ledger entry the PDP opened: the decision said what was
-                # permitted, this says what actually happened. An approval that was
-                # granted and then failed, and one that was never asked for, must not
-                # look the same afterwards.
-                if getattr(dec, "audit_id", ""):
-                    self.toolbox.store.audit_finish(
-                        dec.audit_id,
-                        outcome=("ok" if ok else ("denied" if output.startswith("[denied]") else "error")),
-                        detail="" if ok else output[:400],
-                        duration_ms=int((time.time() - _started) * 1000))
-                self.toolbox.store.log("tool", name, {"args": args, "ok": ok, "level": level,
-                                                      "principal": self.principal.label,
-                                                      "decision": dec.rule},
-                                       conversation_id=self.conversation_id,
-                                       space_id=self.space_id)
-                # Content this machine did not write enters here. Mark it before it
-                # reaches the model, and remember it for the rest of the turn: from
-                # this point on the PDP holds risky steps back for a human.
-                untrusted = ok and is_untrusted(name) and bool(output.strip())
-                if untrusted:
-                    src = _untrusted_source(name, args)
-                    self.taint.append({"tool": name, "source": src})
-                    if not any(t["source"] == src for t in self.taint[:-1]):
-                        await self.emit({"type": "status",
-                                         "message": f"read untrusted content from {src} — "
-                                                    f"actions that change things will ask first"})
-                    output = fence(src, output)
-                await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
-                                 "output": output[:4000], "ok": ok,
-                                 **({"untrusted": True} if untrusted else {}),
-                                 **({"image": image_path} if image_path else {})})
+                output, ok, image_path, untrusted = await self.call_tool(name, args, call_id)
                 steps.append({"type": "tool", "name": name, "args": args,
                               "output": output[:4000], "ok": ok,
                               **({"untrusted": True} if untrusted else {})})

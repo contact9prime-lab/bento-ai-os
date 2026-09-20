@@ -316,12 +316,12 @@ everybody's, then the rest), never a subset; `persona` is a USER_KEY. Full story
 - **A recipe that remembers declares `memory="read-write"`.** `read-space` writes a
   memory.write DENY for the roster, which turned "compare with last time" into a
   comparison against nothing. The test checks every recipe that grants `remember`.
-- **A mission runs on the built-in loop only, and the surface must say so BEFORE the Run
-  button.** `readiness(cfg)` is that sentence: a machine whose brain is Claude Code with no
-  provider model can chat and cannot run a mission — found by installing one on exactly
-  such a machine and reading `ConnectError` in the row. Forwarding a flow to an executor
-  would make the consent block a lie (Claude Code reads what it likes), so the fix is a
-  provider model for missions, not a shortcut.
+- **A mission runs through the gate or not at all, and the surface says which BEFORE the
+  Run button.** `readiness(cfg)` is that sentence. Found by installing one on a machine
+  whose brain was Claude Code with no provider and reading `ConnectError` in the row —
+  which is what led to the run bridge (next section): on an executor that can take this
+  OS's tools over MCP a mission runs on it; on one that cannot (Hermes, OpenClaw today) it
+  needs a provider model, and the banner says so with the fix.
 - **The app is the VALUE surface.** `installed()` carries each mission's last outcome in
   its own words, this week's runs and tokens, and the permissions it holds; `summary()` is
   derived from those rows so the header cannot disagree with them. Tokens are counted,
@@ -393,6 +393,47 @@ Three things that will bite whoever touches this next:
   forbids. Say "you install it, I will use it" rather than guessing.
 - **An executor OWNS its models.** See the next section: one picker, and the model
   list belongs to whatever is answering.
+
+## The run bridge: an executor's model, this OS's hands
+
+A chat turn forwarded to Claude Code is fenced by an ENVELOPE — which directory, which of
+its own tools, how much money — fixed before the run. A mission cannot live inside that:
+its consent block ("reads this folder and nothing else", "may fetch these three pages") is
+a promise about every step, and the executor's native Read / Bash / WebFetch never reach
+this PDP. So a flow on an executor brain was impossible, and `readiness()` said so.
+
+`agentos/mcpbridge.py` is the other answer. When a flow's master or a specialist runs on an
+executor, the CLI is started with `--tools ""` (every native tool off), `--strict-mcp-config`
+(nothing from the user's own MCP config) and `--allowedTools mcp__bento` (exactly one
+server: the bridge, bound to that one run), and every tool it can see is ours — the run's
+`delegate`/`finish`, or the tools the flow granted — arriving over HTTP at
+`/api/mcp/run/<token>` and going through **`Agent.call_tool`**, which is the run loop's
+tool step lifted into a method so both loops pass ONE gate. The model is the executor's;
+the ledger row, the log line and the taint mark are the same ones a built-in turn gets.
+`tests/test_mcpbridge.py` runs a whole flow through it with a fake CLI and checks the
+audit rows. Five things are load-bearing:
+
+- **The token is minted per run, carried twice (URL + Bearer), loopback-only, and gone at
+  `close_session`.** It names an in-process Agent; there is no row to replay. The route
+  is in `REMOTE_OPEN_PATHS` because the caller is a child process with no cookie, and its
+  whole defence is that list of four.
+- **The tool list is the Agent's own** (`agent._tools()`): the flow's `tool_filter` and
+  the PDP's visibility check decide what the executor even sees; a call for anything
+  else is refused BY NAME so the model can correct itself.
+- **The step ceiling is the bridge's** (`max_calls` = the flow's `max_steps`), because the
+  executor's loop is not ours to bound. After `finish` sets `aborted`, every further call
+  is refused and the CLI is given twenty seconds to end on its own before it is stopped —
+  killing it on the spot lost the `result` event and with it the cost.
+- **`--system-prompt` REPLACES the CLI's prompt** (never `--append-system-prompt` here):
+  its own is written for a coding session with native tools, and handed an orchestrator's
+  persona on top of it the model reaches for files it has not got. `BRIDGE_NOTE` tells it
+  the tools arrive as `mcp__bento__<name>`.
+- **Tool events come from the gate, not from the CLI's stream.** `_run_on_executor`'s sink
+  forwards text, thinking, status and errors only; a second `tool_start` from the CLI's
+  own stream counted every step twice.
+
+`executors.MCP_ENGINES` is the list of executors that can be driven this way — Claude
+Code today — and `runs_missions()` is the one question every surface asks.
 
 ## OpenClaw plugins: the lifecycle is ours, the runtime is not
 
