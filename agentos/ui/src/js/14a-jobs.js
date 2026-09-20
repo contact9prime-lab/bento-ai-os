@@ -24,12 +24,12 @@
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false};
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
     JOBS.recipes=d.recipes||[];JOBS.personas=d.personas||[];JOBS.persona=d.persona||'';
-    JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];JOBS.summary=d.summary||null;JOBS.ready=d.ready||null;
+    JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];JOBS.summary=d.summary||null;JOBS.ready=d.ready||null;JOBS.accounts=d.accounts||{};
   }catch(e){JOBS.recipes=[];}
   return JOBS;
 }
@@ -77,14 +77,17 @@ function jobWirePersona(root,onPick){
    the id currently expanded, '' for none. */
 function jobCards(sel){
   const p=JOBS.persona,who=JOBS.personas.find(x=>x.id===p);
-  const card=r=>`
-    <button class="job-card${r.id===sel?' on':''}" data-job="${esc(r.id)}">
+  // an account it cannot run without: the card stays, greyed, with the sentence
+  // that would fix it and the door — hidden reads as "this OS cannot do that"
+  const missing=r=>(r.wants||[]).filter(a=>!((JOBS.accounts||{})[a]||{}).ready);
+  const card=r=>{const miss=missing(r);
+    return `<button class="job-card${r.id===sel?' on':''}${miss.length?' needs':''}" data-job="${esc(r.id)}" ${miss.length?`data-needs="${esc(miss.join(','))}"`:''}>
       <span class="job-mark">${esc(r.icon||'◇')}</span>
       <b>${esc(r.title)}</b>
       <span class="job-blurb">${esc(r.blurb)}</span>
       ${r.worth?`<span class="job-worth">${esc(r.worth)}</span>`:''}
-      <span class="job-eg">${esc(r.example)}</span>
-    </button>`;
+      ${miss.length?`<span class="job-needs">${esc(miss.map(a=>((JOBS.accounts||{})[a]||{}).detail||('needs a '+a+' account')).join(' '))}</span>`:`<span class="job-eg">${esc(r.example)}</span>`}
+    </button>`};
   if(!p||!who||p==='everyone')return `<div class="job-cards">${JOBS.recipes.map(card).join('')}</div>`;
   const mine=JOBS.recipes.filter(r=>(r.for||[]).includes(p)),rest=JOBS.recipes.filter(r=>!(r.for||[]).includes(p));
   return `<div class="job-grp">For a ${esc(who.label.toLowerCase())}</div>
@@ -202,6 +205,7 @@ function jobWire(root,r,after){
 function jobPickable(box,after){
   box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
     const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    if(b.dataset.needs){SETTAB='accounts';localStorage.setItem('settab','accounts');openApp('settings');return}
     JOBS.pick=r.id;
     box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
     const slot=box.querySelector('.job-slot');

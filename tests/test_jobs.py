@@ -36,6 +36,11 @@ def store(tmp_path):
 
 CFG_PLAIN: dict = {}
 CFG_TELEGRAM = {"telegram": {"enabled": True, "bot_token": "1:abc", "owner_chat_id": 42}}
+# both accounts set up and tested, so every recipe in the catalogue can be built
+CFG_ACCOUNTS = {"mail": {"enabled": True, "host": "imap.example.com", "port": 993, "user": "me@example.com",
+                         "password": "app-pass", "last_test": {"ok": True, "detail": "signed in"}},
+                "calendar": {"enabled": True, "kind": "ics", "url": "https://example.com/basic.ics",
+                             "last_test": {"ok": True, "detail": "3 events"}}}
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +392,7 @@ def test_ensure_roster_creates_the_catalogue_s_specialists_once_and_never_overwr
     run for a year would never get `engineer` from it. And an engineer somebody
     designed must survive — a catalogue must not rewrite a person's agent."""
     made = jobs.ensure_roster({}, store)
-    assert set(made) == {"engineer", "analyst", "watcher"}
+    assert set(made) == {"engineer", "analyst", "watcher", "assistant"}
     assert jobs.ensure_roster({}, store) == []
     store.save_subagent({"name": "engineer", "soul": "MINE", "tools": ["read_file"]})
     jobs.ensure_roster({}, store)
@@ -403,7 +408,7 @@ def test_a_recipe_that_remembers_runs_with_a_memory_it_may_write(store):
     for r in jobs.RECIPES:
         if "remember" not in r.tools:
             continue
-        body = jobs.build(CFG_PLAIN, store, r.id, _answers_for(r, store))
+        body = jobs.build(CFG_ACCOUNTS, store, r.id, _answers_for(r, store))
         d = jobs.flowsmod.validate(body, store)
         denies = [g for g in jobs.flowsmod.declared_grants(d)
                   if g["action"] == "memory.write" and g["effect"] == "deny"]
@@ -427,12 +432,12 @@ def test_every_recipe_builds_previews_and_installs(store):
     """The whole catalogue, end to end: each recipe becomes a valid flow with at
     least one trigger, its grants preview cleanly, and it installs enabled."""
     for r in jobs.RECIPES:
-        body = jobs.build(CFG_PLAIN, store, r.id, _answers_for(r, store))
+        body = jobs.build(CFG_ACCOUNTS, store, r.id, _answers_for(r, store))
         assert body["job"] == r.id and body["enabled"] == 1 and body["triggers"], r.id
         assert "{" not in body["mission"], f"{r.id} left a placeholder unfilled"
-        p = jobs.preview(CFG_PLAIN, store, r.id, _answers_for(r, store))
+        p = jobs.preview(CFG_ACCOUNTS, store, r.id, _answers_for(r, store))
         assert p["grants"], r.id
-        res = jobs.install(CFG_PLAIN, store, r.id, _answers_for(r, store))
+        res = jobs.install(CFG_ACCOUNTS, store, r.id, _answers_for(r, store))
         assert res["ok"] and store.get_flow(res["flow"]["name"])["enabled"]
 
 

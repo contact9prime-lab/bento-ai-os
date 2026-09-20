@@ -186,6 +186,13 @@ DEFAULTS = {
     # who is asking — founder | coder | consultant | everyone | '' (not said).
     # The Missions catalogue opens on theirs. A USER_KEY: it is about the person.
     "persona": "",
+    # Accounts the agent may READ on the person's behalf (agentos/accounts.py):
+    # one IMAP mailbox and one calendar (ICS address or CalDAV). Both USER_KEYS —
+    # a mailbox is the most personal thing on the machine — and masked on read.
+    "mail": {"enabled": False, "preset": "", "host": "", "port": 993, "user": "",
+             "password": "", "smtp_host": "", "smtp_port": 587, "from": "", "last_test": {}},
+    "calendar": {"enabled": False, "kind": "ics", "url": "", "user": "", "password": "",
+                 "name": "", "last_test": {}},
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

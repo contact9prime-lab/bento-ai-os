@@ -76,7 +76,10 @@ BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
 # `enable_openclaw_plugin` joins it for the same reason and one more: the plugin
 # runs inside OpenClaw's own process, so this confirmation is the LAST point at
 # which this OS can refuse anything about it.
-ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin"}
+ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
+              # a message in somebody's inbox cannot be unsent; full autonomy is
+              # trust in the user's instructions, and no recipe grants this
+              "mail_send"}
 
 
 def classify_command(command: str) -> str:
@@ -715,6 +718,84 @@ class Toolbox(usersmod.Scoped):
         entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
         lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries[:300]]
         return f"{p}\n" + ("\n".join(lines) if lines else "(empty)")
+
+    # -- accounts: the mailbox and the calendar the person let this machine read ----
+
+    async def mail_search(self, query: str = "", sender: str = "", unread: bool = False,
+                          since_days: int = 7, folder: str = "INBOX", limit: int = 20) -> str:
+        """Newest matches first, headers and a snippet; never marks anything read."""
+        from . import mail as mailmod
+        p = mailmod.problem(self.cfg)
+        if p:
+            return f"[error] {p}"
+
+        def work():
+            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+                return mb.search(query=str(query or ""), sender=str(sender or ""),
+                                 unread=bool(unread), since_days=int(since_days or 0),
+                                 folder=str(folder or "INBOX"), limit=int(limit or 20))
+        try:
+            rows = await asyncio.to_thread(work)
+        except Exception as e:                                      # noqa: BLE001
+            return f"[error] mail search failed: {type(e).__name__}: {e}"[:300]
+        if not rows:
+            return "no messages matched"
+        lines = [f"{len(rows)} message{'s' if len(rows) != 1 else ''} (newest first) — "
+                 f"read one with mail_read(uid):"]
+        for r in rows:
+            lines.append(f"- uid {r['uid']} · {'UNREAD · ' if r['unread'] else ''}{r['date']}\n"
+                         f"  from: {r['from']}\n  subject: {r['subject']}\n  {r['snippet']}")
+        return "\n".join(lines)
+
+    async def mail_read(self, uid: str, folder: str = "INBOX") -> str:
+        """One message in full (plain text; HTML stripped; attachments listed, not fetched)."""
+        from . import mail as mailmod
+        p = mailmod.problem(self.cfg)
+        if p:
+            return f"[error] {p}"
+
+        def work():
+            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+                return mb.read(str(uid), folder=str(folder or "INBOX"))
+        try:
+            m = await asyncio.to_thread(work)
+        except Exception as e:                                      # noqa: BLE001
+            return f"[error] could not read uid {uid}: {type(e).__name__}: {e}"[:300]
+        head = (f"from: {m['from']}\nto: {m['to']}\n" + (f"cc: {m['cc']}\n" if m['cc'] else "")
+                + f"date: {m['date']}\nsubject: {m['subject']}\n")
+        att = f"attachments: {', '.join(m['attachments'])}\n" if m["attachments"] else ""
+        return head + att + "\n" + (m["body"] or "(empty)")
+
+    async def mail_send(self, to: str, subject: str, body: str) -> str:
+        """Send a plain-text message as the person. Always confirms unless granted."""
+        from . import mail as mailmod
+        p = mailmod.problem(self.cfg)
+        if p:
+            return f"[error] {p}"
+        return await asyncio.to_thread(mailmod.send, self.cfg, to, subject, body)
+
+    async def calendar_events(self, days: int = 1, start: str = "", end: str = "") -> str:
+        """Events from today (or `start`) for `days` days, or between start and end."""
+        from . import calendars as calmod
+        try:
+            out = await calmod.events(self.cfg, days=int(days or 1), start=str(start or ""),
+                                      end=str(end or ""))
+        except Exception as e:                                      # noqa: BLE001
+            return f"[error] could not read the calendar: {type(e).__name__}: {e}"[:300]
+        if out.get("error"):
+            return f"[error] {out['error']}"
+        w = out.get("window") or {}
+        evs = out.get("events") or []
+        lines = [f"{len(evs)} event{'s' if len(evs) != 1 else ''} between {w.get('start')} and {w.get('end')}"]
+        for e in evs:
+            when = e["start"][:10] + " all day" if e["all_day"] else f"{e['start'][:16]} → {e['end'][11:16]}"
+            who = f" · with {', '.join(e['attendees'][:6])}" if e.get("attendees") else ""
+            where = f" · at {e['location']}" if e.get("location") else ""
+            lines.append(f"- {when} · {e['summary']}{where}{who}"
+                         + (f"\n  {e['description'][:300]}" if e.get("description") else ""))
+        for n in out.get("notes") or []:
+            lines.append(f"note: {n}")
+        return "\n".join(lines)
 
     async def fetch_url(self, url: str) -> str:
         if not url.startswith(("http://", "https://")):
@@ -2301,6 +2382,13 @@ class Toolbox(usersmod.Scoped):
             return "safe", ""
         if name == "write_file":
             return "risky", f"Writes to {args.get('path', '?')}."
+        # mail_search / mail_read / calendar_events are SAFE here on purpose: a
+        # read changes nothing, and marking it risky put it under the taint ceiling —
+        # the second message read in a triage asked for a human, unattended. What
+        # protects the mailbox is the gate's own rule (policy._default): a
+        # non-user principal reads it only inside a flow that declared it.
+        if name == "mail_send":
+            return "risky", f"Sends mail to {args.get('to', '?')} as you."
         if name == "create_flow":
             # It grants nothing on its own (a new flow is always disabled), but it writes a
             # definition and may create specialists, which is a change to the OS.
@@ -4564,6 +4652,57 @@ SPACE_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(SPACE_TOOL_SCHEMAS)
+
+# Accounts: the mailbox and the calendar the person let this machine read
+# (agentos/accounts.py). Reads are `mail.read` / `calendar.read`; sending is
+# `mail.send`, risky and in ALWAYS_ASK. None of them is offered to a flow that
+# has not declared it, and a machine with no account answers with the sentence
+# that would set one up.
+ACCOUNT_TOOL_SCHEMAS = [
+    {
+        "name": "mail_search",
+        "description": "Search the user's mailbox (IMAP). Newest first, headers plus a snippet. "
+                       "Never marks anything read. Use since_days/unread/sender to narrow; then "
+                       "mail_read(uid) for the full text.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "words to search for (subject and body)"},
+            "sender": {"type": "string", "description": "match the From address or name"},
+            "unread": {"type": "boolean", "description": "only unread messages"},
+            "since_days": {"type": "integer", "description": "how far back (default 7)"},
+            "folder": {"type": "string", "description": "IMAP folder (default INBOX)"},
+            "limit": {"type": "integer", "description": "at most this many (default 20, max 50)"}},
+            "required": []},
+    },
+    {
+        "name": "mail_read",
+        "description": "Read one message in full by uid (from mail_search): plain text, HTML "
+                       "stripped, attachments listed by name. Never marks it read.",
+        "parameters": {"type": "object", "properties": {
+            "uid": {"type": "string"},
+            "folder": {"type": "string", "description": "IMAP folder (default INBOX)"}},
+            "required": ["uid"]},
+    },
+    {
+        "name": "mail_send",
+        "description": "Send a plain-text email AS THE USER. Always asks for confirmation. "
+                       "Prefer drafting the reply in your answer or a report unless the user "
+                       "explicitly asked you to send.",
+        "parameters": {"type": "object", "properties": {
+            "to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}},
+            "required": ["to", "subject", "body"]},
+    },
+    {
+        "name": "calendar_events",
+        "description": "The user's calendar events: today for `days` days (default 1), or "
+                       "between `start` and `end` (ISO dates). Read-only.",
+        "parameters": {"type": "object", "properties": {
+            "days": {"type": "integer", "description": "how many days from today (default 1)"},
+            "start": {"type": "string", "description": "ISO date/time to start from"},
+            "end": {"type": "string", "description": "ISO date/time to stop at"}},
+            "required": []},
+    },
+]
+TOOL_SCHEMAS.extend(ACCOUNT_TOOL_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.

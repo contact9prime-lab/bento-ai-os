@@ -137,3 +137,10 @@
 .job-notready b{color:var(--warn)}
 .job-notready em{font-style:normal;color:var(--txt)}
 .job-notready .endbtn{align-self:flex-start}
+
+/* A mission whose account is not set up: greyed, still there, and its card is the
+   door to Settings → Accounts. */
+.job-card.needs{opacity:.62}
+.job-card.needs:hover{opacity:.85}
+.job-needs{font-size:var(--fs-xs);color:var(--warn);line-height:1.45}
+.acct-hint{white-space:pre-line}

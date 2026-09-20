@@ -478,7 +478,7 @@ class ControlPlane(usersmod.Scoped):
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
-                      principal=Principal("subagent", defn["name"]))
+                      principal=Principal("subagent", defn["name"]), flow=flow or "")
         if taint:
             # a child handed untrusted material inherits the ceiling that came with it:
             # the page does not become trustworthy by being passed along
@@ -923,7 +923,7 @@ class ControlPlane(usersmod.Scoped):
                       extra_system=self._master_persona(flow), tool_filter=tool_names,
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("flow", name),
-                      surface=origin.get("surface") or "gui")
+                      surface=origin.get("surface") or "gui", flow=name)
         agent.taint.extend(taint)
         state["agent"] = agent          # so `finish` can end the turn (see t_finish)
         if agent_slot is not None:

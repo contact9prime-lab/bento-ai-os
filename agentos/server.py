@@ -32,6 +32,9 @@ from . import knowledge
 from . import providers
 from . import remote as remotemod
 from . import mcpbridge
+from . import accounts as accountsmod
+from . import mail as mailmod
+from . import calendars as calendarsmod
 from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
@@ -2310,6 +2313,11 @@ async def api_get_config():
     if cfg.get("telegram", {}).get("bot_token"):
         cfg["telegram"]["bot_token"] = "•••" + cfg["telegram"]["bot_token"][-4:]
         cfg["telegram"]["_has_token"] = True
+    for acct in ("mail", "calendar"):
+        # an app password is a credential to somebody's whole mailbox: never echoed
+        if (cfg.get(acct) or {}).get("password"):
+            cfg[acct]["password"] = "•••"
+            cfg[acct]["_has_password"] = True
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
@@ -3112,6 +3120,47 @@ def _peer_owner(key: str):
             if name or problem != "unknown key":
                 return uid, ucfg, name, problem
     return "", mach, "", "unknown key"
+
+
+# ---- Accounts: the mailbox and the calendar the person lets this machine read ----
+#
+# Not channels: nothing arrives through them. The agent reads them on the person's
+# behalf, every read is a decision in the ledger, and the credential is theirs
+# (USER_KEYS), masked on every read. "Set up" is PROBED — the card shows the last
+# real sign-in, never a green dot for a filled form.
+
+@app.get("/api/accounts")
+async def api_accounts():
+    return {"accounts": accountsmod.state(state["cfg"])}
+
+
+@app.put("/api/accounts/{aid}")
+async def api_account_save(aid: str, body: dict):
+    cfg = state["cfg"]
+    ok, msg = accountsmod.save(cfg, aid, body or {})
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    cfgmod.save_config(cfg)
+    return {"ok": True, "message": msg,
+            "account": next(a for a in accountsmod.state(cfg) if a["id"] == aid)}
+
+
+@app.post("/api/accounts/{aid}/test")
+async def api_account_test(aid: str):
+    """Sign in (mail) or fetch the next week (calendar), and remember the outcome
+    on the account so the Missions catalogue and the card agree about whether
+    this can be used."""
+    cfg = state["cfg"]
+    if aid == "mail":
+        res = await asyncio.to_thread(mailmod.test_login, cfg)
+    elif aid == "calendar":
+        res = await calendarsmod.test_access(cfg)
+    else:
+        return JSONResponse({"error": f"no such account: {aid}"}, status_code=404)
+    accountsmod.record_test(cfg, aid, res)
+    cfgmod.save_config(cfg)
+    return {"ok": bool(res.get("ok")), "detail": res.get("detail", ""),
+            "account": next(a for a in accountsmod.state(cfg) if a["id"] == aid)}
 
 
 @app.post("/api/mcp/run/{token}")
@@ -7822,6 +7871,7 @@ async def api_jobs(request: Request):
             "persona": persona,
             "deliveries": jobsmod.deliveries(cfg),
             "ready": jobsmod.readiness(cfg),
+            "accounts": accountsmod.readiness(cfg),
             "installed": jobsmod.installed(state["store"]),
             "summary": jobsmod.summary(state["store"])}
 

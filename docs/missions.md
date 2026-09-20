@@ -20,10 +20,10 @@ The first question on every mission surface is who you are:
 
 | Persona | Missions written for it |
 |---|---|
-| **Founder** | Watch my competitors · Tell me when someone is in the news · Draft my investor update · Brief me every morning |
-| **Coder** | Write my standup · Review what I pushed today · Keep my tests green · Tell me when a dependency ships |
-| **Consultant** | Keep up with a client's folder · Draft the weekly client report · Tell me when someone is in the news · Brief me every morning |
-| **Just me** | Watch a folder · Tell me when a page changes · Tell me what I worked on this week |
+| **Founder** | Triage my inbox · Brief me before today's meetings · Tell me who I owe a reply to · Watch my competitors · Tell me when someone is in the news · Draft my investor update · Brief me every morning |
+| **Coder** | Triage my inbox · Write my standup · Review what I pushed today · Keep my tests green · Tell me when a dependency ships |
+| **Consultant** | Triage my inbox · Brief me before today's meetings · Tell me who I owe a reply to · Keep up with a client's folder · Draft the weekly client report · Tell me when someone is in the news |
+| **Just me** | Triage my inbox · Show me the week ahead · Watch a folder · Tell me when a page changes · Tell me what I worked on this week |
 
 The persona is a **filter over one catalogue, never a subset**: yours come first,
 then everybody's, then the rest. A consultant who also writes code can reach the
@@ -102,9 +102,17 @@ bento job list                               # what runs, what it last said, wha
 bento job run standup-code                   # now, while you watch
 ```
 
+## Missions that read your mail and calendar
+
+Four missions need an account (`docs/accounts.md`): triage my inbox, brief me
+before today's meetings, show me the week ahead, tell me who I owe a reply to.
+Until the account is set up and its sign-in has succeeded, the card is greyed
+with the sentence that would fix it and the save refuses — a mission that can
+never run must not look armed. A mission that would only *use* an account
+(meeting prep with mail) runs without it and says so in its own instructions.
+
 ## What is deliberately not here
 
-There is no mail or calendar mission. Nothing in this OS can read either yet,
-and a mission that cannot run is the dead control the honesty rules forbid. When
-a mail connector exists, "triage my inbox" is the first recipe to add for all
-three personas.
+No mission sends mail. `mail_send` exists as a tool for the person's own agent,
+always asks, and is never granted by a recipe: a drafted reply is a draft in
+the report.

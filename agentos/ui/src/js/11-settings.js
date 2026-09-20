@@ -38,6 +38,7 @@ const SETTINGS_TABS=[
   ['agent','◈','Agent','agent'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
+  ['accounts','✉','Accounts','accounts'],
   ['locale','◐','Locale','locale'],
   ['keys','⌘','Shortcuts','keys'],
   ['voice','◉','Voice','voice'],
@@ -157,6 +158,11 @@ function setTab(body,all){
     P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
     P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
     setTimeout(renderChannels,0);   // live state, not part of cfg
+  }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Not channels — nothing arrives through them; the agent reads them on your behalf, every read is a decision in the ledger, and the password never leaves this machine.</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar imap caldav ics gmail outlook icloud fastmail app password"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
   }
   if(want('agent')){
     P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);

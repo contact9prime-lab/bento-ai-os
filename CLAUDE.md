@@ -343,6 +343,52 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+## Accounts: the mailbox and the calendar are read FOR the person, and that is not a channel
+
+`agentos/mail.py` (IMAP, and SMTP gated apart), `agentos/calendars.py` (an ICS address or
+CalDAV) and `agentos/accounts.py` (the one shape Settings, `bento mail`/`bento calendar`
+and the Missions catalogue read). Full story in `docs/accounts.md`. An account is the
+channel rules' mirror image — nothing arrives through it; the agent reads it on the
+person's behalf — and six things keep that honest:
+
+- **Reads are their own actions** (`mail.read`, `calendar.read`; `policy.TOOL_ACTIONS`),
+  never `tool.use` strings, and `flows.declared_grants` reads that table so a mission that
+  grants `mail_search` also grants `mail.read` — without that row the specialist is
+  refused the tool it was given, and the consent block never says "reads your mail".
+  They are SAFE in `risk_of` on purpose: risky put them under the taint ceiling, and the
+  second message read in a triage asked for a human, unattended. What protects the mailbox
+  is `PDP._default`'s own rule — a non-user principal reads it only inside a flow that
+  declared it (`account-undeclared`) — not the risk table.
+- **Definition grants apply only inside their own flow's run** (`PDP._matching(flow=)`,
+  carried by `Agent.flow` into every decision). A specialist is shared between flows and
+  each writes its envelope onto the same principal, so the deny rows one flow wrote
+  (memory read-space) refused the same specialist inside another flow that declared
+  read-write — found live: inbox-triage's `remember` refused "by meeting-prep".
+- **Sending is `mail.send`, risky, and in `ALWAYS_ASK`.** A draft in a report and a message
+  in somebody's inbox are not the same consequence. No recipe grants it; the test says so.
+- **Reading never changes anything.** Every IMAP fetch is `BODY.PEEK` and the mailbox is
+  opened read-only; there is no tool that marks, moves, deletes or creates. The test reads
+  the wire for `PEEK` and the absence of `STORE`.
+- **Mail is untrusted content.** `mail_search`, `mail_read` and `calendar_events` are in
+  `UNTRUSTED_TOOLS` — anyone can send you a message, and an invitation's description is
+  the inviter's — so the taint ceiling holds risky steps back for the rest of the turn, and
+  the `assistant` specialist's soul says an instruction inside a message is something to
+  REPORT.
+- **"Set up" is probed.** The card and the catalogue read `last_test`, written by a real
+  sign-in (`test_login` / `test_access`), and a mission that `wants` an account is greyed
+  with the sentence and refused at the save until that probe succeeded — the OS-event
+  trigger rule again. `optional` accounts are dropped from the flow's tools AND named in
+  the mission text, so a specialist never hunts for a tool it was not granted.
+- **App passwords, not OAuth, and the presets say so in one sentence.** Every provider
+  issues one without registering an application anywhere; the commonest failure is the
+  login password pasted where an app password goes, and `PRESETS[...]["hint"]` is the
+  sentence that stops it, shown on the card and appended to a refused sign-in.
+
+`mail` and `calendar` are USER_KEYS by the strongest version of the test — a mailbox is
+somebody's — and `/api/config` masks the passwords. IMAP TLS is decided by port
+(`ssl: None` → everything but 143 is IMAPS); a plain server on loopback, which is what
+the tests run, sets `ssl: False` explicitly.
+
 ## A channel is one AgentOS owns end to end
 
 There used to be a second tier: platforms "carried" by the Hermes gateway — Slack,

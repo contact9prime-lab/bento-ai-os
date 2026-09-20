@@ -2889,9 +2889,14 @@ def _job_cli(args):
             sys.exit(2)
         if persona:
             print(f"missions for a {persona} first, then everybody's:")
+        from . import accounts as accountsmod
+        acct_ready = accountsmod.readiness(cfg)
         for r in jobsmod.recipes_for(persona):
             who = "" if "everyone" in r.for_ else "  (" + "/".join(r.for_) + ")"
             print(f"\n{r.icon}  {r.id}{who}")
+            for acct in r.wants:
+                if not acct_ready.get(acct, {}).get("ready"):
+                    print(f"    ✗ {acct_ready.get(acct, {}).get('detail')}")
             print(f"    {r.title} — {r.blurb}")
             if r.worth:
                 print(f"    worth: {r.worth}")
@@ -2954,6 +2959,116 @@ def _job_cli(args):
             sys.exit(1)
         print(f"▶ {args.name} started · run {res['run_id']}\n  bento flow show {res['run_id']}")
         return
+
+
+def _account_cli(args, aid: str):
+    """`bento mail` / `bento calendar` — the terminal face of Settings → Accounts.
+
+    Setting up goes through `accounts.save`, the same door the card uses; `test`
+    really signs in and records the outcome on the account, so `bento job recipes`
+    and the Missions app agree about whether a mail mission can run here. `search`,
+    `read` and `today` read through the same modules the tools use — with the server
+    down, which is where a headless box is driven from.
+    """
+    from . import accounts as accountsmod
+    from . import calendars as calmod
+    from . import config as cfgmod
+    from . import mail as mailmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+    title = accountsmod.ABOUT[aid]["title"]
+
+    if act == "show":
+        a = next(x for x in accountsmod.state(cfg) if x["id"] == aid)
+        lt = a["last_test"] or {}
+        print(f"{title}: {'set up' if a['configured'] else 'not set up'}"
+              f"{'' if a['enabled'] or not a['configured'] else '  (switched off)'}")
+        for f in a["fields"]:
+            v = a["values"].get(f["key"], "")
+            if f["kind"] == "secret":
+                v = a["masked"].get(f["key"], "") if a["set"].get(f["key"]) else "(not set)"
+            if v not in ("", None):
+                print(f"  {f['label']:<28} {v}")
+        if lt:
+            print(f"  last test: {'ok' if lt.get('ok') else 'FAILED'} — {lt.get('detail', '')}")
+        if a["problem"]:
+            print(f"  ✗ {a['problem']}")
+        if a["hint"]:
+            print(f"  note: {a['hint']}")
+        return
+
+    if act == "set":
+        patch = {k: v for k, v in (("preset", args.preset), ("user", args.username),
+                                   ("password", args.password), ("host", args.host),
+                                   ("port", args.port), ("url", args.url), ("name", args.name),
+                                   ("kind", args.kind)) if v}
+        if getattr(args, "on", False):
+            patch["enabled"] = True
+        if getattr(args, "off", False):
+            patch["enabled"] = False
+        if not patch:
+            print(f"nothing to set — bento {aid} set --help")
+            sys.exit(2)
+        ok, msg = accountsmod.save(cfg, aid, patch)
+        if not ok:
+            print(f"✗ {msg}")
+            sys.exit(1)
+        cfgmod.save_config(cfg)
+        print(f"✓ {msg}\n  bento {aid} test        sign in and record the outcome")
+        return
+
+    if act == "test":
+        if aid == "mail":
+            res = mailmod.test_login(cfg)
+        else:
+            res = asyncio.run(calmod.test_access(cfg))
+        accountsmod.record_test(cfg, aid, res)
+        cfgmod.save_config(cfg)
+        print(("✓ " if res.get("ok") else "✗ ") + str(res.get("detail", "")))
+        sys.exit(0 if res.get("ok") else 1)
+
+    if aid == "mail" and act in ("search", "read"):
+        p = mailmod.problem(cfg)
+        if p:
+            print(f"✗ {p}")
+            sys.exit(1)
+        with mailmod.Mailbox(mailmod.conf(cfg)) as mb:
+            if act == "search":
+                rows = mb.search(query=args.query or "", sender=args.sender or "",
+                                 unread=bool(args.unread), since_days=int(args.days or 7),
+                                 folder=args.folder or "INBOX", limit=int(args.limit or 20))
+                if not rows:
+                    print("no messages matched")
+                for r in rows:
+                    print(f"\n{r['uid']:>6}  {'*' if r['unread'] else ' '} {r['date']}\n"
+                          f"        {r['from']}\n        {r['subject']}\n        {r['snippet'][:120]}")
+            else:
+                if not args.query:
+                    print("which uid? (bento mail search)")
+                    sys.exit(2)
+                m = mb.read(args.query, folder=args.folder or "INBOX")
+                print(f"from: {m['from']}\nto: {m['to']}\ndate: {m['date']}\nsubject: {m['subject']}")
+                if m["attachments"]:
+                    print(f"attachments: {', '.join(m['attachments'])}")
+                print("\n" + (m["body"] or "(empty)"))
+        return
+
+    if aid == "calendar" and act in ("today", "week"):
+        out = asyncio.run(calmod.events(cfg, days=1 if act == "today" else 7))
+        if out.get("error"):
+            print(f"✗ {out['error']}")
+            sys.exit(1)
+        evs = out.get("events") or []
+        print(f"{len(evs)} event{'s' if len(evs) != 1 else ''} · {out['window']['start']} → {out['window']['end']}")
+        for e in evs:
+            when = e["start"][:10] + " all day" if e["all_day"] else f"{e['start'][:16]} → {e['end'][11:16]}"
+            print(f"  {when}  {e['summary']}" + (f"  @ {e['location']}" if e.get("location") else ""))
+        for n in out.get("notes") or []:
+            print(f"  note: {n}")
+        return
+
+    print(f"bento {aid} show | set | test" + (" | search | read <uid>" if aid == "mail" else " | today | week"))
+    sys.exit(2)
 
 
 def _bind_problem(host: str, port: int) -> tuple[str, str]:
@@ -4463,6 +4578,29 @@ def main():
     p_cfg.add_argument("--edit", action="store_true",
                        help="open it in $EDITOR; refuses to save invalid JSON")
 
+    for _aid, _acts in (("mail", ["show", "set", "test", "search", "read"]),
+                        ("calendar", ["show", "set", "test", "today", "week"])):
+        _pa = verb(_aid, help=f"the {_aid} account the agent may read for you — "
+                                f"the terminal half of Settings → Accounts")
+        _pa.add_argument("action", nargs="?", default="show", choices=_acts)
+        _pa.add_argument("query", nargs="?", default="",
+                         help="search words, or the uid for `read`")
+        _pa.add_argument("--preset", default="", help="gmail | outlook | icloud | fastmail | custom "
+                                                       "(mail) · google | outlook | icloud | fastmail | nextcloud | ics (calendar)")
+        _pa.add_argument("--username", default="", help="address / user name")
+        _pa.add_argument("--password", default="", help="an APP password — never your login password")
+        _pa.add_argument("--host", default="", help="mail: the IMAP host")
+        _pa.add_argument("--port", default="", help="mail: the IMAP port")
+        _pa.add_argument("--url", default="", help="calendar: the ICS address or CalDAV URL")
+        _pa.add_argument("--kind", default="", help="calendar: ics | caldav")
+        _pa.add_argument("--name", default="", help="calendar: what to call it")
+        _pa.add_argument("--on", action="store_true", help="switch it on")
+        _pa.add_argument("--off", action="store_true", help="switch it off")
+        _pa.add_argument("--sender", default="", help="mail search: From matches")
+        _pa.add_argument("--unread", action="store_true", help="mail search: unread only")
+        _pa.add_argument("--days", default="", help="mail search: how far back")
+        _pa.add_argument("--folder", default="", help="mail: IMAP folder (INBOX)")
+        _pa.add_argument("--limit", default="", help="mail search: at most this many")
     p_remote = verb("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -4613,6 +4751,8 @@ def main():
         _user_cli(args)
     elif args.cmd == "config":
         raise SystemExit(_config_cli(args))
+    elif args.cmd in ("mail", "calendar"):
+        _account_cli(args, args.cmd)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

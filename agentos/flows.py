@@ -295,9 +295,17 @@ def declared_grants(flow: dict) -> list[dict]:
     # 2. what the roster may do. The flow declares once; every member gets the same
     #    envelope, because "who may fetch" is a property of the mission, not of which
     #    specialist happens to be holding it.
+    from .policy import TOOL_ACTIONS
     for sub in roster:
         for tool in (perms.get("tools") or []):
             add("subagent", sub, "tool.use", f"tool:{tool}*", note=f"granted by flow '{name}'")
+            if tool in TOOL_ACTIONS:
+                # mail_search is gated as `mail.read`, not `tool.use`: without this
+                # row the flow would grant a tool its specialist is then refused,
+                # and the consent block would not say "reads your mail".
+                act, res = TOOL_ACTIONS[tool]
+                add("subagent", sub, act, res or f"{act.split('.')[0]}:*",
+                    note=f"granted by flow '{name}'")
         for m in (perms.get("mcp") or []):
             add("subagent", sub, "mcp.use", f"mcp:{m}", note=f"granted by flow '{name}'")
         for sk in (perms.get("skills") or []):

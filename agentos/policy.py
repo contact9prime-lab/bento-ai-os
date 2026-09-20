@@ -116,6 +116,15 @@ _MEDIA = {"list_assets": ("media.read", "media:*"),
           "save_asset": ("media.write", ""),
           "delete_asset": ("media.write", ""),
           "generate_image": ("media.generate", "media:image")}
+# Mail and calendar are read on the PERSON's behalf and are the most personal
+# data on the machine, so they are their own actions — "may read my mail" and
+# "may fetch a page" must be grantable apart — and a flow declares them as grants
+# (flows.declared_grants reads this table). Sending is a third action: a draft in
+# a report and a message in somebody's inbox are not the same consequence.
+TOOL_ACTIONS = {"mail_search": ("mail.read", "mail:inbox"),
+                "mail_read": ("mail.read", "mail:inbox"),
+                "mail_send": ("mail.send", ""),
+                "calendar_events": ("calendar.read", "calendar:*")}
 _SPACE = {"list_spaces": ("space.read", "space:*"),
           "create_space": ("space.write", ""),
           "switch_space": ("space.write", ""),
@@ -165,6 +174,13 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         action, res = _MEDIA[name]
         if not res:
             res = f"media:{args.get('asset_id') or args.get('kind') or '*'}"
+        return action, res
+    if name in TOOL_ACTIONS:
+        action, res = TOOL_ACTIONS[name]
+        if name == "mail_send":
+            res = f"mail:{args.get('to', '') or '*'}"
+        elif name in ("mail_search", "mail_read") and args.get("folder"):
+            res = f"mail:{str(args.get('folder')).lower()}"
         return action, res
     if name in _SPACE:
         action, res = _SPACE[name]
@@ -609,10 +625,22 @@ class PDP(usersmod.Scoped):
         self._skills[key] = (now + 5, names)
         return names
 
-    def _matching(self, principal: Principal, action: str, resource: str) -> list[dict]:
+    def _matching(self, principal: Principal, action: str, resource: str,
+                  flow: str = "") -> list[dict]:
+        """The grants that apply — and, inside a flow's run, ONLY that flow's
+        definition grants. A specialist is shared between flows and every flow
+        writes its envelope onto the same principal, so without this the deny
+        rows one flow wrote (memory read-space) refused the same specialist
+        inside another flow that had declared read-write. Found by a mission
+        whose `remember` calls were denied "flow 'meeting-prep' may read memory
+        but not write it" while running as inbox-triage."""
         out = []
+        mine = f"flow:{flow}" if flow else ""
         for g in self._grants():
             if g["principal_kind"] not in (principal.kind, "*"):
+                continue
+            ref = str(g.get("source_ref") or "")
+            if mine and g.get("source") == "definition" and ref.startswith("flow:") and ref != mine:
                 continue
             if not _match(g.get("principal_id") or "*", principal.id):
                 continue
@@ -726,7 +754,7 @@ class PDP(usersmod.Scoped):
             if rl is not None:
                 return rl
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
-        matched = self._matching(principal, action, resource)
+        matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""))
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
         for g in gated:
             if g.get("effect") == "deny":
@@ -751,7 +779,8 @@ class PDP(usersmod.Scoped):
                     risk_level: str, reason: str = "", autonomy: str = "",
                     surface: str = "", space_id: str = "",
                     conversation_id: str = "", run_id: str = "",
-                    taint: list | None = None, audit: bool = True) -> Decision:
+                    taint: list | None = None, audit: bool = True,
+                    flow: str = "") -> Decision:
         """The main entry for tool calls: maps the call to (action, resource) and decides.
         `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task);
         the space/conversation/run are carried so the ledger entry says WHERE it happened,
@@ -762,7 +791,7 @@ class PDP(usersmod.Scoped):
                            {"risk": risk_level, "reason": reason, "autonomy": autonomy,
                             "tool": name, "args": args, "surface": surface,
                             "space_id": space_id, "conversation_id": conversation_id,
-                            "run_id": run_id, "taint": taint or [],
+                            "run_id": run_id, "taint": taint or [], "flow": flow,
                             # audit=False marks a "could this principal?" probe —
                             # filtering a tool list is one question, not ninety
                             # accesses, and the ledger is for what was done
@@ -786,6 +815,18 @@ class PDP(usersmod.Scoped):
             # models default open for everyone; restrict per principal with deny grants
             # (e.g. deny model.use model:anthropic/* for a subagent or app)
             return Decision("allow", rule="default")
+        if action in ("mail.read", "calendar.read") and principal.kind != "user":
+            # A read, so never escalated by the taint ceiling (the second message
+            # read in a triage must not need a human) — but the person's mailbox
+            # is not something a specialist reads because its tool list happens
+            # to include mail_search. Only a flow that DECLARED it (its consent
+            # block says "reads your mail") writes the grant that gets past here.
+            return Decision("deny",
+                            f"'{principal.id}' may read the person's "
+                            f"{'mail' if action == 'mail.read' else 'calendar'} only inside a "
+                            f"flow that declared it — add the tool to the flow's tools and "
+                            f"save, which writes the grant",
+                            rule="account-undeclared")
         if principal.kind == "flow" and action == "agent.invoke":
             # No default for a flow's delegation: `delegate` is not in risk_of's table, so
             # it arrives here as "safe" and would otherwise be allowed outright. The roster

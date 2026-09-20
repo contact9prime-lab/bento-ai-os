@@ -35,6 +35,9 @@ from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 # tracking that honestly needs provenance on the file, not on the tool.
 UNTRUSTED_TOOLS = {
     "fetch_url",          # any web page, and the most likely carrier
+    "mail_search",        # anyone can send you a message; its text is not yours
+    "mail_read",
+    "calendar_events",    # an invitation's description is written by the inviter
 }
 
 
@@ -42,6 +45,11 @@ def _untrusted_source(name: str, args: dict) -> str:
     """Where this output came from, in a form worth showing the user."""
     if name == "fetch_url":
         return str(args.get("url") or "a web page")[:120]
+    if name in ("mail_search", "mail_read"):
+        return "your mailbox"
+    if name == "calendar_events":
+        return "your calendar"
+
     if name.startswith("mcp_"):
         return f"MCP server ({name[4:].split('_')[0]})"
     return name
@@ -318,7 +326,7 @@ class Agent:
                  approver: Callable[[str, dict, str], Awaitable[bool]],
                  extra_system: str = "", tool_filter: list | None = None,
                  conversation_id: str = "", principal: Principal = MAIN,
-                 surface: str = "gui", space_id: str = ""):
+                 surface: str = "gui", space_id: str = "", flow: str = ""):
         """
         emit(event)                        -- streams events to the UI
         approver(name, args, reason, offer=None) -> ok
@@ -346,6 +354,9 @@ class Agent:
         self.principal = principal
         self.surface = surface
         self.space_id = space_id or ""
+        # the flow this agent runs inside ('' outside one): definition grants apply
+        # only inside their own flow's runs (policy.PDP._matching)
+        self.flow = flow or ""
         self.aborted = False
         # messages the user sent while this turn was already running: triaged at the
         # next step boundary (see _drain_inbox). The server owns the queue these come
@@ -562,9 +573,13 @@ class Agent:
             # the model shouldn't even see them; ask-able tools stay visible.
             # audit=False: this is a "could I?" probe over the whole catalogue, not
             # ninety accesses — the ledger records what was DONE.
+            # flow=self.flow: the probe must see the grants the real call will see,
+            # or a tool another flow denied this specialist is hidden here too —
+            # found live: "this run had no `remember` tool" inside a read-write flow
             schemas = [t for t in schemas
                        if self.toolbox.pdp.decide_tool(self.principal, t["name"], {},
-                                                       "safe", audit=False).effect != "deny"]
+                                                       "safe", audit=False,
+                                                       flow=self.flow).effect != "deny"]
         offered, narrowed = toolscope.scope(schemas, self._task_text, self.cfg,
                                             self._pinned_tools, self.model_id)
         self._tool_note = toolscope.catalogue(schemas, offered) if narrowed else ""
@@ -708,7 +723,7 @@ class Agent:
                 self.principal, name, args, level, reason=reason,
                 autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
                 space_id=self.space_id, conversation_id=self.conversation_id,
-                taint=self.taint)
+                taint=self.taint, flow=self.flow)
         else:  # no policy engine wired (tests / embedding): legacy autonomy gate
             from .policy import Decision
             if level == "blocked":
