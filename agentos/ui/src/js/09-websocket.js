@@ -450,9 +450,16 @@ function handle(ev){
     case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
       if(typeof movementPulse==='function')movementPulse('done',ev.flow);
-      toast('▲ '+ev.flow+' · '+ev.status);
+      if(ev.brief&&ev.brief.open){toast('▲ '+ev.flow+' — '+(typeof briefLoad==='function'?'':'')+
+          (ev.brief.needs_you?ev.brief.needs_you+' need you':'')+(ev.brief.decide?' · '+ev.brief.decide+' to decide':'')+(ev.brief.fyi?' · '+ev.brief.fyi+' FYI':'')+' — open the Brief');
+        if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});}
+      else toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh();
       refreshApp('jobs'); break;      // a mission's row shows what it just said
+    case 'brief':
+      // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
+      if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R

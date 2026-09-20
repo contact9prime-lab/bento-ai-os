@@ -710,6 +710,11 @@ class Agent:
             # Toolbox.execute.
             args = {**args, "_ctx": {"conversation_id": self.conversation_id,
                                      "space_id": self.space_id}}
+        elif name == "brief_item":
+            # which mission and run wrote it: injected from the agent, never an
+            # argument — a model must not be able to write into another mission's items
+            args = {**args, "_flow": self.flow or "", "_run_id": getattr(self, "run_id", "") or "",
+                    **({"space_id": self.space_id} if self.space_id and "space_id" not in args else {})}
         elif name in SPACE_SCOPED_TOOLS and self.space_id and "space_id" not in args:
             # The space is the turn's, not the model's to choose. It is
             # injected rather than declared in the schema so a model

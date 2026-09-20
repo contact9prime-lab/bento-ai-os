@@ -343,6 +343,44 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+## The Brief: a mission delivers ITEMS a person acts on, never a message
+
+`agentos/brief.py` is how a mission's result reaches somebody, and it is the reason
+missions are worth reading on the third morning. A mission's specialists call
+`brief_item` — needs_you / decide / fyi / done, with who, by when, a draft, the source
+and for a decision the choices — and the person gets ONE living page a day with hands on
+every item: the Brief app, the home scene's line, the phone stack, a Telegram message
+with buttons, "Read it", and `bento brief`. Full story in `docs/brief.md`. Five things
+have to stay true:
+
+- **The mission and run on an item are the AGENT's, never the model's.** `agent.py`
+  injects `_flow`/`_run_id` from `self.flow`/`self.run_id` after the model's args, and
+  `execute()` keeps those two only for `brief_item`. `tests/test_brief.py` forges them
+  and checks they are overwritten — a model that could name a mission could file under
+  somebody else's.
+- **A re-run UPDATES by key; a person's Done is never undone by a run.** `brief_upsert`
+  keys on (mission, key) and leaves `state` alone on update. The recipes say the key is
+  the mail or event uid; the first live run keyed on slugs, which is why `BRIEF_LINE`
+  now spells it out.
+- **A decision is a TURN, and the tap returns at once.** `/api/brief/{id}/act` records
+  the decision, then runs `decide_prompt` through `scheduler.run_prompt` in a task
+  (`_brief_answer`) and broadcasts `brief`/`answered` with the conversation id. The first
+  cut awaited the turn inside the POST — a minute or more on a forwarded brain, which a
+  phone has given up on. `wait: true` is for the CLI and the tests. The Telegram bridge
+  does the same behind its poll loop, and reaches the scheduler through the TOOLBOX
+  (`toolbox.scheduler`) — the bridge has none of its own.
+- **A decided item stays in view; only Done is "handled".** The desktop, the phone and
+  `bento brief` all apply that one rule, so the reply lands where the question was.
+  `reopen` clears the decision AND the reply.
+- **The Brief's state is created by whichever file reaches it first.** The home scene
+  (`01b`) calls `briefLoad()` before `24b-brief.js` has run; `var BRIEF={…}` there
+  threw inside that early call and then wiped what it had loaded. Both sides now create
+  it if it is missing and never re-create it — the bundle-order trap in a new shape.
+
+Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
+rows with the server down. Option labels cut at a word (`_short`) because a button that
+reads "higher seat cou" is a choice nobody can read back.
+
 ## Accounts: the mailbox and the calendar are read FOR the person, and that is not a channel
 
 `agentos/mail.py` (IMAP, and SMTP gated apart), `agentos/calendars.py` (an ICS address or

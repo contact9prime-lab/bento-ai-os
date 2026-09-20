@@ -3333,6 +3333,44 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
 body.immersive.dev-mobile .win{border-radius:0}
 body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}
+/* ================= the Brief ================= */
+.br-app h2.br-hl{margin:2px 0 0;font-size:var(--fs-xl);font-weight:650;letter-spacing:-.01em}
+.br-day{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700}
+.br-top{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3);margin-bottom:var(--sp-4);flex-wrap:wrap}
+.br-tools{display:flex;gap:8px}
+.br-app h3{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;margin:var(--sp-4) 0 var(--sp-2)}
+.br-count{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;background:var(--bg3);color:var(--txt);font-weight:600}
+.br-list{display:flex;flex-direction:column;gap:10px}
+.br-item{position:relative;padding:12px 14px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--bg2);
+  display:flex;flex-direction:column;gap:6px;transition:opacity var(--d-fast) var(--ease-out)}
+.br-item.busy{opacity:.5;pointer-events:none}
+.br-item.k-needs_you{border-left:3px solid var(--acc)}
+.br-item.k-decide{border-left:3px solid var(--warn)}
+.br-item.k-done{border-left:3px solid var(--ok)}
+.br-item.s-done,.br-item.s-decided{opacity:.7}
+.br-head{display:flex;justify-content:space-between;align-items:center}
+.br-kind{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:700}
+.br-n{font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim2)}
+.br-title{font-size:var(--fs-base);font-weight:650;line-height:1.35}
+.br-meta{font-size:var(--fs-sm);color:var(--dim)}
+.br-meta i{font-style:normal;color:var(--dim2)}
+.br-body{font-size:var(--fs-sm);line-height:1.55;color:var(--txt);white-space:pre-line}
+.br-draft summary{font-size:var(--fs-xs);color:var(--dim);cursor:pointer}
+.br-draft pre{white-space:pre-wrap;font:inherit;font-size:var(--fs-sm);line-height:1.5;padding:8px 10px;border-radius:var(--r-sm);background:var(--bg);margin:6px 0 0}
+.br-hands{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.br-hands .endbtn{min-height:var(--tap,32px)}
+.br-opt{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.br-state{font-size:var(--fs-xs);color:var(--dim)}
+.br-done{margin-top:var(--sp-4)}
+.br-done summary{font-size:var(--fs-sm);color:var(--dim);cursor:pointer;margin-bottom:8px}
+.br-empty{line-height:1.6}
+/* the phone: one item per screen, big hands, a step bar */
+.br-stack .br-item{padding:16px}
+.br-stack .br-title{font-size:var(--fs-lg)}
+.br-nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:var(--fs-sm);color:var(--dim)}
+.br-nav .endbtn{min-height:var(--tap,40px);min-width:var(--tap,40px);font-size:var(--fs-lg)}
+/* the home scene's line is a door */
+body.immersive .hm-now.br-open{pointer-events:auto;cursor:pointer;color:var(--txt);font-weight:600}
 </style>
 </head>
 <body>
@@ -3958,6 +3996,7 @@ const ICONS={
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
@@ -4270,12 +4309,17 @@ function homeRender(){
   const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
   const who=(typeof agentName==='function')?agentName():'Aria';
   const brain=immersiveBrainText();
-  h.querySelector('.hm-now').textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(brain?`${who} · ${brain}`:`${who} is ready`);
+  const line=h.querySelector('.hm-now');
+  const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
+  line.textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  line.classList.toggle('br-open',!n&&!!br);
+  line.onclick=(!n&&br)?()=>openApp('brief'):null;
   h.hidden=false;
   const band=immersiveWallBand();
   if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
   IMMERSIVE.band=band;
-  if(!IMMERSIVE.homeT)IMMERSIVE.homeT=setInterval(homeRender,60000);
+  if(!IMMERSIVE.homeT){IMMERSIVE.homeT=setInterval(homeRender,60000);
+    if(typeof briefLoad==='function')briefLoad().then(()=>homeRender());}
 }
 /* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
    standard desktop and the matching SVG (00d-icons.js) in this look. The glyph
@@ -6596,6 +6640,7 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:760,h:680,desc:'What this machine does for you every day — and what it did',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
@@ -7046,7 +7091,7 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{
@@ -7133,7 +7178,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
+  ['Essentials',['brief','chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
@@ -8889,9 +8934,16 @@ function handle(ev){
     case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
       if(typeof movementPulse==='function')movementPulse('done',ev.flow);
-      toast('▲ '+ev.flow+' · '+ev.status);
+      if(ev.brief&&ev.brief.open){toast('▲ '+ev.flow+' — '+(typeof briefLoad==='function'?'':'')+
+          (ev.brief.needs_you?ev.brief.needs_you+' need you':'')+(ev.brief.decide?' · '+ev.brief.decide+' to decide':'')+(ev.brief.fyi?' · '+ev.brief.fyi+' FYI':'')+' — open the Brief');
+        if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});}
+      else toast('▲ '+ev.flow+' · '+ev.status);
       if(typeof fabricLiveRefresh==='function')fabricLiveRefresh();
       refreshApp('jobs'); break;      // a mission's row shows what it just said
+    case 'brief':
+      // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
+      if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
@@ -18368,6 +18420,136 @@ async function hsControlSet(action){
   if(!r.ok)return toast(d.error||'could not change remote control');
   toast(action==='start'?'remote control on — connect a VNC client through the tunnel':'remote control off');
   hsControl();
+}
+/* ================= the Brief: what the missions produced, as things to act on =================
+   One living page per day (agentos/brief.py): the items every mission wrote —
+   needs you / decide / FYI / done for you — each with hands. Done and Later are
+   one tap; a decision's choices are buttons and the answer is handed back to the
+   agent as a turn; a draft can be sent through the gate, as you, so it asks.
+   A mission's next run updates its items rather than adding twins, and an item
+   marked done stays done.
+
+   Faces — GUI: this window, and the home scene's line ("2 need you"). Phone: the
+   same page as a stack, one item per screen, tap targets at --tap. Telegram: the
+   digest with buttons (telegram.py). Voice: "Read it" speaks the headline and the
+   items that need you. TUI: `bento brief`.
+   `var`, not `let` (the bundle's TDZ trap) — and the home scene (01b) calls
+   briefLoad() before this file has run, so the state is created by whichever
+   side gets there first and never re-created: `var BRIEF={…}` here would have
+   thrown inside the early call and then wiped the page it loaded. */
+var BRIEF=(typeof BRIEF==='object'&&BRIEF)||{page:null,i:0,busy:false};
+
+async function briefLoad(){
+  if(!BRIEF)BRIEF={page:null,i:0,busy:false};
+  try{BRIEF.page=await (await fetch('/api/brief')).json()}catch(e){BRIEF.page=null}
+  return BRIEF.page;
+}
+function briefHeadline(){return (BRIEF.page&&BRIEF.page.headline)||''}
+
+function briefItemHTML(it,idx){
+  const src=it.source||{};
+  const open=it.state==='open'||it.state==='later';
+  const kindTag={needs_you:'needs you',decide:'decide',fyi:'FYI',done:'done for you'}[it.kind]||it.kind;
+  const meta=[it.who?esc(it.who):'',it.due?'by '+esc(it.due):'',it.mission?'<i>'+esc(it.mission)+'</i>':''].filter(Boolean).join(' · ');
+  let hands='';
+  if(open&&it.kind==='decide'){
+    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" onclick="briefAct('${esc(it.id)}','decide','${esc(o)}')">${esc(o)}</button>`).join('');
+  }else if(open){
+    hands=`<button class="endbtn" onclick="briefAct('${esc(it.id)}','done')">Done</button>
+      <button class="endbtn" onclick="briefAct('${esc(it.id)}','later')">Later</button>`;
+  }else{
+    const who=(typeof agentName==='function')?agentName():'the agent';
+    hands=`<span class="br-state">${it.state==='decided'?'decided: '+esc(it.decision||'')+(it.answer_cid?'':' · '+esc(who)+' is writing the reply…'):esc(it.state)}</span>
+      <button class="endbtn" onclick="briefAct('${esc(it.id)}','reopen')">Reopen</button>`;
+  }
+  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${esc(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
+  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" onclick="briefOpenMail('${esc(src.ref)}')">Open mail</button>`;
+  if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
+  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
+  return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
+    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
+    <b class="br-title">${esc(it.title)}</b>
+    ${meta?`<div class="br-meta">${meta}</div>`:''}
+    ${it.body?`<div class="br-body">${esc(it.body)}</div>`:''}
+    ${it.draft?`<details class="br-draft"><summary>Draft</summary><pre>${esc(it.draft)}</pre></details>`:''}
+    <div class="br-hands">${hands}</div>
+  </div>`;
+}
+
+async function renderBrief(body){
+  body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+  await briefLoad();
+  const pg=BRIEF.page;
+  if(!pg){body.innerHTML='<div class="pad"><p class="mut">Could not read the Brief.</p></div>';return}
+  const day=new Date(pg.day+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
+  const phone=document.body.classList.contains('dev-mobile');
+  // a decision stays in view after it is made: the reply lands where the question
+  // was, not under a collapsed "handled". Only Done goes there.
+  const shown=i=>i.state==='open'||i.state==='later'||i.state==='decided';
+  const live=pg.items.filter(shown);
+  const rest=pg.items.filter(i=>!shown(i));
+  let main;
+  if(!pg.items.length){
+    main=`<p class="mut br-empty">Nothing yet. When a mission runs, what it finds lands here — as things to act on, not a page to read. Missions are in the dock.</p>`;
+  }else if(phone){
+    BRIEF.i=Math.min(BRIEF.i,Math.max(0,live.length-1));
+    const it=live[BRIEF.i];
+    main=it?`<div class="br-stack">${briefItemHTML(it,BRIEF.i)}
+      <div class="br-nav"><button class="endbtn" onclick="briefStep(-1)" ${BRIEF.i===0?'disabled':''}>‹</button>
+        <span>${BRIEF.i+1} of ${live.length}</span>
+        <button class="endbtn" onclick="briefStep(1)" ${BRIEF.i>=live.length-1?'disabled':''}>›</button></div></div>`
+      :`<p class="mut br-empty">Everything is handled.</p>`;
+    if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary>${rest.map(i=>briefItemHTML(i)).join('')}</details>`;
+  }else{
+    main=pg.groups.map(g=>{const its=g.items.filter(shown);if(!its.length)return '';
+      return `<h3>${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
+    if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary><div class="br-list">${rest.map(i=>briefItemHTML(i)).join('')}</div></details>`;
+    if(!live.length)main=`<p class="mut br-empty">Everything is handled.</p>`+main;
+  }
+  body.innerHTML=`<div class="pad br-app">
+    <div class="br-top"><div><div class="br-day">${esc(day)}</div><h2 class="br-hl">${esc(pg.headline)}</h2>
+      ${pg.missions.length?`<div class="mut">from ${pg.missions.map(esc).join(', ')}</div>`:''}</div>
+      <div class="br-tools"><button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
+        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div></div>
+    ${main}</div>`;
+}
+function briefStep(d){BRIEF.i=Math.max(0,BRIEF.i+d);refreshApp('brief')}
+function briefSpeak(){
+  const t=(BRIEF.page&&BRIEF.page.spoken)||'';if(!t)return;
+  if(typeof speak==='function'&&typeof VOICE!=='undefined'&&VOICE.tts){speak(t);return}
+  try{const u=new SpeechSynthesisUtterance(t);speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){toast(t.slice(0,160))}
+}
+async function briefAct(id,action,choice){
+  if(BRIEF.busy)return;BRIEF.busy=true;
+  const el=document.querySelector(`.br-item[data-id="${id}"]`);if(el)el.classList.add('busy');
+  try{
+    const r=await fetch(`/api/brief/${encodeURIComponent(id)}/act`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,choice:choice||''})});
+    const j=await r.json();
+    if(j.error){toast(j.error);return}
+    if(action==='decide'){toast(`→ ${choice} — ${agentName?agentName():'the agent'} is on it; the reply lands here`);}
+    await briefLoad();refreshApp('brief');if(typeof homeRender==='function')homeRender();
+  }catch(e){toast('could not reach the server')}
+  finally{BRIEF.busy=false;if(el)el.classList.remove('busy')}
+}
+/* Send the draft as you: through /api/tool, which is the gate — mail_send asks
+   first (an approval card), and the answer says what happened. */
+async function briefSend(id){
+  const it=(BRIEF.page&&BRIEF.page.items||[]).find(x=>x.id===id);if(!it||!it.draft)return;
+  const to=prompt('Send to (address):',(it.source&&it.source.type==='mail'&&it.who&&/@/.test(it.who))?it.who.match(/[^\s<]+@[^\s>]+/)[0]:'');
+  if(!to)return;
+  const subject=prompt('Subject:','Re: '+it.title);if(subject==null)return;
+  try{
+    const j=await (await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'mail_send',args:{to,subject,body:it.draft}})})).json();
+    toast(j.error||j.output||j.result||'sent');
+    if(!j.error)briefAct(id,'done');
+  }catch(e){toast('could not reach the server')}
+}
+async function briefOpenMail(uid){
+  try{
+    const j=await (await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'mail_read',args:{uid:String(uid)}})})).json();
+    const text=j.output||j.result||j.error||'';
+    if(typeof osAlert==='function')osAlert('Mail',text.slice(0,4000));else alert(text.slice(0,4000));
+  }catch(e){toast('could not reach the server')}
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

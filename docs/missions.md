@@ -111,8 +111,17 @@ with the sentence that would fix it and the save refuses — a mission that can
 never run must not look armed. A mission that would only *use* an account
 (meeting prep with mail) runs without it and says so in its own instructions.
 
+## How a mission delivers
+
+Not as a message. Every recipe ends with the same instruction: put each
+finding into the person's **Brief** with `brief_item` — something that needs
+you, a decision with its choices, an FYI, or a thing done for you — then save
+the long form as a report. The Brief is one living page a day with hands on
+every item, and a decision made there comes back to the agent as its next
+turn. It is its own guide: [brief.md](brief.md).
+
 ## What is deliberately not here
 
 No mission sends mail. `mail_send` exists as a tool for the person's own agent,
-always asks, and is never granted by a recipe: a drafted reply is a draft in
-the report.
+always asks, and is never granted by a recipe: a drafted reply is a draft on
+the Brief item, and *Send draft…* sends it as you, through the gate that asks.

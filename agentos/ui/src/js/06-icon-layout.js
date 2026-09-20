@@ -234,7 +234,7 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{

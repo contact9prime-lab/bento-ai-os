@@ -29,6 +29,32 @@ CREATE TABLE IF NOT EXISTS conversations (
     -- instead of leaking.
     exec_session TEXT DEFAULT ''
 );
+-- The Brief: what the missions produced, as ITEMS a person acts on — not prose.
+-- One living page per day. A mission's next run updates an item (keyed by
+-- mission + key) instead of adding a twin; a person's Done / Later / decision
+-- sticks; `answer_cid` is the turn an answer started (brief.py).
+CREATE TABLE IF NOT EXISTS brief_items (
+    id TEXT PRIMARY KEY,
+    day TEXT,                    -- YYYY-MM-DD, local
+    mission TEXT DEFAULT '',     -- the flow that wrote it
+    run_id TEXT DEFAULT '',
+    key TEXT DEFAULT '',         -- dedupe within a mission: a mail uid, an event uid, a slug
+    kind TEXT DEFAULT 'fyi',     -- needs_you | decide | fyi | done
+    title TEXT,
+    body TEXT DEFAULT '',
+    who TEXT DEFAULT '',
+    due TEXT DEFAULT '',
+    draft TEXT DEFAULT '',
+    source TEXT DEFAULT '{}',    -- {"type": mail|event|report|url|path|run, "ref": ...}
+    options TEXT DEFAULT '[]',   -- for kind=decide: the choices offered
+    state TEXT DEFAULT 'open',   -- open | done | later | decided
+    decision TEXT DEFAULT '',
+    answer_cid TEXT DEFAULT '',
+    space_id TEXT DEFAULT '',
+    created_at REAL,
+    updated_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_brief_day ON brief_items(day, state);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT,
@@ -2259,6 +2285,87 @@ class Store:
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*vals, fid, now))
         self.db.commit()
         return fid
+
+    # -- the Brief ---------------------------------------------------------------
+
+    def brief_upsert(self, day: str, mission: str, key: str, fields: dict) -> tuple[str, bool]:
+        """Add an item, or update the one this mission already wrote under `key`.
+        Returns (id, created). A person's state sticks: an item they marked done
+        stays done when the mission runs again and writes the same key."""
+        now = time.time()
+        row = None
+        if key:
+            row = self.db.execute("SELECT * FROM brief_items WHERE mission=? AND key=? "
+                                  "ORDER BY created_at DESC LIMIT 1", (mission, key)).fetchone()
+        cols = ("kind", "title", "body", "who", "due", "draft", "source", "options")
+        vals = {c: fields.get(c, "") for c in cols}
+        vals["source"] = json.dumps(vals["source"] or {}) if not isinstance(vals["source"], str) else vals["source"]
+        vals["options"] = json.dumps(vals["options"] or []) if not isinstance(vals["options"], str) else vals["options"]
+        if row:
+            self.db.execute(
+                "UPDATE brief_items SET kind=?, title=?, body=?, who=?, due=?, draft=?, source=?, "
+                "options=?, run_id=?, day=?, updated_at=? WHERE id=?",
+                (vals["kind"], vals["title"], vals["body"], vals["who"], vals["due"], vals["draft"],
+                 vals["source"], vals["options"], fields.get("run_id", ""), day, now, row["id"]))
+            self.db.commit()
+            return row["id"], False
+        bid = uuid.uuid4().hex[:10]
+        self.db.execute(
+            "INSERT INTO brief_items (id, day, mission, run_id, key, kind, title, body, who, due, "
+            "draft, source, options, state, space_id, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)",
+            (bid, day, mission, fields.get("run_id", ""), key, vals["kind"], vals["title"],
+             vals["body"], vals["who"], vals["due"], vals["draft"], vals["source"], vals["options"],
+             fields.get("space_id", ""), now, now))
+        self.db.commit()
+        return bid, True
+
+    def brief_items(self, day: str = "", state: str = "", open_only: bool = False,
+                    limit: int = 200) -> list[dict]:
+        """Today's page: this day's items plus every OPEN item from earlier days —
+        a thing that needs you does not stop needing you at midnight."""
+        sql, params = "SELECT * FROM brief_items WHERE 1=1", []
+        if day and open_only:
+            sql += " AND (day=? OR state IN ('open','later'))"
+            params.append(day)
+        elif day:
+            sql += " AND day=?"
+            params.append(day)
+        if state:
+            sql += " AND state=?"
+            params.append(state)
+        rows = self.db.execute(sql + " ORDER BY created_at DESC LIMIT ?", (*params, limit)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["source"] = json.loads(d.get("source") or "{}")
+            except Exception:
+                d["source"] = {}
+            try:
+                d["options"] = json.loads(d.get("options") or "[]")
+            except Exception:
+                d["options"] = []
+            out.append(d)
+        return out
+
+    def brief_get(self, bid: str) -> dict | None:
+        rows = self.brief_items(limit=100000)
+        return next((r for r in rows if r["id"] == bid), None)
+
+    def brief_set(self, bid: str, **fields) -> bool:
+        allowed = {"state", "decision", "answer_cid", "day"}
+        upd = {k: v for k, v in fields.items() if k in allowed}
+        if not upd:
+            return False
+        sets = ", ".join(f"{k}=?" for k in upd) + ", updated_at=?"
+        cur = self.db.execute(f"UPDATE brief_items SET {sets} WHERE id=?",
+                              (*upd.values(), time.time(), bid))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def brief_for_run(self, run_id: str) -> list[dict]:
+        return [r for r in self.brief_items(limit=1000) if r.get("run_id") == run_id]
 
     def list_flows(self) -> list[dict]:
         rows = self.db.execute("SELECT * FROM flows ORDER BY name COLLATE NOCASE").fetchall()

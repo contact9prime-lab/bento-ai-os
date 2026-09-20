@@ -37,6 +37,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: IMAP with an app password, an ICS address or CalDAV, what is never touched, and the missions built on them |
+| [The Brief](brief.md) | How a mission delivers: things to act on, not a message — one living page a day, on the desktop, the phone, Telegram and out loud, where a decision is one tap and the reply comes back to the item |
 | [Missions](missions.md) | What this machine does for you every day: the catalogue by persona (founder, coder, consultant), what a mission may read, what it did, and `bento job` |
 | [Spaces, Gallery, Timeline, Audit](spaces.md) | Scoping memory and facts to a project, keeping what media servers return, the milestone timeline, and the structured access ledger |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |

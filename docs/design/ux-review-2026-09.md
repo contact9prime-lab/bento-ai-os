@@ -781,3 +781,48 @@ sign-in and what it said](ux-review/after/accounts-settings.jpg)
 missions greyed with the sentence that would fix them](ux-review/after/accounts-missions-greyed.jpg)
 ![The Missions app after inbox triage ran on Claude Code against the fake
 mailbox: the row reads ok with the triage's first lines](ux-review/after/accounts-missions-run.jpg)
+
+## Addendum — the Brief (20 September, last)
+
+How a mission delivers, which was the part every other agent gets the same
+way: a wall of prose in a chat, once, and another under it tomorrow.
+
+- **A mission produces items, not a message.** `brief_item` is a tool every
+  specialist has — needs you / decide / FYI / done for you, with who, by when,
+  a draft, the source and, for a decision, the choices. Every recipe's last
+  line says so (`jobs.BRIEF_LINE`), and the narrative `finish` is kept as the
+  long form.
+- **One living page a day**, the same page on the desktop (the Brief app, and
+  the home scene's line under the prompt bar), on the phone (one item per
+  screen), in Telegram (the digest with `✓ done` / `⏸ later` / the choices as
+  buttons), read aloud, and in a terminal (`bento brief`). A re-run updates an
+  item by its key rather than adding a twin; a person's Done sticks; open
+  items carry over.
+- **Every item has hands, and a decision is a turn.** Done and Later are one
+  tap; a draft is sent as the person through the gate that asks; a decision's
+  answer is handed back to the agent with the item as context. The tap returns
+  at once — the first cut waited on the POST for the whole turn, which on a
+  phone is a request that has given up — and the reply lands on the item as
+  *The reply*, a conversation.
+- **Run live, three times, on real Claude Code against the fake mailbox.**
+  77s / 81s / 74s, one delegation each, 56k–80k tokens in. The first run
+  wrote items but keyed them on slugs and filed the pricing ask as needs-you;
+  the recipe now names DECIDE with its options and the uid as the key, and
+  the third run keyed on the mail uids with the source set, so *Open mail*
+  works. Tapping a choice recorded it at once and the drafted acceptance
+  arrived 6 seconds later.
+- **Two things the browser found.** The home scene asked for the Brief before
+  the Brief's file had run, threw, and then wiped what it had loaded — so the
+  state is created by whichever side gets there first. And a button label cut
+  mid-word ("higher seat cou") is a choice nobody can read back; labels now
+  cut at a word.
+- **Phone, measured with touch emulation**: every hand 40px tall, no sideways
+  scroll, a real touch on Done hits Done.
+
+![The Brief on the desktop: needs you, decide, FYI — each with its hands](ux-review/after/brief-desktop.jpg)
+![The home scene: "Your Brief: 2 need you · 1 decision" where "Aria is ready" was](ux-review/after/brief-home.jpg)
+![The tap returned at once: decided, and Aria is writing the reply](ux-review/after/brief-decided.jpg)
+![Six seconds later: the reply landed on the item](ux-review/after/brief-answered.jpg)
+![The reply: a drafted acceptance, as a conversation you can carry on](ux-review/after/brief-reply.jpg)
+![The Brief on a phone: one item per screen, the hands at a fingertip](ux-review/after/brief-phone.jpg)
+![A decision on the phone: the choices are the buttons](ux-review/after/brief-phone-2.jpg)

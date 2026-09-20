@@ -3071,6 +3071,89 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+def _brief_cli(args):
+    """`bento brief` — today's Brief in a terminal, and the same hands.
+
+    Reads the rows directly, so a headless box sees what its missions found with
+    the server down. `done` / `later` / `reopen` are pure state; `decide` needs
+    the running server because the answer starts the agent's turn.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import brief as briefmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+    if act == "show":
+        pg = briefmod.page(store)
+        print(f"{pg['day']} · {briefmod.headline(pg['counts'])}")
+        if not pg["items"]:
+            print("  nothing yet — when a mission runs, what it finds lands here")
+            return
+        n = 0
+        # a decision stays in view with what was decided (and the reply, once it
+        # landed) — the same rule as the desktop: only Done goes under "handled"
+        shown = ("open", "later", "decided")
+        for g in pg["groups"]:
+            live = [i for i in g["items"] if i["state"] in shown]
+            if not live:
+                continue
+            print(f"\n{g['label'].upper()}")
+            for i in live:
+                n += 1
+                who = f" — {i['who']}" if i.get("who") else ""
+                due = f" (by {i['due']})" if i.get("due") else ""
+                print(f"  {i['id']}  {i['title']}{who}{due}")
+                if i.get("body"):
+                    print(f"          {i['body'][:160]}")
+                if i["state"] == "decided":
+                    print(f"          decided: {i.get('decision', '')}"
+                          + (f" — the reply is conversation {i['answer_cid']}" if i.get("answer_cid")
+                             else " — the reply is being written"))
+                elif i["kind"] == "decide":
+                    print(f"          choices: {' / '.join(i.get('options') or [])}")
+                if i.get("draft"):
+                    print(f"          draft: {i['draft'][:120]}…" if len(i["draft"]) > 120 else f"          draft: {i['draft']}")
+        handled = [i for i in pg["items"] if i["state"] not in shown]
+        if handled:
+            print(f"\n  {len(handled)} handled")
+        print("\n  bento brief done <id> | later <id> | reopen <id> | decide <id> <choice>")
+        return
+    if act in ("done", "later", "reopen"):
+        if not args.id:
+            print("which item? (bento brief)")
+            sys.exit(2)
+        try:
+            item = briefmod.act(store, args.id, act)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ {act}: {item['title']}")
+        return
+    if act == "decide":
+        if not args.id or not args.choice:
+            print("bento brief decide <id> <choice>")
+            sys.exit(2)
+        url = f"http://127.0.0.1:{cfg.get('port', 8321)}/api/brief/{args.id}/act"
+        req = urllib.request.Request(url, method="POST",
+                                     data=json.dumps({"action": "decide", "choice": args.choice,
+                                                      "wait": True}).encode(),   # a terminal waits for the answer
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                res = json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
+            sys.exit(1)
+        except OSError:
+            print("✗ AgentOS is not running here — a decision starts the agent, so start it with `bento serve`")
+            sys.exit(1)
+        print(f"→ {args.choice}\n\n{res.get('answer', '')}")
+        return
+    print("bento brief [show] | done <id> | later <id> | reopen <id> | decide <id> <choice>")
+    sys.exit(2)
+
+
 def _bind_problem(host: str, port: int) -> tuple[str, str]:
     """Can this process bind host:port, and if not, why — ASKED, not assumed.
 
@@ -4578,6 +4661,11 @@ def main():
     p_cfg.add_argument("--edit", action="store_true",
                        help="open it in $EDITOR; refuses to save invalid JSON")
 
+    p_brief = verb("brief", help="today's Brief — what your missions found, as things to act on")
+    p_brief.add_argument("action", nargs="?", default="show",
+                         choices=["show", "done", "later", "reopen", "decide"])
+    p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
+    p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
     for _aid, _acts in (("mail", ["show", "set", "test", "search", "read"]),
                         ("calendar", ["show", "set", "test", "today", "week"])):
         _pa = verb(_aid, help=f"the {_aid} account the agent may read for you — "
@@ -4751,6 +4839,8 @@ def main():
         _user_cli(args)
     elif args.cmd == "config":
         raise SystemExit(_config_cli(args))
+    elif args.cmd == "brief":
+        _brief_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "remote":

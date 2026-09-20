@@ -644,8 +644,9 @@ RECIPES: list[Recipe] = [
         roster=[("assistant", "reads the mailbox and sorts it")],
         mission="Triage the user's inbox: everything since yesterday morning "
                 "(`mail_search` with since_days=1, then `mail_read` the ones that matter).\n\n"
-                "Sort into: NEEDS YOU (a question, a request, a deadline), NEEDS A DECISION, "
-                "FYI (worth a line), NOISE (count it, do not list it). For each NEEDS YOU, one "
+                "Sort into: NEEDS YOU (a request, a deadline), DECIDE (an ask with two to four "
+                "possible answers — accept / counter / decline — offered as options), FYI "
+                "(worth a line), NOISE (count it, do not list it). For each NEEDS YOU, one "
                 "line — who, what, by when — and a two-to-four-sentence DRAFT reply in the "
                 "user's voice, marked as a draft. Never send anything; `mail_send` is not "
                 "yours. Never mark, move or delete.\n\n"
@@ -1040,8 +1041,10 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
         # report is not a nicety, it is the thing that stops the run from vanishing.
         perms["tools"].append("save_report")
 
+    if "brief_item" not in perms["tools"]:
+        perms["tools"].append("brief_item")
     mission = recipe.mission.format(**fill)
-    mission += f"\n\nDELIVER IT: {_deliver_line(dev)}"
+    mission += f"\n\nDELIVER IT: {BRIEF_LINE} {_deliver_line(dev)}"
 
     return {
         "name": _name_for(store, recipe, answers),
@@ -1063,6 +1066,18 @@ def _default(recipe: Recipe, key: str, fallback: str) -> str:
         if n.key == key and n.default:
             return n.default
     return fallback
+
+
+# How every mission hands over: items first, prose second. The Brief is what the
+# person sees on the desktop, the phone and Telegram; the long form goes wherever
+# the delivery question said.
+BRIEF_LINE = ("Put every finding into the user's Brief with `brief_item` — one call per "
+              "thing: kind needs_you (they must act), decide (an ask that has two to four "
+              "answers — give them as options, so one tap answers it), fyi, or done (what "
+              "you did for them); who and by-when; the draft if you wrote one; source_type "
+              "and source_ref (the mail uid, the event uid) so it can be opened; and a "
+              "stable key (that same uid) so the next run updates it rather than adding a "
+              "twin. Then")
 
 
 def _deliver_line(dev: dict) -> str:

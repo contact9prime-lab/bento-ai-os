@@ -125,12 +125,17 @@ function homeRender(){
   const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
   const who=(typeof agentName==='function')?agentName():'Aria';
   const brain=immersiveBrainText();
-  h.querySelector('.hm-now').textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(brain?`${who} · ${brain}`:`${who} is ready`);
+  const line=h.querySelector('.hm-now');
+  const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
+  line.textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  line.classList.toggle('br-open',!n&&!!br);
+  line.onclick=(!n&&br)?()=>openApp('brief'):null;
   h.hidden=false;
   const band=immersiveWallBand();
   if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
   IMMERSIVE.band=band;
-  if(!IMMERSIVE.homeT)IMMERSIVE.homeT=setInterval(homeRender,60000);
+  if(!IMMERSIVE.homeT){IMMERSIVE.homeT=setInterval(homeRender,60000);
+    if(typeof briefLoad==='function')briefLoad().then(()=>homeRender());}
 }
 /* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
    standard desktop and the matching SVG (00d-icons.js) in this look. The glyph

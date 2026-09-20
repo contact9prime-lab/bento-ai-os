@@ -797,6 +797,28 @@ class Toolbox(usersmod.Scoped):
             lines.append(f"note: {n}")
         return "\n".join(lines)
 
+    async def brief_item(self, kind: str, title: str, body: str = "", who: str = "",
+                         due: str = "", draft: str = "", source_type: str = "",
+                         source_ref: str = "", options: list | None = None,
+                         key: str = "", _flow: str = "", _run_id: str = "",
+                         space_id: str = "") -> str:
+        """One item into today's Brief (agentos/brief.py) — how a mission delivers."""
+        from . import brief as briefmod
+        try:
+            res = briefmod.add(self.store, _flow or "", _run_id or "", kind, title, body=body,
+                               who=who, due=due, draft=draft,
+                               source={"type": source_type, "ref": source_ref} if source_ref else {},
+                               options=options or [], key=key, space_id=space_id or "")
+        except ValueError as e:
+            return f"[error] {e}"
+        try:
+            if self.broadcast:
+                asyncio.create_task(self.broadcast({"type": "brief", "id": res["id"], "kind": res["kind"]}))
+        except Exception:
+            pass
+        return (f"[{'added' if res['created'] else 'updated'} in the Brief · {res['kind']} · "
+                f"{res['title']}]")
+
     async def fetch_url(self, url: str) -> str:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
@@ -3334,7 +3356,8 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            return await fn(**{k: v for k, v in args.items() if not k.startswith("_")})
+            keep = {"_flow", "_run_id"} if name == "brief_item" else set()
+            return await fn(**{k: v for k, v in args.items() if not k.startswith("_") or k in keep})
         except TypeError as e:
             return f"[error] bad arguments for {name}: {e}"
         except Exception as e:
@@ -4703,6 +4726,36 @@ ACCOUNT_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(ACCOUNT_TOOL_SCHEMAS)
+
+# The Brief: how a mission delivers (agentos/brief.py). Items, not prose — each
+# one a thing the person can act on, on the desktop, the phone, Telegram or by
+# voice. Every specialist has it; the flow's `finish` stays the long form.
+BRIEF_TOOL_SCHEMAS = [
+    {
+        "name": "brief_item",
+        "description": "Put ONE item into the user's Brief — how a mission delivers. kind: "
+                       "needs_you (they must do something), decide (a choice: give options), "
+                       "fyi (worth one line), done (something you did for them). One item per "
+                       "thing; the title is the one line they will read. Re-running with the "
+                       "same key updates the item instead of adding a twin.",
+        "parameters": {"type": "object", "properties": {
+            "kind": {"type": "string", "enum": ["needs_you", "decide", "fyi", "done"]},
+            "title": {"type": "string", "description": "one line, under 100 chars, in plain words"},
+            "body": {"type": "string", "description": "two or three lines of detail, optional"},
+            "who": {"type": "string", "description": "the person or company it concerns"},
+            "due": {"type": "string", "description": "by when, in the user's words (e.g. 'Thu 24 Sep')"},
+            "draft": {"type": "string", "description": "a drafted reply or text, if there is one"},
+            "source_type": {"type": "string", "enum": ["mail", "event", "report", "url", "path", "run"]},
+            "source_ref": {"type": "string", "description": "the mail uid, event uid, report path, URL…"},
+            "options": {"type": "array", "items": {"type": "string"},
+                        "description": "for decide: 2–4 choices of a few words each — they "
+                                       "become buttons, and a button is not a sentence"},
+            "key": {"type": "string", "description": "a stable id for this thing (mail uid, event uid) "
+                                                     "so the next run updates it; defaults to the title"}},
+            "required": ["kind", "title"]},
+    },
+]
+TOOL_SCHEMAS.extend(BRIEF_TOOL_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.

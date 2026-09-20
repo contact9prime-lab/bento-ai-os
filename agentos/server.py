@@ -33,6 +33,7 @@ from . import providers
 from . import remote as remotemod
 from . import mcpbridge
 from . import accounts as accountsmod
+from . import brief as briefmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
 from . import usage as usagemod
@@ -3122,6 +3123,67 @@ def _peer_owner(key: str):
     return "", mach, "", "unknown key"
 
 
+# ---- The Brief: what the missions produced, as things to act on (brief.py) ----
+
+@app.get("/api/brief")
+async def api_brief(day: str = ""):
+    store = state["store"]
+    pg = briefmod.page(store, day)
+    pg["headline"] = briefmod.headline(pg["counts"])
+    pg["spoken"] = briefmod.spoken(pg["items"])
+    return pg
+
+
+@app.post("/api/brief/{bid}/act")
+async def api_brief_act(bid: str, body: dict):
+    """Done / Later / Reopen, or a decision — which is handed back to the agent as
+    a turn with the item as its whole context, so 'counter at $20' becomes the
+    drafted reply without the person opening a chat."""
+    store = state["store"]
+    action = str((body or {}).get("action") or "")
+    choice = str((body or {}).get("choice") or "")
+    try:
+        item = briefmod.act(store, bid, action, choice)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    out = {"ok": True, "item": item}
+    if action == "decide":
+        # The answer is a whole agent turn — a minute or more on a forwarded brain —
+        # so the tap returns NOW with the decision recorded, and the turn runs behind
+        # it: a phone that waits on a POST for two minutes has already given up.
+        # `create_task` copies the context, so the turn stays the person's.
+        # The result arrives as a `brief` event (`answered`) with the reply's id.
+        out["started"] = True
+        state["brief_turns"] = state.get("brief_turns") or set()
+        task = asyncio.create_task(_brief_answer(bid, item, choice))
+        state["brief_turns"].add(task)
+        task.add_done_callback(state["brief_turns"].discard)
+        if (body or {}).get("wait"):            # the CLI and tests: one call, the answer in it
+            await task
+            out["item"] = store.brief_get(bid) or item
+            out["conversation_id"] = out["item"].get("answer_cid", "")
+            out["answer"] = (getattr(task, "answer", "") or "")[:2000]
+    await state["broadcast"]({"type": "brief", "id": bid, "action": action})
+    return out
+
+
+async def _brief_answer(bid: str, item: dict, choice: str) -> None:
+    store = state["store"]
+    prompt = briefmod.decide_prompt(item, choice)
+    try:
+        cid, text = await state["scheduler"].run_prompt(
+            prompt, origin="brief", title=f"Brief · {item.get('title', '')[:40]}",
+            space_id=item.get("space_id") or "")
+    except Exception as e:                       # the item keeps its decision; the person is told
+        cid, text = "", f"could not run the answer: {e}"
+    store.brief_set(bid, answer_cid=cid or "")
+    asyncio.current_task().answer = text or ""
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "brief", "id": bid, "action": "answered",
+                                  "title": item.get("title", ""), "conversation_id": cid or "",
+                                  "answer": (text or "")[:300]})
+
+
 # ---- Accounts: the mailbox and the calendar the person lets this machine read ----
 #
 # Not channels: nothing arrives through them. The agent reads them on the person's
@@ -5169,6 +5231,11 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     sinks = flow.get("sinks") or [{"kind": "origin"}]
     surface = origin.get("surface") or run.get("origin_surface") or ""
     done = []
+    # What the run put into the Brief. When there are items, THEY are the
+    # delivery — counts and the things that need the person, with buttons where
+    # the surface has them — and the prose goes to the report as the long form.
+    items = state["store"].brief_for_run(run.get("id", "")) if run.get("id") else []
+    digest = briefmod.digest(items, flow["name"]) if items else ""
     for sink in sinks:
         kind = sink.get("kind")
         if kind == "origin":
@@ -5178,7 +5245,10 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
             sink = {**sink, "chat_id": origin.get("chat_id") or run.get("origin_ref") or 0}
         try:
             head = f"▲ {flow['name']} · {run.get('status', '')}"
-            if kind == "telegram" and state.get("telegram"):
+            if kind == "telegram" and state.get("telegram") and items:
+                await state["telegram"].send_brief(digest, briefmod.telegram_rows(items),
+                                                   int(sink.get("chat_id") or 0) or None)
+            elif kind == "telegram" and state.get("telegram"):
                 await state["telegram"].send(f"{head}\n\n{text}",
                                              int(sink.get("chat_id") or 0) or None)
             elif kind == "whatsapp" and state.get("whatsapp"):
@@ -5191,7 +5261,8 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
                     state["store"].log("error", f"flow '{flow['name']}': {res}",
                                        {"flow": flow["name"], "sink": "whatsapp"})
             elif kind == "notify":
-                await state["toolbox"].notify(head, text[:200])
+                await state["toolbox"].notify(head, (briefmod.headline(briefmod.counts_of(items))
+                                                     if items else text[:200]))
             elif kind == "report":
                 await state["toolbox"].save_report(
                     f"{flow['name']} — {time.strftime('%d %b %H:%M')}", text,
@@ -5204,7 +5275,8 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
                 await state["broadcast"]({"type": "flow_done", "flow": flow["name"],
                                           "run_id": run.get("id", ""),
                                           "status": run.get("status", ""),
-                                          "preview": text[:400]})
+                                          "preview": text[:400],
+                                          "brief": briefmod.counts_of(items) if items else None})
                 kind = "gui"
             done.append(kind)
         except Exception as e:

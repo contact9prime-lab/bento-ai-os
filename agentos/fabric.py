@@ -38,7 +38,7 @@ HEARTBEAT_PERSIST_EVERY = 6  # persist 1 of every N beats (avoid write spam)
 # What the master orchestrator is allowed to hold itself (see _master_tools). It plans
 # and aggregates; the roster acts. An orchestrator with hands does the work itself and
 # the roster never runs.
-MASTER_READONLY = ["recall", "kg_query"]
+MASTER_READONLY = ["recall", "kg_query", "brief_item"]
 # Appended to the system prompt of a run on the bridge: the executor sees our tools
 # under its MCP naming, and it must not go looking for the native ones it has not got.
 BRIDGE_NOTE = ("\n\nYOUR TOOLS: every tool you have is served by the MCP server "
@@ -472,13 +472,14 @@ class ControlPlane(usersmod.Scoped):
                  ("delegate", "run_workflow", "configure_agentos", "update_soul",
                   "develop_agentos", "restart_agentos")]
         # every data plane can stand on the OS's shoulders: skills + memory + knowledge
-        for t in ("use_skill", "recall", "kg_query", "remember"):
+        for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
             if t not in tools:
                 tools.append(t)
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("subagent", defn["name"]), flow=flow or "")
+        agent.run_id = run_id            # brief_item stamps the run it was written in
         if taint:
             # a child handed untrusted material inherits the ceiling that came with it:
             # the page does not become trustworthy by being passed along
@@ -924,6 +925,7 @@ class ControlPlane(usersmod.Scoped):
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("flow", name),
                       surface=origin.get("surface") or "gui", flow=name)
+        agent.run_id = run_id
         agent.taint.extend(taint)
         state["agent"] = agent          # so `finish` can end the turn (see t_finish)
         if agent_slot is not None:
