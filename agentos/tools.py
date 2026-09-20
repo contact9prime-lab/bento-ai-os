@@ -2248,10 +2248,11 @@ class Toolbox(usersmod.Scoped):
 
     async def schedule_task(self, prompt: str, schedule_type: str,
                             interval_minutes: int = 0, at_time: str = "",
-                            delay_minutes: int = 0) -> str:
+                            delay_minutes: int = 0, weekday: int = -1) -> str:
         if self.scheduler is None:
             return "[error] scheduler not running"
-        return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time, delay_minutes)
+        return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time,
+                                          delay_minutes, weekday=weekday)
 
     async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
                              cooldown_secs: int = 300, minutes: float = 30) -> str:
@@ -4100,12 +4101,14 @@ TOOL_SCHEMAS = [
         "name": "schedule_task",
         "description": "Schedule a prompt to run automatically in the background. "
                        "schedule_type: 'once' (with delay_minutes), 'interval' (with interval_minutes), "
-                       "or 'daily' (with at_time 'HH:MM' 24h).",
+                       "'daily' (with at_time 'HH:MM' 24h) or 'weekly' (at_time plus weekday, "
+                       "0=Monday … 6=Sunday).",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "What the agent should do when the task fires."},
-                "schedule_type": {"type": "string", "enum": ["once", "interval", "daily"]},
+                "schedule_type": {"type": "string", "enum": ["once", "interval", "daily", "weekly"]},
+                "weekday": {"type": "integer", "description": "For 'weekly': 0=Monday … 6=Sunday."},
                 "interval_minutes": {"type": "integer", "description": "For 'interval': run every N minutes."},
                 "at_time": {"type": "string", "description": "For 'daily': time of day as 'HH:MM' (24h)."},
                 "delay_minutes": {"type": "integer", "description": "For 'once': run after N minutes from now."},

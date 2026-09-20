@@ -1,34 +1,96 @@
-/* ================= jobs: give this machine something to do =================
-   Two surfaces over one API (/api/jobs): the last beat of the first-run wizard,
-   and a standing app you can come back to. They share `jobCards`/`jobForm` on
-   purpose — the screen that gets somebody their first job and the screen that
-   gets them their fourth should not drift apart, because the second one is the
-   habit and the first one is only the introduction.
+/* ================= missions: what this machine does for you =================
+   Three surfaces over one API (/api/jobs): the last beat of the first-run wizard,
+   the onboarding arc's schedule step, and the standing Missions app. They share
+   `jobPersonaBar`/`jobCards`/`jobForm` on purpose — the screen that gets somebody
+   their first mission and the screen that gets them their fourth should not drift
+   apart, because the second one is the habit and the first one is only the
+   introduction.
+
+   The first question is WHO IS ASKING. A founder, a coder and a consultant want
+   different things from a machine that works while they do not, and a catalogue
+   that opens with disk space is a catalogue a founder closes. The persona is a
+   filter over ONE catalogue (theirs first, then everybody's, then the rest) —
+   never a subset, because a consultant who also writes code must be able to
+   reach the coder's missions.
+
+   The app is also the VALUE surface: not "what is scheduled" but what each
+   mission did this week, what it last said, and what it holds. Activity is not
+   value; the last outcome, in words, is the closest a list can get.
 
    Everything user-facing here obeys the honesty rule: a delivery this machine
    cannot do is shown greyed with the sentence that would fix it, never hidden,
-   and the folder a job will read is printed before the job exists.
+   and the folder or the addresses a mission will read are printed before it
+   exists. Faces — GUI: this. SUI: identical. TUI: `bento job`.
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],deliveries:[],installed:[],pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,pick:'',busy:false};
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
-    JOBS.recipes=d.recipes||[];JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];
+    JOBS.recipes=d.recipes||[];JOBS.personas=d.personas||[];JOBS.persona=d.persona||'';
+    JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];JOBS.summary=d.summary||null;JOBS.ready=d.ready||null;
   }catch(e){JOBS.recipes=[];}
   return JOBS;
 }
 
-/* the three cards. `sel` is the id currently expanded, '' for none. */
+/* Can a mission run here at all? A flow runs on the built-in loop with a provider
+   model, never through an executor — the only loop whose every step the PDP sees.
+   A machine whose brain is Claude Code and has no provider set can chat and
+   cannot run a mission, and the honest surface says so HERE, not in a failed row. */
+function jobReadyLine(){
+  const r=JOBS.ready;if(!r)return '';
+  if(r.ok)return `<p class="mut job-ready">${esc(r.note)}</p>`;
+  return `<div class="job-notready"><b>Missions cannot run here yet.</b> ${esc(r.note)} <em>${esc(r.fix)}</em>
+    <button class="endbtn" onclick="SETTAB='providers';localStorage.setItem('settab','providers');openApp('settings')">Open AI providers</button></div>`;
+}
+
+/* Who is asking. One row of chips; the choice is saved per person (`persona` is
+   a USER_KEY) and the server re-orders the catalogue. `onPick` redraws the cards. */
+function jobPersonaBar(){
+  return `<div class="job-who" role="radiogroup" aria-label="Who are you?">
+    ${JOBS.personas.map(p=>`<button class="job-p${p.id===JOBS.persona?' on':''}" data-persona="${esc(p.id)}"
+        role="radio" aria-checked="${p.id===JOBS.persona}" title="${esc(p.blurb)}">
+        <span class="job-p-ic">${esc(p.icon||'○')}</span>${esc(p.label)}</button>`).join('')}
+  </div>`;
+}
+function jobWirePersona(root,onPick){
+  root.querySelectorAll('.job-p').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.persona;
+    if(JOBS.busy)return;JOBS.busy=true;
+    try{
+      const d=await (await fetch('/api/jobs/persona',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({persona:id===JOBS.persona?'':id})})).json();
+      if(d.error){toast(d.error);return}
+      JOBS.persona=d.persona||'';JOBS.recipes=d.recipes||JOBS.recipes;JOBS.pick='';
+      if(typeof cfg!=='undefined'&&cfg)cfg.persona=JOBS.persona;
+      if(typeof homeRender==='function')homeRender();
+      root.querySelectorAll('.job-p').forEach(x=>{const on=x.dataset.persona===JOBS.persona;x.classList.toggle('on',on);x.setAttribute('aria-checked',on)});
+      onPick&&onPick();
+    }catch(e){toast('could not save that')}
+    finally{JOBS.busy=false}
+  });
+}
+
+/* The cards. With a persona chosen they come in two groups — theirs, then the
+   rest — so the first three on screen are the ones written for them. `sel` is
+   the id currently expanded, '' for none. */
 function jobCards(sel){
-  return `<div class="job-cards">${JOBS.recipes.map(r=>`
+  const p=JOBS.persona,who=JOBS.personas.find(x=>x.id===p);
+  const card=r=>`
     <button class="job-card${r.id===sel?' on':''}" data-job="${esc(r.id)}">
       <span class="job-mark">${esc(r.icon||'◇')}</span>
       <b>${esc(r.title)}</b>
       <span class="job-blurb">${esc(r.blurb)}</span>
+      ${r.worth?`<span class="job-worth">${esc(r.worth)}</span>`:''}
       <span class="job-eg">${esc(r.example)}</span>
-    </button>`).join('')}</div>`;
+    </button>`;
+  if(!p||!who||p==='everyone')return `<div class="job-cards">${JOBS.recipes.map(card).join('')}</div>`;
+  const mine=JOBS.recipes.filter(r=>(r.for||[]).includes(p)),rest=JOBS.recipes.filter(r=>!(r.for||[]).includes(p));
+  return `<div class="job-grp">For a ${esc(who.label.toLowerCase())}</div>
+    <div class="job-cards">${mine.map(card).join('')}</div>
+    <div class="job-grp">And for anyone</div>
+    <div class="job-cards">${rest.map(card).join('')}</div>`;
 }
 
 /* the two or three questions a recipe asks, plus the delivery picker */
@@ -41,8 +103,13 @@ function jobForm(r){
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     if(n.kind==='time')return `<label class="job-q"><span>${esc(n.label)}</span>
       <input id="${id}" type="time" value="${esc(n.default||'08:00')}"></label>`;
+    if(n.kind==='day')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <select id="${id}">${WEEKDAY_NAMES.map(d=>`<option value="${d.toLowerCase()}" ${d.toLowerCase()===(n.default||'friday')?'selected':''}>${d}</option>`).join('')}</select></label>`;
     if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
       <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='lines')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <textarea id="${id}" rows="3" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">${esc(n.default||'')}</textarea>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     return `<label class="job-q"><span>${esc(n.label)}</span>
       <input id="${id}" value="${esc(n.default||'')}" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">
@@ -87,24 +154,28 @@ async function jobConsent(r){
       body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
     if(d.error){box.innerHTML=`<span class="job-warn">${esc(d.error)}</span>`;return}
     const reads=(d.reads||[]).map(p=>`<li>reads <code>${esc(p)}</code> — and nothing else</li>`).join('');
+    const net=(d.net||[]);
+    const reach=!net.length?'':net[0]==='*'?'<li>may read the open web (it is research)</li>'
+      :`<li>may fetch ${net.length===1?'one address':net.length+' addresses'}: ${net.slice(0,3).map(u=>`<code>${esc(u)}</code>`).join(', ')}${net.length>3?' …':''} — and nothing else</li>`;
     const when=(d.triggers||[]).map(t=>{
       const c=t.config||{};
       if(t.kind==='cron'&&c.type==='daily')return `<li>runs every day at ${esc(c.at)}</li>`;
+      if(t.kind==='cron'&&c.type==='weekly')return `<li>runs every ${esc(WEEKDAY_NAMES[+c.day||0])} at ${esc(c.at)}</li>`;
       if(t.kind==='cron'&&c.type==='interval')return `<li>runs every ${esc(c.minutes)} minutes</li>`;
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
   }catch(e){}
 }
 
 /* Wire a rendered form: live consent, and the save. `after(res)` is what the
-   surface does with the finished job — the wizard shows a "run it now" beat,
+   surface does with the finished mission — the wizard shows a "run it now" beat,
    the app refreshes its list. */
 function jobWire(root,r,after){
-  root.querySelectorAll('.job-form input').forEach(el=>{
+  root.querySelectorAll('.job-form input,.job-form textarea,.job-form select').forEach(el=>{
     let t=null;
     const go=()=>{clearTimeout(t);t=setTimeout(()=>jobConsent(r),260)};
     el.oninput=go;el.onchange=go;
@@ -127,6 +198,27 @@ function jobWire(root,r,after){
   };
 }
 
+/* One place that wires "cards → form → saved" for any container. */
+function jobPickable(box,after){
+  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    JOBS.pick=r.id;
+    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=box.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    if(typeof Motion!=='undefined')Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
+      {duration:220,easing:EASE.out});
+    jobWire(slot,r,res=>after(slot,res));
+    slot.scrollIntoView({block:'nearest',behavior:'smooth'});
+  });
+}
+function jobRedrawCards(box){
+  const cards=box.querySelector('.job-catalogue');if(!cards)return;
+  cards.innerHTML=jobCards(JOBS.pick);
+  const slot=box.querySelector('.job-slot');if(slot)slot.innerHTML='';
+  jobPickable(box,box._jobAfter||(()=>{}));
+}
+
 /* ---------- the wizard's last beat ---------- */
 /* Called by wizFinish once the setup report is on screen. The offer is real but
    never compulsory: "Not now" is a first-class button, because a first-run flow
@@ -138,10 +230,12 @@ async function jobStep(container,onDone){
   const box=document.createElement('div');box.className='wiz-jobs';
   const name=(typeof WIZ!=='undefined'&&WIZ.agent_name)||'your agent';
   box.innerHTML=`<div class="wiz-jobs-head">
-      <b>One last thing — give me a job.</b>
-      <span>Pick one and I'll do it from now on, without being asked. You can change or stop it any time.</span>
+      <b>Last thing — what should I do for you every day?</b>
+      <span>Say who you are and pick a mission. I'll do it from now on, without being asked, inside exactly the permissions it prints. You can change or stop it any time.</span>
     </div>
-    ${jobCards('')}
+    ${jobReadyLine()}
+    ${jobPersonaBar()}
+    <div class="job-catalogue">${jobCards('')}</div>
     <div class="job-slot"></div>
     <button class="wiz-back" id="jf-skip">Not now — take me in →</button>`;
   container.appendChild(box);
@@ -149,17 +243,9 @@ async function jobStep(container,onDone){
     {duration:280,easing:EASE.out});
   container.scrollTop=container.scrollHeight;
   box.querySelector('#jf-skip').onclick=onDone;
-  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-    JOBS.pick=r.id;
-    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-    const slot=box.querySelector('.job-slot');
-    slot.innerHTML=jobForm(r);
-    Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
-      {duration:220,easing:EASE.out});
-    jobWire(slot,r,res=>jobDone(slot,res,onDone,name));
-    container.scrollTop=container.scrollHeight;
-  });
+  box._jobAfter=(slot,res)=>jobDone(slot,res,onDone,name);
+  jobPickable(box,box._jobAfter);
+  jobWirePersona(box,()=>jobRedrawCards(box));
 }
 
 /* The payoff screen. "Run it now" is the important button: a schedule nobody has
@@ -191,34 +277,64 @@ function jobDone(slot,res,onDone,name){
   };
 }
 
-/* ---------- the standing app ---------- */
+/* ---------- the standing app: what it does, and what it did ---------- */
+function jobAgo(ts){
+  if(!ts)return '';
+  const s=Math.max(0,Date.now()/1000-ts);
+  if(s<90)return 'just now';
+  if(s<5400)return Math.round(s/60)+' min ago';
+  if(s<129600)return Math.round(s/3600)+' h ago';
+  return Math.round(s/86400)+' d ago';
+}
+function jobSummaryLine(s){
+  if(!s||!s.missions)return '';
+  const n=(v,w)=>`${v} ${w}${v===1?'':'s'}`;
+  return `<div class="job-sum" title="What your missions did in the last seven days. Tokens are counted here; what they cost is priced per model in Usage.">
+    <b>${n(s.missions,'mission')}</b>
+    <span>this week: ${n(s.runs_7d,'run')}, ${s.ok_7d} delivered${s.failed_7d?`, <i class="job-bad">${s.failed_7d} failed</i>`:''}</span>
+    <span>${(s.tokens_7d||0).toLocaleString()} tokens</span>
+    <span>${n(s.grants,'permission')} held</span>
+  </div>`;
+}
+function jobRow(j){
+  const last=j.last||{};
+  const st=last.status||'';
+  const cls=st==='ok'?'ok':st?'bad':'';
+  const lastLine=!st?'<span class="job-last mut">has not run yet</span>'
+    :`<span class="job-last ${cls}"><b>${esc(st)}</b> · ${esc(jobAgo(last.at))}${last.said?` · <q>${esc(last.said)}</q>`:''}</span>`;
+  return `<div class="item job-row${j.enabled?'':' off'}${j.running?' live':''}">
+    <div class="grow">
+      <b>${esc(j.title||j.name)}</b> <span class="job-name">${esc(j.name)}</span>${j.running?'<span class="job-live">running</span>':''}
+      <div class="sub">${lastLine}</div>
+      <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
+    </div>
+    <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
+    ${last.run_id?`<button class="endbtn" onclick="fgWatch('${esc(last.run_id)}')">Last run</button>`:''}
+    <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
+  </div>`;
+}
 async function renderJobs(body){
   body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
   await jobsLoad();
-  const running=JOBS.installed.map(j=>`<div class="item job-row">
-      <div class="grow"><b>${esc(j.name)}</b><div class="sub">${esc(j.description)}</div>
-        <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'}</div></div>
-      <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-      <button class="endbtn" onclick="openApp('fabric')">Edit</button>
-    </div>`).join('');
+  const rows=JOBS.installed.map(jobRow).join('');
+  const who=JOBS.personas.find(x=>x.id===JOBS.persona);
   body.innerHTML=`<div class="pad job-app">
     <h3>What this machine does for you</h3>
-    ${running||'<p class="mut">Nothing standing yet — pick something below and it starts today.</p>'}
-    <h3 style="margin-top:18px">Give it another job</h3>
-    ${jobCards(JOBS.pick)}
+    ${jobReadyLine()}
+    ${jobSummaryLine(JOBS.summary)}
+    ${rows||`<p class="mut">Nothing standing yet. Say who you are, pick a mission, and it starts today — inside exactly the permissions it prints.</p>`}
+    <h3 style="margin-top:18px">${rows?'Give it another mission':'Give it a mission'}</h3>
+    <p class="mut job-whoq">${who?`Missions for a ${esc(who.label.toLowerCase())} first. Not you? Pick again.`:'Who are you? The catalogue opens on your missions from then on.'}</p>
+    ${jobPersonaBar()}
+    <div class="job-catalogue">${jobCards(JOBS.pick)}</div>
     <div class="job-slot"></div></div>`;
-  body.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-    JOBS.pick=r.id;
-    body.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-    const slot=body.querySelector('.job-slot');
-    slot.innerHTML=jobForm(r);
-    jobWire(slot,r,res=>{
-      JOBS.pick='';
-      toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
-      renderJobs(body);
-    });
-  });
+  body._jobAfter=(slot,res)=>{
+    JOBS.pick='';
+    toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
+    renderJobs(body);
+  };
+  jobPickable(body,body._jobAfter);
+  jobWirePersona(body,()=>renderJobs(body));
 }
 
 async function jobRunNow(name){

@@ -13,6 +13,9 @@
    Faces — GUI: this. SUI: identical, plus suiSyncStruts() because the dock
    grows by 2px. TUI: not applicable — a terminal has no wallpaper or glass; the
    switch's own text says so. */
+/* Monday first, as the server counts them (flows.WEEKDAYS). Shared by the flow
+   editor, the scheduler and the Missions catalogue. */
+var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
@@ -74,6 +77,32 @@ var HOME_CHIPS=['How is this machine doing? Check CPU, memory and disk.',
   'Remember that I prefer concise answers.',
   'Watch my Downloads folder and tell me what lands there.',
   'Draft a flow that briefs me every morning.'];
+/* The same three chips, but for the person who said who they are: a founder's
+   first message should not be about disk space. Keyed on cfg.persona (a USER_KEY
+   the Missions catalogue sets); the neutral list is the fallback. */
+var HOME_CHIPS_BY={
+  founder:['Watch my competitors\' pricing pages and tell me when they change.',
+    'Draft my investor update every Friday from my notes folder.',
+    'Tell me when my company or my competitors are in the news.',
+    'What is the one thing I should do today, from what you know about me?',
+    'Every morning at 8, brief me on my market.',
+    'Remember that our runway ends in March.'],
+  coder:['Write my standup from the repos in ~/code.',
+    'Review what I pushed today and tell me what looks risky.',
+    'Run the tests in my project every morning and tell me if they are red.',
+    'Tell me when fastapi or pydantic ship a new release.',
+    'What changed in this repo this week?',
+    'Remember that I prefer small commits with tests.'],
+  consultant:['Read what lands in my client\'s folder and tell me what they want.',
+    'Draft the weekly status report for Acme every Friday.',
+    'Tell me when my clients are in the news.',
+    'What did I work on this week, by client?',
+    'Every morning at 8, brief me on my clients\' industries.',
+    'Remember that Acme\'s invoice terms are net 30.']};
+function homeChips(){
+  const p=(typeof cfg!=='undefined'&&cfg&&cfg.persona)||'';
+  return HOME_CHIPS_BY[p]||HOME_CHIPS;
+}
 function homeRender(){
   const h=document.getElementById('home');if(!h)return;
   if(!IMMERSIVE.on){h.hidden=true;clearInterval(IMMERSIVE.homeT);IMMERSIVE.homeT=0;return}
@@ -84,9 +113,11 @@ function homeRender(){
   let date='';try{date=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}catch(e){date=now.toDateString()}
   h.querySelector('.hm-date').textContent=date;
   const day=Math.floor(now/864e5);
-  const chips=[0,1,2].map(i=>HOME_CHIPS[(day*3+i)%HOME_CHIPS.length]);
+  const pool=homeChips();
+  const chips=[0,1,2].map(i=>pool[(day*3+i)%pool.length]);
   const box=h.querySelector('.hm-chips');
-  if(box.dataset.day!==String(day)){box.dataset.day=String(day);
+  const key=String(day)+':'+((typeof cfg!=='undefined'&&cfg&&cfg.persona)||'');
+  if(box.dataset.day!==key){box.dataset.day=key;
     box.innerHTML=chips.map(c=>`<button class="hm-chip">${esc(c)}</button>`).join('');
     box.querySelectorAll('.hm-chip').forEach((b,i)=>b.onclick=()=>{const inp=document.getElementById('omni-in');if(!inp)return;
       inp.value=chips[i];inp.dispatchEvent(new Event('input'));inp.focus();

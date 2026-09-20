@@ -2838,32 +2838,76 @@ def _job_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     act = args.action
 
+    if act == "persona":
+        # who is asking, so `recipes` opens on their missions
+        if not args.name:
+            p = jobsmod.persona_of(cfg)
+            print(p or "not set — one of: " + ", ".join(jobsmod.PERSONA_IDS))
+            return
+        try:
+            jobsmod.set_persona(cfg, args.name)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        from . import config as cfgmod
+        cfgmod.save_config(cfg)
+        print(f"✓ {args.name} — `bento job recipes` now opens on your missions")
+        return
+
     if act == "list":
         rows = jobsmod.installed(store)
+        rd = jobsmod.readiness(cfg)
+        if not rd["ok"]:
+            print(f"✗ missions cannot run here yet: {rd['note']}\n  {rd['fix']}\n")
         if not rows:
             print("nothing is running yet.\n")
             print("  bento job recipes           what this machine can be asked to do")
             return
+        s = jobsmod.summary(store)
+        print(f"{s['missions']} mission{'s' if s['missions'] != 1 else ''} · this week: "
+              f"{s['runs_7d']} run{'s' if s['runs_7d'] != 1 else ''}, {s['ok_7d']} delivered, "
+              f"{s['failed_7d']} failed · {s['tokens_7d']:,} tokens · "
+              f"{s['grants']} permissions held")
         for j in rows:
-            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}")
-            print(f"    {j['description']}")
+            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}  — {j['title']}")
+            last = j.get("last") or {}
+            if last:
+                when = time.strftime("%a %H:%M", time.localtime(last.get("at") or 0))
+                said = (last.get("said") or "")[:90]
+                print(f"    last: {last.get('status')} · {when}" + (f" · {said}" if said else ""))
+            else:
+                print("    last: has not run yet")
+            print(f"    this week: {j['runs_7d']} runs, {j['ok_7d']} ok, "
+                  f"{j['tokens_7d']:,} tokens · holds {j['grants']} permissions")
             print(f"    next: {j['next']}")
         return
 
     if act == "recipes":
-        for r in jobsmod.RECIPES:
-            print(f"\n{r.icon}  {r.id}")
+        persona = (args.for_ or jobsmod.persona_of(cfg) or "").strip().lower()
+        if persona and persona not in jobsmod.PERSONA_IDS:
+            print(f"✗ --for is one of: {', '.join(jobsmod.PERSONA_IDS)}")
+            sys.exit(2)
+        if persona:
+            print(f"missions for a {persona} first, then everybody's:")
+        for r in jobsmod.recipes_for(persona):
+            who = "" if "everyone" in r.for_ else "  (" + "/".join(r.for_) + ")"
+            print(f"\n{r.icon}  {r.id}{who}")
             print(f"    {r.title} — {r.blurb}")
+            if r.worth:
+                print(f"    worth: {r.worth}")
             print(f"    e.g. {r.example}")
             for n in r.needs:
                 if n.key == "deliver":
                     continue
                 print(f"    --{n.key:<8} {n.label}"
+                      + ("  (one per line, or comma-separated)" if n.kind == "lines" else "")
                       + (f"  (default {n.default})" if n.default else ""))
         ways = [d for d in jobsmod.deliveries(cfg)]
         print("\n  --deliver  " + ", ".join(
             f"{d['id']}{'' if d['ready'] else ' (not set up)'}" for d in ways))
-        print("\n  bento job add morning-brief --topics 'my industry' --at 08:00")
+        print("\n  bento job add standup --folder ~/code --at 09:00")
+        print("  bento job add competitor-watch --urls 'https://acme.com/pricing,https://acme.com/changelog'")
+        print("  bento job persona founder        open on a founder's missions from now on")
         return
 
     if act == "add":
@@ -2872,7 +2916,9 @@ def _job_cli(args):
             sys.exit(2)
         answers = {k: v for k, v in
                    (("topics", args.topics), ("folder", args.folder), ("url", args.url),
-                    ("at", args.at), ("minutes", args.minutes), ("deliver", args.deliver))
+                    ("urls", args.urls), ("names", args.names), ("client", args.client),
+                    ("day", args.day), ("at", args.at), ("minutes", args.minutes),
+                    ("deliver", args.deliver))
                    if v}
         try:
             res = jobsmod.install(cfg, store, args.name, answers)
@@ -4370,17 +4416,24 @@ def main():
                         help="with `rotate`: expire the new secret after N days (0 = never)")
     p_flow.add_argument("--limit", type=int, default=20, help="with `runs`/`events`: how many")
 
-    p_job = verb("job", help="give this machine a standing job — the terminal "
-                                       "half of the first-run 'give it a job' screen")
+    p_job = verb("job", help="give this machine a standing mission — the terminal "
+                                       "half of the Missions app and the first-run screen")
     p_job.add_argument("action", nargs="?", default="list",
-                       choices=["list", "recipes", "add", "run"])
-    p_job.add_argument("name", nargs="?", default="", help="recipe id for `add`, job name for `run`")
+                       choices=["list", "recipes", "add", "run", "persona"])
+    p_job.add_argument("name", nargs="?", default="",
+                       help="recipe id for `add`, mission name for `run`, founder|coder|consultant for `persona`")
+    p_job.add_argument("--for", dest="for_", default="",
+                       help="recipes: founder | coder | consultant | everyone — theirs first")
     p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")
-    p_job.add_argument("--folder", default="", help="folder-watch: the one folder it may read")
+    p_job.add_argument("--folder", default="", help="the one folder it may read")
     p_job.add_argument("--url", default="", help="page-watch: the page to check")
+    p_job.add_argument("--urls", default="", help="competitor-watch / dependency-watch: pages, comma-separated")
+    p_job.add_argument("--names", default="", help="news-watch: names, comma-separated")
+    p_job.add_argument("--client", default="", help="client-inbox / client-report: the client's name")
+    p_job.add_argument("--day", default="", help="weekly missions: monday … sunday")
     p_job.add_argument("--at", default="", help="time of day, HH:MM")
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
-    p_job.add_argument("--deliver", default="", help="report | notify | telegram")
+    p_job.add_argument("--deliver", default="", help="report | notify | telegram | whatsapp")
 
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")

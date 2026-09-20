@@ -434,6 +434,7 @@ async function loadConfig(){
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
   if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
+  if(typeof homeRender==='function')homeRender();   // the home chips follow cfg.persona
   paintForwardChip();
   paintModelChip();
 }

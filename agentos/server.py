@@ -7770,9 +7770,28 @@ async def api_jobs(request: Request):
     running. One request, because the first-run screen needs all three at once and a
     wizard that renders in three waves is a wizard that flickers."""
     cfg = state["cfg"]
-    return {"recipes": [r.as_dict() for r in jobsmod.RECIPES],
+    persona = jobsmod.persona_of(cfg)
+    return {"recipes": [r.as_dict() for r in jobsmod.recipes_for(persona)],
+            "personas": jobsmod.PERSONAS,
+            "persona": persona,
             "deliveries": jobsmod.deliveries(cfg),
-            "installed": jobsmod.installed(state["store"])}
+            "ready": jobsmod.readiness(cfg),
+            "installed": jobsmod.installed(state["store"]),
+            "summary": jobsmod.summary(state["store"])}
+
+
+@app.put("/api/jobs/persona")
+async def api_jobs_persona(body: dict):
+    """Who is asking — founder, coder, consultant — recorded per person (`persona`
+    is a USER_KEY) so the catalogue opens on their missions from then on."""
+    cfg = state["cfg"]
+    try:
+        p = jobsmod.set_persona(cfg, (body or {}).get("persona", ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    return {"ok": True, "persona": p,
+            "recipes": [r.as_dict() for r in jobsmod.recipes_for(p)]}
 
 
 @app.post("/api/jobs/preview")
@@ -8447,7 +8466,7 @@ async def api_add_task(body: dict):
     msg = state["scheduler"].create_task(
         body.get("prompt", ""), body.get("schedule_type", "once"),
         int(body.get("interval_minutes") or 0), body.get("at_time", ""),
-        int(body.get("delay_minutes") or 0))
+        int(body.get("delay_minutes") or 0), weekday=int(body.get("weekday", -1) or -1))
     return {"ok": True, "message": msg}
 
 

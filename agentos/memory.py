@@ -580,6 +580,9 @@ class Store:
                              ("origin_ref", "TEXT DEFAULT ''"),
                              ("flow", "TEXT DEFAULT ''"))),
             ("tasks", (("flow", "TEXT DEFAULT ''"),)),
+            # A weekly schedule: which day (0=Monday … 6=Sunday) a "weekly" task fires on,
+            # beside the at_time it already had. -1 for every other schedule type.
+            ("tasks", (("weekday", "INTEGER DEFAULT -1"),)),
             ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
                            ("skills_locked", "INTEGER DEFAULT 1"))),
@@ -2183,6 +2186,14 @@ class Store:
                                    "ORDER BY started_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
+    def fabric_runs_for(self, flow: str, limit: int = 50, since: float = 0) -> list[dict]:
+        """A flow's own orchestrator runs, newest first — what a Missions row is
+        drawn from. Children (kind='delegate') are reached through parent_run."""
+        rows = self.db.execute(
+            "SELECT * FROM fabric_runs WHERE flow=? AND kind='flow' AND started_at>? "
+            "ORDER BY started_at DESC LIMIT ?", (flow or "", float(since or 0), limit)).fetchall()
+        return [dict(r) for r in rows]
+
     def fabric_run(self, rid: str) -> dict | None:
         row = self.db.execute("SELECT * FROM fabric_runs WHERE id=?", (rid,)).fetchone()
         return dict(row) if row else None
@@ -2406,14 +2417,15 @@ class Store:
     def add_task(self, prompt: str, schedule_type: str, interval_seconds: int | None,
                  at_time: str | None, next_run: float | None, trigger: str = "",
                  trigger_config: str = "{}", cooldown_secs: int = 300,
-                 flow: str = "", space_id: str = "") -> str:
+                 flow: str = "", space_id: str = "", weekday: int = -1) -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
-            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
-             trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or ""),
+             trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or "",
+             int(weekday if weekday is not None else -1)),
         )
         self.db.commit()
         return tid

@@ -86,3 +86,54 @@
 .wa-line.ok{color:var(--ok)}
 .wa-line.warn{color:var(--warn)}
 .wa-row{display:flex;align-items:center;gap:var(--sp-2)}
+
+/* ---- who is asking ----
+   One row of chips; the choice is the first thing on every mission surface.
+   `--tap` sized on a phone (17-jobs is inside the touch rules of 15-responsive
+   through .job-p's min-height), and the row scrolls rather than wrapping into
+   three lines above the cards. */
+.job-who{display:flex;gap:8px;flex-wrap:wrap;margin:var(--sp-2) 0 var(--sp-3)}
+.job-p{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--hairline);background:var(--bg2);color:var(--txt);font-size:var(--fs-sm);font-weight:600;
+  transition:border-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.job-p:hover{border-color:var(--hairline-strong);background:var(--bg3)}
+.job-p.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,var(--bg2));
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.job-p-ic{font-size:var(--fs-base);line-height:1;opacity:.8}
+.job-grp{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;
+  margin:var(--sp-3) 0 calc(-1 * var(--sp-2))}
+.job-worth{font-size:var(--fs-sm);color:var(--txt);line-height:1.45;opacity:.85}
+.job-q textarea{width:100%;min-height:72px;resize:vertical;font:inherit;font-size:var(--fs-sm);line-height:1.5}
+.job-q select{width:100%}
+
+/* ---- the value line and the rows ----
+   What the missions DID, not what is scheduled: a status word, how long ago, and
+   the first sentence of what the run said. */
+.job-sum{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:10px 14px;margin:0 0 var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2);font-size:var(--fs-sm);color:var(--dim)}
+.job-sum b{color:var(--txt);font-size:var(--fs-base)}
+.job-sum .job-bad,.job-last.bad b{color:var(--warn)}
+.job-last.ok b{color:var(--ok)}
+.job-last q{quotes:"“" "”";color:var(--txt);opacity:.85}
+.job-name{font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim2);margin-left:6px}
+.job-live{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:var(--fs-xs);font-weight:600;
+  color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);animation:jobpulse 1.6s ease-in-out infinite}
+@keyframes jobpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.job-live{animation:none}}
+.job-row.off{opacity:.6}
+.job-row{flex-wrap:wrap}
+.job-row .grow{min-width:220px}
+@media (max-width:640px){
+  .job-who{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .job-p{flex:0 0 auto;scroll-snap-align:start;min-height:var(--tap)}
+  .job-row .endbtn{min-height:var(--tap)}
+}
+
+/* Can it run here? Said before the button, never after the failure. */
+.job-ready{margin:0 0 var(--sp-3)}
+.job-notready{display:flex;flex-direction:column;gap:6px;padding:10px 14px;margin:0 0 var(--sp-3);
+  border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--warn) 8%,var(--bg2));font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+.job-notready b{color:var(--warn)}
+.job-notready em{font-style:normal;color:var(--txt)}
+.job-notready .endbtn{align-self:flex-start}

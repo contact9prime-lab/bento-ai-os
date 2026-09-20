@@ -183,6 +183,9 @@ DEFAULTS = {
     # A USER_KEY — whom I share MY agent with is personal (see agentbundle.py).
     "agent_share": {"enabled": False, "peers": {},
                     "include": {"apps": "none", "with_soul": False}},
+    # who is asking — founder | coder | consultant | everyone | '' (not said).
+    # The Missions catalogue opens on theirs. A USER_KEY: it is about the person.
+    "persona": "",
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

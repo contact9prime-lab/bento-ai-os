@@ -451,7 +451,8 @@ function handle(ev){
     case 'flow_done':
       if(typeof movementPulse==='function')movementPulse('done',ev.flow);
       toast('▲ '+ev.flow+' · '+ev.status);
-      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
+      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh();
+      refreshApp('jobs'); break;      // a mission's row shows what it just said
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R

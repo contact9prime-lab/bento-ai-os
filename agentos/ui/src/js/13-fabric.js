@@ -628,6 +628,7 @@ function flowBack(){FLOW_VIEW='list';refreshApp('fabric')}
 function trigLabel(t){
   const c=t.config||{};
   if(t.kind==='cron')return c.type==='daily'?('cron '+(c.at||'08:00'))
+    :c.type==='weekly'?('every '+WEEKDAY_NAMES[+c.day||0]+' '+(c.at||'08:00'))
     :c.type==='interval'?('every '+(c.minutes||60)+' min'):'once';
   if(t.kind==='message')return 'message "'+(c.pattern||'')+'"';
   if(t.kind==='os_event')return 'on '+(c.event||'event');
@@ -1062,7 +1063,8 @@ function drawFLW(){
     const c=t.config||{};
     let f='';
     if(t.kind==='cron')f=`<select data-trig="${i}" data-key="type" style="width:auto">
-        ${['daily','interval','once'].map(x=>`<option ${c.type===x?'selected':''}>${x}</option>`).join('')}</select>
+        ${['daily','weekly','interval','once'].map(x=>`<option ${c.type===x?'selected':''}>${x}</option>`).join('')}</select>
+      <select data-trig="${i}" data-key="day" style="width:auto" title="weekly: which day">${WEEKDAY_NAMES.map((n,k)=>`<option value="${k}" ${+c.day===k?'selected':''}>${n}</option>`).join('')}</select>
       <input data-trig="${i}" data-key="at" value="${esc(c.at||'08:00')}" placeholder="HH:MM" style="width:80px">
       <input data-trig="${i}" data-key="minutes" type="number" value="${c.minutes||60}" placeholder="minutes" style="width:80px">`;
     else if(t.kind==='message')f=`<input data-trig="${i}" data-key="pattern" value="${esc(c.pattern||'')}" placeholder="pattern e.g. vendor:">

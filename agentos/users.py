@@ -516,7 +516,11 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials",
              # flows out of MY store, spends nothing and reconfigures nothing
              # machine-wide. The share route finds a key's owner by searching
              # accounts, the same way a flow webhook finds its trigger's.
-             "agent_share")
+             "agent_share",
+             # who I am, as the Missions catalogue asks it (founder / coder /
+             # consultant). A filter over which standing jobs are offered first —
+             # personal by the same test: it costs nothing and reconfigures nothing.
+             "persona")
 
 
 def machine_view(cfg: dict) -> dict:

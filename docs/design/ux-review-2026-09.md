@@ -674,3 +674,38 @@ TUI, and any turn with a working model — including tool cards, approvals and
 the copilot panel, which are the heart of the product once it is set up. A
 second pass with a key and Ollama installed should start there, and should
 measure the same way: a fresh home, a real browser, numbers.
+
+## Addendum — missions, and who is asking (20 September)
+
+The review above found the product without a job: a platform with three recipes
+on top, opening on disk space. This pass makes the standing job the front door,
+and puts a name on the person asking.
+
+- **The catalogue is fourteen recipes organised by persona** — founder, coder,
+  consultant, and "just me" — with three or four written for each. A persona is a
+  filter over one catalogue (theirs first, then everybody's), saved per person,
+  and it also picks the three suggestion chips on the home scene. `docs/missions.md`.
+- **The Missions app is a value surface.** One line for the week (missions, runs,
+  delivered, failed, tokens, permissions held), and per mission the last outcome
+  in its own words. A failed run reads `error · ConnectError`, not "last run".
+- **Three honesty bugs the new tests found in the old recipes.** The researcher
+  could not `remember` (page-watch never compared against anything); `read-space`
+  denied the write anyway; and the folder watch granted `search_files` to a
+  specialist without it. A recipe's specialists now have to be able to call what
+  the flow grants, and the test says which one cannot.
+- **A mission cannot run on an executor brain, and the screen says so first.** On
+  this very machine — brain Claude Code, no provider — the first mission failed
+  with `ConnectError`. `readiness()` now puts the sentence and the fix above the
+  Run button on every surface, including `bento job list`.
+- **Weekly is a schedule.** `investor-update`, `client-report` and `week-log`
+  needed "every Friday at four", which flows could not say. It is a cron type
+  now, in the editor, the scheduler and the tool.
+
+![The Missions app for a coder: the readiness banner, the week's value line, one mission with its last outcome, and the coder's five missions first](ux-review/after/missions-coder.jpg)
+![The consent block under a mission's questions: runs daily at 09:00, reads one folder and nothing else, 11 revocable permissions](ux-review/after/missions-consent.jpg)
+![The onboarding arc's schedule step with the four persona chips and the coder's missions](ux-review/after/missions-onboarding.jpg)
+![The Missions app on a 390px phone: the banner, the value line, one mission row, and the persona chips scrolling sideways](ux-review/after/missions-phone.jpg)
+
+**Left open, deliberately.** Mail and calendar. Nothing here can read either, so
+there is no "triage my inbox" recipe — it would be a dead control. It is the
+first mission to add for all three personas once a connector exists.

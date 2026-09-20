@@ -1,7 +1,7 @@
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
-  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:'once';
+  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:t.schedule_type==='weekly'?`every ${WEEKDAY_NAMES[t.weekday||0]} at ${t.at_time}`:'once';
   const items=d.tasks.map(t=>`<div class="item" data-f="${esc(t.prompt)}"><div class="grow">${esc(t.prompt)}<div class="sub">${fmt(t)} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'running/done'):'disabled'}${t.last_result?' · last: '+esc(t.last_result.slice(0,90)):''}</div></div>
     <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
     <button onclick="delTask('${t.id}')">✕</button></div>`).join('');

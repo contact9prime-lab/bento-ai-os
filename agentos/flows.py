@@ -29,7 +29,10 @@ import time
 TRIGGER_KINDS = ("cron", "message", "webhook", "os_event", "flow_done")
 FLOW_DONE_STATUSES = ("any", "ok", "failed")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
-CRON_TYPES = ("interval", "daily", "once")
+CRON_TYPES = ("interval", "daily", "weekly", "once")
+# Monday first, as Python counts them; a name is what a person writes, the number is
+# what the task row stores.
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
 # Which run modes can actually DELIVER each OS event.
 #
@@ -184,6 +187,22 @@ def _at_time(v) -> str:
     return f"{hh:02d}:{mm:02d}"
 
 
+def _weekday(v) -> int:
+    """A day of the week as 0 (Monday) … 6 (Sunday), from a name, a prefix or a number.
+
+    Refused with a sentence rather than defaulted: a weekly job that quietly runs on
+    Monday because 'Fri' was not understood is a job that is wrong once a week."""
+    s = str(v if v is not None else "").strip().lower()
+    if not s:
+        return 4        # Friday: the day a week's work is looked back on
+    if re.fullmatch(r"[0-6]", s):
+        return int(s)
+    for i, name in enumerate(WEEKDAYS):
+        if len(s) >= 3 and name.startswith(s[:3]):
+            return i
+    raise ValueError(f"'{v}' is not a day of the week — write it as monday … sunday")
+
+
 def _validate_trigger(t: dict) -> dict:
     kind = (t.get("kind") or "").strip()
     if kind not in TRIGGER_KINDS:
@@ -196,6 +215,9 @@ def _validate_trigger(t: dict) -> dict:
         conf["type"] = ctype
         if ctype == "daily":
             conf["at"] = _at_time(conf.get("at"))
+        elif ctype == "weekly":
+            conf["at"] = _at_time(conf.get("at"))
+            conf["day"] = _weekday(conf.get("day"))
         elif ctype == "interval":
             conf["minutes"] = max(1, int(conf.get("minutes") or 60))
         else:
@@ -365,6 +387,8 @@ def _canonical(kind: str, config: dict) -> str:
     different trigger — otherwise every edit would mint a new URL."""
     c = config or {}
     if kind == "cron":
+        if c.get("type") == "weekly":
+            return f"cron:weekly:{c.get('day')}:{c.get('at')}"
         return f"cron:{c.get('type')}:{c.get('at') or c.get('minutes') or c.get('delay_minutes')}"
     if kind == "message":
         return f"message:{c.get('mode')}:{c.get('pattern')}"
@@ -394,6 +418,12 @@ def _task_fields(flow: dict, trig: dict) -> dict | None:
             at = conf.get("at") or "08:00"
             return {**common, "schedule_type": "daily", "interval_seconds": None,
                     "at_time": at, "next_run": _next_daily(at, now)}
+        if ctype == "weekly":
+            from .scheduler import _next_weekly
+            at = conf.get("at") or "08:00"
+            day = int(conf.get("day", 4) or 0)
+            return {**common, "schedule_type": "weekly", "interval_seconds": None,
+                    "at_time": at, "weekday": day, "next_run": _next_weekly(at, day, now)}
         return {**common, "schedule_type": "once", "interval_seconds": None, "at_time": None,
                 "next_run": now + max(0, int(conf.get("delay_minutes", 0))) * 60}
     if kind == "os_event":
@@ -467,7 +497,7 @@ def _new_task(store, fields: dict, _json) -> str:
         tf.pop("at_time"), tf.pop("next_run"), trigger=tf.pop("trigger", ""),
         trigger_config=_json.dumps(tf.pop("trigger_config", {})),
         cooldown_secs=tf.pop("cooldown_secs"), flow=tf.pop("flow"),
-        space_id=tf.pop("space_id"))
+        space_id=tf.pop("space_id"), weekday=tf.pop("weekday", -1))
 
 
 def delete_triggers(store, flow_name: str) -> int:
@@ -709,7 +739,7 @@ RULES
 - Only create a new agent when no existing one fits. A new agent needs a `soul` written in
   the second person that says what it does and how ("You research. Gather real information,
   verify it, return a dense sourced summary.").
-- Triggers: cron {{"type":"daily","at":"HH:MM"}} or {{"type":"interval","minutes":N}};
+- Triggers: cron {{"type":"daily","at":"HH:MM"}}, {{"type":"weekly","day":"friday","at":"HH:MM"}} or {{"type":"interval","minutes":N}};
   message {{"pattern":"...","mode":"prefix|substring|regex"}}; webhook {{}};
   os_event {{"event":"notification|file_change|login|idle", ...}}.
   Add a trigger ONLY if the user asked for one. A flow with no trigger runs when they say so.

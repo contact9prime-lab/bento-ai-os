@@ -33,9 +33,10 @@ anything:
 
 ![The "Build a specialist" step, showing the researcher-plus card — what it does and the six tools it will hold — with "Create this agent" beneath it](screenshots/onboarding-2-agent.png)
 
-The scheduling step is the same three job recipes as the **Jobs** app, so what you set up
-here is editable there afterwards — and it prints exactly what the job will be allowed to
-do before it is saved.
+The scheduling step is the same catalogue as the **Missions** app — say who you are
+(founder, coder, consultant) and pick a mission — so what you set up here is editable
+there afterwards, and it prints exactly what the mission will be allowed to do before it
+is saved. See `docs/missions.md`.
 
 ![The "Let it run without you" step showing three job recipes: brief me every morning, watch a folder, tell me when a page changes](screenshots/onboarding-3-schedule.png)
 

@@ -285,17 +285,47 @@ Definition-time permissions become real `grants` rows with `source='definition'`
 hand-written grant and a definition one can read identically and reconciliation must never
 revoke somebody's deliberate decision.
 
-## Jobs are flows, and that is the whole design
+## Missions are flows, and that is the whole design
 
 `agentos/jobs.py` is a recipe catalogue and nothing else. It turns a recipe plus two or
 three answers into a flow definition and hands it to `flows.save`. There is no job
 engine, no job scheduler and no job permission model — a job that could do something a
-flow cannot would be a second set of bugs in each of those.
+flow cannot would be a second set of bugs in each of those. On screen and in the CLI's
+words it is a **mission** — the app is Missions, `bento job` is the verb — and in the
+code it is `job` (the `flows.job` column, `/api/jobs`); the divergence is deliberate, the
+same as Workflows/`flows`, and a flow's `mission` text is exactly what a mission gives it.
 
 It exists because the gap between "installed" and "useful" is where this OS is lost. The
 first-run wizard used to end on a door onto an empty desktop; it now ends on "give me a
 job", and the last button is "run it now, so I can see it work" — a schedule nobody has
 watched fire is a promise, and a new user has no reason to believe one.
+
+**The first question is who is asking.** The catalogue is organised by persona —
+founder, coder, consultant — because "what should this machine do for you" has a
+different answer for each, and a list that opens with disk space is a list a founder
+closes. `recipes_for(persona)` is a filter over ONE catalogue (theirs first, then
+everybody's, then the rest), never a subset; `persona` is a USER_KEY. Full story in
+`docs/missions.md`. Four things it found on the way, each now pinned by `tests/test_jobs.py`:
+
+- **A recipe's specialists must be able to CALL what the flow grants.** The flow grants
+  the roster `tool.use`, but a subagent only calls the tools on its own list — so the
+  first page-watch rostered the researcher, granted `remember`, and the researcher never
+  remembered. `ROSTER` (engineer, analyst, watcher) exists for this and `ensure_roster`
+  creates them idempotently, because `seed_builtins` returns early once ANY subagent
+  exists and a year-old machine would never get them.
+- **A recipe that remembers declares `memory="read-write"`.** `read-space` writes a
+  memory.write DENY for the roster, which turned "compare with last time" into a
+  comparison against nothing. The test checks every recipe that grants `remember`.
+- **A mission runs on the built-in loop only, and the surface must say so BEFORE the Run
+  button.** `readiness(cfg)` is that sentence: a machine whose brain is Claude Code with no
+  provider model can chat and cannot run a mission — found by installing one on exactly
+  such a machine and reading `ConnectError` in the row. Forwarding a flow to an executor
+  would make the consent block a lie (Claude Code reads what it likes), so the fix is a
+  provider model for missions, not a shortcut.
+- **The app is the VALUE surface.** `installed()` carries each mission's last outcome in
+  its own words, this week's runs and tokens, and the permissions it holds; `summary()` is
+  derived from those rows so the header cannot disagree with them. Tokens are counted,
+  cost is not claimed — that number lives in Usage, priced per row.
 
 Three things must stay true:
 
