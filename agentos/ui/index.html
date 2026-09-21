@@ -2540,6 +2540,9 @@ body.glass-off .win{background:var(--bg)!important}
 .acct-client{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 .acct-why a{color:var(--acc)}
 @media (max-width:640px){.acct-btns,.acct-uses{justify-content:flex-start}}
+
+/* Missions: Mine | Build (the flows editor folded in) */
+.job-tabs{margin-bottom:12px}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -4023,7 +4026,6 @@ const ICONS={
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
   brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
-  fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
   timeline:['#38BDF8','#1D4ED8','<path d="M6.4 4.4v15.2"/><circle cx="6.4" cy="8" r="1.8"/><circle cx="6.4" cy="16" r="1.8"/><path d="M10 8h9.6M10 16h6.4"/>'],
@@ -5219,8 +5221,18 @@ function osPrompt(title,o){
 const WM={wins:new Map(), z:100, cascade:0, seq:0};
 function winsOf(appId){const r=[];WM.wins.forEach(w=>{if(w.id===appId)r.push(w)});return r}
 
+/* One object, one app. The Workflows app was the flows editor and Missions was the
+   same rows with a recipe behind them; they are now two tabs of Missions (14a-jobs.js).
+   Every door that opened Workflows — handoffs, onboarding, the deck, refreshApp on a
+   fabric event — lands on the Build tab, so nothing has to remember the rename. */
+var APP_ALIAS={fabric:'jobs'};
+function appAlias(id){
+  if(id==='fabric'&&typeof JOBS!=='undefined')JOBS.tab='build';
+  return APP_ALIAS[id]||id;
+}
 function openApp(id,opts){
   opts=opts||{};
+  id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
     const w=WM.wins.get(id)||winsOf(id)[0];
@@ -5601,7 +5613,7 @@ function resizify(w){
     });
   });
 }
-function refreshApp(id){winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
+function refreshApp(id){id=APP_ALIAS[id]||id;winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
 
 /* ===== shared panel shell: header + search + actions + body ===== */
 const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
@@ -6666,8 +6678,7 @@ const APPS={
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
-  jobs:{id:'jobs',title:'Missions',icon:'◷',w:760,h:680,desc:'What this machine does for you every day — and what it did',render:renderJobs},
-  fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
+  jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
@@ -6734,7 +6745,7 @@ const APP_CTX={
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
   memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
   profile:()=>'the profile view — everything the agent knows about the user',
-  fabric:()=>`the Workflows app, "${typeof fabTab!=='undefined'?fabTab:'flows'}" tab${
+  jobs:()=>`the Missions app${typeof JOBS!=='undefined'&&JOBS.tab==='build'?', Build, "'+(typeof fabTab!=='undefined'?fabTab:'flows')+'" tab':''}${
     (typeof fabTab!=='undefined'&&fabTab==='flows'&&typeof FLOW_SEL!=='undefined'&&FLOW_SEL)
       ?', flow "'+FLOW_SEL+'" selected':''}`,
   flowrun:()=>`the Run Inspector, watching flow run ${typeof FG!=='undefined'&&FG.run?FG.run.slice(0,8):'(none)'}`,
@@ -6765,7 +6776,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -7021,7 +7032,7 @@ const BENTO_GROUPS=[
   ['Essentials',['chat','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];
@@ -7206,7 +7217,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['brief','chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
-  ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','automations','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','setup','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
@@ -9616,10 +9627,10 @@ function handoffFor(name,args){
     case 'export_app_to_git':
       return {app:'studio',label:'Open in App Studio',what:nm||'the app',note:'exported'};
     case 'create_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:'drafted and switched OFF — Enable is what grants it anything'};
     case 'enable_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:args.enabled===false?'switched off':'switched on'};
     case 'save_automation':
       return {app:'automations',label:'Open in Automations',what:nm||'the routine',note:''};
@@ -11997,11 +12008,11 @@ function tlRange(h){tlSince=h;refreshApp('timeline')}
    `var`, not `let`: the bundle is one concatenated script in filename order, and a
    top-level `let` here is in the temporal dead zone for anything earlier that reaches
    it (09-websocket.js calls fgApply on every fabric event). */
-/* Three tabs, not five. "Executions" and "Observability" were both answering "what
-   happened" from two different endpoints, and the legacy static-DAG tab had never been used
-   on any machine we could see — its engine, tool and API still work, it just no longer costs
-   a tab. The app is called Workflows because that is the word people arrive with; the code
-   underneath says `flows` throughout, which is written down in CLAUDE.md. */
+/* This is the BUILD tab of the Missions app (14a-jobs.js): flows, the agents on their
+   rosters, and every run. It used to be its own app called Workflows; a mission IS a
+   flow with a recipe behind it, so two apps over one table was one too many. Three
+   sub-tabs, not five: "Executions" and "Observability" were both answering "what
+   happened". The code underneath says `flows` throughout — see CLAUDE.md. */
 var fabTab='flows';
 var FAB_TABS=['flows','agents','runs'];
 async function renderFabric(body,w){
@@ -12013,7 +12024,7 @@ function fabTabs(){
   return `<div style="margin-bottom:12px">${segTabs('fab-tabs',['Flows','Agents','Runs'],
     Math.max(0,FAB_TABS.indexOf(fabTab)),'fabSetTab')}</div>`;
 }
-function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('fabric')}
+function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
   const sa=await fetch('/api/subagents').then(r=>r.json());
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
@@ -12222,11 +12233,9 @@ function testSubagent(name){
   toast('type the task after @'+name+' — the run streams right here and lands in Observability');
 }
 
-/* The static-DAG workflow UI lived here. The engine, /api/workflows and the
-   `run_workflow` tool all still work — but no workflow had ever been run on any
-   machine we could see, and flows do the same job while deciding at run time, so it
-   no longer costs a tab. Deleted rather than hidden: dead UI that nothing reaches is
-   worse than none. */
+/* The static-DAG "workflow" engine, its tool and its API are gone (2026-09). A flow
+   does the same job and decides at run time, and one word meaning two things on one
+   screen was the trap CLAUDE.md warned about. */
 
 
 async function fabPlaneStats(){
@@ -12818,7 +12827,7 @@ function openRunInspector(runId){
 function renderFlowRun(body,w){
   if(!FG.run){
     body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
-      Workflows → Flows, or click a past run to replay it here.</p>
+      Missions → Build → Flows, or click a past run to replay it here.</p>
       <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
     return;
   }
@@ -13112,6 +13121,8 @@ function drawFLW(){
         Nothing has been created yet — change anything, then Save.</div>
       ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
       ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
+      ${(FLW.draft.suggested_mcp||[]).map(p=>`<div class="sub flw-part">✦ might help: <b>${esc(p.title)}</b> — ${esc(p.why||p.description)}
+        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${esc(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
       ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
       </div>`:''}
     <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>
@@ -13654,7 +13665,16 @@ document.addEventListener('click', e => {
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'mine'};
+var JOB_TABS=['mine','build'];
+/* Mine = the value view; Build = the flows editor that used to be the Workflows app
+   (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
+   Build tab is where a mission a recipe made is edited, and where one is written from
+   scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
+function jobTabs(){
+  return `<div class="job-tabs">${segTabs('job-tabs',['Mine','Build'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'mine';refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
@@ -13947,12 +13967,19 @@ function jobRow(j){
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
-async function renderJobs(body){
+async function renderJobs(body,w){
+  if(JOBS.tab==='build'){
+    body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+    await renderFabric(body,w);
+    const pad=body.querySelector('.pad');if(pad)pad.insertAdjacentHTML('afterbegin',jobTabs());
+    return;
+  }
   body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
   await jobsLoad();
   const rows=JOBS.installed.map(jobRow).join('');
   const who=JOBS.personas.find(x=>x.id===JOBS.persona);
   body.innerHTML=`<div class="pad job-app">
+    ${jobTabs()}
     <h3>What this machine does for you</h3>
     ${jobReadyLine()}
     ${jobSummaryLine(JOBS.summary)}
@@ -17753,7 +17780,7 @@ function usersShareBox(){
       <button class="usr-take" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Install a copy</button>
       <button class="usr-unshare" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Remove</button>
     </div>`).join('')
-    :`<p class="dim">Nothing shared yet. Share an agent from Workflows, or an app
+    :`<p class="dim">Nothing shared yet. Share an agent from Missions → Build, or an app
        from App Studio — it goes out as a <b>copy</b>, so editing yours afterwards
        never reaches anybody who took it.</p>`;
   return `<div class="usr-shared">
@@ -17997,7 +18024,7 @@ async function usersSignOut(){
   location.replace('/login');
 }
 
-/* Share something of mine. Called from Workflows (an agent) and App Studio (an
+/* Share something of mine. Called from Missions → Build (an agent) and App Studio (an
    app), so the sentence about what sharing means is written once, here. */
 async function usersShare(kind,name){
   if(!(USERS.me||{}).multiuser){

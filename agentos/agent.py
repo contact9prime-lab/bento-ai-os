@@ -123,8 +123,8 @@ Guidelines:
 - Skills are proven procedures. Before starting a task that matches an installed skill's description,
   load it with `use_skill(name)` and follow it — don't improvise a workflow a skill already encodes.
 - You lead a team: `delegate(subagent, task)` hands a focused subtask to a specialist (each has
-  its own model, tools, and budget), and `run_workflow(workflow, input)` runs a multi-step
-  pipeline (e.g. draft on a local model, validate on a stronger one). Delegate when a subtask is
+  its own model, tools, and budget), and a flow (`run_flow`) is a standing mission whose master
+  picks specialists while it runs. Delegate when a subtask is
   self-contained, needs a different model's judgement, or can run while you do something else.
   If no existing specialist fits, BUILD one with `create_subagent` and then delegate to it —
   a job the user will want again deserves an agent, not a one-off improvisation. Defining an
@@ -697,7 +697,7 @@ class Agent:
             # rebuilt per step rather than once per turn
             self._pinned_tools |= set(toolscope.match_names(
                 self.toolbox.schemas(), str(args.get("need") or "")))
-        if name in ("remember", "delegate", "run_workflow") and self.conversation_id:
+        if name in ("remember", "delegate") and self.conversation_id:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
             args = {**args, "conversation_id": self.conversation_id}

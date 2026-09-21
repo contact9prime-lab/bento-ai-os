@@ -111,6 +111,16 @@ with the sentence that would fix it and the save refuses — a mission that can
 never run must not look armed. A mission that would only *use* an account
 (meeting prep with mail) runs without it and says so in its own instructions.
 
+## Build: the editor behind every mission
+
+A mission is a flow with a recipe behind it, and the *Build* tab of the Missions app
+is the editor for flows: the flows themselves, the specialist agents on their rosters,
+and every run. It is where a mission a recipe made is changed, and where a flow is
+written from scratch — by hand, or drafted from a sentence. A draft names the tools
+and agents it would use and, when the request's own words match a first-party MCP
+server in the catalogue, offers it as a part with a Connect button. Offered, never
+granted: the draft's permissions never gain a server you did not add yourself.
+
 ## How a mission delivers
 
 Not as a message. Every recipe ends with the same instruction: put each

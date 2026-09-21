@@ -139,7 +139,7 @@ const BENTO_GROUPS=[
   ['Essentials',['chat','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];

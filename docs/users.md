@@ -130,9 +130,9 @@ an app is a safe version of it; a copy of the quarter's invoices is a stale seco
 copy of the quarter's invoices, which is the problem rather than the fix. See
 [Safe folders](#safe-folders-the-agent-working-outside-its-own-home) below.
 
-Share from where the thing lives — an agent in Workflows, an app in App Studio:
+Share from where the thing lives — an agent in Missions → Build, an app in App Studio:
 
-![The Agents tab in Workflows, each agent row carrying a Share button next to Test in chat](screenshots/sharing-agent-share-button.png)
+![The Agents tab in Missions → Build, each agent row carrying a Share button next to Test in chat](screenshots/sharing-agent-share-button.png)
 
 ![A confirmation: "Share market-watcher with everybody on this machine? They get a COPY. Changing yours afterwards does not change theirs, and nothing else of yours becomes visible."](screenshots/sharing-consent.png)
 
@@ -178,7 +178,7 @@ is and is not theirs:
 
 ![The Users app as Bob: both accounts listed but no role dropdown, no Remove, no "add somebody" — and the line "Only an admin can add or remove accounts. Everything inside your own home — agents, flows, channels, credentials — is yours."](screenshots/users-executor-view.png)
 
-And the isolation is visible: Ada's `market-watcher` is not in Bob's Workflows.
+And the isolation is visible: Ada's `market-watcher` is not in Bob's Missions.
 
 ![Bob's Agents tab, showing only the three built-in specialists — researcher, validator and writer — and none of Ada's](screenshots/isolation-second-user-agents.png)
 

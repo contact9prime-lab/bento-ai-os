@@ -737,6 +737,11 @@ Tools the roster may be granted (use these names EXACTLY; anything not listed do
 Installed skills:
 {skills}
 
+MCP servers this machine could connect (NOT connected yet — a part the person would have to
+add; if the mission genuinely needs one, name it under `suggested_mcp` with one line of why,
+and do NOT put it in permissions.mcp or invent tools from it):
+{parts}
+
 RULES
 - The master orchestrates and has no tools that act. All real work is delegated, so a flow
   needs at least one agent on its roster.
@@ -784,8 +789,41 @@ NOW ANSWER. JSON only, exactly this shape:
                  "memory": "read-space"}},
  "sinks": [{{"kind": "origin"}}],
  "triggers": [],
+ "suggested_mcp": [{{"key": "a key from the list above", "why": "one line"}}],
  "notes": "one sentence on what you assumed or left out"}}
 """
+
+
+_STOP = {"the", "and", "for", "with", "that", "this", "from", "into", "every", "when", "what",
+         "then", "them", "they", "have", "will", "make", "want", "send", "tell", "about", "each",
+         "mine", "your", "you", "are", "our", "its", "who", "all", "any", "one", "two", "day",
+         "morning", "week", "daily", "please", "also", "just", "like", "look", "read", "list"}
+
+
+def parts_for(cfg: dict, request: str, limit: int = 6) -> list[dict]:
+    """MCP servers the mission might need, found from the request's own words in the
+    curated catalogue (first-party servers; tiny, in memory). The 21k-server index is
+    NOT parsed for this — a compose must not cost a Pi 35 MB — and the Store's search
+    is one click away for the long tail. Connected servers are marked, so the editor
+    can say "already here" rather than "connect".
+
+    OFFERED, never installed: a part shows up as a sentence with a Connect button.
+    The draft's permissions never gain a server the person did not add themselves."""
+    from . import mcp_catalog
+    words = [w for w in re.findall(r"[a-z][a-z0-9+.-]{2,}", (request or "").lower())
+             if w not in _STOP]
+    have = set(((cfg or {}).get("mcp_servers") or {}).keys())
+    seen, out = set(), []
+    for w in words:
+        for c in mcp_catalog.search(w, limit=3):
+            if c["key"] in seen:
+                continue
+            seen.add(c["key"])
+            out.append({"key": c["key"], "title": c.get("title") or c["key"],
+                        "description": (c.get("description") or "")[:140],
+                        "connected": c["key"] in have or c.get("registry_name") in have,
+                        "matched": w})
+    return out[:limit]
 
 
 def _lift_trigger(t) -> dict | None:
@@ -858,8 +896,12 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     tool_lines = "\n".join(f"  - {t['name']}: {' '.join((t.get('description') or '').split())[:90]}"
                            for t in (tools or [])[:120]) or "  (none)"
     skills = ", ".join(s["name"] for s in store.list_skills()) or "(none installed)"
+    parts = parts_for(cfg, request)
+    part_lines = "\n".join(f"  - {p['key']}: {p['description']}"
+                           + (" (already connected)" if p["connected"] else "")
+                           for p in parts) or "  (nothing in the catalogue matches this request)"
     prompt = COMPOSE_PROMPT.format(intent=intent, agents=agents,
-                                   tools=tool_lines, skills=skills)
+                                   tools=tool_lines, skills=skills, parts=part_lines)
     try:
         raw = await _p.complete(cfg, model, prompt,
                                 system="You are a systems designer. Answer with JSON only.")
@@ -903,6 +945,16 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     for k in ("skills", "net", "fs_read", "fs_write", "mcp"):
         perms[k] = [str(v).strip() for v in (perms.get(k) or []) if str(v).strip()]
     draft["permissions"] = perms
+    # Parts it suggested: only keys that were actually offered, carried with the
+    # catalogue's own words so the editor can show them — and never into `mcp`.
+    by_key = {p["key"]: p for p in parts}
+    sugg = []
+    for sm in (draft.get("suggested_mcp") or []):
+        key = (sm.get("key") if isinstance(sm, dict) else str(sm or "")).strip()
+        if key in by_key and key not in {s["key"] for s in sugg}:
+            sugg.append({**by_key[key], "why": str((sm.get("why") if isinstance(sm, dict) else "") or "")[:160]})
+    draft["suggested_mcp"] = sugg
+    perms["mcp"] = [m for m in perms["mcp"] if m not in by_key or by_key[m]["connected"]]
     draft["triggers"] = [_lift_trigger(t) for t in (draft.get("triggers") or [])]
     draft["triggers"] = [t for t in draft["triggers"] if t]
     warnings = []

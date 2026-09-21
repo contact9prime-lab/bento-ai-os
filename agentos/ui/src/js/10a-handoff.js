@@ -41,10 +41,10 @@ function handoffFor(name,args){
     case 'export_app_to_git':
       return {app:'studio',label:'Open in App Studio',what:nm||'the app',note:'exported'};
     case 'create_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:'drafted and switched OFF — Enable is what grants it anything'};
     case 'enable_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:args.enabled===false?'switched off':'switched on'};
     case 'save_automation':
       return {app:'automations',label:'Open in Automations',what:nm||'the routine',note:''};

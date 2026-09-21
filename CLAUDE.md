@@ -196,18 +196,28 @@ it is the whole difference from Sign out. A machine with no key (`remote.lock_ki
 refuses to lock rather than shipping a door that never opens again. Full reasoning in
 `docs/users.md`.
 
-## One deliberate name divergence: the app is "Workflows", the code says `flows`
+## One object, one app: a mission is a flow, and the app is Missions
 
-The app in the dock is **Workflows**, because that is the word people arrive with. Every
-identifier underneath is `flow`: the `flows` table, `/api/flows`, the `flow.write` action,
-`Principal("flow", …)`, `create_flow`. This is a decision, not drift — do not "fix" it by
-renaming either side.
+The app in the dock is **Missions**. Its *Mine* tab is the value view (the catalogue by
+persona, what each mission did, what it holds); its *Build* tab is the flows editor —
+flows, the agents on their rosters, every run — that used to be a separate app called
+Workflows. They were two apps over one table: a mission is a flow with a recipe behind
+it (`flows.job`), and enabling one in Mine put a row in Workflows. So Workflows is gone
+from the dock, the deck and the docs; `openApp('fabric')` and `refreshApp('fabric')` are
+ALIASED to Missions → Build (`APP_ALIAS` in `04-wm.js`), so every handoff, onboarding
+step and fabric event lands where the thing now lives without remembering the rename.
 
-What makes it safe is that the older thing genuinely called a workflow — the fixed DAG in
-`workflows`, `run_workflow`, `/api/workflows` — no longer has a UI. Its engine still works
-for anything already using it, but it is not offered, not seeded, and not a tab, so the two
-meanings never appear on screen together. If you ever put static DAGs back in front of a
-user, this divergence stops being safe and one of the two has to be renamed.
+The code keeps saying `flow` (`flows` table, `/api/flows`, `flow.write`, `create_flow`)
+and `job` (`flows.job`, `/api/jobs`) — an identifier rename would cost every install its
+grants' `source_ref` for a word nobody sees. That is the one divergence left, and it is
+invisible: neither word is on screen.
+
+The older thing that was genuinely called a workflow — the fixed DAG in `workflows`,
+`run_workflow`, `/api/workflows` — is DELETED (2026-09), not hidden. It had never been run
+on any machine we could see, a flow does the same job while deciding at run time, and
+one word for two things is how the next person reads "workflow" in a design doc and
+reaches for the wrong one. An old database keeps its empty `workflows` table; nothing
+reads it.
 
 ## Flows: the master orchestrator is an agent, and that has three consequences
 
@@ -293,7 +303,7 @@ engine, no job scheduler and no job permission model — a job that could do som
 flow cannot would be a second set of bugs in each of those. On screen and in the CLI's
 words it is a **mission** — the app is Missions, `bento job` is the verb — and in the
 code it is `job` (the `flows.job` column, `/api/jobs`); the divergence is deliberate, the
-same as Workflows/`flows`, and a flow's `mission` text is exactly what a mission gives it.
+same as Missions/`flows`, and a flow's `mission` text is exactly what a mission gives it.
 
 It exists because the gap between "installed" and "useful" is where this OS is lost. The
 first-run wizard used to end on a door onto an empty desktop; it now ends on "give me a
@@ -794,7 +804,7 @@ empty choice ("whatever it is set to"). AgentOS does not fetch or invent a
 catalogue for it; what the run actually woke up on comes back from the run
 itself (`engine_info`) and that is what the chip shows.
 
-## The three surfaces are stitched: bar → chat → Studio / Workflows
+## The three surfaces are stitched: bar → chat → Studio / Missions
 
 The prompt bar asks, the chat answers, and what the answer BUILT lives in
 another app. Those seams are code, and each one was reported as "this makes no

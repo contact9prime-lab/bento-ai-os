@@ -872,3 +872,35 @@ nobody but the user and the system can see it.
 ![The callback page](ux-review/after/signin-done.jpg)
 ![The card after: signed in as me@gmail.com, mail reads through Google, Test says what the server said](ux-review/after/signin-after.jpg)
 ![The card on a phone](ux-review/after/signin-phone.jpg)
+
+## Addendum — one object, one app (21 September, later)
+
+"How is a workflow different from a mission?" It was not. A mission is a flow with a
+recipe behind it, and the Workflows app was the same rows with an editor in front. Two
+apps over one table, and a third thing called workflow in the code — a fixed DAG engine
+with no UI — that nobody had run.
+
+- **Missions is the app.** *Mine* is the value view that existed; *Build* is the flows
+  editor that was the Workflows app: flows, the agents on their rosters, every run.
+  `openApp('fabric')` and `refreshApp('fabric')` are aliased to Missions → Build, so the
+  chat handoff, the onboarding step and every fabric event land where the thing now
+  lives. Workflows is gone from the dock, the deck, the desktop and the docs.
+- **The DAG engine is deleted**, not hidden: the `run_workflow` tool, its schema,
+  `ControlPlane.run_workflow`, `/api/workflows` and the store methods. One word means
+  one thing on this OS now. An old database keeps an empty table nothing reads.
+- **Composing a flow now looks for parts.** The question was whether writing a mission
+  also finds skills, MCP servers, something that works. It did not: the composer showed
+  the model the tools, the agents and the installed skills' names, and could create a
+  specialist, and that was all. Now `flows.parts_for()` matches the request's own words
+  against the curated MCP catalogue (in memory; the 21k-server index is never parsed
+  for this) and the draft comes back with `suggested_mcp` — offered in the draft box
+  with a Connect button, never granted, never installed. A key the model invents is
+  dropped. Skills were already offered; nothing is created from a sentence.
+- **Measured in the browser**: the registry has no `fabric` app; the dock and desktop
+  lists have none; the Mine and Build tabs read 53×25 on the desktop and 55×40 on a
+  phone; Build shows the four live flows with their last outcome and, under Agents, the
+  seven specialists; opening the old door opens Missions on Build.
+
+![Missions → Build: the flows editor, the agents and the runs, one tab away from Mine](ux-review/after/missions-build.jpg)
+![The Agents sub-tab under Build](ux-review/after/missions-build-agents.jpg)
+![Missions on a phone, Build tab](ux-review/after/missions-phone-build.jpg)

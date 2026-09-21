@@ -6007,8 +6007,7 @@ async def api_policy_options():
           "status": a.get("manifest_status") or "none"} for a in store.list_apps()]
         + [{"kind": "subagent", "id": s["name"], "label": s["name"]}
            for s in store.list_subagents()]
-        + [{"kind": "workflow", "id": w["name"], "label": w["name"]}
-           for w in store.list_workflows()])
+        )
     tools = sorted(t["name"] for t in toolbox.schemas() if not t["name"].startswith("mcp_"))
     mcp_res = []
     for s in (state["mcp"].status() if state.get("mcp") else []):
@@ -6042,8 +6041,7 @@ async def api_policy_options():
                 "agent.invoke": ([{"value": "agent:main", "label": "main agent (/api/chat)"}]
                                  + [{"value": f"agent:subagent/{s['name']}", "label": f"subagent {s['name']}"}
                                     for s in store.list_subagents()]
-                                 + [{"value": f"agent:workflow/{w['name']}", "label": f"workflow {w['name']}"}
-                                    for w in store.list_workflows()]),
+                                 ),
                 "net.fetch": [{"value": "net:*", "label": "any URL"},
                               {"value": "net:https://*", "label": "any https URL"}],
                 "fs.read": [{"value": f"fs:{ws}/*", "label": "workspace files"},
@@ -7995,7 +7993,7 @@ async def api_app_context(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Fabric: subagents, workflows, runs, observability (the control plane API)
+# Fabric: subagents, flows, runs, observability (the control plane API)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/subagents")
@@ -8017,37 +8015,6 @@ async def api_delete_subagent(sid: str):
     state["store"].delete_subagent(sid)
     await state["broadcast"]({"type": "fabric_defs"})
     return {"ok": True}
-
-
-@app.get("/api/workflows")
-async def api_workflows():
-    return {"workflows": state["store"].list_workflows()}
-
-
-@app.post("/api/workflows")
-async def api_save_workflow(body: dict):
-    if not (body.get("name") or "").strip():
-        return JSONResponse({"error": "name required"}, status_code=400)
-    wid = state["store"].save_workflow(body)
-    await state["broadcast"]({"type": "fabric_defs"})
-    return {"id": wid}
-
-
-@app.delete("/api/workflows/{wid}")
-async def api_delete_workflow(wid: str):
-    state["store"].delete_workflow(wid)
-    await state["broadcast"]({"type": "fabric_defs"})
-    return {"ok": True}
-
-
-@app.post("/api/workflows/{name}/run")
-async def api_run_workflow(name: str, body: dict):
-    wf = state["store"].get_workflow(name)
-    if not wf:
-        return JSONResponse({"error": f"no workflow '{name}'"}, status_code=404)
-    input_text = (body or {}).get("input", "")
-    asyncio.create_task(state["fabric"].run_workflow(wf, input_text))
-    return {"ok": True, "started": True}
 
 
 @app.post("/api/subagents/{name}/run")

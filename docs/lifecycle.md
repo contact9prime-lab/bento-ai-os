@@ -69,7 +69,7 @@ edit the soul, the system prompt, the tool set or the default model.
 ## Operate
 
 The mature pillar: the **Scheduler** runs headless agent jobs on intervals; the **Team** app
-shows every subagent and workflow run with heartbeats, faults, and token telemetry; **Logs**
+shows every subagent and flow run with heartbeats, faults, and token telemetry; **Logs**
 records every tool call and policy decision; Telegram delivers results and approvals anywhere.
 Mission Control surfaces the 24-hour pulse (turns, errors, running work).
 
@@ -94,6 +94,6 @@ AgentOS's own source (`develop_agentos`) behind a snapshot + syntax check + test
 ## Manage
 
 One policy decision point governs every capability — tools, models, MCP servers, skills, app
-data — for every principal (you, apps, subagents, workflows), with persisted grants, audit
+data — for every principal (you, apps, subagents, flows), with persisted grants, audit
 logs, autonomy levels, the bubblewrap sandbox, and one-click snapshots. See
 [design/permissions.md](design/permissions.md).

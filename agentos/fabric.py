@@ -1,4 +1,4 @@
-"""The fabric control plane (L0: in-process subagents & workflows).
+"""The fabric control plane (L0: in-process subagents & flows).
 
 Control plane vs data plane:
   - The CONTROL PLANE is this module + the server UI/API: it owns subagent and workflow
@@ -469,7 +469,7 @@ class ControlPlane(usersmod.Scoped):
         # subagents never manage the fabric or rewrite the OS/its identity
         # (also enforced as built-in denies in policy.py — this keeps the schemas clean)
         tools = [t for t in tools if t not in
-                 ("delegate", "run_workflow", "configure_agentos", "update_soul",
+                 ("delegate", "configure_agentos", "update_soul",
                   "develop_agentos", "restart_agentos")]
         # every data plane can stand on the OS's shoulders: skills + memory + knowledge
         for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
@@ -536,75 +536,6 @@ class ControlPlane(usersmod.Scoped):
                           "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
                 "model": model, "usage": usage, "steps": trace}
-
-    # -- workflows: a DAG of subagent steps ---------------------------------------
-
-    @staticmethod
-    def _layers(steps: list[dict]) -> list[list[dict]]:
-        """Topological layers (steps whose deps are all satisfied run in parallel)."""
-        done: set = set()
-        remaining = list(steps)
-        layers = []
-        while remaining:
-            layer = [s for s in remaining
-                     if all(d in done for d in (s.get("depends_on") or []))]
-            if not layer:  # cycle or dangling dep — run the rest sequentially
-                layer = [remaining[0]]
-            for s in layer:
-                done.add(s["id"])
-            remaining = [s for s in remaining if s not in layer]
-            layers.append(layer)
-        return layers
-
-    async def run_workflow(self, wf: dict, input_text: str, approver=None,
-                           conversation_id: str = "") -> dict:
-        run_id = self.store.fabric_run_start("workflow", wf["name"], input_text)
-        await self._emit(run_id, "status", {"status": "running", "ref": wf["name"],
-                                            "workflow": True})
-        outputs: dict[str, str] = {}
-        totals = {"in": 0, "out": 0, "steps": 0}
-        status, fault, final = "ok", "", ""
-        for layer in self._layers(wf.get("steps") or []):
-            async def run_step(step):
-                defn = self.store.get_subagent(step.get("subagent", ""))
-                if not defn:
-                    return step, {"status": "error", "content": "",
-                                  "fault": f"unknown subagent: {step.get('subagent')}",
-                                  "usage": {"in": 0, "out": 0}}
-                prompt = step.get("prompt") or "{input}"
-                prompt = prompt.replace("{input}", input_text)
-                for sid, out in outputs.items():
-                    prompt = prompt.replace("{" + sid + "}", out)
-                deps = step.get("depends_on") or []
-                ctx = "\n\n".join(f"--- output of step '{d}' ---\n{outputs.get(d, '')[:5000]}"
-                                  for d in deps if d in outputs)
-                await self._emit(run_id, "step", {"wf_step": step["id"], "status": "start",
-                                                  "subagent": step.get("subagent")})
-                res = await self.run_subagent(defn, prompt, context=ctx, parent_run=run_id,
-                                              model_override=step.get("model", ""),
-                                              approver=approver, kind="step",
-                                              conversation_id=conversation_id)
-                await self._emit(run_id, "step", {"wf_step": step["id"], "status": res["status"],
-                                                  "run_id_step": res["run_id"]})
-                return step, res
-            results = await asyncio.gather(*(run_step(s) for s in layer))
-            for step, res in results:
-                outputs[step["id"]] = res["content"]
-                totals["in"] += res["usage"]["in"]
-                totals["out"] += res["usage"]["out"]
-                if res["status"] != "ok" and status == "ok":
-                    status, fault = res["status"], f"step '{step['id']}': {res['fault']}"
-                final = res["content"] or final
-            if status != "ok":
-                break
-        self.store.fabric_run_finish(run_id, status, output=final, fault=fault,
-                                     tokens_in=totals["in"], tokens_out=totals["out"],
-                                     steps=len(outputs))
-        await self._emit(run_id, "status", {"status": status, "ref": wf["name"],
-                                            "workflow": True, "fault": fault[:300]})
-        return {"run_id": run_id, "status": status, "content": final, "fault": fault,
-                "outputs": outputs, "usage": totals}
-
 
     # -- flows: a master orchestrator with a roster and a blackboard --------------
 
@@ -1044,8 +975,6 @@ def seed_builtins(cfg: dict, store):
         "model": validator_model,  # heterogeneous smartness: e.g. Claude judges Ollama
         "tools": ["recall", "kg_query", "read_file"], "max_steps": 6, "max_seconds": 240,
     })
-    # No built-in workflows are seeded any more. The static-DAG engine, its API and the
-    # `run_workflow` tool all still work for anything that already uses them — but a
-    # flow does the same job and decides at run time, so seeding two DAGs nobody ran
-    # was furnishing every new machine with dead examples.
+    # The static-DAG "workflow" engine is gone (2026-09): a flow does the same job and
+    # decides at run time. The word now means one thing on this OS.
     store.log("system", "fabric: seeded built-in subagents (researcher, writer, validator)")

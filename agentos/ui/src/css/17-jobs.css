@@ -159,3 +159,6 @@
 .acct-client{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 .acct-why a{color:var(--acc)}
 @media (max-width:640px){.acct-btns,.acct-uses{justify-content:flex-start}}
+
+/* Missions: Mine | Build (the flows editor folded in) */
+.job-tabs{margin-bottom:12px}

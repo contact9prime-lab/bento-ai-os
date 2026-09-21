@@ -232,8 +232,6 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "agent.invoke", f"agent:flow/{args.get('flow', '') or '*'}"
     if name == "delegate":
         return "agent.invoke", f"agent:subagent/{args.get('subagent', '') or '*'}"
-    if name == "run_workflow":
-        return "agent.invoke", f"agent:workflow/{args.get('workflow', '') or '*'}"
     # default: same "<tool> <command-or-args>" string the legacy Policies app matches,
     # so patterns like "tool:run_command git *" work the way users already expect
     desc = args.get("command", "") if name == "run_command" else json.dumps(args)

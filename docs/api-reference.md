@@ -71,11 +71,10 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 | GET | `/api/knowledge/status` | memory/KG counts, embedding model, auto-learn state |
 | POST | `/api/knowledge/maintain` | run maintenance now: embed memories, roll up idle sessions, dedup the graph |
 
-### Fabric (subagents & workflows — the control plane)
+### Fabric (subagents & flows — the control plane)
 | Method | Path | Purpose |
 |---|---|---|
 | GET/POST | `/api/subagents`, DELETE `/{id}`, POST `/{name}/run` | subagent definitions + fire a test run |
-| GET/POST | `/api/workflows`, DELETE `/{id}`, POST `/{name}/run` | workflow DAGs + start a run |
 | GET | `/api/fabric/runs`, `/api/fabric/runs/{id}` | run history; detail includes step runs + events (heartbeats, steps, faults) |
 | POST | `/api/fabric/runs/{id}/cancel` | control → data plane: abort a run and its steps |
 | GET | `/api/fabric/observability` | faults / performance / tokens per data plane, incl. the main agent; live heartbeats |

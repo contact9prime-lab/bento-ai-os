@@ -306,7 +306,7 @@ with the numbers, is [docs/design/ux-review-2026-09.md](docs/design/ux-review-20
 
 | | |
 |---|---|
-| ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice. Paste, drop or snap a screenshot on any agent surface — Chat, the prompt bar, the ✦ panel in every app — so it can see the problem | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
+| ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice. Paste, drop or snap a screenshot on any agent surface — Chat, the prompt bar, the ✦ panel in every app — so it can see the problem | ![Missions app — missions, and under Build the flows, agents and runs](docs/screenshots/team.png) **Missions** — what the machine does for you every day, and under Build the flows, specialist agents and runs behind it |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
 
 ### Several people, one machine
@@ -523,7 +523,7 @@ asking for it by name. [More →](docs/desktop.md#automations)
 | **Soul** | the agent's persistent identity/personality (injected every turn) |
 | **Memory** | user & session memory with auto-learn + semantic recall |
 | **Profile** | everything the agent knows about you, in one place |
-| **Team** | subagents & visual workflows (mix models per step) + observability |
+| **Missions** | standing missions by persona; Build: flows, specialist agents (mix models per specialist), every run |
 | **Docs** | this manual, inside the OS |
 | **Automations** | named routines, hot corners, and the step builder |
 | **Skills** | reusable procedures; install from a git repo or a raw `.md` URL |
