@@ -189,10 +189,23 @@ DEFAULTS = {
     # Accounts the agent may READ on the person's behalf (agentos/accounts.py):
     # one IMAP mailbox and one calendar (ICS address or CalDAV). Both USER_KEYS —
     # a mailbox is the most personal thing on the machine — and masked on read.
-    "mail": {"enabled": False, "preset": "", "host": "", "port": 993, "user": "",
-             "password": "", "smtp_host": "", "smtp_port": 587, "from": "", "last_test": {}},
+    # `via` / `kind` name the door: imap | google | microsoft | mcp for mail,
+    # ics | caldav | google | microsoft | mcp for the calendar. A password is a
+    # `vault:` reference (vault.py); a sign-in's tokens are in the vault too.
+    "mail": {"enabled": False, "via": "imap", "preset": "", "host": "", "port": 993, "user": "",
+             "password": "", "smtp_host": "", "smtp_port": 587, "from": "", "can_send": False,
+             "mcp_server": "", "last_test": {}},
     "calendar": {"enabled": False, "kind": "ics", "url": "", "user": "", "password": "",
-                 "name": "", "last_test": {}},
+                 "name": "", "mcp_server": "", "last_test": {}},
+    # who is signed in with which provider, for what — the FACT of a sign-in, never
+    # its tokens (signin.py); personal, like the accounts it points at
+    "signin": {},
+    # this install's OAuth clients for Sign in with Google / Microsoft. The MACHINE's:
+    # one registration serves every account here, and it ships empty (signin.py
+    # says why). `client_secret` is what Google issues for a desktop client and
+    # documents as not secret; it is still masked on /api/config.
+    "oauth_clients": {"google": {"client_id": "", "client_secret": ""},
+                      "microsoft": {"client_id": "", "tenant": "common"}},
     "max_steps": 25,
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

@@ -144,3 +144,18 @@
 .job-card.needs:hover{opacity:.85}
 .job-needs{font-size:var(--fs-xs);color:var(--warn);line-height:1.45}
 .acct-hint{white-space:pre-line}
+
+/* accounts: the sign-in doors (11d-accounts.js) */
+.acct-door .pl b{display:block}
+.acct-door .pl small{display:block;margin-top:2px}
+.acct-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.acct-signin{border-color:var(--acc);color:var(--acc)}
+.acct-uses{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.acct-uses label{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,32px);cursor:pointer}
+.acct-uses input{width:18px;height:18px}
+.acct-adv{margin:6px 0 4px}
+.acct-adv>summary{cursor:pointer;color:var(--mut);padding:8px 0;min-height:var(--tap,32px);display:flex;align-items:center}
+.acct-uri{font-size:var(--fs-sm);word-break:break-all;user-select:all}
+.acct-client{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.acct-why a{color:var(--acc)}
+@media (max-width:640px){.acct-btns,.acct-uses{justify-content:flex-start}}

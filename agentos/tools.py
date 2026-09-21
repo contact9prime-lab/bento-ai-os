@@ -730,7 +730,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {p}"
 
         def work():
-            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+            with mailmod.open_box(self.cfg) as mb:
                 return mb.search(query=str(query or ""), sender=str(sender or ""),
                                  unread=bool(unread), since_days=int(since_days or 0),
                                  folder=str(folder or "INBOX"), limit=int(limit or 20))
@@ -755,7 +755,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {p}"
 
         def work():
-            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+            with mailmod.open_box(self.cfg) as mb:
                 return mb.read(str(uid), folder=str(folder or "INBOX"))
         try:
             m = await asyncio.to_thread(work)

@@ -952,7 +952,7 @@ def _name_for(store, recipe: Recipe, answers: dict) -> str:
     return base
 
 
-def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
+def build(cfg: dict, store, recipe_id: str, answers: dict, mcp_tools: dict | None = None) -> dict:
     """A complete, validated flow definition. Writes NOTHING.
 
     Pure enough to preview: this is what `preview()` runs the grant calculation
@@ -986,6 +986,35 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
     fill["mail_line"] = (", the last thread with them (`mail_search` by their name, then "
                          "`mail_read`)" if ready.get("mail", {}).get("ready") and "mail" in recipe.optional
                          else "")
+    # An account read THROUGH AN MCP SERVER: the built-in tool is not the door, the
+    # server's tools are. They are swapped into the grant, the server itself is
+    # granted (`mcp.use`), and the mission is told in one paragraph — their
+    # arguments differ, so the specialist reads the tools' own descriptions. The
+    # names are known only while the server is connected, which is why the caller
+    # passes them (`mcp_tools`: server → tool names) and why a terminal with the
+    # server down is refused with that sentence rather than a flow that grants nothing.
+    from . import calendars as calmod
+    from . import mail as mailmod
+    swaps = []
+    for acct, way, own in (("mail", mailmod.via(cfg), ("mail_search", "mail_read")),
+                           ("calendar", calmod.kind(cfg), ("calendar_events",))):
+        if way != "mcp" or not any(t in perms["tools"] for t in own):
+            continue
+        server = str((cfg.get(acct) or {}).get("mcp_server") or "")
+        names = list((mcp_tools or {}).get(server) or [])
+        if not names:
+            raise ValueError(f"{acct} reads through the '{server}' MCP server here, and its tools are "
+                             "known only while it is connected — install this from the desktop, "
+                             "or `bento mcp` to check the server")
+        perms["tools"] = [t for t in perms["tools"] if t not in own] + names
+        perms.setdefault("mcp", [])
+        if server not in perms["mcp"]:
+            perms["mcp"].append(server)
+        swaps.append(f"{acct} is read through the '{server}' MCP server: wherever this says "
+                     f"{' / '.join(f'`{t}`' for t in own)}, use its tools instead "
+                     f"({', '.join(f'`{n}`' for n in names[:8])}{'…' if len(names) > 8 else ''}) — "
+                     "their arguments differ, so read their descriptions first.")
+    fill["mcp_note"] = ("\n\n" + "\n".join(swaps)) if swaps else ""
 
     # --- what it may read: the one grant the user was actually asked about, scoped
     #     to the folder they picked and nothing above it
@@ -1044,7 +1073,7 @@ def build(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
     if "brief_item" not in perms["tools"]:
         perms["tools"].append("brief_item")
     mission = recipe.mission.format(**fill)
-    mission += f"\n\nDELIVER IT: {BRIEF_LINE} {_deliver_line(dev)}"
+    mission += fill["mcp_note"] + f"\n\nDELIVER IT: {BRIEF_LINE} {_deliver_line(dev)}"
 
     return {
         "name": _name_for(store, recipe, answers),
@@ -1124,14 +1153,14 @@ def ensure_roster(cfg: dict, store) -> list[str]:
     return made
 
 
-def preview(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
+def preview(cfg: dict, store, recipe_id: str, answers: dict, mcp_tools: dict | None = None) -> dict:
     """Exactly what installing this would create — before anything is written.
 
     Same code path as `install`, one step short of the write, so the consent screen
     can never drift from what the save actually does.
     """
     ensure_roster(cfg, store)
-    body = build(cfg, store, recipe_id, answers)
+    body = build(cfg, store, recipe_id, answers, mcp_tools=mcp_tools)
     d = flowsmod.validate(body, store)
     return {"flow": {k: body[k] for k in ("name", "description", "mission")},
             "grants": flowsmod.declared_grants(d),
@@ -1141,7 +1170,7 @@ def preview(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
             "net": (body.get("permissions") or {}).get("net") or []}
 
 
-def install(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
+def install(cfg: dict, store, recipe_id: str, answers: dict, mcp_tools: dict | None = None) -> dict:
     """Create the mission, enabled, and say what it will do next.
 
     ENABLED on purpose, unlike a composed draft. A draft is a model's proposal
@@ -1150,7 +1179,7 @@ def install(cfg: dict, store, recipe_id: str, answers: dict) -> dict:
     arrives switched off is a mission that never runs.
     """
     ensure_roster(cfg, store)
-    body = build(cfg, store, recipe_id, answers)
+    body = build(cfg, store, recipe_id, answers, mcp_tools=mcp_tools)
     asked = answers.get("deliver") or "report"
     dev = delivery(cfg, asked)
     flow, report = flowsmod.save(store, body)

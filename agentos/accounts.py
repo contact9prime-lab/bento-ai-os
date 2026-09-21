@@ -20,6 +20,8 @@ import time
 
 from . import calendars as calmod
 from . import mail as mailmod
+from . import signin
+from . import vault
 
 IDS = ("mail", "calendar")
 
@@ -66,13 +68,41 @@ def _mask(secret: str) -> str:
     return ("•••" + s[-2:]) if len(s) > 6 else ("•••" if s else "")
 
 
-def state(cfg: dict) -> list[dict]:
+def door(cfg: dict, aid: str) -> dict:
+    """Which way this account is read, in a sentence: 'signed in with Google as
+    x (mail, calendar)', 'through the gmail MCP server', 'IMAP at imap.example.com'."""
+    raw = dict((cfg or {}).get(aid) or {})
+    way = mailmod.via(cfg) if aid == "mail" else calmod.kind(cfg)
+    if way in ("google", "microsoft"):
+        rec = signin.signed_in(cfg, way)
+        label = signin.PROVIDERS[way]["label"]
+        if rec.get("problem"):
+            return {"way": way, "label": label, "detail": f"signed in with {label} — {rec['problem']}"}
+        uses = ", ".join(u for u in rec.get("uses") or [] if u != "send") or "nothing yet"
+        send = " · can send" if aid == "mail" and "send" in (rec.get("uses") or []) else ""
+        return {"way": way, "label": label,
+                "detail": f"signed in with {label} as {rec.get('email') or '?'} ({uses}{send})"}
+    if way == "mcp":
+        return {"way": "mcp", "label": "MCP server",
+                "detail": f"through the '{raw.get('mcp_server')}' MCP server" if raw.get("mcp_server")
+                else "through an MCP server — none chosen yet"}
+    if aid == "mail":
+        return {"way": "imap", "label": "App password",
+                "detail": f"IMAP at {raw.get('host')} as {raw.get('user')}" if raw.get("host") else "app password (not set up)"}
+    if way == "caldav":
+        return {"way": "caldav", "label": "App password", "detail": f"CalDAV at {raw.get('url')}"}
+    return {"way": "ics", "label": "ICS address", "detail": f"ICS at {raw.get('url')}" if raw.get("url") else "ICS address (not set up)"}
+
+
+def state(cfg: dict, mcp_servers: list[str] | None = None) -> list[dict]:
     """Both accounts for a Settings page: values (secrets masked, never echoed),
-    whether each is set, the last probe, and the sentence when it cannot be used."""
+    whether each is set, the last probe, the door it reads through, and the
+    sentence when it cannot be used. `mcp_servers` is what is connected right now
+    — the route passes it, this module stays free of the MCP manager."""
     out = []
     for aid in IDS:
         mod = mailmod if aid == "mail" else calmod
-        c = mod.conf(cfg)
+        c = {**mod.DEFAULTS, **((cfg or {}).get(aid) or {})}   # raw: the secret stays a reference
         about = ABOUT[aid]
         values, is_set = {}, {}
         for f in about["fields"]:
@@ -89,7 +119,12 @@ def state(cfg: dict) -> list[dict]:
         out.append({"id": aid, "title": about["title"], "what": about["what"],
                     "enabled": bool(c.get("enabled")), "configured": mod.configured(cfg),
                     "problem": mod.problem(cfg), "values": values, "set": is_set,
-                    "masked": {"password": _mask(c.get("password", ""))},
+                    "masked": {"password": "in the vault" if vault.is_ref(c.get("password", ""))
+                               else _mask(c.get("password", ""))},
+                    "vault": vault.status(),
+                    "door": door(cfg, aid), "via": mailmod.via(cfg) if aid == "mail" else calmod.kind(cfg),
+                    "mcp_server": c.get("mcp_server", ""), "mcp_servers": list(mcp_servers or []),
+                    "can_send": bool(c.get("can_send")) if aid == "mail" else False,
                     "fields": about["fields"], "presets": presets, "hint": hint,
                     "last_test": lt, "kind": c.get("kind", "") if aid == "calendar" else "imap"})
     return out
@@ -140,9 +175,20 @@ def save(cfg: dict, aid: str, patch: dict) -> tuple[bool, str]:
         k = str(patch["kind"] or "ics")
         if k not in calmod.KINDS:
             return False, f"kind is one of {', '.join(calmod.KINDS)}"
+        if k in ("google", "microsoft") and not signin.signed_in(cfg, k):
+            return False, f"sign in with {signin.PROVIDERS[k]['label']} first — the button on this card"
         conf["kind"] = k
+    if "via" in patch and aid == "mail":
+        v = str(patch["via"] or "imap")
+        if v not in mailmod.VIAS:
+            return False, f"via is one of {', '.join(mailmod.VIAS)}"
+        if v in ("google", "microsoft") and not signin.signed_in(cfg, v):
+            return False, f"sign in with {signin.PROVIDERS[v]['label']} first — the button on this card"
+        conf["via"] = v
+    if "mcp_server" in patch:
+        conf["mcp_server"] = str(patch["mcp_server"] or "").strip()[:64]
     if patch.get("password"):
-        conf["password"] = str(patch["password"])
+        conf["password"] = vault.put(f"{aid}.password", str(patch["password"]))
     if aid == "calendar" and "url" in patch and conf.get("url"):
         u = conf["url"].lower()
         if "kind" not in patch and "preset" not in patch:
@@ -158,10 +204,10 @@ def save(cfg: dict, aid: str, patch: dict) -> tuple[bool, str]:
         if patch["enabled"] and not mod.configured(cfg):
             return False, f"{ABOUT[aid]['title']} cannot be switched on until it is set up"
         conf["enabled"] = bool(patch["enabled"])
-    elif mod.configured(cfg) and any(k in patch for k in ("password", "url", "user")):
+    elif mod.configured(cfg) and any(k in patch for k in ("password", "url", "user", "mcp_server")):
         conf["enabled"] = True            # filling the form in IS switching it on
     # anything changed: the last probe no longer describes this configuration
-    if any(k in patch for k in ("user", "password", "host", "port", "url", "kind", "preset")):
+    if any(k in patch for k in ("user", "password", "host", "port", "url", "kind", "preset", "via", "mcp_server")):
         conf["last_test"] = {}
     return True, "saved"
 

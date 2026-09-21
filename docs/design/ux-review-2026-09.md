@@ -826,3 +826,49 @@ way: a wall of prose in a chat, once, and another under it tomorrow.
 ![The reply: a drafted acceptance, as a conversation you can carry on](ux-review/after/brief-reply.jpg)
 ![The Brief on a phone: one item per screen, the hands at a fingertip](ux-review/after/brief-phone.jpg)
 ![A decision on the phone: the choices are the buttons](ux-review/after/brief-phone-2.jpg)
+
+## Addendum — sign in, and the vault (21 September)
+
+The Accounts card asked for an IMAP host and an app password — the 2005 way
+in. The ask was: sign in the way people expect, and keep the secret where
+nobody but the user and the system can see it.
+
+- **Sign in with Google / Microsoft** (`agentos/signin.py`): OAuth 2.0 with
+  PKCE run by the OS itself. The consent page opens where the human is (the
+  page, a printed URL on a headless box), the code comes back to the server's
+  own route, the exchange happens there, and the tokens go in the vault. One
+  sign-in serves mail and calendar; sending is a separate tick and every
+  message still asks. Mail reads over the Gmail API / Microsoft Graph, the
+  calendar over the Google Calendar API / Graph, through the same four tools —
+  every mission unchanged. *Sign out* revokes and switches the accounts OFF,
+  never back to an old password.
+- **The client id ships empty**, on the `BUILTIN_KEYS` argument: a self-hosted
+  OS has no central application, and a credential the project kept on a build
+  machine would be shared by every install. The button is greyed with the
+  registration sentence and the App registration group on the same card is
+  where five minutes fix it.
+- **Through an MCP server** is the third door: a mission that wants mail gets
+  that server's tools, the built-in ones refuse rather than pretend.
+- **The vault** (`agentos/vault.py`): config holds `vault:mail.password`; the
+  bytes are AES-GCM in a 0600 file, keyed by the keyring where one answers and
+  by a 0600 key file where none does — and the card says which, in those
+  words. Every read is a diary line naming the secret and its purpose; no
+  route, verb or tool prints a value. A clear-text password in an existing
+  config is adopted on the first start.
+- **Walked through in a real browser** against a fake Google on loopback with
+  a real consent page: card → click → consent → Allow → "Signed in with Google"
+  → the card behind updated by itself → *Test*: `signed in with Google as
+  me@gmail.com — 12 messages`, `2 events in the next 7 days (Work)`. Then
+  inbox-triage on real Claude Code through the Gmail door: 73s, one
+  delegation, four `mail.read` decisions allowed by the mission's own grant,
+  items keyed on the Gmail ids. Phone: every button 40px, no sideways scroll.
+- **Not built, and why:** a recorded browser session. It works until the
+  provider's bot check breaks it, cannot be audited per message, and is
+  against most providers' terms; the sign-in gives the same "nothing to type"
+  with a revocable grant.
+
+![Accounts before: Sign in with Google live, Microsoft greyed with the registration sentence, the mail account on an app password](ux-review/after/signin-before.jpg)
+![The consent page (a fake Google on loopback), naming exactly the scopes that were ticked](ux-review/after/signin-consent.jpg)
+![The callback page](ux-review/after/signin-done.jpg)
+![The card after: signed in as me@gmail.com, mail reads through Google, Test says what the server said](ux-review/after/signin-after.jpg)
+![The card on a phone](ux-review/after/signin-phone.jpg)

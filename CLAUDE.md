@@ -381,6 +381,75 @@ Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on t
 rows with the server down. Option labels cut at a word (`_short`) because a button that
 reads "higher seat cou" is a choice nobody can read back.
 
+## The vault: config holds a REFERENCE, and nothing prints the value
+
+`agentos/vault.py`. A password or a sign-in's tokens never sit in `config.json`: config
+holds `vault:mail.password`, the bytes are AES-256-GCM in a 0600 file in the person's own
+home, and `vault.get(name, actor)` is the only door — called by the code that needs the
+secret for its job (`mail.conf()`, `signin.token()`), one diary line per read saying who it
+was for. Full story in `docs/vault.md`. Four things that have to stay true:
+
+- **There is no route, verb or tool that returns a value.** `bento vault` lists names and
+  says what protects them; `/api/accounts` says "in the vault"; `/api/config` masks. The
+  model sees the mail, never the password. Do not add a "show" for convenience.
+- **The key is decided ONCE and recorded in the file** (`keyring` when `secret-tool` / the
+  macOS keychain answers, `file` otherwise), and a vault whose keyring is unreachable is
+  LOCKED — `status()` says so and `put()` raises — never silently re-keyed, which would
+  fail to decrypt everything it held. `AGENTOS_VAULT_KEYRING=0` skips the probe in tests
+  and on a box with no D-Bus.
+- **The sentence is honest about a headless box.** A key file beside the vault is file
+  permissions and nothing more, and `status()["detail"]` says exactly that. A card that
+  said "encrypted" and stopped would be worse than the clear-text file it replaced.
+- **`adopt()` moves clear-text secrets on load and stops when the vault cannot store** — a
+  migration that blanks the value it was moving is a lost account. `SECRET_KEYS` is the
+  list of what moves: account secrets only. Provider keys and the Telegram token are the
+  machine's and stay (USER_KEYS says why).
+
+`accounts.state()` reads the RAW section (a reference counts as a password) and never
+resolves; only the module that opens the box resolves. Keep it that way: resolving in a
+state function is how a value ends up on a screen.
+
+## Sign in with Google / Microsoft: the door that asks for nothing to type
+
+`agentos/signin.py` runs OAuth 2.0 + PKCE itself (no SDK: the flow is ten lines and the
+SDK's is shaped for MCP servers). `start()` builds the consent URL for exactly the uses
+ticked (mail / calendar / send), `finish()` exchanges the code, learns who signed in,
+stores the tokens in the vault (`oauth.<provider>`) and points `mail.via` / `calendar.kind`
+at the provider; `token()` refreshes silently; `disconnect()` revokes and switches the
+accounts that read through it OFF. Mail then reads through `GmailBox` / `GraphBox`
+(`mail.open_box()` is the one door every caller uses) and the calendar through
+`_google_events` / `_graph_events`, mapped onto the ICS parser's event shape — so the four
+tools and every mission are unchanged. Full story in `docs/accounts.md`. Five things:
+
+- **`BUILTIN_CLIENTS` ships EMPTY** — the `BUILTIN_KEYS` argument again. Google and
+  Microsoft issue an OAuth client per application; a self-hosted OS has none, and a client
+  kept on a build machine would be shared by every install. `oauth_clients` is a MACHINE
+  key (one registration serves every account here; admin-only route), the button is
+  greyed with the registration sentence until it is filled, and `docs/accounts.md` walks
+  the five minutes. Never "help" by pasting a project client id into source.
+- **The callback is open to the remote gate**, on the webhook's argument: the browser that
+  arrives may not be the one that started (a URL printed on a headless box, opened on a
+  laptop), and the route's defence is the single-use `state`; the identity it completes is
+  the one recorded at START (`pending["uid"]`, entered with `users.as_user`), never one the
+  request names. `mcp_oauth.redirect_base()` is the address, shared with the MCP Store's
+  sign-ins.
+- **The granted scopes decide the uses, not the ticks.** `finish()` records only the uses
+  the token's `scope` covers, so a consent page where the person unticked calendar leaves
+  the calendar account alone. `can_send` is written from the same answer; `mail.send`
+  refuses without it, in a sentence that says which tick.
+- **`_ApiBox` never calls anything that marks.** Gmail is read with `format=raw` /
+  `metadata`, never `modify`; Graph never PATCHes `isRead`. `tests/test_signin.py` reads
+  the fake's request log for it — the PEEK rule, kept by absence.
+- **A finished attempt drops the others.** Two clicks make two pending entries; the one
+  that comes back wins and the rest are removed, or the card reads "waiting for you" under
+  a line that says signed in — found in the browser walk-through.
+
+`AGENTOS_SIGNIN_BASE=http://127.0.0.1:8427` points every provider endpoint at one host
+(the real paths kept) so a whole sign-in can be walked through against a fake Google;
+`doors()` carries it so the card could say so. A third door, **through an MCP server**
+(`mail.via == "mcp"`), gives a mission that server's tools in place of the built-in ones
+(`jobs.build(mcp_tools=)`); the built-in tool refuses in that mode rather than pretend.
+
 ## Accounts: the mailbox and the calendar are read FOR the person, and that is not a channel
 
 `agentos/mail.py` (IMAP, and SMTP gated apart), `agentos/calendars.py` (an ICS address or
@@ -422,8 +491,8 @@ person's behalf — and six things keep that honest:
   login password pasted where an app password goes, and `PRESETS[...]["hint"]` is the
   sentence that stops it, shown on the card and appended to a refused sign-in.
 
-`mail` and `calendar` are USER_KEYS by the strongest version of the test — a mailbox is
-somebody's — and `/api/config` masks the passwords. IMAP TLS is decided by port
+`mail`, `calendar` and `signin` are USER_KEYS by the strongest version of the test — a mailbox is
+somebody's — the passwords and tokens are in the vault (previous section), and `/api/config` masks. IMAP TLS is decided by port
 (`ssl: None` → everything but 143 is IMAPS); a plain server on loopback, which is what
 the tests run, sets `ssl: False` explicitly.
 
