@@ -9,6 +9,7 @@ asserts that directly: a real dashboard's refresh burst must NOT be quarantined,
 feature is just a way to break working apps.
 """
 
+import time
 import os
 import sys
 import tempfile
@@ -211,3 +212,127 @@ def test_a_burst_then_quiet_is_not_a_drip(pdp, monkeypatch):
         clock["t"] += 40
     assert dec.effect != "deny", "a bursty-but-quiet dashboard was held as a drip"
     assert not pdp.tripped
+
+
+# ---------------------------------------------------------------------------
+# the rung below the hold: steer first, stop second
+#
+# A ceiling that only ever holds turns a burst into a dead mission, and a mission
+# held at 03:00 did nothing at all that night. These pin the ladder: the first
+# trip corrects and lets the run continue, the second stops it, and the rung is
+# only offered to a principal that can actually read the correction.
+# ---------------------------------------------------------------------------
+
+def _burst(pdp, principal, tool="fetch_url", n=200, **kw):
+    """Call until something refuses, and hand back THAT decision.
+
+    Stopping at the first deny is not a convenience: it is what the principal being
+    metered actually experiences. A loop gets the refusal as its tool result and reacts
+    to it, so a helper that kept calling past the refusal and returned the last decision
+    would be asserting about calls no real agent would have made — and it would read
+    "allowed" for a burst that was in fact corrected in the middle.
+    """
+    out = None
+    for _ in range(n):
+        out = pdp.decide_tool(principal, tool, {}, "safe", surface="task", **kw)
+        if out.effect == "deny":
+            return out
+    return out
+
+
+def test_a_flows_first_burst_is_steered_not_held(pdp):
+    """The mission is corrected and stays alive. Held, it would have done nothing."""
+    flow = Principal("flow", "morning-brief")
+    dec = _burst(pdp, flow)
+    assert dec.effect == "deny", "the offending call must still be refused"
+    assert dec.rule == "steered", f"first trip should steer, got {dec.rule!r}"
+    assert not pdp.store.quarantined("flow", "morning-brief"), \
+        "a steer must not write a hold — that list is what is STOPPED"
+
+
+def test_the_steer_tells_it_what_to_do_instead(pdp):
+    """The refusal text IS the mechanism: it comes back as the tool's result, so it has
+    to read as an instruction to a model, not as an error string for a log."""
+    dec = _burst(pdp, Principal("flow", "digest"))
+    said = dec.reason.lower()
+    assert "fetch_url" in said, "it must name what it was doing"
+    assert "already tried" in said or "something different" in said, \
+        "a correction that does not say what to do instead is just a refusal"
+    assert "held" in said, "it must say what happens if it carries on"
+
+
+def test_a_steered_flow_can_actually_carry_on(pdp):
+    """The meter is cleared with the steer. Without that the very next call re-trips
+    against the same history and the steer is a hold wearing kinder words."""
+    flow = Principal("flow", "watcher")
+    _burst(pdp, flow)
+    dec = pdp.decide_tool(flow, "fetch_url", {}, "safe", surface="task")
+    assert dec.effect != "deny", "a second chance nobody can use is not a second chance"
+
+
+def test_ignoring_the_steer_is_what_gets_it_held(pdp):
+    flow = Principal("flow", "runaway")
+    first = _burst(pdp, flow)
+    assert first.rule == "steered"
+    second = _burst(pdp, flow)
+    assert second.effect == "deny" and second.rule == "quarantined", \
+        "a loop that ignores the correction must be stopped"
+    assert pdp.store.quarantined("flow", "runaway")
+
+
+def test_a_subagent_is_steered_too_because_it_reads_its_refusals(pdp):
+    dec = _burst(pdp, Principal("subagent", "researcher"))
+    assert dec.rule == "steered"
+
+
+def test_an_app_is_held_outright_because_nobody_there_reads_english(pdp):
+    """An app is a browser tab running somebody's JavaScript. A loop there will not
+    correct, so offering it a rung would only widen the runaway by one window."""
+    dec = _burst(pdp, APP)
+    assert dec.effect == "deny" and dec.rule == "quarantined"
+    assert pdp.store.quarantined("app", APP.id)
+
+
+def test_the_steer_is_announced_with_the_run_it_happened_in(pdp):
+    seen = []
+    pdp.on_rate_steer = lambda pr, st: seen.append((pr, st))
+    _burst(pdp, Principal("flow", "nightly"), run_id="run-abc123")
+    assert seen, "nothing was told that a mission had been corrected"
+    pr, st = seen[0]
+    assert pr.label == "flow:nightly"
+    assert st["run_id"] == "run-abc123", "a steer with no run is one nobody can go and read"
+    assert "over its limit" in st["reason"]
+    assert not pdp.tripped, "a steer is not a trip — the hold callback must stay quiet"
+
+
+def test_the_ledger_records_a_steer_as_its_own_rule(pdp):
+    """`rule` is how the ledger is read back. A steer recorded as a quarantine would
+    make the record disagree with the quarantine list it is read beside."""
+    _burst(pdp, Principal("flow", "audited"))
+    rows = [r for r in pdp.store.audit_list(limit=400) if r.get("rule") == "steered"]
+    assert rows, "the correction never reached the ledger"
+    assert rows[0]["effect"] == "deny"
+
+
+def test_releasing_a_hold_resets_the_ladder(pdp):
+    """"Let it run again" must mean it, and a principal one trip from being held is not
+    running again in any sense the person pressing that button would recognise."""
+    flow = Principal("flow", "released")
+    _burst(pdp, flow)                       # steered
+    _burst(pdp, flow)                       # held
+    held = pdp.store.quarantined("flow", "released")
+    pdp.store.quarantine_release(held["id"], "once")
+    pdp.forget_rate("flow", "released")
+    dec = _burst(pdp, flow)
+    assert dec.rule == "steered", "it should get the full ladder again, not the last rung"
+
+
+def test_a_steer_expires_so_this_evening_is_not_judged_by_this_morning(pdp, monkeypatch):
+    import agentos.policy as pol
+    flow = Principal("flow", "daily")
+    assert _burst(pdp, flow).rule == "steered"
+    t = [time.time()]
+    monkeypatch.setattr(pol.time, "time", lambda: t[0])
+    t[0] += pol.STEER_WINDOW + 60          # a fresh, unrelated burst hours later
+    assert _burst(pdp, flow).rule == "steered", \
+        "an unrelated burst after the window should be corrected, not stopped"

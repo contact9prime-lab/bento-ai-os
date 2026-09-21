@@ -324,6 +324,21 @@ SUSTAIN_DEFAULTS = {
     "flow":     {"llm": (60, 600), "tool": (600, 300)},
 }
 
+# Who can be STEERED rather than held outright the first time it crosses a ceiling.
+# The rung only exists because there is something at the other end that reads a refusal
+# and can change its mind: a flow master and a subagent are models in a loop, and the
+# refusal text reaches them as the tool's result. An app is a browser tab running
+# somebody's JavaScript — a loop there does not read English and will not correct, so an
+# app is still held on the first trip. This is why the ladder is two rungs and not three:
+# a middle "read-only" rung would need a notion of a constrained principal that this OS
+# does not have, and inventing one to round the ladder out would be worse than saying so.
+STEER_KINDS = ("flow", "subagent")
+# How long a steer stays on the record. A SECOND trip inside this window is the loop
+# ignoring the correction, and that is held. Ten minutes is long enough that a burst and
+# a genuine runaway are not confused, and short enough that a mission steered this morning
+# is not held this evening for a fresh, unrelated burst.
+STEER_WINDOW = 600.0
+
 
 def rate_limits(cfg: dict, kind: str) -> dict | None:
     conf = (cfg.get("security") or {}).get("rate_limits")
@@ -435,10 +450,15 @@ class PDP(usersmod.Scoped):
         self._rate = RateMeter()
         self._q_cache: dict = {}  # uid|principal.label -> row or None
         self._q_version: dict = {}
+        self._steer: dict = {}    # uid|principal.label -> when it was last steered
         # on_rate_trip(principal, stats): wired in server startup. The PDP decides that
         # something has gone rogue; what happens then — writing the hold, telling the user —
         # belongs to the layer that owns apps and notifications, not to the gate.
         self.on_rate_trip = None
+        # on_rate_steer(principal, stats): the same seam one rung lower. Fired when the
+        # ceiling refused a call but did NOT hold the principal, so the surfaces can say
+        # a mission was corrected without a person having to read the ledger to find out.
+        self.on_rate_steer = None
 
     def _who(self) -> str:
         """The prefix that keeps one person's cached decisions out of another's."""
@@ -455,6 +475,10 @@ class PDP(usersmod.Scoped):
         label = Principal(kind, pid).label
         for cls in ("llm", "tool"):
             self._rate.forget(f"{self._who()}|{label}|{cls}")
+        # The ladder resets with the history. Letting something out of quarantine while
+        # its steer is still on the record would put it one trip from being held again,
+        # which is not what "let it run" means on the button the person just pressed.
+        self._steer.pop(f"{self._who()}|{label}", None)
 
     def _grants(self) -> list[dict]:
         uid = self._who()
@@ -507,6 +531,54 @@ class PDP(usersmod.Scoped):
                 self._q_cache[key] = None
         return self._q_cache[key]
 
+    def _steer_first(self, principal: Principal, ctx: dict, stats: dict) -> "Decision | None":
+        """The rung below the hold: refuse this call, and say why in words the thing at the
+        other end can act on. None means there is no steer to give — hold it instead.
+
+        A ceiling that only ever holds turns a burst into a dead mission. Most of what
+        crosses these limits is not a runaway: it is a specialist that found a page of
+        links and fetched all of them, or retried a flaky call harder than it should have.
+        Held, that mission does nothing until somebody reads a notification, which at 03:00
+        means it did nothing at all. So the FIRST trip refuses the offending call and tells
+        the principal what it just did — and the refusal is the whole mechanism, because a
+        denied tool call already comes back to the model as that tool's result. There is no
+        second channel to build and nothing to look up: the thing that needs correcting is,
+        by construction, the thing waiting on this return value.
+
+        The meter is cleared with the steer, and that is the deliberate cost: a principal
+        that ignores the correction gets one more window's worth of calls before it is
+        held. Without clearing it the next call re-trips against the same history and the
+        steer is a hold with extra words — which is worse than not having the rung, because
+        the record would claim a second chance nobody was given.
+
+        A second trip inside STEER_WINDOW falls through to the hold. That is the ladder:
+        steered, then stopped, and a person releases what was stopped.
+        """
+        if principal.kind not in STEER_KINDS:
+            return None
+        key = f"{self._who()}|{principal.label}"
+        now = time.time()
+        last = self._steer.get(key, 0.0)
+        if now - last < STEER_WINDOW:
+            return None                   # already told; this is the loop ignoring it
+        self._steer[key] = now
+        for cls in ("llm", "tool"):       # a real second chance, not a hold with words
+            self._rate.forget(f"{self._who()}|{principal.label}|{cls}")
+        if self.on_rate_steer:
+            try:
+                self.on_rate_steer(principal, stats)
+            except Exception:
+                pass
+        tool = ctx.get("tool") or "that tool"
+        return Decision("deny",
+                        f"Refused, and this is a correction rather than a stop: {stats['reason']}. "
+                        f"Stop calling {tool} the same way. Say what you have already tried, "
+                        f"use what you have instead of fetching it again, and do something "
+                        f"different next — if you cannot, finish and report what is missing. "
+                        f"Carry on past this one refusal; cross the limit again and "
+                        f"{principal.label} is held until a person releases it.",
+                        rule="steered")
+
     def _rate_check(self, principal: Principal, ctx: dict) -> "Decision | None":
         """None to carry on; a Decision to refuse.
 
@@ -556,7 +628,11 @@ class PDP(usersmod.Scoped):
         reason = (f"{n} {what} in {int(window)}s, over its limit of {allowed} — "
                   f"it was calling {ctx.get('tool') or 'tools'} {how}")
         stats = {"count": n, "window": window, "allowed": allowed, "class": cls,
-                 "tool": ctx.get("tool", ""), "reason": reason}
+                 "tool": ctx.get("tool", ""), "reason": reason,
+                 "run_id": ctx.get("run_id", ""), "flow": ctx.get("flow", "")}
+        steer = self._steer_first(principal, ctx, stats)
+        if steer is not None:
+            return steer
         # The hold is written HERE, not in the callback. The gate deciding something is
         # rogue and the thing actually being held must not be two facts that can disagree:
         # if nobody had wired a callback, the call would be refused, the next one metered

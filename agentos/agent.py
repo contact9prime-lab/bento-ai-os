@@ -728,7 +728,13 @@ class Agent:
                 self.principal, name, args, level, reason=reason,
                 autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
                 space_id=self.space_id, conversation_id=self.conversation_id,
-                taint=self.taint, flow=self.flow)
+                taint=self.taint, flow=self.flow,
+                # Which RUN this call belongs to. `decide_tool` has always taken it and
+                # this loop never passed it, so every ledger row for a flow's work named
+                # the flow and not the run — with two runs of one nightly mission in a
+                # week, "which of these did that" had no answer. Same source as
+                # `brief_item` uses, and the gate must not take it from the model.
+                run_id=getattr(self, "run_id", ""))
         else:  # no policy engine wired (tests / embedding): legacy autonomy gate
             from .policy import Decision
             if level == "blocked":
