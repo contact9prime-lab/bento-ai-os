@@ -83,6 +83,11 @@ function movementCovered(){
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
 function movementPulse(kind,label,ev){
+  // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a
+  // second call beside each of the websocket's five is deliberate: a new scene must not
+  // mean five more edits in a file that knows nothing about scenes, and a sixth event
+  // wired to only one of them is exactly the drift that produces a half-live desktop.
+  if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(!MOVEMENT.on)return;
   const M=MOVEMENT,now=performance.now();
   if(kind==='turn'&&label){M.turns[label]={start:now,end:0};return}

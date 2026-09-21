@@ -21,19 +21,27 @@ function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
   document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
+  document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
-  // the second scene: the machine as a watch movement (01c-movement.js)
-  // 01c loads after this file: at first paint MOVEMENT is still undefined and
-  // 01c starts itself; from then on the switch is handled here
-  if(typeof MOVEMENT==='undefined')return;
-  if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop();
+  // the drawn scenes: the watch movement (01c) and the crew (01d). Both load
+  // AFTER this file, so at first paint each is still undefined and starts itself;
+  // from then on the switch is handled here. Each is tested separately — one
+  // early `return` on the first undefined would leave the other permanently
+  // unreachable on a first paint, which is the bundle-order trap in a new shape.
+  if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
+  if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
 }
-/* Which scene: 'aurora' (a sky that follows the day) or 'movement' (a watch
-   movement that shows what is running). Per browser, like the look itself. */
+/* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
+   that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
+   like the look itself. An unknown name falls back to aurora rather than throwing —
+   this value comes out of localStorage, which outlives any release that renames a
+   scene, and a desktop that fails to paint because of a stale string is not a
+   trade worth making. */
+var IMMERSIVE_SCENES=['aurora','movement','crew'];
 function setImmersiveScene(scene){
-  scene=scene==='movement'?'movement':'aurora';
+  scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
   IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
   applyImmersive();
   if(typeof loadWallpaper==='function')loadWallpaper();
@@ -61,7 +69,7 @@ function immersiveBrainText(){
    scene's minute tick re-checks the band and reloads only when it changes —
    a wallpaper that swaps under an open window every minute would be a bug. */
 function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
-function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':immersiveWallBand()}
+function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':IMMERSIVE.scene==='crew'?'immersive-crew':immersiveWallBand()}
 /* ---- the home scene ----
    With no window open the desktop is a place, not a tile board: a greeting by
    the hour (and by name on a machine with accounts), the date, the prompt bar

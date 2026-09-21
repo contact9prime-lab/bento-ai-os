@@ -222,10 +222,101 @@ def test_movement_parts_are_the_machine_s_parts():
     assert "agentName()" in MOVE and "'SOUL · '" in MOVE and "'CAL. '" in MOVE
     # the canvas rides the wallpaper (parallax) and never takes a pointer
     assert "wall.appendChild(cv)" in MOVE
-    assert re.search(r"body\.immersive #movement\{[^}]*pointer-events:none", CODE)
-    # 01c loads after 01b: the scene starts itself at first paint, and 01b
-    # never touches MOVEMENT before it exists
-    assert "if(typeof MOVEMENT==='undefined')return;" in JS
+    # EVERY scene canvas, not just this one: they share the rule, so they are
+    # asserted together rather than the CSS being split to keep a regex happy.
+    assert re.search(r"body\.immersive #movement,body\.immersive #crew\{[^}]*pointer-events:none", CODE)
+    # 01c and 01d load after 01b: each scene starts itself at first paint, and
+    # 01b tests for each separately — one early return on the first undefined
+    # would leave the other permanently unreachable on a first paint
+    assert "if(typeof MOVEMENT!=='undefined')" in JS and "if(typeof CREW!=='undefined')" in JS
     assert MOVE.rstrip().endswith("movementStart();")
     assert (UI / "assets" / "wallpapers" / "immersive-movement.svg").exists()
     assert "'immersive-movement'" in WALLS.split("const BUILTIN_WALLS")[1].split("\n")[0]
+
+
+# ---------------------------------------------------------------------------
+# the third scene: the crew
+#
+# It is the one scene that draws PEOPLE, which is exactly why it needs pinning:
+# a cast is the easiest thing in this product to quietly fake. Every figure has
+# to come from the roster the Team app shows, and the empty case has to stay an
+# honest empty case rather than a demo crowd.
+# ---------------------------------------------------------------------------
+
+CREW = (UI / "src" / "js" / "01d-crew.js").read_text()
+# comments stripped, for the assertions that must not match this file's own
+# explanation of what it deliberately does not do
+CREW_CODE = re.sub(r"/\*.*?\*/", "", re.sub(r"(?m)^\s*//.*$", "", CREW), flags=re.S)
+
+
+def test_the_cast_is_the_real_roster_and_nothing_else():
+    """One figure per subagent this machine has. Invented colleagues would be the
+    dead control this project's honesty rules forbid, wearing a friendlier face."""
+    assert "fetch('/api/subagents')" in CREW, "the cast must come from the roster route"
+    assert "60000" in CREW, "the roster is read once a minute, never per frame"
+    # nothing seeds, pads or invents a figure
+    assert not re.search(r"cast\s*=\s*\[\s*\{", CREW), "no hardcoded cast"
+    assert "No specialists yet" in CREW, "a machine with none must say so"
+
+
+def test_a_figure_moves_only_because_something_happened():
+    """Every gesture maps to a real event off the same stream the dial reads."""
+    assert "function crewPulse(" in CREW
+    for kind in ("'turn'", "'turnend'", "'tool'", "'flow'", "'done'"):
+        assert kind in CREW, f"the scene ignores {kind}"
+    assert "RUNNING" in CREW, "the agent wakes because a turn is running"
+    # one seam: the websocket still calls movementPulse, which forwards
+    assert "crewPulse(kind,label,ev)" in (UI / "src" / "js" / "01c-movement.js").read_text()
+
+
+def test_an_unmatched_event_lights_nobody():
+    """A flow event names a flow, an agent or an event, and only sometimes a cast
+    member. Lighting a figure anyway would make the scene look busy while telling
+    the person something untrue about who is working."""
+    assert "function crewMatch(" in CREW
+    assert "return null" in CREW.split("function crewMatch(")[1][:700]
+
+
+def test_the_crew_costs_what_the_dial_costs():
+    """Same loop, same gates. A scene that draws while nobody can see it is the
+    one way a wallpaper becomes a battery complaint."""
+    assert "function crewCovered(" in CREW
+    assert "document.hidden" in CREW and "has-fullwin" in CREW and "w.max&&!w.min" in CREW
+    assert "0.048" in CREW and "0.083" in CREW, "the 20/12 fps dt gate"
+    assert "requestAnimationFrame" in CREW and "setInterval" not in CREW
+    assert "crewReduced()" in CREW and "CREW.static" in CREW, "one still frame under reduced motion"
+    # A shadow is a blur by another name, and a canvas filter over a full-screen
+    # layer is re-run on every frame the parallax moves it. Matched as the canvas
+    # APIs rather than as the words: `.filter(` is an honest array method, and
+    # both appear in this file's own comments explaining why they are not used.
+    assert "shadowBlur" not in CREW_CODE and "shadowColor" not in CREW_CODE
+    assert not re.search(r"\bctx\.filter\b", CREW_CODE)
+
+
+def test_every_colour_is_mixed_from_the_theme():
+    """One file has to hold up on a dark theme and a light one. A literal white
+    or black is how a scene ends up unreadable on half of them."""
+    assert "dataset.theme==='light'" in CREW
+    body = CREW_CODE.split("function crewInk(")[1][:400]
+    assert "#" not in body, "colours come from the theme's tokens, not hex literals"
+
+
+def test_the_scene_is_offered_switched_and_dressed():
+    assert "'crew'" in SETTINGS and "Crew" in SETTINGS, "not offered in Settings"
+    assert "specialists you actually have" in SETTINGS, \
+        "the row must say the cast is real, or people will expect one"
+    assert "imm-crew" in CODE, "no body class, so the plate is never dressed for it"
+    assert "immersive-crew" in JS, "the scene has no wallpaper of its own"
+    assert (UI / "assets" / "wallpapers" / "immersive-crew.svg").exists()
+    assert "'immersive-crew'" in WALLS.split("const BUILTIN_WALLS")[1].split("\n")[0]
+    # an unknown scene name out of localStorage must not break the desktop
+    assert "IMMERSIVE_SCENES" in JS and "indexOf(scene)<0?'aurora'" in JS
+
+
+def test_the_crew_file_keeps_the_bundle_rules():
+    """One concatenated script: a top-level let/const is in the temporal dead zone
+    for anything earlier in filename order that calls into this file."""
+    for line in CREW.splitlines():
+        assert not line.startswith(("let ", "const ")), line
+    assert CREW.rstrip().endswith("crewStart();"), "01d must start itself at first paint"
+    assert "var CREW=" in CREW

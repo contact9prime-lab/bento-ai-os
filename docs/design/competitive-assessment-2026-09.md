@@ -264,3 +264,52 @@ signed registry with TOFU pins; agent sharing with a leak scan that has no overr
 missions whose consent screen and grants are one computation; a hosted-plugin shim that
 says `CANNOT CONTAIN` where it cannot; behavioural evals; and a working-notes file that
 records why. None of that shows on a landing page, and item 7 above is how it starts to.
+
+---
+
+## What has been built since, and what has not
+
+Four of the items above are in. Each is listed with what it does NOT do, because a
+half-built thing described as finished is the failure this document was written about.
+
+- **The steer rung (item 2).** `PDP._steer_first` in `agentos/policy.py`. The first time
+  a flow or a subagent crosses a rate ceiling the offending call is refused and the
+  refusal text tells it what to do instead — which reaches the model as the tool's own
+  result, so there is no second channel and nothing to look up. The meter is cleared with
+  the steer, so it is a real second chance; a second trip inside ten minutes holds it as
+  before. An app is still held outright: a browser tab running somebody's JavaScript does
+  not read a correction. A steer writes no quarantine row (that list is what is
+  *stopped*), carries `rule="steered"` in the ledger, and releasing a hold resets the
+  ladder. Ten tests in `tests/test_quarantine.py`. *Not done:* the middle "constrain"
+  rung, which would need a notion of a read-only principal this OS does not have.
+- **An unanswered approval reaches a person (part of item 1).** `_unanswered_to_brief` in
+  `agentos/server.py`, wired through both the desktop broker and the Telegram bridge. A
+  question nobody answered is now distinguished from a person pressing Deny, and files a
+  Brief `decide` item keyed on the mission and the action, so a nightly mission asking the
+  same thing every night is one standing question rather than thirty. *Not done, and the
+  item says so in as many words:* the run is **not** parked and **not** resumed. Nothing
+  about an in-flight run survives the process — `fabric_runs` has no paused state, the
+  `Budget` and the agent's history are in RAM, and there is no startup sweep of orphaned
+  rows — so the durable queue in the roadmap's J3 is still open, and an item claiming a
+  run was waiting would be a promise this OS cannot keep. Four tests in `tests/test_brief.py`.
+- **The evidence check (part of item 7).** `.github/workflows/pr-evidence.yml` plus the
+  two new template sections. It reads only the PR body, through the environment rather
+  than interpolated into a shell, and checks out no code from the pull request. It catches
+  the section left holding the template's own comment, which is the likeliest way past it.
+  Deliberately **not** a required check: making it blocking is a branch-protection setting
+  and the repository owner's decision, not something a workflow should take by arriving.
+- **A third scene, Crew** (`agentos/ui/src/js/01d-crew.js`), which is not on the list
+  above and is the one thing here taken from the other project's *look* rather than its
+  engineering. It is their office floor with the parts removed that this project's own
+  rules forbid: the cast is `/api/subagents` and nothing else, so an empty roster draws
+  the agent alone and says so; the figures are drawn from theme tokens rather than loaded
+  from a tileset, so there is no asset licence to carve out and nothing added to the
+  wheel; and it rides the Movement scene's loop, so it inherits the whole cost argument
+  (measured on this machine: 19.3 fps against a ceiling of 20, 0.2 ms a frame, zero frames
+  under a maximised window or a hidden tab, one still frame under reduced motion). Eight
+  tests in `tests/test_immersive.py`.
+
+Still open from the list, untouched: cost reconciliation from executor transcripts (3),
+per-specialist git worktrees (4), more executors through the run bridge (5), the UI string
+table (6), and everything in item 7 that is not the evidence check — the landing page, the
+community channel, the gallery, the blog.

@@ -213,6 +213,23 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   once. Hairlines, brass and one ruby: the greeting and the prompt bar sit inside it. Drawn at most
   twenty times a second while the desktop is visible; it pauses under a full-screen or maximised
   window and when the tab is hidden, holds still under reduced motion, and uses no blur or shadow.
+- **A third scene: Crew.** The same picker draws your roster instead — one small figure for every
+  subagent in Team, your agent larger in the middle. They rest until something happens: a figure
+  steps forward and brightens when its specialist starts working, with the tool it just called named
+  above its head, and sits back down when the run ends. The figures are drawn, not loaded — bodies
+  and heads mixed from the theme's own colours, with build and stance derived from a hash of the
+  name so a specialist looks the same every time — so nothing is downloaded, nothing is licensed
+  from anybody, and the whole scene costs what the dial costs (measured: 19.3 fps against a ceiling
+  of 20, 0.2 ms a frame, and zero frames under a maximised window).
+
+  ![The Crew scene: four drawn figures on a dark stage — writer, researcher, Aria in the middle, validator — with the researcher stepped forward, lit, and "fetch url" named above its head](screenshots/crew-scene.png)
+
+  **The cast is the real one.** Every figure is a subagent this machine actually has, so with none
+  yet you get your agent alone and a line saying so, rather than a room of colleagues who do not
+  exist. That is the same honesty rule the rest of this OS keeps: a crowd would look better and
+  would be telling you something untrue about what you have.
+
+  ![The same scene on a machine with no specialists: the agent alone, under the line "No specialists yet — ask for one and they take a place here"](screenshots/crew-scene-empty.png)
 - **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
   and the kit all work at 390px, and every new control meets the 44px tap floor.
 
