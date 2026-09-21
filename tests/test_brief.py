@@ -227,3 +227,86 @@ async def test_a_telegram_button_acts_on_the_item_and_a_decision_starts_the_turn
     assert rows, "a Done item and a decided one carry no buttons; the open one does"
     await tg.send_brief("▲ digest", rows)
     assert calls[-1][0] == "sendMessage" and "reply_markup" in calls[-1][1]
+
+
+# ---------------------------------------------------------------------------
+# a question nobody answered
+#
+# An unattended run that asks at 03:00 used to wait fifteen minutes, be denied,
+# and leave NOTHING anywhere saying a question had been asked. The Brief is the
+# surface that already reaches a person on every face, so that is where it goes.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_an_unanswered_approval_lands_on_the_brief(client):
+    """Silence is not a refusal, and the difference has to survive to a surface."""
+    cl, servermod = client
+    store = servermod.state["store"]
+    filed = servermod._unanswered_to_brief(
+        "run-9", "morning-brief", "fetch_url",
+        {"url": "https://example.com/prices"}, "the flow did not declare this host")
+    await filed()
+    items = brief.page(store)["items"]
+    hit = [i for i in items if "morning-brief" in i["title"]]
+    assert hit, "the question vanished — this is the failure the item exists to stop"
+    it = hit[0]
+    assert it["kind"] == "decide", "it needs an answer, so it is a decision"
+    assert it["options"] == ["Do it now", "Not this time"]
+    assert "nobody answered" in it["title"]
+    assert "fetch_url" in it["body"] and "example.com/prices" in it["body"]
+    assert "the flow did not declare this host" in it["body"], "why it asked is the point"
+    assert it["source"] == {"type": "run", "ref": "run-9"}
+
+
+@pytest.mark.asyncio
+async def test_the_item_does_not_claim_the_run_is_waiting(client):
+    """Nothing about an in-flight run survives the process, so an item promising a
+    parked run would be a promise this OS cannot keep — and a run that silently was
+    not waiting is worse than a refusal that said so."""
+    cl, servermod = client
+    await servermod._unanswered_to_brief("r", "watcher", "run_command",
+                                         {"command": "rm -rf /tmp/x"}, "")()
+    body = brief.page(servermod.state["store"])["items"][0]["body"]
+    assert "not still waiting" in body
+    assert "Permissions" in body, "it must say where a standing allow is actually written"
+
+
+@pytest.mark.asyncio
+async def test_a_nightly_question_is_one_standing_item_not_thirty(client):
+    """Keyed on the mission and the action: a mission that asks the same thing every
+    night updates one item. Without that, a fortnight away is a Brief nobody opens."""
+    cl, servermod = client
+    store = servermod.state["store"]
+    for _ in range(12):
+        await servermod._unanswered_to_brief("r", "nightly", "mail_send",
+                                             {"to": "ops@example.com"}, "")()
+    mine = [i for i in brief.page(store)["items"] if i["mission"] == "nightly"]
+    assert len(mine) == 1, f"{len(mine)} copies of one question"
+    # a DIFFERENT action is a different question
+    await servermod._unanswered_to_brief("r", "nightly", "mail_send",
+                                         {"to": "finance@example.com"}, "")()
+    assert len({i["key"] for i in brief.page(store)["items"] if i["mission"] == "nightly"}) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_person_saying_no_files_nothing(client):
+    """A refusal is a decision and wants no follow-up. Only silence does — otherwise
+    every Deny becomes an item, and the Brief teaches people to ignore it."""
+    cl, servermod = client
+    store = servermod.state["store"]
+    before = len(brief.page(store)["items"])
+    called = []
+    ok = await servermod.request_approval(
+        "fetch_url", {}, "why", timeout=0.05,
+        unanswered=lambda: called.append(1))          # never resolved → timeout path
+    assert ok is False and called, "the timeout must report itself as unanswered"
+    called.clear()
+    import asyncio as _a
+    task = _a.create_task(servermod.request_approval(
+        "fetch_url", {}, "why", timeout=5, unanswered=lambda: called.append(1)))
+    await _a.sleep(0.05)
+    aid = next(iter(servermod.state["pending_approvals"]))
+    servermod.state["pending_approvals"][aid]["fut"].set_result(False)   # a person pressed Deny
+    assert await task is False
+    assert not called, "an explicit Deny must not be filed as an unanswered question"
+    assert len(brief.page(store)["items"]) == before

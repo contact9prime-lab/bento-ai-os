@@ -208,6 +208,7 @@ async def startup():
     pdp = PDP(cfg, store)
     pdp.mcp = mcp
     pdp.on_rate_trip = _quarantine
+    pdp.on_rate_steer = _steered
     toolbox.pdp = pdp
     trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
@@ -5130,7 +5131,7 @@ def _lint_app_html(html: str, toolbox=None) -> list[str]:
 
 async def request_approval(name: str, args: dict, reason: str, offer: dict | None = None,
                            evsend=None, ws=None, timeout: float = 300,
-                           run_id: str = "", flow: str = "") -> bool:
+                           run_id: str = "", flow: str = "", unanswered=None) -> bool:
     """Raise an approval card and wait for the user's answer. `offer` is a ready-to-write
     grant: when the user picks "allow & remember", it is persisted before resolving True.
     evsend routes the card to one chat's client; otherwise it broadcasts to every client.
@@ -5152,6 +5153,15 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
+        # NOBODY ANSWERED, which is a different fact from "the person said no" and
+        # the two must not keep arriving as the same `False`. A refusal is a
+        # decision and wants no follow-up; silence means the question never
+        # reached anybody awake, and that is the one an unattended machine
+        # produces at 03:00. `unanswered` is how the caller gets told which it
+        # was — without it this returns False either way, as it always has.
+        if unanswered:
+            with contextlib.suppress(Exception):
+                await unanswered()
         return False
     finally:
         state["pending_approvals"].pop(aid, None)
@@ -5281,6 +5291,32 @@ def _quarantine(principal: Principal, stats: dict):
         asyncio.create_task(_announce_quarantine(principal, label, stats["reason"], qid))
 
 
+def _steered(principal: Principal, stats: dict):
+    """A principal crossed a ceiling and was corrected rather than held.
+
+    Nothing is written to the quarantine table: it is the list of what is STOPPED, and a
+    steer is explicitly not that — a row there would make Permissions show something held
+    that is still running. The ledger already has the decision (`rule="steered"`, written
+    by the PDP like every other), so what is left is the operator's diary and the badge on
+    screen, which is exactly the boundary `_quarantine` works to.
+
+    It is a log line rather than a notification on purpose. A correction the mission then
+    acts on is not something to wake somebody for; the second trip holds it, and THAT
+    notifies. A machine that pings a phone every time a specialist fetched too eagerly is
+    a machine whose notifications get turned off, and then the hold goes unread too.
+    """
+    store = state["store"]
+    store.log("policy",
+              f"steered {principal.kind} '{principal.id}': {stats['reason']} — "
+              f"refused that call and told it to change course; it is still running",
+              {"principal": principal.label, "rule": "steered", **stats})
+    with contextlib.suppress(Exception):
+        asyncio.create_task(state["broadcast"](
+            {"type": "steered", "kind": principal.kind, "principal_id": principal.id,
+             "flow": stats.get("flow", ""), "run_id": stats.get("run_id", ""),
+             "reason": stats["reason"]}))
+
+
 async def _announce_quarantine(principal: Principal, label: str, reason: str, qid: str):
     await state["broadcast"]({"type": "quarantined", "id": qid, "kind": principal.kind,
                               "principal_id": principal.id, "label": label, "reason": reason})
@@ -5337,21 +5373,82 @@ async def api_quarantine_release(qid: str, body: dict):
     return {"ok": True, "mode": mode}
 
 
+def _unanswered_to_brief(run_id: str, flow: str, name: str, args: dict, reason: str):
+    """A question nobody was awake for becomes an item on tomorrow's Brief.
+
+    Until this existed, the whole of what happened when a mission asked at 03:00 was:
+    it waited fifteen minutes, was denied, carried on without that step, and left
+    nothing on any surface that said a question had ever been asked. In the morning
+    the report was short and there was no way to find out why. That is the honesty
+    rule broken by omission — the machine knew something the person needed and let it
+    expire.
+
+    What this does NOT do, and the wording on the item is careful about it: the run is
+    not parked and it is not resumed. Nothing about an in-flight run survives the
+    process (there is no paused state on `fabric_runs`, no persisted budget and no
+    saved message history), so a Brief item that claimed a run was waiting would be a
+    promise the OS cannot keep — and a waiting run that silently was not is worse than
+    a denial that said so. The run ends as it always did, with the step refused. What
+    the item carries is the QUESTION, to a person, on a surface they will actually
+    look at, with a way to act on it: answering starts an ordinary turn (`_brief_answer`
+    → `decide_prompt`) that can carry the thing out now that somebody has said yes.
+
+    Keyed on the mission plus the action, so a nightly mission asking the same thing
+    every night updates ONE standing question instead of stacking thirty of them.
+    """
+    async def filed():
+        store = state["store"]
+        what = str(args.get("url") or args.get("path") or args.get("to")
+                   or args.get("command") or args.get("query") or "").strip()[:80]
+        line = f"{name}{' · ' + what if what else ''}"
+        mission = flow or "a mission"
+        briefmod.add(
+            store, mission=flow or "", run_id=run_id, kind="decide",
+            title=f"{mission} asked to run {line} and nobody answered",
+            body=(f"While it ran unattended, “{mission}” needed permission for `{name}`"
+                  + (f" ({what})" if what else "") + ".\n\n"
+                  + (f"Why it asked: {reason.strip()[:400]}\n\n" if reason else "")
+                  + "Nobody was there, so the step was refused and the run finished "
+                    "without it. It is not still waiting — answer here and I will do it "
+                    "now. To stop it asking every time, write the permission in "
+                    "Permissions instead."),
+            options=["Do it now", "Not this time"],
+            source={"type": "run", "ref": run_id},
+            key=f"approval:{name}:{what}"[:120])
+        store.log("policy",
+                  f"unanswered approval from flow '{flow or run_id}' for {name} — "
+                  f"filed on the Brief so it reaches somebody",
+                  {"run_id": run_id, "flow": flow, "tool": name})
+        with contextlib.suppress(Exception):
+            await state["broadcast"]({"type": "brief", "action": "asked"})
+    return filed
+
+
 async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
                          offer: dict | None, origin: dict) -> bool:
     """A paused flow, asking. It goes back where the run came from when that is a place
     a person can answer — a run started from a phone should not raise a card on a screen
     in another room — and otherwise to every open window, which in the session desktop
-    means the desktop itself."""
+    means the desktop itself. When nobody answers at all, the question is not dropped:
+    it lands on the Brief (`_unanswered_to_brief`)."""
     timeout = int((state["cfg"].get("fabric") or {}).get("approval_timeout", 900))
     run = state["store"].fabric_run(run_id) or {}
-    chat_id = origin.get("chat_id") or (run.get("origin_ref") if
-                                        run.get("origin_surface") == "telegram" else "")
-    if origin.get("surface") == "telegram" and state.get("telegram") and chat_id:
-        return await state["telegram"].ask_approval(int(chat_id), name, args, reason,
-                                                    offer=offer, timeout=timeout)
+    flow = run.get("flow") or ""
+    missed = _unanswered_to_brief(run_id, flow, name, args, reason)
+    if origin.get("surface") == "telegram" and state.get("telegram") and chat_id_of(origin, run):
+        return await state["telegram"].ask_approval(int(chat_id_of(origin, run)), name, args,
+                                                    reason, offer=offer, timeout=timeout,
+                                                    unanswered=missed)
     return await request_approval(name, args, reason, offer=offer, timeout=timeout,
-                                  run_id=run_id, flow=run.get("flow") or "")
+                                  run_id=run_id, flow=flow, unanswered=missed)
+
+
+def chat_id_of(origin: dict, run: dict) -> str:
+    """The Telegram chat a run belongs to, or '' — the run's own origin when the caller
+    did not carry one, so a scheduled run still answers in the chat that set it up."""
+    return str(origin.get("chat_id")
+               or (run.get("origin_ref") if run.get("origin_surface") == "telegram" else "")
+               or "")
 
 
 async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
