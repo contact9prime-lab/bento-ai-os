@@ -162,9 +162,18 @@ class PluginHost:
         """Node, locked down as far as this machine allows.
 
         `--permission` needs explicit read grants or the plugin cannot even load
-        its own code, so the plugin directory and Node's own installation are
-        allowed and nothing else is. Write is never granted: a plugin that needs
-        to write asks the host, which is the whole inversion.
+        its own code, so the plugin directory, this host's own directory and
+        Node's installation are allowed and nothing else is. Write is never
+        granted: a plugin that needs to write asks the host, which is the whole
+        inversion.
+
+        `host.js` has to be in that list even though it is ours. The permission
+        model is applied before the main module is resolved, so without a read
+        grant covering it Node refuses to load its own entry point and dies with
+        ERR_ACCESS_DENIED on `internalModuleStat` — before any plugin code, and
+        with nothing in the frame to say why. It is not covered by the other two:
+        it lives in the installed package, not beside the plugin and not under
+        the Node prefix.
         """
         exe = node_exe()
         rep = sandbox_report()
@@ -173,6 +182,7 @@ class PluginHost:
             entry_dir = str(Path(self.entry).resolve().parent)
             flag = "--permission" if rep["node_major"] >= 22 else "--experimental-permission"
             argv += [flag, f"--allow-fs-read={entry_dir}/*",
+                     f"--allow-fs-read={HOST_JS.resolve().parent}/*",
                      f"--allow-fs-read={os.path.dirname(os.path.dirname(exe))}/*"]
         argv.append(str(HOST_JS))
         jail = rep["jail"]

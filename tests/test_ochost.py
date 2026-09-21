@@ -13,7 +13,10 @@ assertions true about a stub and false about the product.
 
 import json
 import os
+import pathlib
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -73,8 +76,32 @@ MANIFEST = {"id": "demo", "contracts": {"tools": ["add", "peek", "spawn", "ask",
 
 
 @pytest.fixture()
-def host(tmp_path):
-    entry = tmp_path / "index.js"
+def plugin_dir(tmp_path):
+    """Somewhere the jail can actually see.
+
+    `_argv()` wraps the Node process in `bwrap ... --tmpfs /tmp` when bubblewrap
+    is available, and pytest's `tmp_path` is under `/tmp` on Linux — so a plugin
+    written there is not a file from inside the jail, and the host comes up having
+    registered nothing, with no error to say why. A real plugin lives in
+    OpenClaw's own state directory under the user's home, which is what this
+    mirrors. macOS never showed it: there the jail is sandbox-exec and masks
+    nothing.
+    """
+    if sys.platform == "linux":
+        base = pathlib.Path.home() / ".cache" / "bento-ochost-tests"
+        base.mkdir(parents=True, exist_ok=True)
+        d = pathlib.Path(tempfile.mkdtemp(dir=str(base)))
+        try:
+            yield d
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    else:
+        yield tmp_path
+
+
+@pytest.fixture()
+def host(plugin_dir):
+    entry = plugin_dir / "index.js"
     entry.write_text(PLUGIN)
     seen = []
 
@@ -155,11 +182,11 @@ def test_what_the_plugin_asks_the_host_for_comes_back_to_python(host):
     assert host.seen[0][1]["url"] == "https://example.com"
 
 
-def test_an_unwired_host_refuses_every_capability(tmp_path):
+def test_an_unwired_host_refuses_every_capability(plugin_dir):
     """A host started without a capability bridge must be a closed door, not an
     open one. An unwired embedding that granted everything is the shape of bug
     that only shows up in the deployment nobody tested."""
-    entry = tmp_path / "index.js"
+    entry = plugin_dir / "index.js"
     entry.write_text(PLUGIN)
     h = ochost.PluginHost("demo", str(entry))          # no host_call
     try:

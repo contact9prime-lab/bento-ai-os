@@ -1,0 +1,33 @@
+name: Feature request
+description: Something is missing, or could be better.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        The thing you were trying to get done, not the feature you think would
+        do it. The second one is usually easier to answer once we have the first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you had in mind
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: faces
+    attributes:
+      label: Where would this live
+      description: >
+        A feature is not finished when it works in one face. If it genuinely
+        cannot exist in one of them — window snapping in a terminal — say so.
+      options:
+        - label: GUI — a browser or an app window
+        - label: TUI — a terminal or headless machine
+        - label: SUI — Bento as the Linux session
+        - label: A phone, over remote access

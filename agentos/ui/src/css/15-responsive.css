@@ -220,13 +220,23 @@ body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;ju
      snapping it comes to rest with an icon half outside the scroller — where the
      centre of the button is off the edge and a tap lands on the taskbar instead.
      Measured with four windows open: the sixth icon spanned x=306..352 in a box
-     ending at 328. Snapping means it can only ever rest whole. */
-  scroll-snap-type:x proximity;scroll-padding:0 4px}
+     ending at 328. MANDATORY, not proximity: proximity only acts on a scroll the
+     user makes, so the initial layout rested on exactly the half icon the rule
+     was written against — measured again, same numbers, months later. */
+  scroll-snap-type:x mandatory;scroll-padding:0 4px}
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:end}
 body.dev-mobile #dock::-webkit-scrollbar{display:none}
 body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
 body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
 body.dev-mobile #tbnative,body.dev-mobile .dsep{display:none!important}
+/* !important is deliberate, not lazy: every .aicon carries an inline
+   width/height written by the one icon generator (01-app-icons.js), which
+   cannot know the device it will be pasted into — and an inline style beats
+   any selector. Without this the phone dock drew 46px tiles into a 40px
+   budget: six default icons plus the start button no longer fit a 390px bar,
+   and the last one sat clipped in half at rest — the "bar below looks broken"
+   report, remeasured at exactly the numbers in the comment above. */
+body.dev-mobile #taskbar .aicon{width:40px!important;height:40px!important}
 body.dev-mobile .dockb .aicon,body.dev-mobile .tbwin .aicon,
 body.dev-mobile #startbtn .mark{width:40px;height:40px}
 body.dev-mobile .dockb:hover,body.dev-mobile .tbwin:hover,body.dev-mobile #startbtn:hover{transform:none}

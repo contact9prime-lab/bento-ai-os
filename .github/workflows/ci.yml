@@ -1,0 +1,85 @@
+# What a green tick here means: the suite that guards the boundaries in CLAUDE.md
+# ran on Linux. It is Linux and not macOS deliberately — `test_safe_folders` cannot
+# pass where pytest's temp dir resolves under /private/var, which is a fact about a
+# Mac and not about this code. A gate that is red for an environment reason is a
+# gate people learn to ignore.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests · python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling. requires-python is >=3.10, and 3.13 is what
+        # the .deb and the installers are built against.
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # updates.git_state() asks git which branch this copy is on and how far
+          # behind it is. A depth-1 clone has no history to answer with.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sandbox mechanism
+        # tools.sandbox_conf() reports the folder jail as OFF unless a jail
+        # mechanism exists for the OS, and sandbox_mechanism() is `which bwrap`.
+        # Without bubblewrap the runner is a machine where the safe-folder gate
+        # cannot switch on, so the refusals in tests/test_safe_folders.py have
+        # nothing to refuse. A real Linux install has it — the installer offers
+        # it and the packaging Suggests it — so this is the runner being made to
+        # resemble the machine, not the suite being loosened.
+        #
+        # Installing it is not enough: Ubuntu 24.04 restricts unprivileged user
+        # namespaces through AppArmor, so `bwrap` is present, `sandbox_mechanism()`
+        # reports it, and every jailed run then dies on "setting up uid map:
+        # Permission denied". A machine where the jail exists and cannot be
+        # entered is the one configuration neither branch of the code is written
+        # for, so the sysctl is what makes the runner a real Linux desktop rather
+        # than a third thing.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --ro-bind / / --unshare-net true && echo "bwrap works"
+
+      - name: Sync
+        run: uv sync --group dev --python ${{ matrix.python }}
+
+      - name: Tests
+        # Each run gets its own cache prefix. Two checkouts resolving in the same
+        # second otherwise let Python reuse one run's .pyc while executing the
+        # other's source — the trap tests/test_update_gate.py documents.
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pyc-${{ matrix.python }}
+        run: uv run --python ${{ matrix.python }} pytest -q
+
+  licences:
+    # AgentOS ships permissively, and what it depends on it is effectively
+    # distributing. This is that claim, checked. Anything copyleft that is
+    # genuinely useful is asked for at runtime via agentos/components.py, never
+    # shipped — see docs/licensing.md.
+    name: licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package archive
+        run: sudo apt-get update
+      - name: Audit
+        run: ./packaging/audit-licenses.sh
