@@ -45,8 +45,18 @@ from . import __version__
 #: Where the published version lives. The repo is public, so this needs no
 #: credentials — an updater that required a token would be one most installs
 #: could not use.
-RAW = "https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os"
+DEFAULT_REPO = "contact9prime-lab/bento-ai-os"
+RAW = f"https://raw.githubusercontent.com/{DEFAULT_REPO}"
 DEFAULT_BRANCH = "master"          # HEAD on this remote; `main` is stale (see install.sh)
+
+#: Files this OS rewrites on its own, which a checkout therefore "changes" without
+#: anybody having edited them: `uv sync` re-resolves the lockfile on a machine whose
+#: uv or platform differs from the one that wrote it, and the UI bundle is rebuilt
+#: by `python -m agentos.ui.build`. Counting those as the user's work made
+#: `bento update` ask to stash on EVERY run — the update's own `uv sync` dirtied
+#: `uv.lock`, the next check found it, and the loop never ended. They are restored
+#: from git before an update, never stashed, and never a reason to refuse.
+DERIVED = ("uv.lock", "agentos/ui/index.html")
 
 CHECK_TIMEOUT = 10.0
 #: How long an install may take before we stop waiting on it. A dependency sync
@@ -100,8 +110,13 @@ def is_newer(remote: str, local: str) -> bool:
 
 
 def conf(cfg: dict) -> dict:
-    c = (cfg or {}).setdefault("updates", {})
+    # `cfg or {}` threw an EMPTY dict away: an empty config is falsy, so every
+    # setting written through conf() landed in a copy nobody kept.
+    if cfg is None:
+        cfg = {}
+    c = cfg.setdefault("updates", {})
     c.setdefault("enabled", True)          # checking is on; installing still asks
+    c.setdefault("repo", DEFAULT_REPO)     # owner/name on GitHub — a fork, to test one
     c.setdefault("branch", DEFAULT_BRANCH)
     c.setdefault("check_interval_hours", 24)
     c.setdefault("last_check", 0.0)
@@ -111,6 +126,88 @@ def conf(cfg: dict) -> dict:
     c.setdefault("last_on_branch", "")     # the branch the checkout was on then
     c.setdefault("skipped", "")            # a version the user said no to
     return c
+
+
+# ------------------------------------------------------------------ the source
+
+def parse_repo(text: str) -> str:
+    """`owner/name` from anything somebody would paste: the bare pair, a GitHub
+    URL with or without `.git`, or an SSH remote. Empty when it is none of those,
+    so a typo is refused rather than fetched from."""
+    t = (text or "").strip()
+    m = (re.match(r"^(?:https?://)?(?:www\.)?github\.com[/:]([^/\s]+)/([^/\s#?]+?)(?:\.git)?/?$", t)
+         or re.match(r"^git@github\.com:([^/\s]+)/([^/\s]+?)(?:\.git)?$", t)
+         or re.match(r"^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$", t))
+    if not m:
+        return ""
+    owner, name = m.group(1), m.group(2)
+    if not re.match(r"^[A-Za-z0-9_.-]+$", owner) or not re.match(r"^[A-Za-z0-9_.-]+$", name):
+        return ""
+    return f"{owner}/{name}"
+
+
+def repo_of(cfg: dict) -> str:
+    return parse_repo(conf(cfg).get("repo") or "") or DEFAULT_REPO
+
+
+def raw_base(cfg: dict) -> str:
+    return f"https://raw.githubusercontent.com/{repo_of(cfg)}"
+
+
+def remote_url(cfg: dict) -> str:
+    return f"https://github.com/{repo_of(cfg)}.git"
+
+
+def remote_name(cfg: dict) -> str:
+    """The git remote updates pull from. `origin` for the repository this was
+    installed from; a fork gets its own, named after its owner, so switching back
+    is one setting and the checkout keeps both."""
+    repo = repo_of(cfg)
+    if repo == DEFAULT_REPO:
+        return "origin"
+    owner = repo.split("/", 1)[0]
+    return "fork-" + re.sub(r"[^A-Za-z0-9_.-]", "-", owner).lower()
+
+
+def ensure_remote(cfg: dict, root: Path | None = None) -> tuple[bool, str]:
+    """Make the fork's remote exist and point at the fork. `origin` is never
+    touched: it is what the install came from, and rewriting it would turn
+    "test a fork" into "silently move this machine onto a fork"."""
+    root = root or install_dir()
+    name = remote_name(cfg)
+    if name == "origin" or not root:
+        return True, ""
+    url = remote_url(cfg)
+    ok, have = _run(["git", "remote", "get-url", name], cwd=root)
+    if not ok:
+        ok, out = _run(["git", "remote", "add", name, url], cwd=root)
+        return (True, f"added remote {name} → {url}") if ok else (False, out[:200])
+    if have.strip() != url:
+        ok, out = _run(["git", "remote", "set-url", name, url], cwd=root)
+        return (True, f"remote {name} now → {url}") if ok else (False, out[:200])
+    return True, ""
+
+
+def set_source(cfg: dict, repo: str | None = None, branch: str | None = None) -> dict:
+    """Point updates at a repository and/or branch. Persisted in config, so the
+    watcher, Settings and `bento update` all follow the same fork; `bento update
+    --official` puts it back. Returns what is now tracked."""
+    c = conf(cfg)
+    if repo is not None:
+        got = parse_repo(repo)
+        if not got:
+            raise ValueError(f"'{repo}' is not a GitHub repository — use owner/name or a github.com URL")
+        c["repo"] = got
+    if branch is not None:
+        b = branch.strip()
+        if not b or not re.match(r"^[A-Za-z0-9_./-]+$", b) or b.startswith("-"):
+            raise ValueError(f"'{branch}' is not a branch name")
+        c["branch"] = b
+    # a new source is a new question — forget what the old one was told
+    c["last_mark"] = ""
+    c["last_behind"] = 0
+    return {"repo": repo_of(cfg), "branch": c.get("branch") or DEFAULT_BRANCH,
+            "remote": remote_name(cfg)}
 
 
 # ---------------------------------------------------------------- where we live
@@ -158,6 +255,31 @@ def local_changes(root: Path | None = None) -> list[dict]:
     return changed
 
 
+def derived_changes(root: Path | None = None) -> list[str]:
+    """Which of the changed tracked files are ones this OS rewrites itself."""
+    return [c["path"] for c in local_changes(root) if c["path"] in DERIVED]
+
+
+def own_changes(root: Path | None = None) -> list[dict]:
+    """The changed tracked files that ARE somebody's work — everything that is
+    not in `DERIVED`. This is the list an update may refuse over."""
+    return [c for c in local_changes(root) if c["path"] not in DERIVED]
+
+
+def restore_derived(root: Path | None = None) -> list[str]:
+    """Put the derived files back to what git has. Nothing of the user's is in
+    them — the lockfile is re-resolved by `uv sync` and the bundle by the build —
+    so this is the one `checkout --` the updater is allowed to do."""
+    root = root or install_dir()
+    if not root:
+        return []
+    done = []
+    for path in derived_changes(root):
+        if _run(["git", "checkout", "--", path], cwd=root)[0]:
+            done.append(path)
+    return done
+
+
 def stash_local(root: Path | None = None, message: str = "") -> tuple[bool, str]:
     """Park the local work so an update can land on a clean tree. Never discards.
 
@@ -189,8 +311,11 @@ def stash_local(root: Path | None = None, message: str = "") -> tuple[bool, str]
     return True, f"stashed your changes — get them back with: git -C {root} stash pop"
 
 
-def can_apply(cfg: dict) -> tuple[bool, str]:
-    """May an update be installed right now? Returns (ok, why not)."""
+def can_apply(cfg: dict, switch: bool = False) -> tuple[bool, str]:
+    """May an update be installed right now? Returns (ok, why not).
+
+    `switch` is the `--switch` flag: the caller is willing to have the checkout
+    moved onto the tracked branch, so being on another one is not a refusal."""
     root = install_dir()
     if not root:
         return False, ("This copy was not installed from git, so it cannot update itself. "
@@ -209,18 +334,23 @@ def can_apply(cfg: dict) -> tuple[bool, str]:
     ok, out = _run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root)
     if not ok:
         return False, f"could not read the checkout: {out[:200]}"
-    if out.strip():
-        n = len(out.strip().splitlines())
+    # Only the user's OWN edits refuse. A rewritten lockfile or a rebuilt bundle
+    # (DERIVED) is restored by `apply`, not stashed, and not a reason to stop.
+    own = own_changes(root)
+    if own:
+        n = len(own)
         return False, (f"There are {n} uncommitted change(s) to tracked files in {root}. "
                        f"Updating would pull on top of your own work, so it is refused — "
                        f"commit or stash them first. `bento update` names them and offers "
                        f"to stash them for you.")
     ok, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     want = conf(cfg).get("branch") or DEFAULT_BRANCH
-    if not ok or branch.strip() != want:
+    if not ok:
+        return False, "could not read which branch the checkout is on"
+    if branch.strip() != want and not switch:
         return False, (f"The checkout is on '{branch.strip() or 'an unknown ref'}', not "
-                       f"'{want}'. Switch to it first, or change the update branch in "
-                       f"Settings.")
+                       f"'{want}'. `bento update --apply --switch` checks it out for you, "
+                       f"or change the update branch (`bento update --branch …`).")
     return True, ""
 
 
@@ -238,7 +368,9 @@ def git_state(cfg: dict, limit: int = 20) -> dict:
 
     Blocking: it fetches. Callers on the event loop must use a thread.
     """
+    remote = remote_name(cfg)
     out = {"root": "", "on_branch": "", "tracks": conf(cfg).get("branch") or DEFAULT_BRANCH,
+           "repo": repo_of(cfg), "remote": remote,
            "behind": 0, "ahead": 0, "commits": [], "error": ""}
     root = install_dir()
     if not root:
@@ -249,8 +381,13 @@ def git_state(cfg: dict, limit: int = 20) -> dict:
     ok, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     out["on_branch"] = branch.strip() if ok else ""
     want = out["tracks"]
-    if not _run(["git", "fetch", "origin", want], cwd=root, timeout=120)[0]:
-        out["error"] = f"could not fetch origin/{want} — no network, or the branch is gone"
+    ok, why = ensure_remote(cfg, root)
+    if not ok:
+        out["error"] = f"could not set up the remote for {out['repo']}: {why}"
+        return out
+    if not _run(["git", "fetch", remote, want], cwd=root, timeout=120)[0]:
+        out["error"] = (f"could not fetch {remote}/{want} ({out['repo']}) — no network, "
+                        f"or the branch is gone")
         return out
     def count(rng: str) -> int:
         # Counted the way `commits()` LISTS: non-merges, falling back to the full
@@ -266,10 +403,10 @@ def git_state(cfg: dict, limit: int = 20) -> dict:
                 return got
         return 0
 
-    out["behind"] = count(f"HEAD..origin/{want}")
-    out["ahead"] = count(f"origin/{want}..HEAD")
+    out["behind"] = count(f"HEAD..{remote}/{want}")
+    out["ahead"] = count(f"{remote}/{want}..HEAD")
     if out["behind"]:
-        out["commits"] = commits("HEAD", f"origin/{want}", limit=limit, root=root)
+        out["commits"] = commits("HEAD", f"{remote}/{want}", limit=limit, root=root)
     return out
 
 
@@ -289,6 +426,7 @@ async def check(cfg: dict, force: bool = False) -> dict:
              "notes": "", "checked_at": c.get("last_check") or 0.0, "error": "",
              # git's half, always present so no caller has to branch on its absence
              "on_branch": "", "tracks": c.get("branch") or DEFAULT_BRANCH,
+             "repo": repo_of(cfg), "remote": remote_name(cfg),
              "behind": 0, "ahead": 0, "commits": [], "mismatch": False, "mark": ""}
     if not force and not c.get("enabled", True):
         state["error"] = "update checks are switched off"
@@ -306,7 +444,7 @@ async def check(cfg: dict, force: bool = False) -> dict:
     git_error = g["error"]
     try:
         async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as client:
-            r = await client.get(f"{RAW}/{branch}/agentos/VERSION")
+            r = await client.get(f"{raw_base(cfg)}/{branch}/agentos/VERSION")
             r.raise_for_status()
             latest = r.text.strip().splitlines()[0].strip()
     except httpx.HTTPStatusError as e:
@@ -345,7 +483,8 @@ async def check(cfg: dict, force: bool = False) -> dict:
     # not moved, is the one already installed: notes for what you are running,
     # printed as if they were arriving.
     if latest and is_newer(latest, current()):
-        state["notes"] = await _notes(branch)
+        base = raw_base(cfg)
+        state["notes"] = await (_notes(branch) if base == RAW else _notes(branch, base))
     # What "we already told them about this" means. The version alone was the key,
     # so once a version had been announced no amount of new commits under it could
     # ever be announced again — which is the same bug as "up to date", wearing the
@@ -395,7 +534,7 @@ def local_notes(limit: int = 3) -> list[dict]:
         return []
 
 
-async def _notes(branch: str) -> str:
+async def _notes(branch: str, base: str = RAW) -> str:
     """The top of the changelog — what this version actually changes.
 
     "A new version is available" is not a reason to restart the machine you are
@@ -404,7 +543,7 @@ async def _notes(branch: str) -> str:
     """
     try:
         async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as client:
-            r = await client.get(f"{RAW}/{branch}/CHANGELOG.md")
+            r = await client.get(f"{base}/{branch}/CHANGELOG.md")
             r.raise_for_status()
     except Exception:
         return ""
@@ -486,12 +625,14 @@ async def pending(cfg: dict, limit: int = 20) -> list[dict]:
     if not root:
         return []
     branch = conf(cfg).get("branch") or DEFAULT_BRANCH
-    if not _run(["git", "fetch", "origin", branch], cwd=root, timeout=120)[0]:
+    remote = remote_name(cfg)
+    ensure_remote(cfg, root)
+    if not _run(["git", "fetch", remote, branch], cwd=root, timeout=120)[0]:
         return []
-    return commits("HEAD", f"origin/{branch}", limit=limit, root=root)
+    return commits("HEAD", f"{remote}/{branch}", limit=limit, root=root)
 
 
-async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
+async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) -> dict:
     """Pull, sync dependencies, verify, and report what to do next.
 
     Restarting is deliberately NOT done here. This function's caller owns the
@@ -503,28 +644,51 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
         if log:
             log(msg)
 
-    ok, why = can_apply(cfg)
+    ok, why = can_apply(cfg, switch=switch)
     if not ok:
         return {"ok": False, "error": why}
     root = install_dir()
     branch = conf(cfg).get("branch") or DEFAULT_BRANCH
+    remote = remote_name(cfg)
+    ref = f"{remote}/{branch}"
+
+    # A rewritten lockfile or a rebuilt bundle is not the user's work: put it
+    # back rather than pulling over it or asking anybody to stash it.
+    restored = restore_derived(root)
+    if restored:
+        say("restored " + ", ".join(restored) + " (rewritten by this machine, not your edits)")
 
     got, before = _run(["git", "rev-parse", "HEAD"], cwd=root)
     if not got:
         return {"ok": False, "error": f"could not read the current commit: {before[:200]}"}
     before = before.strip()
 
-    say("fetching…")
-    ok, out = _run(["git", "fetch", "origin", branch], cwd=root, timeout=180)
+    ok, why = ensure_remote(cfg, root)
+    if not ok:
+        return {"ok": False, "error": f"could not set up the remote for {repo_of(cfg)}: {why}"}
+    say(f"fetching {ref}…")
+    ok, out = _run(["git", "fetch", remote, branch], cwd=root, timeout=180)
     if not ok:
         return {"ok": False, "error": f"fetch failed: {out[-400:]}"}
+
+    switched = ""
+    ok, on = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
+    if ok and on.strip() != branch:
+        # Only with `switch`: can_apply refused otherwise. `-B` creates or resets
+        # the LOCAL branch of that name to the remote's tip — on a clean tree,
+        # which can_apply has already required.
+        say(f"switching from '{on.strip()}' to '{branch}'…")
+        ok, out = _run(["git", "checkout", "-B", branch, ref], cwd=root, timeout=120)
+        if not ok:
+            return {"ok": False, "error": f"could not check out {ref}: {out[-400:]}"}
+        switched = on.strip()
 
     say("applying…")
     # --ff-only: an update is meant to be what upstream published, not a merge
     # somebody has to resolve on a machine they are not sitting at.
-    ok, out = _run(["git", "merge", "--ff-only", f"origin/{branch}"], cwd=root, timeout=120)
+    ok, out = _run(["git", "merge", "--ff-only", ref], cwd=root, timeout=120)
     if not ok:
-        return {"ok": False, "error": (f"could not fast-forward to origin/{branch}: "
+        return {"ok": False, "error": (f"could not fast-forward to {ref}: "
                                        f"{out[-400:]}")}
 
     def rollback(reason: str) -> dict:
@@ -535,12 +699,19 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
     changed = _run(["git", "diff", "--name-only", before, "HEAD"], cwd=root)[1].splitlines()
     if any(f in ("pyproject.toml", "uv.lock") for f in changed):
         say("updating dependencies…")
-        ok, out = _run(["uv", "sync"], cwd=root, timeout=APPLY_TIMEOUT)
+        # --frozen: install exactly what the lockfile says and do NOT rewrite it.
+        # A plain `uv sync` re-resolves on a machine whose uv differs from the one
+        # that wrote the lock, leaves uv.lock modified, and the next `bento
+        # update` finds "1 uncommitted change" and asks to stash — every time.
+        ok, out = _run(["uv", "sync", "--frozen"], cwd=root, timeout=APPLY_TIMEOUT)
+        if not ok:
+            ok, out = _run(["uv", "sync"], cwd=root, timeout=APPLY_TIMEOUT)
         if not ok:
             ok, out = _run([_python(root), "-m", "pip", "install", "-e", "."],
                            cwd=root, timeout=APPLY_TIMEOUT)
         if not ok:
             return rollback(f"dependencies could not be installed: {out[-300:]}")
+        restore_derived(root)          # whatever the sync rewrote is not the user's
 
     if run_tests:
         # Code that cannot pass its own tests must not become the code answering
@@ -569,7 +740,7 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
                 # in the new code itself — that IS the update's fault.
                 return rollback(f"the new version could not run its tests: {out[-300:]}")
             say(f"{len(failed)} test(s) failed — checking whether the update caused them…")
-            regressions = _regressions_only(root, before, branch, failed, say)
+            regressions = _regressions_only(root, before, ref, failed, say)
             if regressions is None:
                 return rollback("could not verify the update against the previous "
                                 "version (git state) — nothing changed")
@@ -587,8 +758,9 @@ async def apply(cfg: dict, run_tests: bool = True, log=None) -> dict:
     return {"ok": True, "from": before[:8], "to": after[:8],
             "changes": commits(before, after, limit=20, root=root),
             "version": _version_on_disk(root) or current(),
-            "unchanged": after == before,
-            "files": len(changed)}
+            "unchanged": after == before and not switched,
+            "files": len(changed), "restored": restored, "switched": switched,
+            "source": f"{repo_of(cfg)} @ {branch}"}
 
 
 def _failed_nodes(pytest_out: str) -> set[str]:
@@ -613,7 +785,7 @@ def _blob_exists(root: Path, rev: str, path: str) -> bool:
     return _run(["git", "cat-file", "-e", f"{rev}:{path}"], cwd=root)[0]
 
 
-def _regressions_only(root: Path, before: str, branch: str,
+def _regressions_only(root: Path, before: str, ref: str,
                       failed: set[str], say) -> set[str] | None:
     """Of the tests that failed on the NEW code, which passed on the OLD code.
 
@@ -639,7 +811,7 @@ def _regressions_only(root: Path, before: str, branch: str,
                             cwd=root, timeout=APPLY_TIMEOUT, env=_fresh_pyc_env())
         old_failed = _failed_nodes(old_out)
         # back to the new code so the update can proceed
-        if not _run(["git", "merge", "--ff-only", f"origin/{branch}"], cwd=root, timeout=120)[0]:
+        if not _run(["git", "merge", "--ff-only", ref], cwd=root, timeout=120)[0]:
             return None
         regressions = comparable - old_failed
     else:

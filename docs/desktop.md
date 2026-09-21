@@ -40,14 +40,35 @@ apps** group lists the applications installed on the machine itself, with their 
 every run mode, whether AgentOS *is* your session or a window inside someone else's. Click one to
 launch it on the host; right-click for *Show all applications*, or to hide the group.
 
+### Arranging it: drag a tile, drag a group, hide what you never open
+The deck is yours to arrange, and it is arranged by dragging rather than by a menu.
+
+- **Drag a tile** to reorder it inside its group, or onto another group to move it there. The
+  tiles around it part as you go, so what is on screen is the arrangement you are about to get.
+  Drop it on a **folded** group and that group takes the app and opens.
+- **Drag a group by its name** to reorder the groups themselves.
+- **On a phone**, press and hold a tile for a moment first. A finger that moves straight away is
+  scrolling the deck, which is what you want nine times out of ten.
+- **Right-click a tile** for the same moves without a pointer: *Move earlier*, *Move later*,
+  *Move to <group>*, *Pin to dock*.
+
+**Hiding** is on the same menu: *Hide from the desktop*. The tile leaves the shelf and the app
+stays installed — it is still in the launcher, still in the prompt bar, and still on the app wall
+(scroll up over the tiles), where it shows dimmed and marked `hidden` so you can put it back with
+*Show on the desktop*. A group whose apps you have hidden says how many, and its right-click menu
+offers them all back at once. Nothing here deletes anything.
+
+Your arrangement, your folded groups and your hidden list live in this browser's local storage, so
+they are per-machine and instant. `bento apps` in a terminal always lists every app, hidden or not.
+
 ### Start menu & dock
 - **Start** (bottom-left) opens the full app menu with descriptions.
 - The **dock** next to Start holds quick-launch shortcuts for your favorite apps, each showing a dot
   when running. Right-click a dock icon to remove it.
 
 ### Desktop icons
-Every app has a desktop icon. **Drag icons anywhere** — positions are remembered. Single-click
-selects; double-click launches.
+There are none, deliberately: the desktop is wallpaper and the apps live in the deck above the
+prompt bar, where they are grouped, searchable and arrangeable. See **Arranging it** above.
 
 ### Virtual desktops
 A pager in the taskbar (`1 2 +`) gives you multiple desktops:
@@ -152,6 +173,66 @@ opaque and relies on the blur to turn what is behind it into a wash. Remove the 
 transparency and you get four windows of text legible through each other.
 
 Flat themes cost nothing to begin with, so none of this applies to them.
+
+### Immersive experience (beta)
+
+**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays a design
+system, a scene and motion over whichever theme is on, so an immersive Dracula is still Dracula.
+It was built ground-up in five phases, each judged in a real browser and by the OS's own agent:
+
+- **A design system under it.** Body type at 15px with the small sizes lifted, radii up a step, a
+  deeper elevation ladder, and one control kit — 36px fields with a drawn chevron, 32px secondary
+  and 36px primary buttons, iOS-shaped switches, a glass segmented control, one card, one list row,
+  unified toolbars, vibrant sidebars. The apps already share those classes, so all forty-five
+  reflow from one stylesheet.
+- **Icons, not glyphs.** A small stroke icon set drawn for this OS replaces ⚙ ✦ ⏻ and friends in
+  the Settings rail (a coloured tile per category), the tray, the prompt bar, Chat and the deck.
+  The standard desktop keeps its glyphs.
+- **The desktop is a scene.** With no window open: a greeting by the hour (and by first name on a
+  machine with accounts), the date, the prompt bar in the upper third with three things to try,
+  and one line of what the agent is doing. The app deck leaves the desktop and becomes the wall
+  (Launchpad) behind the dock's launcher button. Open a window and the scene fades; the bar stands
+  down until Ctrl+Space, the brand mark, or a running turn brings it back.
+- **Windows.** The focused window is a lighter, top-lit glass surface with a layered shadow; the
+  ones behind it go dark and lose their border; the title bar and an app's toolbar are one band.
+  Windows open with a touch of overshoot. Every panel, dock, menu and card is lit from above.
+- **Spotlight and Chat.** The prompt bar's results read as sections (Actions, Apps, On this
+  machine, Ask). Chat is one column: the conversation list is a drawer, replies carry an avatar,
+  tool calls are cards with a status dot, the composer floats, and the empty state greets you.
+- **A wallpaper that follows the day.** First light until late morning, the aurora through the
+  afternoon and evening, the cold sky after dark — SVG, gradients only, sharp at 4K — and it
+  drifts a few pixels against the pointer. A theme's own wallpaper, or one you picked, still wins.
+- **A second scene: Movement.** The Scene picker beside the switch swaps the sky for a graphite
+  plate with one big dial drawn on it, turning once an hour like a bezel, and everything the machine
+  does is stamped on the dial the moment it happens, at twelve o'clock, then rides round with it: a
+  tool call is a tick with its name (the name stays for seven minutes, the tick for the hour), a turn
+  is an arc as long as it took and glows while it runs, every enabled workflow has a mark on the
+  inner ring that lights while it runs, an activity ring creeps idle and turns while something runs,
+  and the soul is the centre — the agent's name, the brain as calibre — breathing while a turn runs.
+  So fifteen minutes ago is at a quarter past, and an hour of the machine's life is on the dial at
+  once. Hairlines, brass and one ruby: the greeting and the prompt bar sit inside it. Drawn at most
+  twenty times a second while the desktop is visible; it pauses under a full-screen or maximised
+  window and when the tab is hidden, holds still under reduced motion, and uses no blur or shadow.
+- **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
+  and the kit all work at 390px, and every new control meets the 44px tap floor.
+
+It is remembered by the browser, like the theme, so a phone looking at the same desktop can keep
+the plain one. There is no terminal equivalent — a TUI has no wallpaper or glass — and the switch
+says so.
+
+What it costs, measured with five windows open in software-rendered Chromium (the Pi case; a
+laptop GPU draws a blur in a few milliseconds):
+
+| | frame time |
+|---|---|
+| standard desktop, five windows | 16.7 ms (60 fps) |
+| immersive, home scene, idle | 16.7 ms (60 fps) |
+| immersive, five windows, **Effects → Full** | 50 ms — the focused window's blur is the whole cost |
+| immersive, five windows, **Effects → Reduced** | 16.7 ms (60 fps) — that one blur goes, everything else stays |
+
+So the Effects knob above still governs it: Automatic steps to Reduced on a machine that cannot keep
+up, and the look survives the step. The parallax is never armed on a touch screen or under
+prefers-reduced-motion.
 
 ---
 

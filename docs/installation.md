@@ -416,6 +416,34 @@ usual answer: it prints the branch this checkout is **on** and the branch update
 **track**. Commits pushed to any other branch will never show up here, and your own
 unpushed commits are reported as `ahead`.
 
+**"Same version, newer code" is normal.** The number in `agentos/VERSION` moves only
+at a release; the code moves at every push. Between releases every update reads
+*still version 0.4.0, but newer code* — that is an update, not a no-op.
+
+**It will not ask you to stash `uv.lock` or the UI bundle.** Two tracked files are
+rewritten by this machine rather than by you: `uv.lock` (re-resolved by `uv sync` when
+your `uv` differs from the one that wrote it) and `agentos/ui/index.html` (rebuilt by
+`python -m agentos.ui.build`). An update restores them from git and says so, and its
+own dependency sync runs `uv sync --frozen` so it does not dirty the lockfile again.
+Only edits to other tracked files — your own work — are ever offered a stash.
+
+### Testing a fork
+
+Updates come from a repository and a branch, and both are settings:
+
+```bash
+bento update --repo you/bento-ai-os --branch my-feature   # from now on, follow this
+bento update --apply --switch                              # check the branch out and pull
+bento update --official                                    # back to the published one
+```
+
+`--repo` takes `owner/name` or a github.com URL. A fork gets its own git remote
+(`fork-<owner>`), so `origin` still points at where the install came from and going
+back is one command. `--switch` is needed once when the checkout is on a different
+branch than the one you now track; it refuses on a tree with your own edits, like
+every other pull here. The background check and Settings → Updates follow the same
+source, so a machine left on a fork keeps saying so.
+
 ## Managing the service
 
 Use `bento service`. It talks to whichever supervisor this machine actually has —

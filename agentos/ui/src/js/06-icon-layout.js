@@ -181,7 +181,11 @@ function renderBento(){
 function buildDesktop(){
   rebuildLaunchers();
   $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
-  $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
+  // Immersive: the deck leaves the desktop and the launcher button opens it as a
+  // wall (Launchpad) — one launcher, not a start menu beside an app wall
+  $('#startbtn').onclick=e=>{e.stopPropagation();
+    if(typeof immersiveOn==='function'&&immersiveOn()&&typeof deckFull==='function')deckFull(!(typeof DECKFULL!=='undefined'&&DECKFULL));
+    else toggleStart()};
   // closing on a click outside, and closing the context menu, is the popover
   // manager's job now (04e-popover.js) — one listener for every popover
   $('#desktop').addEventListener('contextmenu',e=>{
@@ -230,7 +234,7 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{

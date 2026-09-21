@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Movement: the plate under the watch movement that 01c-movement.js draws.
+       Dark graphite, brushed in one direction (Geneva stripes as bands), a
+       warm key light top-left and a vignette. Gradients only, no filters. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1c22"/><stop offset="0.5" stop-color="#101216"/><stop offset="1" stop-color="#08090c"/>
+    </linearGradient>
+    <linearGradient id="stripes" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.04" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.08" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.12" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.16" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.20" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.24" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.28" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.32" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.36" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.40" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.44" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.48" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.52" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.56" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.60" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.64" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.68" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.72" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.76" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.80" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.84" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.88" stop-color="#fff" stop-opacity="0.00"/><stop offset="0.92" stop-color="#fff" stop-opacity="0.028"/>
+      <stop offset="0.96" stop-color="#fff" stop-opacity="0.00"/><stop offset="1" stop-color="#fff" stop-opacity="0.028"/>
+    </linearGradient>
+    <radialGradient id="key" cx="0.18" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#e8c578" stop-opacity="0.16"/><stop offset="1" stop-color="#e8c578" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="0.66" cy="0.62" r="0.35">
+      <stop offset="0" stop-color="#e8c578" stop-opacity="0.07"/><stop offset="1" stop-color="#e8c578" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.6"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#plate)"/>
+  <rect width="1600" height="1000" fill="url(#stripes)"/>
+  <rect width="1600" height="1000" fill="url(#key)"/>
+  <rect width="1600" height="1000" fill="url(#warm)"/>
+  <rect width="1600" height="1000" fill="url(#vig)"/>
+</svg>

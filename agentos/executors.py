@@ -133,6 +133,8 @@ class Run:
     last: str = ""                 # what it is doing right now, in words
     dropped: int = 0               # stream events too large to read (see STREAM_LINE_LIMIT)
     saw_text: bool = False         # did any assistant text stream? decides the result fallback
+    tokens_in: int = 0             # from the result event's usage — what a mission row counts
+    tokens_out: int = 0
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -156,6 +158,17 @@ class Run:
 # The UI states this rather than implying totality.
 # Derived from the catalogue below, so adding an executor is one edit.
 ENGINES = ("aria", "claude-code", "hermes", "openclaw")
+# Executors that can run a MISSION: started with their native tools off and this
+# OS's tools served to them over MCP (mcpbridge.py), so every call passes the PDP.
+# Needs a CLI that takes an MCP config, a strict flag for it, and a tool allow-list
+# by server name — which is Claude Code today. Hermes and OpenClaw answer chats
+# only until they can be driven the same way; jobs.readiness() says so.
+MCP_ENGINES = ("claude-code",)
+
+
+def runs_missions(engine: str) -> bool:
+    """Can this executor be the brain of a flow, with our tools over the bridge?"""
+    return engine in MCP_ENGINES
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
@@ -1394,7 +1407,10 @@ def translate(event: dict, run: Run) -> list[dict]:
         out.append({"type": "engine_info", "engine": "claude-code",
                     "model": run.model,
                     "version": event.get("claude_code_version", ""),
-                    "tools": event.get("tools") or []})
+                    "tools": event.get("tools") or [],
+                    # which MCP servers the CLI connected, and whether — the run
+                    # bridge reads its own name here to know it was reached
+                    "mcp": event.get("mcp_servers") or []})
         # Between spawning the CLI and its first token there is a gap the user
         # watches with nothing on screen. This is the one moment we can name it:
         # the process is up, the wait from here on is the model's.
@@ -1440,6 +1456,12 @@ def translate(event: dict, run: Run) -> list[dict]:
     elif kind == "result":
         run.cost_usd = float(event.get("total_cost_usd") or 0.0)
         run.turns = int(event.get("num_turns") or 0)
+        usage = event.get("usage") or {}
+        if isinstance(usage, dict):
+            run.tokens_in = int(usage.get("input_tokens") or 0) + \
+                int(usage.get("cache_read_input_tokens") or 0) + \
+                int(usage.get("cache_creation_input_tokens") or 0)
+            run.tokens_out = int(usage.get("output_tokens") or 0)
         run.denials = list(event.get("permission_denials") or [])
         # The final answer is normally an `assistant` text block, already streamed —
         # emitting `result.result` on top of it would print the reply twice. But if
@@ -1506,6 +1528,7 @@ STREAM_LINE_LIMIT = 32 * 1024 * 1024
 # the cost of cutting off a real start is worse than a stall taking longer to
 # report. Still finite, because forever is a bug.
 STARTUP_TIMEOUT = 180.0
+_TRACE = os.environ.get("AGENTOS_EXEC_TRACE", "")
 
 
 async def _reap(proc) -> None:
@@ -1549,9 +1572,20 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     await emit({"type": "status",
                 "message": "starting up — waking the agent and its tools"})
 
+    return await _drive(build_command(task, env), env.workspace, emit, run)
+
+
+async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:
+    """Start the CLI with `cmd` and stream its events through `emit` until it exits.
+
+    The one subprocess loop for both kinds of run — a chat turn inside an envelope
+    (`run_task`) and a mission on the bridge (`run_on_bridge`) — so the startup
+    deadline, the oversized-line recovery and the exit reporting cannot drift
+    between them.
+    """
     proc = await asyncio.create_subprocess_exec(
-        *build_command(task, env),
-        cwd=env.workspace,
+        *cmd,
+        cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -1598,6 +1632,15 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
         text = line.decode(errors="replace").strip()
         if not text:
             continue
+        if _TRACE:
+            # Support switch: AGENTOS_EXEC_TRACE=<file> appends every raw stream
+            # line, so a run that "said delegate and stopped" can be read back
+            # exactly as the CLI reported it. Off unless asked for.
+            try:
+                with open(_TRACE, "a") as f:
+                    f.write(text + "\n")
+            except OSError:
+                pass
         try:
             event = json.loads(text)
         except json.JSONDecodeError:
@@ -1614,6 +1657,55 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
         await emit({"type": "error",
                     "message": err[:500] or f"the executor exited with {proc.returncode}"})
     return run
+
+
+# --- a mission on the bridge: the executor's model, this OS's hands -----------
+
+BRIDGE_SERVER = "bento"       # must match mcpbridge.SERVER_NAME: tools arrive as mcp__bento__<name>
+
+
+def build_bridge_command(task: str, system: str, url: str, token: str,
+                         budget_usd: float, model: str = "") -> list[str]:
+    """The argv for a run whose only tools are this OS's, over MCP.
+
+    Three flags are the whole confinement, and each one is load-bearing:
+    `--tools ""` switches every native tool off (no Read, no Bash, no WebFetch),
+    `--strict-mcp-config` ignores every MCP server the user's own Claude Code
+    config would otherwise add, and `--allowedTools mcp__bento` permits exactly
+    the bridge's tools — so `--permission-mode dontAsk` has nothing left to ask
+    about and refuses anything else outright. `--system-prompt` REPLACES the
+    CLI's own prompt: that one is written for a coding session with native
+    tools, and handed an orchestrator's persona on top of it the model reaches
+    for files it has not got.
+    """
+    exe = claude_exe() or "claude"
+    mcp = {"mcpServers": {BRIDGE_SERVER: {"type": "http", "url": url,
+                                          "headers": {"Authorization": f"Bearer {token}"}}}}
+    cmd = [exe, "--print", as_prose(task),
+           "--output-format", "stream-json", "--verbose",
+           "--tools", "",
+           "--strict-mcp-config", "--mcp-config", json.dumps(mcp),
+           "--allowedTools", f"mcp__{BRIDGE_SERVER}",
+           "--permission-mode", "dontAsk",
+           "--max-budget-usd", f"{max(0.05, float(budget_usd or 0)):.2f}",
+           "--system-prompt", system]
+    if model:
+        cmd += ["--model", model]
+    return cmd
+
+
+async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
+                        budget_usd: float = 0.0, model: str = "", cwd: str = "",
+                        run: Run | None = None) -> Run:
+    """Run one agent turn on the executor with the bridge as its only tool source."""
+    run = run or Run()
+    cwd = cwd or os.getcwd()
+    Path(cwd).mkdir(parents=True, exist_ok=True)
+    await emit({"type": "status",
+                "message": "starting Claude Code with this OS's tools — its own are off"})
+    return await _drive(build_bridge_command(task, system, url, token,
+                                             budget_usd or default_budget(), model),
+                        cwd, emit, run)
 
 
 def stop(run: Run) -> bool:

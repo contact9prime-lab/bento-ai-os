@@ -38,7 +38,14 @@ HEARTBEAT_PERSIST_EVERY = 6  # persist 1 of every N beats (avoid write spam)
 # What the master orchestrator is allowed to hold itself (see _master_tools). It plans
 # and aggregates; the roster acts. An orchestrator with hands does the work itself and
 # the roster never runs.
-MASTER_READONLY = ["recall", "kg_query"]
+MASTER_READONLY = ["recall", "kg_query", "brief_item"]
+# Appended to the system prompt of a run on the bridge: the executor sees our tools
+# under its MCP naming, and it must not go looking for the native ones it has not got.
+BRIDGE_NOTE = ("\n\nYOUR TOOLS: every tool you have is served by the MCP server "
+               "'bento' and appears as mcp__bento__<name> (for example "
+               "mcp__bento__delegate is `delegate`). You have NO file, shell or web "
+               "tools of your own in this run — only these. Use them by those names, "
+               "and when the mission is done, stop.")
 CONTEXT_BUDGET = 24_000     # chars of handle content handed to one child
 BOARD_BUDGET = 1_200        # chars of board index appended to every tool result
 
@@ -139,6 +146,122 @@ class ControlPlane(usersmod.Scoped):
         self.deliver = None
 
     # -- hierarchy: the control plane decides how smart each data plane is ----
+
+    # -- the executor as the brain of a flow ---------------------------------------
+
+    def _executor(self) -> str:
+        """The executor this flow's agents run on, or '' for the built-in loop.
+
+        Only an executor that can be driven through the bridge counts
+        (`executors.MCP_ENGINES`); a chat-only one leaves flows on the provider
+        model, and `jobs.readiness()` tells the user which case they are in."""
+        from . import executors
+        eng = executors.resolve_engine(self.cfg)
+        return eng if executors.runs_missions(eng) else ""
+
+    def _executor_label(self, engine: str) -> str:
+        from . import executors
+        return f"{engine}/{executors.executor_model(self.cfg, engine) or 'default'}"
+
+    async def _run_on_executor(self, agent, task: str, run_id: str, engine: str) -> dict:
+        """One agent turn — master or specialist — on the executor, through the bridge.
+
+        The Agent is built exactly as for the built-in loop (its principal, its
+        tool_filter, its taint, its emit); what changes is who thinks. Its tool
+        list is served over MCP, the executor is started with native tools off,
+        and every call comes back through `agent.call_tool` — the same gate, the
+        same ledger. Returns the shape `agent.run` returns, so nothing downstream
+        knows which loop ran."""
+        from . import executors, mcpbridge
+        agent._task_text = task
+        schemas = agent._tools()
+        token = mcpbridge.open_session(agent, schemas, run_id=run_id,
+                                       label=agent.principal.label,
+                                       max_calls=int(agent.cfg.get("max_steps", 25)))
+        # The port this server is actually LISTENING on, not the one in config:
+        # `bento serve --port N` binds N and leaves config alone, and the first
+        # real run built its URL from config, reached nothing, and reported
+        # "bridge failed" while the tokens were spent on a model with no tools.
+        import os as _os
+        port = int(_os.environ.get("AGENTOS_BOUND_PORT") or self.cfg.get("port", 8321) or 8321)
+        url = f"http://127.0.0.1:{port}/api/mcp/run/{token}"
+        collected: list[str] = []
+        errors: list[str] = []
+
+        async def sink(ev):
+            t = ev.get("type")
+            if t == "text_delta":
+                collected.append(ev.get("text", ""))
+            elif t == "error":
+                errors.append(str(ev.get("message") or "").strip())
+                await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
+                                                 "text": str(ev.get("message") or "")[:240]})
+            elif t == "engine_info":
+                # The one moment the bridge can be seen from outside: the CLI
+                # names the MCP servers it connected. A run whose only tool
+                # source did not connect has NO tools, and the honest outcome
+                # is an error now — not "ok" with the word "delegate" as its
+                # deliverable, which is what the first real run produced.
+                bridge = next((m for m in (ev.get("mcp") or [])
+                               if m.get("name") == executors.BRIDGE_SERVER), None)
+                status = (bridge or {}).get("status") or "absent"
+                await self._emit(run_id, "log", {
+                    "node_id": run_id, "level": "info" if status == "connected" else "error",
+                    "text": (f"{engine} {ev.get('model') or ''} · bridge {status} · "
+                             f"{len(ev.get('tools') or [])} tools")[:240]})
+                if status != "connected":
+                    errors.append(f"the run bridge did not connect (status: {status}) — "
+                                  f"{engine} had none of this OS's tools, so nothing it "
+                                  f"said could have been done")
+                    executors.stop(run)
+            # Reasoning and status reach the run stream; tool events do NOT — the
+            # gate already emits tool_start/tool_end for every call it sees, and a
+            # second copy from the CLI's own stream would count each step twice.
+            if t in ("text_delta", "thinking_delta", "error", "status"):
+                try:
+                    await agent.emit(ev)
+                except Exception:
+                    pass
+
+        system = (await agent._system(task)) + agent._tool_note + BRIDGE_NOTE
+        run = executors.Run()
+
+        async def abort_watch():
+            # `aborted` is set by the watchdog, by cancel(), and by `finish`. Give
+            # the CLI a moment to end on its own after finish — it has just been
+            # told the run is complete — then stop it. Every call after `aborted`
+            # is refused by the bridge anyway, so the wait costs nothing.
+            while not agent.aborted:
+                await asyncio.sleep(0.5)
+            for _ in range(40):
+                if run.proc is None or run.proc.returncode is not None:
+                    return
+                await asyncio.sleep(0.5)
+            executors.stop(run)
+
+        watcher = asyncio.create_task(abort_watch())
+        try:
+            env = executors.envelope_from(self.cfg, self.cfg.get("workspace", ""))
+            await executors.run_on_bridge(task, system, url, token, sink,
+                                          budget_usd=env.budget_usd,
+                                          model=executors.executor_model(self.cfg, engine),
+                                          cwd=env.workspace, run=run)
+        finally:
+            watcher.cancel()
+            mcpbridge.close_session(token)
+        tokens = {"input": int(run.tokens_in or 0), "output": int(run.tokens_out or 0)}
+        label = f"{engine}/{run.model}" if run.model else self._executor_label(engine)
+        if tokens["input"] or tokens["output"] or run.cost_usd:
+            # The spend lands in Usage like any other turn's — the mission row
+            # counts tokens, Usage prices them.
+            self.store.usage_add(label, tokens["input"], tokens["output"],
+                                 cost_usd=run.cost_usd or None, surface="task",
+                                 principal=agent.principal.label, kind="subagent",
+                                 conversation_id=agent.conversation_id or "",
+                                 space_id=agent.space_id or "")
+        steps = [{"type": "error", "message": e} for e in errors if e]
+        return {"content": "".join(collected), "steps": steps, "tokens": tokens,
+                "model": label}
 
     def resolve_model(self, defn: dict, step_override: str = "") -> str:
         model = step_override or (defn.get("model") or "") or self.cfg.get("default_model", "")
@@ -272,6 +395,9 @@ class ControlPlane(usersmod.Scoped):
         space_id: the space the delegating turn was in. A specialist working on a
         launch must see the launch's memory, not three clients' at once."""
         model = self.resolve_model(defn, model_override)
+        engine = self._executor()
+        if engine:
+            model = self._executor_label(engine)
         # a child that was not told its space inherits the delegating conversation's
         if not space_id and conversation_id:
             try:
@@ -346,13 +472,14 @@ class ControlPlane(usersmod.Scoped):
                  ("delegate", "run_workflow", "configure_agentos", "update_soul",
                   "develop_agentos", "restart_agentos")]
         # every data plane can stand on the OS's shoulders: skills + memory + knowledge
-        for t in ("use_skill", "recall", "kg_query", "remember"):
+        for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
             if t not in tools:
                 tools.append(t)
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
-                      principal=Principal("subagent", defn["name"]))
+                      principal=Principal("subagent", defn["name"]), flow=flow or "")
+        agent.run_id = run_id            # brief_item stamps the run it was written in
         if taint:
             # a child handed untrusted material inherits the ceiling that came with it:
             # the page does not become trustworthy by being passed along
@@ -376,7 +503,8 @@ class ControlPlane(usersmod.Scoped):
             # The approval window is only added when this run can actually pause; a run
             # that cannot ask a human keeps its old, tighter ceiling.
             result = await asyncio.wait_for(
-                agent.run([{"role": "user", "content": task}]),
+                (self._run_on_executor(agent, task, run_id, engine) if engine
+                 else agent.run([{"role": "user", "content": task}])),
                 timeout=budget.limit + (self._approval_ceiling() if escalate else 0) + 60)
             content = result.get("content") or ""
             trace = result.get("steps") or []
@@ -713,6 +841,9 @@ class ControlPlane(usersmod.Scoped):
             except Exception:
                 space_id = ""
         model = self.resolve_model({"name": name, "model": flow.get("model") or ""})
+        engine = self._executor()
+        if engine:
+            model = self._executor_label(engine)
         run_id = self.store.fabric_run_start(
             "flow", name, input_text or flow.get("mission", ""), model=model, space_id=space_id,
             conversation_id=conversation_id, flow=name,
@@ -793,7 +924,8 @@ class ControlPlane(usersmod.Scoped):
                       extra_system=self._master_persona(flow), tool_filter=tool_names,
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("flow", name),
-                      surface=origin.get("surface") or "gui")
+                      surface=origin.get("surface") or "gui", flow=name)
+        agent.run_id = run_id
         agent.taint.extend(taint)
         state["agent"] = agent          # so `finish` can end the turn (see t_finish)
         if agent_slot is not None:
@@ -808,20 +940,27 @@ class ControlPlane(usersmod.Scoped):
         _k.turn_started()
         try:
             result = await asyncio.wait_for(
-                agent.run([{"role": "user", "content": opening}]),
+                (self._run_on_executor(agent, opening, run_id, engine) if engine
+                 else agent.run([{"role": "user", "content": opening}])),
                 timeout=budget.limit + self._approval_ceiling() + 60)
             content = state["final"] or result.get("content") or ""
             tk = result.get("tokens") or {}
             usage["in"], usage["out"] = tk.get("input", 0), tk.get("output", 0)
             if state.get("finished"):
                 status = "ok"           # it said it was done; a child's failure is folded in below
+            elif any(s.get("type") == "error" for s in result.get("steps", [])):
+                status, fault = "error", next((s["message"] for s in result["steps"]
+                                               if s.get("type") == "error"), "")
             elif budget.remaining() <= 0:
                 status, fault = "timeout", f"exceeded max_seconds={int(budget.limit)} of working time"
             elif agent.aborted:
                 status = "cancelled"
-            elif any(s.get("type") == "error" for s in result.get("steps", [])):
-                status, fault = "error", next((s["message"] for s in result["steps"]
-                                               if s.get("type") == "error"), "")
+            elif state["delegations"] == 0:
+                # It neither delegated nor called finish: whatever text it left is
+                # not a deliverable. Saying "ok" here is how a run that answered
+                # with one word read as a success on the Missions row.
+                status, fault = "error", ("the orchestrator ended without delegating or "
+                                          "finishing — nothing was done")
         except asyncio.TimeoutError:
             agent.aborted = True
             status, fault = "timeout", f"exceeded max_seconds={int(budget.limit)}"

@@ -89,7 +89,7 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <span class="tright"><button class="cp-btn" data-ic="sparkles" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
     <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);
@@ -434,7 +434,7 @@ function listFilter(scope,q){
 }
 function emptyBox(title,hint,action,askApp,askPrompt){
   // every empty state is an invitation: the ✦ chip opens this app's copilot
-  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
   return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
 }
 /* open (if needed) an app + its copilot panel, prefill and send */

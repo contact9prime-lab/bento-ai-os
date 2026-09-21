@@ -447,3 +447,55 @@ def test_the_real_overflow_gate_holds_the_hook_and_honours_a_forever_release(tmp
         srv._hook_overflowing(store, "trig-flood", "nightly", "1.2.3.4")
     assert store.quarantined("hook", "trig-flood") is None, \
         "a hook released forever must not be re-held by the next burst"
+
+
+# ---------------------------------------------------------------------------
+# Weekly: the schedule a week's work is looked back on
+# ---------------------------------------------------------------------------
+
+def test_a_weekly_trigger_lands_on_that_weekday_at_that_time(sched):
+    """'Every Friday at 17:00' has to mean exactly that, and mean it again the week
+    after — the reschedule is what a standing report actually runs on."""
+    import datetime
+    from agentos.scheduler import _next_weekly
+    s, store, _ = sched
+    flow, _ = flowsmod.save(store, {
+        "name": "weekly-note", "mission": "Sum up the week.", "roster": ["researcher"],
+        "permissions": {"memory": "read-space"},
+        "triggers": [{"kind": "cron", "config": {"type": "weekly", "day": "fri", "at": "17:00"}}]})
+    trig = store.flow_triggers("weekly-note")[0]
+    assert trig["config"] == {"type": "weekly", "day": 4, "at": "17:00"}
+    task = [t for t in store.list_tasks() if t["id"] == trig["task_id"]][0]
+    assert task["schedule_type"] == "weekly" and task["weekday"] == 4 and task["at_time"] == "17:00"
+    nxt = datetime.datetime.fromtimestamp(task["next_run"])
+    assert nxt.weekday() == 4 and (nxt.hour, nxt.minute) == (17, 0)
+    assert task["next_run"] > time.time()
+    # and again, a week on
+    s._reschedule(task, "done")
+    again = [t for t in store.list_tasks() if t["id"] == task["id"]][0]
+    after = datetime.datetime.fromtimestamp(again["next_run"])
+    assert after.weekday() == 4 and again["next_run"] > task["next_run"] - 1
+    assert (again["next_run"] - task["next_run"]) < 8 * 86400
+    # pure function: walking from any moment lands within a week, on the day
+    for wd in range(7):
+        t = _next_weekly("09:30", wd, time.time())
+        d = datetime.datetime.fromtimestamp(t)
+        assert d.weekday() == wd and (d.hour, d.minute) == (9, 30) and 0 < t - time.time() <= 7 * 86400
+
+
+@pytest.mark.parametrize("day,expect", [("monday", 0), ("Fri", 4), ("sun", 6), ("3", 3), ("", 4)])
+def test_a_weekday_is_read_from_a_name_a_prefix_or_a_number(day, expect):
+    assert flowsmod._weekday(day) == expect
+
+
+def test_a_weekday_nobody_can_read_is_refused_in_words():
+    with pytest.raises(ValueError, match="day of the week"):
+        flowsmod._weekday("someday")
+    with pytest.raises(ValueError, match="day of the week"):
+        flowsmod._validate_trigger({"kind": "cron", "config": {"type": "weekly", "day": "xx"}})
+
+
+def test_two_weeklies_on_different_days_are_different_triggers():
+    a = flowsmod._canonical("cron", {"type": "weekly", "day": 0, "at": "08:00"})
+    b = flowsmod._canonical("cron", {"type": "weekly", "day": 4, "at": "08:00"})
+    assert a != b

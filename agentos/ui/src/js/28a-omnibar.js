@@ -16,6 +16,7 @@ function omniPresence(){
   const live=n===1?actLine([...RUNNING][0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
+             :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
              :`Ask ${agentName()} anything — or press Ctrl+Space`;
   if(inp.placeholder!==want)inp.placeholder=want;   // once a second, only when it changed
 }
@@ -109,9 +110,13 @@ function omniDefaultIdx(q,direct){
 function omniPaint(){
   const list=$('#omnilist');if(!list)return;
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
-  list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
+  // section labels between groups (actions · apps · on this machine · ask):
+  // emitted always, shown by the immersive look — see .omni-sec
+  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.nat?'On this machine':'More';
+  let last='';
+  list.innerHTML=OMNI.matches.map((it,i)=>{const k=kind(it);const sec=k!==last?`<div class="omni-sec">${k}</div>`:'';last=k;return sec+`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
     ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
-    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
+    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`}).join('')
     +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{
@@ -199,18 +204,9 @@ function omniShots(){
   box.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();OMNI.imgs.splice(+b.dataset.i,1);omniShots()});
 }
 function omniAddImage(fileOrUrl){
-  const done=u=>{if(OMNI.imgs.length>=4)return toast('up to 4 images');OMNI.imgs.push(u);omniShots()};
+  const done=u=>{if(OMNI.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images`);OMNI.imgs.push(u);omniShots()};
   if(typeof fileOrUrl==='string')return done(fileOrUrl);
-  const img=new Image();
-  img.onload=()=>{   // downscale big screenshots so a turn stays light
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    done(sc<1||fileOrUrl.size>800000?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);
-  };
-  img.src=URL.createObjectURL(fileOrUrl);
+  downscaleImage(fileOrUrl,done);     // the one downscale every surface uses (04a-copilot.js)
 }
 async function omniShoot(){
   if(!cap('screen.capture').available)return toast('screen capture is not available here');
@@ -265,9 +261,8 @@ async function omniAsk(q){
   if(shot){shot.innerHTML='▣';shot.onmousedown=e=>{e.preventDefault();omniShoot()}}
   // paste or drop an image straight onto the bar
   inp.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();items.forEach(it=>omniAddImage(it.getAsFile()));
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(omniAddImage);
   });
   ['dragover','drop'].forEach(ev=>bar.addEventListener(ev,e=>{
     if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;

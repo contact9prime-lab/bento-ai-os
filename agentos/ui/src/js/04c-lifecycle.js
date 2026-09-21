@@ -91,6 +91,7 @@ function applyWindowActivity(){
   // question in different words.
   document.body.classList.toggle('has-win',
     [...WM.wins.values()].some(w=>!w.min&&(typeof deskVisible!=='function'||deskVisible(w))));
+  if(typeof immersiveWinChange==='function')immersiveWinChange();
   WM.wins.forEach(w=>{
     const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
     w._awake=on;

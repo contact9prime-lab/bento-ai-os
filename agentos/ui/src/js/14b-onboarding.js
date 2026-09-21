@@ -320,10 +320,10 @@ var OB_PANES={
       <button class="endbtn" id="ob-flow-run">Create it and run it now</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
 
-  schedule:s=>`<p class="mut">Pick something for this machine to do without being asked.
-      These are the same job recipes as the Jobs app — one catalogue, so what you set
-      up here is editable there.</p>
-    <div id="ob-jobs"><p class="mut">Reading the recipes…</p></div>`,
+  schedule:s=>`<p class="mut">Say who you are, then pick something for this machine to do
+      without being asked. These are the same missions as the Missions app — one
+      catalogue, so what you set up here is editable there.</p>
+    <div id="ob-jobs"><p class="mut">Reading the missions…</p></div>`,
 
   channel:s=>`<p class="mut">Same conversation, same memory, same approval prompts —
       on your phone. Pick one; you can add the other later.</p>
@@ -703,18 +703,13 @@ var OB_WIRE={
     const box=$('#ob-jobs');if(!box)return;
     if(typeof jobsLoad!=='function'){box.innerHTML='<p class="mut">Jobs are unavailable.</p>';return}
     await jobsLoad();
-    box.innerHTML=jobCards(JOBS.pick)+'<div class="job-slot"></div>';
-    box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-      const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-      JOBS.pick=r.id;
-      box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-      const slot=box.querySelector('.job-slot');
-      slot.innerHTML=jobForm(r);
-      jobWire(slot,r,res=>{
-        obMsg(`${res.flow.name} — runs ${res.next||'when you say so'}`,'ok');
-        setTimeout(()=>obRefresh(true),1100);
-      });
-    });
+    box.innerHTML=jobReadyLine()+jobPersonaBar()+'<div class="job-catalogue">'+jobCards(JOBS.pick)+'</div><div class="job-slot"></div>';
+    box._jobAfter=(slot,res)=>{
+      obMsg(`${res.flow.name} — runs ${res.next||'when you say so'}`,'ok');
+      setTimeout(()=>obRefresh(true),1100);
+    };
+    jobPickable(box,box._jobAfter);
+    jobWirePersona(box,()=>jobRedrawCards(box));
   },
 
   channel(){

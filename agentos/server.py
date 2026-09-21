@@ -31,6 +31,11 @@ from . import users as usersmod
 from . import knowledge
 from . import providers
 from . import remote as remotemod
+from . import mcpbridge
+from . import accounts as accountsmod
+from . import brief as briefmod
+from . import mail as mailmod
+from . import calendars as calendarsmod
 from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
@@ -796,6 +801,8 @@ async def api_update_status(check: bool = False):
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "branch": updmod.conf(cfg).get("branch"),
+            "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
+            "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
             "enabled": updmod.conf(cfg).get("enabled", True)}
 
 
@@ -2307,6 +2314,11 @@ async def api_get_config():
     if cfg.get("telegram", {}).get("bot_token"):
         cfg["telegram"]["bot_token"] = "•••" + cfg["telegram"]["bot_token"][-4:]
         cfg["telegram"]["_has_token"] = True
+    for acct in ("mail", "calendar"):
+        # an app password is a credential to somebody's whole mailbox: never echoed
+        if (cfg.get(acct) or {}).get("password"):
+            cfg[acct]["password"] = "•••"
+            cfg[acct]["_has_password"] = True
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
@@ -3109,6 +3121,148 @@ def _peer_owner(key: str):
             if name or problem != "unknown key":
                 return uid, ucfg, name, problem
     return "", mach, "", "unknown key"
+
+
+# ---- The Brief: what the missions produced, as things to act on (brief.py) ----
+
+@app.get("/api/brief")
+async def api_brief(day: str = ""):
+    store = state["store"]
+    pg = briefmod.page(store, day)
+    pg["headline"] = briefmod.headline(pg["counts"])
+    pg["spoken"] = briefmod.spoken(pg["items"])
+    return pg
+
+
+@app.post("/api/brief/{bid}/act")
+async def api_brief_act(bid: str, body: dict):
+    """Done / Later / Reopen, or a decision — which is handed back to the agent as
+    a turn with the item as its whole context, so 'counter at $20' becomes the
+    drafted reply without the person opening a chat."""
+    store = state["store"]
+    action = str((body or {}).get("action") or "")
+    choice = str((body or {}).get("choice") or "")
+    try:
+        item = briefmod.act(store, bid, action, choice)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    out = {"ok": True, "item": item}
+    if action == "decide":
+        # The answer is a whole agent turn — a minute or more on a forwarded brain —
+        # so the tap returns NOW with the decision recorded, and the turn runs behind
+        # it: a phone that waits on a POST for two minutes has already given up.
+        # `create_task` copies the context, so the turn stays the person's.
+        # The result arrives as a `brief` event (`answered`) with the reply's id.
+        out["started"] = True
+        state["brief_turns"] = state.get("brief_turns") or set()
+        task = asyncio.create_task(_brief_answer(bid, item, choice))
+        state["brief_turns"].add(task)
+        task.add_done_callback(state["brief_turns"].discard)
+        if (body or {}).get("wait"):            # the CLI and tests: one call, the answer in it
+            await task
+            out["item"] = store.brief_get(bid) or item
+            out["conversation_id"] = out["item"].get("answer_cid", "")
+            out["answer"] = (getattr(task, "answer", "") or "")[:2000]
+    await state["broadcast"]({"type": "brief", "id": bid, "action": action})
+    return out
+
+
+async def _brief_answer(bid: str, item: dict, choice: str) -> None:
+    store = state["store"]
+    prompt = briefmod.decide_prompt(item, choice)
+    try:
+        cid, text = await state["scheduler"].run_prompt(
+            prompt, origin="brief", title=f"Brief · {item.get('title', '')[:40]}",
+            space_id=item.get("space_id") or "")
+    except Exception as e:                       # the item keeps its decision; the person is told
+        cid, text = "", f"could not run the answer: {e}"
+    store.brief_set(bid, answer_cid=cid or "")
+    asyncio.current_task().answer = text or ""
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "brief", "id": bid, "action": "answered",
+                                  "title": item.get("title", ""), "conversation_id": cid or "",
+                                  "answer": (text or "")[:300]})
+
+
+# ---- Accounts: the mailbox and the calendar the person lets this machine read ----
+#
+# Not channels: nothing arrives through them. The agent reads them on the person's
+# behalf, every read is a decision in the ledger, and the credential is theirs
+# (USER_KEYS), masked on every read. "Set up" is PROBED — the card shows the last
+# real sign-in, never a green dot for a filled form.
+
+@app.get("/api/accounts")
+async def api_accounts():
+    return {"accounts": accountsmod.state(state["cfg"])}
+
+
+@app.put("/api/accounts/{aid}")
+async def api_account_save(aid: str, body: dict):
+    cfg = state["cfg"]
+    ok, msg = accountsmod.save(cfg, aid, body or {})
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    cfgmod.save_config(cfg)
+    return {"ok": True, "message": msg,
+            "account": next(a for a in accountsmod.state(cfg) if a["id"] == aid)}
+
+
+@app.post("/api/accounts/{aid}/test")
+async def api_account_test(aid: str):
+    """Sign in (mail) or fetch the next week (calendar), and remember the outcome
+    on the account so the Missions catalogue and the card agree about whether
+    this can be used."""
+    cfg = state["cfg"]
+    if aid == "mail":
+        res = await asyncio.to_thread(mailmod.test_login, cfg)
+    elif aid == "calendar":
+        res = await calendarsmod.test_access(cfg)
+    else:
+        return JSONResponse({"error": f"no such account: {aid}"}, status_code=404)
+    accountsmod.record_test(cfg, aid, res)
+    cfgmod.save_config(cfg)
+    return {"ok": bool(res.get("ok")), "detail": res.get("detail", ""),
+            "account": next(a for a in accountsmod.state(cfg) if a["id"] == aid)}
+
+
+@app.post("/api/mcp/run/{token}")
+async def api_mcp_run(token: str, request: Request):
+    """The run bridge: this OS's tools, for one flow run, to the executor that is
+    running it (mcpbridge.py). The door is thin on purpose — loopback, the token
+    twice, then hand the message to the bridge, which owns the session and the
+    gate."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "the run bridge answers only this machine"},
+                            status_code=403)
+    auth = request.headers.get("authorization") or ""
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if mcpbridge.get(token) is None or not secrets.compare_digest(bearer, token):
+        return JSONResponse({"error": "unknown or expired run token — this bridge answers "
+                                      "only the run it was minted for, and only while it "
+                                      "runs"}, status_code=401)
+    try:
+        msg = await request.json()
+    except Exception:                                              # noqa: BLE001
+        return JSONResponse({"jsonrpc": "2.0", "id": None,
+                             "error": {"code": -32700, "message": "not JSON"}})
+    if isinstance(msg, list):                 # a JSON-RPC batch
+        out = []
+        for m in msg:
+            _code, body = await mcpbridge.handle(token, m)
+            if body is not None:
+                out.append(body)
+        return JSONResponse(out) if out else Response(status_code=202)
+    code, body = await mcpbridge.handle(token, msg)
+    if body is None:
+        return Response(status_code=code)
+    return JSONResponse(body, status_code=code)
+
+
+@app.delete("/api/mcp/run/{token}")
+async def api_mcp_run_end(token: str, request: Request):
+    """A client ending its MCP session. The session is the RUN's, not the
+    client's, so this acknowledges and changes nothing."""
+    return Response(status_code=200)
 
 
 @app.post("/api/agent/mcp")
@@ -5077,6 +5231,11 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     sinks = flow.get("sinks") or [{"kind": "origin"}]
     surface = origin.get("surface") or run.get("origin_surface") or ""
     done = []
+    # What the run put into the Brief. When there are items, THEY are the
+    # delivery — counts and the things that need the person, with buttons where
+    # the surface has them — and the prose goes to the report as the long form.
+    items = state["store"].brief_for_run(run.get("id", "")) if run.get("id") else []
+    digest = briefmod.digest(items, flow["name"]) if items else ""
     for sink in sinks:
         kind = sink.get("kind")
         if kind == "origin":
@@ -5086,7 +5245,10 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
             sink = {**sink, "chat_id": origin.get("chat_id") or run.get("origin_ref") or 0}
         try:
             head = f"▲ {flow['name']} · {run.get('status', '')}"
-            if kind == "telegram" and state.get("telegram"):
+            if kind == "telegram" and state.get("telegram") and items:
+                await state["telegram"].send_brief(digest, briefmod.telegram_rows(items),
+                                                   int(sink.get("chat_id") or 0) or None)
+            elif kind == "telegram" and state.get("telegram"):
                 await state["telegram"].send(f"{head}\n\n{text}",
                                              int(sink.get("chat_id") or 0) or None)
             elif kind == "whatsapp" and state.get("whatsapp"):
@@ -5099,7 +5261,8 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
                     state["store"].log("error", f"flow '{flow['name']}': {res}",
                                        {"flow": flow["name"], "sink": "whatsapp"})
             elif kind == "notify":
-                await state["toolbox"].notify(head, text[:200])
+                await state["toolbox"].notify(head, (briefmod.headline(briefmod.counts_of(items))
+                                                     if items else text[:200]))
             elif kind == "report":
                 await state["toolbox"].save_report(
                     f"{flow['name']} — {time.strftime('%d %b %H:%M')}", text,
@@ -5112,7 +5275,8 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
                 await state["broadcast"]({"type": "flow_done", "flow": flow["name"],
                                           "run_id": run.get("id", ""),
                                           "status": run.get("status", ""),
-                                          "preview": text[:400]})
+                                          "preview": text[:400],
+                                          "brief": briefmod.counts_of(items) if items else None})
                 kind = "gui"
             done.append(kind)
         except Exception as e:
@@ -5377,7 +5541,12 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # browser with a cookie. Its defence lives in api_agent_mcp —
                      # the key compared in constant time, an in-memory guess
                      # ceiling, and a PDP decision (ledger row included) per take.
-                     "/api/agent/mcp")
+                     "/api/agent/mcp",
+                     # The run bridge: an executor (a child process of THIS server)
+                     # calling this OS's tools over MCP for one flow run. Loopback
+                     # only, a per-run token in the URL and as Bearer, forgotten
+                     # when the run ends — see mcpbridge.py.
+                     "/api/mcp/run/")
 
 
 def _client_addr(request: Request) -> str:
@@ -7768,9 +7937,29 @@ async def api_jobs(request: Request):
     running. One request, because the first-run screen needs all three at once and a
     wizard that renders in three waves is a wizard that flickers."""
     cfg = state["cfg"]
-    return {"recipes": [r.as_dict() for r in jobsmod.RECIPES],
+    persona = jobsmod.persona_of(cfg)
+    return {"recipes": [r.as_dict() for r in jobsmod.recipes_for(persona)],
+            "personas": jobsmod.PERSONAS,
+            "persona": persona,
             "deliveries": jobsmod.deliveries(cfg),
-            "installed": jobsmod.installed(state["store"])}
+            "ready": jobsmod.readiness(cfg),
+            "accounts": accountsmod.readiness(cfg),
+            "installed": jobsmod.installed(state["store"]),
+            "summary": jobsmod.summary(state["store"])}
+
+
+@app.put("/api/jobs/persona")
+async def api_jobs_persona(body: dict):
+    """Who is asking — founder, coder, consultant — recorded per person (`persona`
+    is a USER_KEY) so the catalogue opens on their missions from then on."""
+    cfg = state["cfg"]
+    try:
+        p = jobsmod.set_persona(cfg, (body or {}).get("persona", ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    return {"ok": True, "persona": p,
+            "recipes": [r.as_dict() for r in jobsmod.recipes_for(p)]}
 
 
 @app.post("/api/jobs/preview")
@@ -8445,7 +8634,7 @@ async def api_add_task(body: dict):
     msg = state["scheduler"].create_task(
         body.get("prompt", ""), body.get("schedule_type", "once"),
         int(body.get("interval_minutes") or 0), body.get("at_time", ""),
-        int(body.get("delay_minutes") or 0))
+        int(body.get("delay_minutes") or 0), weekday=int(body.get("weekday", -1) or -1))
     return {"ok": True, "message": msg}
 
 

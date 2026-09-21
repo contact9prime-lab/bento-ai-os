@@ -31,16 +31,19 @@ const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="$
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
+// [id, glyph, label, icon]: the glyph is the standard desktop's, the icon
+// (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
-  ['ai','✦','AI providers'],
-  ['agent','◈','Agent'],
-  ['executors','⇥','Executors'],
-  ['channels','◇','Channels'],
-  ['locale','◐','Locale'],
-  ['keys','⌘','Shortcuts'],
-  ['voice','◉','Voice'],
-  ['look','◧','Appearance'],
-  ['system','⚙','System'],
+  ['ai','✦','AI providers','sparkles'],
+  ['agent','◈','Agent','agent'],
+  ['executors','⇥','Executors','executors'],
+  ['channels','◇','Channels','channels'],
+  ['accounts','✉','Accounts','accounts'],
+  ['locale','◐','Locale','locale'],
+  ['keys','⌘','Shortcuts','keys'],
+  ['voice','◉','Voice','voice'],
+  ['look','◧','Appearance','look'],
+  ['system','⚙','System','system'],
 ];
 let SETTAB=localStorage.getItem('settab')||'ai';
 
@@ -54,8 +57,8 @@ async function renderSettings(body){
               one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
-          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi">${ic}</span>${esc(label)}</button>`).join('')}</div>
+        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span>${esc(label)}</button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
     </div>`;
@@ -156,6 +159,11 @@ function setTab(body,all){
     P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Not channels — nothing arrives through them; the agent reads them on your behalf, every read is a decision in the ledger, and the password never leaves this machine.</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar imap caldav ics gmail outlook icloud fastmail app password"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
+  }
   if(want('agent')){
     P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
     P.push(pGroup('Identity',[
@@ -229,6 +237,29 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* A look laid over the theme, not a theme: it is a switch here rather than
+       a card in the gallery so that it composes with whichever theme is on.
+       Applied the moment it is flipped, like the theme select above — Save is
+       for the machine's settings, and this one lives in this browser. */
+    P.push(pGroup('Immersive experience',[
+      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+        {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
+             +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
+             +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
+             +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
+         f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
+      /* The second scene draws the machine's own moving parts. Its cost is
+         stated in the row, and so is the terminal's answer: none. */
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it']],
+          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
+        {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
+             +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
+             +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
+             +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
+             +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
+         f:'scene movement watch automatic aurora wallpaper live'}),
+    ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
@@ -265,6 +296,14 @@ function setTab(body,all){
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+      // Where updates come from is a setting, so a fork under test is followed
+      // here, by the background check and by `bento update` alike.
+      pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
+          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
+          <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
+        </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
+        {desc:'The repository and branch updates are pulled from. Point it at a fork to test one; `bento update --official` or the fields above put it back. A fork gets its own git remote — origin is never rewritten.',
+         f:'update source repository fork branch remote'}),
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
@@ -289,6 +328,10 @@ function setTab(body,all){
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
   const th=main.querySelector('#s-theme');
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
+  const im=main.querySelector('#s-imm');
+  if(im)im.onchange=()=>setImmersive(im.checked);
+  const sc=main.querySelector('#s-imm-scene');
+  if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#v-voice'))settingsVoices();
@@ -349,6 +392,12 @@ async function paintVersion(check){
   try{d=await (await fetch('/api/update'+(check?'?check=true':''))).json()}catch(e){
     el.textContent='could not check';return}
   const sw=document.getElementById('s-upd-on'); if(sw)sw.checked=d.enabled!==false;
+  const rp=document.getElementById('s-upd-repo'),br=document.getElementById('s-upd-branch'),srcNote=document.getElementById('s-upd-src');
+  if(rp&&document.activeElement!==rp)rp.value=d.repo||'';
+  if(br&&document.activeElement!==br)br.value=d.branch||'';
+  if(srcNote)srcNote.textContent=d.official===false
+    ?`a fork — pulled from git remote '${d.remote||''}'; origin still points at the official repository`
+    :'the official repository';
   const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
@@ -518,6 +567,10 @@ async function saveSettings(){
      again with the page-wide Save is a second writer for one setting, and the
      one that wins is whichever ran last. */
   if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
+  const urp=document.getElementById('s-upd-repo'),ubr=document.getElementById('s-upd-branch');
+  if(urp||ubr){patch.updates=patch.updates||{};
+    if(urp&&urp.value.trim())patch.updates.repo=urp.value.trim();
+    if(ubr&&ubr.value.trim())patch.updates.branch=ubr.value.trim();}
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
   if(document.getElementById('s-exec-on')!==null){

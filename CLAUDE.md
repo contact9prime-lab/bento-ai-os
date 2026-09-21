@@ -285,17 +285,47 @@ Definition-time permissions become real `grants` rows with `source='definition'`
 hand-written grant and a definition one can read identically and reconciliation must never
 revoke somebody's deliberate decision.
 
-## Jobs are flows, and that is the whole design
+## Missions are flows, and that is the whole design
 
 `agentos/jobs.py` is a recipe catalogue and nothing else. It turns a recipe plus two or
 three answers into a flow definition and hands it to `flows.save`. There is no job
 engine, no job scheduler and no job permission model — a job that could do something a
-flow cannot would be a second set of bugs in each of those.
+flow cannot would be a second set of bugs in each of those. On screen and in the CLI's
+words it is a **mission** — the app is Missions, `bento job` is the verb — and in the
+code it is `job` (the `flows.job` column, `/api/jobs`); the divergence is deliberate, the
+same as Workflows/`flows`, and a flow's `mission` text is exactly what a mission gives it.
 
 It exists because the gap between "installed" and "useful" is where this OS is lost. The
 first-run wizard used to end on a door onto an empty desktop; it now ends on "give me a
 job", and the last button is "run it now, so I can see it work" — a schedule nobody has
 watched fire is a promise, and a new user has no reason to believe one.
+
+**The first question is who is asking.** The catalogue is organised by persona —
+founder, coder, consultant — because "what should this machine do for you" has a
+different answer for each, and a list that opens with disk space is a list a founder
+closes. `recipes_for(persona)` is a filter over ONE catalogue (theirs first, then
+everybody's, then the rest), never a subset; `persona` is a USER_KEY. Full story in
+`docs/missions.md`. Four things it found on the way, each now pinned by `tests/test_jobs.py`:
+
+- **A recipe's specialists must be able to CALL what the flow grants.** The flow grants
+  the roster `tool.use`, but a subagent only calls the tools on its own list — so the
+  first page-watch rostered the researcher, granted `remember`, and the researcher never
+  remembered. `ROSTER` (engineer, analyst, watcher) exists for this and `ensure_roster`
+  creates them idempotently, because `seed_builtins` returns early once ANY subagent
+  exists and a year-old machine would never get them.
+- **A recipe that remembers declares `memory="read-write"`.** `read-space` writes a
+  memory.write DENY for the roster, which turned "compare with last time" into a
+  comparison against nothing. The test checks every recipe that grants `remember`.
+- **A mission runs through the gate or not at all, and the surface says which BEFORE the
+  Run button.** `readiness(cfg)` is that sentence. Found by installing one on a machine
+  whose brain was Claude Code with no provider and reading `ConnectError` in the row —
+  which is what led to the run bridge (next section): on an executor that can take this
+  OS's tools over MCP a mission runs on it; on one that cannot (Hermes, OpenClaw today) it
+  needs a provider model, and the banner says so with the fix.
+- **The app is the VALUE surface.** `installed()` carries each mission's last outcome in
+  its own words, this week's runs and tokens, and the permissions it holds; `summary()` is
+  derived from those rows so the header cannot disagree with them. Tokens are counted,
+  cost is not claimed — that number lives in Usage, priced per row.
 
 Three things must stay true:
 
@@ -312,6 +342,90 @@ Three things must stay true:
 Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the same
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
+
+## The Brief: a mission delivers ITEMS a person acts on, never a message
+
+`agentos/brief.py` is how a mission's result reaches somebody, and it is the reason
+missions are worth reading on the third morning. A mission's specialists call
+`brief_item` — needs_you / decide / fyi / done, with who, by when, a draft, the source
+and for a decision the choices — and the person gets ONE living page a day with hands on
+every item: the Brief app, the home scene's line, the phone stack, a Telegram message
+with buttons, "Read it", and `bento brief`. Full story in `docs/brief.md`. Five things
+have to stay true:
+
+- **The mission and run on an item are the AGENT's, never the model's.** `agent.py`
+  injects `_flow`/`_run_id` from `self.flow`/`self.run_id` after the model's args, and
+  `execute()` keeps those two only for `brief_item`. `tests/test_brief.py` forges them
+  and checks they are overwritten — a model that could name a mission could file under
+  somebody else's.
+- **A re-run UPDATES by key; a person's Done is never undone by a run.** `brief_upsert`
+  keys on (mission, key) and leaves `state` alone on update. The recipes say the key is
+  the mail or event uid; the first live run keyed on slugs, which is why `BRIEF_LINE`
+  now spells it out.
+- **A decision is a TURN, and the tap returns at once.** `/api/brief/{id}/act` records
+  the decision, then runs `decide_prompt` through `scheduler.run_prompt` in a task
+  (`_brief_answer`) and broadcasts `brief`/`answered` with the conversation id. The first
+  cut awaited the turn inside the POST — a minute or more on a forwarded brain, which a
+  phone has given up on. `wait: true` is for the CLI and the tests. The Telegram bridge
+  does the same behind its poll loop, and reaches the scheduler through the TOOLBOX
+  (`toolbox.scheduler`) — the bridge has none of its own.
+- **A decided item stays in view; only Done is "handled".** The desktop, the phone and
+  `bento brief` all apply that one rule, so the reply lands where the question was.
+  `reopen` clears the decision AND the reply.
+- **The Brief's state is created by whichever file reaches it first.** The home scene
+  (`01b`) calls `briefLoad()` before `24b-brief.js` has run; `var BRIEF={…}` there
+  threw inside that early call and then wiped what it had loaded. Both sides now create
+  it if it is missing and never re-create it — the bundle-order trap in a new shape.
+
+Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
+rows with the server down. Option labels cut at a word (`_short`) because a button that
+reads "higher seat cou" is a choice nobody can read back.
+
+## Accounts: the mailbox and the calendar are read FOR the person, and that is not a channel
+
+`agentos/mail.py` (IMAP, and SMTP gated apart), `agentos/calendars.py` (an ICS address or
+CalDAV) and `agentos/accounts.py` (the one shape Settings, `bento mail`/`bento calendar`
+and the Missions catalogue read). Full story in `docs/accounts.md`. An account is the
+channel rules' mirror image — nothing arrives through it; the agent reads it on the
+person's behalf — and six things keep that honest:
+
+- **Reads are their own actions** (`mail.read`, `calendar.read`; `policy.TOOL_ACTIONS`),
+  never `tool.use` strings, and `flows.declared_grants` reads that table so a mission that
+  grants `mail_search` also grants `mail.read` — without that row the specialist is
+  refused the tool it was given, and the consent block never says "reads your mail".
+  They are SAFE in `risk_of` on purpose: risky put them under the taint ceiling, and the
+  second message read in a triage asked for a human, unattended. What protects the mailbox
+  is `PDP._default`'s own rule — a non-user principal reads it only inside a flow that
+  declared it (`account-undeclared`) — not the risk table.
+- **Definition grants apply only inside their own flow's run** (`PDP._matching(flow=)`,
+  carried by `Agent.flow` into every decision). A specialist is shared between flows and
+  each writes its envelope onto the same principal, so the deny rows one flow wrote
+  (memory read-space) refused the same specialist inside another flow that declared
+  read-write — found live: inbox-triage's `remember` refused "by meeting-prep".
+- **Sending is `mail.send`, risky, and in `ALWAYS_ASK`.** A draft in a report and a message
+  in somebody's inbox are not the same consequence. No recipe grants it; the test says so.
+- **Reading never changes anything.** Every IMAP fetch is `BODY.PEEK` and the mailbox is
+  opened read-only; there is no tool that marks, moves, deletes or creates. The test reads
+  the wire for `PEEK` and the absence of `STORE`.
+- **Mail is untrusted content.** `mail_search`, `mail_read` and `calendar_events` are in
+  `UNTRUSTED_TOOLS` — anyone can send you a message, and an invitation's description is
+  the inviter's — so the taint ceiling holds risky steps back for the rest of the turn, and
+  the `assistant` specialist's soul says an instruction inside a message is something to
+  REPORT.
+- **"Set up" is probed.** The card and the catalogue read `last_test`, written by a real
+  sign-in (`test_login` / `test_access`), and a mission that `wants` an account is greyed
+  with the sentence and refused at the save until that probe succeeded — the OS-event
+  trigger rule again. `optional` accounts are dropped from the flow's tools AND named in
+  the mission text, so a specialist never hunts for a tool it was not granted.
+- **App passwords, not OAuth, and the presets say so in one sentence.** Every provider
+  issues one without registering an application anywhere; the commonest failure is the
+  login password pasted where an app password goes, and `PRESETS[...]["hint"]` is the
+  sentence that stops it, shown on the card and appended to a refused sign-in.
+
+`mail` and `calendar` are USER_KEYS by the strongest version of the test — a mailbox is
+somebody's — and `/api/config` masks the passwords. IMAP TLS is decided by port
+(`ssl: None` → everything but 143 is IMAPS); a plain server on loopback, which is what
+the tests run, sets `ssl: False` explicitly.
 
 ## A channel is one AgentOS owns end to end
 
@@ -363,6 +477,47 @@ Three things that will bite whoever touches this next:
   forbids. Say "you install it, I will use it" rather than guessing.
 - **An executor OWNS its models.** See the next section: one picker, and the model
   list belongs to whatever is answering.
+
+## The run bridge: an executor's model, this OS's hands
+
+A chat turn forwarded to Claude Code is fenced by an ENVELOPE — which directory, which of
+its own tools, how much money — fixed before the run. A mission cannot live inside that:
+its consent block ("reads this folder and nothing else", "may fetch these three pages") is
+a promise about every step, and the executor's native Read / Bash / WebFetch never reach
+this PDP. So a flow on an executor brain was impossible, and `readiness()` said so.
+
+`agentos/mcpbridge.py` is the other answer. When a flow's master or a specialist runs on an
+executor, the CLI is started with `--tools ""` (every native tool off), `--strict-mcp-config`
+(nothing from the user's own MCP config) and `--allowedTools mcp__bento` (exactly one
+server: the bridge, bound to that one run), and every tool it can see is ours — the run's
+`delegate`/`finish`, or the tools the flow granted — arriving over HTTP at
+`/api/mcp/run/<token>` and going through **`Agent.call_tool`**, which is the run loop's
+tool step lifted into a method so both loops pass ONE gate. The model is the executor's;
+the ledger row, the log line and the taint mark are the same ones a built-in turn gets.
+`tests/test_mcpbridge.py` runs a whole flow through it with a fake CLI and checks the
+audit rows. Five things are load-bearing:
+
+- **The token is minted per run, carried twice (URL + Bearer), loopback-only, and gone at
+  `close_session`.** It names an in-process Agent; there is no row to replay. The route
+  is in `REMOTE_OPEN_PATHS` because the caller is a child process with no cookie, and its
+  whole defence is that list of four.
+- **The tool list is the Agent's own** (`agent._tools()`): the flow's `tool_filter` and
+  the PDP's visibility check decide what the executor even sees; a call for anything
+  else is refused BY NAME so the model can correct itself.
+- **The step ceiling is the bridge's** (`max_calls` = the flow's `max_steps`), because the
+  executor's loop is not ours to bound. After `finish` sets `aborted`, every further call
+  is refused and the CLI is given twenty seconds to end on its own before it is stopped —
+  killing it on the spot lost the `result` event and with it the cost.
+- **`--system-prompt` REPLACES the CLI's prompt** (never `--append-system-prompt` here):
+  its own is written for a coding session with native tools, and handed an orchestrator's
+  persona on top of it the model reaches for files it has not got. `BRIDGE_NOTE` tells it
+  the tools arrive as `mcp__bento__<name>`.
+- **Tool events come from the gate, not from the CLI's stream.** `_run_on_executor`'s sink
+  forwards text, thinking, status and errors only; a second `tool_start` from the CLI's
+  own stream counted every step twice.
+
+`executors.MCP_ENGINES` is the list of executors that can be driven this way — Claude
+Code today — and `runs_missions()` is the one question every surface asks.
 
 ## OpenClaw plugins: the lifecycle is ours, the runtime is not
 
@@ -871,6 +1026,70 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
   fine; module *state* is not.
 
 ---
+
+## The immersive look is a MODE over the theme, not a theme
+
+`body.immersive` (`01b-immersive.js` owns the switch, `20-immersive.css` is every rule, Settings →
+Appearance is the only door) lays materials, depth and motion over whichever theme is on. Full
+reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things that have to stay true:
+
+- **Every rule is scoped to the body class**, and every colour is mixed from the theme's tokens
+  (`--txt`, `--bg2`, `--acc`), never written as a white or a black. That is what lets one file hold
+  up on Dracula and on Ember (light) alike, and what keeps the beta opt-in: a selector that escapes
+  the prefix restyles the standard desktop for everybody. `tests/test_immersive.py` checks it.
+- **It adds exactly one blurred surface — the active window — and that is the whole cost.** Measured
+  with five windows open in software-rendered Chromium: 16.7ms a frame without it, 83ms with it,
+  while the deck, dock and menu-bar blurs together cost nothing measurable. So `glass-lite`
+  (the probe's first step down) drops THAT blur and keeps everything else, at a 94% tint so nothing
+  beneath reads through unblurred — 16.7ms again. `glass-off` still wins outright.
+- **The active tint floor is 88%.** At 76% the text of the window underneath read through the
+  blur in a stacked screenshot — the 16-glass failure ("four windows of text legible through each
+  other"). Depth on a dark wallpaper comes from the active window being LIGHTER (bg3 falling to bg,
+  a lit title bar), not from a black shadow nobody can see.
+- **The parallax is a transform on the wallpaper layer**, throttled to a frame, never armed on a
+  touch screen or under reduced motion, and never a filter — a filter over the whole screen would
+  be re-run on every frame the wallpaper moves.
+
+Its wallpaper ranks BELOW a theme's own and above the wizard's preset: the theme designed its scene,
+the look only dresses whatever is there — and it follows the hour (dawn / day / night), reloading
+only when the band changes, because a wallpaper swapping under an open window every minute is a bug.
+
+The ground-up pass added four more things that are easy to undo by accident:
+
+- **The kit is the classes the apps already share.** `.endbtn`, `.pact`, `.item`, `.catcard`,
+  `.apptop`, `.phead`, `.seg`, `.psw`, `.prow`… are restyled once under `body.immersive`, and the
+  field rule uses `:where()` — the plain `:not()` chain had specificity (0,5,1), out-ranked
+  `.psearch input`, and put the magnifier over the placeholder in every search box. A new app that
+  invents its own button class is a new app the look does not reach.
+- **Icons are `data-ic`, glyphs stay.** `00d-icons.js` (`UI_ICONS` — `ICONS` is the app-icon table
+  in `01-app-icons.js`) is drawn here, nothing copied. A glyph button carries `data-ic="name"`; the
+  look swaps it and keeps the glyph in `data-gl` so switching back is byte-for-byte; a
+  MutationObserver catches what apps render later and what is rewritten in place (`#omni-shot`).
+  Emit both forms (the Settings rail, `.omni-sec`, `#cs-toggle`) and let CSS choose, rather than
+  branching markup on the look.
+- **The scene yields to windows, and the bar's caret goes with it.** `#home` and the deck are
+  CSS-hidden under `has-win`/`deck-full`; the bar stands down unless `.summoned`/`.pop`/busy.
+  The wall hands focus back to the bar when it closes, which kept the bar up through
+  `:focus-within` and would have swallowed keystrokes meant for the window —
+  `immersiveWinChange()` (called from `applyWindowActivity`) drops the caret. The launcher
+  button opens the wall in this look and the start menu otherwise; both stay.
+- **Movement (the second scene) is a canvas that draws only what can be seen.** `01c-movement.js`:
+  ≤20 fps by a dt gate on requestAnimationFrame (never setInterval), no frame at all when
+  `document.hidden`, under `has-fullwin`, or under a maximised window, one still frame under
+  reduced motion, and no filter or canvas shadow (a shadow is a blur). It is ONE dial turning once
+  an hour with the machine's events stamped on it — the first cut, an exploded watch movement with
+  gears and a rotor, was "weird"; one slow dial is what read — and its parts are the machine's:
+  RUNNING drives the activity ring and the soul's breath, `turn_start`/`turn_end` open and close an
+  arc, `tool_start`/`fabric_event`/`flow_done` stamp a tick or light a flow's mark, `/api/flows`
+  once a minute — so it must never poll for the sake of animation. It rides inside `#wall` (the parallax carries it) with `pointer-events:none`.
+  01c loads after 01b, so `applyImmersive` returns before touching `MOVEMENT` at first paint and
+  01c starts itself — found because `openApp` threw "APPS before initialization" on every load.
+- **The drawer's button sits above the drawer** (`z-index:4`), or it can never close it — measured:
+  the open drawer intercepted every click on the button underneath. On a phone the sidebar is
+  `display:none!important`; the drawer rule re-shows it only while open. The OS's own agent was asked to judge it (three rounds,
+Claude Code reading the screenshots from the workspace); its first two fixes — a lit top edge and a
+shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
+ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
 
 ## Window chrome: the rules that keep a stack readable
 

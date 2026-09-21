@@ -32,7 +32,7 @@
     <button id="fwdchip" hidden onclick="openModelSettings()"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
-    <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
+    <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
 <div id="powermenu">
@@ -77,6 +77,13 @@
   <div id="jarvis-shell"></div>
   <div id="custom-shell"></div>
   <div id="icons"></div>
+  <!-- the home scene (immersive look only): a greeting, what the agent is up to,
+       and three things to try under the prompt bar. Hidden the moment a window
+       opens — the desktop is then wallpaper and dock, nothing else. -->
+  <div id="home" hidden>
+    <div class="hm-greet"><div class="hm-hi"></div><div class="hm-date"></div></div>
+    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div></div>
+  </div>
   <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
        #desktop is position:fixed, which creates a stacking context, so a deck
        outside it would paint over every window regardless of z-index. -->
@@ -91,9 +98,9 @@
     <div id="omni-orb" title="your agent"></div>
     <div id="omnilist"></div>
     <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
-    <button id="omni-shot" title="Attach a screenshot"></button>
+    <button id="omni-shot" data-ic="camera" title="Attach a screenshot"></button>
     <button id="omni-mic" title="Voice"></button>
-    <button id="omni-chat" title="Open Chat">⤢</button>
+    <button id="omni-chat" data-ic="expand" title="Open Chat">⤢</button>
   </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>

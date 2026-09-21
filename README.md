@@ -306,7 +306,7 @@ with the numbers, is [docs/design/ux-review-2026-09.md](docs/design/ux-review-20
 
 | | |
 |---|---|
-| ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
+| ![Chat with the AI agent — streaming replies, tool calls, and approvals](docs/screenshots/chat.png) **Agent Chat** — talk to your machine; streaming replies, tool cards, approvals, voice. Paste, drop or snap a screenshot on any agent surface — Chat, the prompt bar, the ✦ panel in every app — so it can see the problem | ![Team app — subagents, workflows, and observability](docs/screenshots/team.png) **Team** — specialist subagents and visual workflows, with per-step model mixing |
 | ![Built-in documentation app rendering the full manual](docs/screenshots/docs.png) **Docs** — the full manual lives inside the OS | ![App store — one-click apps, skills, and MCP channels](docs/screenshots/store.png) **Store** — one-click apps, skills, and MCP tool channels |
 
 ### Several people, one machine
@@ -377,6 +377,12 @@ a few KB each, sharp from a phone to a 4K panel. [More →](docs/desktop.md#them
 Glass is the most expensive thing a desktop can draw, and the cost compounds with every window you
 open. **Themes → Effects** measures your machine and turns it down only if it has to — five windows
 in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
+
+**Immersive experience (beta)** — one switch in Settings → Appearance lays a ground-up look over
+whichever theme is on: a home scene with a greeting and the prompt bar, the app wall behind the
+dock, glass on the window you are working in, an icon set and a control kit across every app, a
+Spotlight-style launcher, Chat as a modern client, and a wallpaper that follows the day. It costs
+one blurred surface, and the Effects knob still turns it down. [More →](docs/desktop.md#immersive-experience-beta)
 
 ### It reaches you where you already are
 
@@ -707,7 +713,7 @@ loop, and that is the state worth being able to see.
 | `uv run bento installer` | detect this distro and set up the Linux session (**SUI**) |
 | `uv run bento doctor` / `doctor --session` | environment check / what can draw the desktop here |
 | `uv run bento service status \| start \| stop \| restart \| logs \| uninstall` | the background server, on whatever supervisor this OS has |
-| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart |
+| `uv run bento update` / `update --apply` | check for a newer version / pull, sync, test and restart — `--repo you/fork --branch x` follows a fork, `--official` goes back |
 | `uv run bento config [key] [value]` | read or change `~/.agentos/config.json` (`--edit`, `--path`) |
 | `uv run bento remote --port 8080 --bind 0.0.0.0` | the address it answers on, saved to the config |
 | `uv run bento serve --if-running open\|port\|restart\|fail` | what to do when one is already running (default: ask) |

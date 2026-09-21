@@ -35,6 +35,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
 #omnilist .palitem{position:relative}
+.omni-sec{display:none}   /* the immersive look shows the group labels */
 #omnilist .palitem .ptext{flex:1;min-width:0}
 #omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);
@@ -336,6 +337,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
 .prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
 .prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}
+.prefs-side .psi svg{display:none}   /* the immersive look shows this instead of the glyph */
 .prefs-main{flex:1;min-width:0;overflow-y:auto;padding:22px 26px 30px}
 .prefs-main > h2{font-size:var(--fs-xl);font-weight:750;margin-bottom:4px}
 .prefs-main > .lead{font-size:var(--fs-md);color:var(--dim);margin-bottom:18px;max-width:62ch;line-height:1.5}
@@ -450,3 +452,38 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-group:hover .deck-fold{opacity:1}
 .deck-fold:hover{color:var(--txt);background:rgba(255,255,255,.08)}
 body.dev-mobile .deck-group.folded{min-width:0}
+/* the copilot composer: an attachment strip above the input, then input + buttons */
+.cp-inbar{flex-wrap:wrap;align-items:center}
+.cp-inbar .cp-in{flex:1 1 120px;min-width:0}
+/* A tool card is `overflow:hidden`, which strips the automatic minimum size a
+   flex item otherwise keeps — so the moment a long turn made the feed taller
+   than the panel, every card was squeezed to its 2px border while the text
+   bodies (overflow visible) kept their height. Measured on a real Claude Code
+   turn: `.tool` at h=2. The feed scrolls; its children never shrink. */
+.cp-feed>*{flex:none}
+
+/* ---- rearranging: drag a tile, drag a group ---- */
+.deck-gname[data-g]{cursor:grab}
+body.deck-dragging{cursor:grabbing;user-select:none}
+body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
+/* the element left in the flow is the LANDING SLOT — it keeps its size, so the
+   tiles around it settle into the arrangement you are about to get */
+.deck-tile{position:relative}
+.deck-tile.dragging,.deck-group.dragging{opacity:.25;filter:grayscale(1)}
+.deck-ghost{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;margin:0;
+  opacity:.95;transform:scale(1.04) rotate(-1.5deg);transform-origin:center;
+  box-shadow:var(--el-5);border-radius:var(--r-lg);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.deck-group.deck-ghost{padding:8px 10px 10px}
+/* a folded group can still take a tile: it says so, and opens when it does */
+.deck-group.dropinto{outline:2px dashed var(--acc);outline-offset:2px;background:var(--bg3)}
+/* a hidden app, on the wall where it can be found and put back */
+.deck-tile.hidden-app{opacity:.42}
+/* `.deck-tile{position:relative}` has to be declared BEFORE `.deck-ghost`, or it
+   wins on source order and the floating clone lands at the end of the body
+   instead of under the pointer. */
+.deck-tile.hidden-app::after{content:'hidden';position:absolute;top:2px;right:4px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;color:var(--dim2)}
+.deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--dim2);opacity:.75}
+@media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}

@@ -35,6 +35,29 @@ def _next_daily(at_time: str, after: float) -> float:
     return dt.timestamp()
 
 
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def _next_weekly(at_time: str, weekday: int, after: float) -> float:
+    """The next `weekday` (0=Monday … 6=Sunday) at `at_time`, strictly after `after`.
+
+    Built on `_next_daily` so the two agree about the time of day: the daily one
+    is the next occurrence of HH:MM, and the weekly one walks forward from it a day
+    at a time until the weekday matches — at most six steps, never a DST arithmetic
+    of its own."""
+    try:
+        wd = int(weekday)
+    except (TypeError, ValueError):
+        wd = 0
+    wd = wd % 7
+    ts = _next_daily(at_time, after)
+    for _ in range(7):
+        if datetime.datetime.fromtimestamp(ts).weekday() == wd:
+            return ts
+        ts = _next_daily(at_time, ts)
+    return ts
+
+
 class Scheduler(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast):
         """broadcast(event) -> awaitable: pushes events to all connected UI clients."""
@@ -49,8 +72,14 @@ class Scheduler(usersmod.Scoped):
         self._idle_fired: dict = {}   # trigger task id -> last-turn ts it fired against
 
     def create_task(self, prompt: str, schedule_type: str, interval_minutes: int = 0,
-                    at_time: str = "", delay_minutes: int = 0) -> str:
+                    at_time: str = "", delay_minutes: int = 0, weekday: int = -1) -> str:
         now = time.time()
+        if schedule_type == "weekly":
+            at_time = at_time or "09:00"
+            wd = int(weekday) % 7 if weekday is not None and int(weekday) >= 0 else 0
+            tid = self.store.add_task(prompt, "weekly", None, at_time,
+                                      _next_weekly(at_time, wd, now), weekday=wd)
+            return f"scheduled task {tid}: every {WEEKDAYS[wd].capitalize()} at {at_time}"
         if schedule_type == "interval":
             interval = max(1, int(interval_minutes)) * 60
             tid = self.store.add_task(prompt, "interval", interval, None, now + interval)
@@ -251,6 +280,9 @@ class Scheduler(usersmod.Scoped):
             updates["next_run"] = now + (task["interval_seconds"] or 3600)
         elif task["schedule_type"] == "daily":
             updates["next_run"] = _next_daily(task["at_time"] or "09:00", now)
+        elif task["schedule_type"] == "weekly":
+            updates["next_run"] = _next_weekly(task["at_time"] or "09:00",
+                                               task.get("weekday", 0) or 0, now)
         elif task["schedule_type"] == "trigger":
             pass  # event-driven: stays enabled, next_run stays NULL
         else:

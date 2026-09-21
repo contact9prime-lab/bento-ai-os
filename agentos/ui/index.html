@@ -544,6 +544,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .conv .del:hover{color:var(--err)}
 .cmain{flex:1;display:flex;flex-direction:column;min-width:0}
 #topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+#cs-toggle{display:none}   /* the immersive look's drawer button */
 #modelsel{max-width:240px;font-size:var(--fs-sm);padding:5px 8px;flex:1}
 #autosel{font-size:var(--fs-sm);padding:5px 8px}
 #chat{flex:1;overflow-y:auto;padding:18px 0 10px;user-select:text}
@@ -764,6 +765,18 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
   background:var(--acc);color:#04211c;min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
+/* ---- attached images: one strip on every agent surface ---- */
+.att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}
+.att-strip.on{display:flex}
+.att{position:relative;width:64px;height:64px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);flex:none}
+.att img{width:100%;height:100%;object-fit:cover;display:block}
+.att button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:var(--fs-sm);line-height:1;cursor:pointer}
+.att-sent{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.att-sent img{height:72px;max-width:160px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--hairline)}
+.cp-inbar .att-strip{padding:6px 0 0;width:100%}
+.cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
+.cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+#composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -1516,6 +1529,7 @@ body.omni-pop #omnicards{opacity:0;pointer-events:none;transition:opacity var(--
 #omnilist .palitem.ask .pl{color:var(--acc)}
 #omnilist .palitem.sel.ask .pl{color:var(--txt)}
 #omnilist .palitem{position:relative}
+.omni-sec{display:none}   /* the immersive look shows the group labels */
 #omnilist .palitem .ptext{flex:1;min-width:0}
 #omnilist .palitem .pl,#omnilist .palitem .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #omnilist .palitem .ok{flex:none;font-size:var(--fs-2xs);font-weight:600;color:var(--dim2);
@@ -1817,6 +1831,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
 .prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
 .prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}
+.prefs-side .psi svg{display:none}   /* the immersive look shows this instead of the glyph */
 .prefs-main{flex:1;min-width:0;overflow-y:auto;padding:22px 26px 30px}
 .prefs-main > h2{font-size:var(--fs-xl);font-weight:750;margin-bottom:4px}
 .prefs-main > .lead{font-size:var(--fs-md);color:var(--dim);margin-bottom:18px;max-width:62ch;line-height:1.5}
@@ -1931,6 +1946,41 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .deck-group:hover .deck-fold{opacity:1}
 .deck-fold:hover{color:var(--txt);background:rgba(255,255,255,.08)}
 body.dev-mobile .deck-group.folded{min-width:0}
+/* the copilot composer: an attachment strip above the input, then input + buttons */
+.cp-inbar{flex-wrap:wrap;align-items:center}
+.cp-inbar .cp-in{flex:1 1 120px;min-width:0}
+/* A tool card is `overflow:hidden`, which strips the automatic minimum size a
+   flex item otherwise keeps — so the moment a long turn made the feed taller
+   than the panel, every card was squeezed to its 2px border while the text
+   bodies (overflow visible) kept their height. Measured on a real Claude Code
+   turn: `.tool` at h=2. The feed scrolls; its children never shrink. */
+.cp-feed>*{flex:none}
+
+/* ---- rearranging: drag a tile, drag a group ---- */
+.deck-gname[data-g]{cursor:grab}
+body.deck-dragging{cursor:grabbing;user-select:none}
+body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
+/* the element left in the flow is the LANDING SLOT — it keeps its size, so the
+   tiles around it settle into the arrangement you are about to get */
+.deck-tile{position:relative}
+.deck-tile.dragging,.deck-group.dragging{opacity:.25;filter:grayscale(1)}
+.deck-ghost{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;margin:0;
+  opacity:.95;transform:scale(1.04) rotate(-1.5deg);transform-origin:center;
+  box-shadow:var(--el-5);border-radius:var(--r-lg);background:var(--glass-tint);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.deck-group.deck-ghost{padding:8px 10px 10px}
+/* a folded group can still take a tile: it says so, and opens when it does */
+.deck-group.dropinto{outline:2px dashed var(--acc);outline-offset:2px;background:var(--bg3)}
+/* a hidden app, on the wall where it can be found and put back */
+.deck-tile.hidden-app{opacity:.42}
+/* `.deck-tile{position:relative}` has to be declared BEFORE `.deck-ghost`, or it
+   wins on source order and the floating clone lands at the end of the body
+   instead of under the pointer. */
+.deck-tile.hidden-app::after{content:'hidden';position:absolute;top:2px;right:4px;
+  font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;color:var(--dim2)}
+.deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--dim2);opacity:.75}
+@media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -2417,6 +2467,64 @@ body.glass-off .win{background:var(--bg)!important}
 .wa-line.ok{color:var(--ok)}
 .wa-line.warn{color:var(--warn)}
 .wa-row{display:flex;align-items:center;gap:var(--sp-2)}
+
+/* ---- who is asking ----
+   One row of chips; the choice is the first thing on every mission surface.
+   `--tap` sized on a phone (17-jobs is inside the touch rules of 15-responsive
+   through .job-p's min-height), and the row scrolls rather than wrapping into
+   three lines above the cards. */
+.job-who{display:flex;gap:8px;flex-wrap:wrap;margin:var(--sp-2) 0 var(--sp-3)}
+.job-p{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--hairline);background:var(--bg2);color:var(--txt);font-size:var(--fs-sm);font-weight:600;
+  transition:border-color var(--d-fast) var(--ease-out),background var(--d-fast) var(--ease-out)}
+.job-p:hover{border-color:var(--hairline-strong);background:var(--bg3)}
+.job-p.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,var(--bg2));
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.job-p-ic{font-size:var(--fs-base);line-height:1;opacity:.8}
+.job-grp{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;
+  margin:var(--sp-3) 0 calc(-1 * var(--sp-2))}
+.job-worth{font-size:var(--fs-sm);color:var(--txt);line-height:1.45;opacity:.85}
+.job-q textarea{width:100%;min-height:72px;resize:vertical;font:inherit;font-size:var(--fs-sm);line-height:1.5}
+.job-q select{width:100%}
+
+/* ---- the value line and the rows ----
+   What the missions DID, not what is scheduled: a status word, how long ago, and
+   the first sentence of what the run said. */
+.job-sum{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:10px 14px;margin:0 0 var(--sp-3);
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--bg2);font-size:var(--fs-sm);color:var(--dim)}
+.job-sum b{color:var(--txt);font-size:var(--fs-base)}
+.job-sum .job-bad,.job-last.bad b{color:var(--warn)}
+.job-last.ok b{color:var(--ok)}
+.job-last q{quotes:"“" "”";color:var(--txt);opacity:.85}
+.job-name{font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim2);margin-left:6px}
+.job-live{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:var(--fs-xs);font-weight:600;
+  color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);animation:jobpulse 1.6s ease-in-out infinite}
+@keyframes jobpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.job-live{animation:none}}
+.job-row.off{opacity:.6}
+.job-row{flex-wrap:wrap}
+.job-row .grow{min-width:220px}
+@media (max-width:640px){
+  .job-who{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .job-p{flex:0 0 auto;scroll-snap-align:start;min-height:var(--tap)}
+  .job-row .endbtn{min-height:var(--tap)}
+}
+
+/* Can it run here? Said before the button, never after the failure. */
+.job-ready{margin:0 0 var(--sp-3)}
+.job-notready{display:flex;flex-direction:column;gap:6px;padding:10px 14px;margin:0 0 var(--sp-3);
+  border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--warn) 8%,var(--bg2));font-size:var(--fs-sm);color:var(--dim);line-height:1.55}
+.job-notready b{color:var(--warn)}
+.job-notready em{font-style:normal;color:var(--txt)}
+.job-notready .endbtn{align-self:flex-start}
+
+/* A mission whose account is not set up: greyed, still there, and its card is the
+   door to Settings → Accounts. */
+.job-card.needs{opacity:.62}
+.job-card.needs:hover{opacity:.85}
+.job-needs{font-size:var(--fs-xs);color:var(--warn);line-height:1.45}
+.acct-hint{white-space:pre-line}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -2708,6 +2816,571 @@ body.glass-off .win{background:var(--bg)!important}
   border-radius:var(--r-md);background:var(--bg2);padding:8px 10px;font-size:var(--fs-sm)}
 .upd-log div{padding:2px 0;line-height:1.5;overflow-wrap:anywhere}
 .upd-log code{color:var(--acc,#5eead4);margin-right:6px}
+/* ================= immersive experience (beta) =================
+   One body class, `immersive`, switched from Settings → Appearance and kept
+   per browser like the theme (01b-immersive.js owns the switch; this file is
+   every rule). It is a LOOK laid over whatever theme is on — materials, depth,
+   radius, type, colour in Settings, a wallpaper that follows the pointer — and
+   deliberately not a theme: a theme owns its hues, and an immersive Dracula
+   should still be Dracula. Every colour here is therefore mixed from the theme's
+   own tokens (`--txt`, `--bg2`, `--acc`) rather than written as a white or a
+   black, which is also what makes one set of rules hold up in a light theme.
+
+   Numbered 20 so it loads after the themes' base CSS and after 16-glass, whose
+   `body.glass-off` rules it must still lose to — the one blurred surface this
+   look adds (the focused window) has to switch off with the rest on a machine
+   that cannot draw it. 02-themes injects its own <style> later in the head, so
+   a theme that sets a window background with !important still wins there; that
+   is correct, the theme designed that window.
+
+   What it costs, measured with five windows open on the default theme in the
+   headless Chromium the tests use: one more backdrop-filter than the standard
+   desktop (the ACTIVE window; the inactive ones stay opaque, the 16-glass
+   convention), and a transform on the wallpaper layer that is composited, not
+   painted. The parallax is off on touch and under prefers-reduced-motion.
+
+   Faces: GUI and SUI are this file. TUI — not applicable: a terminal has no
+   wallpaper, no glass and no shadows, and the switch says so in its own text. */
+
+/* ---- the design system: tokens first ----
+   Every size in the shell is a token (--fs-*, --r-*, --el-*), so the scale is
+   set once here and thirty apps reflow with it. Body goes 14 → 15px and the
+   small sizes lift with it: 10/11px labels are the "dense 1995 form" tell, and
+   on a 2x phone screen they are also below what a thumb can target the label
+   of. Radii go up one step everywhere; elevation gets a deeper ladder. */
+body.immersive{
+  --fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-base:15px;
+  --fs-lg:17px;--fs-xl:22px;--fs-2xl:28px;--fs-3xl:40px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:22px;
+  --el-1:0 1px 2px rgba(0,0,0,.28);
+  --el-2:0 3px 10px rgba(0,0,0,.32),0 1px 2px rgba(0,0,0,.24);
+  --el-3:0 10px 30px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.26);
+  --el-4:0 22px 60px rgba(0,0,0,.46),0 4px 12px rgba(0,0,0,.28);
+  --el-5:0 40px 100px rgba(0,0,0,.56),0 10px 24px rgba(0,0,0,.32);
+  --d-fast:140ms;--d-base:220ms;--d-slow:340ms;--d-slower:520ms;
+  --ease-spring:cubic-bezier(.3,1.35,.5,1);
+  font-size:var(--fs-base);
+  font-feature-settings:"cv11","ss03";letter-spacing:-.004em}
+body.immersive .prefs-main > h2,body.immersive #welcome h1,body.immersive .sawh,body.immersive .ob-pane h1{letter-spacing:-.022em}
+body.immersive .win .tname{font-weight:600;font-size:var(--fs-md);letter-spacing:-.006em}
+body.immersive #tbclock .tm{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ---- the wallpaper: alive, and with grain ---- */
+body.immersive #desktop::after{display:none}
+body.immersive #wall{will-change:transform;transition:transform .55s var(--ease-out);transform:scale(1.04)}
+body.immersive #wall.has::after{background:linear-gradient(rgba(4,5,12,.02),rgba(4,5,12,.22))}
+:root[data-theme=light] body.immersive #wall.has::after{background:linear-gradient(rgba(250,249,248,.06),rgba(250,249,248,.22))}
+/* film grain: a 160px noise tile, drawn once and repeated — not a filter over
+   the whole screen, which would be re-run on every frame the wallpaper moves */
+body.immersive #wall.has::before{content:'';position:absolute;inset:-4%;opacity:.055;pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+
+/* the Movement scene's canvas lives inside #wall so the parallax carries it;
+   it never takes a pointer, and the grain sits under it, the scrim over it */
+body.immersive #movement{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
+body.immersive.imm-movement #wall.has::before{opacity:.035}
+
+/* ---- menu bar: a strip of the wallpaper, not a bar over it ---- */
+body.immersive #menubar{background:color-mix(in srgb,var(--bg2) 34%,transparent);
+  backdrop-filter:blur(44px) saturate(1.9);-webkit-backdrop-filter:blur(44px) saturate(1.9);
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 -.5px 0 rgba(255,255,255,.04)}
+body.immersive #mb-brand{font-weight:700}
+body.immersive #mb-brand .mark{box-shadow:0 1px 3px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.4)}
+body.immersive #mbmenus button:hover,body.immersive .pgb:hover,body.immersive #tray-ctl:hover,
+body.immersive #tray-voice:hover,body.immersive #tray-bell:hover,body.immersive #tray-power:hover{background:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
+body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
+body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
+
+body.immersive #fwdchip{background:color-mix(in srgb,var(--txt) 9%,transparent);color:var(--txt);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  box-shadow:none;font-weight:600;padding:2px 10px 2px 8px}
+body.immersive #fwdchip::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px var(--acc);margin-right:2px}
+body.immersive #fwdchip .fwdmdl{border-left-color:color-mix(in srgb,var(--txt) 20%,transparent);opacity:.65}
+body.immersive #fwdchip.nobrain::before{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+body.immersive #mbapp{font-weight:650;font-size:var(--fs-sm)}
+body.immersive #mbmenus button{font-size:var(--fs-sm)}
+/* Control Centre: tiles, the way a control centre reads, instead of a form */
+body.immersive #ccpop{width:400px;padding:0}
+body.immersive #ccpop .pad{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+body.immersive #ccpop .cc-owned,body.immersive #ccpop .provbox:nth-of-type(1),body.immersive #ccpop .provbox:nth-of-type(2),body.immersive #ccpop > .pad > .row{grid-column:1/-1}
+body.immersive #ccpop .provbox{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);font-weight:650}
+body.immersive #ccpop .cc-owned{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:var(--fs-xs)}
+body.immersive #ccpop > .pad > .row{flex-wrap:wrap}
+
+/* ---- windows: the one you are in is glass, the rest recede ---- */
+body.immersive .win{border-radius:16px;border-color:color-mix(in srgb,var(--txt) 10%,transparent);
+  box-shadow:0 12px 40px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.35);
+  transition:box-shadow var(--d-slow) var(--ease-out),border-color var(--d-slow) var(--ease-out),background var(--d-slow) var(--ease-out)}
+/* 88%, measured: at 76% the text of the window underneath still read through
+   the blur in a stacked screenshot — four windows of text legible through each
+   other is the failure 16-glass.css names, and it is worse than an opaque
+   window. The wallpaper's colour still comes through at 88%; words do not. */
+/* The active window is also a LIGHTER surface than the ones behind it (bg3 at
+   the top falling to bg), because on a dark wallpaper a black shadow under a
+   black window is invisible — round two of the agent's critique: "depth exists
+   only on the desktop layer, not where you actually work". Lightness is what
+   reads; the shadow is there for the light themes. */
+body.immersive .win.active{background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 88%,transparent),color-mix(in srgb,var(--bg) 88%,transparent));
+  backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);
+  border-color:color-mix(in srgb,var(--txt) 18%,transparent);
+  box-shadow:0 44px 120px rgba(0,0,0,.72),0 14px 34px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.16)}
+/* Measured with five windows open in software-rendered Chromium: this one blur
+   is the whole cost of the look — 83ms a frame with it, 16.7ms without, while
+   the deck, dock and menu bar blurs together cost nothing measurable. So the
+   "reduced" level from Themes → Effects (which the probe reaches first) drops
+   THIS blur and keeps the rest: the window stays tinted, at 94% so nothing
+   beneath reads through unblurred, and the desktop is back at 60fps. */
+body.immersive.glass-lite .win.active{backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 94%,transparent),color-mix(in srgb,var(--bg) 94%,transparent))}
+body.immersive .win.dragging{box-shadow:0 44px 120px rgba(0,0,0,.66),0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+/* 16-glass's knob still wins: no blur is no blur, and a tint left behind would
+   be four windows of text legible through each other */
+body.immersive.glass-off .win.active{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
+body.immersive .win.maxed{border-radius:0}
+body.immersive .win .ttl{height:40px;background:color-mix(in srgb,var(--txt) 2.5%,transparent);border-bottom:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .win.active .ttl{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 10%,transparent),color-mix(in srgb,var(--txt) 3%,transparent));
+  border-bottom-color:color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+/* unified toolbar: when the app's first row is a toolbar (.phead / .apptop /
+   the chat header), the title bar and that row are one band — no hairline
+   between them, one divider under the toolbar */
+body.immersive .win:has(> .wbody > .pshell > .phead) .ttl,body.immersive .win:has(> .wbody > .apptop) .ttl,
+body.immersive .win:has(> .wbody > .pad > .apptop:first-child) .ttl,body.immersive .win:has(> .wbody > .chatwrap) .ttl{border-bottom-color:transparent}
+body.immersive .win:has(> .wbody > .pshell > .phead) .ttl,body.immersive .win:has(> .wbody > .apptop) .ttl{box-shadow:none}
+body.immersive .win:not(.active){border-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .win:not(.active) .tname{color:var(--dim2)}
+body.immersive .win .tbtns{gap:8px}
+/* round four of the agent's critique: the traffic lights "look pasted from a
+   web mockup" — a flat disc. A lit sphere instead: a highlight off-centre, a
+   darker rim, the same three hues. */
+body.immersive .win .tbtns button{width:12px;height:12px;border-color:rgba(0,0,0,.22);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.45),0 1px 1px rgba(0,0,0,.3)}
+body.immersive .win .tbtns .cls{background:radial-gradient(circle at 35% 30%,#ff8a80,#e0443e)}
+body.immersive .win .tbtns .mn{background:radial-gradient(circle at 35% 30%,#ffd76a,#e0a300)}
+body.immersive .win .tbtns .mx{background:radial-gradient(circle at 35% 30%,#6fe08a,#1fa83a)}
+body.immersive .win:not(.active) .tbtns button{background:color-mix(in srgb,var(--txt) 22%,transparent);box-shadow:none}
+/* in-window surfaces that were painted opaque: let the glass through */
+body.immersive .prefs{background:transparent}
+body.immersive .prefs-side{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .cside{background:color-mix(in srgb,var(--bg2) 38%,transparent);border-right-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .apptop,body.immersive #topbar,body.immersive .phead{border-bottom-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+
+/* ---- Settings: colour where a grey glyph was ----
+   macOS System Settings' one unmistakable tell is the coloured tile beside
+   each category. The rail buttons already carry data-t, so the colour is CSS. */
+body.immersive .prefs-side button{padding:6px 10px;gap:11px;border-radius:10px;font-weight:500;font-size:var(--fs-md);color:var(--txt)}
+body.immersive .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive .prefs-side button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:600;
+  box-shadow:0 4px 14px color-mix(in srgb,var(--acc) 30%,transparent)}
+body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:var(--fs-sm);color:#fff;opacity:1;background:linear-gradient(135deg,#8b93a3,#586170);
+  box-shadow:inset 0 .5px 0 rgba(255,255,255,.4),0 1px 2px rgba(0,0,0,.35)}
+body.immersive .prefs-side button.on .psi{box-shadow:inset 0 .5px 0 rgba(255,255,255,.5),0 1px 3px rgba(0,0,0,.3)}
+body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a78bfa,#6d28d9)}
+body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
+body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
+body.immersive .prefs-side [data-t=locale] .psi{background:linear-gradient(135deg,#fb923c,#c2410c)}
+body.immersive .prefs-side [data-t=keys] .psi{background:linear-gradient(135deg,#94a3b8,#475569)}
+body.immersive .prefs-side [data-t=voice] .psi{background:linear-gradient(135deg,#f472b6,#be185d)}
+body.immersive .prefs-side [data-t=look] .psi{background:linear-gradient(135deg,#818cf8,#4338ca)}
+body.immersive .prefs-side [data-t=system] .psi{background:linear-gradient(135deg,#a1a1aa,#52525b)}
+body.immersive .pgroup{background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-radius:14px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.05)}
+body.immersive .pgroup > h3{color:var(--dim);letter-spacing:.06em}
+body.immersive .prow{border-top-color:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .prefs-main > .lead{color:var(--dim)}
+body.immersive .psw i{background:color-mix(in srgb,var(--txt) 16%,transparent);border-color:transparent}
+body.immersive .psw i::after{opacity:1;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+body.immersive .psw input:checked + i{background:var(--acc)}
+body.immersive .psw input:checked + i::after{background:#fff}
+
+/* ---- the control kit ----
+   One button, one field, one switch, one segmented control, one card, one
+   list row, one toolbar. The apps already use these classes (.endbtn, .pact,
+   .item, .catcard, .apptop, .phead, .seg, .psw, .prow…), which is what makes
+   restyling them here a design system rather than thirty overrides. Heights
+   are real heights, not padding luck: 32px secondary, 36px primary and field,
+   so rows line up and a thumb has something to hit. */
+/* :where() keeps the :not chain at zero specificity — without it this rule
+   out-ranked `.psearch input` and its padding, and the magnifier sat on top of
+   the placeholder in every search box (measured in Settings, Store, Memory). */
+body.immersive :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color])),
+body.immersive :where(textarea),body.immersive :where(select){border-radius:10px;padding:8px 12px;min-height:36px;line-height:1.35;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+body.immersive :where(textarea){min-height:0}
+body.immersive :where(select){appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:14px}
+body.immersive :where(input):focus,body.immersive :where(textarea):focus,body.immersive :where(select):focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+body.immersive ::placeholder{color:color-mix(in srgb,var(--txt) 42%,transparent)}
+/* secondary button */
+body.immersive .endbtn,body.immersive .pghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:32px;padding:0 13px;border-radius:9px;font-size:var(--fs-sm);font-weight:600;color:var(--txt);white-space:nowrap;
+  background:color-mix(in srgb,var(--txt) 7%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out)}
+body.immersive .endbtn:hover,body.immersive .pghost:hover{background:color-mix(in srgb,var(--txt) 12%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 20%,transparent);color:var(--txt)}
+body.immersive .endbtn:active{transform:scale(.97)}
+body.immersive .endbtn.on{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 55%,transparent);color:var(--txt)}
+body.immersive .endbtn[style*="--err"]{background:color-mix(in srgb,var(--err) 10%,transparent)}
+/* primary button */
+body.immersive .save,body.immersive .pact,body.immersive .dlg-b .dlg-ok{display:inline-flex;align-items:center;justify-content:center;
+  min-height:36px;padding:0 16px;border-radius:11px;font-size:var(--fs-md);font-weight:650;letter-spacing:-.005em;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--acc) 30%,transparent),inset 0 1px 0 rgba(255,255,255,.35);
+  transition:filter var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out)}
+body.immersive .save{width:auto;min-width:120px;margin-top:16px}
+body.immersive .catcard .save,body.immersive .catcard .pact{min-height:32px;min-width:0;padding:0 14px;font-size:var(--fs-sm);margin-top:10px;align-self:flex-start;
+  box-shadow:0 4px 12px color-mix(in srgb,var(--acc) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.3)}
+body.immersive .save:hover,body.immersive .pact:hover{filter:brightness(1.06)}
+body.immersive .save:active,body.immersive .pact:active{transform:scale(.98)}
+body.immersive #send,body.immersive .cp-send{border-radius:999px;box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+/* switch: iOS-shaped, the knob white, the track the accent */
+body.immersive .psw{width:44px;height:26px}
+body.immersive .psw i{background:color-mix(in srgb,var(--txt) 18%,transparent);border-color:transparent;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+body.immersive .psw i::after{width:22px;height:22px;top:2px;left:2px;opacity:1;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.08)}
+body.immersive .psw input:checked + i{background:var(--acc)}
+body.immersive .psw input:checked + i::after{transform:translateX(18px);background:#fff}
+/* segmented control: a glass pill with a raised thumb */
+body.immersive .seg{background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent);border-radius:10px;padding:3px;gap:2px}
+body.immersive .seg button{padding:5px 13px;border-radius:8px;font-size:var(--fs-sm);font-weight:600;min-height:28px}
+body.immersive .seg button.on{background:color-mix(in srgb,var(--txt) 15%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12)}
+/* cards and list rows */
+body.immersive .catcard,body.immersive .item,body.immersive .provbox,body.immersive .stat,body.immersive .teamcard,body.immersive .sawrow,
+body.immersive .np-item,body.immersive .ab-entry,body.immersive .empty{
+  border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 16%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+body.immersive .catcard{padding:13px 14px;gap:4px}
+body.immersive .catcard:hover,body.immersive .teamcard:hover,body.immersive .sawrow:hover{border-color:color-mix(in srgb,var(--acc) 50%,transparent);
+  box-shadow:0 8px 24px rgba(0,0,0,.28),0 0 0 1px color-mix(in srgb,var(--acc) 20%,transparent)}
+body.immersive .item{padding:11px 14px;margin-bottom:8px}
+body.immersive .item .sub{margin-top:3px}
+body.immersive .provbox{padding:14px 16px;margin-bottom:12px}
+body.immersive .empty{border-style:solid;padding:40px 20px}
+body.immersive .badge,body.immersive .lbadge{border-radius:999px;background:color-mix(in srgb,var(--txt) 9%,transparent);border-color:transparent;padding:2px 9px}
+body.immersive .stat .val{font-weight:700;letter-spacing:-.02em}
+body.immersive table.plist th,body.immersive table.loglist th{font-size:var(--fs-2xs);padding:6px 10px;border-bottom-color:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive table.plist td,body.immersive table.loglist td{padding:8px 10px;border-bottom-color:color-mix(in srgb,var(--txt) 6%,transparent)}
+body.immersive .fitem{padding:9px 12px;border-radius:10px}
+body.immersive .fitem:hover,body.immersive .stapp:hover,body.immersive .conv:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .stapp.on,body.immersive .conv.active{background:color-mix(in srgb,var(--acc) 16%,transparent);box-shadow:none}
+body.immersive label{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin:14px 0 6px}
+body.immersive .mut{font-size:var(--fs-sm);line-height:1.5}
+body.immersive .sect,body.immersive .sawgrp,body.immersive .tmsec,body.immersive .smsect,body.immersive .pgroup > h3{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--dim2)}
+/* toolbars: the app's own header shares the window's material (unified toolbar) */
+body.immersive .phead,body.immersive .apptop,body.immersive #topbar,body.immersive .stcompose{background:transparent;padding:10px 16px;gap:10px;
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .phead .pt{font-size:var(--fs-lg);font-weight:700;letter-spacing:-.015em}
+body.immersive .psearch input{padding-left:32px;min-height:34px}
+body.immersive .psearch svg{left:11px;width:14px;height:14px}
+/* sidebars inside windows are vibrant: the wallpaper shows through them */
+body.immersive .prefs-side,body.immersive .cside,body.immersive .stside,body.immersive .ob-rail,body.immersive .tp-list{
+  background:color-mix(in srgb,var(--bg2) 42%,transparent);border-right:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive .stside{padding-top:4px}
+body.immersive .stapp{border-radius:10px;padding:8px 10px}
+/* icons drawn by 00d-icons.js sit on the text baseline */
+body.immersive svg.ic{display:inline-block;vertical-align:-3px;flex:none}
+body.immersive [data-ic]{display:inline-flex;align-items:center;justify-content:center}
+body.immersive .prefs-side .psi i{display:none}
+body.immersive .prefs-side .psi svg{display:block}
+body.immersive ::-webkit-scrollbar{width:10px;height:10px}
+body.immersive ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--txt) 22%,transparent);border:3px solid transparent;background-clip:padding-box;border-radius:8px}
+
+/* ---- one light source, from above ----
+   The OS's own agent, asked to judge the first cut, said the panels still read
+   as "a flat fill with a hard 1px outline"; its fix was the right one — a lit
+   top edge and a shadowed bottom edge, so every surface is lit from the same
+   place. It is a border, so it costs nothing. */
+body.immersive .win,body.immersive .deck-group,body.immersive #taskbar,body.immersive #omnibar,body.immersive #startmenu,
+body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist,
+body.immersive .ocard,body.immersive .dlg,body.immersive .procard,body.immersive .toast,body.immersive .pgroup{
+  border-top-color:color-mix(in srgb,var(--txt) 26%,transparent);border-bottom-color:rgba(0,0,0,.42)}
+body.immersive .win.active{border-top-color:color-mix(in srgb,var(--txt) 34%,transparent)}
+:root[data-theme=light] body.immersive .win,:root[data-theme=light] body.immersive .deck-group,:root[data-theme=light] body.immersive #taskbar,
+:root[data-theme=light] body.immersive #omnibar,:root[data-theme=light] body.immersive #startmenu,:root[data-theme=light] body.immersive .pgroup{
+  border-top-color:rgba(255,255,255,.9);border-bottom-color:rgba(0,0,0,.14)}
+
+/* ---- dock: a shelf of glass with a lit rim ---- */
+body.immersive #taskbar{background:color-mix(in srgb,var(--txt) 9%,transparent);
+  backdrop-filter:blur(44px) saturate(1.9);-webkit-backdrop-filter:blur(44px) saturate(1.9);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);
+  box-shadow:0 26px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(0,0,0,.2)}
+body.immersive:not(.dev-mobile) #taskbar{border-radius:24px;padding:8px 12px}
+body.immersive .dsep{background:color-mix(in srgb,var(--txt) 18%,transparent)}
+body.immersive .dockb .aicon,body.immersive .tbwin .aicon,body.immersive .tbnat .aicon,body.immersive #startbtn .mark{
+  box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive .dockb::before,body.immersive .tbwin::before,body.immersive .tbnat::before,body.immersive #startbtn::before{
+  background:color-mix(in srgb,var(--bg2) 72%,transparent);backdrop-filter:blur(20px);border-radius:9px;
+  border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+
+/* ---- the prompt bar: the hero, so it gets the most light ---- */
+body.immersive #omnibar{height:48px;background:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 18%,transparent);
+  backdrop-filter:blur(44px) saturate(1.8);-webkit-backdrop-filter:blur(44px) saturate(1.8);
+  box-shadow:0 20px 50px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.2)}
+body.immersive #omnibar:focus-within,body.immersive #omnibar.pop,body.immersive #omnibar.summoned{
+  border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 40px color-mix(in srgb,var(--acc) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.22)}
+body.immersive #omni-in{font-size:15px}
+/* the bar itself glows on focus; a second ring drawn inside it by :focus-visible
+   read as a box inside a pill (seen on the home scene at first paint) */
+body.immersive #omni-in:focus-visible,body.immersive #deck-q:focus-visible,body.immersive #smq:focus-visible{outline:none}
+/* …and the kit's field glow is the same second ring by another route (measured
+   on the phone: a 3px accent box-shadow on the input inside the glowing bar) */
+body.immersive #omni-in:focus{box-shadow:none}
+body.immersive #omni-in::placeholder{color:color-mix(in srgb,var(--txt) 58%,transparent)}
+body.immersive #omni-orb{box-shadow:0 0 14px color-mix(in srgb,var(--acc) 70%,transparent),0 0 0 4px color-mix(in srgb,var(--acc) 14%,transparent)}
+
+/* ---- the desktop scene ----
+   Three bands of chrome stacked at the bottom (deck, prompt bar, dock) is what
+   made the desktop read as a tile board. Here: with no window open, the prompt
+   bar sits in the upper third under a greeting, with three things to try; the
+   deck leaves the desktop and becomes the wall (Launchpad) behind the dock's
+   launcher button; the moment a window opens the scene fades and the desktop
+   is wallpaper and dock, with the bar one Ctrl+Space away. */
+body.immersive:not(.deck-full) #deck{display:none}
+body.immersive #home{position:absolute;inset:0;pointer-events:none;z-index:5;
+  transition:opacity var(--d-slow) var(--ease-out)}
+body.immersive #home[hidden]{display:none}
+body.immersive.has-win #home,body.immersive.deck-full #home,body.immersive.exposing #home{opacity:0}
+body.immersive .hm-greet{position:absolute;left:0;right:0;top:20%;text-align:center;transform:translateY(-100%);padding-bottom:26px}
+body.immersive .hm-hi{font-size:44px;font-weight:650;letter-spacing:-.03em;line-height:1.1;
+  color:color-mix(in srgb,var(--txt) 96%,transparent);text-shadow:0 2px 24px rgba(0,0,0,.35)}
+body.immersive .hm-date{margin-top:8px;font-size:var(--fs-lg);font-weight:500;color:color-mix(in srgb,var(--txt) 70%,transparent);text-shadow:0 1px 12px rgba(0,0,0,.35)}
+body.immersive .hm-below{position:absolute;left:0;right:0;top:calc(20% + 74px);display:flex;flex-direction:column;align-items:center;gap:18px;padding:0 16px}
+body.immersive .hm-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:760px;pointer-events:auto;
+  transition:opacity var(--d-base) var(--ease-out)}
+body.immersive.omni-pop .hm-chips{opacity:0;pointer-events:none}
+body.immersive .hm-chip{min-height:36px;padding:0 15px;border-radius:999px;font-size:var(--fs-sm);font-weight:500;color:color-mix(in srgb,var(--txt) 88%,transparent);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 24%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 8px 24px rgba(0,0,0,.25);transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .hm-chip:hover{background:color-mix(in srgb,var(--txt) 14%,transparent);transform:translateY(-2px)}
+body.immersive .hm-now{font-size:var(--fs-sm);color:color-mix(in srgb,var(--txt) 55%,transparent);text-shadow:0 1px 8px rgba(0,0,0,.4)}
+/* the prompt bar in the scene: upper third, wide, the results list drops below it */
+body.immersive:not(.has-win):not(.deck-full) #omnibar{bottom:auto;top:20%;width:min(720px,88vw);height:56px;padding:0 18px;gap:12px}
+body.immersive:not(.has-win):not(.deck-full) #omnibar.pop{width:min(760px,90vw);height:58px}
+body.immersive:not(.has-win):not(.deck-full) #omni-in{font-size:var(--fs-lg)}
+body.immersive:not(.has-win):not(.deck-full) #omnilist{top:calc(100% + 10px);bottom:auto}
+body.immersive:not(.has-win):not(.deck-full) #omnicards{bottom:auto;top:calc(20% + 70px);flex-direction:column-reverse}
+body.immersive:not(.has-win):not(.deck-full) #omni-orb{width:22px;height:22px}
+/* a window open: the bar stands down until it is summoned (Ctrl+Space, the
+   brand mark) or something is happening in it */
+body.immersive.has-win #omnibar:not(.summoned):not(.pop):not(:focus-within):not(:has(.busy)):not(:has(#omni-shots img)){opacity:0;pointer-events:none;
+  transform:translateX(-50%) translateY(10px);transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+body.immersive.has-win #omnibar{transition:opacity var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+/* the wall (Launchpad): the whole screen, the search pill centred at the top */
+body.immersive.deck-full #deck{background:color-mix(in srgb,var(--bg) 58%,transparent);backdrop-filter:blur(40px) saturate(1.5);-webkit-backdrop-filter:blur(40px) saturate(1.5)}
+body.immersive.deck-full #deck-head{justify-content:center;padding:26px 4px 18px;position:relative}
+body.immersive.deck-full #deck-q{max-width:520px;height:44px;border-radius:14px;font-size:var(--fs-base);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive.deck-full .dh-hint{position:absolute;right:52px;top:50%;transform:translateY(-50%);margin:0}
+body.immersive.deck-full #deck-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px}
+body.immersive.deck-full .deck-tile{padding:12px 4px 10px;gap:8px}
+body.immersive.deck-full .deck-tile .aicon{width:56px;height:56px}
+body.immersive.deck-full .deck-tile span{font-size:var(--fs-sm)}
+
+/* ---- the deck: tiles of light on the wallpaper ---- */
+body.immersive .deck-group{background:linear-gradient(180deg,color-mix(in srgb,var(--txt) 11%,transparent),color-mix(in srgb,var(--txt) 5%,transparent));
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);border-radius:20px;padding:10px 12px 12px;
+  backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);
+  box-shadow:0 20px 50px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.16)}
+body.immersive .deck-group:hover{border-color:color-mix(in srgb,var(--txt) 20%,transparent);
+  box-shadow:0 26px 60px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.2)}
+body.immersive .deck-gname{color:color-mix(in srgb,var(--txt) 62%,transparent);letter-spacing:.08em}
+body.immersive .deck-tile{border-radius:14px;transition:background var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .deck-tile:hover{background:color-mix(in srgb,var(--txt) 12%,transparent);transform:translateY(-3px) scale(1.03)}
+body.immersive .deck-tile span{color:color-mix(in srgb,var(--txt) 92%,transparent)}
+body.immersive .deck-tile .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive .deck-tile:hover .aicon{box-shadow:0 16px 30px rgba(0,0,0,.55),0 3px 6px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.5)}
+body.immersive .deck-new{border-radius:20px;border-color:color-mix(in srgb,var(--txt) 16%,transparent)}
+body.immersive #deck-toggle{background:color-mix(in srgb,var(--txt) 9%,transparent);border-color:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive.deck-full #deck{backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5)}
+
+/* ---- launcher, popovers, menus, dialogs, toasts: one material ---- */
+body.immersive #startmenu,body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,
+body.immersive #omnilist,body.immersive .ocard,body.immersive .dlg,body.immersive .procard,body.immersive #swbox,body.immersive #keysbox,body.immersive #palbox{
+  background:color-mix(in srgb,var(--bg2) 58%,transparent);
+  backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.14)}
+body.immersive #startmenu{border-radius:24px}
+body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist{border-radius:14px;padding:6px}
+body.immersive #ctxmenu button,body.immersive #powermenu button{border-radius:8px;padding:7px 12px}
+body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:#04211c}
+body.immersive #powermenu button.danger:hover{background:var(--err);color:#fff}
+body.immersive #ctxmenu hr,body.immersive #powermenu hr{border-top-color:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive #smhead .mark{box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+body.immersive #smsearch input{height:40px;border-radius:12px;font-size:var(--fs-base);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 12%,transparent)}
+body.immersive .smapp{border-radius:16px;transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
+body.immersive .smapp:hover{background:color-mix(in srgb,var(--txt) 10%,transparent);transform:translateY(-2px)}
+body.immersive .smapp .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.42)}
+body.immersive #smfoot{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .np-item{border-radius:12px;background:color-mix(in srgb,var(--txt) 5%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+body.immersive .palitem{border-radius:10px}
+body.immersive .palitem.sel{background:var(--acc);color:#04211c;outline:none}
+body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:#04211c}
+body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
+  backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-left:3px solid var(--acc);border-radius:14px;
+  box-shadow:0 18px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
+body.immersive .dlg{border-radius:20px}
+body.immersive .dlg-b button{border-radius:11px}
+
+/* ---- Spotlight: the results read as sections, with room ---- */
+body.immersive .omni-sec{display:block;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--txt) 45%,transparent);padding:10px 12px 4px}
+body.immersive .omni-sec:first-child{padding-top:6px}
+body.immersive #omnilist{padding:6px 8px 4px}
+body.immersive #omnilist .palitem{padding:9px 12px;gap:14px;border-radius:12px}
+body.immersive #omnilist .palitem .pl{font-size:var(--fs-md);font-weight:600}
+body.immersive #omnilist .palitem .ph{font-size:var(--fs-xs)}
+body.immersive #omnilist .palitem .pi{width:34px;height:34px;border-radius:10px;font-size:var(--fs-lg);
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border-color:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive #omnilist .palitem .aicon{width:34px;height:34px}
+body.immersive .omni-hint{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent);padding:10px 12px 6px}
+
+/* ---- Chat: a modern client — one column, a drawer, avatars, floating composer ---- */
+/* raised above the drawer it opens, or it could never close it (measured: the
+   open drawer intercepted every click on the button underneath) */
+body.immersive #cs-toggle{display:inline-flex;width:34px;min-height:34px;padding:0;flex:none;position:relative;z-index:4}
+body.immersive .chatwrap.drawer #cs-toggle{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 55%,transparent)}
+body.immersive .chatwrap{position:relative}
+body.immersive .cside{position:absolute;left:0;top:0;bottom:0;width:280px;z-index:3;transform:translateX(-104%);padding-top:52px;
+  background:color-mix(in srgb,var(--bg2) 82%,transparent);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border-right:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 20px 60px rgba(0,0,0,.45);
+  transition:transform var(--d-slow) var(--ease-out)}
+body.immersive .chatwrap.drawer .cside{transform:none}
+body.immersive .cmain{min-width:0}
+body.immersive #chat{padding:24px 0 12px}
+body.immersive .inner{max-width:760px}
+body.immersive .msg{margin-bottom:22px}
+body.immersive .msg .who{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:var(--fs-xs);font-weight:600;color:var(--dim);margin-bottom:8px}
+body.immersive .msg.assistant .who::before{content:'';width:22px;height:22px;border-radius:50%;flex:none;
+  background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 50%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+body.immersive .msg.user .who{justify-content:flex-end}
+body.immersive .msg.assistant .body{font-size:var(--fs-base);line-height:1.65}
+body.immersive .tool{border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);
+  border-top-color:color-mix(in srgb,var(--txt) 14%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.18);margin-bottom:10px}
+body.immersive .tool .head{padding:9px 14px;gap:10px}
+body.immersive .tool .head::before{content:'';width:8px;height:8px;border-radius:50%;flex:none;background:color-mix(in srgb,var(--txt) 30%,transparent)}
+body.immersive .tool:has(.tstat.run) .head::before{background:var(--acc2);box-shadow:0 0 8px var(--acc2)}
+body.immersive .tool:has(.tstat.ok) .head::before{background:var(--ok)}
+body.immersive .tool:has(.tstat.fail) .head::before{background:var(--err)}
+body.immersive .tool .tname2{font-family:var(--sans);font-weight:650;color:var(--txt)}
+body.immersive .tool .tstat{border-radius:999px;background:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .tool .out{border-top-color:color-mix(in srgb,var(--txt) 7%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent)}
+body.immersive .think{border-left-color:color-mix(in srgb,var(--acc) 40%,transparent)}
+body.immersive #composer{padding:10px 20px 18px}
+body.immersive #welcome{padding-top:9vh}
+body.immersive #welcome h1{font-size:var(--fs-3xl);font-weight:650;letter-spacing:-.03em;-webkit-text-fill-color:initial;color:var(--txt);background:none;filter:none;text-shadow:0 2px 24px rgba(0,0,0,.3)}
+body.immersive #welcome p{font-size:var(--fs-lg);color:color-mix(in srgb,var(--txt) 62%,transparent)}
+body.immersive .chips{max-width:640px;gap:10px}
+body.immersive .chip{padding:10px 16px;font-size:var(--fs-md)}
+
+/* ---- Chat: a composer that floats, replies with room to breathe ---- */
+body.immersive #combox{border-radius:20px;background:color-mix(in srgb,var(--txt) 6%,transparent);
+  border-color:color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+body.immersive #combox:focus-within{border-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 16%,transparent),0 14px 40px rgba(0,0,0,.28)}
+body.immersive .msg.user .bubble{border-radius:18px 18px 6px 18px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 26%,var(--bg3)),color-mix(in srgb,var(--acc2) 18%,var(--bg3)));
+  border-color:color-mix(in srgb,var(--acc) 28%,transparent)}
+body.immersive .chip{border-radius:14px;background:color-mix(in srgb,var(--txt) 6%,transparent);border-color:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive .chip:hover{background:color-mix(in srgb,var(--acc) 14%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent);transform:translateY(-2px)}
+body.immersive #newchat,body.immersive .conv{border-radius:12px}
+body.immersive .conv.active{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+body.immersive .body pre{border-radius:12px;background:color-mix(in srgb,var(--bg) 60%,transparent)}
+body.immersive .errmsg,body.immersive .approval{border-radius:14px}
+
+/* ---- the copilot panel and the omnibar cards share the chat's material ---- */
+body.immersive .cp-inbar{border-radius:16px}
+body.immersive .mf-user{border-radius:16px 6px 16px 16px}
+body.immersive .cp-feed .tool{border-radius:10px}
+
+/* ---- setup (the wizard): the wallpaper shows through the rail ---- */
+body.immersive .wiz.ob{background:color-mix(in srgb,var(--bg) 55%,transparent);
+  backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6)}
+body.immersive .ob-rail{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 8%,transparent)}
+body.immersive .ob-item{border-radius:12px}
+body.immersive .ob-item.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+body.immersive .ob-item.on .ob-t{color:#04211c}
+body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:#04211c}
+
+/* ---- overview & switcher ---- */
+body.immersive #expose{backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4)}
+body.immersive .space{border-radius:14px}
+body.immersive .swcard{border-radius:16px}
+body.immersive .swcard.sel{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+
+/* ---- the sign-in / lock sheet and other full-bleed surfaces keep their own
+   look: they are drawn before the theme is known, and a login page that changes
+   material with a setting stored in the desktop it guards would be a tell. ---- */
+
+/* ---- phone: sheets are edge to edge, so the radius goes and the dock is a
+   bar; everything else (materials, colour, type) is the same experience in a
+   hand. Tap sizes are untouched by this file on purpose — --tap is the floor. */
+body.immersive.dev-touch .hm-chip{min-height:44px;padding:0 16px}   /* --tap is the floor: measured 36px before */
+/* The phone's prompt bar: measured, the input was 130px of a 340px bar — the
+   orb, three 36px buttons and the desktop's gaps took the rest, and the
+   placeholder was cut at "Ask Aria anythin". Tighter gaps, a smaller orb, and
+   the screenshot button goes (it captures the SERVER's screen, and the phone
+   has the same door in Chat's ＋); the two buttons that stay keep the 36px floor. */
+body.immersive.dev-mobile #omnibar{left:12px;right:12px;width:auto;padding:0 8px 0 12px;gap:6px;transform:none}
+body.immersive.dev-mobile #omnibar.pop{width:auto}
+body.immersive.dev-mobile #omni-orb{width:18px;height:18px}
+body.immersive.dev-mobile #omni-shot{display:none}
+body.immersive.dev-mobile #omni-in{font-size:16px;min-width:0;flex:1 1 0}
+body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12px;right:12px;width:auto;transform:none}
+/* the phone hides the chat sidebar outright (15-responsive); here it is the
+   drawer, so it comes back only while the drawer is open */
+body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
+body.immersive.dev-mobile .win{border-radius:0}
+body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}
+/* ================= the Brief ================= */
+.br-app h2.br-hl{margin:2px 0 0;font-size:var(--fs-xl);font-weight:650;letter-spacing:-.01em}
+.br-day{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700}
+.br-top{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3);margin-bottom:var(--sp-4);flex-wrap:wrap}
+.br-tools{display:flex;gap:8px}
+.br-app h3{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;margin:var(--sp-4) 0 var(--sp-2)}
+.br-count{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;background:var(--bg3);color:var(--txt);font-weight:600}
+.br-list{display:flex;flex-direction:column;gap:10px}
+.br-item{position:relative;padding:12px 14px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--bg2);
+  display:flex;flex-direction:column;gap:6px;transition:opacity var(--d-fast) var(--ease-out)}
+.br-item.busy{opacity:.5;pointer-events:none}
+.br-item.k-needs_you{border-left:3px solid var(--acc)}
+.br-item.k-decide{border-left:3px solid var(--warn)}
+.br-item.k-done{border-left:3px solid var(--ok)}
+.br-item.s-done,.br-item.s-decided{opacity:.7}
+.br-head{display:flex;justify-content:space-between;align-items:center}
+.br-kind{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:700}
+.br-n{font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim2)}
+.br-title{font-size:var(--fs-base);font-weight:650;line-height:1.35}
+.br-meta{font-size:var(--fs-sm);color:var(--dim)}
+.br-meta i{font-style:normal;color:var(--dim2)}
+.br-body{font-size:var(--fs-sm);line-height:1.55;color:var(--txt);white-space:pre-line}
+.br-draft summary{font-size:var(--fs-xs);color:var(--dim);cursor:pointer}
+.br-draft pre{white-space:pre-wrap;font:inherit;font-size:var(--fs-sm);line-height:1.5;padding:8px 10px;border-radius:var(--r-sm);background:var(--bg);margin:6px 0 0}
+.br-hands{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.br-hands .endbtn{min-height:var(--tap,32px)}
+.br-opt{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.br-state{font-size:var(--fs-xs);color:var(--dim)}
+.br-done{margin-top:var(--sp-4)}
+.br-done summary{font-size:var(--fs-sm);color:var(--dim);cursor:pointer;margin-bottom:8px}
+.br-empty{line-height:1.6}
+/* the phone: one item per screen, big hands, a step bar */
+.br-stack .br-item{padding:16px}
+.br-stack .br-title{font-size:var(--fs-lg)}
+.br-nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:var(--fs-sm);color:var(--dim)}
+.br-nav .endbtn{min-height:var(--tap,40px);min-width:var(--tap,40px);font-size:var(--fs-lg)}
+/* the home scene's line is a door */
+body.immersive .hm-now.br-open{pointer-events:auto;cursor:pointer;color:var(--txt);font-weight:600}
 </style>
 </head>
 <body>
@@ -2745,7 +3418,7 @@ body.glass-off .win{background:var(--bg)!important}
     <button id="fwdchip" hidden onclick="openModelSettings()"></button>
     <div id="statdot" title="server connection"></div>
     <div id="tbclock"><span class="dt"></span><span class="tm">--:--</span></div>
-    <button id="tray-power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
+    <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
 <div id="powermenu">
@@ -2790,6 +3463,13 @@ body.glass-off .win{background:var(--bg)!important}
   <div id="jarvis-shell"></div>
   <div id="custom-shell"></div>
   <div id="icons"></div>
+  <!-- the home scene (immersive look only): a greeting, what the agent is up to,
+       and three things to try under the prompt bar. Hidden the moment a window
+       opens — the desktop is then wallpaper and dock, nothing else. -->
+  <div id="home" hidden>
+    <div class="hm-greet"><div class="hm-hi"></div><div class="hm-date"></div></div>
+    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div></div>
+  </div>
   <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
        #desktop is position:fixed, which creates a stacking context, so a deck
        outside it would paint over every window regardless of z-index. -->
@@ -2804,9 +3484,9 @@ body.glass-off .win{background:var(--bg)!important}
     <div id="omni-orb" title="your agent"></div>
     <div id="omnilist"></div>
     <input id="omni-in" placeholder="" autocomplete="off" spellcheck="false">
-    <button id="omni-shot" title="Attach a screenshot"></button>
+    <button id="omni-shot" data-ic="camera" title="Attach a screenshot"></button>
     <button id="omni-mic" title="Voice"></button>
-    <button id="omni-chat" title="Open Chat">⤢</button>
+    <button id="omni-chat" data-ic="expand" title="Open Chat">⤢</button>
   </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
@@ -3243,6 +3923,74 @@ addEventListener('drop',e=>{if(shellOwnsScreen()&&!e.defaultPrevented)e.preventD
 addEventListener('wheel',e=>{
   if(shellOwnsScreen()&&(e.ctrlKey||e.metaKey))e.preventDefault();   // pinch/ctrl zoom
 },{passive:false});
+/* ================= icons =================
+   One small stroke icon set, drawn here (24×24, 1.75px stroke, round caps) so
+   every glyph in the chrome comes from one hand: the same weight, the same
+   corner radius, the same optical size. Nothing here is copied from a library.
+
+   Why: the shell used unicode characters as icons — ⚙ ✦ ⏻ ▲ ◧ ⇥ ◉ — and they
+   render in whatever font the platform has, at whatever weight it has, which is
+   the single loudest "this is an old UI" tell on every screen. An SVG is the
+   same on a Pi, a Mac and a phone.
+
+   `uiIcon(name, px)` returns inline SVG. The standard desktop keeps its glyphs;
+   the immersive look swaps them through `data-ic` (01b-immersive.js), so this
+   is opt-in like the rest of that look. Numbered 00d so every file can call it. */
+var UI_ICONS={
+  sparkles:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM5 3v3M3.5 4.5h3M19 17v3M17.5 18.5h3',
+  agent:'M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9zM12 8.5v7M8.2 10.5l3.8 2.2 3.8-2.2',
+  executors:'M4 12h11M11 7l5 5-5 5M20 5v14',
+  channels:'M5 6.5h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-7.5L8 20v-3.5H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8.5 10.5h7M8.5 13.5h4',
+  accounts:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  locale:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z',
+  keys:'M9 6a3 3 0 1 0-3 3h3zM15 6a3 3 0 1 1 3 3h-3zM9 18a3 3 0 1 1-3-3h3zM15 18a3 3 0 1 0 3-3h-3zM9 9h6v6H9z',
+  voice:'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6',
+  look:'M12 3a9 9 0 0 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h1.6A4.4 4.4 0 0 0 21 10.1C21 6.2 17 3 12 3zM7.5 12.5a1.2 1.2 0 1 0 0-.1M9.5 8.5a1.2 1.2 0 1 0 0-.1M14.5 8a1.2 1.2 0 1 0 0-.1',
+  system:'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM19.4 13.5l1.4.8-1.6 2.8-1.6-.5a6.7 6.7 0 0 1-1.6.9L15.6 19h-3.2l-.4-1.5a6.7 6.7 0 0 1-1.6-.9l-1.6.5-1.6-2.8 1.4-.8a6.9 6.9 0 0 1 0-1.8L3.2 10.5l1.6-2.8 1.6.5a6.7 6.7 0 0 1 1.6-.9L8.4 5h3.2l.4 1.5c.6.2 1.1.5 1.6.9l1.6-.5 1.6 2.8-1.4.8a6.9 6.9 0 0 1 0 1.8z',
+  power:'M12 3v8M17.7 6.3a8 8 0 1 1-11.4 0',
+  bell:'M6 9.5a6 6 0 0 1 12 0c0 5 1.7 6 1.7 6H4.3S6 14.5 6 9.5M10.3 19.5a2 2 0 0 0 3.4 0',
+  sliders:'M4 7h9M17 7h3M4 17h3M11 17h9M13 4.5v5M7 14.5v5',
+  search:'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5L20 20',
+  plus:'M12 5v14M5 12h14',
+  x:'M6 6l12 12M18 6L6 18',
+  check:'M5 12.5l4.5 4.5L19 7.5',
+  chevronDown:'M6 9l6 6 6-6',
+  chevronLeft:'M15 6l-6 6 6 6',
+  chevronRight:'M9 6l6 6-6 6',
+  more:'M5 12h.01M12 12h.01M19 12h.01',
+  image:'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4 16l5-5 4 4 2-2 5 5M15.5 9a1 1 0 1 0 0-.1',
+  send:'M12 19V5M5.5 11.5L12 5l6.5 6.5',
+  expand:'M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7',
+  camera:'M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 10.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  grid:'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  home:'M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z',
+  message:'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
+  clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  zap:'M13 3L5 13h6l-1 8 9-11h-6z',
+  shield:'M12 3l8 3v6c0 4.5-3.4 7.7-8 9-4.6-1.3-8-4.5-8-9V6zM9 12l2 2 4-4',
+  folder:'M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z',
+  terminal:'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM7 9l3 3-3 3M12 15h5',
+  globe:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z',
+  wifi:'M2.5 9.5a14 14 0 0 1 19 0M6 13a9 9 0 0 1 12 0M9.5 16.5a4 4 0 0 1 5 0M12 20h.01',
+  battery:'M3 8h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM21 11v2M5 10.5h6v3H5z',
+  volume:'M4 10v4h3l4 3.5v-11L7 10zM15 9.5a3.5 3.5 0 0 1 0 5M17.5 7a7 7 0 0 1 0 10',
+  sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4',
+  moon:'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z',
+  lock:'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 8 0v3',
+  user:'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4.5 20a7.5 7.5 0 0 1 15 0',
+  refresh:'M20 11a8 8 0 0 0-14.5-3.5M4 13a8 8 0 0 0 14.5 3.5M4 4v5h5M20 20v-5h-5',
+  pin:'M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6',
+  bag:'M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2',
+  layers:'M12 4l8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4',
+  arrowLeft:'M19 12H5M11 6l-6 6 6 6',
+  mic:'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4',
+  triangle:'M12 4l8.5 15h-17z',
+};
+function uiIcon(name,px,cls){
+  const d=UI_ICONS[name];if(!d)return '';
+  px=px||16;
+  return `<svg class="ic${cls?' '+cls:''}" width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+}
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
@@ -3258,6 +4006,7 @@ const ICONS={
   memory:['#2DD4BF','#0D9488','<path d="M12 4.4 19 8l-7 3.6L5 8Z"/><path d="M5 12l7 3.6L19 12M5 16l7 3.6 7-3.6"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
   fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
@@ -3443,6 +4192,431 @@ function glassProbe(force){
   },1400);
 }
 applyGlass();
+/* ================= immersive experience (beta) =================
+   (Numbered 01b: it has to have put `immersive` on <body> before 02-themes
+   applies a theme, or the first paint is the standard look and then jumps.)
+
+   One switch, in Settings → Appearance, kept per browser like the theme —
+   `localStorage.immersive` — because it is a choice about the screen in front
+   of you, not about the machine: a phone looking at this desktop over the LAN
+   may want the plain one. The look itself is entirely 20-immersive.css; this
+   file owns the state, the one piece of motion CSS cannot do (a wallpaper that
+   follows the pointer), and the things that must be re-done when the material
+   changes (re-measure glass, re-send the chrome bands to a session host).
+
+   Faces — GUI: this. SUI: identical, plus suiSyncStruts() because the dock
+   grows by 2px. TUI: not applicable — a terminal has no wallpaper or glass; the
+   switch's own text says so. */
+/* Monday first, as the server counts them (flows.WEEKDAYS). Shared by the flow
+   editor, the scheduler and the Missions catalogue. */
+var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+function immersiveOn(){return IMMERSIVE.on}
+function applyImmersive(){
+  document.body.classList.toggle('immersive',IMMERSIVE.on);
+  document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
+  immersiveParallax(IMMERSIVE.on);
+  immersiveIcons(IMMERSIVE.on);
+  homeRender();
+  // the second scene: the machine as a watch movement (01c-movement.js)
+  // 01c loads after this file: at first paint MOVEMENT is still undefined and
+  // 01c starts itself; from then on the switch is handled here
+  if(typeof MOVEMENT==='undefined')return;
+  if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop();
+}
+/* Which scene: 'aurora' (a sky that follows the day) or 'movement' (a watch
+   movement that shows what is running). Per browser, like the look itself. */
+function setImmersiveScene(scene){
+  scene=scene==='movement'?'movement':'aurora';
+  IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
+  applyImmersive();
+  if(typeof loadWallpaper==='function')loadWallpaper();
+  if(typeof refreshApp==='function')refreshApp('settings');
+}
+/* A window opened: the prompt bar stands down (CSS), but a caret left in it —
+   the wall hands focus back to the bar when it closes — would keep the bar up
+   through :focus-within and, worse, swallow the keystrokes meant for the window.
+   So the caret leaves the bar unless the bar was deliberately summoned. */
+function immersiveWinChange(){
+  if(!IMMERSIVE.on)return;
+  const inp=document.getElementById('omni-in'),bar=document.getElementById('omnibar');
+  if(!inp||!bar)return;
+  if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
+}
+/* The brain chip's text, as words. Its two spans (executor, model) have no
+   separator between them in the DOM, so textContent reads "Claude Codedefault". */
+function immersiveBrainText(){
+  const chip=document.getElementById('fwdchip');
+  if(!chip||chip.hidden)return '';
+  return [...chip.childNodes].map(n=>n.textContent.replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+/u,'')).filter(Boolean).join(' · ');
+}
+/* The look's wallpaper follows the day: first light until late morning, the
+   aurora through the afternoon and evening, the cold sky after dark. The home
+   scene's minute tick re-checks the band and reloads only when it changes —
+   a wallpaper that swaps under an open window every minute would be a bug. */
+function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
+function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':immersiveWallBand()}
+/* ---- the home scene ----
+   With no window open the desktop is a place, not a tile board: a greeting by
+   the hour (and by name on a machine with accounts), the date, the prompt bar
+   in the upper third, three things to try, and one line of what the agent is
+   doing. It re-renders once a minute — the greeting and the date are the only
+   things that move — and whenever the look is switched. Chips fill the prompt
+   bar rather than sending, so the first message is still the person's. */
+var HOME_CHIPS=['How is this machine doing? Check CPU, memory and disk.',
+  'What is taking up the most space in my home folder?',
+  'Every morning at 9, check disk space and tell me if it is low.',
+  'Fetch the top Hacker News stories and summarise them.',
+  'Create a project folder with a starter README in my workspace.',
+  'Remember that I prefer concise answers.',
+  'Watch my Downloads folder and tell me what lands there.',
+  'Draft a flow that briefs me every morning.'];
+/* The same three chips, but for the person who said who they are: a founder's
+   first message should not be about disk space. Keyed on cfg.persona (a USER_KEY
+   the Missions catalogue sets); the neutral list is the fallback. */
+var HOME_CHIPS_BY={
+  founder:['Watch my competitors\' pricing pages and tell me when they change.',
+    'Draft my investor update every Friday from my notes folder.',
+    'Tell me when my company or my competitors are in the news.',
+    'What is the one thing I should do today, from what you know about me?',
+    'Every morning at 8, brief me on my market.',
+    'Remember that our runway ends in March.'],
+  coder:['Write my standup from the repos in ~/code.',
+    'Review what I pushed today and tell me what looks risky.',
+    'Run the tests in my project every morning and tell me if they are red.',
+    'Tell me when fastapi or pydantic ship a new release.',
+    'What changed in this repo this week?',
+    'Remember that I prefer small commits with tests.'],
+  consultant:['Read what lands in my client\'s folder and tell me what they want.',
+    'Draft the weekly status report for Acme every Friday.',
+    'Tell me when my clients are in the news.',
+    'What did I work on this week, by client?',
+    'Every morning at 8, brief me on my clients\' industries.',
+    'Remember that Acme\'s invoice terms are net 30.']};
+function homeChips(){
+  const p=(typeof cfg!=='undefined'&&cfg&&cfg.persona)||'';
+  return HOME_CHIPS_BY[p]||HOME_CHIPS;
+}
+function homeRender(){
+  const h=document.getElementById('home');if(!h)return;
+  if(!IMMERSIVE.on){h.hidden=true;clearInterval(IMMERSIVE.homeT);IMMERSIVE.homeT=0;return}
+  const now=new Date(),hr=now.getHours();
+  const part=hr<5?'Good night':hr<12?'Good morning':hr<17?'Good afternoon':hr<22?'Good evening':'Good night';
+  const me=(typeof USERS!=='undefined'&&USERS.me&&USERS.me.multiuser)?String(USERS.me.display||USERS.me.name||'').trim().split(/\s+/)[0]:'';
+  h.querySelector('.hm-hi').textContent=part+(me?', '+me:'');
+  let date='';try{date=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}catch(e){date=now.toDateString()}
+  h.querySelector('.hm-date').textContent=date;
+  const day=Math.floor(now/864e5);
+  const pool=homeChips();
+  const chips=[0,1,2].map(i=>pool[(day*3+i)%pool.length]);
+  const box=h.querySelector('.hm-chips');
+  const key=String(day)+':'+((typeof cfg!=='undefined'&&cfg&&cfg.persona)||'');
+  if(box.dataset.day!==key){box.dataset.day=key;
+    box.innerHTML=chips.map(c=>`<button class="hm-chip">${esc(c)}</button>`).join('');
+    box.querySelectorAll('.hm-chip').forEach((b,i)=>b.onclick=()=>{const inp=document.getElementById('omni-in');if(!inp)return;
+      inp.value=chips[i];inp.dispatchEvent(new Event('input'));inp.focus();
+      const n=inp.value.length;try{inp.setSelectionRange(n,n)}catch(e){}});}
+  const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
+  const who=(typeof agentName==='function')?agentName():'Aria';
+  const brain=immersiveBrainText();
+  const line=h.querySelector('.hm-now');
+  const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
+  line.textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  line.classList.toggle('br-open',!n&&!!br);
+  line.onclick=(!n&&br)?()=>openApp('brief'):null;
+  h.hidden=false;
+  const band=immersiveWallBand();
+  if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
+  IMMERSIVE.band=band;
+  if(!IMMERSIVE.homeT){IMMERSIVE.homeT=setInterval(homeRender,60000);
+    if(typeof briefLoad==='function')briefLoad().then(()=>homeRender());}
+}
+/* Glyph → icon. Any element with data-ic="name" is a unicode glyph in the
+   standard desktop and the matching SVG (00d-icons.js) in this look. The glyph
+   is kept on the element so switching back restores it byte for byte. Apps
+   render their own markup whenever they open, so a MutationObserver swaps
+   what arrives later — one query per added subtree, nothing per frame. */
+function immersiveIconize(root){
+  const els=root.querySelectorAll?root.querySelectorAll('[data-ic]'):[];
+  els.forEach(el=>{
+    if(IMMERSIVE.on){
+      if(el.dataset.gl===undefined)el.dataset.gl=el.innerHTML;
+      const svg=typeof uiIcon==='function'?uiIcon(el.dataset.ic,el.dataset.icpx?+el.dataset.icpx:15):'';
+      if(svg&&!el.querySelector('svg.ic'))el.innerHTML=svg;
+    }else if(el.dataset.gl!==undefined){el.innerHTML=el.dataset.gl;delete el.dataset.gl}
+  });
+}
+function immersiveIcons(on){
+  immersiveIconize(document);
+  if(on&&!IMMERSIVE.mo&&window.MutationObserver){
+    IMMERSIVE.mo=new MutationObserver(ms=>{if(!IMMERSIVE.on)return;
+      ms.forEach(m=>{
+        // a button whose glyph was (re)written in place — #omni-shot is set by
+        // the omnibar after this file ran — is the parent of the mutation
+        const t=m.target;
+        if(t&&t.nodeType===1&&t.dataset&&t.dataset.ic!==undefined&&!t.querySelector('svg.ic')){delete t.dataset.gl;immersiveIconize({querySelectorAll:()=>[t]})}
+        m.addedNodes.forEach(n=>{if(n.nodeType===1){if(n.dataset&&n.dataset.ic!==undefined)immersiveIconize({querySelectorAll:()=>[n]});immersiveIconize(n)}});
+      })});
+    IMMERSIVE.mo.observe(document.body,{childList:true,subtree:true});
+  }
+  if(!on&&IMMERSIVE.mo){IMMERSIVE.mo.disconnect();IMMERSIVE.mo=null}
+}
+function setImmersive(on){
+  on=!!on;
+  const changed=on!==IMMERSIVE.on;
+  IMMERSIVE.on=on;localStorage.setItem('immersive',on?'1':'0');
+  // crossfade, as a theme change does, instead of hard-cutting every surface at once
+  if(changed&&document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    try{document.startViewTransition(applyImmersive)}catch(e){applyImmersive()}
+  }else applyImmersive();
+  if(!changed)return;
+  if(typeof loadWallpaper==='function')loadWallpaper();     // the look ships a wallpaper; theme and file still outrank it
+  if(typeof glassProbe==='function')glassProbe(true);       // one more blurred surface — can this machine still draw it?
+  if(typeof suiSyncStruts==='function')suiSyncStruts();     // the dock's band changed height
+  if(typeof refreshApp==='function'){refreshApp('settings');refreshApp('themes')}
+  if(typeof toast==='function')toast(on?'Immersive experience on (beta) — Settings → Appearance turns it off':'Back to the standard desktop');
+}
+/* The wallpaper drifts a few pixels against the pointer, so the desktop reads as
+   a scene with depth instead of a picture. It is a transform on one composited
+   layer, throttled to a frame, and it is NOT offered where it would be wrong:
+   a touch screen has no pointer to follow, and reduced-motion means it. */
+function immersiveParallax(on){
+  const w=document.getElementById('wall');if(!w)return;
+  const ok=on&&!(typeof isTouch==='function'&&isTouch())&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(ok&&!IMMERSIVE.bound){IMMERSIVE.bound=true;addEventListener('pointermove',immersivePointer,{passive:true})}
+  if(!ok&&IMMERSIVE.bound){IMMERSIVE.bound=false;removeEventListener('pointermove',immersivePointer)}
+  if(!ok){w.style.transform=''}
+}
+function immersivePointer(e){
+  IMMERSIVE.tx=e.clientX/innerWidth-.5;IMMERSIVE.ty=e.clientY/innerHeight-.5;
+  if(IMMERSIVE.raf)return;
+  IMMERSIVE.raf=requestAnimationFrame(()=>{
+    IMMERSIVE.raf=0;
+    const w=document.getElementById('wall');if(!w||!IMMERSIVE.on)return;
+    w.style.transform=`translate3d(${(-IMMERSIVE.tx*16).toFixed(1)}px,${(-IMMERSIVE.ty*12).toFixed(1)}px,0) scale(1.04)`;
+  });
+}
+applyImmersive();
+/* ================= Movement: one slow dial, and everything on it =================
+   The second scene of the immersive look (Settings → Appearance → Immersive →
+   Scene). The wallpaper is a dark plate and on it, drawn on a canvas, ONE big
+   dial — hairlines, brass, a single ruby — that turns once an hour like the
+   bezel of a watch. Everything the machine does is stamped on the dial the
+   moment it happens, at twelve o'clock, and then rides round with it:
+
+     a tool call         a short tick, with the tool's name beside it for the
+                         first minutes, then just the tick
+     a turn              an arc as long as the turn took; glowing while it runs
+     a workflow          a mark on the inner ring; lit while that flow runs
+     the soul            the centre — the agent's name, the brain as calibre —
+                         breathing slowly while a turn runs
+     the activity ring   a thin ring with one bright point, creeping while idle
+                         and turning while something is running
+
+   So what happened fifteen minutes ago sits at a quarter past, and an hour
+   of the machine's life is on the dial at once. It is SLOW on purpose — the
+   whole dial makes one turn in sixty minutes — and quiet: nothing here is
+   more than a hairline at low alpha, so the greeting and the prompt bar sit
+   inside it without a fight.
+
+   Cost, and where it stops: one canvas the size of the viewport, drawn at
+   most 20 times a second, a few hundred short strokes. Not drawn at all when
+   the tab is hidden, under a full-screen or maximised window, or under a phone
+   sheet (nobody can see it); one still frame under prefers-reduced-motion.
+   No filter, no blur, no canvas shadow (a shadow is a blur by another name).
+   The data is what the page already holds: RUNNING; the websocket's
+   turn_start / turn_end / tool_start / fabric_event / flow_done, which call
+   movementPulse; and /api/flows once a minute while the scene is on.
+
+   Faces — GUI/SUI: this canvas, inside #wall so the parallax carries it.
+   TUI: not applicable, a terminal has no wallpaper; the scene picker says so.
+   `var`, not `let`: the bundle is one script. */
+var MOVEMENT={on:false,cv:null,ctx:null,raf:0,last:0,t:0,angle:0,rate:0.03,burst:0,
+  stamps:[],turns:{},flows:[],flowsAt:0,live:{},W:0,H:0,dpr:1,drawn:0,drawMs:0,font:'',static:false};
+var MOVEMENT_PERIOD=3600;                                  // seconds per turn of the dial
+var MOVEMENT_IDLE_RATE=0.03, MOVEMENT_RUN_RATE=0.45;       // rad/s of the activity ring
+function movementReduced(){return matchMedia('(prefers-reduced-motion: reduce)').matches}
+function movementStart(){
+  if(MOVEMENT.on)return;
+  const wall=document.getElementById('wall');if(!wall)return;
+  let cv=document.getElementById('movement');
+  if(!cv){cv=document.createElement('canvas');cv.id='movement';cv.setAttribute('aria-hidden','true');wall.appendChild(cv)}
+  MOVEMENT.cv=cv;MOVEMENT.ctx=cv.getContext('2d');MOVEMENT.on=true;MOVEMENT.static=movementReduced();
+  // read once: getComputedStyle per label per frame was the one expensive thing in the loop
+  try{MOVEMENT.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){MOVEMENT.font='sans-serif'}
+  movementResize();
+  addEventListener('resize',movementResize);
+  document.addEventListener('visibilitychange',movementKick);
+  movementFlows();
+  MOVEMENT.last=performance.now();
+  movementKick();
+}
+function movementStop(){
+  if(!MOVEMENT.on)return;
+  MOVEMENT.on=false;cancelAnimationFrame(MOVEMENT.raf);MOVEMENT.raf=0;
+  removeEventListener('resize',movementResize);
+  document.removeEventListener('visibilitychange',movementKick);
+  if(MOVEMENT.cv)MOVEMENT.cv.remove();MOVEMENT.cv=null;MOVEMENT.ctx=null;
+}
+function movementResize(){
+  const cv=MOVEMENT.cv;if(!cv)return;
+  const dpr=Math.min(2,devicePixelRatio||1);
+  MOVEMENT.W=innerWidth;MOVEMENT.H=innerHeight;MOVEMENT.dpr=dpr;
+  cv.width=Math.round(innerWidth*dpr);cv.height=Math.round(innerHeight*dpr);
+  MOVEMENT.drawn=0;movementKick();
+}
+/* something can be seen: (re)start the loop, or draw the one still frame */
+function movementKick(){
+  if(!MOVEMENT.on)return;
+  if(MOVEMENT.static){movementDraw(0);return}
+  if(!MOVEMENT.raf)MOVEMENT.raf=requestAnimationFrame(movementFrame);
+}
+/* nobody can see it: a hidden tab, or a window that covers the whole desktop */
+function movementCovered(){
+  if(document.hidden)return true;
+  const b=document.body.classList;
+  if(b.contains('has-fullwin'))return true;
+  if(typeof WM!=='undefined'&&[...WM.wins.values()].some(w=>w.max&&!w.min))return true;
+  if(b.contains('dev-mobile')&&b.contains('has-win'))return true;   // a sheet is the whole screen
+  return false;
+}
+/* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
+function movementPulse(kind,label,ev){
+  if(!MOVEMENT.on)return;
+  const M=MOVEMENT,now=performance.now();
+  if(kind==='turn'&&label){M.turns[label]={start:now,end:0};return}
+  if(kind==='turnend'&&label){if(M.turns[label])M.turns[label].end=now;return}
+  M.burst=Math.min(1,M.burst+(kind==='tool'?.5:.25));
+  if(kind==='flow'&&label)M.live[label]=now;
+  if(kind==='done'&&label)delete M.live[label];
+  if(label){
+    M.stamps.push({kind,label:String(label).replace(/_/g,' ').slice(0,26),at:now});
+    if(M.stamps.length>120)M.stamps.shift();
+  }
+  movementKick();
+}
+async function movementFlows(){
+  if(!MOVEMENT.on)return;
+  if(performance.now()-MOVEMENT.flowsAt<60000&&MOVEMENT.flows.length)return;
+  MOVEMENT.flowsAt=performance.now();
+  try{const d=await (await fetch('/api/flows')).json();
+    MOVEMENT.flows=(d.flows||[]).filter(f=>f.enabled).slice(0,8).map(f=>f.name)}catch(e){}
+}
+function movementFrame(now){
+  MOVEMENT.raf=0;
+  if(!MOVEMENT.on)return;
+  const dt=Math.min(.25,(now-MOVEMENT.last)/1000);
+  // ≤20 fps while something is happening, 12 while idle: the drawing itself is
+  // ~0.3 ms, the cost is compositing a screen-sized canvas, and idle the dial
+  // moves a tenth of a degree a second — nobody can see 20 frames of that
+  const busy=(typeof RUNNING!=='undefined'&&RUNNING.size)||MOVEMENT.burst>.05;
+  if(dt<(busy?0.048:0.083)){MOVEMENT.raf=requestAnimationFrame(movementFrame);return}
+  MOVEMENT.last=now;
+  movementStep(dt);
+  if(!movementCovered()){const t0=performance.now();movementDraw(dt);MOVEMENT.drawMs=MOVEMENT.drawMs*.9+(performance.now()-t0)*.1}
+  if(performance.now()-MOVEMENT.flowsAt>60000)movementFlows();
+  MOVEMENT.raf=requestAnimationFrame(movementFrame);
+}
+function movementStep(dt){
+  const M=MOVEMENT;
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)||Object.keys(M.live).length;
+  const target=running?MOVEMENT_RUN_RATE:MOVEMENT_IDLE_RATE;
+  M.rate+=(target-M.rate)*Math.min(1,dt*1.2);
+  M.angle+=(M.rate+M.burst*.8)*dt;
+  M.burst*=Math.pow(.3,dt);
+  M.t+=dt;
+  const now=performance.now(),hour=now-MOVEMENT_PERIOD*1000;
+  // a full turn of the dial and a stamp has come round to where it started: gone
+  M.stamps=M.stamps.filter(s=>s.at>hour);
+  for(const k in M.turns)if((M.turns[k].end||now)<hour)delete M.turns[k];
+  for(const k in M.live)if(M.live[k]<now-90000)delete M.live[k];
+}
+/* ---- drawing ---- */
+function movementInk(){
+  const light=document.documentElement.dataset.theme==='light';
+  return light?{brass:'90,66,20',ruby:'190,40,80',ink:'20,24,32'}
+              :{brass:'232,197,120',ruby:'236,80,120',ink:'236,240,246'};
+}
+function movementText(ctx,txt,x,y,size,ink,alpha,weight,align){
+  ctx.font=`${weight||500} ${size}px ${MOVEMENT.font||'sans-serif'}`;
+  ctx.fillStyle=`rgba(${ink},${alpha})`;ctx.textAlign=align||'center';ctx.textBaseline='middle';ctx.fillText(txt,x,y);
+}
+/* an angle on the dial for a moment `ms` ago: twelve o'clock now, sweeping
+   clockwise with age, one full turn per MOVEMENT_PERIOD */
+function movementAngle(ageMs){return -Math.PI/2+(ageMs/1000/MOVEMENT_PERIOD)*Math.PI*2}
+function movementDraw(dt){
+  const M=MOVEMENT,ctx=M.ctx;if(!ctx)return;
+  const W=M.W,H=M.H,ink=movementInk();
+  ctx.setTransform(M.dpr,0,0,M.dpr,0,0);ctx.clearRect(0,0,W,H);
+  ctx.lineCap='round';
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0;
+  const now=performance.now();
+  // the dial is the screen: centred, as big as the shorter side allows
+  const portrait=H>W;
+  const cx=W/2,cy=portrait?H*.60:H*.54,R=Math.min(W,H)*(portrait?.46:.47);
+  const rim=R,stampR=R*.86,flowR=R*.62,actR=R*.40;
+  // the bezel: sixty minute ticks that turn with the dial, four of them longer
+  const rot=(now/1000/MOVEMENT_PERIOD)*Math.PI*2;
+  ctx.beginPath();ctx.arc(cx,cy,rim,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},.20)`;ctx.lineWidth=1;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,cy,rim*.975,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},.07)`;ctx.stroke();
+  for(let i=0;i<60;i++){
+    const a=rot+i*Math.PI/30,q=i%15===0,f=i%5===0;
+    const r0=rim*(q?.945:f?.958:.968),r1=rim*.99;
+    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r0,cy+Math.sin(a)*r0);ctx.lineTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);
+    ctx.strokeStyle=`rgba(${ink.brass},${q?.45:f?.28:.14})`;ctx.lineWidth=q?1.6:1;ctx.stroke();
+  }
+  // the twelve o'clock index, fixed: "now"
+  ctx.beginPath();ctx.moveTo(cx,cy-rim*.93);ctx.lineTo(cx,cy-rim*.905);ctx.strokeStyle=`rgba(${ink.ruby},.9)`;ctx.lineWidth=2;ctx.stroke();
+  // the stamp ring, and a quiet quarter marking so age can be read
+  ctx.beginPath();ctx.arc(cx,cy,stampR,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},.12)`;ctx.lineWidth=1;ctx.stroke();
+  [['15 min',.25],['30',.5],['45',.75]].forEach(([t,f])=>{const a=-Math.PI/2+f*Math.PI*2;
+    movementText(ctx,t,cx+Math.cos(a)*stampR*1.06,cy+Math.sin(a)*stampR*1.06,9,ink.brass,.22,500)});
+  // turns: an arc as long as each took, on the stamp ring; the live one glows
+  for(const k in M.turns){const t=M.turns[k];const a0=movementAngle(now-t.start),a1=movementAngle(now-(t.end||now));
+    const live=!t.end;ctx.beginPath();ctx.arc(cx,cy,stampR,a1,a0);
+    ctx.strokeStyle=`rgba(${ink.brass},${live?.75:.42})`;ctx.lineWidth=live?3:2;ctx.stroke();
+    if(live){ctx.beginPath();ctx.arc(cx,cy,stampR,a1,a0);ctx.strokeStyle=`rgba(${ink.brass},.14)`;ctx.lineWidth=10;ctx.stroke()}}
+  // tools and flow events: a tick each, named while young
+  M.stamps.forEach(s=>{
+    const age=now-s.at,a=movementAngle(age),flow=s.kind==='flow'||s.kind==='done';
+    const r0=stampR-(flow?10:6),r1=stampR+(flow?10:6);
+    const c=flow?ink.ruby:ink.brass,al=Math.max(.22,1-age/1200000);
+    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r0,cy+Math.sin(a)*r0);ctx.lineTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);
+    ctx.strokeStyle=`rgba(${c},${al})`;ctx.lineWidth=flow?1.6:1.2;ctx.stroke();
+    const ta=Math.max(0,1-age/420000);                       // the name stays for seven minutes
+    if(ta>0){const lr=stampR-18,x=cx+Math.cos(a)*lr,y=cy+Math.sin(a)*lr,left=Math.cos(a)>0;
+      movementText(ctx,s.label,x,y,10,c,.7*Math.min(1,ta*3),500,left?'right':'left')}
+  });
+  // the flows ring: every enabled workflow has a mark; a running one is lit
+  ctx.beginPath();ctx.arc(cx,cy,flowR,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},.09)`;ctx.lineWidth=1;ctx.stroke();
+  M.flows.forEach((name,i)=>{
+    const a=-Math.PI/2+(i/M.flows.length)*Math.PI*2+rot*.5,live=name in M.live;
+    const x=cx+Math.cos(a)*flowR,y=cy+Math.sin(a)*flowR;
+    ctx.beginPath();ctx.arc(x,y,live?4:2.5,0,Math.PI*2);ctx.fillStyle=`rgba(${live?ink.ruby:ink.brass},${live?.95:.4})`;ctx.fill();
+    if(live){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.fillStyle=`rgba(${ink.ruby},.14)`;ctx.fill()}
+    movementText(ctx,name.replace(/[-_]/g,' ').slice(0,20),x+Math.cos(a)*14,y+Math.sin(a)*14,9.5,live?ink.ruby:ink.brass,live?.8:.3,500,Math.cos(a)>.3?'left':Math.cos(a)<-.3?'right':'center');
+  });
+  // the activity ring: one bright point that creeps idle and turns while running
+  ctx.beginPath();ctx.arc(cx,cy,actR,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},.10)`;ctx.lineWidth=1;ctx.stroke();
+  const aa=M.angle;
+  ctx.beginPath();ctx.arc(cx,cy,actR,aa-.9,aa);ctx.strokeStyle=`rgba(${ink.brass},${running?.35:.16})`;ctx.lineWidth=1.5;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx+Math.cos(aa)*actR,cy+Math.sin(aa)*actR,running?3.5:2.5,0,Math.PI*2);
+  ctx.fillStyle=`rgba(${ink.brass},${running?.95:.55})`;ctx.fill();
+  // the soul, at the centre: a slow breath while a turn runs
+  const breath=running?.5+.5*Math.sin(M.t*Math.PI*.7):0;
+  ctx.beginPath();ctx.arc(cx,cy,R*.16,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},${.14+.22*breath})`;ctx.lineWidth=1;ctx.stroke();
+  if(running){ctx.beginPath();ctx.arc(cx,cy,R*.16*(1+.06*breath),0,Math.PI*2);ctx.fillStyle=`rgba(${ink.brass},${.03+.05*breath})`;ctx.fill()}
+  ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=`rgba(${ink.ruby},${running?.95:.6})`;ctx.fill();
+  const who=(typeof agentName==='function')?agentName():'Aria';
+  const brain=(typeof immersiveBrainText==='function'?immersiveBrainText():'').split(' · ')[0];
+  movementText(ctx,'SOUL · '+who.toUpperCase(),cx,cy+R*.16+16,10,ink.brass,.5,600);
+  if(brain)movementText(ctx,'CAL. '+brain.toUpperCase(),cx,cy+R*.16+31,9,ink.brass,.3,500);
+  const nrun=(typeof RUNNING!=='undefined')?RUNNING.size:0;
+  movementText(ctx,nrun?`${nrun} ${nrun===1?'turn':'turns'} running`:`${M.stamps.length} in the last hour`,cx,cy+R*.16+46,9,ink.brass,.26,500);
+  M.drawn++;
+}
+// first paint: 01b ran before this file existed, so the scene starts itself
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -3912,7 +5086,9 @@ function zoomWin(el,appId,dir){
   const at=`translate(${dx}px,${dy}px) scale(.06)`;
   const frames=dir>0?[{transform:at,opacity:.2},{transform:'none',opacity:1}]
                     :[{transform:'none',opacity:1},{transform:at,opacity:.15}];
-  return Motion.run(el,frames,{duration:dir>0?300:230,easing:dir>0?EASE.out:EASE.in}).finished;
+  // the immersive look opens with a touch of overshoot — weight, not decoration
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  return Motion.run(el,frames,{duration:dir>0?(imm?380:300):230,easing:dir>0?(imm?'cubic-bezier(.2,1.15,.35,1)':EASE.out):EASE.in}).finished;
 }
 /* FLIP a window between two layout states: call with a fn that mutates geometry */
 function flipWin(el,mutate){
@@ -4112,7 +5288,7 @@ function createWin(app){
   el.innerHTML=`<div class="ttl">
     <div class="tbtns"><button class="cls" title="close">✕</button><button class="mn" title="minimize">–</button><button class="mx" title="maximize">＋</button></div>
     <div class="tmid"><span class="ticon">${appIcon(app.id,17)}</span><span class="tname">${esc(app.title)}</span></div>
-    <span class="tright"><button class="cp-btn" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
+    <span class="tright"><button class="cp-btn" data-ic="sparkles" title="${esc('Ask '+((typeof agentName==='function'&&agentName())||'the agent')+' about this app')}">✦</button></span></div>
     <div class="wmain"><div class="wbody"></div><div class="copanel"></div></div>
     ${['n','s','e','w','ne','nw','se','sw'].map(d=>`<div class="rz rz-${d}" data-d="${d}"></div>`).join('')}`;
   desk.appendChild(el);
@@ -4457,7 +5633,7 @@ function listFilter(scope,q){
 }
 function emptyBox(title,hint,action,askApp,askPrompt){
   // every empty state is an invitation: the ✦ chip opens this app's copilot
-  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})">✦ Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
   return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
 }
 /* open (if needed) an app + its copilot panel, prefill and send */
@@ -4763,13 +5939,40 @@ async function initCopilot(w,panel){
   panel.dataset.ready='1';
   panel.innerHTML=`<div class="cp-head"><span class="cp-ava">✦</span><span class="cp-name">${esc(agentName())}</span>
       <span class="cp-app">${esc(w.app.title)}</span><span style="flex:1"></span>
-      <button class="cp-open" title="Open in Chat">⤢</button></div>
+      <button class="cp-open" data-ic="expand" title="Open in Chat">⤢</button></div>
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
-    <div class="cp-inbar"><textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea><button class="cp-send">↑</button></div>`;
+    <div class="cp-inbar"><div class="att-strip cp-att"></div>
+      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
+      <button class="cp-attach cp-snap" data-ic="camera" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
+      <button class="cp-attach cp-pick" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
+      <button class="cp-send" data-ic="send">↑</button></div>`;
   const feedEl=panel.querySelector('.cp-feed');
   const input=panel.querySelector('.cp-in');
   const sendBtn2=panel.querySelector('.cp-send');
+  // Images, the same three doors as Chat and the prompt bar: paste, drop, pick.
+  const att=imageAttach({input,zone:panel.querySelector('.cp-inbar'),button:panel.querySelector('.cp-pick'),
+    strip:panel.querySelector('.cp-att')});
+  // "Snap this app": a picture of the screen, attached, where this machine can
+  // take one. Where it cannot, the button says so and names the way that works —
+  // never a control that answers a click with nothing.
+  panel.querySelector('.cp-snap').onclick=async e=>{
+    e.preventDefault();
+    const c=cap('screen.capture');
+    if(!c.available){
+      toast((c.reason||'This machine cannot capture its own screen here.')
+        +' Paste a screenshot instead (Ctrl+V / Cmd+V), or drop one on this panel.');
+      input.focus();return;
+    }
+    toast('capturing the screen…');
+    try{
+      const r=await fetch('/api/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({area:'full',inline:true})});
+      const d=await r.json();
+      if(!r.ok||!d.data_url)return toast(d.error||'could not capture the screen');
+      att.add(d.data_url);input.focus();
+    }catch(err){toast('screenshot failed')}
+  };
   const startersEl=panel.querySelector('.cp-starters');
   // starters: the panel invites action the moment it opens
   startersEl.innerHTML=copilotStarters(w.id).map(s=>`<button class="cp-chip">${esc(s)}</button>`).join('');
@@ -4808,16 +6011,21 @@ async function initCopilot(w,panel){
     return live;
   }
   function go(){
-    const text=input.value.trim();if(!text)return;
+    const text=input.value.trim();
+    const imgs=att.take();
+    if(!text&&!imgs.length)return;
     input.value='';
-    feedEl.insertAdjacentHTML('beforeend',`<div class="mf-user">${esc(text)}</div>`);
+    const bubble=document.createElement('div');bubble.className='mf-user';
+    bubble.textContent=text||'What do you see here?';
+    attachThumbs(bubble,imgs);
+    feedEl.appendChild(bubble);
     // the starters were an invitation; leaving them under a question in flight
     // is the panel still offering to begin something it has already begun
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
-    agentTurn({text,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
-      title:'✦ '+w.app.title,context:copilotContext(w),sink,
+    agentTurn({text:text||'What do you see here?',images:imgs,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
+      title:'✦ '+w.app.title,context:copilotContext(w)+'\n'+copilotVisionNote(),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
@@ -4853,6 +6061,96 @@ function errBox(ev){
     d.appendChild(b);
   }
   return d;
+}
+
+/* ---- images on every agent surface ----------------------------------------
+   A screenshot is often the whole question ("fix this, it is not working"), and
+   it must be attachable wherever the agent is asked: Chat, the prompt bar and
+   the copilot panel inside every window — including the panels user-built apps
+   mount. One implementation, three doors: paste (Ctrl+V), drop, and a button
+   that opens the file picker (which on a phone is the camera and the photos).
+   The same downscale everywhere, so a 4K screenshot costs the turn the same on
+   each surface. TUI: not applicable — a terminal has no clipboard image. */
+var IMG_MAX_PER_TURN=4;
+function downscaleImage(file,done){
+  if(!file||!String(file.type||'').startsWith('image/'))return;
+  const img=new Image();
+  img.onload=()=>{
+    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    // large pastes (screenshots) are recompressed so history stays light
+    done((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
+    URL.revokeObjectURL(img.src);
+  };
+  img.src=URL.createObjectURL(file);
+}
+function clipboardImages(e){
+  return [...((e.clipboardData||{}).items||[])].filter(it=>it.type.startsWith('image/')).map(it=>it.getAsFile()).filter(Boolean);
+}
+function droppedImages(e){
+  return [...((e.dataTransfer||{}).files||[])].filter(f=>f.type.startsWith('image/'));
+}
+/* Wire one composer: `input` takes the paste, `zone` takes the drop, `button`
+   opens the picker, `strip` shows what is attached. Returns the attachment
+   state; `take()` hands the images to the turn and clears the strip. */
+function imageAttach(o){
+  const st={imgs:[]};
+  const strip=o.strip;
+  const render=()=>{
+    if(!strip)return;
+    strip.innerHTML=st.imgs.map((u,i)=>`<div class="att"><img src="${u}" alt="attached image ${i+1}"><button data-i="${i}" title="Remove">×</button></div>`).join('');
+    strip.classList.toggle('on',st.imgs.length>0);
+    strip.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();st.imgs.splice(+b.dataset.i,1);render()});
+    if(o.onChange)o.onChange(st.imgs);
+  };
+  const add=file=>{
+    if(typeof file==='string'){if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);st.imgs.push(file);render();return}
+    if(st.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images per message`);
+    downscaleImage(file,u=>{if(st.imgs.length<IMG_MAX_PER_TURN){st.imgs.push(u);render()}});
+  };
+  if(o.input)o.input.addEventListener('paste',e=>{
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(add);
+  });
+  if(o.zone){
+    ['dragover','drop'].forEach(ev=>o.zone.addEventListener(ev,e=>{
+      if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;
+      e.preventDefault();
+      if(ev==='drop'){droppedImages(e).forEach(add);o.zone.classList.remove('dropping')}
+      else o.zone.classList.add('dropping');
+    }));
+    o.zone.addEventListener('dragleave',()=>o.zone.classList.remove('dropping'));
+  }
+  if(o.button){
+    o.button.title=o.button.title||'Add an image — or paste one (Ctrl+V), or drop it here';
+    o.button.onclick=e=>{
+      e.preventDefault();
+      const f=document.createElement('input');f.type='file';f.accept='image/*';f.multiple=true;
+      f.onchange=()=>{[...f.files].forEach(add);if(o.input)o.input.focus()};
+      f.click();
+    };
+  }
+  return {add,render,get imgs(){return st.imgs},
+    take(){const out=st.imgs.slice();st.imgs=[];render();return out}};
+}
+/* thumbnails under a sent message, on any surface */
+function attachThumbs(el,imgs){
+  if(!imgs||!imgs.length||!el)return;
+  const g=document.createElement('div');g.className='att-sent';
+  imgs.forEach(u=>{const im=document.createElement('img');im.src=u;im.alt='attached image';g.appendChild(im)});
+  el.appendChild(g);
+}
+
+/* What the agent should know about SEEING this app. It has eyes only where the
+   machine can capture its own screen; elsewhere the person's paste is the way,
+   and the agent must ask for it rather than claim to have looked. */
+function copilotVisionNote(){
+  const c=(typeof cap==='function')?cap('screen.capture'):{available:false};
+  return c.available
+    ?'If the question is about how this app LOOKS (layout, a blank panel, an error on screen), call take_screenshot to see the screen before deciding — the app window is open in front of you.'
+    :'You cannot capture the screen on this machine. If the question is about how this app looks and no image is attached, ask for a screenshot (they can paste one into this panel) instead of guessing.';
 }
 /* ================= application menus =================
    Every window gets File · Edit · View · Window · Help in the menu bar, the way
@@ -5132,6 +6430,7 @@ function applyWindowActivity(){
   // question in different words.
   document.body.classList.toggle('has-win',
     [...WM.wins.values()].some(w=>!w.min&&(typeof deskVisible!=='function'||deskVisible(w))));
+  if(typeof immersiveWinChange==='function')immersiveWinChange();
   WM.wins.forEach(w=>{
     const on=winAwake(w), was=w._awake!==false;      // first pass counts as "was awake"
     w._awake=on;
@@ -5351,7 +6650,8 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
-  jobs:{id:'jobs',title:'Jobs',icon:'◷',w:720,h:640,desc:'What this machine does for you without being asked',render:renderJobs},
+  brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
+  jobs:{id:'jobs',title:'Missions',icon:'◷',w:760,h:680,desc:'What this machine does for you every day — and what it did',render:renderJobs},
   fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
@@ -5748,7 +7048,11 @@ function renderBento(){
 function buildDesktop(){
   rebuildLaunchers();
   $('#desktop').addEventListener('click',e=>{if(e.target.id==='desktop')clearSel()});
-  $('#startbtn').onclick=e=>{e.stopPropagation();toggleStart()};
+  // Immersive: the deck leaves the desktop and the launcher button opens it as a
+  // wall (Launchpad) — one launcher, not a start menu beside an app wall
+  $('#startbtn').onclick=e=>{e.stopPropagation();
+    if(typeof immersiveOn==='function'&&immersiveOn()&&typeof deckFull==='function')deckFull(!(typeof DECKFULL!=='undefined'&&DECKFULL));
+    else toggleStart()};
   // closing on a click outside, and closing the context menu, is the popover
   // manager's job now (04e-popover.js) — one listener for every popover
   $('#desktop').addEventListener('contextmenu',e=>{
@@ -5797,7 +7101,7 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{
@@ -5884,7 +7188,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['chat','apps','hostscreen','remotedesk','browser','files','terminal']],
+  ['Essentials',['brief','chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
@@ -5932,6 +7236,29 @@ function deckLoad(){
 }
 function deckSave(){localStorage.setItem('deck',JSON.stringify(DECK))}
 function deckGroupOf(id){return DECK.groups.find(g=>g.apps.includes(id))}
+/* ---- hiding an app from the desktop ----------------------------------------
+   A tile you never use is clutter on the one surface that is meant to be YOURS,
+   and the honest answer to "I don't want to see this" is not "delete the app" —
+   these are built-ins, and half of them are how the OS explains itself. So the
+   deck keeps a hidden list: the tile leaves the shelf, the app stays installed
+   and stays reachable from the launcher, the prompt bar and the app wall.
+   Hiding is never a one-way door: the wall still draws hidden apps, dimmed and
+   marked, and their menu offers them back. A hidden app that could not be found
+   again is the dead control this project's honesty rules forbid. */
+function deckHidden(){return (DECK&&DECK.hidden)||[]}
+function deckIsHidden(id){return deckHidden().includes(id)}
+function deckSetHidden(id,on){
+  if(!DECK)return;
+  const h=new Set(deckHidden());
+  on?h.add(id):h.delete(id);
+  DECK.hidden=[...h];
+  deckSave();buildDeck();
+  const name=(APPS[id]&&APPS[id].title)||id;
+  toast(on?`${name} hidden — still in the launcher, and on the app wall (scroll up)`
+          :`${name} is back on the desktop`);
+}
+/* the apps of a group that actually belong on the shelf right now */
+function deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}
 /* every launchable app has a home: new built-ins land in More, user apps in Your apps */
 function deckReconcile(){
   const ids=(typeof launcherIds==='function'?launcherIds():Object.keys(APPS)).filter(id=>APPS[id]);
@@ -6000,7 +7327,7 @@ function buildDeck(fresh){
       ${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
       ${deckNativeHTML()}
       ${deckWidgetsHTML()}
-      <button class="deck-new" title="New group">＋<span>New group</span></button>`}
+      <button class="deck-new" title="New group"><b data-ic="plus">＋</b><span>New group</span></button>`}
     </div>`;
   $('#deck-toggle').onclick=DECKFULL?(()=>deckFull(false)):deckToggle;
   if(DECKFULL)deckHeadWire();
@@ -6018,8 +7345,11 @@ function buildDeck(fresh){
   if(st)st.onclick=()=>{deckFull(false);openApp('studio')};
   if(so)so.onclick=()=>{deckFull(false);openApp('store')};
   box.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
-    t.onclick=()=>{deckFull(false);openApp(t.dataset.app)};
+    // a drag is not a click: `_moved` is set by the drag and read here, the same
+    // rule the desktop icons have always used
+    t.onclick=()=>{if(t._moved)return;deckFull(false);openApp(t.dataset.app)};
     t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
+    deckDragWire(t,'tile');
   });
   box.querySelectorAll('.deck-nat').forEach(t=>{
     t.onclick=()=>{deckFull(false);launchNative(t.dataset.nat,t.dataset.natname)};
@@ -6040,6 +7370,9 @@ function buildDeck(fresh){
   });
   box.querySelectorAll('.deck-gname[data-g]').forEach(h=>{
     h.oncontextmenu=e=>{e.preventDefault();deckGroupMenu(e,h.dataset.g)};
+    // the group's NAME is its handle — dragging from the tiles moves a tile
+    const g=h.closest('.deck-group[data-g]');
+    if(g&&!h.classList.contains('deck-unfold'))deckDragWire(g,'group',h);
   });
   box.querySelectorAll('.deck-unfold,.deck-fold').forEach(b=>{
     b.onclick=e=>{e.stopPropagation();deckFold(b.dataset.g,b.classList.contains('deck-fold'))};
@@ -6069,7 +7402,7 @@ function deckHeadHTML(){
       aria-label="Search apps">`:''}
     <span class="dh-hint">${DECKTAB==='apps'?'scroll down or press Esc to go back'
                                             :'scroll up for your apps · Esc to go back'}</span>
-    <button id="deck-toggle" title="Back to the desktop (Esc)">✕</button></div>`;
+    <button id="deck-toggle" data-ic="x" title="Back to the desktop (Esc)">✕</button></div>`;
 }
 function deckHeadWire(){
   const box=$('#deck');
@@ -6242,18 +7575,22 @@ addEventListener('resize',()=>{if(DECK)deckMeasure(document.body.classList.conta
 function deckGroupHTML(g){
   // the wall shows everything: folding is a property of the shelf, not of the overview
   const folded=!!g.collapsed&&!DECKFULL;
-  const n=g.apps.filter(id=>APPS[id]).length;
+  const shown=deckShown(g);
+  const n=shown.length;
   if(folded)return `<div class="deck-group folded" data-g="${esc(g.id)}">
     <button class="deck-gname deck-unfold" data-g="${esc(g.id)}" title="Show the ${n} apps in ${esc(g.name)}">
       ${esc(g.name)} <span class="mut">${n}</span><span class="deck-caret">▸</span></button>
-    <div class="deck-peek">${g.apps.filter(id=>APPS[id]).slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
+    <div class="deck-peek">${shown.slice(0,5).map(id=>appIcon(id,18)).join('')}</div>
   </div>`;
+  const hid=g.apps.filter(id=>APPS[id]&&deckIsHidden(id)).length;
   return `<div class="deck-group" data-g="${esc(g.id)}">
-    <div class="deck-gname" data-g="${esc(g.id)}">${esc(g.name)}${g.collapsed!==undefined?
-      `<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
-    <div class="deck-tiles">${g.apps.map(id=>APPS[id]?`
-      <button class="deck-tile" data-app="${esc(id)}" title="${esc(APPS[id].desc||APPS[id].title)}">
-        ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`:'').join('')}</div>
+    <div class="deck-gname" data-g="${esc(g.id)}" title="Drag to move this group">${esc(g.name)}${
+      hid&&!DECKFULL?`<span class="deck-hidn" title="${hid} app${hid>1?'s':''} hidden from the desktop — right-click to show ${hid>1?'them':'it'}">${hid} hidden</span>`:''}${
+      g.collapsed!==undefined?`<button class="deck-fold" data-g="${esc(g.id)}" title="Fold ${esc(g.name)} to one line">▾</button>`:''}</div>
+    <div class="deck-tiles">${shown.map(id=>`
+      <button class="deck-tile${deckIsHidden(id)?' hidden-app':''}" data-app="${esc(id)}"
+        title="${esc(APPS[id].desc||APPS[id].title)}${deckIsHidden(id)?' · hidden from the desktop':''}">
+        ${appIcon(id,deckIconPx())}<span>${esc(APPS[id].title)}</span></button>`).join('')}</div>
   </div>`;
 }
 /* ---- system apps ----
@@ -6326,7 +7663,20 @@ function deckTileMenu(e,id){
     if(cur)cur.apps=cur.apps.filter(x=>x!==id);
     g.apps.push(id);deckSave();buildDeck();
   }}));
-  items.push(null,{label:'Pin to dock',fn:()=>pinToDock(id)});
+  items.push(null);
+  // Rearranging without a pointer, and the one thing a menu can do that a drag
+  // cannot: say what it will do before you commit to it.
+  if(cur){
+    const i=cur.apps.indexOf(id);
+    const prev=cur.apps.slice(0,i).reverse().find(x=>APPS[x]&&(DECKFULL||!deckIsHidden(x)));
+    const next=cur.apps.slice(i+1).find(x=>APPS[x]&&(DECKFULL||!deckIsHidden(x)));
+    if(prev)items.push({label:'Move earlier',fn:()=>deckMoveTile(id,-1)});
+    if(next)items.push({label:'Move later',fn:()=>deckMoveTile(id,1)});
+  }
+  items.push({label:'Pin to dock',fn:()=>pinToDock(id)});
+  items.push(deckIsHidden(id)
+    ?{label:'Show on the desktop',fn:()=>deckSetHidden(id,false)}
+    :{label:'Hide from the desktop',fn:()=>deckSetHidden(id,true)});
   if(id.startsWith('ua_')){
     items.push({label:'Pin as widget',fn:()=>{setWidgetPlace(id.slice(3),'');if(DECKFULL)deckTab('widgets')}});
     items.push({label:'Pin as widget (deck)',fn:()=>setWidgetPlace(id.slice(3),'deck')});
@@ -6347,8 +7697,12 @@ function deckUsed(id){
 }
 function deckGroupMenu(e,gid){
   const g=DECK.groups.find(x=>x.id===gid);if(!g)return;
+  const hidden=g.apps.filter(id=>APPS[id]&&deckIsHidden(id));
   showCtxItems(e,[
     {label:g.collapsed?'Unfold group':'Fold group to one line',fn:()=>deckFold(gid,!g.collapsed)},
+    ...(hidden.length?[{label:`Show ${hidden.length} hidden app${hidden.length>1?'s':''}`,fn:()=>{
+      DECK.hidden=deckHidden().filter(id=>!hidden.includes(id));deckSave();buildDeck();
+      toast(`${hidden.length} app${hidden.length>1?'s are':' is'} back on the desktop`)}}]:[]),
     {label:'Rename group…',fn:async()=>{
       const v=await osPrompt('Rename group',{value:g.name,confirmText:'Rename'});
       if(v&&v.trim()){g.name=v.trim();deckSave();buildDeck()}}},
@@ -6452,6 +7806,220 @@ addEventListener('touchmove',e=>{
   else deckFull(true,up?'apps':'widgets');
 },{passive:true});
 addEventListener('touchend',()=>{DTOUCH=null},{passive:true});
+
+/* ================= rearranging the bento: drag a tile, drag a group ==========
+   The deck is the desktop's one arrangeable surface, and until now the only way
+   to move anything was a context menu ("Move to Automation"), which is a way to
+   RELOCATE a tile and no way at all to ORDER one. So tiles and groups drag.
+
+   Pointer events, not HTML5 drag-and-drop: DnD has no touch story at all, and
+   the phone is a first-class face here. One code path therefore serves a mouse,
+   a trackpad and a finger.
+
+   The DOM is the model while a drag is in flight — the dragged element itself is
+   moved between siblings, so what you see IS the arrangement — and the order is
+   read back out of it and committed on drop. That is what keeps the preview and
+   the result the same computation instead of two that can disagree.
+
+   Two rules that are easy to get wrong and expensive to debug:
+   - A FOLDED group has no `.deck-tiles` in the DOM, and a hidden app has no tile.
+     Reading a group's order back from the DOM must therefore never be a wholesale
+     replacement: the ids that were not rendered are still that person's
+     arrangement, and dropping them silently deletes apps from the deck.
+   - On touch the drag must not start on contact. The deck scrolls, and a finger
+     that moves is scrolling; only a finger that STAYS is rearranging. Hence the
+     long press, and hence pointercancel (the browser taking the gesture for a
+     scroll) abandons the drag rather than fighting it.
+
+   TUI: not applicable — no pointer, and `bento apps` lists everything.
+   SUI: identical, this is all inside the page.  */
+var DRAG=null;
+const DRAG_HOLD_MS=320;      // touch: hold this long, still, to pick a tile up
+const DRAG_SLOP=5;           // mouse: move this far before it is a drag, not a click
+
+/* Which way a container lays its children out, measured rather than assumed —
+   the shelf flows in columns, the wall in rows, and a phone in one column. */
+function deckAxis(box){
+  const kids=[...box.children].filter(el=>el.offsetParent!==null);
+  if(kids.length<2)return 'x';
+  const a=kids[0].getBoundingClientRect(),b=kids[1].getBoundingClientRect();
+  return Math.abs(b.left-a.left)>=Math.abs(b.top-a.top)?'x':'y';
+}
+function deckDragWire(el,kind,handle){
+  (handle||el).addEventListener('pointerdown',e=>{
+    if(e.button!==undefined&&e.button!==0)return;
+    if(e.target.closest('.deck-fold,.deck-wx,.deck-unfold'))return;   // a button is a button
+    deckDragArm(el,kind,e);
+  });
+}
+function deckDragArm(el,kind,e){
+  const touch=e.pointerType==='touch';
+  const sx=e.clientX,sy=e.clientY;
+  let started=false,hold=null;
+  el._moved=false;
+  /* WINDOW, not the element, and deliberately no setPointerCapture: this drag
+     MOVES the dragged element between siblings, and a DOM move is a remove plus
+     an insert, which releases pointer capture. Measured: the tile reordered on
+     screen and then the drop never committed, because `pointerup` had stopped
+     arriving at the element the listener was on. Listening on the window is
+     immune to whatever happens to the node. */
+  const begin=()=>{if(!started){started=true;deckDragStart(el,kind,{clientX:sx,clientY:sy})}};
+  const move=ev=>{
+    const far=Math.hypot(ev.clientX-sx,ev.clientY-sy);
+    if(!started){
+      if(touch){if(far>10){clearTimeout(hold);done()}return}   // a finger that moves is scrolling
+      if(far<DRAG_SLOP)return;
+      begin();
+    }
+    el._moved=true;
+    deckDragMove(ev.clientX,ev.clientY);
+  };
+  const up=()=>{done();if(started)deckDragDrop()};
+  const cancel=()=>{done();if(started)deckDragDrop(true)};
+  // Touch scrolling is stopped by a non-passive touchmove, not by preventing a
+  // pointer event: by the time the browser is scrolling, the pointer stream is
+  // already lost. The long press means it has not started scrolling yet.
+  const noscroll=ev=>{if(started)ev.preventDefault()};
+  function done(){
+    clearTimeout(hold);
+    window.removeEventListener('pointermove',move);
+    window.removeEventListener('pointerup',up);
+    window.removeEventListener('pointercancel',cancel);
+    window.removeEventListener('touchmove',noscroll);
+  }
+  window.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',up);
+  window.addEventListener('pointercancel',cancel);
+  window.addEventListener('touchmove',noscroll,{passive:false});
+  if(touch)hold=setTimeout(begin,DRAG_HOLD_MS);
+}
+function deckDragStart(el,kind,e){
+  const r=el.getBoundingClientRect();
+  const ghost=el.cloneNode(true);
+  ghost.classList.add('deck-ghost');
+  ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
+  document.body.appendChild(ghost);
+  el.classList.add('dragging');
+  document.body.classList.add('deck-dragging');
+  DRAG={el,kind,ghost,dx:e.clientX-r.left,dy:e.clientY-r.top,into:null,
+        home:{parent:el.parentNode,next:el.nextSibling}};
+  deckDragMove(e.clientX,e.clientY);
+  if(navigator.vibrate)try{navigator.vibrate(8)}catch(err){}
+}
+function deckDragMove(x,y){
+  if(!DRAG)return;
+  DRAG.ghost.style.left=(x-DRAG.dx)+'px';
+  DRAG.ghost.style.top=(y-DRAG.dy)+'px';
+  deckDragAutoScroll(x,y);
+  const under=document.elementFromPoint(x,y);
+  if(!under)return;
+  if(DRAG.kind==='group'){
+    const g=under.closest('.deck-group[data-g]');
+    if(!g||g===DRAG.el)return;
+    return deckDragPlace(DRAG.el,g,x,y);
+  }
+  // a tile: onto another tile, into an open group, or onto a folded one
+  const folded=under.closest('.deck-group.folded[data-g]');
+  deckDropInto(folded?folded.dataset.g:null);
+  if(folded)return;
+  const tile=under.closest('.deck-tile[data-app]');
+  if(tile&&tile!==DRAG.el)return deckDragPlace(DRAG.el,tile,x,y);
+  const grp=under.closest('.deck-group[data-g] .deck-tiles');
+  if(grp&&!grp.contains(DRAG.el))grp.appendChild(DRAG.el);
+}
+/* put the dragged element before or after the thing under the pointer, along
+   whichever axis that container actually runs in */
+function deckDragPlace(el,target,x,y){
+  const box=target.parentNode;
+  if(!box)return;
+  const r=target.getBoundingClientRect();
+  const before=deckAxis(box)==='x'?x<r.left+r.width/2:y<r.top+r.height/2;
+  const ref=before?target:target.nextSibling;
+  if(ref!==el)box.insertBefore(el,ref===el?el.nextSibling:ref);
+}
+function deckDropInto(gid){
+  if(DRAG.into===gid)return;
+  const old=DRAG.into&&document.querySelector(`.deck-group[data-g="${CSS.escape(DRAG.into)}"]`);
+  if(old)old.classList.remove('dropinto');
+  DRAG.into=gid;
+  const now=gid&&document.querySelector(`.deck-group[data-g="${CSS.escape(gid)}"]`);
+  if(now)now.classList.add('dropinto');
+}
+/* the wall can be taller than the screen — a drag that cannot reach the bottom
+   of it is a drag that cannot do the one thing it is for */
+function deckDragAutoScroll(x,y){
+  const sc=$('#deck-scroll');if(!sc)return;
+  const r=sc.getBoundingClientRect(),edge=48;
+  if(sc.scrollHeight>sc.clientHeight+2){
+    if(y<r.top+edge)sc.scrollTop-=14; else if(y>r.bottom-edge)sc.scrollTop+=14;
+  }
+  if(sc.scrollWidth>sc.clientWidth+2){
+    if(x<r.left+edge)sc.scrollLeft-=14; else if(x>r.right-edge)sc.scrollLeft+=14;
+  }
+}
+function deckDragDrop(abandon){
+  if(!DRAG)return;
+  const {el,kind,ghost,into,home}=DRAG;
+  const drag=DRAG;DRAG=null;
+  ghost.remove();
+  el.classList.remove('dragging');
+  document.body.classList.remove('deck-dragging');
+  document.querySelectorAll('.deck-group.dropinto').forEach(g=>g.classList.remove('dropinto'));
+  if(abandon){                                   // the browser took the gesture: put it back
+    if(home.parent)home.parent.insertBefore(el,home.next);
+    return;
+  }
+  if(kind==='tile'&&into)return deckDropIntoGroup(el.dataset.app,into);
+  deckCommitOrder();
+  buildDeck();
+}
+/* Commit what the DOM now says. Only groups that are actually SHOWING their
+   tiles are re-read; a folded group's apps are not on screen and must be left
+   alone, and every id that is hidden (or otherwise unrendered) keeps its place
+   rather than being dropped on the floor. */
+function deckCommitOrder(){
+  const sc=$('#deck-scroll');if(!sc||!DECK)return;
+  const order=[];
+  sc.querySelectorAll('.deck-group[data-g]').forEach(gel=>{
+    const g=DECK.groups.find(x=>x.id===gel.dataset.g);
+    if(!g)return;
+    order.push(g);
+    const tiles=gel.querySelector('.deck-tiles');
+    if(!tiles)return;                                   // folded: nothing was shown, nothing moves
+    const shown=[...tiles.querySelectorAll('.deck-tile[data-app]')].map(t=>t.dataset.app);
+    const rest=g.apps.filter(id=>!shown.includes(id));   // hidden, or not rendered here
+    g.apps=[...shown,...rest];
+  });
+  // a tile that moved between groups leaves the group it came from
+  const claimed=new Set();
+  order.forEach(g=>g.apps=g.apps.filter(id=>{
+    if(claimed.has(id))return false;
+    claimed.add(id);return true;
+  }));
+  DECK.groups.filter(g=>!order.includes(g)).forEach(g=>order.push(g));
+  DECK.groups=order;
+  deckSave();
+}
+/* dropped onto a group that is folded shut: it takes the app and opens */
+function deckDropIntoGroup(id,gid){
+  const g=DECK.groups.find(x=>x.id===gid);if(!g)return buildDeck();
+  DECK.groups.forEach(x=>{if(x!==g)x.apps=x.apps.filter(a=>a!==id)});
+  if(!g.apps.includes(id))g.apps.push(id);
+  g.collapsed=false;
+  deckSave();buildDeck();
+  toast(`moved to ${g.name}`);
+}
+/* the menu's way to reorder, for anyone not using a pointer */
+function deckMoveTile(id,dir){
+  const g=deckGroupOf(id);if(!g)return;
+  const i=g.apps.indexOf(id);
+  const vis=x=>APPS[x]&&(DECKFULL||!deckIsHidden(x));
+  const j=dir<0?g.apps.slice(0,i).reduce((p,x,k)=>vis(x)?k:p,-1)
+               :(()=>{const k=g.apps.slice(i+1).findIndex(vis);return k<0?-1:i+1+k})();
+  if(j<0)return;
+  g.apps.splice(i,1);g.apps.splice(j,0,id);
+  deckSave();buildDeck();
+}
 /* ================= desktop widgets =================
    Every app has two surfaces: the desktop window (the whole application) and a
    widget (the one glanceable fact). The widget's size is a property of the APP —
@@ -6616,7 +8184,7 @@ function arrangeWidgets(){
      4. the wizard's preset gradient, or the stylesheet's mesh.
    The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
    cheap to rasterise on slow GPUs (no blur filters — gradients only). */
-const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial'];
+const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement'];
 const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
 function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
 function themeWall(){
@@ -6634,7 +8202,9 @@ function loadWallpaper(){
   const img=new Image();
   img.onload=()=>applyWallImage(url);
   img.onerror=()=>{
-    const id=pickedWall()||themeWall();
+    // the immersive look ships a wallpaper too, ranked below a theme's own —
+    // the theme designed its scene, the look only dresses whatever is there
+    const id=pickedWall()||themeWall()||(typeof immersiveWall==='function'?immersiveWall():'');
     if(id)return applyWallImage(builtinWallURL(id));
     const preset=cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset;
     if(preset&&typeof WIZ_WALLS!=='undefined'&&WIZ_WALLS[preset]){
@@ -7164,6 +8734,7 @@ function handle(ev){
       }
       break;}
     case 'turn_start':{
+      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||'')};
@@ -7191,6 +8762,7 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
+      if(typeof movementPulse==='function')movementPulse('tool',ev.name);   // a tick on the dial (Movement scene)
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -7292,6 +8864,7 @@ function handle(ev){
       flushText();
       curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(typeof movementPulse==='function')movementPulse('turnend',ev.conversation_id);
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
       // "Aria replied" is for a reply. A turn that ended on an error is not one —
@@ -7356,6 +8929,8 @@ function handle(ev){
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
     case 'fabric_event':
+      // a flow moved: its mark lights on the dial (heartbeats are not movement)
+      if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);
       // State first, painting second: the graph must stay correct even when the Team
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
@@ -7368,8 +8943,17 @@ function handle(ev){
       refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
     case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
-      toast('▲ '+ev.flow+' · '+ev.status);
-      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
+      if(typeof movementPulse==='function')movementPulse('done',ev.flow);
+      if(ev.brief&&ev.brief.open){toast('▲ '+ev.flow+' — '+(typeof briefLoad==='function'?'':'')+
+          (ev.brief.needs_you?ev.brief.needs_you+' need you':'')+(ev.brief.decide?' · '+ev.brief.decide+' to decide':'')+(ev.brief.fyi?' · '+ev.brief.fyi+' FYI':'')+' — open the Brief');
+        if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});}
+      else toast('▲ '+ev.flow+' · '+ev.status);
+      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh();
+      refreshApp('jobs'); break;      // a mission's row shows what it just said
+    case 'brief':
+      // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
+      if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
@@ -7476,11 +9060,16 @@ const PLACEHOLDER_BUSY='Say what comes next — it decides whether that changes 
 function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
-      <button id="newchat">＋ New chat</button>
+      <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
       <div id="convs"></div>
     </div>
     <div class="cmain">
       <div id="topbar">
+        ${/* Immersive: the conversation list is a drawer, and this opens it.
+              Rendered always, shown only by that look (CSS) — the standard
+              desktop keeps its permanent sidebar. */''}
+        <button id="cs-toggle" class="endbtn" data-ic="layers" title="Conversations"
+          onclick="this.closest('.chatwrap').classList.toggle('drawer')">☰</button>
         ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
               holding both — engines in an optgroup above the models — could show
               Claude Code chosen and a Gemini model selected underneath it, which
@@ -7500,15 +9089,17 @@ function renderChat(body){
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
               five controls in two rows before any content was the header. */''}
-        <button id="tb-more" class="endbtn" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
+        <button id="tb-more" class="endbtn" data-ic="more" title="More" onclick="this.parentNode.classList.toggle('more')">⋯</button>
       </div>
       <div id="chat"><div class="inner" id="feed"></div></div>
       <div id="composer">
         <div id="queue"></div>
+        <div id="attach" class="att-strip"></div>
         <div id="combox">
           <textarea id="input" rows="1" placeholder="${PLACEHOLDER_IDLE}"></textarea>
+          <button id="attach-btn" class="cp-attach" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">▣</button>
           <button id="mic" title="dictate (mic)"></button>
-          <button id="send" disabled>➤</button>
+          <button id="send" data-ic="send" disabled>➤</button>
         </div>
       </div>
     </div>
@@ -7518,13 +9109,12 @@ function renderChat(body){
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
   input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';syncSend();
     draftSave(currentConv,input.value)});   // a half-typed message is work too
-  input.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();
-    items.forEach(it=>addPastedImage(it.getAsFile()));
-  });
+  // paste, drop, or the ▣ button — the same three doors every agent surface has
+  CHAT_ATT=imageAttach({input,zone:$('#composer'),button:$('#attach-btn'),strip:$('#attach'),
+    onChange:syncSend});
   $('#newchat').onclick=newChat;
+  // the drawer (immersive) closes once a conversation is picked — it is a menu, not a pane
+  body.querySelector('#convs').addEventListener('click',e=>{if(e.target.closest('.conv'))body.querySelector('.chatwrap').classList.remove('drawer')});
   $('#clearses').onclick=clearSession;
   $('#mic').onclick=micToggle;$('#mic').innerHTML=svgMic(14);
   const tb=$('#ttsbtn');
@@ -7565,7 +9155,7 @@ function setRunning(r){running=r;
    empty, it is the stop button it has always been. */
 function syncSend(){
   if(!sendBtn||!input)return;
-  const has=!!input.value.trim()||PENDING_IMGS.length>0;
+  const has=!!input.value.trim()||!!(CHAT_ATT&&CHAT_ATT.imgs.length);
   const stop=running&&!has;
   sendBtn.classList.toggle('stop',stop);
   sendBtn.textContent=stop?'◼':'➤';
@@ -7593,36 +9183,18 @@ function renderQueue(){
     box.appendChild(el);
   });
 }
-let PENDING_IMGS=[];
 function bubbleImgs(el,urls){
   if(!urls||!urls.length)return;
   const g=document.createElement('div');g.className='bimgs';
   urls.forEach(u=>{const im=document.createElement('img');im.src=u;g.appendChild(im)});
   el.appendChild(g);
 }
-function addPastedImage(file){
-  if(!file)return;
-  if(PENDING_IMGS.length>=4){toast('up to 4 images per message');return}
-  const img=new Image();
-  img.onload=()=>{
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    // downscale/recompress large pastes (screenshots) so history stays light
-    PENDING_IMGS.push((sc<1||file.size>800000)?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);renderAttach();
-  };
-  img.src=URL.createObjectURL(file);
-}
-function renderAttach(){
-  let a=$('#attach');
-  if(!PENDING_IMGS.length){a?.remove();syncSend();return}
-  if(!a){a=document.createElement('div');a.id='attach';const cb=$('#combox');cb.parentNode.insertBefore(a,cb)}
-  a.innerHTML=PENDING_IMGS.map((u,i)=>`<div class="att"><img src="${u}"><button onclick="rmAttach(${i})" title="remove">×</button></div>`).join('');
-  syncSend();
-}
-function rmAttach(i){PENDING_IMGS.splice(i,1);renderAttach()}
+/* The pending images live in the shared attachment helper (04a-copilot.js);
+   these names stay for the callers that still use them. */
+var CHAT_ATT=null;
+function addPastedImage(file){if(CHAT_ATT)CHAT_ATT.add(file)}
+function renderAttach(){if(CHAT_ATT)CHAT_ATT.render()}
+function rmAttach(i){if(CHAT_ATT){CHAT_ATT.imgs.splice(i,1);CHAT_ATT.render()}}
 function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
@@ -7633,7 +9205,7 @@ function userBubble(text,imgs){
   return m;
 }
 function send(){
-  const text=input.value.trim();const imgs=PENDING_IMGS.slice();
+  const text=input.value.trim();const imgs=CHAT_ATT?CHAT_ATT.take():[];
   // nothing typed while a turn runs → the button is the stop button
   if(running&&!text&&!imgs.length){ws.send(JSON.stringify({type:'abort',conversation_id:currentConv}));return}
   if((!text&&!imgs.length)||!ws||ws.readyState!==1)return;
@@ -7644,7 +9216,7 @@ function send(){
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
   draftClear(currentConv);
-  input.value='';input.style.height='auto';PENDING_IMGS=[];renderAttach();
+  input.value='';input.style.height='auto';renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
   showWorking();scrollDown();setRunning(true);
 }
@@ -7787,7 +9359,12 @@ async function clearSession(){
 function showWelcome(){
   if(!feed)return;
   const w=document.createElement('div');w.id='welcome';
-  w.innerHTML=`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>
+  // Immersive: the empty chat greets like the desktop does, and asks the question
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  const hr=new Date().getHours(),part=hr<5?'Good night':hr<12?'Good morning':hr<17?'Good afternoon':hr<22?'Good evening':'Good night';
+  w.innerHTML=imm?`<h1>${esc(part)}</h1><p>What should ${esc(agentName())} do?</p>`
+    :`<h1>${esc(agentName())}</h1><p>Your machine, with a brain. Local or cloud AI — real actions, your approval.</p>`;
+  w.innerHTML+=`
   <div class="chips">
     <button class="chip">How is this machine doing? Check CPU, memory, disk.</button>
     <button class="chip">What's taking up the most space in my home folder?</button>
@@ -7913,6 +9490,7 @@ async function loadConfig(){
   // wallpaper presets live in config, so the wallpaper may only be resolvable now
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
   if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
+  if(typeof homeRender==='function')homeRender();   // the home chips follow cfg.persona
   paintForwardChip();
   paintModelChip();
 }
@@ -8108,16 +9686,19 @@ const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="$
 const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
   `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 
+// [id, glyph, label, icon]: the glyph is the standard desktop's, the icon
+// (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
-  ['ai','✦','AI providers'],
-  ['agent','◈','Agent'],
-  ['executors','⇥','Executors'],
-  ['channels','◇','Channels'],
-  ['locale','◐','Locale'],
-  ['keys','⌘','Shortcuts'],
-  ['voice','◉','Voice'],
-  ['look','◧','Appearance'],
-  ['system','⚙','System'],
+  ['ai','✦','AI providers','sparkles'],
+  ['agent','◈','Agent','agent'],
+  ['executors','⇥','Executors','executors'],
+  ['channels','◇','Channels','channels'],
+  ['accounts','✉','Accounts','accounts'],
+  ['locale','◐','Locale','locale'],
+  ['keys','⌘','Shortcuts','keys'],
+  ['voice','◉','Voice','voice'],
+  ['look','◧','Appearance','look'],
+  ['system','⚙','System','system'],
 ];
 let SETTAB=localStorage.getItem('settab')||'ai';
 
@@ -8131,8 +9712,8 @@ async function renderSettings(body){
               one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label])=>
-          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi">${ic}</span>${esc(label)}</button>`).join('')}</div>
+        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span>${esc(label)}</button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
     </div>`;
@@ -8233,6 +9814,11 @@ function setTab(body,all){
     P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Not channels — nothing arrives through them; the agent reads them on your behalf, every read is a decision in the ledger, and the password never leaves this machine.</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar imap caldav ics gmail outlook icloud fastmail app password"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
+  }
   if(want('agent')){
     P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
     P.push(pGroup('Identity',[
@@ -8306,6 +9892,29 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* A look laid over the theme, not a theme: it is a switch here rather than
+       a card in the gallery so that it composes with whichever theme is on.
+       Applied the moment it is flipped, like the theme select above — Save is
+       for the machine's settings, and this one lives in this browser. */
+    P.push(pGroup('Immersive experience',[
+      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+        {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
+             +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
+             +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
+             +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
+         f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
+      /* The second scene draws the machine's own moving parts. Its cost is
+         stated in the row, and so is the terminal's answer: none. */
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it']],
+          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
+        {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
+             +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
+             +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
+             +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
+             +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
+         f:'scene movement watch automatic aurora wallpaper live'}),
+    ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
@@ -8342,6 +9951,14 @@ function setTab(body,all){
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
         {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+      // Where updates come from is a setting, so a fork under test is followed
+      // here, by the background check and by `bento update` alike.
+      pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
+          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
+          <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
+        </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
+        {desc:'The repository and branch updates are pulled from. Point it at a fork to test one; `bento update --official` or the fields above put it back. A fork gets its own git remote — origin is never rewritten.',
+         f:'update source repository fork branch remote'}),
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
@@ -8366,6 +9983,10 @@ function setTab(body,all){
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
   const th=main.querySelector('#s-theme');
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
+  const im=main.querySelector('#s-imm');
+  if(im)im.onchange=()=>setImmersive(im.checked);
+  const sc=main.querySelector('#s-imm-scene');
+  if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#v-voice'))settingsVoices();
@@ -8426,6 +10047,12 @@ async function paintVersion(check){
   try{d=await (await fetch('/api/update'+(check?'?check=true':''))).json()}catch(e){
     el.textContent='could not check';return}
   const sw=document.getElementById('s-upd-on'); if(sw)sw.checked=d.enabled!==false;
+  const rp=document.getElementById('s-upd-repo'),br=document.getElementById('s-upd-branch'),srcNote=document.getElementById('s-upd-src');
+  if(rp&&document.activeElement!==rp)rp.value=d.repo||'';
+  if(br&&document.activeElement!==br)br.value=d.branch||'';
+  if(srcNote)srcNote.textContent=d.official===false
+    ?`a fork — pulled from git remote '${d.remote||''}'; origin still points at the official repository`
+    :'the official repository';
   const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
@@ -8595,6 +10222,10 @@ async function saveSettings(){
      again with the page-wide Save is a second writer for one setting, and the
      one that wins is whichever ran last. */
   if(on('s-upd-on')!==undefined)patch.updates={enabled:on('s-upd-on')};
+  const urp=document.getElementById('s-upd-repo'),ubr=document.getElementById('s-upd-branch');
+  if(urp||ubr){patch.updates=patch.updates||{};
+    if(urp&&urp.value.trim())patch.updates.repo=urp.value.trim();
+    if(ubr&&ubr.value.trim())patch.updates.branch=ubr.value.trim();}
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
   if(document.getElementById('s-exec-on')!==null){
@@ -9875,6 +11506,95 @@ function agsTestChat(msg){
   setTimeout(()=>{const i=$('#input');
     if(i){i.value=msg||'';i.focus();i.dispatchEvent(new Event('input'))}},250);
 }
+/* ================= accounts: the mailbox and the calendar the agent may read =================
+   One card per account (agentos/accounts.py), each saving on its own — PUT
+   /api/accounts/<id> — and each carrying the one thing a form cannot: the LAST
+   REAL PROBE. A filled-in card is not a working account; "Test" signs in and the
+   card says what the server said. A saved password is a chip with no input
+   (pSecret), so nothing can echo it back.
+
+   Faces — GUI: this. SUI: identical. TUI: `bento mail` / `bento calendar`.
+   `var`, not `let` (see CLAUDE.md on the bundle's TDZ trap). */
+var ACCTS={list:[]};
+
+async function renderAccounts(){
+  const box=document.getElementById('acct-list');if(!box)return;
+  let d={};try{d=await (await fetch('/api/accounts')).json()}catch(e){}
+  ACCTS.list=d.accounts||[];
+  if(!ACCTS.list.length){box.innerHTML='<p class="mut">could not read the accounts</p>';return}
+  box.innerHTML=ACCTS.list.map(acctCard).join('');
+  ACCTS.list.forEach(a=>{const sel=document.getElementById('ac-'+a.id+'-preset');if(sel)sel.onchange=()=>acctPreset(a.id)});
+}
+function acctCard(a){
+  const lt=a.last_test||{};
+  const dot=lt.ok?'on':(a.configured?(lt.detail?'warn':'off'):'off');
+  const status=lt.detail?(lt.ok?'✓ ':'✗ ')+lt.detail+(lt.at?' · '+new Date(lt.at*1000).toLocaleString():''):
+    (a.configured?'set up — not tested yet':'not set up');
+  const fields=a.fields.map(f=>{
+    const id='ac-'+a.id+'-'+f.key;
+    let ctl;
+    if(f.kind==='select')ctl=pSelect(id,[['','— choose —']].concat(f.options),a.values[f.key]||'');
+    else if(f.kind==='secret')ctl=pSecret(id,a.set[f.key],a.masked[f.key],f.placeholder);
+    else ctl=pText(id,a.values[f.key],f.placeholder,f.kind==='number'?'number':'text');
+    return pRow(f.label,ctl,{f:a.id+' '+f.key});
+  }).join('');
+  return `<div class="pgroup chan" data-f="account ${esc(a.id)} ${esc(a.title)}">
+    <h3>${esc(a.title)} <span class="chdot ${dot}">${esc(status)}</span></h3>
+    <div class="ghint">${esc(a.what)}</div>
+    ${a.hint?`<div class="ghint acct-hint" id="ac-${a.id}-hint">${esc(a.hint)}</div>`:`<div class="ghint acct-hint mut" id="ac-${a.id}-hint"></div>`}
+    ${pRow('Switched on',pSwitch('ac-'+a.id+'-on',a.enabled),{desc:a.problem&&a.configured?esc(a.problem):'',f:a.id+' enabled'})}
+    ${fields}
+    <div class="prow"><div class="pl"><small id="ac-${a.id}-msg" class="mut"></small></div>
+      <div class="pc"><button class="endbtn" onclick="acctTest('${esc(a.id)}')">Test</button>
+        <button class="endbtn" onclick="acctSave('${esc(a.id)}')">Save</button></div></div>
+  </div>`;
+}
+/* choosing a provider shows its one sentence — the app-password sentence is the
+   difference between a working card and an evening lost */
+function acctPreset(id){
+  const a=ACCTS.list.find(x=>x.id===id);if(!a)return;
+  const sel=document.getElementById('ac-'+id+'-preset');const p=(a.presets||{})[sel.value]||{};
+  const h=document.getElementById('ac-'+id+'-hint');if(h){h.textContent=p.hint||'';h.classList.toggle('mut',!p.hint)}
+  if(id==='mail'){const host=document.getElementById('ac-mail-host'),port=document.getElementById('ac-mail-port');
+    if(host&&p.host&&!host.value)host.value=p.host;if(port&&p.port&&(!port.value||port.value==='993'))port.value=p.port;
+    const sh=document.getElementById('ac-mail-smtp_host'),sp=document.getElementById('ac-mail-smtp_port');
+    if(sh&&p.smtp_host&&!sh.value)sh.value=p.smtp_host;if(sp&&p.smtp_port&&(!sp.value||sp.value==='587'))sp.value=p.smtp_port}
+  if(id==='calendar'){const url=document.getElementById('ac-calendar-url');if(url&&p.url&&!url.value)url.value=p.url}
+}
+function acctBody(id){
+  const body={};
+  const on=document.getElementById('ac-'+id+'-on');if(on)body.enabled=on.checked;
+  document.querySelectorAll(`[id^="ac-${id}-"]`).forEach(el=>{
+    const k=el.id.slice(('ac-'+id+'-').length);
+    if(['on','msg','hint'].indexOf(k)>=0||k.endsWith('-wrap'))return;
+    if(el.tagName==='INPUT'||el.tagName==='SELECT')body[k]=el.value;
+  });
+  return body;
+}
+async function acctSave(id,quiet){
+  const msg=document.getElementById('ac-'+id+'-msg');
+  if(msg&&!quiet){msg.textContent='saving…';msg.className='mut'}
+  try{
+    const r=await fetch('/api/accounts/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(acctBody(id))});
+    const j=await r.json();
+    if(msg&&!quiet){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
+    if(j.ok&&!quiet)renderAccounts();
+    return !!j.ok;
+  }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}return false}
+}
+/* Test = save what is typed, then really sign in. The outcome is written on the
+   account, so the Missions catalogue and this card agree. */
+async function acctTest(id){
+  const msg=document.getElementById('ac-'+id+'-msg');
+  if(msg){msg.textContent='saving, then signing in…';msg.className='mut'}
+  if(!await acctSave(id,true)){if(msg){msg.textContent='could not save';msg.className='warn'}return}
+  try{
+    const j=await (await fetch('/api/accounts/'+encodeURIComponent(id)+'/test',{method:'POST'})).json();
+    if(msg){msg.textContent=(j.ok?'✓ ':'✗ ')+(j.detail||j.error||'');msg.className=j.ok?'ok':'warn'}
+    renderAccounts();
+    if(typeof refreshApp==='function')refreshApp('jobs');
+  }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -10773,6 +12493,7 @@ function flowBack(){FLOW_VIEW='list';refreshApp('fabric')}
 function trigLabel(t){
   const c=t.config||{};
   if(t.kind==='cron')return c.type==='daily'?('cron '+(c.at||'08:00'))
+    :c.type==='weekly'?('every '+WEEKDAY_NAMES[+c.day||0]+' '+(c.at||'08:00'))
     :c.type==='interval'?('every '+(c.minutes||60)+' min'):'once';
   if(t.kind==='message')return 'message "'+(c.pattern||'')+'"';
   if(t.kind==='os_event')return 'on '+(c.event||'event');
@@ -11207,7 +12928,8 @@ function drawFLW(){
     const c=t.config||{};
     let f='';
     if(t.kind==='cron')f=`<select data-trig="${i}" data-key="type" style="width:auto">
-        ${['daily','interval','once'].map(x=>`<option ${c.type===x?'selected':''}>${x}</option>`).join('')}</select>
+        ${['daily','weekly','interval','once'].map(x=>`<option ${c.type===x?'selected':''}>${x}</option>`).join('')}</select>
+      <select data-trig="${i}" data-key="day" style="width:auto" title="weekly: which day">${WEEKDAY_NAMES.map((n,k)=>`<option value="${k}" ${+c.day===k?'selected':''}>${n}</option>`).join('')}</select>
       <input data-trig="${i}" data-key="at" value="${esc(c.at||'08:00')}" placeholder="HH:MM" style="width:80px">
       <input data-trig="${i}" data-key="minutes" type="number" value="${c.minutes||60}" placeholder="minutes" style="width:80px">`;
     else if(t.kind==='message')f=`<input data-trig="${i}" data-key="pattern" value="${esc(c.pattern||'')}" placeholder="pattern e.g. vendor:">
@@ -11776,37 +13498,102 @@ document.addEventListener('click', e => {
   docsCur = (a.dataset.doc || '').split('#')[0].replace(/^(\.\.?\/)+/, '');
   openApp('docs');
 });
-/* ================= jobs: give this machine something to do =================
-   Two surfaces over one API (/api/jobs): the last beat of the first-run wizard,
-   and a standing app you can come back to. They share `jobCards`/`jobForm` on
-   purpose — the screen that gets somebody their first job and the screen that
-   gets them their fourth should not drift apart, because the second one is the
-   habit and the first one is only the introduction.
+/* ================= missions: what this machine does for you =================
+   Three surfaces over one API (/api/jobs): the last beat of the first-run wizard,
+   the onboarding arc's schedule step, and the standing Missions app. They share
+   `jobPersonaBar`/`jobCards`/`jobForm` on purpose — the screen that gets somebody
+   their first mission and the screen that gets them their fourth should not drift
+   apart, because the second one is the habit and the first one is only the
+   introduction.
+
+   The first question is WHO IS ASKING. A founder, a coder and a consultant want
+   different things from a machine that works while they do not, and a catalogue
+   that opens with disk space is a catalogue a founder closes. The persona is a
+   filter over ONE catalogue (theirs first, then everybody's, then the rest) —
+   never a subset, because a consultant who also writes code must be able to
+   reach the coder's missions.
+
+   The app is also the VALUE surface: not "what is scheduled" but what each
+   mission did this week, what it last said, and what it holds. Activity is not
+   value; the last outcome, in words, is the closest a list can get.
 
    Everything user-facing here obeys the honesty rule: a delivery this machine
    cannot do is shown greyed with the sentence that would fix it, never hidden,
-   and the folder a job will read is printed before the job exists.
+   and the folder or the addresses a mission will read are printed before it
+   exists. Faces — GUI: this. SUI: identical. TUI: `bento job`.
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],deliveries:[],installed:[],pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false};
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
-    JOBS.recipes=d.recipes||[];JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];
+    JOBS.recipes=d.recipes||[];JOBS.personas=d.personas||[];JOBS.persona=d.persona||'';
+    JOBS.deliveries=d.deliveries||[];JOBS.installed=d.installed||[];JOBS.summary=d.summary||null;JOBS.ready=d.ready||null;JOBS.accounts=d.accounts||{};
   }catch(e){JOBS.recipes=[];}
   return JOBS;
 }
 
-/* the three cards. `sel` is the id currently expanded, '' for none. */
+/* Can a mission run here at all? A flow runs on the built-in loop with a provider
+   model, never through an executor — the only loop whose every step the PDP sees.
+   A machine whose brain is Claude Code and has no provider set can chat and
+   cannot run a mission, and the honest surface says so HERE, not in a failed row. */
+function jobReadyLine(){
+  const r=JOBS.ready;if(!r)return '';
+  if(r.ok)return `<p class="mut job-ready">${esc(r.note)}</p>`;
+  return `<div class="job-notready"><b>Missions cannot run here yet.</b> ${esc(r.note)} <em>${esc(r.fix)}</em>
+    <button class="endbtn" onclick="SETTAB='providers';localStorage.setItem('settab','providers');openApp('settings')">Open AI providers</button></div>`;
+}
+
+/* Who is asking. One row of chips; the choice is saved per person (`persona` is
+   a USER_KEY) and the server re-orders the catalogue. `onPick` redraws the cards. */
+function jobPersonaBar(){
+  return `<div class="job-who" role="radiogroup" aria-label="Who are you?">
+    ${JOBS.personas.map(p=>`<button class="job-p${p.id===JOBS.persona?' on':''}" data-persona="${esc(p.id)}"
+        role="radio" aria-checked="${p.id===JOBS.persona}" title="${esc(p.blurb)}">
+        <span class="job-p-ic">${esc(p.icon||'○')}</span>${esc(p.label)}</button>`).join('')}
+  </div>`;
+}
+function jobWirePersona(root,onPick){
+  root.querySelectorAll('.job-p').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.persona;
+    if(JOBS.busy)return;JOBS.busy=true;
+    try{
+      const d=await (await fetch('/api/jobs/persona',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({persona:id===JOBS.persona?'':id})})).json();
+      if(d.error){toast(d.error);return}
+      JOBS.persona=d.persona||'';JOBS.recipes=d.recipes||JOBS.recipes;JOBS.pick='';
+      if(typeof cfg!=='undefined'&&cfg)cfg.persona=JOBS.persona;
+      if(typeof homeRender==='function')homeRender();
+      root.querySelectorAll('.job-p').forEach(x=>{const on=x.dataset.persona===JOBS.persona;x.classList.toggle('on',on);x.setAttribute('aria-checked',on)});
+      onPick&&onPick();
+    }catch(e){toast('could not save that')}
+    finally{JOBS.busy=false}
+  });
+}
+
+/* The cards. With a persona chosen they come in two groups — theirs, then the
+   rest — so the first three on screen are the ones written for them. `sel` is
+   the id currently expanded, '' for none. */
 function jobCards(sel){
-  return `<div class="job-cards">${JOBS.recipes.map(r=>`
-    <button class="job-card${r.id===sel?' on':''}" data-job="${esc(r.id)}">
+  const p=JOBS.persona,who=JOBS.personas.find(x=>x.id===p);
+  // an account it cannot run without: the card stays, greyed, with the sentence
+  // that would fix it and the door — hidden reads as "this OS cannot do that"
+  const missing=r=>(r.wants||[]).filter(a=>!((JOBS.accounts||{})[a]||{}).ready);
+  const card=r=>{const miss=missing(r);
+    return `<button class="job-card${r.id===sel?' on':''}${miss.length?' needs':''}" data-job="${esc(r.id)}" ${miss.length?`data-needs="${esc(miss.join(','))}"`:''}>
       <span class="job-mark">${esc(r.icon||'◇')}</span>
       <b>${esc(r.title)}</b>
       <span class="job-blurb">${esc(r.blurb)}</span>
-      <span class="job-eg">${esc(r.example)}</span>
-    </button>`).join('')}</div>`;
+      ${r.worth?`<span class="job-worth">${esc(r.worth)}</span>`:''}
+      ${miss.length?`<span class="job-needs">${esc(miss.map(a=>((JOBS.accounts||{})[a]||{}).detail||('needs a '+a+' account')).join(' '))}</span>`:`<span class="job-eg">${esc(r.example)}</span>`}
+    </button>`};
+  if(!p||!who||p==='everyone')return `<div class="job-cards">${JOBS.recipes.map(card).join('')}</div>`;
+  const mine=JOBS.recipes.filter(r=>(r.for||[]).includes(p)),rest=JOBS.recipes.filter(r=>!(r.for||[]).includes(p));
+  return `<div class="job-grp">For a ${esc(who.label.toLowerCase())}</div>
+    <div class="job-cards">${mine.map(card).join('')}</div>
+    <div class="job-grp">And for anyone</div>
+    <div class="job-cards">${rest.map(card).join('')}</div>`;
 }
 
 /* the two or three questions a recipe asks, plus the delivery picker */
@@ -11819,8 +13606,13 @@ function jobForm(r){
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     if(n.kind==='time')return `<label class="job-q"><span>${esc(n.label)}</span>
       <input id="${id}" type="time" value="${esc(n.default||'08:00')}"></label>`;
+    if(n.kind==='day')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <select id="${id}">${WEEKDAY_NAMES.map(d=>`<option value="${d.toLowerCase()}" ${d.toLowerCase()===(n.default||'friday')?'selected':''}>${d}</option>`).join('')}</select></label>`;
     if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
       <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='lines')return `<label class="job-q"><span>${esc(n.label)}</span>
+      <textarea id="${id}" rows="3" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">${esc(n.default||'')}</textarea>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     return `<label class="job-q"><span>${esc(n.label)}</span>
       <input id="${id}" value="${esc(n.default||'')}" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">
@@ -11865,24 +13657,28 @@ async function jobConsent(r){
       body:JSON.stringify({recipe:r.id,answers:jobAnswers(r)})})).json();
     if(d.error){box.innerHTML=`<span class="job-warn">${esc(d.error)}</span>`;return}
     const reads=(d.reads||[]).map(p=>`<li>reads <code>${esc(p)}</code> — and nothing else</li>`).join('');
+    const net=(d.net||[]);
+    const reach=!net.length?'':net[0]==='*'?'<li>may read the open web (it is research)</li>'
+      :`<li>may fetch ${net.length===1?'one address':net.length+' addresses'}: ${net.slice(0,3).map(u=>`<code>${esc(u)}</code>`).join(', ')}${net.length>3?' …':''} — and nothing else</li>`;
     const when=(d.triggers||[]).map(t=>{
       const c=t.config||{};
       if(t.kind==='cron'&&c.type==='daily')return `<li>runs every day at ${esc(c.at)}</li>`;
+      if(t.kind==='cron'&&c.type==='weekly')return `<li>runs every ${esc(WEEKDAY_NAMES[+c.day||0])} at ${esc(c.at)}</li>`;
       if(t.kind==='cron'&&c.type==='interval')return `<li>runs every ${esc(c.minutes)} minutes</li>`;
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
   }catch(e){}
 }
 
 /* Wire a rendered form: live consent, and the save. `after(res)` is what the
-   surface does with the finished job — the wizard shows a "run it now" beat,
+   surface does with the finished mission — the wizard shows a "run it now" beat,
    the app refreshes its list. */
 function jobWire(root,r,after){
-  root.querySelectorAll('.job-form input').forEach(el=>{
+  root.querySelectorAll('.job-form input,.job-form textarea,.job-form select').forEach(el=>{
     let t=null;
     const go=()=>{clearTimeout(t);t=setTimeout(()=>jobConsent(r),260)};
     el.oninput=go;el.onchange=go;
@@ -11905,6 +13701,28 @@ function jobWire(root,r,after){
   };
 }
 
+/* One place that wires "cards → form → saved" for any container. */
+function jobPickable(box,after){
+  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
+    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
+    if(b.dataset.needs){SETTAB='accounts';localStorage.setItem('settab','accounts');openApp('settings');return}
+    JOBS.pick=r.id;
+    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
+    const slot=box.querySelector('.job-slot');
+    slot.innerHTML=jobForm(r);
+    if(typeof Motion!=='undefined')Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
+      {duration:220,easing:EASE.out});
+    jobWire(slot,r,res=>after(slot,res));
+    slot.scrollIntoView({block:'nearest',behavior:'smooth'});
+  });
+}
+function jobRedrawCards(box){
+  const cards=box.querySelector('.job-catalogue');if(!cards)return;
+  cards.innerHTML=jobCards(JOBS.pick);
+  const slot=box.querySelector('.job-slot');if(slot)slot.innerHTML='';
+  jobPickable(box,box._jobAfter||(()=>{}));
+}
+
 /* ---------- the wizard's last beat ---------- */
 /* Called by wizFinish once the setup report is on screen. The offer is real but
    never compulsory: "Not now" is a first-class button, because a first-run flow
@@ -11916,10 +13734,12 @@ async function jobStep(container,onDone){
   const box=document.createElement('div');box.className='wiz-jobs';
   const name=(typeof WIZ!=='undefined'&&WIZ.agent_name)||'your agent';
   box.innerHTML=`<div class="wiz-jobs-head">
-      <b>One last thing — give me a job.</b>
-      <span>Pick one and I'll do it from now on, without being asked. You can change or stop it any time.</span>
+      <b>Last thing — what should I do for you every day?</b>
+      <span>Say who you are and pick a mission. I'll do it from now on, without being asked, inside exactly the permissions it prints. You can change or stop it any time.</span>
     </div>
-    ${jobCards('')}
+    ${jobReadyLine()}
+    ${jobPersonaBar()}
+    <div class="job-catalogue">${jobCards('')}</div>
     <div class="job-slot"></div>
     <button class="wiz-back" id="jf-skip">Not now — take me in →</button>`;
   container.appendChild(box);
@@ -11927,17 +13747,9 @@ async function jobStep(container,onDone){
     {duration:280,easing:EASE.out});
   container.scrollTop=container.scrollHeight;
   box.querySelector('#jf-skip').onclick=onDone;
-  box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-    JOBS.pick=r.id;
-    box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-    const slot=box.querySelector('.job-slot');
-    slot.innerHTML=jobForm(r);
-    Motion.run(slot,[{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
-      {duration:220,easing:EASE.out});
-    jobWire(slot,r,res=>jobDone(slot,res,onDone,name));
-    container.scrollTop=container.scrollHeight;
-  });
+  box._jobAfter=(slot,res)=>jobDone(slot,res,onDone,name);
+  jobPickable(box,box._jobAfter);
+  jobWirePersona(box,()=>jobRedrawCards(box));
 }
 
 /* The payoff screen. "Run it now" is the important button: a schedule nobody has
@@ -11969,34 +13781,64 @@ function jobDone(slot,res,onDone,name){
   };
 }
 
-/* ---------- the standing app ---------- */
+/* ---------- the standing app: what it does, and what it did ---------- */
+function jobAgo(ts){
+  if(!ts)return '';
+  const s=Math.max(0,Date.now()/1000-ts);
+  if(s<90)return 'just now';
+  if(s<5400)return Math.round(s/60)+' min ago';
+  if(s<129600)return Math.round(s/3600)+' h ago';
+  return Math.round(s/86400)+' d ago';
+}
+function jobSummaryLine(s){
+  if(!s||!s.missions)return '';
+  const n=(v,w)=>`${v} ${w}${v===1?'':'s'}`;
+  return `<div class="job-sum" title="What your missions did in the last seven days. Tokens are counted here; what they cost is priced per model in Usage.">
+    <b>${n(s.missions,'mission')}</b>
+    <span>this week: ${n(s.runs_7d,'run')}, ${s.ok_7d} delivered${s.failed_7d?`, <i class="job-bad">${s.failed_7d} failed</i>`:''}</span>
+    <span>${(s.tokens_7d||0).toLocaleString()} tokens</span>
+    <span>${n(s.grants,'permission')} held</span>
+  </div>`;
+}
+function jobRow(j){
+  const last=j.last||{};
+  const st=last.status||'';
+  const cls=st==='ok'?'ok':st?'bad':'';
+  const lastLine=!st?'<span class="job-last mut">has not run yet</span>'
+    :`<span class="job-last ${cls}"><b>${esc(st)}</b> · ${esc(jobAgo(last.at))}${last.said?` · <q>${esc(last.said)}</q>`:''}</span>`;
+  return `<div class="item job-row${j.enabled?'':' off'}${j.running?' live':''}">
+    <div class="grow">
+      <b>${esc(j.title||j.name)}</b> <span class="job-name">${esc(j.name)}</span>${j.running?'<span class="job-live">running</span>':''}
+      <div class="sub">${lastLine}</div>
+      <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
+    </div>
+    <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
+    ${last.run_id?`<button class="endbtn" onclick="fgWatch('${esc(last.run_id)}')">Last run</button>`:''}
+    <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
+  </div>`;
+}
 async function renderJobs(body){
   body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
   await jobsLoad();
-  const running=JOBS.installed.map(j=>`<div class="item job-row">
-      <div class="grow"><b>${esc(j.name)}</b><div class="sub">${esc(j.description)}</div>
-        <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'}</div></div>
-      <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-      <button class="endbtn" onclick="openApp('fabric')">Edit</button>
-    </div>`).join('');
+  const rows=JOBS.installed.map(jobRow).join('');
+  const who=JOBS.personas.find(x=>x.id===JOBS.persona);
   body.innerHTML=`<div class="pad job-app">
     <h3>What this machine does for you</h3>
-    ${running||'<p class="mut">Nothing standing yet — pick something below and it starts today.</p>'}
-    <h3 style="margin-top:18px">Give it another job</h3>
-    ${jobCards(JOBS.pick)}
+    ${jobReadyLine()}
+    ${jobSummaryLine(JOBS.summary)}
+    ${rows||`<p class="mut">Nothing standing yet. Say who you are, pick a mission, and it starts today — inside exactly the permissions it prints.</p>`}
+    <h3 style="margin-top:18px">${rows?'Give it another mission':'Give it a mission'}</h3>
+    <p class="mut job-whoq">${who?`Missions for a ${esc(who.label.toLowerCase())} first. Not you? Pick again.`:'Who are you? The catalogue opens on your missions from then on.'}</p>
+    ${jobPersonaBar()}
+    <div class="job-catalogue">${jobCards(JOBS.pick)}</div>
     <div class="job-slot"></div></div>`;
-  body.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-    const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-    JOBS.pick=r.id;
-    body.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-    const slot=body.querySelector('.job-slot');
-    slot.innerHTML=jobForm(r);
-    jobWire(slot,r,res=>{
-      JOBS.pick='';
-      toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
-      renderJobs(body);
-    });
-  });
+  body._jobAfter=(slot,res)=>{
+    JOBS.pick='';
+    toast(`✓ ${res.flow.name} — runs ${res.next||'when you say so'}`);
+    renderJobs(body);
+  };
+  jobPickable(body,body._jobAfter);
+  jobWirePersona(body,()=>renderJobs(body));
 }
 
 async function jobRunNow(name){
@@ -12329,10 +14171,10 @@ var OB_PANES={
       <button class="endbtn" id="ob-flow-run">Create it and run it now</button></div>
     <div class="ob-reply" id="ob-reply"></div>`,
 
-  schedule:s=>`<p class="mut">Pick something for this machine to do without being asked.
-      These are the same job recipes as the Jobs app — one catalogue, so what you set
-      up here is editable there.</p>
-    <div id="ob-jobs"><p class="mut">Reading the recipes…</p></div>`,
+  schedule:s=>`<p class="mut">Say who you are, then pick something for this machine to do
+      without being asked. These are the same missions as the Missions app — one
+      catalogue, so what you set up here is editable there.</p>
+    <div id="ob-jobs"><p class="mut">Reading the missions…</p></div>`,
 
   channel:s=>`<p class="mut">Same conversation, same memory, same approval prompts —
       on your phone. Pick one; you can add the other later.</p>
@@ -12712,18 +14554,13 @@ var OB_WIRE={
     const box=$('#ob-jobs');if(!box)return;
     if(typeof jobsLoad!=='function'){box.innerHTML='<p class="mut">Jobs are unavailable.</p>';return}
     await jobsLoad();
-    box.innerHTML=jobCards(JOBS.pick)+'<div class="job-slot"></div>';
-    box.querySelectorAll('.job-card').forEach(b=>b.onclick=()=>{
-      const r=JOBS.recipes.find(x=>x.id===b.dataset.job);if(!r)return;
-      JOBS.pick=r.id;
-      box.querySelectorAll('.job-card').forEach(x=>x.classList.toggle('on',x===b));
-      const slot=box.querySelector('.job-slot');
-      slot.innerHTML=jobForm(r);
-      jobWire(slot,r,res=>{
-        obMsg(`${res.flow.name} — runs ${res.next||'when you say so'}`,'ok');
-        setTimeout(()=>obRefresh(true),1100);
-      });
-    });
+    box.innerHTML=jobReadyLine()+jobPersonaBar()+'<div class="job-catalogue">'+jobCards(JOBS.pick)+'</div><div class="job-slot"></div>';
+    box._jobAfter=(slot,res)=>{
+      obMsg(`${res.flow.name} — runs ${res.next||'when you say so'}`,'ok');
+      setTimeout(()=>obRefresh(true),1100);
+    };
+    jobPickable(box,box._jobAfter);
+    jobWirePersona(box,()=>jobRedrawCards(box));
   },
 
   channel(){
@@ -12854,7 +14691,7 @@ async function obRestart(){
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
-  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:'once';
+  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:t.schedule_type==='weekly'?`every ${WEEKDAY_NAMES[t.weekday||0]} at ${t.at_time}`:'once';
   const items=d.tasks.map(t=>`<div class="item" data-f="${esc(t.prompt)}"><div class="grow">${esc(t.prompt)}<div class="sub">${fmt(t)} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'running/done'):'disabled'}${t.last_result?' · last: '+esc(t.last_result.slice(0,90)):''}</div></div>
     <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
     <button onclick="delTask('${t.id}')">✕</button></div>`).join('');
@@ -16594,6 +18431,136 @@ async function hsControlSet(action){
   toast(action==='start'?'remote control on — connect a VNC client through the tunnel':'remote control off');
   hsControl();
 }
+/* ================= the Brief: what the missions produced, as things to act on =================
+   One living page per day (agentos/brief.py): the items every mission wrote —
+   needs you / decide / FYI / done for you — each with hands. Done and Later are
+   one tap; a decision's choices are buttons and the answer is handed back to the
+   agent as a turn; a draft can be sent through the gate, as you, so it asks.
+   A mission's next run updates its items rather than adding twins, and an item
+   marked done stays done.
+
+   Faces — GUI: this window, and the home scene's line ("2 need you"). Phone: the
+   same page as a stack, one item per screen, tap targets at --tap. Telegram: the
+   digest with buttons (telegram.py). Voice: "Read it" speaks the headline and the
+   items that need you. TUI: `bento brief`.
+   `var`, not `let` (the bundle's TDZ trap) — and the home scene (01b) calls
+   briefLoad() before this file has run, so the state is created by whichever
+   side gets there first and never re-created: `var BRIEF={…}` here would have
+   thrown inside the early call and then wiped the page it loaded. */
+var BRIEF=(typeof BRIEF==='object'&&BRIEF)||{page:null,i:0,busy:false};
+
+async function briefLoad(){
+  if(!BRIEF)BRIEF={page:null,i:0,busy:false};
+  try{BRIEF.page=await (await fetch('/api/brief')).json()}catch(e){BRIEF.page=null}
+  return BRIEF.page;
+}
+function briefHeadline(){return (BRIEF.page&&BRIEF.page.headline)||''}
+
+function briefItemHTML(it,idx){
+  const src=it.source||{};
+  const open=it.state==='open'||it.state==='later';
+  const kindTag={needs_you:'needs you',decide:'decide',fyi:'FYI',done:'done for you'}[it.kind]||it.kind;
+  const meta=[it.who?esc(it.who):'',it.due?'by '+esc(it.due):'',it.mission?'<i>'+esc(it.mission)+'</i>':''].filter(Boolean).join(' · ');
+  let hands='';
+  if(open&&it.kind==='decide'){
+    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" onclick="briefAct('${esc(it.id)}','decide','${esc(o)}')">${esc(o)}</button>`).join('');
+  }else if(open){
+    hands=`<button class="endbtn" onclick="briefAct('${esc(it.id)}','done')">Done</button>
+      <button class="endbtn" onclick="briefAct('${esc(it.id)}','later')">Later</button>`;
+  }else{
+    const who=(typeof agentName==='function')?agentName():'the agent';
+    hands=`<span class="br-state">${it.state==='decided'?'decided: '+esc(it.decision||'')+(it.answer_cid?'':' · '+esc(who)+' is writing the reply…'):esc(it.state)}</span>
+      <button class="endbtn" onclick="briefAct('${esc(it.id)}','reopen')">Reopen</button>`;
+  }
+  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${esc(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
+  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" onclick="briefOpenMail('${esc(src.ref)}')">Open mail</button>`;
+  if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
+  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
+  return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
+    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
+    <b class="br-title">${esc(it.title)}</b>
+    ${meta?`<div class="br-meta">${meta}</div>`:''}
+    ${it.body?`<div class="br-body">${esc(it.body)}</div>`:''}
+    ${it.draft?`<details class="br-draft"><summary>Draft</summary><pre>${esc(it.draft)}</pre></details>`:''}
+    <div class="br-hands">${hands}</div>
+  </div>`;
+}
+
+async function renderBrief(body){
+  body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+  await briefLoad();
+  const pg=BRIEF.page;
+  if(!pg){body.innerHTML='<div class="pad"><p class="mut">Could not read the Brief.</p></div>';return}
+  const day=new Date(pg.day+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
+  const phone=document.body.classList.contains('dev-mobile');
+  // a decision stays in view after it is made: the reply lands where the question
+  // was, not under a collapsed "handled". Only Done goes there.
+  const shown=i=>i.state==='open'||i.state==='later'||i.state==='decided';
+  const live=pg.items.filter(shown);
+  const rest=pg.items.filter(i=>!shown(i));
+  let main;
+  if(!pg.items.length){
+    main=`<p class="mut br-empty">Nothing yet. When a mission runs, what it finds lands here — as things to act on, not a page to read. Missions are in the dock.</p>`;
+  }else if(phone){
+    BRIEF.i=Math.min(BRIEF.i,Math.max(0,live.length-1));
+    const it=live[BRIEF.i];
+    main=it?`<div class="br-stack">${briefItemHTML(it,BRIEF.i)}
+      <div class="br-nav"><button class="endbtn" onclick="briefStep(-1)" ${BRIEF.i===0?'disabled':''}>‹</button>
+        <span>${BRIEF.i+1} of ${live.length}</span>
+        <button class="endbtn" onclick="briefStep(1)" ${BRIEF.i>=live.length-1?'disabled':''}>›</button></div></div>`
+      :`<p class="mut br-empty">Everything is handled.</p>`;
+    if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary>${rest.map(i=>briefItemHTML(i)).join('')}</details>`;
+  }else{
+    main=pg.groups.map(g=>{const its=g.items.filter(shown);if(!its.length)return '';
+      return `<h3>${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
+    if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary><div class="br-list">${rest.map(i=>briefItemHTML(i)).join('')}</div></details>`;
+    if(!live.length)main=`<p class="mut br-empty">Everything is handled.</p>`+main;
+  }
+  body.innerHTML=`<div class="pad br-app">
+    <div class="br-top"><div><div class="br-day">${esc(day)}</div><h2 class="br-hl">${esc(pg.headline)}</h2>
+      ${pg.missions.length?`<div class="mut">from ${pg.missions.map(esc).join(', ')}</div>`:''}</div>
+      <div class="br-tools"><button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
+        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div></div>
+    ${main}</div>`;
+}
+function briefStep(d){BRIEF.i=Math.max(0,BRIEF.i+d);refreshApp('brief')}
+function briefSpeak(){
+  const t=(BRIEF.page&&BRIEF.page.spoken)||'';if(!t)return;
+  if(typeof speak==='function'&&typeof VOICE!=='undefined'&&VOICE.tts){speak(t);return}
+  try{const u=new SpeechSynthesisUtterance(t);speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){toast(t.slice(0,160))}
+}
+async function briefAct(id,action,choice){
+  if(BRIEF.busy)return;BRIEF.busy=true;
+  const el=document.querySelector(`.br-item[data-id="${id}"]`);if(el)el.classList.add('busy');
+  try{
+    const r=await fetch(`/api/brief/${encodeURIComponent(id)}/act`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,choice:choice||''})});
+    const j=await r.json();
+    if(j.error){toast(j.error);return}
+    if(action==='decide'){toast(`→ ${choice} — ${agentName?agentName():'the agent'} is on it; the reply lands here`);}
+    await briefLoad();refreshApp('brief');if(typeof homeRender==='function')homeRender();
+  }catch(e){toast('could not reach the server')}
+  finally{BRIEF.busy=false;if(el)el.classList.remove('busy')}
+}
+/* Send the draft as you: through /api/tool, which is the gate — mail_send asks
+   first (an approval card), and the answer says what happened. */
+async function briefSend(id){
+  const it=(BRIEF.page&&BRIEF.page.items||[]).find(x=>x.id===id);if(!it||!it.draft)return;
+  const to=prompt('Send to (address):',(it.source&&it.source.type==='mail'&&it.who&&/@/.test(it.who))?it.who.match(/[^\s<]+@[^\s>]+/)[0]:'');
+  if(!to)return;
+  const subject=prompt('Subject:','Re: '+it.title);if(subject==null)return;
+  try{
+    const j=await (await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'mail_send',args:{to,subject,body:it.draft}})})).json();
+    toast(j.error||j.output||j.result||'sent');
+    if(!j.error)briefAct(id,'done');
+  }catch(e){toast('could not reach the server')}
+}
+async function briefOpenMail(uid){
+  try{
+    const j=await (await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'mail_read',args:{uid:String(uid)}})})).json();
+    const text=j.output||j.result||j.error||'';
+    if(typeof osAlert==='function')osAlert('Mail',text.slice(0,4000));else alert(text.slice(0,4000));
+  }catch(e){toast('could not reach the server')}
+}
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
   w.path=w.path||'';
@@ -17961,6 +19928,7 @@ function omniPresence(){
   const live=n===1?actLine([...RUNNING][0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
+             :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
              :`Ask ${agentName()} anything — or press Ctrl+Space`;
   if(inp.placeholder!==want)inp.placeholder=want;   // once a second, only when it changed
 }
@@ -18054,9 +20022,13 @@ function omniDefaultIdx(q,direct){
 function omniPaint(){
   const list=$('#omnilist');if(!list)return;
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
-  list.innerHTML=OMNI.matches.map((it,i)=>`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
+  // section labels between groups (actions · apps · on this machine · ask):
+  // emitted always, shown by the immersive look — see .omni-sec
+  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.nat?'On this machine':'More';
+  let last='';
+  list.innerHTML=OMNI.matches.map((it,i)=>{const k=kind(it);const sec=k!==last?`<div class="omni-sec">${k}</div>`:'';last=k;return sec+`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
     ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
-    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`).join('')
+    ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`}).join('')
     +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
   list.querySelectorAll('.palitem').forEach(el=>{
@@ -18144,18 +20116,9 @@ function omniShots(){
   box.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();OMNI.imgs.splice(+b.dataset.i,1);omniShots()});
 }
 function omniAddImage(fileOrUrl){
-  const done=u=>{if(OMNI.imgs.length>=4)return toast('up to 4 images');OMNI.imgs.push(u);omniShots()};
+  const done=u=>{if(OMNI.imgs.length>=IMG_MAX_PER_TURN)return toast(`up to ${IMG_MAX_PER_TURN} images`);OMNI.imgs.push(u);omniShots()};
   if(typeof fileOrUrl==='string')return done(fileOrUrl);
-  const img=new Image();
-  img.onload=()=>{   // downscale big screenshots so a turn stays light
-    const MAX=1568,sc=Math.min(1,MAX/Math.max(img.width,img.height));
-    const c=document.createElement('canvas');
-    c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    done(sc<1||fileOrUrl.size>800000?c.toDataURL('image/jpeg',.9):c.toDataURL('image/png'));
-    URL.revokeObjectURL(img.src);
-  };
-  img.src=URL.createObjectURL(fileOrUrl);
+  downscaleImage(fileOrUrl,done);     // the one downscale every surface uses (04a-copilot.js)
 }
 async function omniShoot(){
   if(!cap('screen.capture').available)return toast('screen capture is not available here');
@@ -18210,9 +20173,8 @@ async function omniAsk(q){
   if(shot){shot.innerHTML='▣';shot.onmousedown=e=>{e.preventDefault();omniShoot()}}
   // paste or drop an image straight onto the bar
   inp.addEventListener('paste',e=>{
-    const items=[...(e.clipboardData?.items||[])].filter(it=>it.type.startsWith('image/'));
-    if(!items.length)return;
-    e.preventDefault();items.forEach(it=>omniAddImage(it.getAsFile()));
+    const files=clipboardImages(e);if(!files.length)return;
+    e.preventDefault();files.forEach(omniAddImage);
   });
   ['dragover','drop'].forEach(ev=>bar.addEventListener(ev,e=>{
     if(!(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')))return;

@@ -36,6 +36,9 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Licensing & trademarks](licensing.md) | What AgentOS ships and what it only *asks for*; why it redistributes no distribution; where the Ubuntu/Canonical trademark line sits |
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
+| [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: IMAP with an app password, an ICS address or CalDAV, what is never touched, and the missions built on them |
+| [The Brief](brief.md) | How a mission delivers: things to act on, not a message — one living page a day, on the desktop, the phone, Telegram and out loud, where a decision is one tap and the reply comes back to the item |
+| [Missions](missions.md) | What this machine does for you every day: the catalogue by persona (founder, coder, consultant), what a mission may read, what it did, and `bento job` |
 | [Spaces, Gallery, Timeline, Audit](spaces.md) | Scoping memory and facts to a project, keeping what media servers return, the milestone timeline, and the structured access ledger |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
 | [Training Models](training.md) | The Train app (TrainForge): datasets, LoRA fine-tuning, evaluation, publishing |
@@ -75,7 +78,7 @@ Then open **Settings**, pick a model, and start giving instructions in **Agent C
 
 ## What makes it different
 
-- **It acts.** The agent runs shell commands, edits files, browses, schedules jobs, and reports back
+- **It acts.** The agent runs shell commands, edits files, browses, runs standing missions ([missions.md](missions.md)), and reports back
   with real output — not just chat.
 - **It's a real desktop.** Draggable windows, a taskbar and dock, virtual desktops, pinnable live
   widgets, themes, and a command palette.

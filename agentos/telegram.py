@@ -293,6 +293,19 @@ class TelegramBridge(usersmod.Scoped):
         finally:
             self._busy = False
 
+    async def send_brief(self, text: str, rows: list, chat_id: int | None = None) -> str:
+        """The Brief's digest with Done / Later / decision buttons under it — the
+        message a mission ends in. Buttons carry `br:<id>:<action>[:<choice>]`."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        if not self._t().get("bot_token") or not chat_id:
+            return await self.send(text, chat_id)
+        try:
+            kw = {"reply_markup": {"inline_keyboard": rows}} if rows else {}
+            await self._api("sendMessage", chat_id=chat_id, text=text[:4000], **kw)
+        except Exception as e:
+            return f"[error] telegram send failed: {e}"
+        return "sent"
+
     async def _ask_approval(self, chat_id: int, name: str, args: dict, reason: str) -> bool:
         return await self.ask_approval(chat_id, name, args, reason)
 
@@ -352,6 +365,54 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data.startswith("br:"):
+            # a Brief button: Done / Later / a decision — the same act() the
+            # desktop and `bento brief` use; a decision starts the agent's turn
+            from . import brief as briefmod
+            parts = data.split(":", 3)
+            bid, action = parts[1], parts[2] if len(parts) > 2 else ""
+            choice = parts[3] if len(parts) > 3 else ""
+            try:
+                item = briefmod.act(self.store, bid, action, choice)
+            except ValueError as e:
+                await self.send(f"✗ {e}", cq.get("from", {}).get("id"))
+                return
+            said = {"done": "✓ done", "later": "⏸ later"}.get(action, f"→ {choice}")
+            msg = cq.get("message", {})
+            if msg:
+                try:
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"],
+                                    message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n{said}: {item.get('title', '')}")
+                except Exception:
+                    pass
+            # the bridge has no scheduler of its own: the toolbox carries the one the
+            # server wired, and a bridge built without one (tests, CLI) just records
+            scheduler = getattr(self.toolbox, "scheduler", None)
+            if action == "decide" and scheduler is not None:
+                # behind the poll loop, not in it: the answer is a whole turn, and a
+                # bot that ignores every tap for a minute reads as broken
+                who = cq.get("from", {}).get("id")
+
+                async def _answer():
+                    try:
+                        cid, text = await scheduler.run_prompt(
+                            briefmod.decide_prompt(item, choice), origin="brief",
+                            title=f"Brief · {item.get('title', '')[:40]}")
+                    except Exception as e:
+                        cid, text = "", f"could not run the answer: {e}"
+                    self.store.brief_set(bid, answer_cid=cid or "")
+                    await self.send(text or "(done)", who)
+                    try:
+                        await self.broadcast({"type": "brief", "id": bid, "action": "answered"})
+                    except Exception:
+                        pass
+                self._answer_task = asyncio.create_task(_answer())
+            try:
+                await self.broadcast({"type": "brief", "id": bid, "action": action})
+            except Exception:
+                pass
+            return
         if not data.startswith("ap:"):
             return
         _, aid, val = data.split(":", 2)

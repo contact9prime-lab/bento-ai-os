@@ -28,7 +28,9 @@ function zoomWin(el,appId,dir){
   const at=`translate(${dx}px,${dy}px) scale(.06)`;
   const frames=dir>0?[{transform:at,opacity:.2},{transform:'none',opacity:1}]
                     :[{transform:'none',opacity:1},{transform:at,opacity:.15}];
-  return Motion.run(el,frames,{duration:dir>0?300:230,easing:dir>0?EASE.out:EASE.in}).finished;
+  // the immersive look opens with a touch of overshoot — weight, not decoration
+  const imm=typeof immersiveOn==='function'&&immersiveOn();
+  return Motion.run(el,frames,{duration:dir>0?(imm?380:300):230,easing:dir>0?(imm?'cubic-bezier(.2,1.15,.35,1)':EASE.out):EASE.in}).finished;
 }
 /* FLIP a window between two layout states: call with a fn that mutates geometry */
 function flipWin(el,mutate){

@@ -2838,32 +2838,81 @@ def _job_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     act = args.action
 
+    if act == "persona":
+        # who is asking, so `recipes` opens on their missions
+        if not args.name:
+            p = jobsmod.persona_of(cfg)
+            print(p or "not set — one of: " + ", ".join(jobsmod.PERSONA_IDS))
+            return
+        try:
+            jobsmod.set_persona(cfg, args.name)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        from . import config as cfgmod
+        cfgmod.save_config(cfg)
+        print(f"✓ {args.name} — `bento job recipes` now opens on your missions")
+        return
+
     if act == "list":
         rows = jobsmod.installed(store)
+        rd = jobsmod.readiness(cfg)
+        if not rd["ok"]:
+            print(f"✗ missions cannot run here yet: {rd['note']}\n  {rd['fix']}\n")
         if not rows:
             print("nothing is running yet.\n")
             print("  bento job recipes           what this machine can be asked to do")
             return
+        s = jobsmod.summary(store)
+        print(f"{s['missions']} mission{'s' if s['missions'] != 1 else ''} · this week: "
+              f"{s['runs_7d']} run{'s' if s['runs_7d'] != 1 else ''}, {s['ok_7d']} delivered, "
+              f"{s['failed_7d']} failed · {s['tokens_7d']:,} tokens · "
+              f"{s['grants']} permissions held")
         for j in rows:
-            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}")
-            print(f"    {j['description']}")
+            print(f"\n▲ {j['name']}{'' if j['enabled'] else '  (off)'}  — {j['title']}")
+            last = j.get("last") or {}
+            if last:
+                when = time.strftime("%a %H:%M", time.localtime(last.get("at") or 0))
+                said = (last.get("said") or "")[:90]
+                print(f"    last: {last.get('status')} · {when}" + (f" · {said}" if said else ""))
+            else:
+                print("    last: has not run yet")
+            print(f"    this week: {j['runs_7d']} runs, {j['ok_7d']} ok, "
+                  f"{j['tokens_7d']:,} tokens · holds {j['grants']} permissions")
             print(f"    next: {j['next']}")
         return
 
     if act == "recipes":
-        for r in jobsmod.RECIPES:
-            print(f"\n{r.icon}  {r.id}")
+        persona = (args.for_ or jobsmod.persona_of(cfg) or "").strip().lower()
+        if persona and persona not in jobsmod.PERSONA_IDS:
+            print(f"✗ --for is one of: {', '.join(jobsmod.PERSONA_IDS)}")
+            sys.exit(2)
+        if persona:
+            print(f"missions for a {persona} first, then everybody's:")
+        from . import accounts as accountsmod
+        acct_ready = accountsmod.readiness(cfg)
+        for r in jobsmod.recipes_for(persona):
+            who = "" if "everyone" in r.for_ else "  (" + "/".join(r.for_) + ")"
+            print(f"\n{r.icon}  {r.id}{who}")
+            for acct in r.wants:
+                if not acct_ready.get(acct, {}).get("ready"):
+                    print(f"    ✗ {acct_ready.get(acct, {}).get('detail')}")
             print(f"    {r.title} — {r.blurb}")
+            if r.worth:
+                print(f"    worth: {r.worth}")
             print(f"    e.g. {r.example}")
             for n in r.needs:
                 if n.key == "deliver":
                     continue
                 print(f"    --{n.key:<8} {n.label}"
+                      + ("  (one per line, or comma-separated)" if n.kind == "lines" else "")
                       + (f"  (default {n.default})" if n.default else ""))
         ways = [d for d in jobsmod.deliveries(cfg)]
         print("\n  --deliver  " + ", ".join(
             f"{d['id']}{'' if d['ready'] else ' (not set up)'}" for d in ways))
-        print("\n  bento job add morning-brief --topics 'my industry' --at 08:00")
+        print("\n  bento job add standup --folder ~/code --at 09:00")
+        print("  bento job add competitor-watch --urls 'https://acme.com/pricing,https://acme.com/changelog'")
+        print("  bento job persona founder        open on a founder's missions from now on")
         return
 
     if act == "add":
@@ -2872,7 +2921,9 @@ def _job_cli(args):
             sys.exit(2)
         answers = {k: v for k, v in
                    (("topics", args.topics), ("folder", args.folder), ("url", args.url),
-                    ("at", args.at), ("minutes", args.minutes), ("deliver", args.deliver))
+                    ("urls", args.urls), ("names", args.names), ("client", args.client),
+                    ("day", args.day), ("at", args.at), ("minutes", args.minutes),
+                    ("deliver", args.deliver))
                    if v}
         try:
             res = jobsmod.install(cfg, store, args.name, answers)
@@ -2908,6 +2959,199 @@ def _job_cli(args):
             sys.exit(1)
         print(f"▶ {args.name} started · run {res['run_id']}\n  bento flow show {res['run_id']}")
         return
+
+
+def _account_cli(args, aid: str):
+    """`bento mail` / `bento calendar` — the terminal face of Settings → Accounts.
+
+    Setting up goes through `accounts.save`, the same door the card uses; `test`
+    really signs in and records the outcome on the account, so `bento job recipes`
+    and the Missions app agree about whether a mail mission can run here. `search`,
+    `read` and `today` read through the same modules the tools use — with the server
+    down, which is where a headless box is driven from.
+    """
+    from . import accounts as accountsmod
+    from . import calendars as calmod
+    from . import config as cfgmod
+    from . import mail as mailmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+    title = accountsmod.ABOUT[aid]["title"]
+
+    if act == "show":
+        a = next(x for x in accountsmod.state(cfg) if x["id"] == aid)
+        lt = a["last_test"] or {}
+        print(f"{title}: {'set up' if a['configured'] else 'not set up'}"
+              f"{'' if a['enabled'] or not a['configured'] else '  (switched off)'}")
+        for f in a["fields"]:
+            v = a["values"].get(f["key"], "")
+            if f["kind"] == "secret":
+                v = a["masked"].get(f["key"], "") if a["set"].get(f["key"]) else "(not set)"
+            if v not in ("", None):
+                print(f"  {f['label']:<28} {v}")
+        if lt:
+            print(f"  last test: {'ok' if lt.get('ok') else 'FAILED'} — {lt.get('detail', '')}")
+        if a["problem"]:
+            print(f"  ✗ {a['problem']}")
+        if a["hint"]:
+            print(f"  note: {a['hint']}")
+        return
+
+    if act == "set":
+        patch = {k: v for k, v in (("preset", args.preset), ("user", args.username),
+                                   ("password", args.password), ("host", args.host),
+                                   ("port", args.port), ("url", args.url), ("name", args.name),
+                                   ("kind", args.kind)) if v}
+        if getattr(args, "on", False):
+            patch["enabled"] = True
+        if getattr(args, "off", False):
+            patch["enabled"] = False
+        if not patch:
+            print(f"nothing to set — bento {aid} set --help")
+            sys.exit(2)
+        ok, msg = accountsmod.save(cfg, aid, patch)
+        if not ok:
+            print(f"✗ {msg}")
+            sys.exit(1)
+        cfgmod.save_config(cfg)
+        print(f"✓ {msg}\n  bento {aid} test        sign in and record the outcome")
+        return
+
+    if act == "test":
+        if aid == "mail":
+            res = mailmod.test_login(cfg)
+        else:
+            res = asyncio.run(calmod.test_access(cfg))
+        accountsmod.record_test(cfg, aid, res)
+        cfgmod.save_config(cfg)
+        print(("✓ " if res.get("ok") else "✗ ") + str(res.get("detail", "")))
+        sys.exit(0 if res.get("ok") else 1)
+
+    if aid == "mail" and act in ("search", "read"):
+        p = mailmod.problem(cfg)
+        if p:
+            print(f"✗ {p}")
+            sys.exit(1)
+        with mailmod.Mailbox(mailmod.conf(cfg)) as mb:
+            if act == "search":
+                rows = mb.search(query=args.query or "", sender=args.sender or "",
+                                 unread=bool(args.unread), since_days=int(args.days or 7),
+                                 folder=args.folder or "INBOX", limit=int(args.limit or 20))
+                if not rows:
+                    print("no messages matched")
+                for r in rows:
+                    print(f"\n{r['uid']:>6}  {'*' if r['unread'] else ' '} {r['date']}\n"
+                          f"        {r['from']}\n        {r['subject']}\n        {r['snippet'][:120]}")
+            else:
+                if not args.query:
+                    print("which uid? (bento mail search)")
+                    sys.exit(2)
+                m = mb.read(args.query, folder=args.folder or "INBOX")
+                print(f"from: {m['from']}\nto: {m['to']}\ndate: {m['date']}\nsubject: {m['subject']}")
+                if m["attachments"]:
+                    print(f"attachments: {', '.join(m['attachments'])}")
+                print("\n" + (m["body"] or "(empty)"))
+        return
+
+    if aid == "calendar" and act in ("today", "week"):
+        out = asyncio.run(calmod.events(cfg, days=1 if act == "today" else 7))
+        if out.get("error"):
+            print(f"✗ {out['error']}")
+            sys.exit(1)
+        evs = out.get("events") or []
+        print(f"{len(evs)} event{'s' if len(evs) != 1 else ''} · {out['window']['start']} → {out['window']['end']}")
+        for e in evs:
+            when = e["start"][:10] + " all day" if e["all_day"] else f"{e['start'][:16]} → {e['end'][11:16]}"
+            print(f"  {when}  {e['summary']}" + (f"  @ {e['location']}" if e.get("location") else ""))
+        for n in out.get("notes") or []:
+            print(f"  note: {n}")
+        return
+
+    print(f"bento {aid} show | set | test" + (" | search | read <uid>" if aid == "mail" else " | today | week"))
+    sys.exit(2)
+
+
+def _brief_cli(args):
+    """`bento brief` — today's Brief in a terminal, and the same hands.
+
+    Reads the rows directly, so a headless box sees what its missions found with
+    the server down. `done` / `later` / `reopen` are pure state; `decide` needs
+    the running server because the answer starts the agent's turn.
+    """
+    import urllib.error
+    import urllib.request
+
+    from . import brief as briefmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+    if act == "show":
+        pg = briefmod.page(store)
+        print(f"{pg['day']} · {briefmod.headline(pg['counts'])}")
+        if not pg["items"]:
+            print("  nothing yet — when a mission runs, what it finds lands here")
+            return
+        n = 0
+        # a decision stays in view with what was decided (and the reply, once it
+        # landed) — the same rule as the desktop: only Done goes under "handled"
+        shown = ("open", "later", "decided")
+        for g in pg["groups"]:
+            live = [i for i in g["items"] if i["state"] in shown]
+            if not live:
+                continue
+            print(f"\n{g['label'].upper()}")
+            for i in live:
+                n += 1
+                who = f" — {i['who']}" if i.get("who") else ""
+                due = f" (by {i['due']})" if i.get("due") else ""
+                print(f"  {i['id']}  {i['title']}{who}{due}")
+                if i.get("body"):
+                    print(f"          {i['body'][:160]}")
+                if i["state"] == "decided":
+                    print(f"          decided: {i.get('decision', '')}"
+                          + (f" — the reply is conversation {i['answer_cid']}" if i.get("answer_cid")
+                             else " — the reply is being written"))
+                elif i["kind"] == "decide":
+                    print(f"          choices: {' / '.join(i.get('options') or [])}")
+                if i.get("draft"):
+                    print(f"          draft: {i['draft'][:120]}…" if len(i["draft"]) > 120 else f"          draft: {i['draft']}")
+        handled = [i for i in pg["items"] if i["state"] not in shown]
+        if handled:
+            print(f"\n  {len(handled)} handled")
+        print("\n  bento brief done <id> | later <id> | reopen <id> | decide <id> <choice>")
+        return
+    if act in ("done", "later", "reopen"):
+        if not args.id:
+            print("which item? (bento brief)")
+            sys.exit(2)
+        try:
+            item = briefmod.act(store, args.id, act)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ {act}: {item['title']}")
+        return
+    if act == "decide":
+        if not args.id or not args.choice:
+            print("bento brief decide <id> <choice>")
+            sys.exit(2)
+        url = f"http://127.0.0.1:{cfg.get('port', 8321)}/api/brief/{args.id}/act"
+        req = urllib.request.Request(url, method="POST",
+                                     data=json.dumps({"action": "decide", "choice": args.choice,
+                                                      "wait": True}).encode(),   # a terminal waits for the answer
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                res = json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
+            sys.exit(1)
+        except OSError:
+            print("✗ AgentOS is not running here — a decision starts the agent, so start it with `bento serve`")
+            sys.exit(1)
+        print(f"→ {args.choice}\n\n{res.get('answer', '')}")
+        return
+    print("bento brief [show] | done <id> | later <id> | reopen <id> | decide <id> <choice>")
+    sys.exit(2)
 
 
 def _bind_problem(host: str, port: int) -> tuple[str, str]:
@@ -3512,19 +3756,38 @@ def _update_cli(args) -> int:
     cfg = cfgmod.load_config()
     root = upd.install_dir()
 
+    # Where updates come from is a setting, so a fork under test is followed by
+    # the watcher and Settings too — not only by this one invocation.
+    if getattr(args, "official", False):
+        src = upd.set_source(cfg, upd.DEFAULT_REPO, upd.DEFAULT_BRANCH)
+        cfgmod.save_config(cfg)
+        print(f"  updates now track the official repository: {src['repo']} @ {src['branch']}")
+    elif getattr(args, "repo", None) or getattr(args, "branch", None):
+        try:
+            src = upd.set_source(cfg, getattr(args, "repo", None), getattr(args, "branch", None))
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        cfgmod.save_config(cfg)
+        print(f"  updates now track github.com/{src['repo']} @ {src['branch']}"
+              + (f"  (git remote '{src['remote']}')" if src["remote"] != "origin" else ""))
+
     state = asyncio.run(upd.check(cfg, force=True))
     cfgmod.save_config(cfg)          # check() stamps last_check on the conf dict
+    remote = state.get("remote") or "origin"
+    tracked = f"{remote}/{state.get('tracks')}"
 
-    print(f"AgentOS {upd.current()}")
+    print(f"Bento Box AI {upd.current()}")
     print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
+    print(f"  source:    github.com/{state.get('repo') or upd.DEFAULT_REPO} @ {state.get('tracks')}"
+          + ("" if remote == "origin" else f"  — a fork; `bento update --official` goes back"))
     print(f"  branch:    {state.get('on_branch') or '(unknown)'}"
           + (f"  → updates track '{state.get('tracks')}'"
              if state.get("mismatch") else "  (the branch updates track)"))
     if state.get("ahead"):
         # Somebody's own commits. Worth naming: it is the other half of "I pushed
         # and nothing happened" — the code is here, it is just not upstream.
-        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on "
-              f"origin/{state.get('tracks')}")
+        print(f"  ahead:     {state['ahead']} commit(s) of your own, not on {tracked}")
 
     # An error is not a reason to stop reporting: the version file may be
     # unreachable while git knows exactly how far behind this copy is, and vice
@@ -3534,11 +3797,11 @@ def _update_cli(args) -> int:
 
     if not state.get("update_available"):
         if state.get("mismatch"):
-            print(f"\n✓ up to date with origin/{state.get('tracks')} — but this checkout is "
+            print(f"\n✓ up to date with {tracked} — but this checkout is "
                   f"on '{state.get('on_branch')}', so commits you pushed to another branch "
                   f"will never show up here")
         else:
-            print(f"\n✓ up to date with origin/{state.get('tracks')} "
+            print(f"\n✓ up to date with {tracked} "
                   f"(published version {state.get('latest') or 'unknown'})")
         return 0 if not state.get("error") else 1
 
@@ -3555,8 +3818,11 @@ def _update_cli(args) -> int:
                     print(f"    {line.strip()[:100]}")
     else:
         n = state.get("behind") or 0
-        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on origin/"
-              f"{state.get('tracks')} — same version ({upd.current()}), newer code")
+        # The number in VERSION moves only at a release; the code moves every
+        # push. "Same version" was read as "nothing new" — say what it means.
+        print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on {tracked} — "
+              f"still version {upd.current()} (that number only moves at a release), "
+              f"but newer code")
 
     # The changelog nobody maintains by hand: the commits themselves, already
     # fetched by the check rather than fetched a second time here.
@@ -3569,14 +3835,23 @@ def _update_cli(args) -> int:
     # Whether it COULD be installed is worth saying even on a bare check: a machine
     # with local edits or on the wrong branch will refuse at `--apply`, and finding
     # that out now beats finding it out halfway through an upgrade you scheduled.
-    ok, why = upd.can_apply(cfg)
+    # A rewritten lockfile or a rebuilt UI bundle is this machine's doing, not
+    # the user's: it is put back, said once, and never a reason to ask to stash.
+    # (This is what made `bento update` ask to stash on every run: its own
+    # `uv sync` rewrote uv.lock, and the next check found "1 uncommitted change".)
+    for path in upd.restore_derived():
+        print(f"  restored {path} — rewritten by this machine, not one of your edits")
+    # The new options are passed only when used, so every older caller — and
+    # every fake in the tests — keeps the shape it had.
+    sw = bool(getattr(args, "switch", False))
+    ok, why = upd.can_apply(cfg, switch=True) if sw else upd.can_apply(cfg)
     stashed = ""
     if not ok:
         # "1 uncommitted change(s)" and a full stop is a dead end: the one thing
         # the user needs — WHICH file, and what to do about it — is the thing the
         # refusal did not say, so every hit meant leaving the command and running
         # git by hand. Name them, then offer the one answer that loses nothing.
-        dirty = upd.local_changes()
+        dirty = upd.own_changes()
         if not dirty:
             print(f"\n✗ cannot install it here: {why}")     # wrong branch, no git, …
             return 1
@@ -3598,7 +3873,7 @@ def _update_cli(args) -> int:
         if not okz:
             return 1
         stashed = msg
-        ok, why = upd.can_apply(cfg)
+        ok, why = upd.can_apply(cfg, switch=True) if sw else upd.can_apply(cfg)
         if not ok:
             print(f"\n✗ still cannot install it here: {why}")
             return 1
@@ -3620,8 +3895,9 @@ def _update_cli(args) -> int:
             print(f"\n  your parked changes: {stashed.split('with: ')[-1]}")
 
     print()
+    extra = {"switch": True} if sw else {}
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
-                                   log=lambda m: print(f"  {m}")))
+                                   log=lambda m: print(f"  {m}"), **extra))
     if not result.get("ok"):
         print(f"✗ {result.get('error')}")
         parked()
@@ -3630,8 +3906,11 @@ def _update_cli(args) -> int:
         print("✓ already at the newest commit — nothing changed")
         parked()
         return 0
+    if result.get("switched"):
+        print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
     print(f"✓ updated {result['from']} → {result['to']} "
-          f"({result['files']} files, now {result.get('version') or '?'})")
+          f"({result['files']} files, now {result.get('version') or '?'}, "
+          f"from {result.get('source') or tracked})")
     # What actually landed. Printed after the fact as well as before it, because
     # an unattended update (a watcher, a cron line) is one nobody read the preview
     # of — this is the only place that machine's operator ever sees what changed.
@@ -4100,6 +4379,19 @@ def main():
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
                        help="leave the restart to you")
+    # Testing a fork: point updates at another repository and branch. Persisted,
+    # so Settings and the background check follow the same source until
+    # --official puts it back.
+    p_upd.add_argument("--repo", metavar="OWNER/NAME",
+                       help="take updates from this GitHub repository (a fork) from now on — "
+                            "owner/name or a github.com URL")
+    p_upd.add_argument("--branch", metavar="NAME",
+                       help="take updates from this branch from now on")
+    p_upd.add_argument("--switch", action="store_true",
+                       help="with --apply: if the checkout is on another branch, check "
+                            "the tracked one out (the tree must be clean)")
+    p_upd.add_argument("--official", action="store_true",
+                       help="go back to the official repository and branch")
 
     p_svc = verb("service",
                            help="the background server: status, start, stop, restart, logs, uninstall")
@@ -4322,17 +4614,24 @@ def main():
                         help="with `rotate`: expire the new secret after N days (0 = never)")
     p_flow.add_argument("--limit", type=int, default=20, help="with `runs`/`events`: how many")
 
-    p_job = verb("job", help="give this machine a standing job — the terminal "
-                                       "half of the first-run 'give it a job' screen")
+    p_job = verb("job", help="give this machine a standing mission — the terminal "
+                                       "half of the Missions app and the first-run screen")
     p_job.add_argument("action", nargs="?", default="list",
-                       choices=["list", "recipes", "add", "run"])
-    p_job.add_argument("name", nargs="?", default="", help="recipe id for `add`, job name for `run`")
+                       choices=["list", "recipes", "add", "run", "persona"])
+    p_job.add_argument("name", nargs="?", default="",
+                       help="recipe id for `add`, mission name for `run`, founder|coder|consultant for `persona`")
+    p_job.add_argument("--for", dest="for_", default="",
+                       help="recipes: founder | coder | consultant | everyone — theirs first")
     p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")
-    p_job.add_argument("--folder", default="", help="folder-watch: the one folder it may read")
+    p_job.add_argument("--folder", default="", help="the one folder it may read")
     p_job.add_argument("--url", default="", help="page-watch: the page to check")
+    p_job.add_argument("--urls", default="", help="competitor-watch / dependency-watch: pages, comma-separated")
+    p_job.add_argument("--names", default="", help="news-watch: names, comma-separated")
+    p_job.add_argument("--client", default="", help="client-inbox / client-report: the client's name")
+    p_job.add_argument("--day", default="", help="weekly missions: monday … sunday")
     p_job.add_argument("--at", default="", help="time of day, HH:MM")
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
-    p_job.add_argument("--deliver", default="", help="report | notify | telegram")
+    p_job.add_argument("--deliver", default="", help="report | notify | telegram | whatsapp")
 
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
@@ -4362,6 +4661,34 @@ def main():
     p_cfg.add_argument("--edit", action="store_true",
                        help="open it in $EDITOR; refuses to save invalid JSON")
 
+    p_brief = verb("brief", help="today's Brief — what your missions found, as things to act on")
+    p_brief.add_argument("action", nargs="?", default="show",
+                         choices=["show", "done", "later", "reopen", "decide"])
+    p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
+    p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    for _aid, _acts in (("mail", ["show", "set", "test", "search", "read"]),
+                        ("calendar", ["show", "set", "test", "today", "week"])):
+        _pa = verb(_aid, help=f"the {_aid} account the agent may read for you — "
+                                f"the terminal half of Settings → Accounts")
+        _pa.add_argument("action", nargs="?", default="show", choices=_acts)
+        _pa.add_argument("query", nargs="?", default="",
+                         help="search words, or the uid for `read`")
+        _pa.add_argument("--preset", default="", help="gmail | outlook | icloud | fastmail | custom "
+                                                       "(mail) · google | outlook | icloud | fastmail | nextcloud | ics (calendar)")
+        _pa.add_argument("--username", default="", help="address / user name")
+        _pa.add_argument("--password", default="", help="an APP password — never your login password")
+        _pa.add_argument("--host", default="", help="mail: the IMAP host")
+        _pa.add_argument("--port", default="", help="mail: the IMAP port")
+        _pa.add_argument("--url", default="", help="calendar: the ICS address or CalDAV URL")
+        _pa.add_argument("--kind", default="", help="calendar: ics | caldav")
+        _pa.add_argument("--name", default="", help="calendar: what to call it")
+        _pa.add_argument("--on", action="store_true", help="switch it on")
+        _pa.add_argument("--off", action="store_true", help="switch it off")
+        _pa.add_argument("--sender", default="", help="mail search: From matches")
+        _pa.add_argument("--unread", action="store_true", help="mail search: unread only")
+        _pa.add_argument("--days", default="", help="mail search: how far back")
+        _pa.add_argument("--folder", default="", help="mail: IMAP folder (INBOX)")
+        _pa.add_argument("--limit", default="", help="mail search: at most this many")
     p_remote = verb("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
@@ -4512,6 +4839,10 @@ def main():
         _user_cli(args)
     elif args.cmd == "config":
         raise SystemExit(_config_cli(args))
+    elif args.cmd == "brief":
+        _brief_cli(args)
+    elif args.cmd in ("mail", "calendar"):
+        _account_cli(args, args.cmd)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

@@ -240,6 +240,7 @@ function handle(ev){
       }
       break;}
     case 'turn_start':{
+      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||'')};
@@ -267,6 +268,7 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
+      if(typeof movementPulse==='function')movementPulse('tool',ev.name);   // a tick on the dial (Movement scene)
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -368,6 +370,7 @@ function handle(ev){
       flushText();
       curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(typeof movementPulse==='function')movementPulse('turnend',ev.conversation_id);
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
       // "Aria replied" is for a reply. A turn that ended on an error is not one —
@@ -432,6 +435,8 @@ function handle(ev){
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
     case 'fabric_event':
+      // a flow moved: its mark lights on the dial (heartbeats are not movement)
+      if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);
       // State first, painting second: the graph must stay correct even when the Team
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
@@ -444,8 +449,17 @@ function handle(ev){
       refreshApp('permissions'); refreshApp('quarantine'); refreshApp('apps'); break;
     case 'quarantine': refreshApp('permissions'); refreshApp('quarantine'); break;
     case 'flow_done':
-      toast('▲ '+ev.flow+' · '+ev.status);
-      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh(); break;
+      if(typeof movementPulse==='function')movementPulse('done',ev.flow);
+      if(ev.brief&&ev.brief.open){toast('▲ '+ev.flow+' — '+(typeof briefLoad==='function'?'':'')+
+          (ev.brief.needs_you?ev.brief.needs_you+' need you':'')+(ev.brief.decide?' · '+ev.brief.decide+' to decide':'')+(ev.brief.fyi?' · '+ev.brief.fyi+' FYI':'')+' — open the Brief');
+        if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});}
+      else toast('▲ '+ev.flow+' · '+ev.status);
+      if(typeof fabricLiveRefresh==='function')fabricLiveRefresh();
+      refreshApp('jobs'); break;      // a mission's row shows what it just said
+    case 'brief':
+      // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
+      if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
