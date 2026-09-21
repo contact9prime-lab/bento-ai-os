@@ -25,6 +25,7 @@ down.
 
 from __future__ import annotations
 
+import base64
 import email
 import email.header
 import email.utils
@@ -36,6 +37,8 @@ import socket
 import ssl
 import time
 from email.message import EmailMessage
+
+import httpx
 
 #: Well-known hosts, so "set up Gmail" is one choice and not four fields. The
 #: `hint` is the sentence that stops the commonest failure: pasting the account
@@ -70,8 +73,9 @@ PRESETS = {
                        "if you ever grant sending."},
 }
 
-DEFAULTS = {"enabled": False, "preset": "", "host": "", "port": 993, "user": "",
-            "password": "", "smtp_host": "", "smtp_port": 587, "from": "",
+DEFAULTS = {"enabled": False, "via": "imap", "preset": "", "host": "", "port": 993, "user": "",
+            "password": "", "smtp_host": "", "smtp_port": 587, "from": "", "can_send": False,
+            "mcp_server": "",
             # TLS from the first byte (IMAPS). None = decide by port: 143 is the
             # plain/STARTTLS port, everything else is assumed IMAPS. A test server
             # on loopback sets it False explicitly.
@@ -84,19 +88,52 @@ MAX_RESULTS = 50
 
 
 def conf(cfg: dict) -> dict:
-    return {**DEFAULTS, **((cfg or {}).get("mail") or {})}
+    """The mail section with its secret RESOLVED — config holds `vault:mail.password`,
+    the mailbox needs the bytes. Only the code that opens the mailbox calls this;
+    `accounts.state()` reads the raw section and never sees the password."""
+    from . import vault
+    c = {**DEFAULTS, **((cfg or {}).get("mail") or {})}
+    c["password"] = vault.resolve(c.get("password", ""), actor="mail")
+    return c
+
+
+VIAS = ("imap", "google", "microsoft", "mcp")
+
+
+def via(cfg: dict) -> str:
+    v = str(((cfg or {}).get("mail") or {}).get("via") or "imap")
+    return v if v in VIAS else "imap"
 
 
 def configured(cfg: dict) -> bool:
-    c = conf(cfg)
+    """Is there a door at all — a sign-in, a chosen MCP server, or the three IMAP
+    fields. Decided from the raw section: a reference counts as a password."""
+    c = {**DEFAULTS, **((cfg or {}).get("mail") or {})}
+    v = via(cfg)
+    if v in ("google", "microsoft"):
+        from . import signin
+        return bool(signin.signed_in(cfg, v)) and not signin.signed_in(cfg, v).get("problem")
+    if v == "mcp":
+        return bool(c.get("mcp_server"))
     return bool(c["host"] and c["user"] and c["password"])
 
 
 def problem(cfg: dict) -> str:
     """'' when mail can be read here, else the sentence that would fix it."""
-    c = conf(cfg)
-    if not (c["host"] and c["user"] and c["password"]):
-        return "Needs a mail account — Settings → Accounts → Mail (an app password, not your login password)."
+    c = {**DEFAULTS, **((cfg or {}).get("mail") or {})}
+    v = via(cfg)
+    if not configured(cfg):
+        if v in ("google", "microsoft"):
+            from . import signin
+            rec = signin.signed_in(cfg, v)
+            return (f"The {signin.PROVIDERS[v]['label']} sign-in needs redoing: {rec['problem']} — "
+                    "Settings → Accounts → Mail." if rec.get("problem") else
+                    f"Needs a mail account — Settings → Accounts → Mail (Sign in with "
+                    f"{signin.PROVIDERS[v]['label']}).")
+        if v == "mcp":
+            return "Mail is set to read through an MCP server, but none is chosen — Settings → Accounts → Mail."
+        return ("Needs a mail account — Settings → Accounts → Mail (sign in with Google or "
+                "Microsoft, or an app password for any other provider).")
     if not c.get("enabled", True):
         return "Mail is set up but switched off — Settings → Accounts → Mail."
     lt = c.get("last_test") or {}
@@ -189,6 +226,208 @@ def _imap_date(days: int) -> str:
 
 def _quote(s: str) -> str:
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def open_box(cfg: dict):
+    """The mailbox behind whichever door is configured, with one shape: `search`,
+    `read`, `folders`, usable as a context manager. The tools and the CLI never
+    know which it was."""
+    v = via(cfg)
+    if v == "google":
+        return GmailBox(cfg)
+    if v == "microsoft":
+        return GraphBox(cfg)
+    if v == "mcp":
+        raise RuntimeError(f"mail reads through the '{(cfg.get('mail') or {}).get('mcp_server')}' MCP "
+                           "server here — its tools are the mailbox, not mail_search")
+    return Mailbox(conf(cfg))
+
+
+class _ApiBox:
+    """What the two API mailboxes share: a bearer from the sign-in, an httpx client,
+    the same context-manager shape as the IMAP box."""
+    provider = ""
+
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.cl = None
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+
+    def connect(self):
+        from . import signin
+        self.cl = httpx.Client(timeout=30.0, headers={**signin.auth_header(self.cfg, self.provider, actor="mail"),
+                                                      "Accept": "application/json"})
+        return self
+
+    def close(self):
+        if self.cl is not None:
+            self.cl.close()
+            self.cl = None
+
+    def _get(self, url: str, **params) -> dict:
+        r = self.cl.get(url, params={k: v for k, v in params.items() if v not in (None, "")})
+        if r.status_code == 401:
+            raise RuntimeError("the sign-in was refused by the server — sign in again in Settings → Accounts")
+        if r.status_code == 403:
+            raise RuntimeError("the sign-in does not cover this (the scope was not granted) — "
+                               "sign in again and tick Mail")
+        r.raise_for_status()
+        return r.json()
+
+
+class GmailBox(_ApiBox):
+    """Gmail over its REST API. Reading uses `format=full` and never touches labels,
+    so nothing is marked read — the PEEK rule, kept by not calling `modify`."""
+    provider = "google"
+
+    def _base(self) -> str:
+        from . import signin
+        return signin.PROVIDERS["google"]["api_mail"] + "/users/me"
+
+    def folders(self) -> list[str]:
+        j = self._get(self._base() + "/labels")
+        return [lb.get("name", "") for lb in j.get("labels", [])]
+
+    def search(self, query: str = "", sender: str = "", unread: bool = False,
+               since_days: int = 7, folder: str = "INBOX", limit: int = 20) -> list[dict]:
+        q = []
+        if folder and folder.upper() != "INBOX":
+            q.append(f"label:{folder}")
+        else:
+            q.append("in:inbox")
+        if unread:
+            q.append("is:unread")
+        if since_days is not None and int(since_days) >= 0:
+            q.append(f"newer_than:{max(1, int(since_days))}d")
+        if sender:
+            q.append(f"from:{sender}")
+        if query:
+            q.append(query)
+        j = self._get(self._base() + "/messages", q=" ".join(q),
+                      maxResults=max(1, min(int(limit or 20), MAX_RESULTS)))
+        out = []
+        for m in j.get("messages", []) or []:
+            row = self._head(m["id"])
+            if row:
+                out.append(row)
+        return out
+
+    def _head(self, mid: str) -> dict | None:
+        j = self._get(self._base() + f"/messages/{mid}", format="metadata",
+                      metadataHeaders=["From", "To", "Cc", "Subject", "Date"])
+        h = {x["name"].lower(): x["value"] for x in (j.get("payload") or {}).get("headers", [])}
+        return {"uid": j["id"], "from": h.get("from", ""), "to": h.get("to", ""),
+                "subject": h.get("subject") or "(no subject)", "date": h.get("date", ""),
+                "unread": "UNREAD" in (j.get("labelIds") or []),
+                "snippet": html.unescape(j.get("snippet", ""))[:SNIPPET]}
+
+    def read(self, uid: str, folder: str = "INBOX") -> dict:
+        j = self._get(self._base() + f"/messages/{uid}", format="raw")
+        raw = base64.urlsafe_b64decode(j.get("raw", "") + "==")
+        msg = email.message_from_bytes(raw)
+        body, attachments = _body_of(msg)
+        cut = len(body) > BODY_LIMIT
+        return {"uid": str(uid), "folder": folder,
+                "from": _dec(msg.get("From")), "to": _dec(msg.get("To")),
+                "cc": _dec(msg.get("Cc")), "subject": _dec(msg.get("Subject")) or "(no subject)",
+                "date": _dec(msg.get("Date")), "body": body[:BODY_LIMIT] + ("\n[…cut]" if cut else ""),
+                "attachments": attachments}
+
+    def send(self, msg: EmailMessage) -> str:
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        r = self.cl.post(self._base() + "/messages/send", json={"raw": raw})
+        if r.status_code == 403:
+            return "[error] the Google sign-in does not allow sending — sign in again and tick Send"
+        r.raise_for_status()
+        return f"sent to {msg['To']}"
+
+
+class GraphBox(_ApiBox):
+    """Outlook / Microsoft 365 over Microsoft Graph. Reads only `/me/messages`;
+    nothing here calls PATCH, so isRead is never touched."""
+    provider = "microsoft"
+
+    def _base(self) -> str:
+        from . import signin
+        return signin.PROVIDERS["microsoft"]["api_graph"] + "/me"
+
+    def folders(self) -> list[str]:
+        j = self._get(self._base() + "/mailFolders", **{"$top": 50})
+        return [f.get("displayName", "") for f in j.get("value", [])]
+
+    def search(self, query: str = "", sender: str = "", unread: bool = False,
+               since_days: int = 7, folder: str = "INBOX", limit: int = 20) -> list[dict]:
+        url = self._base() + (f"/mailFolders/{folder}/messages" if folder and folder.upper() != "INBOX"
+                              else "/mailFolders/inbox/messages")
+        params = {"$top": max(1, min(int(limit or 20), MAX_RESULTS)),
+                  "$select": "id,from,toRecipients,subject,receivedDateTime,isRead,bodyPreview",
+                  "$orderby": "receivedDateTime desc"}
+        filt = []
+        if unread:
+            filt.append("isRead eq false")
+        if since_days is not None and int(since_days) >= 0:
+            since = (time.time() - max(1, int(since_days)) * 86400)
+            filt.append("receivedDateTime ge " + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since)))
+        if sender:
+            filt.append(f"contains(from/emailAddress/address,'{sender}')")
+        if query:
+            params["$search"] = f'"{query}"'
+            params.pop("$orderby", None)       # Graph refuses $orderby with $search
+        if filt and not query:
+            params["$filter"] = " and ".join(filt)
+        j = self._get(url, **params)
+        out = []
+        for m in j.get("value", []) or []:
+            if query and filt:                 # $search cannot combine with $filter: apply here
+                if unread and m.get("isRead"):
+                    continue
+            frm = (m.get("from") or {}).get("emailAddress") or {}
+            out.append({"uid": m["id"], "from": f"{frm.get('name', '')} <{frm.get('address', '')}>".strip(),
+                        "to": ", ".join((r.get("emailAddress") or {}).get("address", "")
+                                        for r in m.get("toRecipients", [])),
+                        "subject": m.get("subject") or "(no subject)", "date": m.get("receivedDateTime", ""),
+                        "unread": not m.get("isRead", True),
+                        "snippet": " ".join((m.get("bodyPreview") or "").split())[:SNIPPET]})
+        return out
+
+    def read(self, uid: str, folder: str = "INBOX") -> dict:
+        j = self._get(self._base() + f"/messages/{uid}",
+                      **{"$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,body,hasAttachments"})
+        frm = (j.get("from") or {}).get("emailAddress") or {}
+        body = j.get("body") or {}
+        text = _html_to_text(body.get("content", "")) if body.get("contentType", "").lower() == "html" \
+            else body.get("content", "")
+        cut = len(text) > BODY_LIMIT
+        att = []
+        if j.get("hasAttachments"):
+            try:
+                a = self._get(self._base() + f"/messages/{uid}/attachments", **{"$select": "name"})
+                att = [x.get("name", "") for x in a.get("value", [])]
+            except Exception:
+                att = ["(attachments)"]
+        return {"uid": str(uid), "folder": folder,
+                "from": f"{frm.get('name', '')} <{frm.get('address', '')}>".strip(),
+                "to": ", ".join((r.get("emailAddress") or {}).get("address", "") for r in j.get("toRecipients", [])),
+                "cc": ", ".join((r.get("emailAddress") or {}).get("address", "") for r in j.get("ccRecipients", [])),
+                "subject": j.get("subject") or "(no subject)", "date": j.get("receivedDateTime", ""),
+                "body": text[:BODY_LIMIT] + ("\n[…cut]" if cut else ""), "attachments": att}
+
+    def send(self, msg: EmailMessage) -> str:
+        payload = {"message": {"subject": str(msg["Subject"] or ""),
+                               "body": {"contentType": "Text", "content": msg.get_content()},
+                               "toRecipients": [{"emailAddress": {"address": str(msg["To"])}}]},
+                   "saveToSentItems": True}
+        r = self.cl.post(self._base() + "/sendMail", json=payload)
+        if r.status_code == 403:
+            return "[error] the Microsoft sign-in does not allow sending — sign in again and tick Send"
+        r.raise_for_status()
+        return f"sent to {msg['To']}"
 
 
 class Mailbox:
@@ -315,6 +554,9 @@ class Mailbox:
 
 def test_login(cfg: dict) -> dict:
     """Sign in, count the inbox, sign out. The sentence a Settings card shows."""
+    v = via(cfg)
+    if v in ("google", "microsoft"):
+        return _test_api(cfg, v)
     c = conf(cfg)
     if not (c["host"] and c["user"] and c["password"]):
         return {"ok": False, "detail": "host, user and password are all needed", "at": time.time()}
@@ -338,6 +580,29 @@ def test_login(cfg: dict) -> dict:
         return {"ok": False, "detail": f"{type(e).__name__}: {e}"[:200], "at": time.time()}
 
 
+def _test_api(cfg: dict, provider: str) -> dict:
+    """The probe for a signed-in account: who the server says we are, and how many
+    messages it sees — the same shape of sentence the IMAP probe gives."""
+    from . import signin
+    label = signin.PROVIDERS[provider]["label"]
+    try:
+        with open_box(cfg) as box:
+            if provider == "google":
+                j = box._get(box._base() + "/profile")
+                who, n = j.get("emailAddress", ""), int(j.get("messagesTotal") or 0)
+                detail = f"signed in with Google as {who} — {n} messages"
+            else:
+                j = box._get(box._base() + "/mailFolders/inbox", **{"$select": "totalItemCount"})
+                who = signin.signed_in(cfg, provider).get("email", "")
+                n = int(j.get("totalItemCount") or 0)
+                detail = f"signed in with Microsoft as {who} — {n} messages in Inbox"
+        return {"ok": True, "detail": detail, "at": time.time(), "count": n}
+    except (httpx.HTTPError, RuntimeError, ValueError) as e:
+        return {"ok": False, "detail": f"{label}: {e}"[:220], "at": time.time()}
+    except Exception as e:                                          # noqa: BLE001
+        return {"ok": False, "detail": f"{type(e).__name__}: {e}"[:200], "at": time.time()}
+
+
 # ---------------------------------------------------------------------------
 # Sending — its own action, never granted by a recipe
 # ---------------------------------------------------------------------------
@@ -345,6 +610,27 @@ def test_login(cfg: dict) -> dict:
 def send(cfg: dict, to: str, subject: str, body: str) -> str:
     """Send one plain-text message. Returns a sentence, '[error] …' on failure."""
     c = conf(cfg)
+    to = str(to or "").strip()
+    if not to or "@" not in to:
+        return "[error] a recipient address is needed"
+    v = via(cfg)
+    if v in ("google", "microsoft"):
+        if not c.get("can_send"):
+            from . import signin
+            return (f"[error] the {signin.PROVIDERS[v]['label']} sign-in reads mail and was not asked "
+                    "to send — sign in again in Settings → Accounts and tick Send")
+        msg = EmailMessage()
+        msg["From"] = c.get("from") or c["user"]
+        msg["To"] = to
+        msg["Subject"] = str(subject or "")[:300]
+        msg.set_content(str(body or ""))
+        try:
+            with open_box(cfg) as box:
+                return box.send(msg)
+        except Exception as e:                                      # noqa: BLE001
+            return f"[error] send failed: {type(e).__name__}: {e}"[:300]
+    if v == "mcp":
+        return "[error] mail reads through an MCP server here; sending goes through that server's own tools"
     host = c.get("smtp_host") or ""
     if not host:
         preset = PRESETS.get(c.get("preset") or guess_preset(c["user"], c["host"]))
@@ -353,9 +639,6 @@ def send(cfg: dict, to: str, subject: str, body: str) -> str:
             c["smtp_port"] = preset["smtp_port"]
     if not host:
         return "[error] no SMTP host is set for this account — Settings → Accounts → Mail"
-    to = str(to or "").strip()
-    if not to or "@" not in to:
-        return "[error] a recipient address is needed"
     msg = EmailMessage()
     msg["From"] = c.get("from") or c["user"]
     msg["To"] = to

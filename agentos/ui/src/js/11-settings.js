@@ -160,8 +160,8 @@ function setTab(body,all){
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Not channels — nothing arrives through them; the agent reads them on your behalf, every read is a decision in the ledger, and the password never leaves this machine.</p>`);
-    P.push(`<div id="acct-list" data-f="accounts mail calendar imap caldav ics gmail outlook icloud fastmail app password"><p class="mut">checking…</p></div>`);
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
     setTimeout(renderAccounts,0);
   }
   if(want('agent')){

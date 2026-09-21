@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import html as html_mod
 import socket
 import time
 import uuid
@@ -34,6 +35,8 @@ from . import remote as remotemod
 from . import mcpbridge
 from . import accounts as accountsmod
 from . import brief as briefmod
+from . import vault as vaultmod
+from . import signin as signinmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
 from . import usage as usagemod
@@ -231,6 +234,15 @@ async def startup():
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
     mcp_oauth.set_notifier(broadcast, ui_probe=lambda: bool(clients))
+    # The vault: every read of a secret is one diary line saying who it was for,
+    # and a config that still holds a password in clear hands it over now.
+    vaultmod.set_reader_log(lambda name, actor: state["store"].log(
+        "vault", f"read {name} for {actor or 'the system'}", {"name": name, "actor": actor}))
+    try:
+        if vaultmod.adopt(cfg):
+            cfgmod.save_config(cfg)
+    except Exception as e:                                          # noqa: BLE001
+        store.log("vault", f"could not adopt the config's secrets: {e}")
     # A device that was linked before a restart is still linked: WhatsApp keeps the
     # session, so resuming is silent and not resuming would look like it broke.
     # Reconnect only — never START a link nobody asked for. An unlinked machine
@@ -2319,6 +2331,10 @@ async def api_get_config():
         if (cfg.get(acct) or {}).get("password"):
             cfg[acct]["password"] = "•••"
             cfg[acct]["_has_password"] = True
+    for oc in (cfg.get("oauth_clients") or {}).values():
+        if isinstance(oc, dict) and oc.get("client_secret"):
+            oc["client_secret"] = "•••" + oc["client_secret"][-4:]
+            oc["_has_secret"] = True
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
@@ -3191,9 +3207,123 @@ async def _brief_answer(bid: str, item: dict, choice: str) -> None:
 # (USER_KEYS), masked on every read. "Set up" is PROBED — the card shows the last
 # real sign-in, never a green dot for a filled form.
 
+def _mcp_tools_by_server() -> dict:
+    """server name → the tool names it offers right now (for an MCP-backed account)."""
+    out: dict = {}
+    try:
+        for t in state["mcp"].tool_schemas():
+            out.setdefault(t["_mcp"][0], []).append(t["name"])
+    except Exception:
+        pass
+    return out
+
+
+def _connected_mcp() -> list[str]:
+    try:
+        return [s["name"] for s in state["mcp"].status() if s.get("status") == "connected"]
+    except Exception:
+        return []
+
+
 @app.get("/api/accounts")
 async def api_accounts():
-    return {"accounts": accountsmod.state(state["cfg"])}
+    cfg = state["cfg"]
+    return {"accounts": accountsmod.state(cfg, mcp_servers=_connected_mcp()),
+            "signin": signinmod.doors(cfg), "vault": vaultmod.status(),
+            "pending": signinmod.pending_status(),
+            "admin": usersmod.is_admin(usersmod.current())}
+
+
+# ---- Sign in with Google / Microsoft (signin.py) --------------------------------
+#
+# start → the consent URL, which the UI opens where the human is (or the terminal
+# prints); callback → the code comes back to THIS server, the exchange happens
+# here, the tokens go in the signer's vault. The callback is open to the remote
+# gate on the webhook's argument: the browser arriving may not be the one that
+# started (a URL printed on a headless box, opened on a laptop), and the route's
+# own defence is the single-use, unguessable `state` — the identity it completes
+# is the one recorded when the flow STARTED, never one the request names.
+
+@app.post("/api/accounts/oauth/{provider}/start")
+async def api_signin_start(provider: str, body: dict | None = None):
+    cfg = state["cfg"]
+    uses = [u for u in ((body or {}).get("uses") or ["mail", "calendar"]) if u in signinmod.USES]
+    try:
+        out = signinmod.start(cfg, provider, uses, uid=usersmod.current())
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    state["store"].log("accounts", f"sign in with {provider} started ({', '.join(uses)})")
+    return {"ok": True, **out}
+
+
+@app.get("/api/accounts/oauth/callback/{provider}")
+async def api_signin_callback(provider: str, request: Request):
+    qp = dict(request.query_params)
+    st, code, err = qp.get("state", ""), qp.get("code", ""), qp.get("error", "")
+    pend = signinmod.pending_for(st)
+    label = (signinmod.PROVIDERS.get(provider) or {}).get("label", provider)
+    if not pend or pend["provider"] != provider:
+        msg, detail, ok = "Nothing was waiting", (
+            f"AgentOS is not currently signing in with {label}. The attempt may have timed "
+            "out — press Sign in again in Settings → Accounts."), False
+    else:
+        with usersmod.as_user(pend["uid"]):
+            cfg = state["cfg"]
+            try:
+                res = await asyncio.to_thread(signinmod.finish, cfg, st, code, err)
+                cfgmod.save_config(cfg)
+                state["store"].log("accounts", f"signed in with {provider} as {res.get('email')} "
+                                               f"({', '.join(res.get('uses') or [])})")
+                ok = True
+                msg = f"Signed in with {label}"
+                detail = (f"AgentOS can now read {' and '.join(u for u in res['uses'] if u != 'send') or 'nothing'}"
+                          f"{' and send' if 'send' in res['uses'] else ''} for {res.get('email') or 'you'}. "
+                          "You can close this tab.")
+                if not res.get("refresh"):
+                    detail += (f" {label} did not hand over a refresh token, so this sign-in will "
+                               "lapse in about an hour — sign out and in again to get one.")
+            except ValueError as e:
+                ok, msg, detail = False, "Sign-in did not finish", str(e)
+                state["store"].log("accounts", f"sign in with {provider} failed: {e}")
+            except Exception as e:                                  # noqa: BLE001
+                ok, msg, detail = False, "Sign-in did not finish", f"{type(e).__name__}: {e}"[:300]
+        with contextlib.suppress(Exception):
+            await state["broadcast"]({"type": "accounts", "provider": provider, "ok": ok})
+    body = f"""<!doctype html><meta charset=utf-8><title>{html_mod.escape(msg)} — Bento Box AI</title>
+<body style="background:#0e1116;color:#e6ebf2;font:15px/1.6 system-ui,sans-serif;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="max-width:30rem;padding:2rem;text-align:center">
+<div style="font-size:1.4rem;margin-bottom:.6rem;color:#5eead4">{html_mod.escape(msg)}</div>
+<div style="color:#8a94a6">{html_mod.escape(detail)}</div></div>"""
+    return HTMLResponse(body, status_code=200 if ok else 400)
+
+
+@app.delete("/api/accounts/oauth/{provider}")
+async def api_signin_out(provider: str):
+    cfg = state["cfg"]
+    if provider not in signinmod.PROVIDERS:
+        return JSONResponse({"error": f"no sign-in called '{provider}'"}, status_code=404)
+    signinmod.cancel(provider)
+    existed = await asyncio.to_thread(signinmod.disconnect, cfg, provider)
+    cfgmod.save_config(cfg)
+    state["store"].log("accounts", f"signed out of {provider}")
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "accounts", "provider": provider, "ok": False})
+    return {"ok": True, "existed": existed, "signin": signinmod.doors(cfg)}
+
+
+@app.put("/api/accounts/clients")
+async def api_signin_clients(body: dict):
+    """This install's OAuth clients — the MACHINE's, so an admin's to set."""
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can set this install's app registration"},
+                            status_code=403)
+    cfg = state["cfg"]
+    ok, msg = signinmod.set_clients(cfg, body or {})
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    cfgmod.save_config(cfg)
+    return {"ok": True, "signin": signinmod.doors(cfg)}
 
 
 @app.put("/api/accounts/{aid}")
@@ -5546,7 +5676,13 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # calling this OS's tools over MCP for one flow run. Loopback
                      # only, a per-run token in the URL and as Bearer, forgotten
                      # when the run ends — see mcpbridge.py.
-                     "/api/mcp/run/")
+                     "/api/mcp/run/",
+                     # Sign in with Google / Microsoft coming back. The browser that
+                     # arrives may not be the one that started (a URL printed on a
+                     # headless box, opened on a laptop); the single-use `state`
+                     # is the defence, and the identity completed is the one
+                     # recorded at start — see api_signin_callback.
+                     "/api/accounts/oauth/callback/")
 
 
 def _client_addr(request: Request) -> str:
@@ -5871,8 +6007,7 @@ async def api_policy_options():
           "status": a.get("manifest_status") or "none"} for a in store.list_apps()]
         + [{"kind": "subagent", "id": s["name"], "label": s["name"]}
            for s in store.list_subagents()]
-        + [{"kind": "workflow", "id": w["name"], "label": w["name"]}
-           for w in store.list_workflows()])
+        )
     tools = sorted(t["name"] for t in toolbox.schemas() if not t["name"].startswith("mcp_"))
     mcp_res = []
     for s in (state["mcp"].status() if state.get("mcp") else []):
@@ -5906,8 +6041,7 @@ async def api_policy_options():
                 "agent.invoke": ([{"value": "agent:main", "label": "main agent (/api/chat)"}]
                                  + [{"value": f"agent:subagent/{s['name']}", "label": f"subagent {s['name']}"}
                                     for s in store.list_subagents()]
-                                 + [{"value": f"agent:workflow/{w['name']}", "label": f"workflow {w['name']}"}
-                                    for w in store.list_workflows()]),
+                                 ),
                 "net.fetch": [{"value": "net:*", "label": "any URL"},
                               {"value": "net:https://*", "label": "any https URL"}],
                 "fs.read": [{"value": f"fs:{ws}/*", "label": "workspace files"},
@@ -7859,7 +7993,7 @@ async def api_app_context(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Fabric: subagents, workflows, runs, observability (the control plane API)
+# Fabric: subagents, flows, runs, observability (the control plane API)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/subagents")
@@ -7881,37 +8015,6 @@ async def api_delete_subagent(sid: str):
     state["store"].delete_subagent(sid)
     await state["broadcast"]({"type": "fabric_defs"})
     return {"ok": True}
-
-
-@app.get("/api/workflows")
-async def api_workflows():
-    return {"workflows": state["store"].list_workflows()}
-
-
-@app.post("/api/workflows")
-async def api_save_workflow(body: dict):
-    if not (body.get("name") or "").strip():
-        return JSONResponse({"error": "name required"}, status_code=400)
-    wid = state["store"].save_workflow(body)
-    await state["broadcast"]({"type": "fabric_defs"})
-    return {"id": wid}
-
-
-@app.delete("/api/workflows/{wid}")
-async def api_delete_workflow(wid: str):
-    state["store"].delete_workflow(wid)
-    await state["broadcast"]({"type": "fabric_defs"})
-    return {"ok": True}
-
-
-@app.post("/api/workflows/{name}/run")
-async def api_run_workflow(name: str, body: dict):
-    wf = state["store"].get_workflow(name)
-    if not wf:
-        return JSONResponse({"error": f"no workflow '{name}'"}, status_code=404)
-    input_text = (body or {}).get("input", "")
-    asyncio.create_task(state["fabric"].run_workflow(wf, input_text))
-    return {"ok": True, "started": True}
 
 
 @app.post("/api/subagents/{name}/run")
@@ -7967,7 +8070,8 @@ async def api_jobs_preview(body: dict):
     """What installing this would grant, before a row is written."""
     try:
         return jobsmod.preview(state["cfg"], state["store"],
-                               (body or {}).get("recipe", ""), (body or {}).get("answers") or {})
+                               (body or {}).get("recipe", ""), (body or {}).get("answers") or {},
+                               mcp_tools=_mcp_tools_by_server())
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -7976,7 +8080,8 @@ async def api_jobs_preview(body: dict):
 async def api_install_job(body: dict):
     try:
         res = jobsmod.install(state["cfg"], state["store"],
-                              (body or {}).get("recipe", ""), (body or {}).get("answers") or {})
+                              (body or {}).get("recipe", ""), (body or {}).get("answers") or {},
+                              mcp_tools=_mcp_tools_by_server())
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "fabric_defs"})

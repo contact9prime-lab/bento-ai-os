@@ -2525,6 +2525,24 @@ body.glass-off .win{background:var(--bg)!important}
 .job-card.needs:hover{opacity:.85}
 .job-needs{font-size:var(--fs-xs);color:var(--warn);line-height:1.45}
 .acct-hint{white-space:pre-line}
+
+/* accounts: the sign-in doors (11d-accounts.js) */
+.acct-door .pl b{display:block}
+.acct-door .pl small{display:block;margin-top:2px}
+.acct-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.acct-signin{border-color:var(--acc);color:var(--acc)}
+.acct-uses{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.acct-uses label{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,32px);cursor:pointer}
+.acct-uses input{width:18px;height:18px}
+.acct-adv{margin:6px 0 4px}
+.acct-adv>summary{cursor:pointer;color:var(--mut);padding:8px 0;min-height:var(--tap,32px);display:flex;align-items:center}
+.acct-uri{font-size:var(--fs-sm);word-break:break-all;user-select:all}
+.acct-client{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.acct-why a{color:var(--acc)}
+@media (max-width:640px){.acct-btns,.acct-uses{justify-content:flex-start}}
+
+/* Missions: Mine | Build (the flows editor folded in) */
+.job-tabs{margin-bottom:12px}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -4008,7 +4026,6 @@ const ICONS={
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
   brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
-  fabric:['#FB923C','#EA580C','<circle cx="9.2" cy="8.8" r="2.5"/><path d="M4.6 18c.6-2.7 2.4-4.1 4.6-4.1s4 1.4 4.6 4.1"/><circle cx="16.6" cy="9.4" r="2"/><path d="M15.7 13.7c1.8.3 3.2 1.5 3.8 3.4"/>'],
   kg:['#4ADE80','#16A34A','<circle cx="6.3" cy="7" r="2"/><circle cx="17.7" cy="6.6" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.2 8.8l3.8 6.4M16.8 8.4l-3.6 6.7M8.3 6.9l7.4-.3"/>'],
   spaces:['#F472B6','#BE185D','<rect x="4" y="4.6" width="7" height="7" rx="1.6"/><rect x="13" y="4.6" width="7" height="7" rx="1.6"/><rect x="4" y="13.4" width="7" height="7" rx="1.6"/><path d="M16.5 13.8v6.4M13.3 17h6.4"/>'],
   timeline:['#38BDF8','#1D4ED8','<path d="M6.4 4.4v15.2"/><circle cx="6.4" cy="8" r="1.8"/><circle cx="6.4" cy="16" r="1.8"/><path d="M10 8h9.6M10 16h6.4"/>'],
@@ -5204,8 +5221,18 @@ function osPrompt(title,o){
 const WM={wins:new Map(), z:100, cascade:0, seq:0};
 function winsOf(appId){const r=[];WM.wins.forEach(w=>{if(w.id===appId)r.push(w)});return r}
 
+/* One object, one app. The Workflows app was the flows editor and Missions was the
+   same rows with a recipe behind them; they are now two tabs of Missions (14a-jobs.js).
+   Every door that opened Workflows — handoffs, onboarding, the deck, refreshApp on a
+   fabric event — lands on the Build tab, so nothing has to remember the rename. */
+var APP_ALIAS={fabric:'jobs'};
+function appAlias(id){
+  if(id==='fabric'&&typeof JOBS!=='undefined')JOBS.tab='build';
+  return APP_ALIAS[id]||id;
+}
 function openApp(id,opts){
   opts=opts||{};
+  id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
     const w=WM.wins.get(id)||winsOf(id)[0];
@@ -5586,7 +5613,7 @@ function resizify(w){
     });
   });
 }
-function refreshApp(id){winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
+function refreshApp(id){id=APP_ALIAS[id]||id;winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
 
 /* ===== shared panel shell: header + search + actions + body ===== */
 const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
@@ -6651,8 +6678,7 @@ const APPS={
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
-  jobs:{id:'jobs',title:'Missions',icon:'◷',w:760,h:680,desc:'What this machine does for you every day — and what it did',render:renderJobs},
-  fabric:{id:'fabric',title:'Workflows',icon:'',w:960,h:720,desc:'Flows, the agents that run them, and every execution',render:renderFabric},
+  jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
   kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
@@ -6719,7 +6745,7 @@ const APP_CTX={
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
   memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
   profile:()=>'the profile view — everything the agent knows about the user',
-  fabric:()=>`the Workflows app, "${typeof fabTab!=='undefined'?fabTab:'flows'}" tab${
+  jobs:()=>`the Missions app${typeof JOBS!=='undefined'&&JOBS.tab==='build'?', Build, "'+(typeof fabTab!=='undefined'?fabTab:'flows')+'" tab':''}${
     (typeof fabTab!=='undefined'&&fabTab==='flows'&&typeof FLOW_SEL!=='undefined'&&FLOW_SEL)
       ?', flow "'+FLOW_SEL+'" selected':''}`,
   flowrun:()=>`the Run Inspector, watching flow run ${typeof FG!=='undefined'&&FG.run?FG.run.slice(0,8):'(none)'}`,
@@ -6750,7 +6776,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','fabric','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -7006,7 +7032,7 @@ const BENTO_GROUPS=[
   ['Essentials',['chat','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];
@@ -7191,7 +7217,7 @@ const DECK_DEFAULTS=[
   ['Essentials',['brief','chat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
-  ['Automation',['jobs','automations','fabric','tasks','skills','mcp','telegram']],
+  ['Automation',['jobs','automations','tasks','skills','mcp','telegram']],
   ['System',['taskmgr','control','syssettings','settings','setup','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
@@ -8917,6 +8943,11 @@ function handle(ev){
     case 'update_progress': updateProgress(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
+    case 'accounts':
+      // a sign-in came back (in another tab, or from a phone): the card and the
+      // Missions catalogue read the new door
+      if(typeof renderAccounts==='function')renderAccounts();refreshApp('jobs');
+      if(ev.provider)toast(ev.ok?'✓ signed in with '+ev.provider:'signed out of '+ev.provider);break;
     case 'config': loadConfig().then(()=>{loadModels();loadBrains()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':
       // The pairing code rotates every ~20 seconds. A card left showing a stale QR
@@ -9596,10 +9627,10 @@ function handoffFor(name,args){
     case 'export_app_to_git':
       return {app:'studio',label:'Open in App Studio',what:nm||'the app',note:'exported'};
     case 'create_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:'drafted and switched OFF — Enable is what grants it anything'};
     case 'enable_flow':
-      return {app:'fabric',label:'Open in Workflows',what:nm||'the flow',
+      return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:args.enabled===false?'switched off':'switched on'};
     case 'save_automation':
       return {app:'automations',label:'Open in Automations',what:nm||'the routine',note:''};
@@ -9815,8 +9846,8 @@ function setTab(body,all){
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Not channels — nothing arrives through them; the agent reads them on your behalf, every read is a decision in the ledger, and the password never leaves this machine.</p>`);
-    P.push(`<div id="acct-list" data-f="accounts mail calendar imap caldav ics gmail outlook icloud fastmail app password"><p class="mut">checking…</p></div>`);
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
     setTimeout(renderAccounts,0);
   }
   if(want('agent')){
@@ -11507,47 +11538,148 @@ function agsTestChat(msg){
     if(i){i.value=msg||'';i.focus();i.dispatchEvent(new Event('input'))}},250);
 }
 /* ================= accounts: the mailbox and the calendar the agent may read =================
-   One card per account (agentos/accounts.py), each saving on its own — PUT
-   /api/accounts/<id> — and each carrying the one thing a form cannot: the LAST
-   REAL PROBE. A filled-in card is not a working account; "Test" signs in and the
-   card says what the server said. A saved password is a chip with no input
-   (pSecret), so nothing can echo it back.
+   One card per account (agentos/accounts.py). The DOORS come first — Sign in with
+   Google / Sign in with Microsoft (signin.py: the consent page opens here, the
+   tokens land in the vault), or read through an MCP server — and the app-password
+   form sits under "Another provider". A button this install cannot honour (no OAuth
+   client registered yet) is greyed with the sentence and the App registration group
+   below is where it is fixed; it is never a dead control.
 
-   Faces — GUI: this. SUI: identical. TUI: `bento mail` / `bento calendar`.
+   Every card carries the one thing a form cannot: the LAST REAL PROBE. "Test"
+   signs in and the card says what the server said. A saved secret is "in the
+   vault", never echoed; the vault line says what protects it on THIS machine.
+
+   Faces — GUI: this. SUI: identical. TUI: `bento mail signin google`, `bento
+   vault`. Phone: the sign-in finishes on the phone (the callback is a route).
    `var`, not `let` (see CLAUDE.md on the bundle's TDZ trap). */
-var ACCTS={list:[]};
+var ACCTS={list:[],signin:[],vault:null,admin:true,pending:[]};
 
 async function renderAccounts(){
   const box=document.getElementById('acct-list');if(!box)return;
   let d={};try{d=await (await fetch('/api/accounts')).json()}catch(e){}
-  ACCTS.list=d.accounts||[];
+  ACCTS.list=d.accounts||[];ACCTS.signin=d.signin||[];ACCTS.vault=d.vault||null;ACCTS.admin=d.admin!==false;ACCTS.pending=d.pending||[];
   if(!ACCTS.list.length){box.innerHTML='<p class="mut">could not read the accounts</p>';return}
-  box.innerHTML=ACCTS.list.map(acctCard).join('');
+  box.innerHTML=acctSigninCard()+ACCTS.list.map(acctCard).join('')+acctClientsCard()+acctVaultLine();
   ACCTS.list.forEach(a=>{const sel=document.getElementById('ac-'+a.id+'-preset');if(sel)sel.onchange=()=>acctPreset(a.id)});
 }
+
+/* the doors: one row of sign-in buttons for both accounts, since one sign-in serves both */
+function acctSigninCard(){
+  const rows=ACCTS.signin.map(s=>{
+    const rec=s.signed_in||{};
+    const on=!!rec.email;
+    const uses=(rec.uses||[]).filter(u=>u!=='send');
+    const status=on?`signed in as <b>${esc(rec.email)}</b> · reads ${esc(uses.join(' and ')||'nothing yet')}${(rec.uses||[]).includes('send')?' · can send':''}${rec.problem?' · <span class="warn">'+esc(rec.problem)+'</span>':''}`
+      :(s.available?'not signed in':'');
+    const pend=ACCTS.pending.find(p=>p.provider===s.id);
+    const btns=on?`<button class="endbtn" onclick="acctSignin('${s.id}')">Sign in again</button>
+        <button class="endbtn" onclick="acctSignout('${s.id}')">Sign out</button>`
+      :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${s.id}')">Sign in with ${esc(s.label)}</button>`
+        :`<button class="endbtn" disabled title="${esc(s.why)}">Sign in with ${esc(s.label)}</button>`);
+    const why=(!on&&!s.available)?`<div class="ghint acct-why">${esc(s.why.split('. ')[0])}. <a href="#" onclick="document.getElementById('acct-clients').scrollIntoView({block:'center'});return false">App registration ↓</a></div>`:'';
+    const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s) — <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
+    return `<div class="prow acct-door" data-f="sign in ${esc(s.label)}"><div class="pl"><b>${esc(s.label)}</b><small class="mut">${status}</small>${why}${wait}</div><div class="pc acct-btns">${btns}</div></div>`;
+  }).join('');
+  return `<div class="pgroup chan" data-f="accounts sign in google microsoft oauth">
+    <h3>Sign in</h3>
+    <div class="ghint">One sign-in reads your mail and your calendar. You pick what it may read; the consent page names it; it is revocable from your Google or Microsoft account any time. Sending is asked for separately and every message still asks you first.</div>
+    ${rows}
+    <div class="prow"><div class="pl"><small class="mut">Asks for:</small></div><div class="pc acct-uses">
+      <label><input type="checkbox" id="acct-use-mail" checked> mail</label>
+      <label><input type="checkbox" id="acct-use-calendar" checked> calendar</label>
+      <label><input type="checkbox" id="acct-use-send"> send (always asks per message)</label></div></div>
+  </div>`;
+}
+function acctUses(){return ['mail','calendar','send'].filter(u=>{const el=document.getElementById('acct-use-'+u);return el&&el.checked})}
+/* the consent page opens HERE — this browser is where the human is. On a phone
+   driving a headless box the callback still comes back to the box (a route). */
+async function acctSignin(provider){
+  try{
+    const j=await (await fetch('/api/accounts/oauth/'+encodeURIComponent(provider)+'/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uses:acctUses()})})).json();
+    if(j.error){toast(j.error.slice(0,160));return}
+    const w=window.open(j.url,'_blank','noopener');
+    if(!w)toast('open this to sign in: '+j.url.slice(0,80)+'…');
+    toast('finish signing in on the page that opened — this card updates by itself');
+    setTimeout(renderAccounts,1500);
+  }catch(e){toast('could not reach the server')}
+}
+async function acctSignout(provider){
+  if(typeof osConfirm==='function'?!(await osConfirm('Sign out of '+provider+'? The accounts that read through it are switched off.')):!confirm('Sign out of '+provider+'?'))return;
+  try{await fetch('/api/accounts/oauth/'+encodeURIComponent(provider),{method:'DELETE'});renderAccounts();if(typeof refreshApp==='function')refreshApp('jobs')}
+  catch(e){toast('could not reach the server')}
+}
+
 function acctCard(a){
   const lt=a.last_test||{};
   const dot=lt.ok?'on':(a.configured?(lt.detail?'warn':'off'):'off');
   const status=lt.detail?(lt.ok?'✓ ':'✗ ')+lt.detail+(lt.at?' · '+new Date(lt.at*1000).toLocaleString():''):
     (a.configured?'set up — not tested yet':'not set up');
-  const fields=a.fields.map(f=>{
+  const way=a.via;
+  const signedWay=way==='google'||way==='microsoft';
+  const wayKey=a.id==='mail'?'via':'kind';
+  // 'form' = whatever the fields below say (IMAP; an ICS address or CalDAV) — the
+  // form decides between ICS and CalDAV itself, so this select never writes `kind`
+  // for it and cannot turn a CalDAV account into an ICS one by being saved
+  const doorOpts=[['form',a.id==='mail'?'App password (below)':'An address or app password (below)'],['mcp','Through an MCP server']]
+    .concat(ACCTS.signin.filter(s=>s.signed_in&&s.signed_in.email).map(s=>[s.id,'Signed in with '+s.label]));
+  const doorSel=pSelect('ac-'+a.id+'-'+wayKey,doorOpts,signedWay?way:(way==='mcp'?'mcp':'form'))
+    .replace('<select','<select onchange="acctDoor(\''+a.id+'\')"');
+  const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','— choose a connected server —']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
+      {desc:(a.mcp_servers||[]).length?'the mission\'s specialists use this server\'s tools instead of the built-in ones':'no MCP server is connected — add one in the MCP app first',f:a.id+' mcp server'}):'';
+  const fields=signedWay||way==='mcp'?'':`<details class="acct-adv"><summary>Another provider — an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
     const id='ac-'+a.id+'-'+f.key;
     let ctl;
     if(f.kind==='select')ctl=pSelect(id,[['','— choose —']].concat(f.options),a.values[f.key]||'');
     else if(f.kind==='secret')ctl=pSecret(id,a.set[f.key],a.masked[f.key],f.placeholder);
     else ctl=pText(id,a.values[f.key],f.placeholder,f.kind==='number'?'number':'text');
     return pRow(f.label,ctl,{f:a.id+' '+f.key});
-  }).join('');
+  }).join('')+`</details>`;
   return `<div class="pgroup chan" data-f="account ${esc(a.id)} ${esc(a.title)}">
     <h3>${esc(a.title)} <span class="chdot ${dot}">${esc(status)}</span></h3>
     <div class="ghint">${esc(a.what)}</div>
-    ${a.hint?`<div class="ghint acct-hint" id="ac-${a.id}-hint">${esc(a.hint)}</div>`:`<div class="ghint acct-hint mut" id="ac-${a.id}-hint"></div>`}
+    ${pRow('Reads through',doorSel,{desc:esc(a.door&&a.door.detail||''),f:a.id+' door via'})}
+    ${mcpRow}
     ${pRow('Switched on',pSwitch('ac-'+a.id+'-on',a.enabled),{desc:a.problem&&a.configured?esc(a.problem):'',f:a.id+' enabled'})}
+    ${a.hint&&!signedWay?`<div class="ghint acct-hint" id="ac-${a.id}-hint">${esc(a.hint)}</div>`:`<div class="ghint acct-hint mut" id="ac-${a.id}-hint"></div>`}
     ${fields}
     <div class="prow"><div class="pl"><small id="ac-${a.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="acctTest('${esc(a.id)}')">Test</button>
         <button class="endbtn" onclick="acctSave('${esc(a.id)}')">Save</button></div></div>
   </div>`;
+}
+/* this install's OAuth clients — the machine's, so an admin's; the redirect URI is
+   shown because the registration form asks for it and guessing it is the usual failure */
+function acctClientsCard(){
+  const rows=ACCTS.signin.map(s=>`
+    <div class="acct-client" data-f="app registration ${esc(s.label)} client id">
+      <div class="ghint"><b>${esc(s.label)}</b> — ${esc(s.hint)} <a href="${esc(s.register)}" target="_blank" rel="noopener">open the console ↗</a></div>
+      ${pRow('Redirect URI',`<code class="acct-uri">${esc(s.redirect_uri)}</code>`,{desc:'paste this into the registration as the redirect / callback URI',f:'redirect uri'})}
+      ${pRow('Client id',pText('oc-'+s.id+'-client_id',s.client_id||'','…apps.googleusercontent.com','text'),{f:s.label+' client id'})}
+      ${s.needs_secret?pRow('Client secret',pSecret('oc-'+s.id+'-client_secret',s.has_secret,s.has_secret?'in config, masked':'','GOCSPX-…'),{desc:'Google issues one for a desktop client and documents it as not secret; it is still masked here',f:s.label+' client secret'}):''}
+      ${s.id==='microsoft'?pRow('Tenant',pText('oc-'+s.id+'-tenant',s.tenant||'common','common','text'),{desc:'"common" for personal and work accounts; your tenant id to limit it to one organisation',f:'tenant'}):''}
+    </div>`).join('');
+  return `<div class="pgroup chan" id="acct-clients" data-f="app registration oauth client id secret">
+    <h3>App registration <small class="mut">${ACCTS.admin?'':'admins only'}</small></h3>
+    <div class="ghint">Sign in with Google / Microsoft needs an OAuth client that belongs to THIS install — a self-hosted OS has no central application, so the project ships none (the same reason it ships no signing key). Five minutes once, per machine; every account here uses it.</div>
+    ${rows}
+    <div class="prow"><div class="pl"><small id="oc-msg" class="mut"></small></div><div class="pc"><button class="endbtn" ${ACCTS.admin?'':'disabled'} onclick="acctSaveClients()">Save registration</button></div></div>
+  </div>`;
+}
+async function acctSaveClients(){
+  const body={};
+  ACCTS.signin.forEach(s=>{const o={};['client_id','client_secret','tenant'].forEach(k=>{const el=document.getElementById('oc-'+s.id+'-'+k);if(el)o[k]=el.value});body[s.id]=o});
+  const msg=document.getElementById('oc-msg');
+  try{
+    const j=await (await fetch('/api/accounts/clients',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(msg){msg.textContent=j.error||'saved — the sign-in buttons above are live';msg.className=j.error?'warn':'ok'}
+    if(!j.error)renderAccounts();
+  }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+/* what protects the secrets on THIS machine — probed, in its own words */
+function acctVaultLine(){
+  const v=ACCTS.vault;if(!v)return '';
+  return `<div class="pgroup chan" data-f="vault secrets keyring"><h3>Vault <span class="chdot ${v.locked?'warn':(v.mechanism?'on':'off')}">${v.count||0} secret${v.count===1?'':'s'}</span></h3>
+    <div class="ghint">${esc(v.detail)}${v.names&&v.names.length?' · '+v.names.map(esc).join(', '):''} · <code>bento vault</code></div></div>`;
 }
 /* choosing a provider shows its one sentence — the app-password sentence is the
    difference between a working card and an evening lost */
@@ -11567,9 +11699,18 @@ function acctBody(id){
   document.querySelectorAll(`[id^="ac-${id}-"]`).forEach(el=>{
     const k=el.id.slice(('ac-'+id+'-').length);
     if(['on','msg','hint'].indexOf(k)>=0||k.endsWith('-wrap'))return;
+    if((k==='via'||k==='kind')&&el.value==='form')return;      // the form decides
     if(el.tagName==='INPUT'||el.tagName==='SELECT')body[k]=el.value;
   });
   return body;
+}
+/* changing the door re-draws the card around it (the MCP server picker, the
+   app-password form) — saved at once, so what is shown is what is on file */
+async function acctDoor(id){
+  const sel=document.getElementById('ac-'+id+'-'+(id==='mail'?'via':'kind'));if(!sel)return;
+  const body={};body[id==='mail'?'via':'kind']=sel.value==='form'?(id==='mail'?'imap':'ics'):sel.value;
+  try{const j=await (await fetch('/api/accounts/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(j.error)toast(j.error);renderAccounts()}catch(e){toast('could not reach the server')}
 }
 async function acctSave(id,quiet){
   const msg=document.getElementById('ac-'+id+'-msg');
@@ -11867,11 +12008,11 @@ function tlRange(h){tlSince=h;refreshApp('timeline')}
    `var`, not `let`: the bundle is one concatenated script in filename order, and a
    top-level `let` here is in the temporal dead zone for anything earlier that reaches
    it (09-websocket.js calls fgApply on every fabric event). */
-/* Three tabs, not five. "Executions" and "Observability" were both answering "what
-   happened" from two different endpoints, and the legacy static-DAG tab had never been used
-   on any machine we could see — its engine, tool and API still work, it just no longer costs
-   a tab. The app is called Workflows because that is the word people arrive with; the code
-   underneath says `flows` throughout, which is written down in CLAUDE.md. */
+/* This is the BUILD tab of the Missions app (14a-jobs.js): flows, the agents on their
+   rosters, and every run. It used to be its own app called Workflows; a mission IS a
+   flow with a recipe behind it, so two apps over one table was one too many. Three
+   sub-tabs, not five: "Executions" and "Observability" were both answering "what
+   happened". The code underneath says `flows` throughout — see CLAUDE.md. */
 var fabTab='flows';
 var FAB_TABS=['flows','agents','runs'];
 async function renderFabric(body,w){
@@ -11883,7 +12024,7 @@ function fabTabs(){
   return `<div style="margin-bottom:12px">${segTabs('fab-tabs',['Flows','Agents','Runs'],
     Math.max(0,FAB_TABS.indexOf(fabTab)),'fabSetTab')}</div>`;
 }
-function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('fabric')}
+function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
   const sa=await fetch('/api/subagents').then(r=>r.json());
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
@@ -12092,11 +12233,9 @@ function testSubagent(name){
   toast('type the task after @'+name+' — the run streams right here and lands in Observability');
 }
 
-/* The static-DAG workflow UI lived here. The engine, /api/workflows and the
-   `run_workflow` tool all still work — but no workflow had ever been run on any
-   machine we could see, and flows do the same job while deciding at run time, so it
-   no longer costs a tab. Deleted rather than hidden: dead UI that nothing reaches is
-   worse than none. */
+/* The static-DAG "workflow" engine, its tool and its API are gone (2026-09). A flow
+   does the same job and decides at run time, and one word meaning two things on one
+   screen was the trap CLAUDE.md warned about. */
 
 
 async function fabPlaneStats(){
@@ -12688,7 +12827,7 @@ function openRunInspector(runId){
 function renderFlowRun(body,w){
   if(!FG.run){
     body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
-      Workflows → Flows, or click a past run to replay it here.</p>
+      Missions → Build → Flows, or click a past run to replay it here.</p>
       <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
     return;
   }
@@ -12982,6 +13121,8 @@ function drawFLW(){
         Nothing has been created yet — change anything, then Save.</div>
       ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
       ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
+      ${(FLW.draft.suggested_mcp||[]).map(p=>`<div class="sub flw-part">✦ might help: <b>${esc(p.title)}</b> — ${esc(p.why||p.description)}
+        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${esc(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
       ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
       </div>`:''}
     <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>
@@ -13524,7 +13665,16 @@ document.addEventListener('click', e => {
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
+var JOB_TABS=['run','build'];
+/* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
+   (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
+   Build tab is where a mission a recipe made is edited, and where one is written from
+   scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
+function jobTabs(){
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
@@ -13817,12 +13967,19 @@ function jobRow(j){
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
-async function renderJobs(body){
+async function renderJobs(body,w){
+  if(JOBS.tab==='build'){
+    body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+    await renderFabric(body,w);
+    const pad=body.querySelector('.pad');if(pad)pad.insertAdjacentHTML('afterbegin',jobTabs());
+    return;
+  }
   body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
   await jobsLoad();
   const rows=JOBS.installed.map(jobRow).join('');
   const who=JOBS.personas.find(x=>x.id===JOBS.persona);
   body.innerHTML=`<div class="pad job-app">
+    ${jobTabs()}
     <h3>What this machine does for you</h3>
     ${jobReadyLine()}
     ${jobSummaryLine(JOBS.summary)}
@@ -17623,7 +17780,7 @@ function usersShareBox(){
       <button class="usr-take" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Install a copy</button>
       <button class="usr-unshare" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Remove</button>
     </div>`).join('')
-    :`<p class="dim">Nothing shared yet. Share an agent from Workflows, or an app
+    :`<p class="dim">Nothing shared yet. Share an agent from Missions → Build, or an app
        from App Studio — it goes out as a <b>copy</b>, so editing yours afterwards
        never reaches anybody who took it.</p>`;
   return `<div class="usr-shared">
@@ -17867,7 +18024,7 @@ async function usersSignOut(){
   location.replace('/login');
 }
 
-/* Share something of mine. Called from Workflows (an agent) and App Studio (an
+/* Share something of mine. Called from Missions → Build (an agent) and App Studio (an
    app), so the sentence about what sharing means is written once, here. */
 async function usersShare(kind,name){
   if(!(USERS.me||{}).multiuser){

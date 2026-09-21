@@ -423,6 +423,11 @@ function handle(ev){
     case 'update_progress': updateProgress(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
+    case 'accounts':
+      // a sign-in came back (in another tab, or from a phone): the card and the
+      // Missions catalogue read the new door
+      if(typeof renderAccounts==='function')renderAccounts();refreshApp('jobs');
+      if(ev.provider)toast(ev.ok?'✓ signed in with '+ev.provider:'signed out of '+ev.provider);break;
     case 'config': loadConfig().then(()=>{loadModels();loadBrains()}); toast('configuration updated'); refreshApp('policies'); refreshApp('mcp'); break;
     case 'whatsapp_link':
       // The pairing code rotates every ~20 seconds. A card left showing a stale QR

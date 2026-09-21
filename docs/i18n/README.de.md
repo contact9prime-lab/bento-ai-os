@@ -128,7 +128,7 @@ Frage, die man an jede Änderung stellt, nicht die letzte.
 
 | | |
 |---|---|
-| ![Chat mit dem KI-Agenten — gestreamte Antworten, Tool-Aufrufe und Freigaben](../screenshots/chat.png) **Agenten-Chat** — sprechen Sie mit Ihrer Maschine; gestreamte Antworten, Tool-Karten, Freigaben, Sprache | ![Team-App — Subagenten, Workflows und Beobachtbarkeit](../screenshots/team.png) **Team** — spezialisierte Subagenten und visuelle Workflows, mit Modell-Mischung pro Schritt |
+| ![Chat mit dem KI-Agenten — gestreamte Antworten, Tool-Aufrufe und Freigaben](../screenshots/chat.png) **Agenten-Chat** — sprechen Sie mit Ihrer Maschine; gestreamte Antworten, Tool-Karten, Freigaben, Sprache | ![Team-App — Subagenten, Workflows und Beobachtbarkeit](../screenshots/team.png) **Missionen** — was die Maschine jeden Tag für Sie tut, und unter „Build“ die Flows, Spezialisten-Agenten und Läufe dahinter |
 | ![Eingebaute Dokumentations-App, die das vollständige Handbuch rendert](../screenshots/docs.png) **Docs** — das vollständige Handbuch lebt im OS | ![App-Store — Ein-Klick-Apps, Skills und MCP-Kanäle](../screenshots/store.png) **Store** — Ein-Klick-Apps, Skills und MCP-Tool-Kanäle |
 
 ### Mehrere Personen, eine Maschine
@@ -595,7 +595,7 @@ Optional, schalten zusätzliche Funktionen frei, wenn vorhanden — `bento insta
 | **Soul** | die dauerhafte Identität/Persönlichkeit des Agenten (bei jedem Zug eingespeist) |
 | **Memory** | Benutzer- & Sitzungsspeicher mit Auto-Learn + semantischem Abruf |
 | **Profile** | alles, was der Agent über Sie weiß, an einem Ort |
-| **Team** | Subagenten & visuelle Workflows (Modelle pro Schritt mischen) + Beobachtbarkeit |
+| **Missionen** | stehende Missionen nach Persona; Build: Flows, Spezialisten-Agenten (Modelle pro Spezialist mischen), jeder Lauf |
 | **Docs** | dieses Handbuch, im OS |
 | **Automations** | benannte Routinen, Hot Corners und der Schritt-Builder |
 | **Skills** | wiederverwendbare Abläufe; aus einem Git-Repo oder einer rohen `.md`-URL installieren |

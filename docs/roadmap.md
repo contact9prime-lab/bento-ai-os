@@ -129,11 +129,11 @@ Flows (an agent as the control plane) shipped on top: [design/flows.md](design/f
 - **Heterogeneous smartness** — per-step model override: generate on Ollama, validate on
   Claude (or run everything on one LLM via inherit). Data planes never hold provider keys;
   `/api/plane/llm` is the control-plane model surface L1+ workers will call over mTLS
-- **Visual workflows** — DAG of subagent steps rendered as a live SVG flow in the Team app
+- **Visual workflows** — DAG of subagent steps rendered as a live SVG flow in the Team app *(since removed: a flow decides at run time, and one word meant two things)*
   (); parallel layers, per-step status animation, run/cancel from the UI
 - **Observability per data plane** — faults / performance / tokens per subagent & workflow,
   live heartbeat ages with STALE flags, and the main agent (L0 current setup) reported
-  through the same pane; `delegate` + `run_workflow` tools for the main agent
+  through the same pane; the `delegate` tool for the main agent
 - ▢ **L1–L3 execution** — task-envelope wire protocol, `agentos serve --worker`,
   **mTLS-based creation** (parent-as-CA, one-time-token enrollment, docker workers
   born-enrolled, rotation/revocation), remote nodes

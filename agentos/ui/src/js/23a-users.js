@@ -183,7 +183,7 @@ function usersShareBox(){
       <button class="usr-take" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Install a copy</button>
       <button class="usr-unshare" data-kind="${esc(s.kind)}" data-slug="${esc(s.slug)}">Remove</button>
     </div>`).join('')
-    :`<p class="dim">Nothing shared yet. Share an agent from Workflows, or an app
+    :`<p class="dim">Nothing shared yet. Share an agent from Missions → Build, or an app
        from App Studio — it goes out as a <b>copy</b>, so editing yours afterwards
        never reaches anybody who took it.</p>`;
   return `<div class="usr-shared">
@@ -427,7 +427,7 @@ async function usersSignOut(){
   location.replace('/login');
 }
 
-/* Share something of mine. Called from Workflows (an agent) and App Studio (an
+/* Share something of mine. Called from Missions → Build (an agent) and App Studio (an
    app), so the sentence about what sharing means is written once, here. */
 async function usersShare(kind,name){
   if(!(USERS.me||{}).multiuser){

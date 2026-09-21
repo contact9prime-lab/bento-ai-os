@@ -486,6 +486,14 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
             base[k] = v
         base["_uid"] = uid
         _cfgs[uid] = c = base
+        # secrets this person's file still holds in clear go into THEIR vault
+        from . import vault
+        try:
+            with as_user(uid):
+                if vault.adopt(c):
+                    save_user_cfg(uid, c)
+        except Exception:
+            pass
     return c
 
 
@@ -501,7 +509,7 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
 #: talk to is a preference, while which providers exist and what their keys are is
 #: not, and a user picking a different model reaches nothing they could not
 #: already reach.
-USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials",
+USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "signin",
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
              "autonomy", "default_model", "max_steps", "workspace",

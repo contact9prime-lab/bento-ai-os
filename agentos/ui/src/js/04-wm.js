@@ -5,8 +5,18 @@
 const WM={wins:new Map(), z:100, cascade:0, seq:0};
 function winsOf(appId){const r=[];WM.wins.forEach(w=>{if(w.id===appId)r.push(w)});return r}
 
+/* One object, one app. The Workflows app was the flows editor and Missions was the
+   same rows with a recipe behind them; they are now two tabs of Missions (14a-jobs.js).
+   Every door that opened Workflows — handoffs, onboarding, the deck, refreshApp on a
+   fabric event — lands on the Build tab, so nothing has to remember the rename. */
+var APP_ALIAS={fabric:'jobs'};
+function appAlias(id){
+  if(id==='fabric'&&typeof JOBS!=='undefined')JOBS.tab='build';
+  return APP_ALIAS[id]||id;
+}
 function openApp(id,opts){
   opts=opts||{};
+  id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
     const w=WM.wins.get(id)||winsOf(id)[0];
@@ -387,7 +397,7 @@ function resizify(w){
     });
   });
 }
-function refreshApp(id){winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
+function refreshApp(id){id=APP_ALIAS[id]||id;winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
 
 /* ===== shared panel shell: header + search + actions + body ===== */
 const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';

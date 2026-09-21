@@ -188,17 +188,8 @@ CREATE TABLE IF NOT EXISTS subagents (
     created_at REAL,
     updated_at REAL
 );
-CREATE TABLE IF NOT EXISTS workflows (
-    id TEXT PRIMARY KEY,
-    name TEXT UNIQUE,
-    description TEXT,
-    steps TEXT,                  -- JSON DAG: [{id,name,subagent,model?,prompt,depends_on:[...]}]
-    builtin INTEGER DEFAULT 0,
-    created_at REAL,
-    updated_at REAL
-);
--- A named, repeatable sequence of desktop steps. Unlike `workflows` (a DAG of
--- subagent steps in the fabric control plane) an automation drives the DESKTOP:
+-- A named, repeatable sequence of desktop steps. Unlike a flow (a mission run by
+-- a master agent in the fabric control plane) an automation drives the DESKTOP:
 -- open these apps, switch to that theme, put the agent on this prompt. It is what
 -- a hot corner, the palette, or "run my morning routine" fires.
 CREATE TABLE IF NOT EXISTS automations (
@@ -2087,7 +2078,7 @@ class Store:
                         ((name or "").strip(),))
         self.db.commit()
 
-    # -- fabric: subagents, workflows, runs (control-plane state) ------------
+    # -- fabric: subagents, flows, runs (control-plane state) ----------------
 
     def save_subagent(self, d: dict) -> str:
         name = (d.get("name") or "").strip()
@@ -2132,44 +2123,6 @@ class Store:
 
     def delete_subagent(self, sid: str):
         self.db.execute("DELETE FROM subagents WHERE id=?", (sid,))
-        self.db.commit()
-
-    def save_workflow(self, d: dict) -> str:
-        name = (d.get("name") or "").strip()
-        now = time.time()
-        row = self.db.execute("SELECT id FROM workflows WHERE name=? COLLATE NOCASE", (name,)).fetchone()
-        wid = row["id"] if row else uuid.uuid4().hex[:12]
-        vals = (name, d.get("description", ""), json.dumps(d.get("steps") or []),
-                int(d.get("builtin", 0)), now)
-        if row:
-            self.db.execute("UPDATE workflows SET name=?, description=?, steps=?, builtin=?, "
-                            "updated_at=? WHERE id=?", (*vals, wid))
-        else:
-            self.db.execute("INSERT INTO workflows (name, description, steps, builtin, updated_at, "
-                            "id, created_at) VALUES (?,?,?,?,?,?,?)", (*vals, wid, now))
-        self.db.commit()
-        return wid
-
-    def list_workflows(self) -> list[dict]:
-        rows = self.db.execute("SELECT * FROM workflows ORDER BY name COLLATE NOCASE").fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["steps"] = json.loads(d.get("steps") or "[]")
-            out.append(d)
-        return out
-
-    def get_workflow(self, name: str) -> dict | None:
-        row = self.db.execute("SELECT * FROM workflows WHERE name=? COLLATE NOCASE",
-                              ((name or "").strip(),)).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        d["steps"] = json.loads(d.get("steps") or "[]")
-        return d
-
-    def delete_workflow(self, wid: str):
-        self.db.execute("DELETE FROM workflows WHERE id=?", (wid,))
         self.db.commit()
 
     def fabric_run_start(self, kind: str, ref: str, input_text: str,

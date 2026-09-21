@@ -24,7 +24,16 @@
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false};
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
+var JOB_TABS=['run','build'];
+/* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
+   (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
+   Build tab is where a mission a recipe made is edited, and where one is written from
+   scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
+function jobTabs(){
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
@@ -317,12 +326,19 @@ function jobRow(j){
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
-async function renderJobs(body){
+async function renderJobs(body,w){
+  if(JOBS.tab==='build'){
+    body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
+    await renderFabric(body,w);
+    const pad=body.querySelector('.pad');if(pad)pad.insertAdjacentHTML('afterbegin',jobTabs());
+    return;
+  }
   body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
   await jobsLoad();
   const rows=JOBS.installed.map(jobRow).join('');
   const who=JOBS.personas.find(x=>x.id===JOBS.persona);
   body.innerHTML=`<div class="pad job-app">
+    ${jobTabs()}
     <h3>What this machine does for you</h3>
     ${jobReadyLine()}
     ${jobSummaryLine(JOBS.summary)}

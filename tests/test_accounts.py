@@ -433,7 +433,8 @@ def test_a_saved_password_is_never_handed_back_and_blank_means_keep():
     assert st["values"]["password"] == "" and st["set"]["password"] is True
     assert "abcd-efgh" not in str(st) and "APP PASSWORD" in st["hint"]
     accounts.save(cfg, "mail", {"password": "", "user": "me@gmail.com"})
-    assert cfg["mail"]["password"] == "abcd-efgh-ijkl"
+    assert cfg["mail"]["password"] == "vault:mail.password"          # kept — and in the vault, not config
+    assert mailmod.conf(cfg)["password"] == "abcd-efgh-ijkl"
     ok, msg = accounts.save(cfg, "calendar", {"enabled": True})
     assert not ok and "set up" in msg                               # cannot switch on nothing
     ok, _ = accounts.save(cfg, "calendar", {"url": "https://calendar.google.com/x/basic.ics"})

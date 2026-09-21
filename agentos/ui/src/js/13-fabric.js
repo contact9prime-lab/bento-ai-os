@@ -2,11 +2,11 @@
    `var`, not `let`: the bundle is one concatenated script in filename order, and a
    top-level `let` here is in the temporal dead zone for anything earlier that reaches
    it (09-websocket.js calls fgApply on every fabric event). */
-/* Three tabs, not five. "Executions" and "Observability" were both answering "what
-   happened" from two different endpoints, and the legacy static-DAG tab had never been used
-   on any machine we could see — its engine, tool and API still work, it just no longer costs
-   a tab. The app is called Workflows because that is the word people arrive with; the code
-   underneath says `flows` throughout, which is written down in CLAUDE.md. */
+/* This is the BUILD tab of the Missions app (14a-jobs.js): flows, the agents on their
+   rosters, and every run. It used to be its own app called Workflows; a mission IS a
+   flow with a recipe behind it, so two apps over one table was one too many. Three
+   sub-tabs, not five: "Executions" and "Observability" were both answering "what
+   happened". The code underneath says `flows` throughout — see CLAUDE.md. */
 var fabTab='flows';
 var FAB_TABS=['flows','agents','runs'];
 async function renderFabric(body,w){
@@ -18,7 +18,7 @@ function fabTabs(){
   return `<div style="margin-bottom:12px">${segTabs('fab-tabs',['Flows','Agents','Runs'],
     Math.max(0,FAB_TABS.indexOf(fabTab)),'fabSetTab')}</div>`;
 }
-function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('fabric')}
+function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
   const sa=await fetch('/api/subagents').then(r=>r.json());
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
@@ -227,11 +227,9 @@ function testSubagent(name){
   toast('type the task after @'+name+' — the run streams right here and lands in Observability');
 }
 
-/* The static-DAG workflow UI lived here. The engine, /api/workflows and the
-   `run_workflow` tool all still work — but no workflow had ever been run on any
-   machine we could see, and flows do the same job while deciding at run time, so it
-   no longer costs a tab. Deleted rather than hidden: dead UI that nothing reaches is
-   worse than none. */
+/* The static-DAG "workflow" engine, its tool and its API are gone (2026-09). A flow
+   does the same job and decides at run time, and one word meaning two things on one
+   screen was the trap CLAUDE.md warned about. */
 
 
 async function fabPlaneStats(){
@@ -823,7 +821,7 @@ function openRunInspector(runId){
 function renderFlowRun(body,w){
   if(!FG.run){
     body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
-      Workflows → Flows, or click a past run to replay it here.</p>
+      Missions → Build → Flows, or click a past run to replay it here.</p>
       <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
     return;
   }
@@ -1117,6 +1115,8 @@ function drawFLW(){
         Nothing has been created yet — change anything, then Save.</div>
       ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
       ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
+      ${(FLW.draft.suggested_mcp||[]).map(p=>`<div class="sub flw-part">✦ might help: <b>${esc(p.title)}</b> — ${esc(p.why||p.description)}
+        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${esc(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
       ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
       </div>`:''}
     <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>

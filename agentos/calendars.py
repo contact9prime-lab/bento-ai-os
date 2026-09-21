@@ -39,8 +39,8 @@ except Exception:                                                   # pragma: no
     ZoneInfo = None
 
 DEFAULTS = {"enabled": False, "kind": "ics", "url": "", "user": "", "password": "",
-            "name": "", "last_test": {}}
-KINDS = ("ics", "caldav")
+            "name": "", "mcp_server": "", "last_test": {}}
+KINDS = ("ics", "caldav", "google", "microsoft", "mcp")
 MAX_EVENTS = 200
 WINDOW_DAYS_MAX = 62
 
@@ -69,23 +69,50 @@ PRESETS = {
 
 
 def conf(cfg: dict) -> dict:
-    return {**DEFAULTS, **((cfg or {}).get("calendar") or {})}
+    """The calendar section with its secret resolved out of the vault (see mail.conf)."""
+    from . import vault
+    c = {**DEFAULTS, **((cfg or {}).get("calendar") or {})}
+    c["password"] = vault.resolve(c.get("password", ""), actor="calendar")
+    return c
+
+
+def kind(cfg: dict) -> str:
+    k = str(((cfg or {}).get("calendar") or {}).get("kind") or "ics")
+    return k if k in KINDS else "ics"
 
 
 def configured(cfg: dict) -> bool:
-    c = conf(cfg)
+    c = {**DEFAULTS, **((cfg or {}).get("calendar") or {})}    # raw: a reference counts
+    k = kind(cfg)
+    if k in ("google", "microsoft"):
+        from . import signin
+        rec = signin.signed_in(cfg, k)
+        return bool(rec) and not rec.get("problem")
+    if k == "mcp":
+        return bool(c.get("mcp_server"))
     if not c["url"]:
         return False
-    if c["kind"] == "caldav":
+    if k == "caldav":
         return bool(c["user"] and c["password"])
     return True
 
 
 def problem(cfg: dict) -> str:
-    c = conf(cfg)
+    c = {**DEFAULTS, **((cfg or {}).get("calendar") or {})}
+    k = kind(cfg)
     if not configured(cfg):
-        return ("Needs a calendar — Settings → Accounts → Calendar (an ICS address, or a "
-                "CalDAV account with an app password).")
+        if k in ("google", "microsoft"):
+            from . import signin
+            rec = signin.signed_in(cfg, k)
+            label = signin.PROVIDERS[k]["label"]
+            return (f"The {label} sign-in needs redoing: {rec['problem']} — Settings → Accounts → Calendar."
+                    if rec.get("problem") else
+                    f"Needs a calendar — Settings → Accounts → Calendar (Sign in with {label}).")
+        if k == "mcp":
+            return "The calendar is set to read through an MCP server, but none is chosen — Settings → Accounts → Calendar."
+        return ("Needs a calendar — Settings → Accounts → Calendar (sign in with Google or "
+                "Microsoft, an ICS address, or a CalDAV account with an app password).")
+
     if not c.get("enabled", True):
         return "The calendar is set up but switched off — Settings → Accounts → Calendar."
     lt = c.get("last_test") or {}
@@ -433,6 +460,11 @@ def _utc(d: dt.datetime) -> str:
     return d.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _rfc3339(d: dt.datetime) -> str:
+    """What the Google and Graph APIs take — CalDAV's compact form is refused there."""
+    return d.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 async def _caldav_events(c: dict, ws: dt.datetime, we: dt.datetime) -> dict:
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
                                  headers={"User-Agent": "AgentOS/0.1"}, auth=_auth(c)) as cl:
@@ -470,7 +502,12 @@ async def events(cfg: dict, days: int = 1, start: str = "", end: str = "") -> di
     if p:
         return {"error": p, "events": [], "notes": []}
     ws, we = window(days, start, end)
-    if c["kind"] == "caldav":
+    k = kind(cfg)
+    if k == "google":
+        out = await _google_events(cfg, ws, we)
+    elif k == "microsoft":
+        out = await _graph_events(cfg, ws, we)
+    elif k == "caldav":
         out = await _caldav_events(c, ws, we)
     else:
         text = await _get_ics(c)
@@ -479,14 +516,110 @@ async def events(cfg: dict, days: int = 1, start: str = "", end: str = "") -> di
     return out
 
 
+# ---------------------------------------------------------------------------
+# The signed-in doors: Google Calendar and Microsoft Graph, mapped onto the same
+# event shape the ICS parser produces, so the tool and every mission read one thing
+# ---------------------------------------------------------------------------
+
+def _iso_min(s: str) -> str:
+    """'2026-09-21T09:00:00+02:00' / '2026-09-21' → what parse_ics emits (minutes)."""
+    s = str(s or "")
+    if len(s) == 10:
+        return s + "T00:00"
+    try:
+        d = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return d.astimezone(_local_tz()).isoformat(timespec="minutes")
+    except ValueError:
+        return s[:16]
+
+
+async def _google_events(cfg: dict, ws: dt.datetime, we: dt.datetime) -> dict:
+    from . import signin
+    base = signin.PROVIDERS["google"]["api_calendar"]
+    headers = {**signin.auth_header(cfg, "google", actor="calendar"), "Accept": "application/json"}
+    evs, names, notes = [], [], []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as cl:
+        r = await cl.get(f"{base}/users/me/calendarList", params={"minAccessRole": "reader"})
+        _raise_signin(r)
+        cals = [c for c in r.json().get("items", []) if c.get("selected", True)] or [{"id": "primary", "summary": "primary"}]
+        for c in cals[:10]:
+            r = await cl.get(f"{base}/calendars/{c['id']}/events",
+                             params={"timeMin": _rfc3339(ws), "timeMax": _rfc3339(we), "singleEvents": "true",
+                                     "orderBy": "startTime", "maxResults": MAX_EVENTS})
+            _raise_signin(r)
+            names.append(c.get("summary") or c["id"])
+            for e in r.json().get("items", []):
+                if e.get("status") == "cancelled":
+                    continue
+                st, en = e.get("start") or {}, e.get("end") or {}
+                all_day = "date" in st and "dateTime" not in st
+                evs.append({"uid": e.get("id", ""), "summary": e.get("summary") or "(no title)",
+                            "start": _iso_min(st.get("dateTime") or st.get("date")),
+                            "end": _iso_min(en.get("dateTime") or en.get("date")),
+                            "all_day": all_day, "location": e.get("location", ""),
+                            "description": (e.get("description") or "")[:2000],
+                            "attendees": [a.get("email", "") for a in e.get("attendees", []) if a.get("email")],
+                            "calendar": c.get("summary") or c["id"]})
+    evs.sort(key=lambda e: e["start"])
+    return {"events": evs[:MAX_EVENTS], "calendars": names, "notes": notes}
+
+
+async def _graph_events(cfg: dict, ws: dt.datetime, we: dt.datetime) -> dict:
+    from . import signin
+    base = signin.PROVIDERS["microsoft"]["api_graph"]
+    headers = {**signin.auth_header(cfg, "microsoft", actor="calendar"), "Accept": "application/json",
+               "Prefer": f'outlook.timezone="{_tz_name()}"'}
+    evs = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as cl:
+        r = await cl.get(f"{base}/me/calendarView",
+                         params={"startDateTime": _rfc3339(ws), "endDateTime": _rfc3339(we), "$top": MAX_EVENTS,
+                                 "$orderby": "start/dateTime",
+                                 "$select": "id,subject,start,end,isAllDay,location,bodyPreview,attendees,isCancelled"})
+        _raise_signin(r)
+        for e in r.json().get("value", []):
+            if e.get("isCancelled"):
+                continue
+            evs.append({"uid": e.get("id", ""), "summary": e.get("subject") or "(no title)",
+                        "start": _iso_min((e.get("start") or {}).get("dateTime", "")),
+                        "end": _iso_min((e.get("end") or {}).get("dateTime", "")),
+                        "all_day": bool(e.get("isAllDay")),
+                        "location": ((e.get("location") or {}).get("displayName") or ""),
+                        "description": (e.get("bodyPreview") or "")[:2000],
+                        "attendees": [((a.get("emailAddress") or {}).get("address") or "")
+                                      for a in e.get("attendees", [])],
+                        "calendar": "Outlook"})
+    return {"events": evs, "calendars": ["Outlook"], "notes": []}
+
+
+def _raise_signin(r: httpx.Response) -> None:
+    if r.status_code == 401:
+        raise RuntimeError("the sign-in was refused by the server — sign in again in Settings → Accounts")
+    if r.status_code == 403:
+        raise RuntimeError("the sign-in does not cover the calendar (the scope was not granted) — "
+                           "sign in again and tick Calendar")
+    r.raise_for_status()
+
+
+def _tz_name() -> str:
+    try:
+        import zoneinfo  # noqa: F401
+        return str(dt.datetime.now().astimezone().tzinfo) or "UTC"
+    except Exception:
+        return "UTC"
+
+
 async def test_access(cfg: dict) -> dict:
     """Fetch the next seven days; the sentence a Settings card shows."""
     c = conf(cfg)
     if not configured(cfg):
-        return {"ok": False, "detail": "a URL is needed" + (" with a user and password" if c["kind"] == "caldav" else ""),
+        k = kind(cfg)
+        return {"ok": False, "detail": problem(cfg) if k in ("google", "microsoft", "mcp") else
+                "a URL is needed" + (" with a user and password" if k == "caldav" else ""),
                 "at": time.time()}
     try:
         out = await events(cfg, days=7)
+    except RuntimeError as e:
+        return {"ok": False, "detail": str(e)[:220], "at": time.time()}
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
         hint = {401: " — wrong user name or password, or the account needs an app password",
@@ -498,6 +631,11 @@ async def test_access(cfg: dict) -> dict:
         return {"ok": False, "detail": out["error"], "at": time.time()}
     n = len(out["events"])
     names = ", ".join(out.get("calendars") or ([out.get("calendar")] if out.get("calendar") else []))
-    return {"ok": True, "detail": f"{n} event{'s' if n != 1 else ''} in the next 7 days"
+    k = kind(cfg)
+    who = ""
+    if k in ("google", "microsoft"):
+        from . import signin
+        who = f"signed in with {signin.PROVIDERS[k]['label']} — "
+    return {"ok": True, "detail": f"{who}{n} event{'s' if n != 1 else ''} in the next 7 days"
                                   + (f" ({names})" if names else ""),
             "at": time.time(), "count": n}

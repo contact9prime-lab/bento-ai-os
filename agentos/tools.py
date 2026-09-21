@@ -730,7 +730,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {p}"
 
         def work():
-            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+            with mailmod.open_box(self.cfg) as mb:
                 return mb.search(query=str(query or ""), sender=str(sender or ""),
                                  unread=bool(unread), since_days=int(since_days or 0),
                                  folder=str(folder or "INBOX"), limit=int(limit or 20))
@@ -755,7 +755,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {p}"
 
         def work():
-            with mailmod.Mailbox(mailmod.conf(self.cfg)) as mb:
+            with mailmod.open_box(self.cfg) as mb:
                 return mb.read(str(uid), folder=str(folder or "INBOX"))
         try:
             m = await asyncio.to_thread(work)
@@ -950,20 +950,6 @@ class Toolbox(usersmod.Scoped):
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"
-
-    async def run_workflow(self, workflow: str, input: str, conversation_id: str = "") -> str:
-        """Run a stored multi-subagent workflow (a DAG of steps) and return its result."""
-        if not self.fabric:
-            return "[error] fabric not available"
-        wf = self.store.get_workflow(workflow)
-        if not wf:
-            names = ", ".join(w["name"] for w in self.store.list_workflows()) or "(none)"
-            return f"[error] no workflow named '{workflow}'. Available: {names}"
-        res = await self.fabric.run_workflow(wf, input, conversation_id=conversation_id)
-        head = f"[workflow {wf['name']} · {res['status']}]"
-        if res["status"] != "ok":
-            return f"{head}\n{res['fault']}"
-        return f"{head}\n{res['content'][:3500]}"
 
     async def forget(self, memory_id: str) -> str:
         mems = {m["id"] for m in self.store.search_memories("", limit=10**6)}
@@ -3626,20 +3612,6 @@ TOOL_SCHEMAS = [
         },
     },
     {
-        "name": "run_workflow",
-        "description": "Run a stored multi-subagent workflow (a DAG where each step is executed by a "
-                       "subagent, possibly on different models — e.g. draft locally, validate on a "
-                       "frontier model). Returns the final step's output.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "workflow": {"type": "string", "description": "Workflow name, e.g. 'draft-and-validate'."},
-                "input": {"type": "string", "description": "The input/request the workflow operates on."},
-            },
-            "required": ["workflow", "input"],
-        },
-    },
-    {
         "name": "generate_wallpaper",
         "description": "Generate a desktop wallpaper with AI from a text prompt and apply it to the "
                        "AgentOS desktop. Describe the scene richly (style, colors, mood).",
@@ -4053,7 +4025,7 @@ TOOL_SCHEMAS = [
     {
         "name": "create_flow",
         "description": "Define a FLOW: a standing mission carried out by a master orchestrator that picks "
-                       "agents from a roster while it runs (unlike run_workflow's fixed DAG). Use this when "
+                       "agents from a roster while it runs. Use this when "
                        "the user describes something recurring or multi-specialist — 'every morning…', "
                        "'whenever X happens, have someone…'. Saving the same name again edits it. "
                        "The flow is ALWAYS created disabled and you cannot enable it: its definition is a set "

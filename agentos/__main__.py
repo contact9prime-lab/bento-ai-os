@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import contextlib
 import json
+import urllib.error
+import urllib.request
 import os
 import shutil
 import subprocess
@@ -2961,6 +2963,46 @@ def _job_cli(args):
         return
 
 
+def _api_call(port: int, path: str, method: str = "GET", body: dict | None = None) -> dict:
+    """One call to the running server on loopback; OSError when it is not there."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method, data=data,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read() or b"{}")
+        except ValueError:
+            return {"error": str(e)}
+
+
+def _vault_cli(args):
+    """`bento vault` — what the vault holds and what protects it. It never prints a
+    value: there is no verb for that, which is the point of having a vault."""
+    from . import users as usersmod
+    from . import vault
+    _open_store(getattr(args, "user", ""))          # resolves --user, or refuses ambiguity
+    uid = usersmod.current()
+    with usersmod.as_user(uid):
+        st = vault.status()
+        if args.action == "forget":
+            if not args.name:
+                print("bento vault forget <name>   (names: bento vault list)")
+                sys.exit(2)
+            print("forgotten" if vault.forget(args.name) else f"no secret called '{args.name}'")
+            return
+        print(f"vault: {st['detail']}")
+        if st.get("path"):
+            print(f"  file: {st['path']}")
+        if args.action == "list" or st["count"]:
+            for n in st["names"]:
+                print(f"  {n}")
+        if not st["count"]:
+            print("  (nothing stored yet)")
+
+
 def _account_cli(args, aid: str):
     """`bento mail` / `bento calendar` — the terminal face of Settings → Accounts.
 
@@ -2983,7 +3025,10 @@ def _account_cli(args, aid: str):
         lt = a["last_test"] or {}
         print(f"{title}: {'set up' if a['configured'] else 'not set up'}"
               f"{'' if a['enabled'] or not a['configured'] else '  (switched off)'}")
-        for f in a["fields"]:
+        print(f"  {'reads through':<28} {a['door']['detail']}")
+        # the IMAP / CalDAV fields describe the app-password door only; behind a
+        # sign-in or an MCP server they are not what is being read
+        for f in (a["fields"] if a["via"] in ("imap", "ics", "caldav") else []):
             v = a["values"].get(f["key"], "")
             if f["kind"] == "secret":
                 v = a["masked"].get(f["key"], "") if a["set"].get(f["key"]) else "(not set)"
@@ -2993,8 +3038,41 @@ def _account_cli(args, aid: str):
             print(f"  last test: {'ok' if lt.get('ok') else 'FAILED'} — {lt.get('detail', '')}")
         if a["problem"]:
             print(f"  ✗ {a['problem']}")
-        if a["hint"]:
+        if a["hint"] and a["via"] in ("imap", "ics", "caldav"):
             print(f"  note: {a['hint']}")
+        return
+
+    if act in ("signin", "signout"):
+        # the consent page has to come back to the SERVER (the callback route), so
+        # this asks the running one for the URL and prints it — a headless box's
+        # owner opens it wherever they are
+        from . import signin
+        provider = (args.query or "google").strip().lower()
+        if provider not in signin.PROVIDERS:
+            print(f"which sign-in? one of: {', '.join(signin.PROVIDERS)}")
+            sys.exit(2)
+        port = cfg.get("port", 8321)
+        try:
+            if act == "signout":
+                _ = _api_call(port, f"/api/accounts/oauth/{provider}", method="DELETE")
+                print(f"signed out of {signin.PROVIDERS[provider]['label']}")
+                return
+            uses = ["mail", "calendar"] if aid == "mail" else ["calendar"]
+            if getattr(args, "send", False):
+                uses.append("send")
+            res = _api_call(port, f"/api/accounts/oauth/{provider}/start", method="POST",
+                            body={"uses": uses})
+        except OSError:
+            print("✗ AgentOS is not running here — the sign-in comes back to the server, "
+                  "so start it with `bento serve` first")
+            sys.exit(1)
+        if res.get("error"):
+            print(f"✗ {res['error']}")
+            sys.exit(1)
+        print(f"Open this in a browser and sign in with {signin.PROVIDERS[provider]['label']} "
+              f"(asks for: {', '.join(res['uses'])}):\n\n  {res['url']}\n\n"
+              "When it says 'Signed in', this account reads through it. `bento "
+              f"{aid} show` says who.")
         return
 
     if act == "set":
@@ -3032,7 +3110,7 @@ def _account_cli(args, aid: str):
         if p:
             print(f"✗ {p}")
             sys.exit(1)
-        with mailmod.Mailbox(mailmod.conf(cfg)) as mb:
+        with mailmod.open_box(cfg) as mb:
             if act == "search":
                 rows = mb.search(query=args.query or "", sender=args.sender or "",
                                  unread=bool(args.unread), since_days=int(args.days or 7),
@@ -4666,8 +4744,13 @@ def main():
                          choices=["show", "done", "later", "reopen", "decide"])
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
-    for _aid, _acts in (("mail", ["show", "set", "test", "search", "read"]),
-                        ("calendar", ["show", "set", "test", "today", "week"])):
+    p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
+                                  "and which; never their values")
+    p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
+    p_vault.add_argument("name", nargs="?", default="", help="forget: the secret's name")
+    p_vault.add_argument("--user", default="", help="which account's vault, on a machine with users")
+    for _aid, _acts in (("mail", ["show", "set", "test", "search", "read", "signin", "signout"]),
+                        ("calendar", ["show", "set", "test", "today", "week", "signin", "signout"])):
         _pa = verb(_aid, help=f"the {_aid} account the agent may read for you — "
                                 f"the terminal half of Settings → Accounts")
         _pa.add_argument("action", nargs="?", default="show", choices=_acts)
@@ -4678,6 +4761,7 @@ def main():
         _pa.add_argument("--username", default="", help="address / user name")
         _pa.add_argument("--password", default="", help="an APP password — never your login password")
         _pa.add_argument("--host", default="", help="mail: the IMAP host")
+        _pa.add_argument("--send", action="store_true", help="signin: also ask to SEND (always asks per message)")
         _pa.add_argument("--port", default="", help="mail: the IMAP port")
         _pa.add_argument("--url", default="", help="calendar: the ICS address or CalDAV URL")
         _pa.add_argument("--kind", default="", help="calendar: ics | caldav")
@@ -4843,6 +4927,8 @@ def main():
         _brief_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
+    elif args.cmd == "vault":
+        _vault_cli(args)
     elif args.cmd == "remote":
         _remote_cli(args)
     elif args.cmd == "apps":

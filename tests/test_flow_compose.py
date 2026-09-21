@@ -313,3 +313,42 @@ def test_no_model_configured_is_an_honest_sentence(store):
     finally:
         providers.complete = real
     assert "no model configured" in d["error"]
+
+
+def test_composing_offers_parts_from_the_catalogue_and_never_installs_them(store):
+    """Asked for something a first-party MCP server would serve, the composer names
+    the server as a PART — offered with the catalogue's own words, never put into the
+    draft's permissions, never connected. A key the model invents is dropped."""
+    from agentos import mcp_catalog
+    key = mcp_catalog.all_candidates()[0]["key"]
+    text = DRAFT.replace('"notes":', f'"suggested_mcp":[{{"key":"{key}","why":"it has the data"}},'
+                                     f'{{"key":"made-up-server","why":"no"}}],"notes":')
+    real = providers.complete
+
+    async def fake_complete(cfg, model, prompt, system=""):
+        fake_complete.prompt = prompt
+        return text
+    providers.complete = fake_complete
+    try:
+        cfg = {"default_model": "ollama/x", "mcp_servers": {}}
+        # a request whose words hit the catalogue: the first curated server's own title
+        title = mcp_catalog.all_candidates()[0]["title"].lower()
+        d = asyncio.run(flowsmod.compose(cfg, store, f"every morning check {title} for me", TOOLS))
+    finally:
+        providers.complete = real
+    assert "MCP servers this machine could connect" in fake_complete.prompt
+    assert key in fake_complete.prompt
+    assert [s["key"] for s in d["suggested_mcp"]] == [key]
+    assert d["suggested_mcp"][0]["why"] == "it has the data" and not d["suggested_mcp"][0]["connected"]
+    assert key not in (d["permissions"].get("mcp") or [])          # offered, not granted
+    assert not cfg["mcp_servers"]                                   # nothing connected
+
+
+def test_parts_are_found_from_the_request_s_own_words(store):
+    from agentos import flows as fm
+    assert fm.parts_for({}, "") == []
+    assert fm.parts_for({}, "the and for with") == []
+    from agentos import mcp_catalog
+    c = mcp_catalog.all_candidates()[0]
+    got = fm.parts_for({"mcp_servers": {c["key"]: {}}}, f"pull my {c['title']} numbers")
+    assert got and got[0]["key"] == c["key"] and got[0]["connected"]
