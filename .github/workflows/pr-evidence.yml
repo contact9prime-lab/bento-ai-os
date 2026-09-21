@@ -1,0 +1,94 @@
+# Every pull request has to SHOW the change, not only describe it.
+#
+# Why a check and not a line in the template: the template already asks, and a
+# request in a template is one people fill in with "n/a" on a busy afternoon.
+# This repo's own rules say to measure before and after and put the numbers in
+# the commit message — this is that rule applied where a reviewer can see it,
+# on the one surface a reviewer actually reads.
+#
+# It is deliberately NOT a required check here. Marking it required is a branch
+# protection setting, which is the repository owner's decision to make and not
+# something a workflow file should take by arriving. Red and visible is enough
+# to change behaviour; red and blocking on the day it lands would stop work that
+# was already in flight.
+#
+# The escape hatch is a label a maintainer applies, exactly because the author
+# applying it themselves would make it a checkbox rather than a judgement.
+name: PR evidence
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Before and after are both shown
+    runs-on: ubuntu-latest
+    steps:
+      # pull_request_target runs with the BASE repo's context, so no code from the
+      # pull request is checked out and none is run. The only thing read from the
+      # PR is its body text, and it arrives through the environment rather than
+      # being interpolated into the shell — a title or body is attacker-controlled
+      # on a fork, and `run: echo ${{ github.event.pull_request.body }}` is a shell
+      # injection with extra steps.
+      - name: Check the description
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          body = os.environ.get("BODY") or ""
+          labels = {l.strip() for l in (os.environ.get("LABELS") or "").split(",")}
+
+          if "no-visual-change" in labels:
+              print("Labelled no-visual-change by a maintainer — nothing to show.")
+              sys.exit(0)
+
+          def section(name: str) -> str:
+              """Everything under a `### <name>` heading, up to the next heading.
+
+              HTML comments are stripped HERE rather than later, because the template
+              ships a comment under each heading explaining what to put there. An
+              author who adds nothing and deletes nothing leaves a section that is
+              not empty and says nothing — the likeliest way past this check, and the
+              one it most needs to catch.
+              """
+              m = re.search(rf"^#{{1,6}}\s*{name}\s*$(.*?)(?=^#{{1,6}}\s|\Z)",
+                            body, re.I | re.M | re.S)
+              return re.sub(r"<!--.*?-->", "", m.group(1) if m else "", flags=re.S).strip()
+
+          before, after = section("Before"), section("After")
+          missing = [n for n, v in (("Before", before), ("After", after)) if not v]
+          if missing:
+              print("::error title=Evidence is missing::Add a `### Before` and an "
+                    "`### After` section to the pull request description, each with "
+                    "what the change looks like on either side — a screenshot, a "
+                    "recording, pasted terminal output, or the measurement. "
+                    f"Missing: {', '.join(missing)}. "
+                    "A change with genuinely nothing observable needs the "
+                    "`no-visual-change` label from a maintainer.")
+              sys.exit(1)
+
+          # Filled in, but with what? An empty heading and a heading holding the
+          # word "n/a" are the same thing to a reviewer, and the second one is the
+          # one that gets past a check that only tests for emptiness.
+          EMPTY = re.compile(r"^(n\s*/?\s*a|none|nothing|same|no change|tbd|-+)\.?$", re.I)
+          hollow = [n for n, v in (("Before", before), ("After", after)) if EMPTY.match(v)]
+          if hollow:
+              print(f"::error title=Evidence is a placeholder::{', '.join(hollow)} "
+                    "says nothing. Show the state on that side, or ask a maintainer "
+                    "for the `no-visual-change` label.")
+              sys.exit(1)
+
+          for name, val in (("Before", before), ("After", after)):
+              kind = ("an image" if re.search(r"!\[|<img|\.(png|jpg|jpeg|gif|webp)\b", val, re.I)
+                      else "a recording" if re.search(r"\.(mp4|mov|webm)\b|user-images|github\.com/user-attachments", val, re.I)
+                      else "text")
+              print(f"{name}: {kind}, {len(val)} characters.")
+          print("Both sides are shown.")
+          PY
