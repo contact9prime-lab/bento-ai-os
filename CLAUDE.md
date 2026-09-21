@@ -198,11 +198,11 @@ refuses to lock rather than shipping a door that never opens again. Full reasoni
 
 ## One object, one app: a mission is a flow, and the app is Missions
 
-The app in the dock is **Missions**. Its *Mine* tab is the value view (the catalogue by
+The app in the dock is **Missions**. Its *Run* tab is the value view (the catalogue by
 persona, what each mission did, what it holds); its *Build* tab is the flows editor —
 flows, the agents on their rosters, every run — that used to be a separate app called
 Workflows. They were two apps over one table: a mission is a flow with a recipe behind
-it (`flows.job`), and enabling one in Mine put a row in Workflows. So Workflows is gone
+it (`flows.job`), and enabling one under Run put a row in Workflows. So Workflows is gone
 from the dock, the deck and the docs; `openApp('fabric')` and `refreshApp('fabric')` are
 ALIASED to Missions → Build (`APP_ALIAS` in `04-wm.js`), so every handoff, onboarding
 step and fabric event lands where the thing now lives without remembering the rename.

@@ -880,7 +880,7 @@ recipe behind it, and the Workflows app was the same rows with an editor in fron
 apps over one table, and a third thing called workflow in the code — a fixed DAG engine
 with no UI — that nobody had run.
 
-- **Missions is the app.** *Mine* is the value view that existed; *Build* is the flows
+- **Missions is the app.** *Run* is the value view that existed; *Build* is the flows
   editor that was the Workflows app: flows, the agents on their rosters, every run.
   `openApp('fabric')` and `refreshApp('fabric')` are aliased to Missions → Build, so the
   chat handoff, the onboarding step and every fabric event land where the thing now
@@ -897,10 +897,10 @@ with no UI — that nobody had run.
   with a Connect button, never granted, never installed. A key the model invents is
   dropped. Skills were already offered; nothing is created from a sentence.
 - **Measured in the browser**: the registry has no `fabric` app; the dock and desktop
-  lists have none; the Mine and Build tabs read 53×25 on the desktop and 55×40 on a
+  lists have none; the Run and Build tabs read 53×25 on the desktop and 55×40 on a
   phone; Build shows the four live flows with their last outcome and, under Agents, the
   seven specialists; opening the old door opens Missions on Build.
 
-![Missions → Build: the flows editor, the agents and the runs, one tab away from Mine](ux-review/after/missions-build.jpg)
+![Missions → Build: the flows editor, the agents and the runs, one tab away from Run](ux-review/after/missions-build.jpg)
 ![The Agents sub-tab under Build](ux-review/after/missions-build-agents.jpg)
 ![Missions on a phone, Build tab](ux-review/after/missions-phone-build.jpg)
