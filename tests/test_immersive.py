@@ -337,7 +337,10 @@ def test_a_face_has_two_eyes_and_no_mark_in_the_middle_of_it():
     the head, and the mouth survives a blink."""
     fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
     assert "[-1,1].forEach" in fig, "eyes must be drawn as a symmetric pair"
-    assert "headR*.36" in fig, "the eyes are offset either side of centre"
+    # the RULE, not a magic number: the offset is mirrored either side of centre
+    # and derived from the head, so the face keeps its proportions at any size
+    assert re.search(r"ex\s*=\s*headR\s*\*", fig), "the eye offset is not derived from the head"
+    assert "cx+d*ex" in fig, "the eyes are not mirrored about the centre line"
     assert "blinking" in fig, "a face that never blinks is a mask"
     # the status light is ABOVE the head, never on it
     assert "headY-headR*1.32" in fig
@@ -388,3 +391,68 @@ def test_working_reads_as_more_colour_not_more_white():
     lit = int(re.search(r"satLit:\s*light\s*\?\s*(\d+)", ink).group(1))
     dim = int(re.search(r"satDim:\s*light\s*\?\s*(\d+)", ink).group(1))
     assert lit > dim, "a working figure must be MORE saturated, not just paler"
+
+
+# ---------------------------------------------------------------------------
+# it has to read as a CARTOON
+#
+# The flat-vector pass before this was clean and read as an infographic:
+# correct, and nobody's colleague. These pin the six things that make a drawing
+# read as drawn — and the one that had to be taken back out again, because at
+# forty pixels more detail made it worse, not better.
+# ---------------------------------------------------------------------------
+
+def _figure():
+    return CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
+
+
+def test_every_shape_is_outlined():
+    """The single strongest cartoon signal, and the one the flat version had
+    none of. A limb is one path stroked twice — the cheap way, because the
+    second stroke reuses the path the first one built."""
+    assert "function crewLimb(" in CREW_CODE
+    limb = CREW_CODE.split("function crewLimb(")[1].split("\nfunction ")[0]
+    assert limb.count("ctx.stroke()") == 2, "a limb is outline-then-fill, in that order"
+    fig = _figure()
+    assert "skin.ink" in fig and fig.count("ctx.stroke()") >= 4, "shapes are not outlined"
+    # and the ink belongs to the character, not to one shared black
+    ink = CREW_CODE.split("function crewSkin(")[1][:800]
+    assert re.search(r"ink:\s*`hsl\(\$\{h\}", ink), "the outline must be the figure's own hue"
+
+
+def test_limbs_end_in_hands_and_feet():
+    """A cartoon limb ends in a mitt or a shoe; one that stops in mid-air reads
+    as unfinished."""
+    fig = _figure()
+    # asserted on the DRAWING, not on the comments that name it: CREW_CODE has
+    # its comments stripped, so a word-match here would pass on prose alone
+    assert "ctx.ellipse(cx-stance,y," in fig and "ctx.ellipse(cx+stance,y," in fig, \
+        "no shoes at the ends of the legs"
+    assert "hand.push(" in fig and "ctx.arc(hand[0]" in fig, \
+        "no mitts at the ends of the arms"
+
+
+def test_a_bounce_squashes_and_stretches():
+    """Without it a bouncing figure is a rigid object being moved."""
+    fig = _figure()
+    assert "sq" in fig and "1-hop" in fig, "no squash term"
+    assert "(1+sq*" in fig and "(1-sq*" in fig, "squash must widen as it shortens"
+
+
+def test_the_face_stays_simple_at_this_size():
+    """The cut before this gave each eye a light sclera, a dark rim and an
+    eyebrow — correct cartoon anatomy at poster size, a compound eye at forty
+    pixels, and a row of them read as insects. Three marks per eye is two too
+    many here, so the face is a solid eye plus one catchlight."""
+    fig = _figure()
+    assert "catchlight" in fig
+    assert "quadraticCurveTo" not in fig, "eyebrows are back, and they make insects"
+    assert "brow" not in fig, "eyebrows are back, and they make insects"
+
+
+def test_the_fill_is_bright_because_the_outline_holds_the_shape():
+    """The same lightness washed the flat version out; with an outline it is
+    exactly why cartoons can use flat saturated colour."""
+    ink = CREW_CODE.split("function crewInk(")[1][:600]
+    lum = int(re.search(r"lumLit:\s*light\s*\?\s*\d+\s*:\s*(\d+)", ink).group(1))
+    assert lum >= 66, "a figure holding an outline can afford a bright fill"

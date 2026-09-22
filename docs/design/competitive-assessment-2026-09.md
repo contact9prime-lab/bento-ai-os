@@ -322,6 +322,17 @@ half-built thing described as finished is the failure this document was written 
   a row of motionless figures staring out of a dark room is a waxwork. The cost of all
   four together was 0.2 ms a frame.
 
+  A third pass turned them into CARTOONS, which is a different fix again and worth
+  separating from the second. The flat-vector version that came out of the "scary" work
+  was friendly and read as an infographic — correct, and nobody's colleague. What a
+  drawing needs to read as *drawn* is an outline on every shape, and with one holding the
+  form the fill can be flat and bright, which is exactly why cartoons look like that. The
+  useful lesson was the part that had to be taken back OUT: the first cartoon attempt also
+  added a light sclera, a dark rim and an eyebrow to each eye, which is correct anatomy at
+  poster size and a compound eye at forty pixels — a row of them read as insects. At this
+  scale the face wants FEWER marks, not more. It ended on one solid eye and a catchlight,
+  plus mitts, shoes and a squash at the bottom of each bounce, at 0.5 ms a frame.
+
 Still open from the list, untouched: cost reconciliation from executor transcripts (3),
 per-specialist git worktrees (4), more executors through the run bridge (5), the UI string
 table (6), and everything in item 7 that is not the evidence check — the landing page, the

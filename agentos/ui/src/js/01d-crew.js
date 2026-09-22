@@ -17,19 +17,29 @@
      `fabric_event` named it, raises its arms because a `tool_start` fired, and
      sits down on `flow_done`. If an animation here does not tell you something
      a text label would not have told you faster, it should not be drawn.
-   - **Drawn, not loaded.** A figure is a filled body, a big head and a face with
-     two eyes that blink, in a colour of its own, built from arcs and lines with
-     saturation and lightness taken from the theme. No tileset, no sprite sheet,
-     no character pack — which is also why this scene raises no asset-licence
-     question and adds no bytes to the wheel.
-   - **They have to read as PEOPLE.** The first cut drew outlined wire bodies,
-     identical in one brass colour, frozen at rest, with a single red dot in the
-     middle of each face, and the report on it was one word: scary. Four things
-     fixed it and all four are load-bearing — a filled body (an outline is a
-     ghost), a colour per specialist that no two share, a face with TWO eyes (one
-     centred mark is a cyclops, so the running light moved above the head), and
-     idle life, because a row of motionless figures staring out of a dark room is
-     a waxwork. `tests/test_immersive.py` pins each one.
+   - **Drawn, not loaded.** A figure is built from arcs and lines at draw time,
+     in a colour of its own, with saturation and lightness taken from the theme.
+     No tileset, no sprite sheet, no character pack — which is also why this
+     scene raises no asset-licence question and adds no bytes to the wheel.
+   - **They have to read as CARTOON PEOPLE, and it took three passes.** The first
+     drew outlined wire bodies, identical in one brass colour, frozen at rest,
+     with a single red dot in the middle of each face; the report on it was one
+     word: scary. The second gave them filled bodies, a colour each and simple
+     faces — friendly, and an infographic. The third outlined every shape, which
+     is what makes a drawing read as drawn. Each fix is pinned in
+     `tests/test_immersive.py`, because every one of them is easy to undo while
+     "simplifying" the drawing:
+       a filled, OUTLINED body      an outline is what a cartoon is; without one
+                                    the same shapes are a diagram, and a fill
+                                    with no outline is a ghost
+       a colour per specialist      handed out across the row so no two share
+                                    one, since a bare hash collides
+       a face with TWO eyes         one centred mark is a cyclops, so the running
+                                    light lives above the head — and the face
+                                    stays SIMPLE, one solid eye plus a catchlight
+       hands, feet, squash, life    a limb that ends in mid-air is unfinished, a
+                                    bounce without squash is a moved object, and
+                                    a motionless row is a waxwork
 
    Cost, and where it stops: the same budget as the Movement scene, because it
    is the same loop. One viewport canvas, at most 20 frames a second and 12 when
@@ -187,8 +197,8 @@ function crewInk(){
   // figure towards beige, so a stage with three of them busy read as one washed
   // pastel repeated — the opposite of the colour-per-specialist it is there for.
   return {light,
-    satLit: light ? 62 : 58,  lumLit: light ? 56 : 62,   // working
-    satDim: light ? 40 : 34,  lumDim: light ? 44 : 46,   // standing by
+    satLit: light ? 68 : 66,  lumLit: light ? 60 : 70,   // working
+    satDim: light ? 56 : 52,  lumDim: light ? 52 : 60,   // standing by
     brass: light ? '150,116,52' : '232,197,120',
     ruby:  light ? '212,60,96'   : '236,80,120'};
 }
@@ -198,10 +208,31 @@ function crewInk(){
 function crewSkin(ink, h, lit){
   const sa = lit ? ink.satLit : ink.satDim, l = lit ? ink.lumLit : ink.lumDim;
   return {hue: h,
-          fill: `hsl(${h} ${sa}% ${l}%)`,
-          line: `hsl(${h} ${sa + 8}% ${l + 16}%)`,
-          dark: `hsl(${h} ${Math.round(sa * .45)}% 14%)`,
+          fill:  `hsl(${h} ${sa}% ${l}%)`,
+          // the lit top of a shape: two flat tones is what a cel-painted cartoon
+          // does instead of a gradient, and it costs one more fill
+          top:   `hsl(${h} ${sa - 6}% ${l + 13}%)`,
+          line:  `hsl(${h} ${sa + 8}% ${l + 16}%)`,
+          // THE OUTLINE. A deep shade of the figure's own hue rather than one
+          // shared black: eight characters sharing one ink is what makes a set
+          // look printed rather than drawn, and the rule against literal blacks
+          // is the same one the rest of this look keeps.
+          ink:   `hsl(${h} ${Math.min(58, sa + 10)}% ${ink.light ? 30 : 26}%)`,
+          dark:  `hsl(${h} ${Math.round(sa * .45)}% 14%)`,
+          // the whites of the eyes — a very light tint of the hue, never a
+          // literal white, so it still belongs to the character
+          eye:   `hsl(${h} 34% 96%)`,
           shade: `hsl(${h} 26% 7%)`};
+}
+/* A limb: one path, stroked TWICE — the outline colour at full width, then the
+   skin colour at 62% of it. That is how a cartoon limb is drawn and it is much
+   cheaper than outlining a filled shape, because the second stroke reuses the
+   path the first one built. */
+function crewLimb(ctx, pts, w, ink, fill){
+  ctx.beginPath();ctx.moveTo(pts[0], pts[1]);
+  for(let i=2;i<pts.length;i+=2)ctx.lineTo(pts[i], pts[i+1]);
+  ctx.strokeStyle=ink;ctx.lineWidth=w;ctx.stroke();
+  ctx.strokeStyle=fill;ctx.lineWidth=w*.62;ctx.stroke();
 }
 /* `ink` is an "r,g,b" triple (the scene's own brass and ruby); `css` overrides it
    with a ready colour, which is how a name is tinted like the figure it belongs
@@ -212,99 +243,158 @@ function crewText(ctx,txt,x,y,size,ink,alpha,weight,align,css){
   if(css){ctx.globalAlpha=alpha;ctx.fillStyle=css;ctx.fillText(txt,x,y);ctx.globalAlpha=1}
   else{ctx.fillStyle=`rgba(${ink},${alpha})`;ctx.fillText(txt,x,y)}
 }
+/* A name cut to the room its own slot has. Six specialists on a phone leaves
+   about 48px a head, where "validator" and "researcher" ran into each other and
+   read as one word — the label stopped naming anybody. Derived from the step and
+   the font size rather than a fixed cap, so it only bites where it must. */
+function crewFit(name,step,scale){
+  const px=Math.max(9,scale*.115);
+  const n=Math.max(5,Math.floor((step*.92)/(px*.58)));
+  return name.length>n?name.slice(0,n-1)+'\u2026':name.slice(0,18);
+}
 /* A stable number from a name, so a specialist's build and stance never change
    between reloads. Cheap 32-bit string hash; nothing depends on its quality. */
 function crewHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
-/* One figure.
+/* One figure, drawn as a CARTOON.
 
-   `p` is 0 at its resting spot and 1 stepped forward, `lift` is the working
-   gesture, and everything else on screen comes from CREW.t and the figure's own
-   phase — so a figure is NEVER completely still. That is deliberate and it is
-   the second half of the "scary" fix: at rest the first cut froze every figure
-   into an identical pose, and a row of motionless outlined bodies staring out of
-   a dark room is a waxwork. Breathing, a slow sway and an occasional blink cost
-   three sines and turn the same drawing into somebody waiting.
+   The flat-vector version this replaces was clean and read as an infographic:
+   correct, and nobody's colleague. Six things make a drawing read as a cartoon
+   instead, and they are all here because leaving any one out takes the whole
+   effect with it:
 
-   Arcs, lines and one flat ellipse — no canvas shadow anywhere, because a shadow
-   is a blur by another name and this layer is re-composited under the parallax.
-   The contact ellipse under the feet is a filled shape at low alpha, which is
-   what stops the figures reading as floating without costing a blur.
+     an OUTLINE on every shape   the single strongest signal, and the one the
+                                 flat version had none of. A limb is one path
+                                 stroked twice (crewLimb); a filled shape is a
+                                 fill then a stroke.
+     TWO FLAT TONES              a lighter top on the head and body. Cel paint,
+                                 not a gradient — a gradient per shape per frame
+                                 is a cost this layer cannot carry.
+     EYES WITH PUPILS            a light sclera, a dark pupil and a highlight
+                                 dot. Two plain dots are punctuation; this is a
+                                 face that can look at something, and the pupils
+                                 DO look — up at the tool label while working.
+     EYEBROWS                    one arc each, and most of the expression. They
+                                 lift when the specialist starts working.
+     HANDS AND FEET              a cartoon limb ends in a mitt or a shoe. A limb
+                                 that stops in mid-air reads as unfinished.
+     SQUASH AND STRETCH          the body compresses at the bottom of a bounce
+                                 and stretches at the top. Without it a bouncing
+                                 figure is a rigid object being moved.
 
-   The arm is TWO segments with an elbow. A single straight line from shoulder to
-   hand is the cheaper drawing and it is what made the first cut read as a row of
-   scarecrows: a straight limb has no pose, so "working" and "standing" came out
-   as the same shape at different angles. An elbow costs one more lineTo. */
+   Everything else about the scene is unchanged: `p` is 0 at the resting spot and
+   1 stepped forward, `lift` is the working gesture, and the rest comes from
+   CREW.t and the figure's own phase so nobody is ever completely still. No
+   canvas shadow anywhere — a shadow is a blur by another name, and this layer is
+   re-composited under the parallax on every pointer move. */
 function crewFigure(ctx,x,ground,scale,ink,tone,hue,p,lift,label,sub,lit){
   const s=scale, t=CREW.t, ph=tone*6.283, skin=crewSkin(ink,hue,lit);
   const still=CREW.static;                       // reduced motion: one pose, no life
   const breath=still?0:Math.sin(t*1.5+ph);
   const sway  =still?0:Math.sin(t*0.7+ph)*s*.013;
-  const bob   =lit&&!still?Math.abs(Math.sin(t*3.0+ph))*s*.055:0;
+  const hop   =lit&&!still?Math.abs(Math.sin(t*3.0+ph)):0;
+  const bob   =hop*s*.055;
+  // squash at the bottom of the hop, stretch at the top — the oldest trick in
+  // the book and the one that separates a character from a moved object
+  const sq    =lit&&!still?(1-hop):0;
   const cx=x+sway, y=ground-p*s*.24-bob;
-  // Proportions: a LARGE head on a short body. A small head on long thin legs is
-  // what a horror silhouette is made of, and it is what the first cut drew.
-  const headR=s*.185, legH=s*.15, bw=s*(.26+tone*.05), bh=s*.29+(breath*s*.007);
-  const legTop=y-legH, bodyTop=legTop-bh, headY=bodyTop-headR*.78;
-  const a=lit?1:.86;
+  const a=lit?1:.88;
   ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.globalAlpha=a;
+  const lw=Math.max(1.8,s*.05);                  // the outline weight, once
+  const limbW=lw*1.3;                            // limbs carry more than an outline does
+  // proportions: a LARGE head on a short body, which is what a cartoon is
+  const headR=s*.205*(1+sq*.03), legH=s*.13;
+  const bw=s*(.28+tone*.05)*(1+sq*.06), bh=(s*.26+breath*s*.006)*(1-sq*.07);
+  const legTop=y-legH, bodyTop=legTop-bh, headY=bodyTop-headR*.80;
   // the ground contact, so nobody floats
   if(ctx.ellipse){
     ctx.beginPath();ctx.ellipse(cx,ground+1,bw*.62,s*.028,0,0,Math.PI*2);
-    ctx.globalAlpha=.30;ctx.fillStyle=skin.shade;ctx.fill();ctx.globalAlpha=1;
+    ctx.globalAlpha=.30*a;ctx.fillStyle=skin.shade;ctx.fill();ctx.globalAlpha=a;
   }
-  ctx.globalAlpha=a;
-  // legs
-  const stance=bw*.30;
-  ctx.strokeStyle=skin.fill;ctx.lineWidth=Math.max(2,s*.055);
-  ctx.beginPath();
-  ctx.moveTo(cx-stance,y);ctx.lineTo(cx-stance,legTop);
-  ctx.moveTo(cx+stance,y);ctx.lineTo(cx+stance,legTop);ctx.stroke();
-  // arms — hanging and swinging gently at rest, elbow up and hands in when working
-  const sh=bodyTop+bh*.22, el=s*.15, fa=s*.13;
+  // ---- behind the body: legs and arms ----
+  const stance=bw*.28;
+  crewLimb(ctx,[cx-stance,y-s*.01,cx-stance,legTop],limbW,skin.ink,skin.fill);
+  crewLimb(ctx,[cx+stance,y-s*.01,cx+stance,legTop],limbW,skin.ink,skin.fill);
+  // shoes — one path, both feet
+  if(ctx.ellipse){
+    ctx.beginPath();
+    ctx.ellipse(cx-stance,y,s*.052,s*.032,0,0,Math.PI*2);
+    ctx.ellipse(cx+stance,y,s*.052,s*.032,0,0,Math.PI*2);
+    ctx.fillStyle=skin.ink;ctx.fill();
+  }
+  const sh=bodyTop+bh*.24, el=s*.15, fa=s*.13;
   const swing=still?0:Math.sin(t*1.1+ph)*.12;
-  ctx.strokeStyle=skin.fill;ctx.lineWidth=Math.max(2,s*.05);
+  const hand=[];
   [-1,1].forEach(d=>{
-    const sx=cx+d*bw*.46;
-    const ex=sx+d*(el*(.34+.24*lift)), ey=sh+el*(.84-.22*lift+swing*d);
-    const hx=ex+d*fa*(.38-.66*lift), hy=ey+fa*(.78-1.46*lift);
-    ctx.beginPath();ctx.moveTo(sx,sh);ctx.lineTo(ex,ey);ctx.lineTo(hx,hy);ctx.stroke();
+    const ax=cx+d*bw*.44;
+    const ex=ax+d*(el*(.36+.26*lift)), ey=sh+el*(.82-.24*lift+swing*d);
+    const hx=ex+d*fa*(.40-.68*lift), hy=ey+fa*(.76-1.48*lift);
+    crewLimb(ctx,[ax,sh,ex,ey,hx,hy],limbW,skin.ink,skin.fill);
+    hand.push(hx,hy);
   });
-  // body — FILLED. An outline is a ghost; a filled shape has weight.
+  // ---- the body ----
   ctx.beginPath();
-  if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bh,bw*.40);
+  if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bh,bw*.38);
   else ctx.rect(cx-bw/2,bodyTop,bw,bh);
   ctx.fillStyle=skin.fill;ctx.fill();
-  // head
-  ctx.beginPath();ctx.arc(cx,headY,headR,0,Math.PI*2);
-  ctx.fillStyle=skin.line;ctx.fill();
-  // the face. Two eyes that blink, and a mouth that is a little wider while
-  // working — the running indicator is the light ABOVE the head, never a mark
-  // in the middle of the face.
-  const blinking=!still&&((t*.31+tone*3)%1)<.045;
-  const er=headR*.145, eh=blinking?er*.18:er;
-  ctx.fillStyle=skin.dark;
-  [-1,1].forEach(d=>{
-    ctx.beginPath();
-    if(ctx.ellipse)ctx.ellipse(cx+d*headR*.36,headY-headR*.06,er,eh,0,0,Math.PI*2);
-    else ctx.arc(cx+d*headR*.36,headY-headR*.06,eh,0,Math.PI*2);
-    ctx.fill();
-  });
-  // The mouth is drawn on EVERY frame, including a blink. Tying it to the eyes
-  // made a blinking figure lose its mouth for a tenth of a second, which does not
-  // read as a blink — it reads as the face coming apart.
+  ctx.strokeStyle=skin.ink;ctx.lineWidth=lw;ctx.stroke();
+  // mitts, drawn after the body so a hand crossing it stays on top
   ctx.beginPath();
-  ctx.arc(cx,headY+headR*.16,headR*(lit?.34:.28),lit?.15*Math.PI:.2*Math.PI,lit?.85*Math.PI:.8*Math.PI);
-  ctx.strokeStyle=skin.dark;ctx.lineWidth=Math.max(1,headR*.11);ctx.stroke();
+  ctx.arc(hand[0],hand[1],s*.045,0,Math.PI*2);
+  ctx.moveTo(hand[2]+s*.045,hand[3]);ctx.arc(hand[2],hand[3],s*.045,0,Math.PI*2);
+  ctx.fillStyle=skin.fill;ctx.fill();ctx.strokeStyle=skin.ink;ctx.lineWidth=lw*.8;ctx.stroke();
+  // ---- the head ----
+  ctx.beginPath();ctx.arc(cx,headY,headR,0,Math.PI*2);
+  ctx.fillStyle=skin.fill;ctx.fill();
+  ctx.save();ctx.clip();                          // the lit top, again as flat paint
+  ctx.beginPath();ctx.arc(cx-headR*.22,headY-headR*.30,headR*.92,0,Math.PI*2);
+  ctx.fillStyle=skin.top;ctx.fill();
+  ctx.restore();
+  ctx.beginPath();ctx.arc(cx,headY,headR,0,Math.PI*2);
+  ctx.strokeStyle=skin.ink;ctx.lineWidth=lw;ctx.stroke();
+  // ---- the face ----
+  // The pupils LOOK somewhere: up at the tool label while working, level at
+  // rest. A face that never directs its gaze is a mask with eyes painted on.
+  const blinking=!still&&((t*.31+tone*3)%1)<.045;
+  const ex=headR*.33, ey=headY-headR*.04, erx=headR*.15, ery=headR*.185;
+  if(blinking){
+    ctx.beginPath();
+    [-1,1].forEach(d=>{ctx.moveTo(cx+d*ex-erx*1.3,ey);ctx.lineTo(cx+d*ex+erx*1.3,ey)});
+    ctx.strokeStyle=skin.ink;ctx.lineWidth=lw*.8;ctx.stroke();
+  }else{
+    // A SOLID dark eye with one catchlight. The cut before this gave each eye a
+    // light sclera, a dark rim and an eyebrow, which is correct cartoon anatomy
+    // at poster size and turns into a compound eye at forty pixels: a row of
+    // them read as insects. At this scale the face wants FEWER marks, not more —
+    // three per eye is two too many.
+    ctx.beginPath();
+    [-1,1].forEach(d=>{
+      ctx.moveTo(cx+d*ex+erx,ey);
+      if(ctx.ellipse)ctx.ellipse(cx+d*ex,ey,erx,ery,0,0,Math.PI*2);
+      else ctx.arc(cx+d*ex,ey,erx,0,Math.PI*2);
+    });
+    ctx.fillStyle=skin.ink;ctx.fill();
+    ctx.beginPath();                               // the catchlight, and nothing else
+    [-1,1].forEach(d=>{const hx2=cx+d*ex-erx*.30,hy2=ey-ery*.34,r=erx*.36;
+      ctx.moveTo(hx2+r,hy2);ctx.arc(hx2,hy2,r,0,Math.PI*2)});
+    ctx.fillStyle=skin.eye;ctx.fill();
+  }
+  // the mouth, drawn on EVERY frame including a blink: tying it to the eyes made
+  // a blinking figure lose its mouth, which reads as the face coming apart
+  ctx.beginPath();
+  ctx.arc(cx,headY+headR*.26,headR*(lit?.34:.28),lit?.10*Math.PI:.16*Math.PI,lit?.90*Math.PI:.84*Math.PI);
+  ctx.strokeStyle=skin.ink;ctx.lineWidth=lw*.8;ctx.stroke();
   // working: a status light above the head, pulsing. Off the face on purpose.
   if(lit){
     const pulse=still?1:.6+.4*Math.sin(t*4+ph);
     ctx.beginPath();ctx.arc(cx,headY-headR*1.32,Math.max(2.5,s*.036),0,Math.PI*2);
     ctx.fillStyle=`rgba(${ink.ruby},${.55+.45*pulse})`;ctx.fill();
+    ctx.strokeStyle=skin.ink;ctx.lineWidth=lw*.55;ctx.stroke();
   }
   ctx.globalAlpha=1;
   // the name, tinted like its owner; the role only for the one stepped forward
-  crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),null,lit?.95:.55,600,'center',skin.line);
-  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.38,Math.max(8,s*.10),null,.42*p,500,'center',skin.line);
+  crewText(ctx,label,x,ground+s*.26,Math.max(9,s*.115),null,lit?.95:.55,600,'center',skin.line);
+  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.40,Math.max(8,s*.10),null,.42*p,500,'center',skin.line);
   return headY;
 }
 function crewDraw(dt){
@@ -372,7 +462,7 @@ function crewDraw(dt){
     const p=lit?Math.min(1,(1-since)*3):0;               // step forward, then ease back
     const lift=lit?.5+.5*Math.sin(C.t*Math.PI*1.6+crewHash(s.c.name)*6):0;
     crewFigure(ctx,s.x,ground,scale,ink,crewHash(s.c.name),hueOf[i],p,lift,
-      s.c.name.replace(/[-_]/g,' ').slice(0,18),s.c.role,lit);
+      crewFit(s.c.name.replace(/[-_]/g,' '),step,scale),s.c.role,lit);
   });
   // the tool that just ran, above whoever ran it — the one label that carries news.
   // Tinted like that figure, so with three working at once the name and the person

@@ -219,15 +219,16 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   above its head, and sits back down when the run ends. Nobody is ever completely still: they
   breathe, sway and blink while they wait, and hold still only under reduced motion.
 
-  Each specialist has a colour of its own that no two on stage share, and your agent takes the
-  teal the rest of the desktop is branded in. The figures are drawn, not loaded — filled bodies,
-  faces and limbs built from arcs and lines, with saturation and lightness from the theme and
-  build and stance from a hash of the name, so a specialist looks the same every time. Nothing is
-  downloaded, nothing is licensed from anybody, and the whole scene costs what the dial costs
-  (measured: 17.3 fps against a ceiling of 20, 0.4 ms a frame, zero frames under a maximised
-  window).
+  They are drawn as cartoons: every shape outlined, flat bright colour inside it, a big head, a
+  face with two eyes and a smile, mitts and shoes on the limbs, and a squash at the bottom of each
+  bounce. Each specialist has a colour of its own that no two on stage share, and your agent takes
+  the teal the rest of the desktop is branded in. Nothing is loaded — no tileset, no sprite sheet,
+  no character pack — so nothing is downloaded, nothing is licensed from anybody, and a specialist
+  looks the same every time because its build and stance come from a hash of its name. The whole
+  scene costs what the dial costs (measured: 16.7 fps against a ceiling of 20, 0.5 ms a frame,
+  zero frames under a maximised window).
 
-  ![The Crew scene: four small drawn characters on a dark stage — a green writer, a violet researcher, a teal Aria in the middle and a tan validator, each with a face — the researcher stepped forward and lit, with a status light above its head and "fetch url" named above that](screenshots/crew-scene.png)
+  ![The Crew scene: four outlined cartoon characters on a dark stage — a green writer, a violet researcher, a teal Aria in the middle and a tan validator, each with a round head, two eyes and a smile — with the researcher stepped forward and lit, a status light above its head and "fetch url" named above that](screenshots/crew-scene.png)
 
   **The cast is the real one.** Every figure is a subagent this machine actually has, so with none
   yet you get your agent alone and a line saying so, rather than a room of colleagues who do not
