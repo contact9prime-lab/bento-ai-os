@@ -320,3 +320,71 @@ def test_the_crew_file_keeps_the_bundle_rules():
         assert not line.startswith(("let ", "const ")), line
     assert CREW.rstrip().endswith("crewStart();"), "01d must start itself at first paint"
     assert "var CREW=" in CREW
+
+
+# ---------------------------------------------------------------------------
+# the crew has to read as PEOPLE
+#
+# The first cut drew outlined wire bodies, identical in one brass colour, frozen
+# at rest, with a single red dot in the middle of each face. The report on it was
+# one word: scary. Each assertion below is one of the four things that fixed it,
+# and each is easy to undo by accident while "simplifying" the drawing.
+# ---------------------------------------------------------------------------
+
+def test_a_face_has_two_eyes_and_no_mark_in_the_middle_of_it():
+    """A single centred mark is a cyclops, not a face — it is what made a row of
+    these read as something to be afraid of. The running indicator lives above
+    the head, and the mouth survives a blink."""
+    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
+    assert "[-1,1].forEach" in fig, "eyes must be drawn as a symmetric pair"
+    assert "headR*.36" in fig, "the eyes are offset either side of centre"
+    assert "blinking" in fig, "a face that never blinks is a mask"
+    # the status light is ABOVE the head, never on it
+    assert "headY-headR*1.32" in fig
+    # and the mouth is not tied to the blink
+    assert "if(!blinking){" not in fig, "a blink must not take the mouth with it"
+
+
+def test_figures_are_filled_and_stand_on_something():
+    """An outline is a ghost; a filled shape has weight. The contact ellipse is a
+    flat fill, NOT a canvas shadow — this layer is re-composited under the parallax
+    and a shadow is a blur by another name."""
+    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
+    assert fig.count("ctx.fill()") >= 4, "body, head and eyes are filled"
+    assert "ctx.ellipse(cx,ground+1" in fig, "no ground contact — they float"
+    assert "shadowBlur" not in fig
+
+
+def test_nobody_is_ever_completely_still():
+    """A row of motionless figures staring out of a dark room is a waxwork. Three
+    sines cost nothing and turn the same drawing into somebody waiting."""
+    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
+    for name in ("breath", "sway", "bob"):
+        assert name in fig, f"no {name} — the figures are frozen at rest"
+    assert "CREW.t" in fig, "the life has to come from the scene clock"
+    # ...except where the person asked for that
+    assert "still=CREW.static" in fig and "still?0:" in fig, \
+        "reduced motion must still hold them still"
+
+
+def test_each_specialist_gets_a_colour_and_two_never_share_one():
+    """A hash alone collides about as often as birthdays do: with four figures on
+    stage, two came out the same green. Two specialists in one colour is the exact
+    opposite of what a colour per specialist is for."""
+    assert "var CREW_HUES=[" in CREW, "no palette"
+    draw = CREW_CODE.split("function crewDraw(")[1]
+    assert "used[" in draw and "hueOf" in draw, "hues are not de-duplicated across the row"
+    assert "AGENT_IX" in draw, "the agent's hue must be reserved, not raced for"
+    # a curated set, not a free hash — a random hue lands on bile green often enough
+    hues = CREW.split("var CREW_HUES=[")[1].split("]")[0]
+    assert len([h for h in hues.split(",") if h.strip()]) >= 6
+
+
+def test_working_reads_as_more_colour_not_more_white():
+    """Raising lightness alone took every figure towards beige, so a stage with
+    three of them busy read as one washed pastel repeated."""
+    ink = CREW_CODE.split("function crewInk(")[1][:600]
+    assert "satLit" in ink and "satDim" in ink, "saturation must change with state"
+    lit = int(re.search(r"satLit:\s*light\s*\?\s*(\d+)", ink).group(1))
+    dim = int(re.search(r"satDim:\s*light\s*\?\s*(\d+)", ink).group(1))
+    assert lit > dim, "a working figure must be MORE saturated, not just paler"

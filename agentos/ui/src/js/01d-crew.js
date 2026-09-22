@@ -17,11 +17,19 @@
      `fabric_event` named it, raises its arms because a `tool_start` fired, and
      sits down on `flow_done`. If an animation here does not tell you something
      a text label would not have told you faster, it should not be drawn.
-   - **Drawn, not loaded.** Bodies are arcs and rounded rects mixed from the
-     theme's own tokens, with build and hue derived from a hash of the name, so
-     the same specialist looks the same every time. No tileset, no sprite sheet,
+   - **Drawn, not loaded.** A figure is a filled body, a big head and a face with
+     two eyes that blink, in a colour of its own, built from arcs and lines with
+     saturation and lightness taken from the theme. No tileset, no sprite sheet,
      no character pack — which is also why this scene raises no asset-licence
      question and adds no bytes to the wheel.
+   - **They have to read as PEOPLE.** The first cut drew outlined wire bodies,
+     identical in one brass colour, frozen at rest, with a single red dot in the
+     middle of each face, and the report on it was one word: scary. Four things
+     fixed it and all four are load-bearing — a filled body (an outline is a
+     ghost), a colour per specialist that no two share, a face with TWO eyes (one
+     centred mark is a cyclops, so the running light moved above the head), and
+     idle life, because a row of motionless figures staring out of a dark room is
+     a waxwork. `tests/test_immersive.py` pins each one.
 
    Cost, and where it stops: the same budget as the Movement scene, because it
    is the same loop. One viewport canvas, at most 20 frames a second and 12 when
@@ -152,67 +160,152 @@ function crewStep(dt){
   if(CREW.tool&&CREW.tool.at<now-CREW_TOOL_MS)CREW.tool=null;
 }
 /* ---- drawing ---- */
-/* Same palette as the dial, so the two scenes read as one look: brass on
-   graphite after dark, umber on paper in the light theme. A figure's own colour
-   is a small hue shift off brass, never a new colour of its own. */
+/* The palette. The first cut used the dial's single brass on everything, and the
+   result was a row of identical wire outlines with one red dot where a face
+   should be — which reads as a warning symbol, not a colleague, and was reported
+   in one word: scary. Three things fixed it, and all three are here rather than
+   in the drawing, so a future change cannot make only two of them.
+
+   A figure is FILLED, in a colour OF ITS OWN, and has TWO EYES. Filled shapes
+   have weight; an outline is a ghost. A hue per specialist makes a row of them a
+   team rather than a queue. And two eyes are the whole difference between a face
+   and a target — a single centred mark is a cyclops, which is why the running
+   indicator moved off the face entirely and became a light above the head.
+
+   The hues are a small curated set rather than a free hash of the name: a random
+   hue lands on bile green and hospital pink about a sixth of the time, and one
+   bad draw is a desktop somebody switches off. Saturation and lightness come from
+   the theme, not from the table, so the same eight hues sit correctly on either. */
+var CREW_HUES=[34, 12, 172, 264, 96, 330, 202, 48];
 function crewInk(){
   const light=document.documentElement.dataset.theme==='light';
-  return light?{brass:'90,66,20',ruby:'190,40,80',warm:'140,104,40'}
-              :{brass:'232,197,120',ruby:'236,80,120',warm:'240,210,150'};
+  // The crew's plate is a dark room in BOTH themes (immersive-crew.svg), as the
+  // dial's is, so the figures are light-on-dark either way. What the theme
+  // changes is how deep the colour sits — the light theme's page is brighter
+  // around this scene, and the same pastels beside it read washed out.
+  // Working is MORE COLOUR, not more white. Raising lightness alone took every
+  // figure towards beige, so a stage with three of them busy read as one washed
+  // pastel repeated — the opposite of the colour-per-specialist it is there for.
+  return {light,
+    satLit: light ? 62 : 58,  lumLit: light ? 56 : 62,   // working
+    satDim: light ? 40 : 34,  lumDim: light ? 44 : 46,   // standing by
+    brass: light ? '150,116,52' : '232,197,120',
+    ruby:  light ? '212,60,96'   : '236,80,120'};
 }
-function crewText(ctx,txt,x,y,size,ink,alpha,weight,align){
+/* One specialist's colours, stable for its name. The eyes are a deep shade of
+   the figure's OWN hue rather than a literal black — the rule the whole look
+   keeps, and here it also stops eight characters sharing one dead pupil. */
+function crewSkin(ink, h, lit){
+  const sa = lit ? ink.satLit : ink.satDim, l = lit ? ink.lumLit : ink.lumDim;
+  return {hue: h,
+          fill: `hsl(${h} ${sa}% ${l}%)`,
+          line: `hsl(${h} ${sa + 8}% ${l + 16}%)`,
+          dark: `hsl(${h} ${Math.round(sa * .45)}% 14%)`,
+          shade: `hsl(${h} 26% 7%)`};
+}
+/* `ink` is an "r,g,b" triple (the scene's own brass and ruby); `css` overrides it
+   with a ready colour, which is how a name is tinted like the figure it belongs
+   to without every caller having to build a string. */
+function crewText(ctx,txt,x,y,size,ink,alpha,weight,align,css){
   ctx.font=`${weight||500} ${size}px ${CREW.font||'sans-serif'}`;
-  ctx.fillStyle=`rgba(${ink},${alpha})`;ctx.textAlign=align||'center';ctx.textBaseline='middle';ctx.fillText(txt,x,y);
+  ctx.textAlign=align||'center';ctx.textBaseline='middle';
+  if(css){ctx.globalAlpha=alpha;ctx.fillStyle=css;ctx.fillText(txt,x,y);ctx.globalAlpha=1}
+  else{ctx.fillStyle=`rgba(${ink},${alpha})`;ctx.fillText(txt,x,y)}
 }
 /* A stable number from a name, so a specialist's build and stance never change
    between reloads. Cheap 32-bit string hash; nothing depends on its quality. */
 function crewHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
-/* One figure. `p` is 0 at its resting spot and 1 stepped forward; `lift` is the
-   working gesture. Arcs and lines only — no shadow, which would be a blur.
+/* One figure.
+
+   `p` is 0 at its resting spot and 1 stepped forward, `lift` is the working
+   gesture, and everything else on screen comes from CREW.t and the figure's own
+   phase — so a figure is NEVER completely still. That is deliberate and it is
+   the second half of the "scary" fix: at rest the first cut froze every figure
+   into an identical pose, and a row of motionless outlined bodies staring out of
+   a dark room is a waxwork. Breathing, a slow sway and an occasional blink cost
+   three sines and turn the same drawing into somebody waiting.
+
+   Arcs, lines and one flat ellipse — no canvas shadow anywhere, because a shadow
+   is a blur by another name and this layer is re-composited under the parallax.
+   The contact ellipse under the feet is a filled shape at low alpha, which is
+   what stops the figures reading as floating without costing a blur.
 
    The arm is TWO segments with an elbow. A single straight line from shoulder to
-   hand is the cheaper drawing and it is the one that made the first cut read as a
-   row of scarecrows: a straight limb has no pose, so "working" and "standing" came
-   out as the same shape at different angles. An elbow costs one more lineTo. */
-function crewFigure(ctx,x,ground,scale,ink,tone,p,lift,label,sub,lit){
-  const s=scale,head=s*0.28,body=s*0.60;
-  const y=ground-p*s*0.30;                               // forward = up the stage, a little
-  const a=lit?.95:.52+.22*p;
-  const col=lit?ink.warm:ink.brass;
-  const lw=Math.max(1.1,s*.042);
+   hand is the cheaper drawing and it is what made the first cut read as a row of
+   scarecrows: a straight limb has no pose, so "working" and "standing" came out
+   as the same shape at different angles. An elbow costs one more lineTo. */
+function crewFigure(ctx,x,ground,scale,ink,tone,hue,p,lift,label,sub,lit){
+  const s=scale, t=CREW.t, ph=tone*6.283, skin=crewSkin(ink,hue,lit);
+  const still=CREW.static;                       // reduced motion: one pose, no life
+  const breath=still?0:Math.sin(t*1.5+ph);
+  const sway  =still?0:Math.sin(t*0.7+ph)*s*.013;
+  const bob   =lit&&!still?Math.abs(Math.sin(t*3.0+ph))*s*.055:0;
+  const cx=x+sway, y=ground-p*s*.24-bob;
+  // Proportions: a LARGE head on a short body. A small head on long thin legs is
+  // what a horror silhouette is made of, and it is what the first cut drew.
+  const headR=s*.185, legH=s*.15, bw=s*(.26+tone*.05), bh=s*.29+(breath*s*.007);
+  const legTop=y-legH, bodyTop=legTop-bh, headY=bodyTop-headR*.78;
+  const a=lit?1:.86;
   ctx.lineCap='round';ctx.lineJoin='round';
-  // legs — short and set apart by the figure's own build, so a row is not a comb
-  const legTop=y-body*.38,stance=s*(.085+tone*.035);
-  ctx.strokeStyle=`rgba(${col},${a*.55})`;ctx.lineWidth=lw;
+  // the ground contact, so nobody floats
+  if(ctx.ellipse){
+    ctx.beginPath();ctx.ellipse(cx,ground+1,bw*.62,s*.028,0,0,Math.PI*2);
+    ctx.globalAlpha=.30;ctx.fillStyle=skin.shade;ctx.fill();ctx.globalAlpha=1;
+  }
+  ctx.globalAlpha=a;
+  // legs
+  const stance=bw*.30;
+  ctx.strokeStyle=skin.fill;ctx.lineWidth=Math.max(2,s*.055);
   ctx.beginPath();
-  ctx.moveTo(x-stance,y);ctx.lineTo(x-stance*.75,legTop);
-  ctx.moveTo(x+stance,y);ctx.lineTo(x+stance*.75,legTop);ctx.stroke();
-  // body — a rounded column, filled faintly and outlined
-  const bw=s*(0.28+tone*0.07),bh=body*.56,by=legTop;
-  ctx.beginPath();
-  if(ctx.roundRect)ctx.roundRect(x-bw/2,by-bh,bw,bh,bw*.44);
-  else ctx.rect(x-bw/2,by-bh,bw,bh);
-  ctx.fillStyle=`rgba(${col},${a*.15})`;ctx.fill();
-  ctx.strokeStyle=`rgba(${col},${a*.68})`;ctx.lineWidth=lw*.85;ctx.stroke();
-  // arms — hanging at rest, elbow up and hands in toward the work while working
-  const sh=by-bh*.80,el=s*.17,fa=s*.15;
-  ctx.strokeStyle=`rgba(${col},${a*.60})`;ctx.lineWidth=lw*.9;
+  ctx.moveTo(cx-stance,y);ctx.lineTo(cx-stance,legTop);
+  ctx.moveTo(cx+stance,y);ctx.lineTo(cx+stance,legTop);ctx.stroke();
+  // arms — hanging and swinging gently at rest, elbow up and hands in when working
+  const sh=bodyTop+bh*.22, el=s*.15, fa=s*.13;
+  const swing=still?0:Math.sin(t*1.1+ph)*.12;
+  ctx.strokeStyle=skin.fill;ctx.lineWidth=Math.max(2,s*.05);
   [-1,1].forEach(d=>{
-    const sx=x+d*bw*.46;
-    const ex=sx+d*(el*(.30+.22*lift)),ey=sh+el*(.86-.20*lift);   // elbow
-    const hx=ex+d*fa*(.42-.62*lift),hy2=ey+fa*(.80-1.42*lift);   // hand
-    ctx.beginPath();ctx.moveTo(sx,sh);ctx.lineTo(ex,ey);ctx.lineTo(hx,hy2);ctx.stroke();
+    const sx=cx+d*bw*.46;
+    const ex=sx+d*(el*(.34+.24*lift)), ey=sh+el*(.84-.22*lift+swing*d);
+    const hx=ex+d*fa*(.38-.66*lift), hy=ey+fa*(.78-1.46*lift);
+    ctx.beginPath();ctx.moveTo(sx,sh);ctx.lineTo(ex,ey);ctx.lineTo(hx,hy);ctx.stroke();
   });
-  // head — and a ruby spark for the one that is actually running
-  const hy=by-bh-head*.58;
-  ctx.beginPath();ctx.arc(x,hy,head*.5,0,Math.PI*2);
-  ctx.fillStyle=`rgba(${col},${a*.18})`;ctx.fill();
-  ctx.strokeStyle=`rgba(${col},${a*.75})`;ctx.lineWidth=lw*.85;ctx.stroke();
-  if(lit){ctx.beginPath();ctx.arc(x,hy,head*.17,0,Math.PI*2);ctx.fillStyle=`rgba(${ink.ruby},.9)`;ctx.fill()}
-  // the name, always; the role only for the one stepped forward, where there is room
-  crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),col,lit?.85:.38,600);
-  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.38,Math.max(8,s*.10),col,.32*p,500);
-  return hy;
+  // body — FILLED. An outline is a ghost; a filled shape has weight.
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bh,bw*.40);
+  else ctx.rect(cx-bw/2,bodyTop,bw,bh);
+  ctx.fillStyle=skin.fill;ctx.fill();
+  // head
+  ctx.beginPath();ctx.arc(cx,headY,headR,0,Math.PI*2);
+  ctx.fillStyle=skin.line;ctx.fill();
+  // the face. Two eyes that blink, and a mouth that is a little wider while
+  // working — the running indicator is the light ABOVE the head, never a mark
+  // in the middle of the face.
+  const blinking=!still&&((t*.31+tone*3)%1)<.045;
+  const er=headR*.145, eh=blinking?er*.18:er;
+  ctx.fillStyle=skin.dark;
+  [-1,1].forEach(d=>{
+    ctx.beginPath();
+    if(ctx.ellipse)ctx.ellipse(cx+d*headR*.36,headY-headR*.06,er,eh,0,0,Math.PI*2);
+    else ctx.arc(cx+d*headR*.36,headY-headR*.06,eh,0,Math.PI*2);
+    ctx.fill();
+  });
+  // The mouth is drawn on EVERY frame, including a blink. Tying it to the eyes
+  // made a blinking figure lose its mouth for a tenth of a second, which does not
+  // read as a blink — it reads as the face coming apart.
+  ctx.beginPath();
+  ctx.arc(cx,headY+headR*.16,headR*(lit?.34:.28),lit?.15*Math.PI:.2*Math.PI,lit?.85*Math.PI:.8*Math.PI);
+  ctx.strokeStyle=skin.dark;ctx.lineWidth=Math.max(1,headR*.11);ctx.stroke();
+  // working: a status light above the head, pulsing. Off the face on purpose.
+  if(lit){
+    const pulse=still?1:.6+.4*Math.sin(t*4+ph);
+    ctx.beginPath();ctx.arc(cx,headY-headR*1.32,Math.max(2.5,s*.036),0,Math.PI*2);
+    ctx.fillStyle=`rgba(${ink.ruby},${.55+.45*pulse})`;ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // the name, tinted like its owner; the role only for the one stepped forward
+  crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),null,lit?.95:.55,600,'center',skin.line);
+  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.38,Math.max(8,s*.10),null,.42*p,500,'center',skin.line);
+  return headY;
 }
 function crewDraw(dt){
   const C=CREW,ctx=C.ctx;if(!ctx)return;
@@ -244,32 +337,56 @@ function crewDraw(dt){
     const half=Math.ceil((i+1)/2),side=i%2?1:-1;
     slots.push({c:C.cast[i],x:W/2+side*half*step*0.92});
   }
+  // Hues are handed out across the ROW, not derived per name in isolation. A bare
+  // hash collides about as often as birthdays do: with four figures on stage two
+  // of them came out the same green, and two specialists in one colour is the
+  // exact opposite of what a colour per specialist is for. The agent takes its
+  // hue first so it is stable whoever else is on stage, and each specialist takes
+  // the first free hue from where its own hash points — so a name still decides
+  // the colour, and adding a colleague never recolours the people already there.
+  // The agent takes the teal the rest of this desktop is branded in, so the
+  // figure in the middle reads as THIS machine's agent and not as one more
+  // specialist that happens to be bigger.
+  const AGENT_IX=2, AGENT_HUE=CREW_HUES[AGENT_IX], used={};
+  used[AGENT_IX]=1;
+  const hueOf=[];
+  for(let i=0;i<n;i++){
+    const want=Math.floor(crewHash(C.cast[i].name)*CREW_HUES.length)%CREW_HUES.length;
+    let ix=want;
+    for(let k=0;k<CREW_HUES.length;k++){const j=(want+k)%CREW_HUES.length;if(!used[j]){ix=j;break}}
+    used[ix]=1;hueOf.push(CREW_HUES[ix]);
+  }
   // the agent — larger, centre, awake while any turn runs
   const aLift=running?.5+.5*Math.sin(C.t*Math.PI*1.1):0;
   const aBreath=running?0:.5+.5*Math.sin(C.t*Math.PI*.55);
-  const headY=crewFigure(ctx,W/2,ground,scale*1.22,ink,.5,running?.55:0,running?aLift*.5:0,
-    who,'',running);
-  if(running){ // a quiet halo, drawn as a ring rather than a shadow
-    ctx.beginPath();ctx.arc(W/2,headY,scale*.38+aBreath*2,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(${ink.ruby},.18)`;ctx.lineWidth=1;ctx.stroke();
+  const headY=crewFigure(ctx,W/2,ground,scale*1.22,ink,.5,AGENT_HUE,running?.55:0,
+    running?aLift*.5:0,who,'',running);
+  if(running){ // a quiet ring round the agent's head — a ring, never a shadow
+    ctx.beginPath();ctx.arc(W/2,headY,scale*1.22*.30+aBreath*2,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${ink.ruby},.22)`;ctx.lineWidth=1.5;ctx.stroke();
   }
   // the cast
-  slots.forEach(s=>{
+  slots.forEach((s,i)=>{
     const lit=!!C.busy[s.c.name];
     const since=lit?(now-C.busy[s.c.name])/CREW_WORK_MS:1;
     const p=lit?Math.min(1,(1-since)*3):0;               // step forward, then ease back
     const lift=lit?.5+.5*Math.sin(C.t*Math.PI*1.6+crewHash(s.c.name)*6):0;
-    crewFigure(ctx,s.x,ground,scale,ink,crewHash(s.c.name),p,lift,
+    crewFigure(ctx,s.x,ground,scale,ink,crewHash(s.c.name),hueOf[i],p,lift,
       s.c.name.replace(/[-_]/g,' ').slice(0,18),s.c.role,lit);
   });
-  // the tool that just ran, above whoever ran it — the one label that carries news
+  // the tool that just ran, above whoever ran it — the one label that carries news.
+  // Tinted like that figure, so with three working at once the name and the person
+  // it belongs to are one glance rather than two.
   if(C.tool){
     const age=(now-C.tool.at)/CREW_TOOL_MS,fade=Math.max(0,1-age);
     const owner=C.tool.who?slots.find(s=>s.c.name===C.tool.who):null;
-    const tx=owner?owner.x:W/2,ty=ground-scale*(owner?1.35:1.75)-6;
-    crewText(ctx,C.tool.name,tx,ty,Math.max(9.5,scale*.125),ink.warm,.85*fade,600);
-    ctx.beginPath();ctx.moveTo(tx,ty+scale*.10);ctx.lineTo(tx,ty+scale*.17);
-    ctx.strokeStyle=`rgba(${ink.warm},${.5*fade})`;ctx.lineWidth=1;ctx.stroke();
+    const sc=owner?scale:scale*1.22;
+    const skin=crewSkin(ink,owner?hueOf[slots.indexOf(owner)]:AGENT_HUE,true);
+    // clear of the status light, which sits at ~0.87 of a figure's height
+    const tx=owner?owner.x:W/2, ty=ground-sc*1.24;
+    crewText(ctx,C.tool.name,tx,ty,Math.max(9.5,scale*.125),null,.9*fade,600,'center',skin.line);
+    ctx.beginPath();ctx.moveTo(tx,ty+scale*.085);ctx.lineTo(tx,ty+scale*.14);
+    ctx.globalAlpha=.55*fade;ctx.strokeStyle=skin.line;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
   }
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.

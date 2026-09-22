@@ -302,12 +302,25 @@ half-built thing described as finished is the failure this document was written 
   above and is the one thing here taken from the other project's *look* rather than its
   engineering. It is their office floor with the parts removed that this project's own
   rules forbid: the cast is `/api/subagents` and nothing else, so an empty roster draws
-  the agent alone and says so; the figures are drawn from theme tokens rather than loaded
-  from a tileset, so there is no asset licence to carve out and nothing added to the
-  wheel; and it rides the Movement scene's loop, so it inherits the whole cost argument
-  (measured on this machine: 19.3 fps against a ceiling of 20, 0.2 ms a frame, zero frames
-  under a maximised window or a hidden tab, one still frame under reduced motion). Eight
-  tests in `tests/test_immersive.py`.
+  the agent alone and says so; the figures are drawn rather than loaded from a tileset, so
+  there is no asset licence to carve out and nothing added to the wheel; and it rides the
+  Movement scene's loop, so it inherits the whole cost argument (measured on this machine:
+  17.3 fps against a ceiling of 20, 0.4 ms a frame, zero frames under a maximised window
+  or a hidden tab, one still frame under reduced motion). Thirteen tests in
+  `tests/test_immersive.py`.
+
+  The first cut of it is worth recording, because it is the lesson the whole scene turns
+  on. Reusing the dial's single brass for everything produced outlined wire bodies,
+  identical in colour, frozen between events, each with one red dot where a face would be
+  — and the report on it was one word: *scary*. Nothing about it was wrong as
+  instrumentation; every mark still meant something real. It was simply a drawing of
+  principals rather than of people, and a desktop full of those is one somebody switches
+  off. The fix was four things, each now pinned by a test: a FILLED body (an outline is a
+  ghost), a colour per specialist that no two on stage share (a bare hash collides like
+  birthdays — two of four came out the same green), a face with TWO eyes (a single centred
+  mark is a cyclops, so the running indicator moved above the head), and idle life, since
+  a row of motionless figures staring out of a dark room is a waxwork. The cost of all
+  four together was 0.2 ms a frame.
 
 Still open from the list, untouched: cost reconciliation from executor transcripts (3),
 per-specialist git worktrees (4), more executors through the run bridge (5), the UI string

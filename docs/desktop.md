@@ -216,13 +216,18 @@ It was built ground-up in five phases, each judged in a real browser and by the 
 - **A third scene: Crew.** The same picker draws your roster instead — one small figure for every
   subagent in Team, your agent larger in the middle. They rest until something happens: a figure
   steps forward and brightens when its specialist starts working, with the tool it just called named
-  above its head, and sits back down when the run ends. The figures are drawn, not loaded — bodies
-  and heads mixed from the theme's own colours, with build and stance derived from a hash of the
-  name so a specialist looks the same every time — so nothing is downloaded, nothing is licensed
-  from anybody, and the whole scene costs what the dial costs (measured: 19.3 fps against a ceiling
-  of 20, 0.2 ms a frame, and zero frames under a maximised window).
+  above its head, and sits back down when the run ends. Nobody is ever completely still: they
+  breathe, sway and blink while they wait, and hold still only under reduced motion.
 
-  ![The Crew scene: four drawn figures on a dark stage — writer, researcher, Aria in the middle, validator — with the researcher stepped forward, lit, and "fetch url" named above its head](screenshots/crew-scene.png)
+  Each specialist has a colour of its own that no two on stage share, and your agent takes the
+  teal the rest of the desktop is branded in. The figures are drawn, not loaded — filled bodies,
+  faces and limbs built from arcs and lines, with saturation and lightness from the theme and
+  build and stance from a hash of the name, so a specialist looks the same every time. Nothing is
+  downloaded, nothing is licensed from anybody, and the whole scene costs what the dial costs
+  (measured: 17.3 fps against a ceiling of 20, 0.4 ms a frame, zero frames under a maximised
+  window).
+
+  ![The Crew scene: four small drawn characters on a dark stage — a green writer, a violet researcher, a teal Aria in the middle and a tan validator, each with a face — the researcher stepped forward and lit, with a status light above its head and "fetch url" named above that](screenshots/crew-scene.png)
 
   **The cast is the real one.** Every figure is a subagent this machine actually has, so with none
   yet you get your agent alone and a line saying so, rather than a room of colleagues who do not
