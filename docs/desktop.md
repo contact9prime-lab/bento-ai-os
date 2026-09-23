@@ -219,17 +219,15 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   above its head, and sits back down when the run ends. Nobody is ever completely still: they
   breathe, sway and blink while they wait, and hold still only under reduced motion.
 
-  They are small pixel-art people. Each one is built from a recipe seeded by its name — a skin
-  tone, a hair style and colour, glasses or not, trousers — and wears a shirt in that specialist's
-  own colour, which no two on stage share; your agent wears the teal the rest of the desktop is
-  branded in. Every figure has a one-pixel outline and three tones of light per material, and is
-  scaled by a whole number with smoothing off, so it stays crisp from a phone to a 4K panel.
-  Nothing is loaded — no tileset, no sprite sheet, no licensed character art — so nothing is
-  downloaded and a specialist is the same person on every reload. Each frame is painted once and
-  cached, which makes this cheaper than the dial it sits beside (measured: 20 fps against a
-  ceiling of 20, 0.26 ms a frame, zero frames under a maximised window).
+  They are the same pixel-art people you see everywhere else on this desktop (see
+  [Characters](#characters) below): the server draws each one once from its stored recipe and the
+  stage blits frames from that sheet, scaled by a whole number with smoothing off, so they stay crisp
+  from a phone to a 4K panel. The stage is also where the roster changes: a specialist made while it
+  is on walks in from the edge and says **hello!**, and one whose work finished says **done ✓**. Both
+  are events, not decoration. It costs what the dial costs (measured: 20 fps against a ceiling of 20,
+  0.26 ms a frame, zero frames under a maximised window).
 
-  ![The Crew scene: four small pixel-art people on a dark stage — a mint-haired writer in green, a grey-haired researcher in glasses and purple, Aria in the middle with blue hair and a teal shirt, and a curly-haired validator in gold — each waving one arm, with the researcher's tool, kg query, named above its head](screenshots/crew-scene.png)
+  ![The Crew scene: Aria in the middle in teal, the validator saying hello, the researcher stepped forward with fetch url named above its head, and the writer saying done](screenshots/crew-scene.png)
 
   **The cast is the real one.** Every figure is a subagent this machine actually has, so with none
   yet you get your agent alone and a line saying so, rather than a room of colleagues who do not
@@ -243,6 +241,47 @@ It was built ground-up in five phases, each judged in a real browser and by the 
 It is remembered by the browser, like the theme, so a phone looking at the same desktop can keep
 the plain one. There is no terminal equivalent — a TUI has no wallpaper or glass — and the switch
 says so.
+
+## Characters
+
+Everybody on this machine has a small pixel-art character: **you**, **your agent**, and **every
+specialist** in Missions. It is the same character everywhere it appears — beside each message in
+Chat, on the approval card when it asks for something, on its lines in Logs, on its card in
+Missions → Build → Agents, on the home line, and on the Crew stage — so you learn who is who at a
+glance instead of reading names.
+
+![Chat with faces: you, a reply from the validator in its own face, and the writer asking for approval](screenshots/characters-chat.png)
+
+- **Generated, then kept.** A new specialist gets a character the first time anything looks at the
+  roster — a skin tone, a hair style and colour, glasses or not, trousers, and a shirt colour that no
+  other agent on this machine is wearing. Your agent always wears the desktop's teal. The recipe is
+  stored, so adding a colleague never recolours the people already there.
+- **Change anybody.** Click a face in Settings → Appearance → Characters, or **Look** on a
+  specialist's card. Every choice is saved the moment you click it and every surface changes as you
+  pick; **Surprise me** is a new look in the same shirt colour. Or ask: *"give the researcher
+  glasses"* — the agent has a `set_avatar` tool, gated like every other, that chooses from exactly the
+  same set.
+- **Yours, not a space's.** Characters live in your own database; switching project does not change
+  who your colleagues look like, and another account on this machine has its own.
+- **Only people get faces.** A flow, an app or the system is not a person, and its log lines stay
+  plain. **Faces beside messages** (Settings → Appearance) turns them off in Chat, Logs and
+  approvals if you would rather read text.
+
+![The character editor: a large animated figure beside skin, hair, style, shirt and trouser choices](screenshots/characters-editor.png)
+
+![Logs with the face of whoever acted on each line](screenshots/characters-logs.png)
+
+**In a terminal**, `bento avatar` draws the same characters in half-block pixels from the same
+grid, and edits them with the server down:
+
+```
+bento avatar                       # everybody, side by side
+bento avatar show researcher
+bento avatar set researcher hair=pink style=bun glasses=yes
+bento avatar reroll writer
+```
+
+![bento avatar list: six faces in a terminal](screenshots/characters-terminal.png)
 
 What it costs, measured with five windows open in software-rendered Chromium (the Pi case; a
 laptop GPU draws a blur in a few milliseconds):

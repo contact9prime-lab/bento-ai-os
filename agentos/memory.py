@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS brief_items (
     updated_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_brief_day ON brief_items(day, state);
+-- Every agent's character (avatars.py): your agent, you, and each specialist. One row
+-- per person, generated the first time they are seen and then KEPT, so an edit sticks
+-- and a specialist's colour does not move when a colleague is added. No space_id on
+-- purpose: who your colleagues look like does not change with the project you are in.
+CREATE TABLE IF NOT EXISTS avatars (
+    key TEXT PRIMARY KEY,        -- '@agent', '@me', or a specialist's name
+    recipe TEXT DEFAULT '{}',    -- JSON: skin, hair, style, pants, glasses, blush, hue
+    updated_at REAL
+);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT,
@@ -2301,6 +2310,29 @@ class Store:
                 d["options"] = []
             out.append(d)
         return out
+
+    # ---- characters (avatars.py owns what a recipe means; this only keeps them) ----
+    def avatar_get(self, key: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM avatars WHERE key=?", (key,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["recipe"] = json.loads(d.get("recipe") or "{}")
+        except Exception:
+            d["recipe"] = {}
+        return d
+
+    def avatar_put(self, key: str, recipe: dict) -> None:
+        self.db.execute("INSERT INTO avatars(key, recipe, updated_at) VALUES (?,?,?) "
+                        "ON CONFLICT(key) DO UPDATE SET recipe=excluded.recipe, "
+                        "updated_at=excluded.updated_at",
+                        (key, json.dumps(recipe, sort_keys=True), time.time()))
+        self.db.commit()
+
+    def avatar_all(self) -> list[dict]:
+        return [self.avatar_get(r["key"]) for r in
+                self.db.execute("SELECT key FROM avatars ORDER BY key").fetchall()]
 
     def brief_get(self, bid: str) -> dict | None:
         rows = self.brief_items(limit=100000)

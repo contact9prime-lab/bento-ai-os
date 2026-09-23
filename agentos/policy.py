@@ -182,6 +182,10 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         elif name in ("mail_search", "mail_read") and args.get("folder"):
             res = f"mail:{str(args.get('folder')).lower()}"
         return action, res
+    # A character is its own capability: "may restyle the crew" should be grantable, and
+    # refusable, apart from every other tool — a cosmetic change is still a change.
+    if name == "set_avatar":
+        return "avatar.write", f"avatar:{args.get('who') or '*'}"
     if name in _SPACE:
         action, res = _SPACE[name]
         if not res:

@@ -91,7 +91,10 @@ function buildApprovalBox(ev,cur){
   const detail=ev.name==='run_command'?(ev.args.command||'')
               :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
-  box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+  // the face of whoever is asking: your agent, or the specialist that wants this
+  const askKey=!ev.offer||ev.offer.principal_kind==='user'?'@agent'
+    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id:'';
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelector('.always').onclick=async()=>{
@@ -236,14 +239,16 @@ function handle(ev){
       if(_cur){
         CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
         const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
-        if(who)who.innerHTML=engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model);
+        if(who)who.innerHTML=curWho();
       }
       break;}
     case 'turn_start':{
       if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
-                          model:ev.model==='claude-code'?'':(ev.model||'')};
+                          model:ev.model==='claude-code'?'':(ev.model||''),
+                          // `@researcher …` is the researcher answering, in its own face
+                          speaker:ev.speaker||''};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);}
       if(_cur)setRunning(true);
       updateSpin();
@@ -294,7 +299,7 @@ function handle(ev){
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
       // data-t0 is what makes a four-minute call look different from a four-second
       // one: actPaintTimers ages every open call once a second, wherever it is drawn
-      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'tool_end':{
@@ -446,7 +451,10 @@ function handle(ev){
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
       fabricLiveRefresh(); break;
-    case 'fabric_defs': refreshApp('fabric'); break;
+    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
+    // a character changed (the editor, the agent's set_avatar, a reroll): every face
+    // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst
       // version of this feature is one where they find out by the thing being broken.
@@ -533,6 +541,13 @@ function flushText(){
     curBody.parentNode.insertBefore(d,curBody);}
   curText=''; if(curBody)curBody.innerHTML='';
 }
+/* Who is answering the turn in progress: a specialist addressed by name, in
+   its own face, or the agent labelled with whatever engine is running it. */
+function curWho(){
+  const sp=CUR_ENGINE.speaker;
+  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' · '+esc(String(CUR_ENGINE.model).split('/').pop()):''))
+    :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
+}
 function startAssistant(){
   if(!feed)return;
   removeWorking();
@@ -540,7 +555,7 @@ function startAssistant(){
   const m=document.createElement('div');m.className='msg assistant';
   // Labelled for whoever is answering THIS turn — engine_info relabels it the
   // moment a forwarded run says which model it woke up on.
-  m.innerHTML='<div class="who">'+engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model)+'</div>';
+  m.innerHTML='<div class="who">'+curWho()+'</div>';
   curBody=document.createElement('div');curBody.className='body';
   m.appendChild(curBody);feed.appendChild(m);curThink=null;
 }

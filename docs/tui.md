@@ -99,6 +99,22 @@ It refuses rather than guessing. A `bento job add` that silently landed in the w
 person's database would be discovered weeks later by whoever did not get their briefing.
 The same username and password is the sign-in from a phone — see [Users](users.md).
 
+## Characters in a terminal
+
+The pixel-art characters the desktop shows beside messages are drawn here too, in
+half blocks from the same pixel grid — so the researcher on an SSH session is the
+same person as on the desktop and the phone:
+
+```bash
+bento avatar                                   # everybody's face, side by side
+bento avatar show writer                       # one, full height
+bento avatar set me hair=blue style=bob        # the same choices as the editor
+bento avatar reroll researcher                 # a new look, same shirt colour
+```
+
+It reads and writes the rows directly, so it works with the server down. Without
+colour (a pipe, `NO_COLOR`) it describes each character in words instead.
+
 ## Notes
 
 - Chat streams incrementally and shows model heartbeats ("waiting for the model — 20s…")

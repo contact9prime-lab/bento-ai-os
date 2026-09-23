@@ -135,7 +135,11 @@ function homeRender(){
   const brain=immersiveBrainText();
   const line=h.querySelector('.hm-now');
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
-  line.textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  // the agent's face on its own line: the one on the stage and beside every reply.
+  // Rewritten only when the words change, so the image is not refetched every minute.
+  const said=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  const html=(typeof avatarImg==='function'?avatarImg('@agent','av-home'):'')+esc(said);
+  if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
   line.classList.toggle('br-open',!n&&!!br);
   line.onclick=(!n&&br)?()=>openApp('brief'):null;
   h.hidden=false;

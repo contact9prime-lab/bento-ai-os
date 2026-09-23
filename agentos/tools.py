@@ -3024,6 +3024,53 @@ class Toolbox(usersmod.Scoped):
             return "[error] action must be focus | close | float | tile | move_to_workspace"
         return f"{action}: {win.get('title') or wid}" if ok else f"[error] {msg}"
 
+    async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
+                         shirt: str = "", pants: str = "", glasses=None, blush=None,
+                         reroll: bool = False) -> str:
+        """Look at, restyle or reroll somebody's character — the agent's half of the
+        character editor (the parity law: what the UI can do is also a gated tool).
+
+        It can only choose from the same closed set the editor offers (avatars.py
+        validates), and a refusal names the choices, so the model can correct itself.
+        With no changes it describes the character and the options — which is how the
+        model finds out what "curly" or "mint" are without guessing.
+        """
+        from . import avatars as av
+        w = (who or "").strip()
+        low = w.lower().lstrip("@")
+        agent_name = (self.cfg.get("agent_name") or "").lower()
+        key = (av.ME if low in ("me", "you", "user", "myself") else
+               av.AGENT if low in ("agent", "yourself", "self", "") or (agent_name and low == agent_name)
+               else w)
+        if not av.is_known(self.store, self.cfg, key):
+            names = ", ".join(p["label"] for p in av.principals(self.store, self.cfg))
+            return f"[error] nobody called '{who}' has a character here — choose one of: {names}"
+        patch = {k: v for k, v in (("skin", skin), ("hair", hair), ("style", style),
+                                   ("shirt", shirt), ("pants", pants)) if v}
+        if glasses is not None:
+            patch["glasses"] = glasses
+        if blush is not None:
+            patch["blush"] = blush
+        try:
+            if reroll:
+                rec = av.reroll(self.store, self.cfg, key)
+            elif patch:
+                rec = av.update(self.store, self.cfg, key, patch)
+            else:
+                av.ensure(self.store, self.cfg)
+                pal = av.palette()
+                return (f"{w or 'your agent'} looks like: {av.describe(av.recipe_for(self.store, key))}. "
+                        f"You can set skin ({', '.join(x['name'] for x in pal['skin'])}), "
+                        f"hair ({', '.join(x['name'] for x in pal['hair'])}), "
+                        f"style ({', '.join(pal['style'])}), shirt ({', '.join(x['name'] for x in pal['shirt'])}), "
+                        f"pants ({', '.join(x['name'] for x in pal['pants'])}), glasses and blush (yes/no), "
+                        f"or reroll for a new look in the same shirt colour.")
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            asyncio.create_task(self.broadcast({"type": "avatars", "key": key}))
+        return f"Done — {w or 'your agent'} now: {av.describe(rec)}."
+
     async def list_themes(self) -> str:
         """The theme ids control_desktop(action='apply_theme') accepts."""
         custom = [t["name"] for t in self.store.list_themes()]
@@ -4335,6 +4382,22 @@ DESKTOP_TOOL_SCHEMAS = [
                        "enum": ["focus", "close", "float", "tile", "move_to_workspace"]},
             "workspace": {"type": "string", "description": "For move_to_workspace: the target workspace name/number."}},
             "required": ["window_id", "action"]},
+    },
+    {
+        "name": "set_avatar",
+        "description": "Look at or restyle a character — every agent on this machine (you, the "
+                       "user, and each specialist) has a small pixel-art character shown in the Crew "
+                       "scene, beside messages in Chat and Logs, and on Missions cards. Call with just "
+                       "`who` to hear how they look now and every option. Changes pick from a fixed "
+                       "set: skin, hair colour, hair style, shirt colour, pants, glasses, blush — or "
+                       "reroll for a new look in the same shirt colour.",
+        "parameters": {"type": "object", "properties": {
+            "who": {"type": "string", "description": "'me' for the user, 'yourself' for you, or a specialist's name."},
+            "skin": {"type": "string"}, "hair": {"type": "string"}, "style": {"type": "string"},
+            "shirt": {"type": "string"}, "pants": {"type": "string"},
+            "glasses": {"type": "boolean"}, "blush": {"type": "boolean"},
+            "reroll": {"type": "boolean", "description": "A new random look, keeping the shirt colour."}},
+            "required": ["who"]},
     },
     {
         "name": "list_themes",

@@ -149,6 +149,10 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/wallpaper/generate` | generate a wallpaper from a prompt |
 | POST | `/api/wallpaper/system` | adopt the host wallpaper |
 | GET | `/api/wallpapers`, `/{id}`, POST `/{id}/set`, DELETE `/{id}` | wallpaper gallery |
+| GET | `/api/avatars` | every character (you, your agent, each specialist) with its recipe, version and description, plus the palette the editor offers; generates any that are new |
+| GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet |
+| PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
+| POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
 
 ### Integrations
 | Method | Path | Purpose |
@@ -204,6 +208,6 @@ itself. Risk level determines whether they need approval (see [Safety](agent.md#
 `create_app`, `pin_widget`, `configure_agentos`, `add_mcp_server`, `manage_models`, `use_skill`,
 `save_skill`, `delete_skill`, `schedule_task`, `launch_native_app`, `system_control`,
 `telegram_send`, `whatsapp_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
-`set_wallpaper`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
+`set_wallpaper`, `set_avatar`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
 
 Get the live list (including MCP tools) from `GET /api/tools`.

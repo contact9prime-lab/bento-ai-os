@@ -1170,6 +1170,36 @@ Claude Code reading the screenshots from the workspace); its first two fixes —
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
 
+## Characters: one painter, one recipe, every surface
+
+`agentos/avatars.py` is the only place a character exists. You, your agent (`@agent`) and every
+specialist have a stored recipe (skin, hair, style, trousers, glasses, blush, shirt hue) in the
+`avatars` table, and the server paints it: PNGs for the desktop (`/api/avatar.png`, a frame, the
+face or the four-frame sheet), half blocks for `bento avatar`. Chat, the approval card, Logs, the
+Missions roster, the home line, Settings and the Crew stage all show those — through ONE door on
+the page, `avatarImg()` in `00e-avatars.js`. Full story in `docs/desktop.md` → Characters. Four
+things keep it true:
+
+- **There is no second painter.** The Crew scene drew its own people for four passes and was
+  deleted down to a blitter over the server's sheet, because two painters are two definitions of a
+  face and the stage and the chat would drift apart on the first edit. `tests/test_immersive.py`
+  refuses a painter coming back into `01d-crew.js`; `tests/test_avatars.py` refuses a surface
+  building its own `/api/avatar.png` URL.
+- **Persisted, not re-derived; per person, not per space.** Generated from a hash on first sight
+  and then STORED, so an edit sticks and adding a colleague recolours nobody. Shirt hues are handed
+  out at generation so no two live agents share one, and `@agent` is always teal. The rows are in
+  the user's own database and nothing reads `space_id` — switching project never changes who your
+  colleagues look like.
+- **A closed set, validated in one place.** The editor, `set_avatar` (its own action,
+  `avatar.write`) and the CLI can only choose from the palettes, and a refusal names the choices so
+  the model can correct itself. Only characters get faces (`avatarKeyOf`): a flow, an app or the
+  system is not a person.
+- **The painter's rules were each learned from a screenshot**: two eyes and nothing in the middle
+  of the face; the eye ink chosen against the SKIN (the outline shade vanished on deep skin); a
+  lip-coloured mouth (darker skin under a nose read as a goatee); glasses as rim + pale lens (a
+  full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
+  five skins before believing it.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

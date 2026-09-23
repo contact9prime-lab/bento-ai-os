@@ -322,152 +322,93 @@ def test_the_crew_file_keeps_the_bundle_rules():
     assert "var CREW=" in CREW
 
 
-
-
-def test_each_specialist_gets_a_colour_and_two_never_share_one():
-    """A hash alone collides about as often as birthdays do: with four figures on
-    stage, two came out the same green. Two specialists in one colour is the exact
-    opposite of what a colour per specialist is for."""
-    assert "var CREW_HUES=[" in CREW, "no palette"
-    draw = CREW_CODE.split("function crewDraw(")[1]
-    assert "used[" in draw and "hueOf" in draw, "hues are not de-duplicated across the row"
-    assert "AGENT_IX" in draw, "the agent's hue must be reserved, not raced for"
-    # a curated set, not a free hash — a random hue lands on bile green often enough
-    hues = CREW.split("var CREW_HUES=[")[1].split("]")[0]
-    assert len([h for h in hues.split(",") if h.strip()]) >= 6
-
-
-
 def _figure():
     return CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
 
 
 # ---------------------------------------------------------------------------
-# the crew are PEOPLE, drawn as pixel art
+# the crew are the SAME people as everywhere else
 #
-# It took four passes to get here, and each one taught a rule that is pinned
-# below. Wire outlines in one colour with a dot for a face read as SCARY. Filled
-# vector blobs read as an infographic. Outlined vector cartoons read as mascots
-# — one colour head to toe, a ball for a head. What reads as a person at forty
-# pixels is a person's PARTS: skin that is a skin colour, hair that is its own
-# shape, a shirt, trousers, shoes. So each figure is a small pixel-art sprite
-# built from a recipe, painted once and blitted at a whole-number scale.
+# Four passes of drawing taught the rules for a person at forty pixels (two
+# eyes, a lip-coloured mouth, glasses that do not mask, hands and shoes, one
+# outline pass, a colour per specialist). Those rules now live with the one
+# painter, in agentos/avatars.py, and are pinned in tests/test_avatars.py. What
+# is pinned HERE is that this scene has no painter of its own — a second one
+# would be a second definition of a face — and the rules about MOVEMENT.
 # ---------------------------------------------------------------------------
 
-def _paint():
-    return CREW_CODE.split("function crewPaint(")[1].split("\nfunction ")[0]
+def test_the_stage_draws_the_server_s_characters_not_its_own():
+    """The researcher on the stage and the researcher in Chat must be one person.
+    That is only true while there is one painter, so this file must not grow one
+    back — and the colour it tints a name with is the character's stored hue."""
+    for gone in ("function crewPaint(", "function crewRecipe(", "CREW_SKINS", "CREW_HUES",
+                 "new ImageData("):
+        assert gone not in CREW_CODE, f"{gone}: the scene is painting people again"
+    sheet = CREW_CODE.split("function crewSheet(")[1].split("\nfunction ")[0]
+    assert "avatarSrc(key,{sheet:1})" in sheet, "the sheet must be the server's PNG"
+    assert "e.v!==v" in sheet, "an edited character must fetch its new sheet"
+    hue = CREW_CODE.split("function crewHueOf(")[1].split("\nfunction ")[0]
+    assert "a.recipe.hue" in hue, "the colour is the character's own, not the scene's"
+    assert "'@agent'" in _figure() or "'@agent'" in CREW_CODE.split("function crewDraw(")[1]
+    # an edit anywhere reaches the stage
+    assert "function crewAvatarsChanged(" in CREW
+    assert "crewAvatarsChanged()" in (UI / "src" / "js" / "00e-avatars.js").read_text()
 
 
-def _figure():
-    return CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
-
-
-def test_a_figure_is_a_recipe_of_a_person_s_parts():
-    """Eight figures have to be eight different people: skin tone, hair style
-    and colour, glasses, trousers — all from the specialist's own seed, so the
-    same specialist is the same person on every reload."""
-    rec = CREW_CODE.split("function crewRecipe(")[1].split("\nfunction ")[0]
-    for part in ("skin", "style", "hair", "pants", "glasses", "shirt"):
-        assert part + ":" in rec or part + "," in rec or f"{part}=" in rec, f"no {part} in the recipe"
-    assert "crewRand(seed)" in rec, "the recipe must come from the specialist's own seed"
-    styles = CREW.split("var CREW_STYLES=[")[1].split("]")[0]
-    assert len(styles.split(",")) >= 6, "too few hair styles to tell a row apart"
-    skins = CREW.split("var CREW_SKINS=[")[1].split("];")[0]
-    assert skins.count("[") >= 5, "people come in more than a couple of skin tones"
-
-
-def test_the_shirt_is_the_specialists_colour_and_the_theme_s():
-    """Skin and hair are properties of PEOPLE, not of a theme — the one declared
-    exception to this look's colour rule — so what carries the specialist's
-    colour, at the theme's saturation, is the shirt. A working figure's shirt is
-    the more saturated one."""
-    rec = CREW_CODE.split("function crewRecipe(")[1].split("\nfunction ")[0]
-    assert "shirt:crewRgb(hue" in rec, "the shirt must be the hue the row handed out"
-    assert "ink.satLit" in rec and "ink.satDim" in rec
-    ink = CREW_CODE.split("function crewInk(")[1][:600]
-    lit = int(re.search(r"satLit:\s*light\s*\?\s*(\d+)", ink).group(1))
-    dim = int(re.search(r"satDim:\s*light\s*\?\s*(\d+)", ink).group(1))
-    assert lit > dim, "working must read as MORE colour, not just paler"
-    # the declared exception is written down where the palettes are
-    assert "properties of\n   PEOPLE, not of a theme" in CREW or "properties of PEOPLE" in CREW
-
-
-def test_every_figure_is_outlined_by_one_pass():
-    """One pass over the finished figure turns every empty pixel that touches it
-    into the line colour — so a new hair style needs no outline of its own and
-    cannot forget one. The line is a deep shade of the figure's own hue."""
-    paint = _paint()
-    assert "alpha[y*W+x-1]" in paint and "alpha[(y-1)*W+x]" in paint, "no outline pass"
-    assert "put(x,y,ln)" in paint
-    assert "line:crewRgb(hue" in CREW_CODE, "the outline must be the figure's own hue, not one black"
-
-
-def test_a_face_is_two_eyes_a_mouth_and_nothing_on_it_that_masks_it():
-    """Two eyes, never one centred mark — that made the first cut frightening,
-    which is why the working light is above the head. The mouth is a LIP colour,
-    because darker skin under a nose read as a goatee. And glasses are a rim and
-    a pale lens: a full frame in the line colour, beside a one-pixel eye, filled
-    the whole eye band and gave a dark-skinned figure no face at all."""
-    paint = _paint()
-    assert "put(6,7,ln)" in paint and "put(9,7,ln)" in paint, "two eyes, mirrored"
-    assert "frame===1" in paint, "no blink frame"
-    mouth = CREW.split("const mouth=")[1].split(";")[0]
-    assert "*.78" in mouth and "*.42" in mouth, "the mouth must be warmer than the skin, not darker"
-    glasses = paint.split("if(rec.glasses){")[1].split("}")[0]
-    assert "lens" in glasses, "glasses need a pale lens"
-    assert "box(x0,9,x1,9,ln)" not in glasses, "a full frame masks the face at this size"
-    fig = _figure()
-    assert "fillRect(cxd-Math.round(q/2),dy-q-u" in fig, "the working light must sit ABOVE the head"
-
-
-def test_limbs_end_in_hands_and_shoes():
-    """A limb that stops in mid-air reads as unfinished, in pixels as in vector."""
-    paint = _paint()
-    assert "box(x0,17,x0+1,17,sk)" in paint and "box(x0,8,x0+1,8,sk)" in paint, "no hands"
-    assert "box(4,23,7,24,ln)" in paint and "box(8,23,11,24,ln)" in paint, "no shoes"
-
-
-def test_it_is_pixel_art_so_it_stays_crisp():
-    """A whole number of device pixels per sprite pixel, with smoothing off —
-    otherwise a forty-pixel figure is a blur. And it moves in whole pixels, the
-    way pixel art does, rather than sliding between them."""
+def test_a_sheet_frame_is_blitted_crisp_at_a_whole_number():
+    """One drawImage per figure from a sub-rect of the sheet, at an integer number
+    of device pixels per sprite pixel with smoothing off — otherwise pixel art is
+    a blur. A sheet that has not arrived draws nothing, never a stand-in."""
     fig = _figure()
     assert "Math.round(s*dpr/" in fig, "the scale must be an integer"
     assert "imageSmoothingEnabled=false" in fig
     assert "setTransform(1,0,0,1,0,0)" in fig, "blit in device pixels, or the integer is lost"
-    assert "Math.round(Math.abs(Math.sin" in fig, "the hop must be in whole pixels"
-
-
-def test_each_frame_is_painted_once_and_the_cache_is_bounded():
-    """A figure on screen is one drawImage. The cache key carries everything that
-    changes the pixels — the theme's lightness included — and it is bounded and
-    dropped when the scene stops, so a roster that churns does not keep every
-    person it ever drew."""
-    spr = CREW_CODE.split("function crewSprite(")[1].split("\nfunction ")[0]
-    for part in ("seed", "hue", "lit", "ink.light", "frame"):
-        assert part in spr.split("const key=")[1].split(";")[0], f"{part} missing from the cache key"
-    assert "CREW_SPRITE_N>" in spr, "the cache has no ceiling"
+    assert "frame*CREW_SPR_W,0,CREW_SPR_W,CREW_SPR_H" in fig, "a frame is a sub-rect of the sheet"
+    assert "if(sheet)" in fig
+    assert fig.count("drawImage(") == 1
     stop = CREW_CODE.split("function crewStop(")[1].split("\nfunction ")[0]
-    assert "CREW_SPRITES={}" in stop, "switching the scene off must let the people go"
-    assert _figure().count("drawImage(") == 1
+    assert "CREW_SHEETS={}" in stop, "switching the scene off must let the people go"
+    assert "fillRect(cxd-Math.round(q/2),dy-q-u" in fig, "the working light sits ABOVE the head"
 
 
 def test_nobody_is_ever_completely_still_except_when_asked():
     """A motionless row is a waxwork: an idle figure breathes a pixel on its own
-    phase and blinks, a working one hops and waves one arm then the other. Under
-    reduced motion it stands still in its first frame."""
+    phase and blinks, a working one hops and waves one arm then the other, a new
+    arrival swings its arms as it walks. Under reduced motion: the first frame."""
     fig = _figure()
-    assert "breath" in fig and "blinking" in fig and "hop" in fig
+    assert "breath" in fig and "blinking" in fig and "hop" in fig and "walking" in fig
     assert "still=C.static" in fig and "still?0:" in fig
-    paint = _paint()
-    assert "frame===2" in paint and "frame===3" in paint, "working has two frames, one arm then the other"
+    assert "Math.round(Math.abs(Math.sin" in fig, "the hop must be in whole pixels"
 
 
 def test_the_shadow_follows_the_step_and_stays_down_through_the_hop():
     """A flat ellipse, never a canvas shadow (a blur under the parallax). At the
-    feet after the step — a figure that walks up the stage and leaves its shadow
-    on the front line hangs like a puppet — and not lifted by the hop, which is
-    the only thing that tells a jump from a float."""
+    feet after the step, and not lifted by the hop — the only thing that tells a
+    jump from a float."""
     fig = _figure()
     assert "ctx.ellipse(x,y+1" in fig
     assert "shadowBlur" not in fig
+
+
+def test_a_newcomer_walks_on_and_nobody_else_moves():
+    """A specialist made while the stage is on walks in and says hello. Nobody
+    walks in on a page load (every reload would be a parade), and the people
+    already there keep their places: sorted afresh, a new name early in the
+    alphabet slid the whole row sideways the moment it arrived."""
+    roster = CREW_CODE.split("async function crewRoster(")[1].split("\nfunction ")[0]
+    assert "if(CREW.known)" in roster, "the first roster must not be an arrival"
+    assert "CREW.arrive[c.name]=now" in roster and "crewSay(c.name," in roster
+    assert "was.indexOf(n)" in roster and ".sort(" in roster, "places must be kept"
+    assert roster.index(".sort(") < roster.index(".slice(0,CREW_MAX)"), \
+        "cap AFTER ordering, or a newcomer can push an old hand off the stage"
+    assert "CREW_WALK_MS" in CREW_CODE.split("function crewDraw(")[1]
+
+
+def test_a_bubble_says_only_what_happened():
+    """Two things are said on the stage: hello on arrival, done when work
+    finished. Both are events; neither is chatter on a timer."""
+    assert "crewSay(who,'done" in CREW_CODE
+    assert CREW_CODE.count("crewSay(") == 3, "one definition, two sayings — nothing else talks"
+    step = CREW_CODE.split("function crewStep(")[1].split("\nfunction ")[0]
+    assert "CREW_SAY_MS" in step, "a bubble must go away"
+

@@ -3149,6 +3149,80 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+def _avatar_cli(args):
+    """`bento avatar` — the crew's characters in a terminal, and the same editor.
+
+    The TUI face of the character feature. The drawing is the SAME pixel grid the
+    desktop's PNGs are cut from, printed two rows per line with half blocks, so the
+    person on an SSH session is the same person as on the desktop and the phone.
+    Without colour (a pipe, NO_COLOR) it prints each character in words instead.
+    Reads and writes the rows directly, so it works with the server down; an open
+    desktop shows an edit made here the next time it loads the crew.
+    """
+    import os as _os
+    from . import avatars as av
+    cfg, store = _open_store(getattr(args, "user", ""))
+    colour = sys.stdout.isatty() and not _os.environ.get("NO_COLOR")
+    people = av.ensure(store, cfg)
+
+    def resolve(name: str) -> str:
+        low = (name or "").strip().lower().lstrip("@")
+        if low in ("me", "you"):
+            return av.ME
+        if low in ("agent", "") or low == (cfg.get("agent_name") or "").lower():
+            return av.AGENT
+        return name
+
+    if args.action == "list":
+        if not colour:
+            for p in people:
+                print(f"  {p['label']:<16} {p['about']}")
+            return
+        # faces side by side, six to a row, names under them
+        for i in range(0, len(people), 6):
+            row = people[i:i + 6]
+            faces = [av.terminal(p["recipe"], crop="face") for p in row]
+            for ln in range(len(faces[0])):
+                print("  " + "  ".join(f[ln] if f[ln].strip() else " " * 14 for f in faces))
+            print("  " + "  ".join(p["label"][:14].center(14) for p in row))
+            print()
+        print("  bento avatar show NAME · set NAME hair=pink style=bun glasses=yes · reroll NAME")
+        return
+
+    key = resolve(args.name)
+    if not av.is_known(store, cfg, key):
+        print(f"nobody called '{args.name}' has a character here — "
+              f"one of: {', '.join(p['label'] for p in people)}")
+        sys.exit(2)
+    label = next(p["label"] for p in people if p["key"] == key)
+    try:
+        if args.action == "reroll":
+            av.reroll(store, cfg, key)
+        elif args.action == "set":
+            patch = {}
+            for kv in args.changes:
+                if "=" not in kv:
+                    print(f"'{kv}' — write changes as field=value, e.g. hair=pink")
+                    sys.exit(2)
+                k, v = kv.split("=", 1)
+                patch[k.strip()] = v.strip()
+            av.update(store, cfg, key, patch)
+    except ValueError as e:
+        print(e)
+        sys.exit(2)
+    rec = av.recipe_for(store, key)
+    if colour:
+        for ln in av.terminal(rec):
+            print("  " + ln)
+    print(f"  {label}: {av.describe(rec)}")
+    if args.action == "show":
+        pal = av.palette()
+        print(f"  set with: skin={'|'.join(x['name'] for x in pal['skin'])}\n"
+              f"            hair={'|'.join(x['name'].replace(' ', '-') for x in pal['hair'])}\n"
+              f"            style={'|'.join(pal['style'])}  shirt={'|'.join(x['name'] for x in pal['shirt'])}\n"
+              f"            pants={'|'.join(x['name'] for x in pal['pants'])}  glasses=yes|no  blush=yes|no")
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -4744,6 +4818,11 @@ def main():
                          choices=["show", "done", "later", "reopen", "decide"])
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
+    p_av.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "reroll"])
+    p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
+    p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes")
+    p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
@@ -4925,6 +5004,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "avatar":
+        _avatar_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "vault":

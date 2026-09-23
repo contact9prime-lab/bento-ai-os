@@ -142,7 +142,7 @@ function rmAttach(i){if(CHAT_ATT){CHAT_ATT.imgs.splice(i,1);CHAT_ATT.render()}}
 function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
-  m.innerHTML='<div class="who">you</div><div class="bubble"></div>';
+  m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';
   m.querySelector('.bubble').textContent=text;
   bubbleImgs(m.querySelector('.bubble'),imgs);
   feed.appendChild(m);
@@ -250,14 +250,20 @@ async function openConv(cid){
   feed.innerHTML='';
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{m.innerHTML='<div class="who">'+msgWho(msg.meta)+'</div>';
+    if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
+    else{const sp=msg.meta&&msg.meta.speaker;
+      // a specialist's reply is stored with a first line naming it and its model;
+      // with its face in the header that line would say the same thing twice
+      let body=msg.content||'', spModel='';
+      if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
+      m.innerHTML='<div class="who">'+(sp?chatWho(sp,'@'+esc(sp)+(spModel?`<span class="whomdl">${esc(spModel)}</span>`:'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
           // a reopened conversation reads the same way a live one did
           const argStr=actDetail(s.name,s.args)
             ||(s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args));
-          card.innerHTML=`<div class="head"><span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
+          // a delegation is a PERSON being handed the work: their face is on the card
+          card.innerHTML=`<div class="head">${s.name==='delegate'?avatarImg((s.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
           card.querySelector('.out').textContent=s.output||'';
           card.querySelector('.head').onclick=()=>card.classList.toggle('open');
           m.appendChild(card);}
@@ -265,7 +271,7 @@ async function openConv(cid){
           const d=document.createElement('div');d.className='steer';
           d.textContent='took in: '+(s.text||'');d.title=s.reason||'';m.appendChild(d);}
       });
-      const b=document.createElement('div');b.className='body';b.innerHTML=md(msg.content||'');m.appendChild(b);}
+      const b=document.createElement('div');b.className='body';b.innerHTML=md(body);m.appendChild(b);}
     feed.appendChild(m);
   });
   // a turn is live in this conversation: replay its buffered stream and keep streaming

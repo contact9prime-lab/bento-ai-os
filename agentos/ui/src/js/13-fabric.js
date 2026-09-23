@@ -20,15 +20,18 @@ function fabTabs(){
 }
 function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
-  const sa=await fetch('/api/subagents').then(r=>r.json());
+  // the roster asks /api/avatars too: that is what gives a specialist made a moment
+  // ago its face, the same one it will wear on the stage and beside its messages
+  const [sa]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),avatarsLoad()]);
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
   const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
-      <div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>
+      ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
         <div class="meta"><b>${esc((s.model||'').split('/').pop()||'inherits OS model')}</b> · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
+      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')

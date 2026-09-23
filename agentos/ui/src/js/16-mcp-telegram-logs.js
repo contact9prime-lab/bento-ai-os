@@ -327,7 +327,7 @@ async function loadLogs(w){
     return `<tr class="lk-${esc(l.kind)}" style="cursor:${keys.length?'pointer':'default'}" onclick="logExpand(this)">
       <td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
       <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span></td>
-      <td>${esc(l.message)}
+      <td>${avatarImg(avatarKeyOf(m.principal),'av-log')}${esc(l.message)}
         ${m.principal?`<span class="badge" style="margin-left:6px">${esc(m.principal)}</span>`:''}
         ${mtxt?`<div class="tools-mini" style="white-space:normal;word-break:break-word">${esc(mtxt.slice(0,220))}${mtxt.length>220?' …':''}</div>
         <pre class="log-full" style="display:none;font-size:11px;background:var(--card,#171b22);border:1px solid var(--line,#232a35);border-radius:8px;padding:8px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(JSON.stringify(m,null,2))}</pre>`:''}</td></tr>`;

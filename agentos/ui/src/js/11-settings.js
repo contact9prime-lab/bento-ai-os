@@ -237,6 +237,23 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* The characters are not part of the immersive look: a face beside a message
+       helps in the standard desktop too, so they have their own group, and their
+       own switch for somebody who would rather read text. The faces shown here are
+       the editor's doors; each specialist's is on its card in Missions → Agents.
+       Terminal: `bento avatar` (list / show / set / reroll) — same recipes. */
+    P.push(pGroup('Characters',[
+      pRow('You and your agent',
+        `<button class="endbtn av-set-btn" onclick="avatarEdit('@me')" title="Change how you look">${avatarImg('@me','av-set')}You</button>`
+        +`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Your agent</button>`,
+        {desc:'You, your agent and every specialist each have one pixel-art character, the same everywhere: Chat, Logs, '
+             +'approvals, Missions and the Crew stage. Click a face to change it. Your agent can change them too '
+             +'("give the researcher glasses"), and so can bento avatar in a terminal. They are yours, not a space\'s.',
+         f:'characters avatars faces pixel art people specialists agent me chat logs crew look'}),
+      pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
+        {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
+         f:'characters avatars faces off plain text chat logs'}),
+    ],{f:'characters avatars faces'}));
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -258,8 +275,8 @@ function setTab(body,all){
              +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
              +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
              +'when this tab is hidden, holds still under reduced motion, and uses no blur. '
-             +'Crew draws the specialists you actually have — one small pixel-art person per subagent in Team — their own skin, hair and '
-             +'a shirt in a colour of their own, and your agent in the middle in the desktop\'s teal. They breathe, sway and blink while '
+             +'Crew draws the specialists you actually have — the same characters as in Chat and Logs (Characters, above) — '
+             +'with your agent in the middle. They breathe, sway and blink while '
              +'they wait; one steps forward and brightens when its specialist starts working, with the tool it just called '
              +'named above its head. With no specialists yet you get your agent alone and a line saying so: a crowd of '
              +'colleagues who do not exist would be a better-looking lie, not a better desktop. Nothing is downloaded — the '
@@ -337,6 +354,8 @@ function setTab(body,all){
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
   const im=main.querySelector('#s-imm');
   if(im)im.onchange=()=>setImmersive(im.checked);
+  const avs=main.querySelector('#s-av-on');
+  if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
   const sc=main.querySelector('#s-imm-scene');
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}

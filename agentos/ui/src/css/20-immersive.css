@@ -451,6 +451,9 @@ body.immersive .msg{margin-bottom:22px}
 body.immersive .msg .who{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:var(--fs-xs);font-weight:600;color:var(--dim);margin-bottom:8px}
 body.immersive .msg.assistant .who::before{content:'';width:22px;height:22px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 50%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+/* the glowing dot stood in for a face; with a character there, the character is the face */
+body.immersive .msg.assistant .who:has(img.av)::before{display:none}
+body.immersive .msg .who img.av-who{margin-right:0}
 body.immersive .msg.user .who{justify-content:flex-end}
 body.immersive .msg.assistant .body{font-size:var(--fs-base);line-height:1.65}
 body.immersive .tool{border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);

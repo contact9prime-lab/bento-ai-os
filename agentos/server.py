@@ -35,6 +35,7 @@ from . import remote as remotemod
 from . import mcpbridge
 from . import accounts as accountsmod
 from . import brief as briefmod
+from . import avatars as avatarsmod
 from . import vault as vaultmod
 from . import signin as signinmod
 from . import mail as mailmod
@@ -8093,6 +8094,57 @@ async def api_app_context(request: Request):
 # Fabric: subagents, flows, runs, observability (the control plane API)
 # ---------------------------------------------------------------------------
 
+# ---- Characters: one face per agent, the same one everywhere (avatars.py) --------------
+
+@app.get("/api/avatars")
+async def api_avatars():
+    """Everybody who has a face, with their character, generating any that are new —
+    so a specialist created by any door has one the first time anything looks."""
+    return {"avatars": avatarsmod.ensure(state["store"], state["cfg"]),
+            "palette": avatarsmod.palette()}
+
+
+@app.get("/api/avatar.png")
+async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: int = 0,
+                         scale: int = 1):
+    """A character as a PNG: one frame, the face, or all frames side by side.
+
+    A query parameter rather than a path segment, because the keys are '@agent',
+    '@me' and specialists' names, and a name with a dot or a space in a path is a
+    second parser disagreeing with the first. An unknown key still gets a stable
+    face (the one it WOULD be generated as) without a row being written for it."""
+    rec = avatarsmod.recipe_for(state["store"], key)
+    body = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale)
+    # the page asks with ?v=<updated_at>, so an edit is a new URL and this can be long
+    return Response(body, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.put("/api/avatars/{key}")
+async def api_avatar_set(key: str, body: dict):
+    """Change part of a character. The same closed set the agent's tool and the CLI
+    use: a refusal names what is allowed, rather than painting something unchecked."""
+    try:
+        rec = avatarsmod.update(state["store"], state["cfg"], key, body or {})
+    except KeyError:
+        return JSONResponse({"error": f"nobody called '{key}' is on this machine"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "avatars", "key": key})
+    return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec)}
+
+
+@app.post("/api/avatars/{key}/reroll")
+async def api_avatar_reroll(key: str):
+    """A new look, the same shirt colour — the colour is how this agent is told apart."""
+    try:
+        rec = avatarsmod.reroll(state["store"], state["cfg"], key)
+    except KeyError:
+        return JSONResponse({"error": f"nobody called '{key}' is on this machine"}, status_code=404)
+    await state["broadcast"]({"type": "avatars", "key": key})
+    return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec)}
+
+
 @app.get("/api/subagents")
 async def api_subagents():
     return {"subagents": state["store"].list_subagents()}
@@ -9578,7 +9630,7 @@ async def _run_chat(cid: str, data: dict):
                           "model": model, "uid": owner}
             knowledge.turn_started()
             started = True
-            await evsend({"type": "turn_start", "model": model})
+            await evsend({"type": "turn_start", "model": model, "speaker": defn["name"]})
             res = await state["fabric"].run_subagent(
                 defn, task, conversation_id=cid, ui_emit=evsend,
                 approver=approver, agent_slot=turns[cid])
@@ -9588,7 +9640,7 @@ async def _run_chat(cid: str, data: dict):
             if not res["content"]:
                 await evsend({"type": "text_delta", "text": header + content})
             usage = res.get("usage") or {}
-            result = {"content": content, "steps": res["steps"],
+            result = {"content": content, "steps": res["steps"], "speaker": defn["name"],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         else:
             # SURFACES is imported at module scope: a function-local `from … import`
@@ -9653,7 +9705,9 @@ async def _run_chat(cid: str, data: dict):
                                **({"engine": result["engine"]} if result.get("engine") else {}),
                                **({"engine_model": result["engine_model"]}
                                   if result.get("engine_model") else {}),
-                               **({"model": model} if model and not result.get("engine") else {})})
+                               **({"model": model} if model and not result.get("engine") else {}),
+                               # a specialist addressed by name answered, and wears its face
+                               **({"speaker": result["speaker"]} if result.get("speaker") else {})})
             store.touch_conversation(cid)
             tk = result.get("tokens") or {}
             store.log("turn", text[:200], {"conversation_id": cid, "model": model,
