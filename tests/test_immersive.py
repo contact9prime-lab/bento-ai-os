@@ -322,52 +322,6 @@ def test_the_crew_file_keeps_the_bundle_rules():
     assert "var CREW=" in CREW
 
 
-# ---------------------------------------------------------------------------
-# the crew has to read as PEOPLE
-#
-# The first cut drew outlined wire bodies, identical in one brass colour, frozen
-# at rest, with a single red dot in the middle of each face. The report on it was
-# one word: scary. Each assertion below is one of the four things that fixed it,
-# and each is easy to undo by accident while "simplifying" the drawing.
-# ---------------------------------------------------------------------------
-
-def test_a_face_has_two_eyes_and_no_mark_in_the_middle_of_it():
-    """A single centred mark is a cyclops, not a face — it is what made a row of
-    these read as something to be afraid of. The running indicator lives above
-    the head, and the mouth survives a blink."""
-    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
-    assert "[-1,1].forEach" in fig, "eyes must be drawn as a symmetric pair"
-    # the RULE, not a magic number: the offset is mirrored either side of centre
-    # and derived from the head, so the face keeps its proportions at any size
-    assert re.search(r"ex\s*=\s*headR\s*\*", fig), "the eye offset is not derived from the head"
-    assert "cx+d*ex" in fig, "the eyes are not mirrored about the centre line"
-    assert "blinking" in fig, "a face that never blinks is a mask"
-    # the status light is ABOVE the head, never on it
-    assert "headY-headR*1.32" in fig
-    # and the mouth is not tied to the blink
-    assert "if(!blinking){" not in fig, "a blink must not take the mouth with it"
-
-
-def test_figures_are_filled_and_stand_on_something():
-    """An outline is a ghost; a filled shape has weight. The contact ellipse is a
-    flat fill, NOT a canvas shadow — this layer is re-composited under the parallax
-    and a shadow is a blur by another name."""
-    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
-    assert fig.count("ctx.fill()") >= 4, "body, head and eyes are filled"
-    assert "ctx.ellipse(cx,ground+1" in fig, "no ground contact — they float"
-    assert "shadowBlur" not in fig
-
-
-def test_nobody_is_ever_completely_still():
-    """A row of motionless figures staring out of a dark room is a waxwork. Three
-    sines cost nothing and turn the same drawing into somebody waiting."""
-    fig = CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
-    for name in ("breath", "sway", "bob"):
-        assert name in fig, f"no {name} — the figures are frozen at rest"
-    assert "CREW.t" in fig, "the life has to come from the scene clock"
-    # ...except where the person asked for that
-    assert "still=CREW.static" in fig and "still?0:" in fig, \
-        "reduced motion must still hold them still"
 
 
 def test_each_specialist_gets_a_colour_and_two_never_share_one():
@@ -383,76 +337,137 @@ def test_each_specialist_gets_a_colour_and_two_never_share_one():
     assert len([h for h in hues.split(",") if h.strip()]) >= 6
 
 
-def test_working_reads_as_more_colour_not_more_white():
-    """Raising lightness alone took every figure towards beige, so a stage with
-    three of them busy read as one washed pastel repeated."""
-    ink = CREW_CODE.split("function crewInk(")[1][:600]
-    assert "satLit" in ink and "satDim" in ink, "saturation must change with state"
-    lit = int(re.search(r"satLit:\s*light\s*\?\s*(\d+)", ink).group(1))
-    dim = int(re.search(r"satDim:\s*light\s*\?\s*(\d+)", ink).group(1))
-    assert lit > dim, "a working figure must be MORE saturated, not just paler"
-
-
-# ---------------------------------------------------------------------------
-# it has to read as a CARTOON
-#
-# The flat-vector pass before this was clean and read as an infographic:
-# correct, and nobody's colleague. These pin the six things that make a drawing
-# read as drawn — and the one that had to be taken back out again, because at
-# forty pixels more detail made it worse, not better.
-# ---------------------------------------------------------------------------
 
 def _figure():
     return CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
 
 
-def test_every_shape_is_outlined():
-    """The single strongest cartoon signal, and the one the flat version had
-    none of. A limb is one path stroked twice — the cheap way, because the
-    second stroke reuses the path the first one built."""
-    assert "function crewLimb(" in CREW_CODE
-    limb = CREW_CODE.split("function crewLimb(")[1].split("\nfunction ")[0]
-    assert limb.count("ctx.stroke()") == 2, "a limb is outline-then-fill, in that order"
-    fig = _figure()
-    assert "skin.ink" in fig and fig.count("ctx.stroke()") >= 4, "shapes are not outlined"
-    # and the ink belongs to the character, not to one shared black
-    ink = CREW_CODE.split("function crewSkin(")[1][:800]
-    assert re.search(r"ink:\s*`hsl\(\$\{h\}", ink), "the outline must be the figure's own hue"
+# ---------------------------------------------------------------------------
+# the crew are PEOPLE, drawn as pixel art
+#
+# It took four passes to get here, and each one taught a rule that is pinned
+# below. Wire outlines in one colour with a dot for a face read as SCARY. Filled
+# vector blobs read as an infographic. Outlined vector cartoons read as mascots
+# — one colour head to toe, a ball for a head. What reads as a person at forty
+# pixels is a person's PARTS: skin that is a skin colour, hair that is its own
+# shape, a shirt, trousers, shoes. So each figure is a small pixel-art sprite
+# built from a recipe, painted once and blitted at a whole-number scale.
+# ---------------------------------------------------------------------------
+
+def _paint():
+    return CREW_CODE.split("function crewPaint(")[1].split("\nfunction ")[0]
 
 
-def test_limbs_end_in_hands_and_feet():
-    """A cartoon limb ends in a mitt or a shoe; one that stops in mid-air reads
-    as unfinished."""
-    fig = _figure()
-    # asserted on the DRAWING, not on the comments that name it: CREW_CODE has
-    # its comments stripped, so a word-match here would pass on prose alone
-    assert "ctx.ellipse(cx-stance,y," in fig and "ctx.ellipse(cx+stance,y," in fig, \
-        "no shoes at the ends of the legs"
-    assert "hand.push(" in fig and "ctx.arc(hand[0]" in fig, \
-        "no mitts at the ends of the arms"
+def _figure():
+    return CREW_CODE.split("function crewFigure(")[1].split("\nfunction ")[0]
 
 
-def test_a_bounce_squashes_and_stretches():
-    """Without it a bouncing figure is a rigid object being moved."""
-    fig = _figure()
-    assert "sq" in fig and "1-hop" in fig, "no squash term"
-    assert "(1+sq*" in fig and "(1-sq*" in fig, "squash must widen as it shortens"
+def test_a_figure_is_a_recipe_of_a_person_s_parts():
+    """Eight figures have to be eight different people: skin tone, hair style
+    and colour, glasses, trousers — all from the specialist's own seed, so the
+    same specialist is the same person on every reload."""
+    rec = CREW_CODE.split("function crewRecipe(")[1].split("\nfunction ")[0]
+    for part in ("skin", "style", "hair", "pants", "glasses", "shirt"):
+        assert part + ":" in rec or part + "," in rec or f"{part}=" in rec, f"no {part} in the recipe"
+    assert "crewRand(seed)" in rec, "the recipe must come from the specialist's own seed"
+    styles = CREW.split("var CREW_STYLES=[")[1].split("]")[0]
+    assert len(styles.split(",")) >= 6, "too few hair styles to tell a row apart"
+    skins = CREW.split("var CREW_SKINS=[")[1].split("];")[0]
+    assert skins.count("[") >= 5, "people come in more than a couple of skin tones"
 
 
-def test_the_face_stays_simple_at_this_size():
-    """The cut before this gave each eye a light sclera, a dark rim and an
-    eyebrow — correct cartoon anatomy at poster size, a compound eye at forty
-    pixels, and a row of them read as insects. Three marks per eye is two too
-    many here, so the face is a solid eye plus one catchlight."""
-    fig = _figure()
-    assert "catchlight" in fig
-    assert "quadraticCurveTo" not in fig, "eyebrows are back, and they make insects"
-    assert "brow" not in fig, "eyebrows are back, and they make insects"
-
-
-def test_the_fill_is_bright_because_the_outline_holds_the_shape():
-    """The same lightness washed the flat version out; with an outline it is
-    exactly why cartoons can use flat saturated colour."""
+def test_the_shirt_is_the_specialists_colour_and_the_theme_s():
+    """Skin and hair are properties of PEOPLE, not of a theme — the one declared
+    exception to this look's colour rule — so what carries the specialist's
+    colour, at the theme's saturation, is the shirt. A working figure's shirt is
+    the more saturated one."""
+    rec = CREW_CODE.split("function crewRecipe(")[1].split("\nfunction ")[0]
+    assert "shirt:crewRgb(hue" in rec, "the shirt must be the hue the row handed out"
+    assert "ink.satLit" in rec and "ink.satDim" in rec
     ink = CREW_CODE.split("function crewInk(")[1][:600]
-    lum = int(re.search(r"lumLit:\s*light\s*\?\s*\d+\s*:\s*(\d+)", ink).group(1))
-    assert lum >= 66, "a figure holding an outline can afford a bright fill"
+    lit = int(re.search(r"satLit:\s*light\s*\?\s*(\d+)", ink).group(1))
+    dim = int(re.search(r"satDim:\s*light\s*\?\s*(\d+)", ink).group(1))
+    assert lit > dim, "working must read as MORE colour, not just paler"
+    # the declared exception is written down where the palettes are
+    assert "properties of\n   PEOPLE, not of a theme" in CREW or "properties of PEOPLE" in CREW
+
+
+def test_every_figure_is_outlined_by_one_pass():
+    """One pass over the finished figure turns every empty pixel that touches it
+    into the line colour — so a new hair style needs no outline of its own and
+    cannot forget one. The line is a deep shade of the figure's own hue."""
+    paint = _paint()
+    assert "alpha[y*W+x-1]" in paint and "alpha[(y-1)*W+x]" in paint, "no outline pass"
+    assert "put(x,y,ln)" in paint
+    assert "line:crewRgb(hue" in CREW_CODE, "the outline must be the figure's own hue, not one black"
+
+
+def test_a_face_is_two_eyes_a_mouth_and_nothing_on_it_that_masks_it():
+    """Two eyes, never one centred mark — that made the first cut frightening,
+    which is why the working light is above the head. The mouth is a LIP colour,
+    because darker skin under a nose read as a goatee. And glasses are a rim and
+    a pale lens: a full frame in the line colour, beside a one-pixel eye, filled
+    the whole eye band and gave a dark-skinned figure no face at all."""
+    paint = _paint()
+    assert "put(6,7,ln)" in paint and "put(9,7,ln)" in paint, "two eyes, mirrored"
+    assert "frame===1" in paint, "no blink frame"
+    mouth = CREW.split("const mouth=")[1].split(";")[0]
+    assert "*.78" in mouth and "*.42" in mouth, "the mouth must be warmer than the skin, not darker"
+    glasses = paint.split("if(rec.glasses){")[1].split("}")[0]
+    assert "lens" in glasses, "glasses need a pale lens"
+    assert "box(x0,9,x1,9,ln)" not in glasses, "a full frame masks the face at this size"
+    fig = _figure()
+    assert "fillRect(cxd-Math.round(q/2),dy-q-u" in fig, "the working light must sit ABOVE the head"
+
+
+def test_limbs_end_in_hands_and_shoes():
+    """A limb that stops in mid-air reads as unfinished, in pixels as in vector."""
+    paint = _paint()
+    assert "box(x0,17,x0+1,17,sk)" in paint and "box(x0,8,x0+1,8,sk)" in paint, "no hands"
+    assert "box(4,23,7,24,ln)" in paint and "box(8,23,11,24,ln)" in paint, "no shoes"
+
+
+def test_it_is_pixel_art_so_it_stays_crisp():
+    """A whole number of device pixels per sprite pixel, with smoothing off —
+    otherwise a forty-pixel figure is a blur. And it moves in whole pixels, the
+    way pixel art does, rather than sliding between them."""
+    fig = _figure()
+    assert "Math.round(s*dpr/" in fig, "the scale must be an integer"
+    assert "imageSmoothingEnabled=false" in fig
+    assert "setTransform(1,0,0,1,0,0)" in fig, "blit in device pixels, or the integer is lost"
+    assert "Math.round(Math.abs(Math.sin" in fig, "the hop must be in whole pixels"
+
+
+def test_each_frame_is_painted_once_and_the_cache_is_bounded():
+    """A figure on screen is one drawImage. The cache key carries everything that
+    changes the pixels — the theme's lightness included — and it is bounded and
+    dropped when the scene stops, so a roster that churns does not keep every
+    person it ever drew."""
+    spr = CREW_CODE.split("function crewSprite(")[1].split("\nfunction ")[0]
+    for part in ("seed", "hue", "lit", "ink.light", "frame"):
+        assert part in spr.split("const key=")[1].split(";")[0], f"{part} missing from the cache key"
+    assert "CREW_SPRITE_N>" in spr, "the cache has no ceiling"
+    stop = CREW_CODE.split("function crewStop(")[1].split("\nfunction ")[0]
+    assert "CREW_SPRITES={}" in stop, "switching the scene off must let the people go"
+    assert _figure().count("drawImage(") == 1
+
+
+def test_nobody_is_ever_completely_still_except_when_asked():
+    """A motionless row is a waxwork: an idle figure breathes a pixel on its own
+    phase and blinks, a working one hops and waves one arm then the other. Under
+    reduced motion it stands still in its first frame."""
+    fig = _figure()
+    assert "breath" in fig and "blinking" in fig and "hop" in fig
+    assert "still=C.static" in fig and "still?0:" in fig
+    paint = _paint()
+    assert "frame===2" in paint and "frame===3" in paint, "working has two frames, one arm then the other"
+
+
+def test_the_shadow_follows_the_step_and_stays_down_through_the_hop():
+    """A flat ellipse, never a canvas shadow (a blur under the parallax). At the
+    feet after the step — a figure that walks up the stage and leaves its shadow
+    on the front line hangs like a puppet — and not lifted by the hop, which is
+    the only thing that tells a jump from a float."""
+    fig = _figure()
+    assert "ctx.ellipse(x,y+1" in fig
+    assert "shadowBlur" not in fig

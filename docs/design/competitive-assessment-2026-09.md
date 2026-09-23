@@ -333,6 +333,19 @@ half-built thing described as finished is the failure this document was written 
   scale the face wants FEWER marks, not more. It ended on one solid eye and a catchlight,
   plus mitts, shoes and a squash at the bottom of each bounce, at 0.5 ms a frame.
 
+  The fourth pass is the one that took the other project's lead, and it is worth being
+  exact about what was taken: the IDEA, not the code or the art. Their floor draws people
+  as small pixel sprites built from a per-character recipe of skin, hair and clothes. Ours
+  now does the same thing with its own 16x26 grid, its own drawings and its own recipe
+  seeded by the specialist's name — nothing copied and nothing licensed. The reason it
+  worked where three vector passes did not is plain in the screenshots: a vector cartoon
+  of one colour head to toe reads as a mascot however well it is drawn, and a figure with
+  a skin tone, a haircut, a shirt and trousers reads as a person at forty pixels. Two bugs
+  the zoomed screenshots caught are recorded in the tests: glasses drawn as a full frame
+  beside a one-pixel eye filled the whole eye band and gave a dark-skinned figure no face,
+  and a mouth drawn as darker skin read as a goatee. Frames are painted once and cached,
+  so it is cheaper than every version before it (0.26 ms a frame).
+
 Still open from the list, untouched: cost reconciliation from executor transcripts (3),
 per-specialist git worktrees (4), more executors through the run bridge (5), the UI string
 table (6), and everything in item 7 that is not the evidence check — the landing page, the

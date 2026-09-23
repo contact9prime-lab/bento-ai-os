@@ -219,16 +219,17 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   above its head, and sits back down when the run ends. Nobody is ever completely still: they
   breathe, sway and blink while they wait, and hold still only under reduced motion.
 
-  They are drawn as cartoons: every shape outlined, flat bright colour inside it, a big head, a
-  face with two eyes and a smile, mitts and shoes on the limbs, and a squash at the bottom of each
-  bounce. Each specialist has a colour of its own that no two on stage share, and your agent takes
-  the teal the rest of the desktop is branded in. Nothing is loaded — no tileset, no sprite sheet,
-  no character pack — so nothing is downloaded, nothing is licensed from anybody, and a specialist
-  looks the same every time because its build and stance come from a hash of its name. The whole
-  scene costs what the dial costs (measured: 16.7 fps against a ceiling of 20, 0.5 ms a frame,
-  zero frames under a maximised window).
+  They are small pixel-art people. Each one is built from a recipe seeded by its name — a skin
+  tone, a hair style and colour, glasses or not, trousers — and wears a shirt in that specialist's
+  own colour, which no two on stage share; your agent wears the teal the rest of the desktop is
+  branded in. Every figure has a one-pixel outline and three tones of light per material, and is
+  scaled by a whole number with smoothing off, so it stays crisp from a phone to a 4K panel.
+  Nothing is loaded — no tileset, no sprite sheet, no licensed character art — so nothing is
+  downloaded and a specialist is the same person on every reload. Each frame is painted once and
+  cached, which makes this cheaper than the dial it sits beside (measured: 20 fps against a
+  ceiling of 20, 0.26 ms a frame, zero frames under a maximised window).
 
-  ![The Crew scene: four outlined cartoon characters on a dark stage — a green writer, a violet researcher, a teal Aria in the middle and a tan validator, each with a round head, two eyes and a smile — with the researcher stepped forward and lit, a status light above its head and "fetch url" named above that](screenshots/crew-scene.png)
+  ![The Crew scene: four small pixel-art people on a dark stage — a mint-haired writer in green, a grey-haired researcher in glasses and purple, Aria in the middle with blue hair and a teal shirt, and a curly-haired validator in gold — each waving one arm, with the researcher's tool, kg query, named above its head](screenshots/crew-scene.png)
 
   **The cast is the real one.** Every figure is a subagent this machine actually has, so with none
   yet you get your agent alone and a line saying so, rather than a room of colleagues who do not
