@@ -4200,7 +4200,7 @@ TOOL_SCHEMAS = [
                 "name": {"type": "string", "description": "short-kebab-name, unique"},
                 "mission": {"type": "string", "description": "What the orchestrator is told, in the second person. Specific enough to act on; it picks the agents and the order itself, so do NOT write steps."},
                 "roster": {"type": "array", "items": {"type": "object"}, "description": "[{\"subagent\":\"researcher\",\"why\":\"what it is for here\"}] — the ONLY agents it may call. Must not be empty."},
-                "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\"}. Grant the fewest that let the mission succeed."},
+                "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\",\"talk\":false}. talk:true lets its specialists consult each other. Grant the fewest that let the mission succeed."},
                 "description": {"type": "string"},
                 "triggers": {"type": "array", "items": {"type": "object"}, "description": "[{\"kind\":\"cron\",\"config\":{\"type\":\"daily\",\"at\":\"08:00\"}}] · message/webhook/os_event also. Only if the user asked for one."},
                 "sinks": {"type": "array", "items": {"type": "object"}, "description": "Where the answer goes: [{\"kind\":\"origin\"}] (default, answers where it was triggered), telegram, gui, notify, report."},

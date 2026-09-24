@@ -2501,6 +2501,13 @@ async def api_put_config(patch: dict):
         cfg.setdefault("team", {})["own_brains"] = bool(patch["team"]["own_brains"])
         fabricmod.audit_team(state["store"], "team.write", "team:own_brains",
                              f"agents answer on their own providers: {cfg['team']['own_brains']}")
+    if isinstance(patch.get("team"), dict) and isinstance(patch["team"].get("limits"), dict):
+        try:
+            got = fabricmod.set_limits(cfg, patch["team"]["limits"])
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        fabricmod.audit_team(state["store"], "team.write", "team:limits",
+                             "limits: " + ", ".join(f"{k}={v}" for k, v in got.items()))
     if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm"):
         cfg.setdefault("team", {})["talk"] = patch["team"]["talk"]
         fabricmod.audit_team(state["store"], "team.write", "team:talk",
@@ -8175,6 +8182,15 @@ async def api_subagents():
     return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
             "own_brains": bool((cfg.get("team") or {}).get("own_brains", True)),
             "talk": team_talk(cfg)}
+
+
+@app.get("/api/team/limits")
+async def api_team_limits():
+    """The limits in force, with each one's range and what it bounds — the Settings
+    rows and `bento team limits` render this, so neither restates a number."""
+    lim = fabricmod.team_limits(state["cfg"])
+    return {"limits": lim, "ranges": {k: {"default": d, "min": lo, "max": hi, "what": w}
+                                      for k, (d, lo, hi, w) in fabricmod.LIMITS.items()}}
 
 
 @app.get("/api/team/matrix")

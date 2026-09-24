@@ -3243,6 +3243,39 @@ def _team_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
     act = args.action
+    if act == "limits":
+        pairs = [x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x]
+        if pairs:
+            patch = {}
+            for kv in pairs:
+                if "=" not in kv:
+                    print(f"'{kv}' — write limits as name=value, e.g. hops=3")
+                    sys.exit(2)
+                k, v = kv.split("=", 1)
+                patch[k.strip()] = v.strip()
+            mcfg = cfgmod.load_config()
+            try:
+                got = fabricmod.set_limits(mcfg, patch)
+            except ValueError as e:
+                print(e)
+                sys.exit(2)
+            cfgmod.save_config(mcfg)
+            cfg.setdefault("team", {})["limits"] = mcfg["team"]["limits"]
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                    data=_json.dumps({"team": {"limits": patch}}).encode(),
+                    headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=5).read()
+            except Exception:
+                fabricmod.audit_team(store, "team.write", "team:limits",
+                                     "limits: " + ", ".join(f"{k}={v}" for k, v in got.items())
+                                     + " (bento team)")
+        lim = fabricmod.team_limits(cfg)
+        for k, (d, lo, hi, what) in fabricmod.LIMITS.items():
+            print(f"  {k:<14} {lim[k]:>3}   {what} ({lo}–{hi}, default {d})")
+        print("\n  bento team limits hops=3 budget=12 clarify=2")
+        return
     if act == "talk":
         want = (args.name or "").strip().lower()
         if want not in ("off", "matrix", "swarm"):
@@ -4956,11 +4989,12 @@ def main():
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
-                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask"])
+                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits"])
     p_team.add_argument("name", nargs="?", default="",
                         help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker")
     p_team.add_argument("model", nargs="?", default="",
                         help="set: provider/model ('' = this machine's brain) · allow/block/ask: the one asked")
+    p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")

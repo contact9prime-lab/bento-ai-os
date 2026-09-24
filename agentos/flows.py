@@ -133,7 +133,7 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
     mem = str(perms.get("memory") or "read-space")
     if mem not in MEMORY_SCOPES:
         raise ValueError(f"memory must be one of {', '.join(MEMORY_SCOPES)}")
-    perms = {**perms, "memory": mem}
+    perms = {**perms, "memory": mem, "talk": bool(perms.get("talk"))}
     out = {
         "name": name,
         "description": (body.get("description") or "").strip()[:500],
@@ -318,6 +318,14 @@ def declared_grants(flow: dict) -> list[dict]:
         for p in (perms.get("fs_write") or []):
             add("subagent", sub, "fs.write", f"fs:{os.path.expanduser(p)}",
                 note=f"granted by flow '{name}'")
+        # "Specialists may consult each other": every roster member may message every
+        # other, inside THIS mission only (the gate counts these rows only in its run).
+        # Declared here so the consent screen says it and Enable is what grants it.
+        if perms.get("talk"):
+            for other in roster:
+                if other != sub:
+                    add("subagent", sub, "agent.message", f"agent:subagent/{other}",
+                        note=f"may consult {other} inside flow '{name}'")
         for m in (perms.get("models_deny") or []):
             add("subagent", sub, "model.use", f"model:{m}", effect="deny",
                 note=f"denied by flow '{name}'")
@@ -749,6 +757,8 @@ RULES
   standing permission the user is being asked to approve. If the mission only reads and
   reports, do not grant anything that writes.
 - `memory` is one of: none | read | read-space | read-write. Prefer "read-space".
+- `talk: true` lets the roster's specialists consult each other mid-task. Only when the
+  mission needs a second opinion inside it; the orchestrator already routes the work.
 - Only create a new agent when no existing one fits. A new agent needs a `soul` written in
   the second person that says what it does and how ("You research. Gather real information,
   verify it, return a dense sourced summary.").

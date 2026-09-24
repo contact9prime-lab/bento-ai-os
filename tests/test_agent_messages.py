@@ -70,14 +70,22 @@ def _team_provider(plan):
             calls.append({"who": who, "model": model, "tools": [t["name"] for t in tools]})
             if "asks you:" in user:
                 step = plan.get("answer_calls", {}).get(who)
+                if callable(step):
+                    step = step(user)
                 if step and not tool_msgs:
                     yield {"type": "tool_call", "id": "q1", "name": step[0], "args": step[1]}
                     yield {"type": "finish", "reason": "tool_calls"}
                     return
                 yield {"type": "text", "text": plan["answers"].get(who, "no idea")
                        + (f" [{tool_msgs[-1]['content'][:160]}]" if tool_msgs else "")}
+            elif isinstance(plan["asks"].get(who), list) and len(tool_msgs) < len(plan["asks"][who]):
+                # a scripted conversation: the n-th tool result gets the n-th next step
+                step = plan["asks"][who][len(tool_msgs)]
+                yield {"type": "tool_call", "id": f"c{len(tool_msgs)}", "name": "ask_agent", "args": step}
+                yield {"type": "finish", "reason": "tool_calls"}
+                return
             elif tool_msgs:
-                yield {"type": "text", "text": "FINAL " + tool_msgs[-1]["content"][:400]}
+                yield {"type": "text", "text": "FINAL " + " | ".join(m["content"][:300] for m in tool_msgs)}
             else:
                 step = plan["asks"].get(who)
                 if step:
@@ -195,19 +203,80 @@ def test_only_a_specialist_is_offered_the_tool_and_not_inside_a_huddle_or_flow(t
 
 # ---- the shape of the conversation -----------------------------------------------------
 
-def test_a_loop_back_is_refused_even_when_the_model_forges_its_chain(tmp_path, monkeypatch):
-    """The validator, asked by the researcher, tries to ask the researcher back and
-    passes `_chain: []` to erase the conversation. The loop injects the real chain
-    after the model's args, so the loop is still seen."""
+def test_a_colleague_asks_back_and_the_asker_answers_with_everything_it_knows(tmp_path, monkeypatch):
+    """Asking back the one who asked you is a clarification, not a loop. It goes back
+    UP: the asker's ask_agent returns the question, and the asker — still holding its
+    whole context — asks again with the answer. No fresh copy of the asker is started
+    (that copy would know nothing)."""
+    c, store, tb, cp, events = _world(tmp_path, monkeypatch, talk="swarm")
+    plan = {**PLAN,
+            "asks": {"researcher": [{"agent": "validator", "question": "is $12 right?"},
+                                    {"agent": "validator", "question": "The Pro plan: is $12 right?"}]},
+            "answer_calls": {"validator": lambda q: None if "Pro plan" in q else (
+                "ask_agent", {"agent": "researcher", "question": "which plan — Pro or Team?"})},
+            "answers": {"validator": "Yes, $12 for Pro."}}
+    chat, _ = _team_provider(plan)
+    monkeypatch.setattr(providers, "chat", chat)
+    res = _run(cp, store, "researcher")
+    assert "[validator asks you back before answering] which plan — Pro or Team?" in res["content"]
+    assert "Yes, $12 for Pro." in res["content"], "the second, clearer question was answered"
+    runs = [r for r in store.fabric_runs(limit=20) if r["kind"] == "message"]
+    assert [r["ref"] for r in runs] == ["validator", "validator"], \
+        "the asker answered itself — no fresh researcher run was started"
+    said = [(e["phase"], e["from"], e["to"]) for e in events if e.get("type") == "agent_msg"]
+    assert ("ask", "validator", "researcher") in said, "the ask-back shows on screen"
+
+
+def test_ask_back_is_bounded_and_can_be_switched_off(tmp_path, monkeypatch):
     c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="swarm")
+    ask = lambda: asyncio.run(cp.message("validator", "researcher", "which?",  # noqa: E731
+                                         ["researcher", "validator"], root="r1", parent_run="x"))
+    assert ask().startswith("[sent back to researcher]")
+    assert ask().startswith("[sent back to researcher]")
+    assert "asked researcher back 2 time(s)" in ask(), "the default clarify limit is 2"
+    c["team"]["limits"] = {"clarify": 0}
+    assert "asking back is switched off" in asyncio.run(cp.message(
+        "validator", "researcher", "which?", ["researcher", "validator"], root="r2"))
+
+
+def test_a_real_cycle_is_still_refused_and_the_chain_cannot_be_forged(tmp_path, monkeypatch):
+    """A → B → C, and C asks A: A is not C's asker, it is waiting on B — that is the loop.
+    And a model passing `_chain: []` and `_from: writer` changes nothing: the loop
+    injects the real ones after the model's args."""
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="swarm")
+    out = asyncio.run(cp.message("writer", "researcher", "q", ["researcher", "validator", "writer"]))
+    assert "already in this conversation" in out and "Only the one who asked you (validator)" in out
     plan = {**PLAN, "answer_calls": {"validator": ("ask_agent", {
         "agent": "researcher", "question": "what did you mean?", "_chain": [], "_from": "writer"})}}
     chat, _ = _team_provider(plan)
     monkeypatch.setattr(providers, "chat", chat)
     res = _run(cp, store, "researcher")
-    assert "already in this conversation" in res["content"]
-    assert "researcher → validator" in res["content"]
-    assert len([r for r in store.fabric_runs(limit=20) if r["kind"] == "message"]) == 1
+    assert "[validator asks you back before answering]" in res["content"], \
+        "the forged sender was overwritten: it was the validator asking its own asker"
+
+
+def test_the_limits_come_from_settings_and_have_ceilings(tmp_path, monkeypatch):
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="swarm")
+    assert fabric.team_limits(c) == {"hops": 2, "budget": 6, "clarify": 2,
+                                     "huddle_agents": 4, "huddle_rounds": 3}
+    assert fabric.set_limits(c, {"hops": 4, "budget": 40})["budget"] == 40
+    with pytest.raises(ValueError, match="1–100"):
+        fabric.set_limits(c, {"budget": 600})
+    with pytest.raises(ValueError, match="not a team limit"):
+        fabric.set_limits(c, {"speed": 3})
+    c["team"]["limits"]["hops"] = 99                    # a hand-edited config is clamped
+    assert fabric.team_limits(c)["hops"] == 6
+
+    async def fake_run(defn, task, **kw):
+        return {"content": "ok", "fault": "", "model": "m/x", "tainted": False, "status": "ok",
+                "run_id": "r"}
+    monkeypatch.setattr(cp, "run_subagent", fake_run)
+    c["team"]["limits"] = {"hops": 1, "budget": 1}
+    assert "ok" in asyncio.run(cp.message("researcher", "validator", "q", ["researcher"], root="t"))
+    assert "limit is 1" in asyncio.run(cp.message("validator", "writer", "q",
+                                                  ["researcher", "validator"], root="t2"))
+    assert "used its 1 questions" in asyncio.run(cp.message("researcher", "writer", "q",
+                                                            ["researcher"], root="t"))
 
 
 def test_hops_budget_self_and_unknown_are_sentences_the_model_can_act_on(tmp_path, monkeypatch):
@@ -423,3 +492,59 @@ def test_an_answered_approval_is_closed_on_every_screen(client):
     assert [(e["approved"], e["how"]) for e in done] == [(True, "answered"), (False, "timeout")]
     ws = (JS / "09-websocket.js").read_text()
     assert "case 'approval_resolved':" in ws and "b.disabled=true" in ws
+
+
+# ---- missions: consult each other only when the mission says so -----------------------
+
+def test_a_mission_that_declares_it_lets_its_roster_consult_each_other_and_only_there(tmp_path, monkeypatch):
+    from agentos import flows
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="matrix")
+    body = {"name": "pricing", "mission": "Check the prices.", "roster": ["researcher", "validator"],
+            "permissions": {"tools": [], "talk": True}, "enabled": True}
+    rows = [g for g in flows.declared_grants(flows.validate(body, store))
+            if g["action"] == "agent.message"]
+    assert {(g["principal_id"], g["resource"]) for g in rows} == {
+        ("researcher", "agent:subagent/validator"), ("validator", "agent:subagent/researcher")}, \
+        "the consent screen lists exactly the pairs on the roster"
+    flow, _ = flows.save(store, body)
+    flows.reconcile_grants(store, {**flow, "enabled": True})
+    sub = Principal("subagent", "researcher")
+    res = "agent:subagent/validator"
+    assert tb.pdp.decide(sub, "agent.message", res, {"flow": "pricing"}).effect == "allow"
+    # at the desk, the mission's consent does not count: the empty cell still asks
+    assert tb.pdp.decide(sub, "agent.message", res, {}).effect == "ask"
+    # outside the roster, even inside the mission: refused
+    assert tb.pdp.decide(sub, "agent.message", "agent:subagent/writer",
+                         {"flow": "pricing"}).effect == "deny"
+    # a desk grant does not widen a mission that did not declare it, and swarm neither
+    flows.save(store, {**body, "name": "quiet", "permissions": {"tools": []}})
+    fabric.set_cell(store, "researcher", "validator", "allow")
+    c["team"]["talk"] = "swarm"
+    d = tb.pdp.decide(sub, "agent.message", res, {"flow": "quiet"})
+    assert d.effect == "deny" and "does not let its specialists consult each other" in d.reason
+    # the tool is offered inside the declaring mission and not inside the quiet one
+    chat, calls = _team_provider({**PLAN, "asks": {}})
+    monkeypatch.setattr(providers, "chat", chat)
+    asyncio.run(cp.run_subagent(store.get_subagent("writer"), "t", flow="pricing"))
+    assert "ask_agent" in calls[-1]["tools"]
+    asyncio.run(cp.run_subagent(store.get_subagent("writer"), "t", flow="quiet"))
+    assert "ask_agent" not in calls[-1]["tools"]
+
+
+def test_limits_have_a_settings_face_and_a_route(client):
+    cl, servermod = client
+    d = cl.get("/api/team/limits").json()
+    assert d["limits"]["hops"] >= 1 and d["ranges"]["budget"]["max"] == 100
+    assert cl.put("/api/config", json={"team": {"limits": {"budget": 600}}}).status_code == 400
+    before = dict(servermod.state["cfg"].get("team", {}).get("limits") or {})
+    try:
+        assert cl.put("/api/config", json={"team": {"limits": {"budget": 9}}}).status_code == 200
+        assert cl.get("/api/team/limits").json()["limits"]["budget"] == 9
+        assert any(r["action"] == "team.write" and r["resource"] == "team:limits"
+                   for r in servermod.state["store"].audit_list(limit=20))
+    finally:
+        servermod.state["cfg"].setdefault("team", {})["limits"] = before
+    st = (JS / "11-settings.js").read_text()
+    assert "function paintTeamLimits(" in st and "/api/team/limits" in st
+    fab = (JS / "13-fabric.js").read_text()
+    assert 'id="flw-talk"' in fab and "d.permissions.talk=" in fab

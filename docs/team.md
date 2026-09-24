@@ -114,19 +114,41 @@ ordinary permissions, so the **Permissions** app lists and revokes the same rows
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
 holds, every message is still a run and a ledger row, and a cell you blocked stays blocked.
 
+### The shape of a conversation, and the limits you set
+
+- **Asking back is a clarification, not a loop.** The validator, asked by the researcher, may
+  ask the researcher back ("which plan, Pro or Team?"). The question goes *up* to the
+  researcher that asked, which still holds everything it knew, and it asks again with the
+  answer. No fresh copy of the researcher is started, because a copy would know nothing. How
+  many times a colleague may ask back is a limit (default 2, 0 turns it off).
+- **A real cycle is refused.** In A → B → C, if C asks A, A is not C's asker; it is waiting on B.
+  AgentOS records who is in the conversation, and the model cannot edit that record.
+- **Limits are settings.** Settings → AI providers → Team → Limits, or `bento team limits
+  hops=3 budget=20`:
+
+| Limit | Default | Range | What it bounds |
+|---|---|---|---|
+| `hops` | 2 | 1–6 | how far one question may travel (A → B → C is 2) |
+| `budget` | 6 | 1–100 | questions one task may send in total |
+| `clarify` | 2 | 0–5 | times a colleague may ask its asker back |
+| `huddle_agents` | 4 | 2–8 | agents in one huddle |
+| `huddle_rounds` | 3 | 1–6 | rounds in one huddle |
+
+  The budget is **per task**, so several swarms running at once each get their own. The
+  ceilings are fixed because every one of these multiplies model calls, and a typo of 600
+  should not become a bill. Every change to a limit is an audit row.
+
 ### What holds in every mode
 
-- **No loops.** AgentOS records who is already in the conversation, and the model cannot edit
-  that record. If the researcher asks the validator, the validator cannot ask the researcher
-  back, even if it tries to hide the chain.
-- **Two hops.** A question can travel A → B → C and no further.
-- **A budget.** One task gets six questions in total, however they branch.
 - **Untrusted content stays marked.** If the validator read a web page to answer, its reply
   arrives marked, and the researcher's turn is held to the same care as if it had read the page
   itself. The asker's own untrusted content travels with the question.
-- **Not inside a mission.** A flow's specialists work through its roster (`delegate`). Nothing in
-  a flow's consent screen covers agents messaging each other, so a grant written at the desk
-  does not widen a flow.
+- **In a mission, when the mission says so.** A mission's editor has **Specialists may
+  consult each other**. Turned on, every agent on its roster may ask every other one *inside
+  that mission*, and its consent screen says so before you enable it. Turned off (the
+  default), they work through the orchestrator only. The two worlds don't leak into each
+  other: a cell you allowed at the desk does not open a mission, swarm does not reach into
+  one, and a mission's consent does not open the desk.
 - **Only specialists.** Apps, a flow's master and peers cannot message an agent. Your own agent
   has `delegate` and `huddle` instead.
 
@@ -164,4 +186,6 @@ The hash-chained audit ledger (the Audit app, `audit_verify`) records:
 | A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
 | The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
 | The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
+| The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
+| In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
 | Tests | `tests/test_team.py`, `tests/test_agent_messages.py` |

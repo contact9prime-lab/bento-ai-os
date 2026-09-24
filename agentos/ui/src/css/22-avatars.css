@@ -99,3 +99,9 @@ body.dev-touch .team-row select{min-height:var(--tap)}
 .tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
+.team-limits{display:flex;flex-direction:column;gap:6px;width:100%}
+.tl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tl-row small{font-size:var(--fs-xs)}
+.tl-row input{width:80px}
+body.dev-touch .tl-row input{min-height:var(--tap)}
+.flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}

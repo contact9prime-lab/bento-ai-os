@@ -704,7 +704,7 @@ class PDP(usersmod.Scoped):
         if kind == "huddle":
             # who is in the room and what each one answers on: the cost of a huddle
             # is several models at once, and the card should let somebody see that
-            from .fabric import agent_brain, HUDDLE_MAX_ROUNDS
+            from .fabric import agent_brain, team_limits
             who = []
             for n in [x for x in name.split(",") if x]:
                 try:
@@ -714,7 +714,7 @@ class PDP(usersmod.Scoped):
                 b = agent_brain(self.cfg, d or {})
                 who.append(f"{n} (on {b['provider_name'] or 'the default model'})")
             return (f"Starts a conversation between {', '.join(who) or 'your agents'} — up to "
-                    f"{HUDDLE_MAX_ROUNDS} rounds, each turn a separate run on that agent's "
+                    f"{team_limits(self.cfg)['huddle_rounds']} rounds, each turn a separate run on that agent's "
                     f"own model.")
         if kind != "subagent" or not name or not self.store:
             return f"Runs '{name or resource}' — a separate agent, with its own steps and budget."
@@ -886,13 +886,35 @@ class PDP(usersmod.Scoped):
         # other, so a matrix grant written at the desk must not widen it; and with
         # the team's talk switch off, the matrix is not consulted at all.
         if action == "agent.message":
-            if ctx.get("flow"):
-                return Decision("deny", "agents inside a flow work through its roster "
-                                        "(delegate) — a flow's permissions do not include "
-                                        "agents messaging each other", rule="message-flow")
             if team_talk(self.cfg) == "off":
                 return Decision("deny", "agent-to-agent messages are switched off "
                                         "(Settings → AI providers → Team)", rule="message-off")
+            # The matrix is decided here in full, because WHICH grants count depends on
+            # where the ask happens. Inside a mission only that mission's own consent
+            # counts ("its specialists may consult each other", a definition grant) —
+            # a desk cell must not widen a mission, and swarm does not reach into one.
+            # At the desk, a mission's definition grants do not count: enabling a
+            # mission is not consent for its specialists to message each other outside it.
+            flow = str(ctx.get("flow") or "")
+            rows = self._matching(principal, action, resource, flow=flow)
+            if flow:
+                rows = [g for g in rows if g.get("source") == "definition"
+                        and (g.get("source_ref") or "") == f"flow:{flow}"]
+            else:
+                rows = [g for g in rows if g.get("source") != "definition"]
+            for g in rows:
+                if g.get("effect") == "deny":
+                    return Decision("deny", g.get("note") or "blocked in the team's matrix",
+                                    rule=g["id"])
+            for g in rows:
+                if g.get("effect", "allow") == "allow":
+                    return Decision("allow", rule=g["id"])
+            if flow:
+                return Decision("deny", f"the '{flow}' mission does not let its specialists "
+                                        f"consult each other — turn on 'Specialists may "
+                                        f"consult each other' in the mission and save",
+                                rule="message-flow")
+            return self._default(principal, action, resource, ctx)
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""))
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]

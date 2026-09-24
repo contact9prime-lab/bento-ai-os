@@ -1020,6 +1020,7 @@ function flwCollect(){
   d.permissions.fs_read=lines(g('#flw-fsr'));
   d.permissions.fs_write=lines(g('#flw-fsw'));
   d.permissions.memory=g('#flw-mem')||'read-space';
+  {const t=document.querySelector('#flw-talk');if(t)d.permissions.talk=!!t.checked;}
   (d.triggers||[]).forEach((t,i)=>{
     document.querySelectorAll(`[data-trig="${i}"]`).forEach(el=>{
       flwTrigSet(i,el.getAttribute('data-key'),el.type==='number'?+el.value:el.value);
@@ -1147,6 +1148,9 @@ function drawFLW(){
       <div style="flex:1"><label>Files it may read</label><textarea id="flw-fsr" rows="2" placeholder="~/Documents/launch/*">${esc((p.fs_read||[]).join('\n'))}</textarea></div>
       <div style="flex:1"><label>Files it may write</label><textarea id="flw-fsw" rows="2">${esc((p.fs_write||[]).join('\n'))}</textarea></div>
     </div>
+    <label class="flw-talk"><input type="checkbox" id="flw-talk" ${p.talk?'checked':''} onchange="flwPreview()">
+      Specialists may consult each other — on this mission, the agents on its roster may ask one
+      another mid-task (within the team's limits). Off: they only work through the orchestrator.</label>
     <label>Skills it may load</label><div style="max-height:110px;overflow:auto">${skl}</div>
 
     <div class="sawgrp">What starts it</div>
@@ -1224,6 +1228,8 @@ function flwDiff(before,after){
   add('net',(before.permissions||{}).net,(after.permissions||{}).net);
   add('files read',(before.permissions||{}).fs_read,(after.permissions||{}).fs_read);
   add('files written',(before.permissions||{}).fs_write,(after.permissions||{}).fs_write);
+  if(!!(before.permissions||{}).talk!==!!(after.permissions||{}).talk)
+    out.push(((after.permissions||{}).talk?'+ ':'− ')+'specialists consult each other');
   if(((before.permissions||{}).memory)!==((after.permissions||{}).memory))
     out.push('memory: '+((before.permissions||{}).memory||'?')+' → '+((after.permissions||{}).memory||'?'));
   add('sinks',(before.sinks||[]).map(x=>x.kind),(after.sinks||[]).map(x=>x.kind));

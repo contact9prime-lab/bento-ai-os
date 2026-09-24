@@ -154,14 +154,57 @@ def audit_team(store, action: str, resource: str, detail: str):
                     detail=detail[:1000])
 
 
+# The team's limits. These are DEFAULTS a person can move in Settings → AI providers →
+# Team (or `bento team limits`); the ceilings are what no setting can exceed, because
+# every one of these multiplies model calls and a typo of 600 should not be a bill.
 MESSAGE_MAX_HOPS = 2        # A asks B asks C, and no further: a chain is a conversation
 MESSAGE_BUDGET = 6          # questions one task may send in total, however they branch
+MESSAGE_CLARIFY = 2         # times a colleague may ask its asker back before answering
+HUDDLE_MAX_AGENTS = 4       # a huddle is a conversation, not a meeting
+HUDDLE_MAX_ROUNDS = 3
+LIMITS = {                  # key: (default, lowest, ceiling, what it bounds)
+    "hops": (MESSAGE_MAX_HOPS, 1, 6, "how far one question may travel (A → B → C is 2)"),
+    "budget": (MESSAGE_BUDGET, 1, 100, "questions one task may send in total"),
+    "clarify": (MESSAGE_CLARIFY, 0, 5, "times a colleague may ask its asker back"),
+    "huddle_agents": (HUDDLE_MAX_AGENTS, 2, 8, "agents in one huddle"),
+    "huddle_rounds": (HUDDLE_MAX_ROUNDS, 1, 6, "rounds in one huddle"),
+}
+
+
+def team_limits(cfg: dict) -> dict:
+    """The limits in force: the person's settings, clamped to the ceilings. One
+    reading for the control plane, Settings, the CLI and the docs' table."""
+    got = ((cfg or {}).get("team") or {}).get("limits") or {}
+    out = {}
+    for k, (d, lo, hi, _w) in LIMITS.items():
+        try:
+            v = int(got.get(k, d))
+        except (TypeError, ValueError):
+            v = d
+        out[k] = max(lo, min(hi, v))
+    return out
+
+
+def set_limits(cfg: dict, patch: dict) -> dict:
+    """Validate a change to the limits; a value outside the range is a sentence."""
+    lim = dict(((cfg.get("team") or {}).get("limits") or {}))
+    for k, v in (patch or {}).items():
+        if k not in LIMITS:
+            raise ValueError(f"'{k}' is not a team limit — one of: {', '.join(LIMITS)}")
+        d, lo, hi, what = LIMITS[k]
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"{k} is a whole number ({what})")
+        if not lo <= v <= hi:
+            raise ValueError(f"{k} is {lo}–{hi} ({what})")
+        lim[k] = v
+    cfg.setdefault("team", {})["limits"] = lim
+    return team_limits(cfg)
 # The reply of an agent that read untrusted content carries this, so the ASKER's turn
 # is marked tainted too (agent.py strips it and marks). A page read by B must not reach
 # A as if B had written it — that is prompt injection travelling one hop.
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"
-HUDDLE_MAX_AGENTS = 4       # a huddle is a conversation, not a meeting
-HUDDLE_MAX_ROUNDS = 3
 HUDDLE_WORDS = 120          # per turn: long enough to argue, short enough to read
 HUDDLE_CONTEXT = 6_000      # chars of transcript handed to each turn
 
@@ -651,12 +694,19 @@ class ControlPlane(usersmod.Scoped):
         for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
             if t not in tools:
                 tools.append(t)
-        # ...and may ask a colleague, when the team talks at all. Not inside a flow (its
-        # consent block has no line for it — the gate refuses anyway, this keeps the
-        # schema honest) and not inside a huddle turn, which is already a conversation.
+        # ...and may ask a colleague, when the team talks at all: inside a mission only if
+        # the mission declared "specialists may consult each other" (the gate counts only
+        # that mission's grants there), and never inside a huddle turn, which is already
+        # a conversation.
         from .policy import team_talk
-        if team_talk(self.cfg) != "off" and not flow and kind != "huddle" \
-                and "ask_agent" not in tools:
+        talks = team_talk(self.cfg) != "off" and kind != "huddle"
+        if talks and flow:
+            # inside a mission only if the mission declared it — its consent screen said so
+            try:
+                talks = bool(((self.store.get_flow(flow) or {}).get("permissions") or {}).get("talk"))
+            except Exception:
+                talks = False
+        if talks and "ask_agent" not in tools:
             tools.append("ask_agent")
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
@@ -728,7 +778,9 @@ class ControlPlane(usersmod.Scoped):
 
     # -- messages: one specialist asking another -----------------------------------
 
-    _sent: dict = {}                 # root run -> questions sent (MESSAGE_BUDGET)
+    _sent: dict = {}                 # root run -> questions sent (the budget)
+    _clar_n: dict = {}               # root|asker>asked -> clarifications asked back
+    _clarify: dict = {}              # the asked one's run -> the question it sent back
 
     async def message(self, sender: str, target: str, question: str, chain: list,
                       root: str = "", conversation_id: str = "", space_id: str = "",
@@ -739,7 +791,7 @@ class ControlPlane(usersmod.Scoped):
         as `agent.message` (the matrix cell, or swarm). What this adds is what a cell
         cannot express: the conversation's shape. The chain (who is already talking,
         set by the run and never by the model) refuses a loop back to anybody in it;
-        MESSAGE_MAX_HOPS refuses a chain that has grown too long; MESSAGE_BUDGET caps
+        the `hops` limit refuses a chain that has grown too long; the `budget` caps
         how many questions one task may send, however they branch. Each refusal is a
         sentence the asking model can act on — answer from what you have.
 
@@ -755,20 +807,48 @@ class ControlPlane(usersmod.Scoped):
             return f"[error] no agent called '{target}' — you can ask: {have}"
         target = d["name"]
         chain = list(chain or [sender])
+        lim = team_limits(self.cfg)
         if target.lower() == (sender or "").lower():
             return "[error] that is you — answer it yourself"
-        if target.lower() in (c.lower() for c in chain):
-            return (f"[refused] {target} is already in this conversation "
-                    f"({' → '.join(chain)}) — asking back would loop. Answer from what you have.")
-        if len(chain) > MESSAGE_MAX_HOPS:
-            return (f"[refused] this question has already passed {len(chain) - 1} agents "
-                    f"({' → '.join(chain)}); the limit is {MESSAGE_MAX_HOPS}. "
-                    f"Answer from what you have.")
         key = root or chain[0]
         if len(self._sent) > 500:
             self._sent.clear()
-        if self._sent.get(key, 0) >= MESSAGE_BUDGET:
-            return (f"[refused] this task has used its {MESSAGE_BUDGET} questions to other "
+            self._clar_n.clear()
+        # Asking BACK the one who asked you is not a loop, it is a clarification, and the
+        # right one to answer it is the asker itself — with everything it already knows —
+        # not a fresh copy of it that knows nothing. So the question is handed back up:
+        # this turn ends, and the asker's ask_agent returns "X asks you back: …", so it
+        # can ask again with the answer. Bounded by the `clarify` limit per pair per task.
+        if len(chain) >= 2 and target.lower() == chain[-2].lower():
+            pair = f"{key}|{sender}>{target}"
+            if self._clar_n.get(pair, 0) >= lim["clarify"]:
+                return ((f"[refused] asking back is switched off (the team's limits). "
+                         if not lim["clarify"] else
+                         f"[refused] you have asked {target} back {lim['clarify']} time(s) "
+                         f"already on this task. ")
+                        + "Answer with what you have, and say what is unclear.")
+            self._clar_n[pair] = self._clar_n.get(pair, 0) + 1
+            self._clarify[parent_run or pair] = " ".join(str(question or "").split())[:1000]
+            if say:
+                try:
+                    await say({"phase": "ask", "from": sender, "to": target,
+                               "text": "(asks back) " + " ".join(str(question or "").split())[:1000]})
+                except Exception:
+                    pass
+            return (f"[sent back to {target}] Your question went back to {target}, who asked "
+                    f"you. Stop now: reply in one line with what you need. {target} will ask "
+                    f"you again with the answer.")
+        if target.lower() in (c.lower() for c in chain):
+            return (f"[refused] {target} is already in this conversation "
+                    f"({' → '.join(chain)}) and waiting on it — asking would loop. Only the "
+                    f"one who asked you ({chain[-2] if len(chain) > 1 else sender}) can be "
+                    f"asked back. Answer from what you have.")
+        if len(chain) > lim["hops"]:
+            return (f"[refused] this question has already passed {len(chain) - 1} agents "
+                    f"({' → '.join(chain)}); the limit is {lim['hops']}. "
+                    f"Answer from what you have.")
+        if self._sent.get(key, 0) >= lim["budget"]:
+            return (f"[refused] this task has used its {lim['budget']} questions to other "
                     f"agents. Answer from what you have.")
         self._sent[key] = self._sent.get(key, 0) + 1
         question = " ".join(str(question or "").split())[:2000]
@@ -784,6 +864,11 @@ class ControlPlane(usersmod.Scoped):
         res = await self.run_subagent(d, task, kind="message", parent_run=parent_run,
                                       conversation_id=conversation_id, space_id=space_id,
                                       taint=taint, chain=chain, root=key)
+        back = self._clarify.pop(res.get("run_id") or "", None)
+        if back is not None:
+            # the colleague asked back instead of answering: the asker gets the question
+            return (f"[{target} asks you back before answering] {back}\n"
+                    f"Ask {target} again, with the answer.")
         text = (res["content"] or res["fault"] or "(no answer)").strip()
         if say:
             brain = agent_brain(self.cfg, d)
@@ -815,7 +900,7 @@ class ControlPlane(usersmod.Scoped):
         `say(entry)` is called after each turn ({speaker, model, provider, text, round})
         so a chat can draw the bubble and the Crew stage can put words over the head.
         A round in which everybody passes ends the huddle early; costs are bounded by
-        HUDDLE_MAX_AGENTS x HUDDLE_MAX_ROUNDS turns of at most HUDDLE_WORDS words.
+        the `huddle_agents` x `huddle_rounds` limits (team_limits) of at most HUDDLE_WORDS words.
         """
         seen, cast = set(), []
         for n in names or []:
@@ -827,8 +912,9 @@ class ControlPlane(usersmod.Scoped):
             have = ", ".join(x["name"] for x in self.store.list_subagents()) or "(none)"
             raise ValueError(f"a huddle needs at least two agents that exist here — "
                              f"have: {have}. Create one first if none fits.")
-        cast = cast[:HUDDLE_MAX_AGENTS]
-        rounds = max(1, min(HUDDLE_MAX_ROUNDS, int(rounds or 2)))
+        lim = team_limits(self.cfg)
+        cast = cast[:lim["huddle_agents"]]
+        rounds = max(1, min(lim["huddle_rounds"], int(rounds or 2)))
         transcript: list[dict] = []
         for r in range(1, rounds + 1):
             spoke = 0

@@ -1237,8 +1237,17 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
   (`headless_approver` excludes `ask_agent`). Autonomy is what an agent may DO; who may recruit
   whom is only the matrix's question. `team.talk == "swarm"` is the one thing that opens an
   empty cell (`rule="swarm"`), and an explicit block still wins over it.
-- **Two refusals sit BEFORE grants** (`PDP._decide` 2e): inside a flow run (its consent block
-  has no line for it) and with talk `off`. A desk grant must not widen either.
+- **The gate decides `agent.message` in full at 2e, because WHICH grants count depends on
+  where.** Talk `off` refuses everywhere. Inside a flow run only that flow's own definition
+  rows count (`permissions.talk` writes the roster's pairs), so a desk cell never widens a
+  mission and swarm never reaches into one; at the desk, definition rows do NOT count, so
+  enabling a mission is never consent for its specialists to message each other outside it.
+- **Asking back the direct asker is a clarification, not a loop.** It is handed UP
+  (`_clarify`, keyed on the asked one's run): the asker's `ask_agent` returns "X asks you back"
+  and the asker — which holds its whole context — asks again. Never start a fresh run of the
+  asker to answer; that copy knows nothing. Anyone else already in the chain is a real cycle.
+  The limits (`hops`, `budget`, `clarify`, huddle size) are `team.limits`, clamped to
+  `fabric.LIMITS` ceilings — every one multiplies model calls.
 - **The conversation's shape is the agent's, never the model's.** `agent.chain`/`root_run`
   are set by `run_subagent` and injected into `ask_agent` after the model's args, like
   `brief_item`'s run. `ControlPlane.message` refuses a loop back into the chain,

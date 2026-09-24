@@ -130,12 +130,19 @@ function setTab(body,all){
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
          f:'team agents message talk each other swarm matrix permission ask'}),
+      /* The limits: how far a question travels, how many one task may send, how often a
+         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
+         ceiling no setting passes, because every one multiplies model calls. */
+      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
+        {stack:true,desc:'Per task, so several swarms at once each get their own. Changes apply to the next question.',
+         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
         {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
          f:'team matrix who may ask whom agents grid permission'}),
     ],{f:'team agents providers huddle'}));
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamMatrix,0);
+    setTimeout(paintTeamLimits,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -1074,5 +1081,24 @@ async function paintTeamMatrix(){
       body:JSON.stringify({from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
     if(r.error){toast(r.error);return}
     paintTeamMatrix();
+  });
+}
+
+/* One number per limit, with its range from the server (fabric.LIMITS). Saved on
+   change; a value out of range is refused with the sentence that says the range. */
+async function paintTeamLimits(){
+  const box=document.getElementById('s-team-limits');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/limits')).json()}catch(e){}
+  const L=d.limits||{},R=d.ranges||{};
+  const label={hops:'Hops a question may travel',budget:'Questions per task',clarify:'Times a colleague may ask back',
+    huddle_agents:'Agents in a huddle',huddle_rounds:'Rounds in a huddle'};
+  box.classList.remove('mut');
+  box.innerHTML=Object.keys(R).map(k=>`<label class="tl-row"><span>${esc(label[k]||k)}<small class="mut"> · ${esc(R[k].what)} (${R[k].min}–${R[k].max}, default ${R[k].default})</small></span>
+    <input type="number" data-lim="${esc(k)}" min="${R[k].min}" max="${R[k].max}" value="${L[k]}"></label>`).join('');
+  box.querySelectorAll('input[data-lim]').forEach(inp=>inp.onchange=async()=>{
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({team:{limits:{[inp.dataset.lim]:+inp.value}}})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r&&r.error){toast(r.error);paintTeamLimits();return}
+    toast((label[inp.dataset.lim]||inp.dataset.lim)+': '+inp.value);
   });
 }
