@@ -106,6 +106,21 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    /* The team: each specialist may answer on its OWN provider — a researcher on a
+       local model, a validator on Claude, a writer on GPT — and they can hand work to
+       each other and talk it through in a huddle. One switch turns that off (one
+       bill, one provider), and each row pins one agent. Both apply on the spot, like
+       the brain above. The badge each agent wears on the Crew stage and in chat is
+       the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
+    P.push(pGroup('Team',[
+      pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
+        {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
+         f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
+      pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
+        {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
+         f:'team agent model pin provider per agent'}),
+    ],{f:'team agents providers huddle'}));
+    setTimeout(paintTeamBrains,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -356,6 +371,11 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tw=main.querySelector('#s-team-own');
+  if(tw)tw.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
+    cfg.team={...(cfg.team||{}),own_brains:tw.checked};paintTeamBrains();
+    toast(tw.checked?'agents answer on their own providers':'every agent uses this machine\u2019s brain')};
   const sc=main.querySelector('#s-imm-scene');
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
@@ -981,4 +1001,32 @@ async function chanSave(id){
     if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
     if(j.ok)renderChannels();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+
+/* One row per specialist: its face, the brain it answers on RIGHT NOW (the chip),
+   and a picker of every model this machine can reach. The chip is the server's
+   answer (fabric.agent_brain), so a pin on a switched-off provider reads as what it
+   is — pinned, and on the machine's brain until the provider is on. */
+async function paintTeamBrains(){
+  const box=document.getElementById('s-team-list');if(!box)return;
+  let sa={},mods={};
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  const list=(sa.subagents||[]);
+  if(!list.length){box.textContent='No specialists yet — ask for one, or create one in Missions → Build → Agents.';return}
+  const models=(mods.models||[]).map(m=>m.id);
+  box.classList.remove('mut');
+  box.innerHTML=list.map(s=>{
+    const b=s.brain||{}, pin=s.model||'';
+    const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
+    return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
+      <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
+  }).join('');
+  box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
+    const r=await fetch('/api/subagents/'+encodeURIComponent(sel.dataset.agent)+'/brain',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
 }

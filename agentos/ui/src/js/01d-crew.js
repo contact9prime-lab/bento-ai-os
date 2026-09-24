@@ -33,8 +33,13 @@
      tests (`tests/test_avatars.py`); the ones about MOVEMENT stay here.
    - **The stage is where the roster changes, too.** A specialist created while
      the scene is on walks in from the edge and says hello; one that finishes a
-     piece of work says so in a bubble. Both are events, not decoration: the
-     first is `fabric_defs`, the second is `flow_done`.
+     piece of work says so in a bubble; in a huddle, the one talking lights up
+     with the start of what it said over its head. All three are events, not
+     decoration: `fabric_defs`, `flow_done` and `agent_say`.
+   - **Every figure says what it runs on.** Under each name is the provider it
+     ANSWERS on (fabric.agent_brain via /api/subagents), and while it works the
+     light above its head becomes a tag naming it — so three busy agents on three
+     providers read as exactly that.
 
    Cost, and where it stops: the same budget as the Movement scene, because it
    is the same loop. One viewport canvas, at most 20 frames a second and 12 when
@@ -116,9 +121,12 @@ async function crewRoster(force){
     // alphabet slid the whole row sideways the moment it arrived.
     const was=CREW.cast.map(c=>c.name);
     const pos=n=>{const i=was.indexOf(n);return i<0?1e9:i};
+    CREW.agentBrain=(d.agent_brain&&d.agent_brain.provider_name)||'';
     CREW.cast=(d.subagents||d.agents||[])
       .filter(s=>s&&(s.name||s.id)&&s.enabled!==false)
-      .map(s=>({name:String(s.name||s.id),role:String(s.role||s.what||s.description||'').slice(0,28)}))
+      // `brain` is what the agent ANSWERS on (fabric.agent_brain), not what it is
+      // pinned to — a switched-off provider sends it to the machine's brain
+      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}))
       .sort((a,b)=>pos(a.name)-pos(b.name))
       .slice(0,CREW_MAX);
     // somebody new has no character yet until /api/avatars has generated one
@@ -141,7 +149,11 @@ function crewAvatarsChanged(){
   crewRoster(true);
 }
 /* A bubble above a figure. Short, and only for things that happened. */
-function crewSay(name,text){CREW.said[name]={text:String(text).slice(0,22),at:performance.now()};crewKick()}
+/* `turn` marks a huddle line: a conversation has one speaker at a time, so a new
+   turn clears the last one's words instead of stacking a crowd of bubbles. */
+function crewSay(name,text,turn){
+  if(turn)for(const k in CREW.said)if(CREW.said[k].turn)delete CREW.said[k];
+  CREW.said[name]={text:String(text).slice(0,40),at:performance.now(),turn:!!turn};crewKick()}
 /* An impulse from the OS, forwarded by movementPulse so the websocket keeps one
    seam. `flow` carries a name that may be a flow, an agent or an event — we
    light whichever cast member it matches, and nobody if it matches none, rather
@@ -150,6 +162,10 @@ function crewPulse(kind,label,ev){
   if(!CREW.on)return;
   const now=performance.now();
   if(kind==='turn'){CREW.turns++;crewKick();return}
+  // a turn of a huddle: the one talking lights up, with its words over its head
+  if(kind==='say'){const w=crewMatch(label);
+    if(w){CREW.busy[w]=now;crewSay(w,String((ev&&ev.text)||''),true)}
+    crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
     CREW.tool={name:String(label).replace(/_/g,' ').slice(0,24),at:now,who:crewWhoIsUp()};
@@ -303,20 +319,42 @@ function crewFigure(ctx,x,ground,scale,ink,key,hue,p,lift,label,sub,lit,walking)
   // working: a status light above the head, pulsing, square like the rest of
   // the figure. Off the face on purpose — one mark in the middle of a face is
   // what made the very first cut of this scene read as frightening.
-  if(lit){
-    const pulse=still?1:.6+.4*Math.sin(t*4+ph), q=Math.max(2,Math.round(u*1.4));
+  const pulse=still?1:.6+.4*Math.sin(t*4+ph), q=Math.max(2,Math.round(u*1.4));
+  if(lit&&!sub){
     ctx.globalAlpha=.55+.45*pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
     ctx.fillRect(cxd-Math.round(q/2),dy-q-u,q,q);
   }
   ctx.restore();
-  // the name, tinted like its owner; the role only for the one stepped forward
   const col=crewSkin(ink,hue,lit).line;
+  // Working, with a known brain: the light becomes a tag above the head that says
+  // WHAT it is working on — "● Anthropic" — so a row of three busy agents on three
+  // providers reads as that at a glance. The dot is the same pulsing ruby light.
+  if(lit&&sub)crewTag(ctx,sub,x,dy/dpr-u/dpr,Math.max(9,s*.11),col,.55+.45*pulse,ink);
+  // the name, tinted like its owner, and under it the brain it answers on
   crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),null,lit?.95:.6,600,'center',col);
-  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.38,Math.max(8,s*.10),null,.42*p,500,'center',col);
+  if(sub)crewText(ctx,sub,x,ground+s*.37,Math.max(8,s*.095),null,lit?.7:.34,500,'center',col);
   return (dy+7*u)/dpr;                                 // the head's centre, for the halo
 }
-function crewBubble(ctx,text,x,y,size,col,alpha,ink){
+/* The working tag: a pill above the head with the pulsing light and the provider. */
+function crewTag(ctx,text,x,top,size,col,pulse,ink){
   ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  const h=Math.round(size*1.6), dot=Math.round(size*.5);
+  const w=Math.ceil(ctx.measureText(text).width)+dot+size*1.3;
+  const bx=Math.round(x-w/2), by=Math.round(top-h-3);
+  ctx.globalAlpha=.82;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(16,18,26)';
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,w,h,h/2);else ctx.rect(bx,by,w,h);ctx.fill();
+  ctx.globalAlpha=pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
+  ctx.fillRect(bx+Math.round(size*.55),by+Math.round((h-dot)/2),dot,dot);
+  ctx.globalAlpha=1;
+  crewText(ctx,text,bx+size*.55+dot+(w-size*1.1-dot)/2,by+h/2,size,null,.95,600,'center',col);
+}
+function crewBubble(ctx,text,x,y,size,col,alpha,ink,maxW){
+  ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  // no wider than the figure's own slot: two neighbours talking must not overlap
+  if(maxW&&ctx.measureText(text).width+size*1.1>maxW){
+    while(text.length>4&&ctx.measureText(text+'\u2026').width+size*1.1>maxW)text=text.slice(0,-1);
+    text=text.trimEnd()+'\u2026';
+  }
   const w=Math.ceil(ctx.measureText(text).width)+size*1.1, h=Math.round(size*1.8);
   const bx=Math.round(x-w/2), by=Math.round(y-h);
   ctx.globalAlpha=.9*alpha;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(20,22,30)';
@@ -367,7 +405,7 @@ function crewDraw(dt){
   const aLift=running?.5+.5*Math.sin(C.t*Math.PI*1.1):0;
   const aBreath=running?0:.5+.5*Math.sin(C.t*Math.PI*.55);
   const headY=crewFigure(ctx,W/2,ground,scale*1.22,ink,'@agent',AGENT_HUE,running?.55:0,
-    running?aLift*.5:0,who,'',running);
+    running?aLift*.5:0,who,C.agentBrain||'',running);
   const heads={'@agent':{x:W/2,y:headY,sc:scale*1.22,hue:AGENT_HUE}};
   if(running){ // a quiet ring round the agent's head — a ring, never a shadow
     ctx.beginPath();ctx.arc(W/2,headY,scale*1.22*.24+aBreath*2,0,Math.PI*2);
@@ -386,7 +424,7 @@ function crewDraw(dt){
       x=from+(s.x-from)*(1-Math.pow(1-q,3));walking=q<1;
     }
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
-      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.role,lit,walking);
+      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
   });
   // What somebody SAID: a hello on arrival, "done" when its work finished.
@@ -395,7 +433,9 @@ function crewDraw(dt){
   for(const k in C.said){
     const h=heads[k];if(!h)continue;
     const age=(now-C.said[k].at)/CREW_SAY_MS, a=age>.75?(1-age)*4:1;
-    crewBubble(ctx,C.said[k].text,h.x,h.y-h.sc*.42,Math.max(9.5,scale*.12),crewSkin(ink,h.hue,true).line,a,ink);
+    const up=C.busy[k]||(k==='@agent'&&C.turns)?.62:.42;   // clear of the working tag
+    crewBubble(ctx,C.said[k].text,h.x,h.y-h.sc*up,Math.max(9.5,scale*.12),crewSkin(ink,h.hue,true).line,a,ink,
+      Math.max(90,(step||scale*2)*1.1));
   }
   // the tool that just ran, above whoever ran it — the one label that carries news.
   // Tinted like that figure, so with three working at once the name and the person

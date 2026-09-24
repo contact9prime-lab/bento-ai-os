@@ -951,6 +951,44 @@ class Toolbox(usersmod.Scoped):
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"
 
+    async def huddle(self, agents: list, topic: str, rounds: int = 2,
+                     conversation_id: str = "") -> str:
+        """Let two to four specialists talk a question through, each on its own brain.
+
+        The control plane moderates (fabric.huddle) — agents never call each other —
+        and every turn is broadcast as it lands, so the chat draws it as that agent's
+        own bubble and the Crew stage puts the words over its head."""
+        if not self.fabric:
+            return "[error] fabric not available"
+
+        async def say(e):
+            if self.broadcast:
+                await self.broadcast({"type": "agent_say", "conversation_id": conversation_id,
+                                      **e})
+        try:
+            res = await self.fabric.huddle(list(agents or []), topic or "", rounds,
+                                           conversation_id=conversation_id, say=say)
+        except ValueError as e:
+            return f"[error] {e}"
+        return res["text"]
+
+    async def set_agent_brain(self, agent: str, model: str = "") -> str:
+        """Point one agent at a model on any provider here ('' = the machine's brain)."""
+        from . import fabric as fabricmod
+        try:
+            b = fabricmod.set_agent_model(self.store, self.cfg, agent, model)
+        except KeyError:
+            names = ", ".join(x["name"] for x in self.store.list_subagents()) or "(none)"
+            return f"[error] no agent called '{agent}' — have: {names}"
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "fabric_defs"})
+        where = f"{b['provider_name']} · {b['short']}"
+        return (f"{agent} now answers on {where}." if b["own"] or not model else
+                f"{agent} is pinned to {model}, but for now answers on {where}: {b['note']}.")
+
     async def forget(self, memory_id: str) -> str:
         mems = {m["id"] for m in self.store.search_memories("", limit=10**6)}
         if memory_id not in mems:
@@ -2402,6 +2440,10 @@ class Toolbox(usersmod.Scoped):
             # definition and may create specialists, which is a change to the OS.
             return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
                              f"needs. It stays disabled until you enable it.")
+        if name == "set_agent_brain":
+            dest = args.get("model") or "this machine's brain"
+            return "risky", (f"Moves '{args.get('agent', '?')}' onto {dest} — that provider "
+                             f"is billed for its work from now on.")
         if name == "create_subagent":
             # Grants nothing on its own (invoking it is what asks), but it writes a
             # definition other conversations can then use — a change to the OS.
@@ -3656,6 +3698,40 @@ TOOL_SCHEMAS = [
                 "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
             },
             "required": ["subagent", "task"],
+        },
+    },
+    {
+        "name": "huddle",
+        "description": "Have two to four specialist agents TALK A QUESTION THROUGH with each other, "
+                       "in turns, each answering on its own model (so agents on different AI "
+                       "providers can disagree and build on each other). Use it for a second "
+                       "opinion, a review, a plan worth arguing about. Returns the transcript, "
+                       "one line per turn — summarise it for the user. If no agent fits, "
+                       "create_subagent first. Costs one run per agent per round.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agents": {"type": "array", "items": {"type": "string"},
+                           "description": "2-4 agent names, e.g. ['researcher','validator']."},
+                "topic": {"type": "string", "description": "The question, self-contained — they see nothing else."},
+                "rounds": {"type": "integer", "description": "1-3 (default 2)."},
+            },
+            "required": ["agents", "topic"],
+        },
+    },
+    {
+        "name": "set_agent_brain",
+        "description": "Choose which AI model one specialist agent answers on — any provider this "
+                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5', "
+                       "'openai/gpt-4o', 'ollama/qwen3.5:9b'), or '' for this machine's brain. "
+                       "It changes who is billed for that agent's work.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agent": {"type": "string"},
+                "model": {"type": "string"},
+            },
+            "required": ["agent"],
         },
     },
     {

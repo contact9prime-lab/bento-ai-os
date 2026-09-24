@@ -36,6 +36,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Licensing & trademarks](licensing.md) | What AgentOS ships and what it only *asks for*; why it redistributes no distribution; where the Ubuntu/Canonical trademark line sits |
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
+| [The team](team.md) | Each agent on its own AI provider (a researcher on a local model, a validator on Claude), the provider badge, and huddles — agents talking a question through with each other |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: Sign in with Google or Microsoft, an MCP server, or an app password; what is never touched; the missions built on them |
 | [The vault](vault.md) | Where every account secret lives: encrypted, keyed by the keyring where there is one, read only by the system for its job and written down each time, never printed |
 | [The Brief](brief.md) | How a mission delivers: things to act on, not a message — one living page a day, on the desktop, the phone, Telegram and out loud, where a decision is one tap and the reply comes back to the item |

@@ -271,6 +271,10 @@ glance instead of reading names.
 
 ![Logs with the face of whoever acted on each line](screenshots/characters-logs.png)
 
+**They work together, on different providers.** Each specialist can answer on its own AI
+provider, wears a badge saying which, and can talk a question through with the others in a
+*huddle* — see [the team](team.md).
+
 **In a terminal**, `bento avatar` draws the same characters in half-block pixels from the same
 grid, and edits them with the server down:
 

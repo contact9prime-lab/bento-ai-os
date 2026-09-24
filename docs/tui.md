@@ -115,6 +115,17 @@ bento avatar reroll researcher                 # a new look, same shirt colour
 It reads and writes the rows directly, so it works with the server down. Without
 colour (a pipe, `NO_COLOR`) it describes each character in words instead.
 
+## The team from a terminal
+
+```bash
+bento team                                     # each agent and the provider it answers on
+bento team set validator anthropic/claude-sonnet-5
+bento team own off                             # every agent on this machine's brain
+```
+
+In the TUI's chat, `@researcher @validator should we…` starts a huddle, and each turn prints as
+one line with the speaker and its provider. See [the team](team.md).
+
 ## Notes
 
 - Chat streams incrementally and shows model heartbeats ("waiting for the model — 20s…")

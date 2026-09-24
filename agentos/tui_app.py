@@ -586,6 +586,12 @@ class AgentTUI(App):
                             log.write(f"[red]✗ {ev.get('name','')}{took} — {(ev.get('output') or '')[:120]}[/]")
                         elif took:
                             log.write(f"[grey58]✓ {ev.get('name','')}{took}[/]")
+                    elif t == "agent_say":
+                        # A huddle: agents talking to each other, each on its own
+                        # brain. One line per turn, the speaker and the provider it
+                        # answered on first — the terminal form of the chat's card.
+                        log.write(f"[b]@{ev.get('speaker', '?')}[/] [grey58]({ev.get('provider') or ev.get('model', '')})[/]  "
+                                  f"{ev.get('text', '')}")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))

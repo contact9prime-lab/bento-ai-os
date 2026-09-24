@@ -248,8 +248,11 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||''};
-      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);}
+                          speaker:ev.speaker||'',
+                          // `@a @b …` is a huddle: the room answers, each in turn
+                          huddle:ev.huddle||null};
+      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
+        if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
@@ -454,6 +457,9 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'agent_say':   // one turn of a huddle (10b-huddle.js)
+      if(typeof huddleLive==='function')huddleLive(ev,_cur);
+      break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst
@@ -544,8 +550,9 @@ function flushText(){
 /* Who is answering the turn in progress: a specialist addressed by name, in
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
+  if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
   const sp=CUR_ENGINE.speaker;
-  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' · '+esc(String(CUR_ENGINE.model).split('/').pop()):''))
+  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }
 function startAssistant(){

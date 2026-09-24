@@ -697,7 +697,7 @@ class Agent:
             # rebuilt per step rather than once per turn
             self._pinned_tools |= set(toolscope.match_names(
                 self.toolbox.schemas(), str(args.get("need") or "")))
-        if name in ("remember", "delegate") and self.conversation_id:
+        if name in ("remember", "delegate", "huddle") and self.conversation_id:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
             args = {**args, "conversation_id": self.conversation_id}

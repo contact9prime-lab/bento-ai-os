@@ -82,10 +82,15 @@ _NO_AGENT_WRITE = [("agent.write", "*")]
 # is what grants. See agentos/ocplugins.py.
 _NO_PLUGIN_WRITE = [("plugin.install", "*"), ("plugin.enable", "*")]
 _DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE
+# Convening a huddle is the user's agent's alone. A specialist that could start one
+# would be an agent invoking agents (the tree stays two deep); an app or a peer that
+# could would be spending on several models with nobody at the keyboard; and a flow's
+# consent block has no line for it yet, so it is refused rather than half-granted.
+_NO_HUDDLE = [("agent.huddle", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
-    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE,
+    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -93,13 +98,13 @@ BUILTIN_DENY = {
     # (its roster) can satisfy one. The agents it starts run as `subagent`, which IS
     # denied above — which is what makes the tree exactly two deep, enforced by the gate
     # rather than by a counter somebody has to remember to increment.
-    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE,
+    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE,
     # A peer is another machine holding a minted key to this one's agent-share
     # door. Its entire legitimate reach is `agent.share` — written as a grant
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -203,6 +208,17 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # (and deniable) apart from everything else — see _NO_AGENT_WRITE.
     if name == "create_subagent":
         return "agent.write", f"agent:subagent/{args.get('name', '') or '*'}"
+    # Re-pointing an agent at another model changes who is billed for its work, so it
+    # is the same capability as defining one — never a tool.use string.
+    if name == "set_agent_brain":
+        return "agent.write", f"agent:subagent/{args.get('agent', '') or '*'}"
+    # A huddle starts several agents talking, each a run on its own model: its own
+    # action, so "may delegate to the researcher" does not quietly become "may convene
+    # the whole team", and the resource names exactly who is in the room.
+    if name == "huddle":
+        who = sorted({str(a).strip().lstrip("@").lower() for a in (args.get("agents") or [])
+                      if str(a).strip()})
+        return "agent.huddle", f"agent:huddle/{','.join(who) or '*'}"
     if name == "list_flows":
         return "flow.read", "flow:*"
     # OpenClaw plugins. Three actions, not one, because the three decisions are
@@ -666,6 +682,21 @@ class PDP(usersmod.Scoped):
         is one people click through.
         """
         kind, _, name = resource.partition(":")[2].partition("/")
+        if kind == "huddle":
+            # who is in the room and what each one answers on: the cost of a huddle
+            # is several models at once, and the card should let somebody see that
+            from .fabric import agent_brain, HUDDLE_MAX_ROUNDS
+            who = []
+            for n in [x for x in name.split(",") if x]:
+                try:
+                    d = self.store.get_subagent(n) if self.store else None
+                except Exception:
+                    d = None
+                b = agent_brain(self.cfg, d or {})
+                who.append(f"{n} (on {b['provider_name'] or 'the default model'})")
+            return (f"Starts a conversation between {', '.join(who) or 'your agents'} — up to "
+                    f"{HUDDLE_MAX_ROUNDS} rounds, each turn a separate run on that agent's "
+                    f"own model.")
         if kind != "subagent" or not name or not self.store:
             return f"Runs '{name or resource}' — a separate agent, with its own steps and budget."
         try:
@@ -945,7 +976,8 @@ class PDP(usersmod.Scoped):
             # an app always owns its own data store
             if action.startswith("app.data") and resource == f"app:{principal.id}/data":
                 return Decision("allow", rule="default")
-            if risk == "safe" and action not in ("model.use", "agent.invoke", "app.data.read",
+            if risk == "safe" and action not in ("model.use", "agent.invoke", "agent.huddle",
+                                                 "app.data.read",
                                                  "app.data.write"):
                 return Decision("allow", rule="default")
             return Decision("ask", reason or "This app is asking to use a capability it has "
@@ -971,7 +1003,7 @@ class PDP(usersmod.Scoped):
         # denial with the reason in the ledger — the same shape a flow's ungranted
         # roster takes, and for the same reason: this must not become a way for
         # something running alone to acquire an actor the user never approved.
-        if action == "agent.invoke" and autonomy != "full":
+        if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
             return Decision("ask", reason or self._invoke_reason(resource),
                             rule="default", grant_offer=offer)
         if risk == "risky" and autonomy != "full":

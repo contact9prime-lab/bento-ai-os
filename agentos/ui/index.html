@@ -3462,6 +3462,34 @@ img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
    stage moves above the choices so the rows get the whole width */
 body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:var(--tap)}
 @media (max-width:560px){.ave-body{flex-direction:column;align-items:stretch}.ave-stage{align-self:center}}
+
+/* ---- huddles (10b-huddle.js) and the provider chip ----
+   A huddle is a card inside the reply: one row per turn, the speaker's face, name
+   and the brain it answered on, then what it said. The chip names the PROVIDER
+   first, because "which company answered" is the question; the model follows. */
+.brainchip{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:500;letter-spacing:0;text-transform:none;vertical-align:1px;
+  color:var(--dim);border:1px solid var(--line);background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.brainchip b{color:var(--txt);font-weight:600}
+.huddle{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.hud-head{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);color:var(--dim);margin-bottom:6px}
+.hud-head span{margin-left:4px}
+.hud-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hud-row:first-of-type{border-top:0}
+.hud-row img.av-who{width:30px;height:30px;flex:0 0 30px;border-radius:9px;margin:0}
+.hud-say{min-width:0;flex:1}
+.hud-who{font-size:var(--fs-xs);font-weight:600;margin-bottom:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hud-text p{margin:0}
+.hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
+.msg .who img.av-who+img.av-who{margin-left:-14px}
+/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+.team-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.team-row>b{min-width:88px}
+.team-row select{flex:0 1 300px;min-width:0}
+.team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
+body.dev-touch .team-row select{min-height:var(--tap)}
 </style>
 </head>
 <body>
@@ -4895,8 +4923,13 @@ if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')mo
      tests (`tests/test_avatars.py`); the ones about MOVEMENT stay here.
    - **The stage is where the roster changes, too.** A specialist created while
      the scene is on walks in from the edge and says hello; one that finishes a
-     piece of work says so in a bubble. Both are events, not decoration: the
-     first is `fabric_defs`, the second is `flow_done`.
+     piece of work says so in a bubble; in a huddle, the one talking lights up
+     with the start of what it said over its head. All three are events, not
+     decoration: `fabric_defs`, `flow_done` and `agent_say`.
+   - **Every figure says what it runs on.** Under each name is the provider it
+     ANSWERS on (fabric.agent_brain via /api/subagents), and while it works the
+     light above its head becomes a tag naming it — so three busy agents on three
+     providers read as exactly that.
 
    Cost, and where it stops: the same budget as the Movement scene, because it
    is the same loop. One viewport canvas, at most 20 frames a second and 12 when
@@ -4978,9 +5011,12 @@ async function crewRoster(force){
     // alphabet slid the whole row sideways the moment it arrived.
     const was=CREW.cast.map(c=>c.name);
     const pos=n=>{const i=was.indexOf(n);return i<0?1e9:i};
+    CREW.agentBrain=(d.agent_brain&&d.agent_brain.provider_name)||'';
     CREW.cast=(d.subagents||d.agents||[])
       .filter(s=>s&&(s.name||s.id)&&s.enabled!==false)
-      .map(s=>({name:String(s.name||s.id),role:String(s.role||s.what||s.description||'').slice(0,28)}))
+      // `brain` is what the agent ANSWERS on (fabric.agent_brain), not what it is
+      // pinned to — a switched-off provider sends it to the machine's brain
+      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}))
       .sort((a,b)=>pos(a.name)-pos(b.name))
       .slice(0,CREW_MAX);
     // somebody new has no character yet until /api/avatars has generated one
@@ -5003,7 +5039,11 @@ function crewAvatarsChanged(){
   crewRoster(true);
 }
 /* A bubble above a figure. Short, and only for things that happened. */
-function crewSay(name,text){CREW.said[name]={text:String(text).slice(0,22),at:performance.now()};crewKick()}
+/* `turn` marks a huddle line: a conversation has one speaker at a time, so a new
+   turn clears the last one's words instead of stacking a crowd of bubbles. */
+function crewSay(name,text,turn){
+  if(turn)for(const k in CREW.said)if(CREW.said[k].turn)delete CREW.said[k];
+  CREW.said[name]={text:String(text).slice(0,40),at:performance.now(),turn:!!turn};crewKick()}
 /* An impulse from the OS, forwarded by movementPulse so the websocket keeps one
    seam. `flow` carries a name that may be a flow, an agent or an event — we
    light whichever cast member it matches, and nobody if it matches none, rather
@@ -5012,6 +5052,10 @@ function crewPulse(kind,label,ev){
   if(!CREW.on)return;
   const now=performance.now();
   if(kind==='turn'){CREW.turns++;crewKick();return}
+  // a turn of a huddle: the one talking lights up, with its words over its head
+  if(kind==='say'){const w=crewMatch(label);
+    if(w){CREW.busy[w]=now;crewSay(w,String((ev&&ev.text)||''),true)}
+    crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
     CREW.tool={name:String(label).replace(/_/g,' ').slice(0,24),at:now,who:crewWhoIsUp()};
@@ -5165,20 +5209,42 @@ function crewFigure(ctx,x,ground,scale,ink,key,hue,p,lift,label,sub,lit,walking)
   // working: a status light above the head, pulsing, square like the rest of
   // the figure. Off the face on purpose — one mark in the middle of a face is
   // what made the very first cut of this scene read as frightening.
-  if(lit){
-    const pulse=still?1:.6+.4*Math.sin(t*4+ph), q=Math.max(2,Math.round(u*1.4));
+  const pulse=still?1:.6+.4*Math.sin(t*4+ph), q=Math.max(2,Math.round(u*1.4));
+  if(lit&&!sub){
     ctx.globalAlpha=.55+.45*pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
     ctx.fillRect(cxd-Math.round(q/2),dy-q-u,q,q);
   }
   ctx.restore();
-  // the name, tinted like its owner; the role only for the one stepped forward
   const col=crewSkin(ink,hue,lit).line;
+  // Working, with a known brain: the light becomes a tag above the head that says
+  // WHAT it is working on — "● Anthropic" — so a row of three busy agents on three
+  // providers reads as that at a glance. The dot is the same pulsing ruby light.
+  if(lit&&sub)crewTag(ctx,sub,x,dy/dpr-u/dpr,Math.max(9,s*.11),col,.55+.45*pulse,ink);
+  // the name, tinted like its owner, and under it the brain it answers on
   crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),null,lit?.95:.6,600,'center',col);
-  if(sub&&p>.5)crewText(ctx,sub,x,ground+s*.38,Math.max(8,s*.10),null,.42*p,500,'center',col);
+  if(sub)crewText(ctx,sub,x,ground+s*.37,Math.max(8,s*.095),null,lit?.7:.34,500,'center',col);
   return (dy+7*u)/dpr;                                 // the head's centre, for the halo
 }
-function crewBubble(ctx,text,x,y,size,col,alpha,ink){
+/* The working tag: a pill above the head with the pulsing light and the provider. */
+function crewTag(ctx,text,x,top,size,col,pulse,ink){
   ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  const h=Math.round(size*1.6), dot=Math.round(size*.5);
+  const w=Math.ceil(ctx.measureText(text).width)+dot+size*1.3;
+  const bx=Math.round(x-w/2), by=Math.round(top-h-3);
+  ctx.globalAlpha=.82;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(16,18,26)';
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,w,h,h/2);else ctx.rect(bx,by,w,h);ctx.fill();
+  ctx.globalAlpha=pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
+  ctx.fillRect(bx+Math.round(size*.55),by+Math.round((h-dot)/2),dot,dot);
+  ctx.globalAlpha=1;
+  crewText(ctx,text,bx+size*.55+dot+(w-size*1.1-dot)/2,by+h/2,size,null,.95,600,'center',col);
+}
+function crewBubble(ctx,text,x,y,size,col,alpha,ink,maxW){
+  ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  // no wider than the figure's own slot: two neighbours talking must not overlap
+  if(maxW&&ctx.measureText(text).width+size*1.1>maxW){
+    while(text.length>4&&ctx.measureText(text+'\u2026').width+size*1.1>maxW)text=text.slice(0,-1);
+    text=text.trimEnd()+'\u2026';
+  }
   const w=Math.ceil(ctx.measureText(text).width)+size*1.1, h=Math.round(size*1.8);
   const bx=Math.round(x-w/2), by=Math.round(y-h);
   ctx.globalAlpha=.9*alpha;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(20,22,30)';
@@ -5229,7 +5295,7 @@ function crewDraw(dt){
   const aLift=running?.5+.5*Math.sin(C.t*Math.PI*1.1):0;
   const aBreath=running?0:.5+.5*Math.sin(C.t*Math.PI*.55);
   const headY=crewFigure(ctx,W/2,ground,scale*1.22,ink,'@agent',AGENT_HUE,running?.55:0,
-    running?aLift*.5:0,who,'',running);
+    running?aLift*.5:0,who,C.agentBrain||'',running);
   const heads={'@agent':{x:W/2,y:headY,sc:scale*1.22,hue:AGENT_HUE}};
   if(running){ // a quiet ring round the agent's head — a ring, never a shadow
     ctx.beginPath();ctx.arc(W/2,headY,scale*1.22*.24+aBreath*2,0,Math.PI*2);
@@ -5248,7 +5314,7 @@ function crewDraw(dt){
       x=from+(s.x-from)*(1-Math.pow(1-q,3));walking=q<1;
     }
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
-      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.role,lit,walking);
+      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
   });
   // What somebody SAID: a hello on arrival, "done" when its work finished.
@@ -5257,7 +5323,9 @@ function crewDraw(dt){
   for(const k in C.said){
     const h=heads[k];if(!h)continue;
     const age=(now-C.said[k].at)/CREW_SAY_MS, a=age>.75?(1-age)*4:1;
-    crewBubble(ctx,C.said[k].text,h.x,h.y-h.sc*.42,Math.max(9.5,scale*.12),crewSkin(ink,h.hue,true).line,a,ink);
+    const up=C.busy[k]||(k==='@agent'&&C.turns)?.62:.42;   // clear of the working tag
+    crewBubble(ctx,C.said[k].text,h.x,h.y-h.sc*up,Math.max(9.5,scale*.12),crewSkin(ink,h.hue,true).line,a,ink,
+      Math.max(90,(step||scale*2)*1.1));
   }
   // the tool that just ran, above whoever ran it — the one label that carries news.
   // Tinted like that figure, so with three working at once the name and the person
@@ -9419,8 +9487,11 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||''};
-      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);}
+                          speaker:ev.speaker||'',
+                          // `@a @b …` is a huddle: the room answers, each in turn
+                          huddle:ev.huddle||null};
+      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
+        if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
@@ -9625,6 +9696,9 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'agent_say':   // one turn of a huddle (10b-huddle.js)
+      if(typeof huddleLive==='function')huddleLive(ev,_cur);
+      break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst
@@ -9715,8 +9789,9 @@ function flushText(){
 /* Who is answering the turn in progress: a specialist addressed by name, in
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
+  if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
   const sp=CUR_ENGINE.speaker;
-  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' · '+esc(String(CUR_ENGINE.model).split('/').pop()):''))
+  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }
 function startAssistant(){
@@ -10009,7 +10084,9 @@ async function openConv(cid){
       // with its face in the header that line would say the same thing twice
       let body=msg.content||'', spModel='';
       if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
-      m.innerHTML='<div class="who">'+(sp?chatWho(sp,'@'+esc(sp)+(spModel?`<span class="whomdl">${esc(spModel)}</span>`:'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      const hud=msg.meta&&msg.meta.huddle;
+      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      if(hud){m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(body),hud,true));feed.appendChild(m);return}
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
           // a reopened conversation reads the same way a live one did
@@ -10019,7 +10096,9 @@ async function openConv(cid){
           card.innerHTML=`<div class="head">${s.name==='delegate'?avatarImg((s.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
           card.querySelector('.out').textContent=s.output||'';
           card.querySelector('.head').onclick=()=>card.classList.toggle('open');
-          m.appendChild(card);}
+          m.appendChild(card);
+          // the agents' conversation, as it looked live: each turn in its own face
+          if(s.name==='huddle'&&s.ok)m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(s.output||'')));}
         else if(s.type==='steer'){   // something you said mid-run, taken into it
           const d=document.createElement('div');d.className='steer';
           d.textContent='took in: '+(s.text||'');d.title=s.reason||'';m.appendChild(d);}
@@ -10356,6 +10435,87 @@ function handoffEmit(ev,cid,sink,inChat){
   if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
     curBody.parentNode.insertBefore(handoffChip(h),curBody);
 }
+/* ================= Huddles: agents talking to each other =================
+   A huddle is two to four specialists talking a question through, in turns, each on
+   its OWN brain (agentos/fabric.py → huddle). The control plane moderates; agents
+   never call each other. It reaches the page two ways, and both draw the same card:
+
+   - live, as `agent_say` events — one per turn, the moment it lands — from the
+     agent's `huddle` tool or from a message that starts with two names
+     ("@researcher @validator should we…");
+   - on reload, from the stored text, which is one line per turn
+     (`@name (model): text`, fabric.huddle_text). One format for the model, the
+     ledger and the page, so there is no second store to fall out of step.
+
+   Every turn is that agent's own face, its name and the provider it answered on —
+   the badge is the run's own `model`, never the agent's pin, because a switched-off
+   provider sends a pinned agent to the machine's brain and the badge must say so.
+
+   Faces — GUI/SUI: this. TUI: the huddle is plain text in a terminal chat and in
+   `bento flow runs` (each turn is a run). `var`/function declarations only. */
+
+/* A model id → the name of what answered it: "anthropic/claude-sonnet-5" →
+   "Anthropic". Read from the brains catalogue the chat header already loaded, so
+   this page has no second table of provider names. */
+function brainName(model){
+  const m=String(model||''), pid=m.includes('/')?m.split('/')[0]:m;
+  const e=(typeof BRAINS!=='undefined'&&BRAINS.executors||[]).find(x=>x.id===pid);
+  if(pid==='custom')return 'Custom server';   // as fabric.agent_brain names it
+  return e?String(e.name||pid).split(' — ')[0]:(pid||'default');
+}
+function brainChip(model,provider){
+  const m=String(model||''), short=m.includes('/')?m.split('/').slice(1).join('/'):m;
+  const name=provider||brainName(m);
+  return `<span class="brainchip" title="${esc(m||'the machine’s brain')}"><b>${esc(name)}</b>${short&&short!=='default'?' · '+esc(short):''}</span>`;
+}
+function huddleParse(text){
+  const lines=String(text||'').split('\n'), out=[];
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]})});
+  return out;
+}
+function huddleRow(e){
+  return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
+    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)} ${brainChip(e.model,e.provider)}</div>
+    <div class="hud-text">${md(e.text||'')}</div></div></div>`;
+}
+/* `bare`: the message header above already names the room (a huddle started from
+   the chat box), so the card does not say it a second time. */
+function huddleCard(entries,agents,bare){
+  const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
+  return `<div class="huddle">${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
+    <span>huddle · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
+}
+/* The label over a huddle started from the chat box: the faces in the room. */
+function huddleWho(names){
+  return (names||[]).map(n=>avatarImg(n,'av-who')).join('')+'huddle · '+esc((names||[]).join(', '));
+}
+/* One turn, live. It goes into the assistant message in progress — the tool card
+   of the agent's `huddle` call, or the message a "@a @b …" turn opened — and the
+   Crew stage hears it too, so the one talking says so over its head. */
+function huddleLive(ev,isCur){
+  if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
+  // the activity pill: a huddle has no tool calls to report, so say who just spoke
+  if(typeof actMove==='function'&&ev.conversation_id)
+    actMove(ev.conversation_id,'think',{msg:'huddle · '+ev.speaker+' just spoke'});
+  if(!isCur||!feed)return;
+  if(!curBody)startAssistant();
+  if(!curBody)return;
+  const msg=curBody.parentNode;
+  // the huddle already open directly above the reply keeps growing; anything said
+  // in between (text, another tool) means this is a new one
+  let card=curBody.previousElementSibling;
+  if(!card||!card.classList.contains('huddle')){
+    if(typeof flushText==='function')flushText();
+    const holder=document.createElement('div');
+    holder.innerHTML=huddleCard([],[],!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle));
+    card=holder.firstElementChild;card.querySelector('.mut')?.remove();
+    msg.insertBefore(card,curBody);
+  }
+  card.insertAdjacentHTML('beforeend',huddleRow(ev));
+  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
+  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>huddle · ${esc(who.join(', '))}</span>`;
+  if(typeof scrollDown==='function')scrollDown();
+}
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -10464,6 +10624,21 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    /* The team: each specialist may answer on its OWN provider — a researcher on a
+       local model, a validator on Claude, a writer on GPT — and they can hand work to
+       each other and talk it through in a huddle. One switch turns that off (one
+       bill, one provider), and each row pins one agent. Both apply on the spot, like
+       the brain above. The badge each agent wears on the Crew stage and in chat is
+       the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
+    P.push(pGroup('Team',[
+      pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
+        {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
+         f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
+      pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
+        {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
+         f:'team agent model pin provider per agent'}),
+    ],{f:'team agents providers huddle'}));
+    setTimeout(paintTeamBrains,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -10714,6 +10889,11 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tw=main.querySelector('#s-team-own');
+  if(tw)tw.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
+    cfg.team={...(cfg.team||{}),own_brains:tw.checked};paintTeamBrains();
+    toast(tw.checked?'agents answer on their own providers':'every agent uses this machine\u2019s brain')};
   const sc=main.querySelector('#s-imm-scene');
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
@@ -11339,6 +11519,34 @@ async function chanSave(id){
     if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
     if(j.ok)renderChannels();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+
+/* One row per specialist: its face, the brain it answers on RIGHT NOW (the chip),
+   and a picker of every model this machine can reach. The chip is the server's
+   answer (fabric.agent_brain), so a pin on a switched-off provider reads as what it
+   is — pinned, and on the machine's brain until the provider is on. */
+async function paintTeamBrains(){
+  const box=document.getElementById('s-team-list');if(!box)return;
+  let sa={},mods={};
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  const list=(sa.subagents||[]);
+  if(!list.length){box.textContent='No specialists yet — ask for one, or create one in Missions → Build → Agents.';return}
+  const models=(mods.models||[]).map(m=>m.id);
+  box.classList.remove('mut');
+  box.innerHTML=list.map(s=>{
+    const b=s.brain||{}, pin=s.model||'';
+    const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
+    return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
+      <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
+  }).join('');
+  box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
+    const r=await fetch('/api/subagents/'+encodeURIComponent(sel.dataset.agent)+'/brain',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
 }
 /* ================= WhatsApp: the two things a form cannot say =================
    The generic channel card in 11-settings draws WhatsApp's four fields fine. What
@@ -12732,7 +12940,7 @@ async function renderFabAgents(body){
       ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
-        <div class="meta"><b>${esc((s.model||'').split('/').pop()||'inherits OS model')}</b> · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
+        <div class="meta">${s.brain?brainChip(s.brain.model,s.brain.provider_name):esc(s.model||'inherits OS model')}${s.brain&&s.brain.note?` <span class="mut" title="pinned to ${esc(s.brain.pinned)}">· ${esc(s.brain.note)}</span>`:''} · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
       ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}

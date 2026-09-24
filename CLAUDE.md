@@ -1200,6 +1200,34 @@ things keep it true:
   full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
   five skins before believing it.
 
+## The team: each agent on its own provider, and huddles
+
+Full story in `docs/team.md`. Two features, four rules.
+
+- **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
+  The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
+  Settings → AI providers → Team and `bento team` all read it. A pin is used only when
+  `team.own_brains` is on, the provider is enabled, and it has the key it needs. Otherwise the
+  agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
+  pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default
+  model would be the dead-control lie in a new shape.
+- **A pinned specialist answers on its own provider even under an executor.** With Claude Code
+  as the machine's brain, `run_subagent` skips the bridge for an agent whose brain is `own`, so
+  it runs in this OS's loop on its pinned provider. That is what "agents on different
+  providers work together" means. Unpinned agents still ride the executor.
+- **A huddle is the control plane moderating ordinary runs, never agents calling agents.**
+  `ControlPlane.huddle` loops `run_subagent` with the transcript in each task. The two-deep tree
+  (`BUILTIN_DENY` on `agent.invoke` for subagents) stays intact, and every turn is a run with
+  its own model, budget and ledger rows. Bounded by `HUDDLE_MAX_AGENTS`/`ROUNDS`/`WORDS`, and a
+  round of passes ends it.
+- **`agent.huddle` is its own action.** It is asked for below full autonomy, and its card names
+  who is in the room and what each runs on. It is refused to every non-user principal
+  (`_NO_HUDDLE`), flows included, because a flow's consent block has no line for it yet.
+  `set_agent_brain` is `agent.write`, risky: moving an agent moves the bill. The transcript is
+  ONE format (`fabric.huddle_text`, one `@name (model): text` line per turn), read by the model,
+  stored as the message and parsed by `10b-huddle.js` on reload — the page's regex is pinned to
+  it in `tests/test_team.py`.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

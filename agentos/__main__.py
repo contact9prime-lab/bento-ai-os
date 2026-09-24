@@ -3223,6 +3223,80 @@ def _avatar_cli(args):
               f"            pants={'|'.join(x['name'] for x in pal['pants'])}  glasses=yes|no  blush=yes|no")
 
 
+def _team_cli(args):
+    """`bento team` — who answers on which AI provider, in a terminal.
+
+    The TUI face of Settings → AI providers → Team. `list` prints each agent with
+    the brain it answers on RIGHT NOW (fabric.agent_brain — the same answer the Crew
+    stage's tag and the chat's chip show) and why, if that is not its pin. `set`
+    pins one agent through the same door the page and the agent's tool use
+    (fabric.set_agent_model). `own on|off` is the team switch. Works with the server
+    down: the roster is read from the database, and the switch is written to the
+    machine's config — and, when a server is running, sent to it too, so it applies
+    now rather than at the next start.
+    """
+    import json as _json
+    import urllib.request
+    from . import avatars as av
+    from . import config as cfgmod
+    from . import fabric as fabricmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    act = args.action
+    if act == "own":
+        want = (args.name or "").strip().lower()
+        if want not in ("on", "off"):
+            on = (cfg.get("team") or {}).get("own_brains", True)
+            print(f"  agents answer on their own providers: {'on' if on else 'off'}"
+                  f"\n  bento team own on|off")
+            return
+        mcfg = cfgmod.load_config()
+        mcfg.setdefault("team", {})["own_brains"] = want == "on"
+        cfgmod.save_config(mcfg)
+        cfg.setdefault("team", {})["own_brains"] = want == "on"
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                data=_json.dumps({"team": {"own_brains": want == "on"}}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).read()
+            live = " — the running server has it too"
+        except Exception:
+            live = " — saved; no server answered, so it applies when one starts"
+        print(f"  agents answer on their own providers: {want}{live}")
+    elif act == "set":
+        try:
+            b = fabricmod.set_agent_model(store, cfg, args.name, args.model or "")
+        except KeyError:
+            print(f"no agent called '{args.name}' — have: "
+                  f"{', '.join(x['name'] for x in store.list_subagents()) or '(none)'}")
+            sys.exit(2)
+        except ValueError as e:
+            print(e)
+            sys.exit(2)
+        print(f"  {args.name} now answers on {b['provider_name']} · {b['short']}"
+              + (f"  ({b['note']})" if b["note"] else ""))
+        return
+    subs = store.list_subagents()
+    if not subs:
+        print("  no specialists yet — ask your agent for one, or: bento flow add")
+        return
+    # each name in its character's shirt colour, as on the stage (bento avatar draws them)
+    people = {p["key"]: p for p in av.ensure(store, cfg)} if colour else {}
+    me = fabricmod.agent_brain(cfg, None)
+    print(f"  your agent: {me['provider_name']} · {me['short']}\n")
+    for sa in subs:
+        b = fabricmod.agent_brain(cfg, sa)
+        name = f"{sa['name']:<14}"
+        if sa["name"] in people:
+            r, g, bl = av._hsl(people[sa["name"]]["recipe"]["hue"], .6, .62)
+            name = f"\x1b[1;38;2;{r};{g};{bl}m{name}\x1b[0m"
+        print(f"  {name} {b['provider_name'] or '—':<14} {b['short']}"
+              + (f"   ({b['note']})" if b["note"] else ""))
+    print("\n  bento team set NAME provider/model · bento team own on|off\n"
+          "  talk it through: in chat, \"@researcher @validator should we…\"")
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -4823,6 +4897,11 @@ def main():
     p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
+    p_team.add_argument("action", nargs="?", default="list", choices=["list", "set", "own"])
+    p_team.add_argument("name", nargs="?", default="", help="set: the agent · own: on|off")
+    p_team.add_argument("model", nargs="?", default="", help="set: provider/model, or '' for this machine's brain")
+    p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
@@ -5004,6 +5083,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "team":
+        _team_cli(args)
     elif args.cmd == "avatar":
         _avatar_cli(args)
     elif args.cmd in ("mail", "calendar"):

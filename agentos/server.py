@@ -2497,6 +2497,8 @@ async def api_put_config(patch: dict):
                 "policies", "sandbox", "steer_queued_messages"):
         if key in patch:
             cfg[key] = patch[key]
+    if isinstance(patch.get("team"), dict) and "own_brains" in patch["team"]:
+        cfg.setdefault("team", {})["own_brains"] = bool(patch["team"]["own_brains"])
     if isinstance(patch.get("updates"), dict):
         from . import updates as updmod
         u = updmod.conf(cfg)
@@ -8147,7 +8149,31 @@ async def api_avatar_reroll(key: str):
 
 @app.get("/api/subagents")
 async def api_subagents():
-    return {"subagents": state["store"].list_subagents()}
+    """The roster, each with the brain it actually answers on (fabric.agent_brain) —
+    the provider tag on the Crew stage and the cards is this, never a guess from the
+    pinned model, which a switched-off provider or the team switch can overrule."""
+    cfg = state["cfg"]
+    subs = state["store"].list_subagents()
+    for s in subs:
+        s["brain"] = fabricmod.agent_brain(cfg, s)
+    return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
+            "own_brains": bool((cfg.get("team") or {}).get("own_brains", True))}
+
+
+@app.put("/api/subagents/{name}/brain")
+async def api_subagent_brain(name: str, body: dict):
+    """Pin one agent to a model — the Team list in AI providers, and `bento team set`.
+    The same check the agent's own tool uses (fabric.set_agent_model): a model on a
+    provider this machine does not have is refused with the list that would work."""
+    try:
+        brain = fabricmod.set_agent_model(state["store"], state["cfg"], name,
+                                          str((body or {}).get("model") or ""))
+    except KeyError:
+        return JSONResponse({"error": f"no agent called '{name}'"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "fabric_defs"})
+    return {"ok": True, "brain": brain}
 
 
 @app.post("/api/subagents")
@@ -9495,11 +9521,14 @@ async def _run_chat(cid: str, data: dict):
 
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
         # streaming its steps like a normal turn, and still shows up in Observability
-        mention = fabricmod.parse_mention(store, text)
+        # '@a @b question' convenes a huddle: the agents talk it through with each
+        # other, each on its own brain, and every turn lands as that agent's bubble
+        huddle_hit = fabricmod.parse_huddle(store, text)
+        mention = None if huddle_hit else fabricmod.parse_mention(store, text)
         # A message trigger can start a flow from the chat too. `@name` is resolved first
         # and always wins: an explicit address is not a pattern to be second-guessed.
         flow_hit = None
-        if not mention:
+        if not mention and not huddle_hit:
             try:
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
@@ -9623,6 +9652,20 @@ async def _run_chat(cid: str, data: dict):
             usage = res.get("usage") or {}
             result = {"content": content, "steps": [],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
+        elif huddle_hit:
+            names, topic = huddle_hit
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "huddle",
+                          "uid": owner}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": "huddle", "huddle": names})
+
+            async def _say(e):
+                await evsend({"type": "agent_say", **e})
+            res = await state["fabric"].huddle(names, topic, conversation_id=cid,
+                                               say=_say, approver=approver)
+            result = {"content": res["text"], "steps": [], "huddle": res["agents"],
+                      "tokens": {"input": 0, "output": 0}}
         elif mention:
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
@@ -9707,7 +9750,9 @@ async def _run_chat(cid: str, data: dict):
                                   if result.get("engine_model") else {}),
                                **({"model": model} if model and not result.get("engine") else {}),
                                # a specialist addressed by name answered, and wears its face
-                               **({"speaker": result["speaker"]} if result.get("speaker") else {})})
+                               **({"speaker": result["speaker"]} if result.get("speaker") else {}),
+                               # a huddle: the content is one line per turn (fabric.huddle_text)
+                               **({"huddle": result["huddle"]} if result.get("huddle") else {})})
             store.touch_conversation(cid)
             tk = result.get("tokens") or {}
             store.log("turn", text[:200], {"conversation_id": cid, "model": model,

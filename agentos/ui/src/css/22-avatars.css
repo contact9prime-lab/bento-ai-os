@@ -53,3 +53,31 @@ img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
    stage moves above the choices so the rows get the whole width */
 body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:var(--tap)}
 @media (max-width:560px){.ave-body{flex-direction:column;align-items:stretch}.ave-stage{align-self:center}}
+
+/* ---- huddles (10b-huddle.js) and the provider chip ----
+   A huddle is a card inside the reply: one row per turn, the speaker's face, name
+   and the brain it answered on, then what it said. The chip names the PROVIDER
+   first, because "which company answered" is the question; the model follows. */
+.brainchip{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:500;letter-spacing:0;text-transform:none;vertical-align:1px;
+  color:var(--dim);border:1px solid var(--line);background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.brainchip b{color:var(--txt);font-weight:600}
+.huddle{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.hud-head{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);color:var(--dim);margin-bottom:6px}
+.hud-head span{margin-left:4px}
+.hud-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hud-row:first-of-type{border-top:0}
+.hud-row img.av-who{width:30px;height:30px;flex:0 0 30px;border-radius:9px;margin:0}
+.hud-say{min-width:0;flex:1}
+.hud-who{font-size:var(--fs-xs);font-weight:600;margin-bottom:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hud-text p{margin:0}
+.hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
+.msg .who img.av-who+img.av-who{margin-left:-14px}
+/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+.team-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.team-row>b{min-width:88px}
+.team-row select{flex:0 1 300px;min-width:0}
+.team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
+body.dev-touch .team-row select{min-height:var(--tap)}

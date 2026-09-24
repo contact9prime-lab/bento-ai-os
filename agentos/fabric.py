@@ -55,6 +55,102 @@ def min_autonomy(a: str, b: str) -> str:
     return order[0]
 
 
+# Keyed providers never answer without a key; ollama and custom may run keyless.
+_KEYED = ("anthropic", "openai", "google", "openrouter", "deepseek", "moonshot")
+
+
+def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
+    """Which brain an agent answers with, and why — the ONE answer, read by the run
+    itself, the roster, the Crew stage's provider tag, Settings and the CLI.
+
+    An agent's pinned model is used on its OWN provider when three things hold: the
+    team switch allows it (`team.own_brains`), the provider is switched on, and it has
+    the key it needs. That is what lets a researcher on a local model hand work to a
+    validator on Claude while your agent runs on GPT — and it holds under an executor
+    too: with Claude Code as the machine's brain, a specialist pinned to OpenAI still
+    answers on OpenAI, through this OS's own loop and gate. Otherwise the agent uses
+    the machine's brain (the mission-capable executor, or the default model) and
+    `note` says why in a sentence, so the badge never claims a provider that is not
+    the one answering.
+    """
+    from . import executors, providers
+    cfg = cfg or {}
+    pinned = str(override or (defn or {}).get("model") or "").strip()
+    own_ok = bool((cfg.get("team") or {}).get("own_brains", True))
+    names = {pid: name.split(" — ")[0] for pid, name, _ in executors.PROVIDER_EXECUTORS}
+    names["custom"] = "Custom server"      # the catalogue's name lists three products
+    own, note = False, ""
+    if pinned:
+        pid, _m = providers.parse_model_id(pinned)
+        conf = (cfg.get("providers") or {}).get(pid)
+        label = names.get(pid, pid)
+        if not own_ok:
+            note = "every agent uses this machine's brain (AI providers → Team)"
+        elif conf is None:
+            note = f"'{pid}' is not a provider on this machine"
+        elif not conf.get("enabled"):
+            note = f"{label} is switched off in AI providers"
+        elif pid in _KEYED and not conf.get("api_key"):
+            note = f"{label} has no key yet"
+        else:
+            own = True
+    engine = executors.resolve_engine(cfg)
+    if own:
+        model, engine = pinned, "aria"
+    elif executors.runs_missions(engine):
+        model = f"{engine}/{executors.executor_model(cfg, engine) or 'default'}"
+    else:
+        model, engine = str(cfg.get("default_model") or ""), "aria"
+    if engine == "aria":
+        provider = providers.parse_model_id(model)[0] if model else ""
+        provider_name = names.get(provider, provider) if model else "No brain yet"
+    else:
+        provider = engine
+        provider_name = {"claude-code": "Claude Code"}.get(engine, engine)
+    return {"model": model, "pinned": pinned, "own": own, "engine": engine,
+            "provider": provider, "provider_name": provider_name,
+            "short": (model.split("/", 1)[1] if "/" in model else model) or "not set",
+            "note": note}
+
+
+def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
+    """Pin an agent to a model ('' = the machine's brain). One door for Settings, the
+    CLI and the agent's `set_agent_brain` tool, so all three refuse the same things.
+
+    Refused: a provider this machine has no row for. Allowed with a note: a provider
+    that is switched off or has no key — the pin is remembered and the badge says the
+    agent is on the machine's brain until the provider is turned on, which is the
+    honest reading of both states."""
+    from . import providers
+    defn = store.get_subagent(name)
+    if not defn:
+        raise KeyError(name)
+    model = (model or "").strip()
+    if model:
+        pid, m = providers.parse_model_id(model)
+        known = sorted((cfg.get("providers") or {}).keys())
+        if pid not in known or not m:
+            raise ValueError(f"'{model}' is not a model on a provider here — write it as "
+                             f"provider/model, with provider one of: {', '.join(known)}")
+    store.save_subagent({**defn, "model": model})
+    return agent_brain(cfg, store.get_subagent(name))
+
+
+HUDDLE_MAX_AGENTS = 4       # a huddle is a conversation, not a meeting
+HUDDLE_MAX_ROUNDS = 3
+HUDDLE_WORDS = 120          # per turn: long enough to argue, short enough to read
+HUDDLE_CONTEXT = 6_000      # chars of transcript handed to each turn
+
+
+def huddle_text(agents: list, rounds: int, transcript: list) -> str:
+    """The transcript as the model and the chat both read it: a header line, then one
+    line per turn, `@name (model): text`. One line per turn is what lets the chat draw
+    each one as its own bubble on reload without a second storage format."""
+    head = f"[huddle · {', '.join(agents)} · {rounds} round{'s' if rounds != 1 else ''}]"
+    lines = [f"@{e['speaker']} ({e['model']}): {e['text']}" for e in transcript]
+    return "\n".join([head] + (lines or ["(nobody had anything to say)"]))
+
+
 class Budget:
     """`max_seconds` is time spent WORKING, not wall clock.
 
@@ -264,7 +360,10 @@ class ControlPlane(usersmod.Scoped):
                 "model": label}
 
     def resolve_model(self, defn: dict, step_override: str = "") -> str:
-        model = step_override or (defn.get("model") or "") or self.cfg.get("default_model", "")
+        brain = agent_brain(self.cfg, defn, step_override)
+        # the agent's own pin when it may use it, else the provider default; an
+        # executor label is decided by the caller, which knows whether it can bridge
+        model = brain["model"] if brain["own"] else self.cfg.get("default_model", "")
         pdp = getattr(self.toolbox, "pdp", None)
         if pdp and defn.get("name"):
             # per-subagent model restrictions (deny grants on model.use); a denied
@@ -395,7 +494,10 @@ class ControlPlane(usersmod.Scoped):
         space_id: the space the delegating turn was in. A specialist working on a
         launch must see the launch's memory, not three clients' at once."""
         model = self.resolve_model(defn, model_override)
-        engine = self._executor()
+        # A specialist pinned to a provider it may use answers THERE, even when the
+        # machine's brain is an executor: that is how agents on different providers
+        # work together. Everybody else runs where the machine's brain runs.
+        engine = "" if agent_brain(self.cfg, defn, model_override)["own"] else self._executor()
         if engine:
             model = self._executor_label(engine)
         # a child that was not told its space inherits the delegating conversation's
@@ -536,6 +638,76 @@ class ControlPlane(usersmod.Scoped):
                           "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
                 "model": model, "usage": usage, "steps": trace}
+
+    # -- huddles: agents talking to each other ---------------------------------------
+
+    async def huddle(self, names: list, topic: str, rounds: int = 2,
+                     conversation_id: str = "", space_id: str = "", say=None,
+                     approver=None) -> dict:
+        """Two to four specialists talk a question through, in turns, each on its OWN
+        brain — so a researcher on a local model, a validator on Claude and a writer on
+        GPT can disagree with each other in one conversation.
+
+        Why it is a loop HERE and not agents calling each other: a subagent may not
+        invoke another agent (`BUILTIN_DENY` — that is what keeps the tree two deep),
+        and a huddle does not need it to. The control plane is the moderator: every
+        turn is an ordinary `run_subagent` with the transcript so far in its task, so
+        each one is a run in Observability, a ledger row per tool call, its own budget
+        and its own model — nothing a huddle does is invisible to the gate.
+
+        `say(entry)` is called after each turn ({speaker, model, provider, text, round})
+        so a chat can draw the bubble and the Crew stage can put words over the head.
+        A round in which everybody passes ends the huddle early; costs are bounded by
+        HUDDLE_MAX_AGENTS x HUDDLE_MAX_ROUNDS turns of at most HUDDLE_WORDS words.
+        """
+        seen, cast = set(), []
+        for n in names or []:
+            d = self.store.get_subagent(str(n).strip().lstrip("@"))
+            if d and d["name"].lower() not in seen:
+                seen.add(d["name"].lower())
+                cast.append(d)
+        if len(cast) < 2:
+            have = ", ".join(x["name"] for x in self.store.list_subagents()) or "(none)"
+            raise ValueError(f"a huddle needs at least two agents that exist here — "
+                             f"have: {have}. Create one first if none fits.")
+        cast = cast[:HUDDLE_MAX_AGENTS]
+        rounds = max(1, min(HUDDLE_MAX_ROUNDS, int(rounds or 2)))
+        transcript: list[dict] = []
+        for r in range(1, rounds + 1):
+            spoke = 0
+            for d in cast:
+                others = ", ".join(x["name"] for x in cast if x is not d)
+                so_far = "\n".join(f"{e['speaker']}: {e['text']}" for e in transcript)
+                task = (f"You are {d['name']}, in a conversation with {others} about a "
+                        f"question from the person you all work for.\n\n"
+                        f"QUESTION: {topic.strip()}\n\n"
+                        + (f"SO FAR:\n{so_far[-HUDDLE_CONTEXT:]}\n\n" if so_far else
+                           "Nobody has spoken yet — you open.\n\n")
+                        + f"Reply as yourself in at most {HUDDLE_WORDS} words, from your "
+                          f"own expertise. Answer the others BY NAME — agree, push back or "
+                          f"add what is missing — and never repeat what was already said. "
+                          f"If you have nothing new, reply with exactly: pass")
+                res = await self.run_subagent(d, task, kind="huddle",
+                                              conversation_id=conversation_id,
+                                              space_id=space_id, approver=approver)
+                text = " ".join((res["content"] or res["fault"] or "").split())
+                if not text or text.lower().strip(" .!") == "pass":
+                    continue
+                spoke += 1
+                brain = agent_brain(self.cfg, d)
+                entry = {"speaker": d["name"], "model": res["model"],
+                         "provider": brain["provider_name"],
+                         "text": text[:HUDDLE_WORDS * 9], "round": r}
+                transcript.append(entry)
+                if say:
+                    try:
+                        await say(entry)
+                    except Exception:
+                        pass
+            if not spoke:
+                break
+        return {"agents": [d["name"] for d in cast], "rounds": r, "transcript": transcript,
+                "text": huddle_text([d["name"] for d in cast], r, transcript)}
 
     # -- flows: a master orchestrator with a roster and a blackboard --------------
 
@@ -930,6 +1102,21 @@ class ControlPlane(usersmod.Scoped):
                 "model": model, "usage": usage, "delegations": state["delegations"],
                 "delivered": delivered,
                 "board": self.store.artifact_index(run_id)}
+
+
+def parse_huddle(store, text: str):
+    """'@researcher @validator should we…' → (['researcher','validator'], 'should we…')
+    when two or more leading names are agents here; None otherwise, so a single
+    @name keeps meaning "this one agent, directly"."""
+    import re
+    m = re.match(r"((?:@[A-Za-z0-9_-]+[\s,:]+(?:and\s+)?){2,})(.+)", (text or "").strip(), re.S)
+    if not m:
+        return None
+    names = re.findall(r"@([A-Za-z0-9_-]+)", m.group(1))
+    known = [n for n in names if store.get_subagent(n)]
+    if len(known) < 2 or len(known) != len(names):
+        return None
+    return known, m.group(2).strip()
 
 
 def parse_mention(store, text: str):

@@ -405,10 +405,13 @@ def test_a_newcomer_walks_on_and_nobody_else_moves():
 
 
 def test_a_bubble_says_only_what_happened():
-    """Two things are said on the stage: hello on arrival, done when work
-    finished. Both are events; neither is chatter on a timer."""
+    """Three things are said on the stage: hello on arrival, done when work
+    finished, and a huddle's turn in the speaker's own words. All three are events;
+    none is chatter on a timer."""
     assert "crewSay(who,'done" in CREW_CODE
-    assert CREW_CODE.count("crewSay(") == 3, "one definition, two sayings — nothing else talks"
+    assert "crewSay(c.name,'hello!')" in CREW_CODE
+    assert "crewSay(w,String((ev&&ev.text)||''),true)" in CREW_CODE
+    assert CREW_CODE.count("crewSay(") == 4, "one definition, three sayings — nothing else talks"
     step = CREW_CODE.split("function crewStep(")[1].split("\nfunction ")[0]
     assert "CREW_SAY_MS" in step, "a bubble must go away"
 
