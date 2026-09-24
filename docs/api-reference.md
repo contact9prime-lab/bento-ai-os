@@ -150,8 +150,8 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/wallpaper/system` | adopt the host wallpaper |
 | GET | `/api/wallpapers`, `/{id}`, POST `/{id}/set`, DELETE `/{id}` | wallpaper gallery |
 | GET | `/api/avatars` | every character (you, your agent, each specialist) with its recipe, version and description, plus the palette the editor offers; generates any that are new |
-| GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet |
-| PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
+| GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet; `recipe=<json>` in place of `key` paints a character from ANOTHER team (held to the closed set) |
+| PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `outfit`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
 | POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
 | GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
 | GET | `/api/team/limits` | the team's limits (hops, budget, clarify, huddle size and rounds) with their ranges; set them through `PUT /api/config` `{"team":{"limits":{…}}}` — 400 names the range |
@@ -163,6 +163,11 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/team/links/invite` | the headless alternative to a request: `{"kind": "machine"\|"account"}` — a one-time code, ten minutes; a machine invite also carries this host's certificate fingerprint |
 | POST | `/api/team/links/join` | `{"invite", "label"}` — pair with the machine that invited you (the fingerprint is checked before the code is sent) |
 | POST | `/api/team/links/redeem` | `{"code"}` — link with another account on this machine, as the signed-in person |
+| GET | `/api/team/chat` | Team Chat: one thread per linked team (their identity, unread count, last message) and who you appear as |
+| GET | `/api/team/chat/{label}` | one conversation (marks it read; asks a linked machine for anything waiting first, six seconds at most — `?pull=0` skips that) |
+| POST | `/api/team/chat/{label}` | `{"text"}` — write to that team's people; `delivered` false with a `note` when it is kept for later or refused |
+| PUT | `/api/team/chat/{label}` | `{"muted": true}` — refuse that team's messages (they are told so); audited |
+| PUT | `/api/team/me` | `{"name"}` — the name you go by in messages, on a machine without accounts |
 | DELETE | `/api/team/links/{label}` | end a link and revoke every cell that named it (both sides for an account link) |
 | GET | `/api/team/links/{label}/roster` | ask the other side who is on its team |
 | PUT | `/api/team/links/{label}/access` | `{"theirs_may_ask": [agents], "mine_may_ask": bool}` — the link's cells |

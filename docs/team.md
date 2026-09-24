@@ -261,6 +261,45 @@ in-process, and it is answered **in the other person's own directory, under thei
 gate**, exactly as if it had come over the network. (A code redeemed while signed in,
 `bento link invite account` / `redeem`, still works too.)
 
+### Talking to the people on a linked team
+
+A link connects the **people** as well as the agents. **Team Chat** (in the dock, or **Message**
+on a link's card) has one conversation per linked team: another Bento over the same mutual-TLS
+link, or another account on this machine. It is live both ways: a message arrives as a toast
+with **Open** on every screen that person has open, and in the thread if it is already open.
+
+![Team Chat: Sam writing to Priya on the office machine, with Otto's face (office's agent) at the top and each person's own face beside their words](screenshots/team-chat.png)
+
+- **You see who you are talking to.** Each message carries the sender's name and face. The top of
+  the thread shows the other team's agent, its name and its look. That is the team's identity,
+  and it travels with the link. On a machine with accounts you are your account's name. On one
+  without, you pick the name you go by (**Change** in Team Chat, or `team.my_name`).
+- **Honest about delivery.** ✓ means the other side has it. *kept* means this machine cannot hand
+  it over right now: the other one is off, or cannot be reached from here. It then goes with the
+  next exchange in either direction: their next message, a retry every 30 seconds, or opening
+  the thread. *refused* means they said no, and the reason is shown. A message is never
+  delivered twice, because the id is the same on both sides.
+- **Each side can close the door.** Untick **Take messages** in a thread and that team's
+  messages are refused. The sender is told so in words, and refused messages are not retried.
+  The switch is audited (`link.chat`).
+- **No agent reads it.** Messages between people are kept in each person's own database, and no
+  tool or prompt can reach them. Somebody else's words are the untrusted content the taint rules
+  exist for, and the simplest safe answer is that they never reach a model. A message runs
+  nothing and spends nothing, so it is not a permission decision each time. What is audited is
+  the link that opened the door and the switch that closes it.
+- **Bounded.** 4,000 characters a message, 30 a minute from one link.
+
+On a phone, Team Chat shows one pane at a time: the list of teams, then the thread with a back
+button.
+
+![Team Chat on a phone: the thread with home, Aria's face at the top, the messages and the composer](screenshots/team-chat-phone.png)
+
+**From a terminal**, `bento link say office "Is the Q3 deck ready?"` sends and `bento link chat
+office` shows the conversation, pulling anything waiting. Both work with this machine's server
+down: a machine link goes straight over its own mTLS, and an account link goes into the other
+person's home (they see it the next time they open the thread). The chat TUI prints an arriving
+message as a line.
+
 ### A link grants nothing
 
 A link says who the other side is. What their agents may ask yours is still the matrix,
@@ -307,5 +346,6 @@ Chat and Crew stage, so a person at either end knows their agents are being cons
 | The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
-| Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py` |
+| People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |
+| Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, identity, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py` |

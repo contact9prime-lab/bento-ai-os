@@ -46,6 +46,7 @@ import functools
 import hashlib
 import json
 import random
+import secrets
 import struct
 import time
 import zlib
@@ -71,8 +72,14 @@ PANTS = [("denim", (60, 78, 120)), ("charcoal", (56, 58, 68)), ("khaki", (150, 1
 HUES = [("amber", 34), ("coral", 12), ("teal", 172), ("violet", 264),
         ("green", 96), ("rose", 330), ("sky", 202), ("gold", 48)]
 AGENT_HUE = 172
+# What they wear over it. Your agent is the one in the BLAZER — the lead of the team,
+# the one who hands out the work — and a specialist never is unless somebody picks it.
+# A closed set like the rest, so the lead's look is a choice anyone can make or undo,
+# never a second kind of character.
+OUTFITS = ["shirt", "blazer", "hoodie"]
+AGENT_OUTFIT = "blazer"
 
-FIELDS = ("skin", "hair", "style", "pants", "glasses", "blush", "hue")
+FIELDS = ("skin", "hair", "style", "pants", "glasses", "blush", "hue", "outfit")
 
 
 # ---- recipes -------------------------------------------------------------------------
@@ -100,6 +107,7 @@ def generate(key: str, taken: set | None = None, salt: int = 0) -> dict:
            "pants": R.randrange(len(PANTS)),
            "glasses": R.random() < .3,
            "blush": R.random() < .45}
+    rec["outfit"] = AGENT_OUTFIT if key == AGENT else ("hoodie" if R.random() < .2 else "shirt")
     if key == AGENT:
         rec["hue"] = AGENT_HUE
     else:
@@ -160,6 +168,11 @@ def validate(patch: dict) -> dict:
             out[k] = s
         elif k in ("glasses", "blush"):
             out[k] = _flag(v, k)
+        elif k == "outfit":
+            o = str(v).strip().lower()
+            if o not in OUTFITS:
+                raise ValueError(f"outfit must be one of: {', '.join(OUTFITS)}")
+            out[k] = o
         elif k in ("hue", "shirt"):
             names = {n: h for n, h in HUES}
             hues = list(names.values())
@@ -171,7 +184,7 @@ def validate(patch: dict) -> dict:
                 raise ValueError(f"shirt must be one of: {', '.join(names)}")
         else:
             raise ValueError(f"'{k}' is not part of a character — use: "
-                             f"{', '.join(FIELDS[:-1])}, shirt")
+                             f"{', '.join(f for f in FIELDS if f != 'hue')}, shirt")
     return out
 
 
@@ -181,12 +194,13 @@ def clean(rec: dict) -> dict:
     rec = dict(rec or {})
     out = {"skin": rec.get("skin", 1), "hair": rec.get("hair", 0), "style": rec.get("style", "short"),
            "pants": rec.get("pants", 0), "glasses": bool(rec.get("glasses")),
-           "blush": bool(rec.get("blush")), "hue": rec.get("hue", AGENT_HUE)}
+           "blush": bool(rec.get("blush")), "hue": rec.get("hue", AGENT_HUE),
+           "outfit": rec.get("outfit", "shirt")}
     try:
         return {**out, **validate(out)}
     except ValueError:
         return {"skin": 1, "hair": 0, "style": "short", "pants": 0,
-                "glasses": False, "blush": False, "hue": AGENT_HUE}
+                "glasses": False, "blush": False, "hue": AGENT_HUE, "outfit": "shirt"}
 
 
 def describe(rec: dict) -> str:
@@ -200,7 +214,9 @@ def describe(rec: dict) -> str:
     bits = [f"{SKINS[r['skin']][0]} skin", f"{style} {hair} hair".replace("bald with ", "bald, a little ")]
     if r["glasses"]:
         bits.append("glasses")
-    bits.append(f"{'an' if shirt[:1] in 'aeiou' else 'a'} {shirt} shirt")
+    top = {"shirt": "shirt", "blazer": "blazer over a white shirt and tie",
+           "hoodie": "hoodie"}[r["outfit"]]
+    bits.append(f"{'an' if shirt[:1] in 'aeiou' else 'a'} {shirt} {top}")
     bits.append(f"{PANTS[r['pants']][0]} trousers")
     return ", ".join(bits)
 
@@ -230,10 +246,30 @@ def ensure(store, cfg: dict) -> list[dict]:
     """
     people = principals(store, cfg)
     rows = {r["key"]: r for r in store.avatar_all()}
+    # Your agent and you are generated with a salt of THIS install's own. Unsalted, the
+    # hash of '@agent' is the same on every machine, so every Bento's agent was the same
+    # person — invisible alone, and the whole problem once two teams are linked and
+    # their leads stand side by side. A default nobody touched is re-drawn once, in the
+    # same colour and outfit; one somebody edited no longer matches and is left alone.
+    for key in (AGENT, ME):
+        row = rows.get(key)
+        if row and _is_untouched_default(key, row.get("recipe") or {}):
+            fresh = generate(key, salt=secrets.randbelow(1 << 24) + 1)
+            keep = {k: row["recipe"][k] for k in ("hue", "outfit") if k in row["recipe"]}
+            store.avatar_put(key, {**fresh, **keep})
+            rows[key] = store.avatar_get(key)
+    # Your agent's character was stored before it had an outfit. It is the lead, so
+    # it is put in the blazer ONCE — the key is missing, which is how this knows
+    # nobody chose otherwise; a person who later picks a shirt keeps the shirt.
+    row = rows.get(AGENT)
+    if row and "outfit" not in (row.get("recipe") or {}):
+        store.avatar_put(AGENT, {**row["recipe"], "outfit": AGENT_OUTFIT})
+        rows[AGENT] = store.avatar_get(AGENT)
     taken = {rows[p["key"]]["recipe"].get("hue") for p in people if p["key"] in rows}
     for p in people:
         if p["key"] not in rows:
-            rec = generate(p["key"], taken)
+            rec = generate(p["key"], taken,
+                           salt=secrets.randbelow(1 << 24) + 1 if p["key"] in (AGENT, ME) else 0)
             taken.add(rec["hue"])
             store.avatar_put(p["key"], rec)
             rows[p["key"]] = store.avatar_get(p["key"])
@@ -243,6 +279,14 @@ def ensure(store, cfg: dict) -> list[dict]:
         p["v"] = int((row.get("updated_at") or 0) * 1000)
         p["about"] = describe(p["recipe"])
     return people
+
+
+_LOOK = ("skin", "hair", "style", "pants", "glasses", "blush")
+
+
+def _is_untouched_default(key: str, rec: dict) -> bool:
+    base = generate(key)
+    return all(rec.get(k) == base.get(k) for k in _LOOK)
 
 
 def recipe_for(store, key: str) -> dict:
@@ -268,14 +312,15 @@ def update(store, cfg: dict, key: str, patch: dict) -> dict:
 
 
 def reroll(store, cfg: dict, key: str) -> dict:
-    """A new look, SAME colour: the shirt is how the stage and the chat tell this
-    specialist from the others, and a reroll that moved it would reshuffle everyone."""
+    """A new look, SAME colour and outfit: the shirt is how the stage and the chat tell
+    this specialist from the others, and a reroll that moved it would reshuffle everyone."""
     if not is_known(store, cfg, key):
         raise KeyError(key)
     ensure(store, cfg)
-    hue = recipe_for(store, key)["hue"]
+    cur = recipe_for(store, key)
     rec = generate(key, salt=int(time.time() * 1000) & 0xFFFFFF)
-    rec["hue"] = hue
+    rec["hue"] = cur["hue"]
+    rec["outfit"] = cur["outfit"]           # a new face, never a demotion: the lead stays the lead
     store.avatar_put(key, rec)
     return clean(rec)
 
@@ -322,7 +367,11 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
     # read as a goatee on every light-skinned figure in a row.
     mouth = (round(sk[0] * .78), round(sk[1] * .42), round(sk[2] * .42))
     sh = _hsl(r["hue"], .60, .52)
-    shH, shS = _tone(sh, 1.25), _tone(sh, .7)
+    if r["outfit"] == "blazer":
+        # a jacket is DEEPER than a shirt in the same colour; at shirt brightness the
+        # first cut read as a shirt with a stain on it
+        sh = _hsl(r["hue"], .52, .34)
+    shH, shS = _tone(sh, 1.3), _tone(sh, .7)
     pa = PANTS[r["pants"]][1]
     paS = _tone(pa, .72)
     hr = HAIRS[r["hair"]][1]
@@ -340,6 +389,26 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
     box(4, 13, 11, 18, sh); box(5, 14, 5, 17, shH); box(11, 14, 11, 18, shS); box(4, 18, 11, 18, shS)
     box(6, 13, 9, 13, shH); put(7, 13, skS); put(8, 13, skS)
     box(7, 12, 8, 12, skS)                                  # neck
+    outfit = r["outfit"]
+    if outfit == "blazer":
+        # the lead: a jacket in their colour, open over a white shirt, a tie in the
+        # complementary colour so it reads against the jacket, and one gold pin. The
+        # face crop ends at the collar, so every chat bubble shows who leads.
+        white, gold = (242, 244, 248), (240, 194, 72)
+        tie = _hsl((r["hue"] + 180) % 360, .62, .46)
+        box(6, 13, 9, 13, white)
+        put(6, 14, white); put(9, 14, white); put(7, 14, tie); put(8, 14, tie)
+        put(6, 15, shH); put(9, 15, shS); put(7, 15, tie); put(8, 15, tie)
+        put(7, 16, tie); put(8, 16, _tone(tie, .7))
+        put(10, 14, gold)
+        put(8, 18, _tone(sh, 1.6))                          # a button
+    elif outfit == "hoodie":
+        # a hood folded behind the neck and two drawstrings
+        box(5, 12, 6, 12, shS); box(9, 12, 10, 12, shS); box(6, 13, 9, 13, shS)
+        put(7, 13, skS); put(8, 13, skS)
+        put(6, 14, (236, 236, 240)); put(6, 15, (236, 236, 240))
+        put(9, 14, (236, 236, 240)); put(9, 15, (236, 236, 240))
+        box(5, 17, 10, 17, shS)                              # the pocket seam
 
     def arm_down(x0):
         box(x0, 13, x0 + 1, 16, sh)
@@ -526,6 +595,7 @@ def palette() -> dict:
             "hair": [{"i": i, "name": n, "rgb": list(c)} for i, (n, c) in enumerate(HAIRS)],
             "pants": [{"i": i, "name": n, "rgb": list(c)} for i, (n, c) in enumerate(PANTS)],
             "style": list(STYLES),
+            "outfit": list(OUTFITS),
             "shirt": [{"name": n, "hue": h, "rgb": list(_hsl(h, .60, .52))} for n, h in HUES]}
 
 

@@ -123,7 +123,8 @@ def test_pairing_trades_cas_and_both_sides_can_reach_each_other_over_mtls(pair):
             a_to_b = await teamlink.call(teamlink.find("", "home"), {"op": "hello"})
         return b_to_a, a_to_b
     b_to_a, a_to_b = loop.run_until_complete(hello())
-    assert b_to_a == {"ok": True, "name": "office", "label_here": "home"}
+    assert {k: b_to_a[k] for k in ("ok", "name", "label_here")} == {"ok": True, "name": "office", "label_here": "home"}
+    assert "identity" in b_to_a, "every answer says who the other team is"
     assert a_to_b["ok"] and a_to_b["name"] == "home", "mutual: the inviter can call the joiner"
     assert (A["home"] / "pki" / "ca.key").stat().st_mode & 0o077 == 0, "the CA key is private"
 

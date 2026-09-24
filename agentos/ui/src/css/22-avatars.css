@@ -143,3 +143,40 @@ body.dev-touch .tlk-more summary{display:flex;align-items:center}
 body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
 .tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
 body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+
+/* ---- Team Chat (24c-teamchat.js) ---- */
+.tc{display:grid;grid-template-columns:230px 1fr;height:100%;min-height:0}
+.tc-list{border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column;padding:6px;gap:2px}
+.tc-th{display:flex;gap:8px;align-items:center;text-align:left;padding:8px;border-radius:10px;min-height:var(--tap,40px)}
+.tc-th.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.tc-th:hover{background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.tc-th-txt b{display:flex;align-items:center;gap:6px}
+.tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.tc-head .av{width:34px;height:34px}
+.tc-head-txt{display:flex;flex-direction:column;flex:1;min-width:0}
+.tc-mute{font-size:var(--fs-xs)}
+.tc-feed{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.tc-msg{display:flex;gap:8px;align-items:flex-start;max-width:78%}
+.tc-msg.mine{align-self:flex-end;flex-direction:row-reverse}
+.tc-msg .av{width:28px;height:28px;flex:none}
+.tc-bub{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:6px 10px;min-width:0}
+.tc-msg.mine .tc-bub{background:color-mix(in srgb,var(--acc) 16%,var(--bg3));border-color:color-mix(in srgb,var(--acc) 35%,var(--line))}
+.tc-meta{font-size:var(--fs-xs);display:flex;gap:6px;align-items:baseline}
+.tc-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.tc-tick{color:var(--acc);font-size:11px}.tc-tick.wait{color:var(--txt3,var(--txt2))}.tc-tick.bad{color:var(--err)}
+.tc-compose{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);align-items:flex-end}
+.tc-compose textarea{flex:1;resize:none;min-height:40px}
+.tc-note{padding:0 14px 8px;margin:0;font-size:var(--fs-xs)}
+.tc-empty{max-width:440px}
+/* a phone shows one pane at a time: the list, or the thread with a back button */
+.tc.phone{grid-template-columns:1fr}
+.tc.phone .tc-main{display:none}.tc.phone.in-thread .tc-list{display:none}.tc.phone.in-thread .tc-main{display:flex}
+.tc.phone .tc-msg{max-width:92%}
+body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);min-width:var(--tap)}
+.tlk-req>.av{width:44px;height:44px;flex:none}
+.tlk-head .av{width:26px;height:26px}

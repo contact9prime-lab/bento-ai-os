@@ -3090,7 +3090,7 @@ class Toolbox(usersmod.Scoped):
 
     async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
                          shirt: str = "", pants: str = "", glasses=None, blush=None,
-                         reroll: bool = False) -> str:
+                         outfit: str = "", reroll: bool = False) -> str:
         """Look at, restyle or reroll somebody's character — the agent's half of the
         character editor (the parity law: what the UI can do is also a gated tool).
 
@@ -3110,7 +3110,7 @@ class Toolbox(usersmod.Scoped):
             names = ", ".join(p["label"] for p in av.principals(self.store, self.cfg))
             return f"[error] nobody called '{who}' has a character here — choose one of: {names}"
         patch = {k: v for k, v in (("skin", skin), ("hair", hair), ("style", style),
-                                   ("shirt", shirt), ("pants", pants)) if v}
+                                   ("shirt", shirt), ("pants", pants), ("outfit", outfit)) if v}
         if glasses is not None:
             patch["glasses"] = glasses
         if blush is not None:
@@ -3127,7 +3127,8 @@ class Toolbox(usersmod.Scoped):
                         f"You can set skin ({', '.join(x['name'] for x in pal['skin'])}), "
                         f"hair ({', '.join(x['name'] for x in pal['hair'])}), "
                         f"style ({', '.join(pal['style'])}), shirt ({', '.join(x['name'] for x in pal['shirt'])}), "
-                        f"pants ({', '.join(x['name'] for x in pal['pants'])}), glasses and blush (yes/no), "
+                        f"pants ({', '.join(x['name'] for x in pal['pants'])}), outfit ({', '.join(pal['outfit'])} — "
+                        f"the blazer marks the lead, which is you by default), glasses and blush (yes/no), "
                         f"or reroll for a new look in the same shirt colour.")
         except ValueError as e:
             return f"[error] {e}"
@@ -4505,12 +4506,14 @@ DESKTOP_TOOL_SCHEMAS = [
                        "user, and each specialist) has a small pixel-art character shown in the Crew "
                        "scene, beside messages in Chat and Logs, and on Missions cards. Call with just "
                        "`who` to hear how they look now and every option. Changes pick from a fixed "
-                       "set: skin, hair colour, hair style, shirt colour, pants, glasses, blush — or "
-                       "reroll for a new look in the same shirt colour.",
+                       "set: skin, hair colour, hair style, shirt colour, outfit (shirt, blazer — the lead's, "
+                       "yours by default — or hoodie), pants, glasses, blush — or reroll for a new look in "
+                       "the same colour and outfit.",
         "parameters": {"type": "object", "properties": {
             "who": {"type": "string", "description": "'me' for the user, 'yourself' for you, or a specialist's name."},
             "skin": {"type": "string"}, "hair": {"type": "string"}, "style": {"type": "string"},
             "shirt": {"type": "string"}, "pants": {"type": "string"},
+            "outfit": {"type": "string", "enum": ["shirt", "blazer", "hoodie"]},
             "glasses": {"type": "boolean"}, "blush": {"type": "boolean"},
             "reroll": {"type": "boolean", "description": "A new random look, keeping the shirt colour."}},
             "required": ["who"]},

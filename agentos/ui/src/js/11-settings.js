@@ -1128,11 +1128,13 @@ function openLinkedTeams(){
   },250);
 }
 function tlkReqHTML(r){
-  const who=esc(r.name||'?');
-  if(r.kind==='account')return `<div class="tlk-req"><div><p><b>${who}</b> asks to link teams with you.</p>
+  const who=esc(r.name||'?'), id=r.identity||{};
+  const face=avatarRecipeImg(id.agent,'av-set',(id.agent_name||r.name)+'’s agent');
+  const team=id.agent_name?` <span class="mut">— ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
+  if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
       <small class="mut">You are both on this machine, so there is nothing to compare — it is them.</small></div>
     <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
-  return `<div class="tlk-req"><div><p><b>${who}</b> <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
+  return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
       <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
       <small class="mut">Different digits mean something is between you — deny it. Approving lets nothing through yet: you choose which of your agents theirs may ask.</small></div>
     <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
@@ -1159,14 +1161,15 @@ async function paintTeamLinks(){
   const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b> — give it to the other side privately; it works once, for ten minutes.
       <div class="tlk-inv-row"><input readonly value="${esc(TEAM_INVITE.invite||TEAM_INVITE.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
       ${TEAM_INVITE.fingerprint?`<small class="mut">This machine's certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}… — the joiner checks it before sending anything.</small>`:''}</div>`:'';
-  const links=(d.links||[]).map(l=>`<div class="tlk-card">
-      <div class="tlk-head"><b>${esc(l.label)}</b><span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
+  const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
+      <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
         <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you; you cannot reach them'):'')}</span>
+        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
         <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
-      <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`).join('');
+      <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
     <div class="tlk-ask">

@@ -1194,6 +1194,16 @@ things keep it true:
   `avatar.write`) and the CLI can only choose from the palettes, and a refusal names the choices so
   the model can correct itself. Only characters get faces (`avatarKeyOf`): a flow, an app or the
   system is not a person.
+- **Your agent is the lead, in a blazer, and each install draws its own.** `outfit` (shirt /
+  blazer / hoodie) is part of the closed set; `@agent` is generated in the blazer, migrated into
+  it ONCE when its stored recipe has no outfit key, and a reroll keeps the outfit (never a
+  demotion). `@agent` and `@me` are generated with a per-install salt, and an untouched default
+  is re-drawn once (`_is_untouched_default`): unsalted, the hash of `@agent` was the same person
+  on every machine — two linked teams showed identical twins as their leads.
+- **Another team's face is a recipe, painted here.** It travels as `identity` on every link
+  answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
+  is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
+  surface builds its own face URL.
 - **The painter's rules were each learned from a screenshot**: two eyes and nothing in the middle
   of the face; the eye ink chosen against the SKIN (the outline shade vanished on deep skin); a
   lip-coloured mouth (darker skin under a nose read as a goatee); glasses as rim + pale lens (a
@@ -1324,6 +1334,30 @@ account link). Every step is an audit row: `link.request`, `link.approve`/`link.
 listening; `09-websocket.js` now repaints on it, and `team_link_request` is a toast with
 Review (`toast(text, {label, go})` — the one toast that takes a tap).
 The listener is admin-only because it opens a port, and it is off until switched on.
+
+## People on linked teams: messages, and no agent reads them
+
+`agentos/teamchat.py` + the `team_messages` table + Team Chat (`24c-teamchat.js`) + `bento link
+say/chat`. A link connects people as well as agents; each side writes over the link's own
+mTLS (machines) or into the other home in-process (accounts), live over each person's socket.
+Full story in `docs/team.md`. Four rules:
+
+- **No agent reads a message.** No tool, no prompt, and `test_teamchat.py` fails if a module
+  other than memory/teamchat/server/__main__ names the table. Somebody else's words are the
+  untrusted content the taint rules exist for; never reaching a model is the simplest honest
+  answer. Do not add "summarise my messages" without making it a gated, tainting read.
+- **Not a PDP decision per message, on purpose.** A message runs and spends nothing, and a row
+  per "hi" in the hash-chained, never-pruned ledger is a footprint bug. The door is the link
+  (audited) and `chat_muted` (audited as `link.chat`); the ceiling is in memory
+  (`teamchat.overflowing`), the webhook argument.
+- **Kept first, delivered second, never twice.** The id is shared by both sides (`INSERT OR
+  IGNORE`); what cannot be handed over now rides the next exchange — the answer to their next
+  message, `chat_pull`, the 30s sweep (which pulls only while a socket is connected, and makes
+  no connection at all with no machine links). A refusal marks the row `delivered=-1` so the
+  sweep stops knocking.
+- **A person is who the server knows.** On a machine with accounts the sender is the account's
+  name; `team.my_name` exists only where there are no accounts (`PUT /api/team/me` refuses
+  otherwise) — a name somebody can type is not an identity.
 
 ## Window chrome: the rules that keep a stack readable
 

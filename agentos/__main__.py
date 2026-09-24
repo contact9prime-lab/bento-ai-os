@@ -3220,7 +3220,8 @@ def _avatar_cli(args):
         print(f"  set with: skin={'|'.join(x['name'] for x in pal['skin'])}\n"
               f"            hair={'|'.join(x['name'].replace(' ', '-') for x in pal['hair'])}\n"
               f"            style={'|'.join(pal['style'])}  shirt={'|'.join(x['name'] for x in pal['shirt'])}\n"
-              f"            pants={'|'.join(x['name'] for x in pal['pants'])}  glasses=yes|no  blush=yes|no")
+              f"            pants={'|'.join(x['name'] for x in pal['pants'])}  outfit={'|'.join(pal['outfit'])}\n"
+              f"            glasses=yes|no  blush=yes|no")
 
 
 def _team_cli(args):
@@ -3485,6 +3486,69 @@ def _link_cli(args):
                              f"{p['name']} approved (bento link); certificate {lk['peer_host_fp'][:16]}…")
         print(f"  ✓ linked with {lk['label']}. Nothing is allowed yet:\n"
               f"    bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+        return
+    if act in ("say", "chat"):
+        # People on a linked team, from a terminal. Straight to the other side — over
+        # the link's own mTLS for a machine, into their home for an account — so it
+        # works with this machine's server down. (Sent from here, it reaches an account
+        # the next time they open the thread: there is no socket here to wake theirs.)
+        from . import teamchat
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            names = ", ".join(x["label"] for x in teamlink.links(owner)) or "none yet — bento link request ADDRESS"
+            print(f"  no linked team called '{a1}' — linked: {names}")
+            sys.exit(2)
+        me = teamchat.identity(cfg, store, owner)
+
+        def show(msgs):
+            for m in msgs[-30:]:
+                who = "you" if m.get("dir") == "out" else m.get("sender", "?")
+                mark = "" if m.get("dir") != "out" else {1: " ✓", -1: " (refused)"}.get(m.get("delivered"), " (kept)")
+                print(f"  {time.strftime('%d %b %H:%M', time.localtime(m.get('ts') or 0))}  {who}: {m.get('text')}{mark}")
+
+        async def pull():
+            if lk.get("kind") == "machine" and lk.get("url"):
+                got = await teamlink.call(lk, {"op": "chat_pull"}, timeout=20)
+                for m in (got or {}).get("messages") or []:
+                    teamchat.receive(store, owner, lk, m)
+        if act == "chat":
+            _aio.run(pull())
+            msgs = store.team_msgs(lk["label"])
+            store.team_msg_read(lk["label"])
+            print(f"  {lk['label']}" + (f" — {lk.get('peer_identity', {}).get('agent_name')}'s team"
+                                        if (lk.get('peer_identity') or {}).get('agent_name') else ""))
+            show(msgs) if msgs else print("  no messages yet — bento link say " + lk["label"] + " 'hello'")
+            return
+        text = " ".join(x for x in [a2] + list(getattr(args, "rest", []) or []) if x)
+        try:
+            m = teamchat.new_message(text, me)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        store.team_msg_add(lk["label"], m, "out")
+        wire = {k: m[k] for k in ("id", "text", "ts", "sender", "look")}
+        if lk.get("kind") == "account":
+            peer = lk.get("peer") or ""
+            theirs = next((x for x in teamlink.links(peer) if x.get("kind") == "account"
+                           and x.get("pair_id") == lk.get("pair_id")), None)
+            _, why = teamchat.receive(usersmod.store_for(peer), peer, theirs, wire) if theirs else (None, "the link is gone")
+            store.team_msg_delivered([m["id"]], -1 if why else 1)
+            print(f"  {lk['label']} refused it: {why}" if why else f"  sent to {lk['label']} ✓")
+            return
+        if not lk.get("url"):
+            print(f"  kept — this machine cannot reach {lk['label']}; it goes the next time they talk to you")
+            return
+        got = _aio.run(teamlink.call(lk, {"op": "chat", "identity": me, "message": wire}, timeout=20))
+        if got.get("ok"):
+            store.team_msg_delivered([m["id"]])
+            for x in got.get("messages") or []:
+                teamchat.receive(store, owner, lk, x)
+            print(f"  sent to {lk['label']} ✓")
+        elif got.get("refused"):
+            store.team_msg_delivered([m["id"]], -1)
+            print(f"  {lk['label']} refused it: {got.get('error')}")
+        else:
+            print(f"  kept — {got.get('error')}; the server sends it again when it can")
         return
     if act == "requests":
         rs = teamlink.requests(owner)
@@ -5203,15 +5267,17 @@ def main():
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
-                        choices=["list", "request", "requests", "approve", "deny", "listen", "invite",
-                                 "join", "redeem", "remove", "allow", "disallow", "mine"])
+                        choices=["list", "request", "requests", "approve", "deny", "say", "chat",
+                                 "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine"])
     p_link.add_argument("arg1", nargs="?", default="",
-                        help="request: the other machine's address, or 'account' · approve/deny: the "
+                        help="request: the other machine's address, or 'account' · say/chat: the link · "
+                             "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
                              "redeem: the code · remove/allow/disallow/mine: the link")
     p_link.add_argument("arg2", nargs="?", default="",
-                        help="request account: the account · invite/join/request: a label · "
+                        help="say: the message · request account: the account · invite/join/request: a label · "
                              "allow/disallow: one of your agents · mine: on|off")
+    p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",

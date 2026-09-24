@@ -49,6 +49,17 @@ function avatarSrc(key,o){
     +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
     +(o.frame?'&frame='+o.frame:'')+'&v='+v;
 }
+/* A face from ANOTHER team — a linked machine's agent, a person who sent a message.
+   Their recipe travelled with the link; the server paints it (and holds it to the
+   closed set). Still this file, so there is still one door that builds the URL. */
+function avatarRecipeSrc(rec,o){
+  o=o||{};
+  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))+(o.crop===''?'':'&crop='+(o.crop||'face'));
+}
+function avatarRecipeImg(rec,cls,alt){
+  if(AVATARS.off||!rec)return '';
+  return `<img class="av ${cls||''}" src="${avatarRecipeSrc(rec)}" alt="${esc(alt||'')}" title="${esc(alt||'')}" loading="lazy" draggable="false">`;
+}
 /* The one way a face goes on screen. `data-av` is what the repaint looks for; the
    alt text is the character in words, which is also what a screen reader hears. */
 function avatarImg(key,cls,o){
@@ -109,14 +120,15 @@ async function avatarEdit(key){
       <div class="ave-row"><span>Skin</span><div>${sw('skin',P.skin,r.skin,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Hair</span><div>${sw('hair',P.hair,r.hair,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Style</span><div class="ave-chips">${P.style.map(s=>`<button class="ave-chip${s===r.style?' on':''}" data-f="style" data-v="${s}" aria-pressed="${s===r.style}">${s}</button>`).join('')}</div></div>
-      <div class="ave-row"><span>Shirt</span><div>${sw('hue',P.shirt,r.hue,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Colour</span><div>${sw('hue',P.shirt,r.hue,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Wears</span><div class="ave-chips">${(P.outfit||[]).map(o=>`<button class="ave-chip${o===r.outfit?' on':''}" data-f="outfit" data-v="${o}" aria-pressed="${o===r.outfit}">${o}${o==='blazer'?' · the lead':''}</button>`).join('')}</div></div>
       <div class="ave-row"><span>Trousers</span><div>${sw('pants',P.pants,r.pants,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Extras</span><div class="ave-chips">
         <button class="ave-chip${r.glasses?' on':''}" data-f="glasses" data-v="${!r.glasses}" aria-pressed="${!!r.glasses}">glasses</button>
         <button class="ave-chip${r.blush?' on':''}" data-f="blush" data-v="${!r.blush}" aria-pressed="${!!r.blush}">blush</button></div></div>`;
     scr.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{
       const f=b.dataset.f;let v=b.dataset.v;
-      v=(f==='style')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
+      v=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
       const res=await fetch('/api/avatars/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({[f]:v})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
       if(res.error){if(typeof toast==='function')toast(res.error);return}

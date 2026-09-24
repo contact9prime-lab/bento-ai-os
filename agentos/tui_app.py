@@ -600,6 +600,10 @@ class AgentTUI(App):
                         else:
                             log.write(f"[b]@{ev.get('from', '?')}[/] [grey58]({ev.get('provider') or ev.get('model', '')})[/]  "
                                       f"{ev.get('text', '')}")
+                    elif t == "team_message" and ev.get("dir") == "in":
+                        # a person on a linked team wrote; answering is `bento link say`
+                        log.write(f"[cyan]✉ {ev.get('sender', '?')} · {ev.get('link', '')}:[/] {ev.get('text', '')}  "
+                                  f"[grey58]bento link say {ev.get('link', '')} …[/]")
                     elif t == "team_link_request":
                         # somebody asks to link; answering is a verb, not a keypress here,
                         # so the line says which one (the digits are the check)

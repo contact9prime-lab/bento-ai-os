@@ -236,6 +236,7 @@ async def startup():
     if (cfg.get("team") or {}).get("listen"):
         with contextlib.suppress(Exception):
             await _team_listen(True)
+    state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -457,9 +458,105 @@ async def startup():
         store.log("system", "permissions framework: legacy grants seeded for existing apps")
 
 
+def _team_identity(owner: str) -> dict:
+    """Who answers for `owner`'s team (teamchat.identity), read in their own home."""
+    from . import teamchat
+    with usersmod.as_user(owner or ""):
+        return teamchat.identity(state["cfg"], state["store"], owner or "")
+
+
+async def _team_chat_in(lk: dict, req: dict) -> dict:
+    """A message from a person on a linked machine, for this link's owner. The answer
+    carries whatever this side had waiting for them — the way queued mail gets through
+    to a peer this machine cannot reach."""
+    from . import teamchat
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        store = state["store"]
+        if req.get("op") == "chat":
+            msg, why = teamchat.receive(store, owner, lk, req.get("message"))
+            if why:
+                return {"ok": False, "error": why, "refused": True}
+            if msg:
+                await state["broadcast_user"]({"type": "team_message", **msg}, owner)
+        waiting = store.team_msg_pending(lk["label"])
+        store.team_msg_delivered([m["id"] for m in waiting])
+        if waiting:
+            await state["broadcast_user"]({"type": "team_message_delivered", "link": lk["label"],
+                                           "ids": [m["id"] for m in waiting]}, owner)
+        return {"ok": True, "messages": [{k: m[k] for k in ("id", "text", "ts", "sender", "look")}
+                                         for m in waiting]}
+
+
+async def _team_chat_ingest(lk: dict, got: dict) -> int:
+    """Messages that came back in an answer (theirs, waiting for us)."""
+    from . import teamchat
+    owner, n = lk.get("owner") or "", 0
+    with usersmod.as_user(owner):
+        for m in (got or {}).get("messages") or []:
+            msg, _ = teamchat.receive(state["store"], owner, lk, m)
+            if msg:
+                n += 1
+                await state["broadcast_user"]({"type": "team_message", **msg}, owner)
+    return n
+
+
+async def _team_chat_push(lk: dict) -> dict:
+    """Deliver what is waiting for one machine link, and collect what is waiting for us.
+    One mTLS round trip per message, the last of which pulls."""
+    from . import teamlink
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        waiting = state["store"].team_msg_pending(lk["label"])
+    if not lk.get("url"):
+        return {"ok": False, "queued": len(waiting)}
+    got = {}
+    for m in waiting:
+        got = await teamlink.call(lk, {"op": "chat", "identity": _team_identity(owner),
+                                       "message": {k: m[k] for k in ("id", "text", "ts", "sender", "look")}},
+                                  timeout=20)
+        if got.get("refused"):
+            # they answered, and the answer is no (muted, too fast, malformed): retrying
+            # every 30 seconds would be knocking on a closed door, so it stops here
+            with usersmod.as_user(owner):
+                state["store"].team_msg_delivered([m["id"]], -1)
+            return {"ok": False, "error": got.get("error") or "refused", "refused": True}
+        if not got.get("ok"):
+            return {"ok": False, "error": got.get("error") or "not delivered", "queued": len(waiting)}
+        with usersmod.as_user(owner):
+            state["store"].team_msg_delivered([m["id"]])
+        await _team_chat_ingest(lk, got)
+    if not waiting:
+        got = await teamlink.call(lk, {"op": "chat_pull"}, timeout=20)
+        if got.get("ok"):
+            await _team_chat_ingest(lk, got)
+    return {"ok": bool(got.get("ok", True)), "error": got.get("error", "")}
+
+
+async def _team_chat_sweep():
+    """Every 30 seconds: send what is waiting, and — while somebody is looking — ask
+    each reachable linked machine for what it has waiting for us. That second half is
+    what lets two people talk when only one of the machines can be reached. No machine
+    links, nothing to do: no connection is made."""
+    from . import teamlink
+    while True:
+        await asyncio.sleep(30)
+        with contextlib.suppress(Exception):
+            for lk in teamlink.links(None):
+                if lk.get("kind") != "machine" or not lk.get("url"):
+                    continue
+                with usersmod.as_user(lk.get("owner") or ""):
+                    pending = state["store"].team_msg_pending(lk["label"])
+                if pending or state.get("clients"):
+                    await _team_chat_push(lk)
+
+
 async def _team_on_ask(lk: dict, req: dict) -> dict:
     """A request from a linked machine, answered in the account that owns the link —
-    entered here, before anything is read, as the webhook route enters its owner."""
+    entered here, before anything is read, as the webhook route enters its owner.
+    People's messages go to the chat; everything else is an agent being asked."""
+    if req.get("op") in ("chat", "chat_pull"):
+        return await _team_chat_in(lk, req)
     owner = lk.get("owner") or ""
     with usersmod.as_user(owner):
         async def say(e):
@@ -493,7 +590,8 @@ async def _team_listen(on: bool) -> dict:
         await cur.stop()
         state["team_listener"] = None
     if on and not state.get("team_listener"):
-        lst = teamlink.Listener(state["cfg"], on_ask=_team_on_ask, on_event=_team_on_event)
+        lst = teamlink.Listener(state["cfg"], on_ask=_team_on_ask, on_event=_team_on_event,
+                                identity=_team_identity)
         await lst.start()
         state["team_listener"] = lst
     lst = state.get("team_listener")
@@ -8181,14 +8279,24 @@ async def api_avatars():
 
 @app.get("/api/avatar.png")
 async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: int = 0,
-                         scale: int = 1):
+                         scale: int = 1, recipe: str = ""):
     """A character as a PNG: one frame, the face, or all frames side by side.
 
     A query parameter rather than a path segment, because the keys are '@agent',
     '@me' and specialists' names, and a name with a dot or a space in a path is a
     second parser disagreeing with the first. An unknown key still gets a stable
     face (the one it WOULD be generated as) without a row being written for it."""
-    rec = avatarsmod.recipe_for(state["store"], key)
+    if recipe:
+        # A character that lives on ANOTHER team (a linked machine's agent, the person
+        # who sent a message): its recipe travelled with the link and is painted here
+        # by the one painter. clean() holds it to the closed set, so a remote can pick
+        # a face and nothing else; anything it cannot parse becomes the default face.
+        try:
+            rec = avatarsmod.clean(json.loads(recipe[:600]))
+        except (ValueError, TypeError):
+            rec = avatarsmod.clean({})
+    else:
+        rec = avatarsmod.recipe_for(state["store"], key)
     body = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale)
     # the page asks with ?v=<updated_at>, so an edit is a new URL and this can be long
     return Response(body, media_type="image/png",
@@ -8244,8 +8352,12 @@ async def api_team_links():
     ident = teamlink.ensure_pki()
     out = []
     for lk in teamlink.links(owner):
-        out.append({**lk, **fabricmod.link_access(state["store"], lk["label"])})
+        out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
+                    "peer_identity": _team_peer_identity(lk)})
     reqs = teamlink.requests(owner)
+    for r in reqs["incoming"]:
+        if r.get("kind") == "account":
+            r["identity"] = _team_identity(r.get("from") or "")
     names = _team_names()
     return {"me": {"name": teamlink.machine_name(state["cfg"]), "fingerprint": ident["host_fp"],
                    "address": teamlink.guess_address(), "port": teamlink.team_port(state["cfg"])},
@@ -8307,7 +8419,7 @@ async def api_team_link_join(body: dict):
     owner = usersmod.current() or ""
     lst = state.get("team_listener")
     try:
-        lk = await teamlink.join(str((body or {}).get("invite") or ""), owner,
+        lk = await teamlink.join(str((body or {}).get("invite") or ""), owner, identity=_team_identity(owner),
                                  label=str((body or {}).get("label") or ""), cfg=state["cfg"],
                                  my_port=lst.port if lst else 0)
     except ValueError as e:
@@ -8389,6 +8501,7 @@ async def api_team_link_request(body: dict):
     lst = state.get("team_listener")
     try:
         p = await teamlink.request_link(str(b.get("address") or ""), owner, cfg=state["cfg"],
+                                        identity=_team_identity(owner),
                                         my_port=lst.port if lst else 0, label=str(b.get("label") or ""))
     except (ValueError, ConnectionError) as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -8447,6 +8560,117 @@ async def api_team_link_withdraw(rid: str):
     if teamlink.withdraw(rid, owner):
         return {"ok": True}
     return JSONResponse({"error": "no request of yours by that id"}, status_code=404)
+
+
+def _team_peer_identity(lk: dict) -> dict:
+    """What the other side of a link looks like: told by a machine (and kept on the link),
+    read directly for an account here — the server already knows who that is."""
+    if lk.get("kind") == "account":
+        return _team_identity(lk.get("peer") or "")
+    return lk.get("peer_identity") or {}
+
+
+@app.get("/api/team/chat")
+async def api_team_chat():
+    """The people you can write to — one thread per linked team — newest first."""
+    from . import teamchat, teamlink
+    owner = usersmod.current() or ""
+    links = [{**lk, "peer_identity": _team_peer_identity(lk)} for lk in teamlink.links(owner)]
+    return {"threads": teamchat.threads(state["store"], links), "me": _team_identity(owner),
+            "multiuser": usersmod.enabled()}
+
+
+@app.get("/api/team/chat/{label}")
+async def api_team_chat_thread(label: str, pull: int = 1):
+    """One conversation. Opening it asks a linked machine for anything waiting (six
+    seconds at most), so a thread is current the moment it is looked at."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no linked team called '{label}'"}, status_code=404)
+    if pull and lk.get("kind") == "machine" and lk.get("url"):
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(_team_chat_push(lk), 6)
+    store = state["store"]
+    msgs = store.team_msgs(lk["label"])
+    if store.team_msg_read(lk["label"]):
+        await state["broadcast_user"]({"type": "team_message_read", "link": lk["label"]}, owner)
+    return {"link": {k: v for k, v in lk.items() if k != "peer_ca"}, "identity": _team_peer_identity(lk),
+            "me": _team_identity(owner), "messages": msgs,
+            "reachable": lk.get("kind") == "account" or bool(lk.get("url"))}
+
+
+@app.post("/api/team/chat/{label}")
+async def api_team_chat_send(label: str, body: dict):
+    """Write to the people on a linked team. Kept here first, then delivered: at once
+    to an account or a machine this one can reach, otherwise with the next exchange."""
+    from . import teamchat, teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no linked team called '{label}'"}, status_code=404)
+    try:
+        m = teamchat.new_message((body or {}).get("text"), _team_identity(owner))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    state["store"].team_msg_add(lk["label"], m, "out")
+    await state["broadcast_user"]({"type": "team_message", **m, "dir": "out", "link": lk["label"]}, owner)
+    if lk.get("kind") == "account":
+        peer = lk.get("peer") or ""
+        theirs = next((x for x in teamlink.links(peer) if x.get("kind") == "account"
+                       and x.get("pair_id") == lk.get("pair_id")), None)
+        if not theirs:
+            return {"ok": True, "delivered": False, "message": m,
+                    "note": "the other half of this link is gone — they can no longer read you"}
+        with usersmod.as_user(peer):
+            msg, why = teamchat.receive(state["store"], peer, theirs, m)
+        if why:
+            state["store"].team_msg_delivered([m["id"]], -1)
+            return {"ok": True, "delivered": False, "message": m, "note": why}
+        state["store"].team_msg_delivered([m["id"]])
+        if msg:
+            await state["broadcast_user"]({"type": "team_message", **msg}, peer)
+        return {"ok": True, "delivered": True, "message": m}
+    got = await _team_chat_push(lk)
+    if got.get("ok"):
+        return {"ok": True, "delivered": True, "message": m}
+    if got.get("refused"):
+        note = f"{lk['label']} refused it: {got.get('error')}"
+    elif not lk.get("url"):
+        note = (f"kept — this machine cannot reach {lk['label']}; it gets this the next time "
+                f"{lk['label']} talks to this machine")
+    else:
+        note = f"kept — {lk['label']} did not answer; it will be sent again"
+    return {"ok": True, "delivered": False, "message": m, "note": note}
+
+
+@app.put("/api/team/chat/{label}")
+async def api_team_chat_mute(label: str, body: dict):
+    """Close (or reopen) this link to messages. Refused messages say so to the sender."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    muted = bool((body or {}).get("muted"))
+    got = teamlink.set_flag(owner, label, "chat_muted", muted)
+    if not got:
+        return JSONResponse({"error": f"no linked team called '{label}'"}, status_code=404)
+    fabricmod.audit_team(state["store"], "link.chat", f"link:{got['label']}",
+                         f"messages from {got['label']}: {'refused' if muted else 'welcome'}")
+    return {"ok": True, "muted": muted}
+
+
+@app.put("/api/team/me")
+async def api_team_me(body: dict):
+    """The name you go by in messages, on a machine WITHOUT accounts (with accounts you
+    are your account — a name somebody else could type is not an identity)."""
+    if usersmod.enabled():
+        return JSONResponse({"error": "on a machine with accounts, messages carry your account's "
+                                      "name — change it in Users"}, status_code=400)
+    name = str((body or {}).get("name") or "").strip()[:40]
+    state["cfg"].setdefault("team", {})["my_name"] = name
+    cfgmod.save_config(state["cfg"])
+    from . import teamlink
+    return {"ok": True, "name": name or teamlink.machine_name(state["cfg"])}
 
 
 @app.delete("/api/team/links/{label}")

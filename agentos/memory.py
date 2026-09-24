@@ -64,6 +64,23 @@ CREATE TABLE IF NOT EXISTS avatars (
     recipe TEXT DEFAULT '{}',    -- JSON: skin, hair, style, pants, glasses, blush, hue
     updated_at REAL
 );
+-- People on linked teams writing to each other (teamchat.py). This person's words and
+-- theirs, in THIS person's database only. No agent reads them (no tool, no prompt), and
+-- prune() never touches them: they are the person's own, like a mailbox. The id is the
+-- SAME on both sides, so a retried delivery is one row, not two. No space_id: a person
+-- is not a project.
+CREATE TABLE IF NOT EXISTS team_messages (
+    id TEXT PRIMARY KEY,
+    link TEXT,                   -- the link's label HERE
+    dir TEXT,                    -- 'in' | 'out'
+    sender TEXT,                 -- the name the sender goes by
+    look TEXT DEFAULT '{}',      -- the sender's character recipe (avatars.clean'd)
+    text TEXT,
+    ts REAL,
+    delivered INTEGER DEFAULT 0, -- out: the other side has it
+    read INTEGER DEFAULT 0       -- in: this person has seen it
+);
+CREATE INDEX IF NOT EXISTS idx_team_messages ON team_messages(link, ts);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT,
@@ -2378,6 +2395,59 @@ class Store:
     def avatar_all(self) -> list[dict]:
         return [self.avatar_get(r["key"]) for r in
                 self.db.execute("SELECT key FROM avatars ORDER BY key").fetchall()]
+
+    # ---- people on linked teams (teamchat.py decides; this only keeps the rows) ----
+    def team_msg_add(self, link: str, m: dict, direction: str, delivered: bool = False) -> bool:
+        """One message; False when that id is already here (a retried delivery)."""
+        cur = self.db.execute(
+            "INSERT OR IGNORE INTO team_messages(id, link, dir, sender, look, text, ts, delivered, read) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (m["id"], link, direction, m.get("sender", ""), json.dumps(m.get("look") or {}, sort_keys=True),
+             m.get("text", ""), float(m.get("ts") or time.time()), int(bool(delivered)),
+             int(direction == "out")))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def _team_row(self, r) -> dict:
+        d = dict(r)
+        try:
+            d["look"] = json.loads(d.get("look") or "{}")
+        except Exception:
+            d["look"] = {}
+        return d
+
+    def team_msgs(self, link: str, limit: int = 200) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM team_messages WHERE link=? ORDER BY ts DESC LIMIT ?",
+                               (link, int(limit))).fetchall()
+        return [self._team_row(r) for r in reversed(rows)]
+
+    def team_threads(self) -> dict:
+        """Per link: the last message and how many are unread."""
+        out = {}
+        for r in self.db.execute(
+                "SELECT link, MAX(ts) AS ts, SUM(CASE WHEN dir='in' AND read=0 THEN 1 ELSE 0 END) AS unread "
+                "FROM team_messages GROUP BY link").fetchall():
+            last = self.db.execute("SELECT * FROM team_messages WHERE link=? ORDER BY ts DESC LIMIT 1",
+                                   (r["link"],)).fetchone()
+            out[r["link"]] = {"unread": int(r["unread"] or 0), "last": self._team_row(last) if last else None}
+        return out
+
+    def team_msg_read(self, link: str) -> int:
+        n = self.db.execute("UPDATE team_messages SET read=1 WHERE link=? AND dir='in' AND read=0",
+                            (link,)).rowcount
+        self.db.commit()
+        return n
+
+    def team_msg_pending(self, link: str) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM team_messages WHERE link=? AND dir='out' AND delivered=0 "
+                               "ORDER BY ts", (link,)).fetchall()
+        return [self._team_row(r) for r in rows]
+
+    def team_msg_delivered(self, ids: list[str], state: int = 1) -> None:
+        """1 = the other side has it; -1 = the other side refused it (stop retrying)."""
+        for i in ids:
+            self.db.execute("UPDATE team_messages SET delivered=? WHERE id=?", (int(state), i))
+        self.db.commit()
 
     def brief_get(self, bid: str) -> dict | None:
         rows = self.brief_items(limit=100000)

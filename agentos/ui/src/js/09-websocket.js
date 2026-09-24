@@ -476,6 +476,13 @@ function handle(ev){
         {label:'Review',go:()=>openLinkedTeams(),ms:15000});
       if(typeof paintTeamLinks==='function')paintTeamLinks();
       break;
+    case 'team_message':   // a person on a linked team wrote (or one of ours, from another screen)
+      if(typeof teamChatEvent==='function')teamChatEvent(ev);
+      break;
+    case 'team_message_delivered':   // queued mail collected by the other side
+      (ev.ids||[]).forEach(id=>{const t=document.querySelector(`.tc-msg[data-id="${CSS.escape(id)}"] .tc-tick`);
+        if(t){t.className='tc-tick';t.textContent='✓';t.title='delivered'}});
+      break;
     case 'team_links':   // a link made, ended, or an answer to a request of ours
       if(ev.outcome&&ev.name)toast(ev.outcome==='approved'?'✓ '+ev.name+' approved — linked'
         :ev.outcome==='denied'?ev.name+' said no to linking':ev.outcome==='expired'?'Nobody at '+ev.name+' answered in ten minutes'

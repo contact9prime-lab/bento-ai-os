@@ -178,6 +178,41 @@ def _label(s: str) -> str:
     return s or "team"
 
 
+# ---- identity: who the other team IS, as they present themselves ---------------------------
+#
+# A link is a certificate, which is proof and says nothing a person can recognise. So
+# every answer also carries the answering side's IDENTITY: its agent's name and look,
+# and the name and look of the person there. It is cosmetic by construction — a name
+# cut to 40 characters and a recipe from the closed set avatars.clean() allows, painted
+# here by the one painter — so what a remote can claim is a face and a name, never
+# markup and never a file.
+
+def clean_identity(x) -> dict:
+    from . import avatars
+    x = x if isinstance(x, dict) else {}
+    out = {"agent_name": str(x.get("agent_name") or "")[:40].strip(),
+           "person": str(x.get("person") or "")[:40].strip()}
+    for k in ("agent", "me"):
+        if isinstance(x.get(k), dict):
+            out[k] = avatars.clean(x[k])
+    return out
+
+
+def note_identity(owner: str, label: str, ident) -> None:
+    """Record what a linked team says it looks like, when it changed. Written only on a
+    difference, so a chatty link does not rewrite links.json on every message."""
+    if not isinstance(ident, dict):
+        return
+    ident = clean_identity(ident)
+    d = _load()
+    for lk in d["links"]:
+        if (lk.get("owner") or "") == (owner or "") and lk.get("label") == label:
+            if lk.get("peer_identity") != ident:
+                lk["peer_identity"] = ident
+                _save(d)
+            return
+
+
 # ---- the registry ------------------------------------------------------------------------
 #
 # One machine-level file, because the listener is machine-level: an incoming certificate
@@ -243,6 +278,22 @@ def _add_link(d: dict, **lk) -> dict:
     lk["label"] = _unique_label(d, lk.get("owner") or "", lk.get("label") or "team")
     d["links"].append(lk)
     return lk
+
+
+FLAGS = ("chat_muted",)
+
+
+def set_flag(owner: str, label: str, key: str, value) -> dict | None:
+    """A per-link switch this side owns (today: whether its person takes messages)."""
+    if key not in FLAGS:
+        raise ValueError(f"not a link setting: {key}")
+    d = _load()
+    for lk in d["links"]:
+        if (lk.get("owner") or "") == (owner or "") and lk.get("label") == _label(label):
+            lk[key] = bool(value)
+            _save(d)
+            return {k: v for k, v in lk.items() if k != "peer_ca"}
+    return None
 
 
 def remove(owner: str, label: str) -> bool:
@@ -589,10 +640,11 @@ class Listener:
     `on_ask(link, payload)` answers an ask; it is the server's, so this module knows
     nothing of stores or users."""
 
-    def __init__(self, cfg: dict, on_ask=None, on_event=None):
+    def __init__(self, cfg: dict, on_ask=None, on_event=None, identity=None):
         self.cfg = cfg
         self.on_ask = on_ask
         self.on_event = on_event
+        self.identity = identity             # owner -> who answers here (name, faces)
         self.server = None
         self.port = 0
         self._guess: dict = {}
@@ -651,6 +703,7 @@ class Listener:
         r = {"id": secrets.token_hex(4), "kind": "machine", "token_hash": _hash(token),
              "name": _label(req.get("name")), "peer_ca": ca, "peer_host": host, "peer_host_fp": fp,
              "addr": addr, "port": int(req.get("port") or 0), "sas": sas(ident["host_fp"], fp),
+             "identity": clean_identity(req.get("identity")),
              "state": "pending", "created": time.time(), "expires": time.time() + REQUEST_TTL}
         d["requests"].append(r)
         _save(d)
@@ -684,13 +737,21 @@ class Listener:
         lk = _add_link(d, kind="machine", owner=r.get("owner") or "",
                        label=r.get("label") or r.get("name") or "team", peer_ca=r["peer_ca"],
                        peer_host_fp=r["peer_host_fp"], peer_name=r.get("name") or "",
-                       url=f"{r['addr']}:{r['port']}" if r.get("port") else "", direction="they asked")
+                       url=f"{r['addr']}:{r['port']}" if r.get("port") else "", direction="they asked",
+                       peer_identity=r.get("identity") or {})
         _save(d)
         if self.on_event:
             await self.on_event("approved", {k: v for k, v in lk.items() if k != "peer_ca"})
         ident = ensure_pki()
         return {"ok": True, "state": "approved", "ca": ident["ca"], "host_fp": ident["host_fp"],
-                "name": machine_name(self.cfg), "label_here": lk["label"]}
+                "name": machine_name(self.cfg), "label_here": lk["label"],
+                "identity": self._ident(r.get("owner") or "")}
+
+    def _ident(self, owner: str) -> dict:
+        try:
+            return self.identity(owner or "") if self.identity else {}
+        except Exception:
+            return {}
 
     async def _handle(self, reader, writer):
         _ROOT.set(self.root)             # this task is this machine, whatever started it
@@ -731,20 +792,26 @@ class Listener:
                            label=inv.get("label") or str(req.get("name") or "team"),
                            peer_ca=peer_ca, peer_host_fp=peer_fp, peer_name=_label(req.get("name")),
                            url=f"{addr}:{int(req.get('port') or 0)}" if req.get("port") else "",
-                           direction="they joined")
+                           direction="they joined", peer_identity=clean_identity(req.get("identity")))
             _save(d)
             if self.on_event:
                 await self.on_event("paired", lk)
             ident = ensure_pki()
             return {"ok": True, "name": machine_name(self.cfg), "ca": ident["ca"],
-                    "host_fp": ident["host_fp"]}
+                    "host_fp": ident["host_fp"], "identity": self._ident(inv["owner"])}
         lk = _by_fp(fp) if fp else None
         if not lk:
             return {"ok": False, "error": "this machine does not know your certificate — pair first"}
+        if isinstance(req.get("identity"), dict):
+            note_identity(lk.get("owner") or "", lk["label"], req["identity"])
         if op == "hello":
-            return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"]}
-        if op in ("ask", "roster") and self.on_ask:
-            return await self.on_ask(lk, req)
+            return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
+                    "identity": self._ident(lk.get("owner") or "")}
+        if op in ("ask", "roster", "chat", "chat_pull") and self.on_ask:
+            out = await self.on_ask(lk, req)
+            if isinstance(out, dict) and "identity" not in out:
+                out["identity"] = self._ident(lk.get("owner") or "")
+            return out
         return {"ok": False, "error": f"unknown request '{op}'"}
 
 
@@ -769,7 +836,10 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT) -> dict:
                                           f"than the one paired with — refused"}
         writer.write((json.dumps(req) + "\n").encode())
         await writer.drain()
-        return await _read_line(reader, timeout=timeout)
+        got = await _read_line(reader, timeout=timeout)
+        if isinstance(got, dict) and isinstance(got.get("identity"), dict):
+            note_identity(lk.get("owner") or "", lk.get("label") or "", got["identity"])
+        return got
     except (OSError, asyncio.TimeoutError, ValueError) as e:
         return {"ok": False, "error": f"{lk.get('label')} did not answer ({type(e).__name__})"}
     finally:
@@ -777,7 +847,7 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT) -> dict:
 
 
 async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = None,
-               my_port: int = 0) -> dict:
+               my_port: int = 0, identity: dict | None = None) -> dict:
     """Redeem a machine invite: connect, check the certificate against the invite's
     fingerprint BEFORE sending the code, trade CAs, record the link."""
     inv = parse_invite(invite_str)
@@ -795,7 +865,7 @@ async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = 
                              "(its certificate does not match) — nothing was sent")
         writer.write((json.dumps({"op": "pair", "code": inv["code"], "name": machine_name(cfg),
                                   "ca": ident["ca"], "host_fp": ident["host_fp"],
-                                  "port": int(my_port or 0)}) + "\n").encode())
+                                  "port": int(my_port or 0), "identity": identity or {}}) + "\n").encode())
         await writer.drain()
         got = await _read_line(reader)
     finally:
@@ -807,7 +877,8 @@ async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = 
     d = _load()
     lk = _add_link(d, kind="machine", owner=owner or "", label=label or got.get("name") or "team",
                    peer_ca=got["ca"], peer_host_fp=got["host_fp"], peer_name=_label(got.get("name")),
-                   url=f"{inv['host']}:{inv['port']}", direction="you joined")
+                   url=f"{inv['host']}:{inv['port']}", direction="you joined",
+                   peer_identity=clean_identity(got.get("identity")))
     _save(d)
     return {k: v for k, v in lk.items() if k != "peer_ca"}
 
@@ -842,14 +913,14 @@ async def _once(host: str, port: int, payload: dict, pin: str = "") -> tuple[dic
 
 
 async def request_link(address: str, owner: str, cfg: dict | None = None, my_port: int = 0,
-                       label: str = "") -> dict:
+                       label: str = "", identity: dict | None = None) -> dict:
     """Ask the machine at `address` to link. Returns the pending request — including the
     six digits to compare — for `poll_link` / `wait_link` to follow."""
     host, port = parse_address(address, cfg)
     ident = ensure_pki()
     got, fp, _ = await _once(host, port, {"op": "request", "name": machine_name(cfg),
                                           "ca": ident["ca"], "host": ident["host"],
-                                          "port": int(my_port or 0)})
+                                          "port": int(my_port or 0), "identity": identity or {}})
     if not got.get("ok"):
         raise ValueError(got.get("error") or "the other machine refused")
     if fp == ident["host_fp"]:
@@ -878,7 +949,8 @@ async def poll_link(p: dict) -> dict:
     lk = _add_link(d, kind="machine", owner=p.get("owner") or "",
                    label=p.get("label") or got.get("name") or "team", peer_ca=got["ca"],
                    peer_host_fp=p["fp"], peer_name=_label(got.get("name")),
-                   url=f"{p['host']}:{p['port']}", direction="you asked")
+                   url=f"{p['host']}:{p['port']}", direction="you asked",
+                   peer_identity=clean_identity(got.get("identity")))
     _save(d)
     return {"state": "approved", "link": {k: v for k, v in lk.items() if k != "peer_ca"}}
 

@@ -138,6 +138,8 @@ bento link request account bob                 # another account here: Bob appro
 bento link listen on                           # let other machines ask (mTLS, port 8322)
 bento link allow office analyst                # their agents may ask your analyst
 bento link mine office on                      # yours may ask theirs without asking you
+bento link say office "Is the Q3 deck ready?"   # write to the people on that team
+bento link chat office                         # the conversation (pulls anything waiting)
 bento link remove office                       # ends it, and revokes its cells
 bento link invite machine                      # headless: a one-time bento://link/… line
 bento link join 'bento://link/…' office        # …redeemed on the other machine

@@ -256,6 +256,15 @@ glance instead of reading names.
   roster — a skin tone, a hair style and colour, glasses or not, trousers, and a shirt colour that no
   other agent on this machine is wearing. Your agent always wears the desktop's teal. The recipe is
   stored, so adding a colleague never recolours the people already there.
+- **Your agent is the lead, and dressed like it.** It wears a **blazer** in its teal, over a white
+  shirt and a tie, with a gold pin, and the collar shows in every chat bubble. Specialists wear a
+  shirt or a hoodie. That makes your agent the manager at a glance: on the Crew stage it stands in
+  the middle, one head taller, and in the blazer. Its look is also this machine's **identity**. A
+  linked team sees your agent's face and name on the request card, on the link, and at the top
+  of your conversation (see [the team](team.md#talking-to-the-people-on-a-linked-team)). Each
+  install draws its own agent and its own "you", so two linked Bentos never show the same person.
+  The outfit is a choice like the rest (*Wears: shirt · blazer · hoodie*), and a reroll keeps it,
+  so the lead is never demoted by accident.
 - **Change anybody.** Click a face in Settings → Appearance → Characters, or **Look** on a
   specialist's card. Every choice is saved the moment you click it and every surface changes as you
   pick; **Surprise me** is a new look in the same shirt colour. Or ask: *"give the researcher
@@ -268,6 +277,8 @@ glance instead of reading names.
   approvals if you would rather read text.
 
 ![The character editor: a large animated figure beside skin, hair, style, shirt and trouser choices](screenshots/characters-editor.png)
+
+![Your agent in the editor: the teal blazer, white shirt, tie and gold pin, and "Wears: blazer · the lead"](screenshots/characters-lead.png)
 
 ![Logs with the face of whoever acted on each line](screenshots/characters-logs.png)
 
@@ -282,6 +293,7 @@ grid, and edits them with the server down:
 bento avatar                       # everybody, side by side
 bento avatar show researcher
 bento avatar set researcher hair=pink style=bun glasses=yes
+bento avatar set agent outfit=blazer    # the lead's look (shirt | blazer | hoodie)
 bento avatar reroll writer
 ```
 
