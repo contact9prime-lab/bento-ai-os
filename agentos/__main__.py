@@ -3387,6 +3387,126 @@ def _team_cli(args):
           "  talk it through: in chat, \"@researcher @validator should we…\"")
 
 
+def _link_cli(args):
+    """`bento link` — linked teams from a terminal: this machine's identity, the door,
+    invites, joining, and what each link may do. The same functions the Settings
+    section calls (teamlink, fabric.set_link_access), so a headless Pi links exactly as
+    a desktop does. Joining is done from HERE (the handshake is this machine's own TLS
+    client); the running server picks the new link up from links.json on its next
+    connection, without a restart."""
+    import asyncio as _aio
+    import json as _json
+    import urllib.request
+    from . import config as cfgmod
+    from . import fabric as fabricmod
+    from . import teamlink
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    owner = usersmod.current() or ""
+    act, a1, a2 = args.action, args.arg1, args.arg2
+    ident = teamlink.ensure_pki()
+    port = teamlink.team_port(cfg)
+
+    def server(path, method, body):
+        req = urllib.request.Request(f"http://127.0.0.1:{cfg.get('port', 8321)}{path}", method=method,
+                                     data=_json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        return _json.loads(urllib.request.urlopen(req, timeout=10).read() or b"{}")
+
+    if act == "listen":
+        if a1 not in ("on", "off"):
+            print(f"  accepting linked teams: {'on' if (cfg.get('team') or {}).get('listen') else 'off'} "
+                  f"(port {port}, mutual TLS)\n  bento link listen on|off")
+            return
+        try:
+            got = server("/api/team/listen", "PUT", {"on": a1 == "on"})
+            print(f"  accepting linked teams: {a1} — port {got.get('port')}" if not got.get("error")
+                  else f"  {got['error']}")
+        except Exception:
+            mcfg = cfgmod.load_config()
+            mcfg.setdefault("team", {})["listen"] = a1 == "on"
+            cfgmod.save_config(mcfg)
+            fabricmod.audit_team(store, "team.write", "team:listen", f"accept linked teams: {a1} (bento link)")
+            print(f"  saved: {a1}; no server answered, so the door opens when it starts")
+        return
+    if act == "invite":
+        kind = "account" if a1 == "account" else "machine"
+        inv = teamlink.invite(owner, kind, label=a2 or "", cfg=cfg)
+        fabricmod.audit_team(store, "link.invite", f"link:{kind}", f"a one-time {kind} invite (bento link)")
+        if kind == "account":
+            print(f"  code: {inv['code']}\n  the other account redeems it: bento link redeem CODE --user THEM "
+                  f"(or Settings → Team). Works once, for ten minutes.")
+        else:
+            print(f"  {inv['invite']}\n\n  On the other machine: bento link join '<that line>'\n"
+                  f"  It works once, for ten minutes, and the joiner checks this machine's certificate\n"
+                  f"  ({ident['host_fp'][:16]}…) before sending anything."
+                  + ("" if (cfg.get("team") or {}).get("listen") else
+                     "\n  ⚠ this machine is not accepting linked teams — bento link listen on"))
+        return
+    if act == "join":
+        try:
+            lk = _aio.run(teamlink.join(a1 or "", owner, label=a2 or "", cfg=cfg,
+                                        my_port=port if (cfg.get("team") or {}).get("listen") else 0))
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
+                             f"joined {lk.get('peer_name')} (bento link); certificate {lk['peer_host_fp'][:16]}…")
+        print(f"  linked with {lk['label']} ({lk['url']}). Nothing is allowed yet:\n"
+              f"  bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+        return
+    if act == "redeem":
+        if not usersmod.enabled() or not owner:
+            print("  an account link is between two accounts on this machine — use --user")
+            sys.exit(2)
+        names = {u["id"]: u.get("name", "") for u in usersmod.list_users()}
+        try:
+            got = teamlink.redeem_account(a1 or "", owner, names)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        print(f"  linked with {got['mine']['label']}")
+        return
+    if act == "remove":
+        lk = teamlink.find(owner, a1 or "")
+        if not lk or not teamlink.remove(owner, a1):
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        n = fabricmod.forget_link_grants(store, lk["label"])
+        fabricmod.audit_team(store, "link.revoke", f"link:{lk['label']}",
+                             f"link ended (bento link); {n} permission(s) revoked")
+        print(f"  removed {lk['label']}; {n} permission(s) that named it revoked")
+        return
+    if act in ("allow", "disallow", "mine"):
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        cur = fabricmod.link_access(store, lk["label"])
+        if act == "mine":
+            got = fabricmod.set_link_access(store, lk["label"], mine_may_ask=(a2 or "on") == "on")
+        else:
+            want = set(cur["theirs_may_ask"])
+            (want.add if act == "allow" else want.discard)(a2 or "")
+            got = fabricmod.set_link_access(store, lk["label"], theirs_may_ask=sorted(want))
+        print(f"  {lk['label']}: their agents may ask {', '.join(got['theirs_may_ask']) or 'nobody'}; "
+              f"mine ask theirs {'freely' if got['mine_may_ask'] else 'after asking me'}")
+        return
+    # list
+    print(f"  this machine: {teamlink.machine_name(cfg)}  certificate {ident['host_fp'][:16]}…  "
+          f"accepting links: {'on, port ' + str(port) if (cfg.get('team') or {}).get('listen') else 'off'}")
+    ls = teamlink.links(owner)
+    if not ls:
+        print("\n  no linked teams — bento link invite (here) · bento link join INVITE (there)")
+        return
+    for lk in ls:
+        acc = fabricmod.link_access(store, lk["label"])
+        print(f"\n  {lk['label']:<14} {lk['kind']:<8} {lk.get('url') or ''}\n"
+              f"    their agents may ask: {', '.join(acc['theirs_may_ask']) or 'nobody'}\n"
+              f"    mine ask theirs: {'freely' if acc['mine_may_ask'] else 'after asking me'}   "
+              f"(as NAME@{lk['label']})")
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -4987,6 +5107,16 @@ def main():
     p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
+    p_link.add_argument("action", nargs="?", default="list",
+                        choices=["list", "listen", "invite", "join", "redeem", "remove",
+                                 "allow", "disallow", "mine"])
+    p_link.add_argument("arg1", nargs="?", default="",
+                        help="listen: on|off · invite: machine|account · join: the invite · "
+                             "redeem: the code · remove/allow/disallow/mine: the link")
+    p_link.add_argument("arg2", nargs="?", default="",
+                        help="invite/join: a label · allow/disallow: one of your agents · mine: on|off")
+    p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
                         choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits"])
@@ -5177,6 +5307,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "link":
+        _link_cli(args)
     elif args.cmd == "team":
         _team_cli(args)
     elif args.cmd == "avatar":

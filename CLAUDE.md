@@ -1263,6 +1263,45 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
   approval card settled anywhere is closed everywhere (`approval_resolved`); before, a phone
   kept a live card that could no longer do anything.
 
+## Linked teams: another team is reached by a handshake, never a password
+
+`agentos/teamlink.py` links this team to another: another Bento (**machine**, mutual TLS)
+or another account on this one (**account**, a code redeemed while signed in). Either way
+the result is `ask_agent("analyst@office")`, the same matrix, and the answering side's
+own gate. Full story in `docs/team.md` → Linked teams. Six things are load-bearing:
+
+- **Each install is its own CA, and a link pins TWO things.** The peer's certificate must
+  chain to the CA exchanged at pairing AND match the host fingerprint recorded then
+  (`_by_fp`). The joiner checks the inviter's certificate against the invite's
+  `#fingerprint` BEFORE sending the code, so a machine in the middle never sees it. The
+  code is single-use, ten minutes, stored hashed, and wrong codes are counted per address
+  (`GUESS_LIMIT`), the webhook ceiling's argument.
+- **The contexts are the STDLIB class, never whatever is on `ssl.SSLContext`.** `bento`
+  injects truststore there so provider calls read the OS store; a link verifying against
+  the OS store trusts the wrong thing, and truststore's check crashes on a joiner that has
+  no certificate yet. `_SSLContext` walks the MRO, and `_set` writes through
+  `_ssl._SSLContext` because ssl.py's own setters recurse once the global is replaced.
+  Found by the full suite, not by the teamlink tests alone; `test_teamlink.py` pins it.
+- **A link grants nothing.** Their agents are `team:<link>/<agent>`: `_default` refuses
+  it everything (`team-default`) and never ASKS — nobody is at the other end of a network
+  call to wait for. `BUILTIN_DENY["team"]` refuses self-modification, delegation, huddles
+  and definitions outright. Swarm opens only local empty cells (`"@" not in to`).
+- **The link's owner is entered before anything is read.** `_team_on_ask` does
+  `users.as_user(lk["owner"])`, and an account link answers under `users.as_user(peer)` in
+  process: the webhook rule, because a listener has no cookie either.
+- **Every answer from another team is untrusted, and so is every question.** A reply is
+  prefixed `TAINTED_REPLY` whatever the other side said about itself; the answering run
+  is tainted with `{"tool": "linked team"}`. The chain crosses as `researcher@home`, so
+  clarify-back, hops, budget and loop detection hold across the wire.
+- **A linked question belongs to no conversation here.** `agentMsgLive` pulses the stage
+  and toasts when `conversation_id` is empty; the websocket's "no id = the open one"
+  rule had put a stranger's question inside whatever chat the person was reading.
+
+Ending a link revokes every cell that named it (`forget_link_grants`, both halves of an
+account link). Every step is an audit row: `link.invite`, `link.write` (paired or redeemed),
+`grant.write`/`grant.revoke` (the cells), `link.revoke` (ended).
+The listener is admin-only because it opens a port, and it is off until switched on.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

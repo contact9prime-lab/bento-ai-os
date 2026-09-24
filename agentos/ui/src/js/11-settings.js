@@ -139,8 +139,17 @@ function setTab(body,all){
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
         {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
          f:'team matrix who may ask whom agents grid permission'}),
+      /* Linked teams: another Bento (mutual TLS, paired with a one-time code whose
+         invite also pins this machine's certificate) or another account here (a code
+         redeemed while signed in). A link grants nothing: what their agents may ask
+         yours is chosen per agent below, and never opened by swarm. `bento link` is the
+         terminal's face. */
+      pRow('Linked teams','<div id="s-team-links" class="team-links mut">loading…</div>',
+        {stack:true,desc:'Your agents and another team\u2019s: on another machine over mutual TLS, or another account on this one. Linking lets nothing through by itself — choose which of your agents theirs may ask. Every answer from a linked team is treated as untrusted.',
+         f:'team linked teams remote machine mtls pair invite account handshake federation'}),
     ],{f:'team agents providers huddle'}));
     setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
     P.push(pGroup('Local',[
@@ -1101,4 +1110,57 @@ async function paintTeamLimits(){
     if(r&&r.error){toast(r.error);paintTeamLimits();return}
     toast((label[inp.dataset.lim]||inp.dataset.lim)+': '+inp.value);
   });
+}
+
+/* Linked teams. Everything here is a call to /api/team/links*; the invite is shown
+   once, to copy, and expires in ten minutes. */
+var TEAM_INVITE=null;
+async function paintTeamLinks(){
+  const box=document.getElementById('s-team-links');if(!box)return;
+  let d={},sa={};
+  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json())])}catch(e){}
+  const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
+  box.classList.remove('mut');
+  const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b> — give it to the other side privately; it works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(TEAM_INVITE.invite||TEAM_INVITE.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      ${TEAM_INVITE.fingerprint?`<small class="mut">This machine's certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}… — the joiner checks it before sending anything.</small>`:''}</div>`:'';
+  const links=(d.links||[]).map(l=>`<div class="tlk-card">
+      <div class="tlk-head"><b>${esc(l.label)}</b><span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
+        <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you; you cannot reach them'):'')}</span>
+        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
+        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`).join('');
+  box.innerHTML=`<div class="tlk-me">This machine: <b>${esc(me.name||'')}</b> <small class="mut">certificate ${esc((me.fingerprint||'').slice(0,16))}…</small></div>
+    ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Accept linked teams from other machines — opens port ${esc(me.port)} on this machine, mutual TLS only</span></label>`:''}
+    <div class="tlk-actions">
+      <button class="endbtn" onclick="teamLinkInvite('machine')" ${d.listening?'':'disabled'}>Invite a machine</button>
+      <input id="tlk-join" placeholder="bento://link/… (an invite from the other machine)"><button class="endbtn" onclick="teamLinkJoin()">Join</button>
+      ${d.accounts?`<button class="endbtn" onclick="teamLinkInvite('account')">Invite an account here</button>
+        <input id="tlk-code" placeholder="code from another account"><button class="endbtn" onclick="teamLinkRedeem()">Redeem</button>`:''}
+    </div>${d.listening?'':`<p class="mut tlk-why">${d.can_listen
+      ?'To invite a machine, switch on Accept linked teams first: the other side connects to this one. You can still join a machine that invited you.'
+      :'Only an admin can open this machine to linked teams. You can still join a machine that invited you'+(d.accounts?', or link with another account here.':'.')}</p>`}${inv}${links||'<p class="mut">No linked teams yet.</p>'}`;
+  const ls=box.querySelector('#tlk-listen');
+  if(ls)ls.onchange=async()=>{const r=await teamApi('/api/team/listen','PUT',{on:ls.checked});if(r)toast(r.listening?'accepting linked teams on port '+r.port:'no longer accepting linked teams');paintTeamLinks()};
+  box.querySelectorAll('input[data-link]').forEach(cb=>cb.onchange=async()=>{
+    const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
+    await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
+  box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+}
+async function teamApi(url,method,body){
+  const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  if(r&&r.error){toast(r.error);return null}
+  return r;
+}
+async function teamLinkInvite(kind){const r=await teamApi('/api/team/links/invite','POST',{kind});if(r){TEAM_INVITE=r;paintTeamLinks()}}
+async function teamLinkJoin(){const v=(document.getElementById('tlk-join')||{}).value||'';const r=await teamApi('/api/team/links/join','POST',{invite:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRedeem(){const v=(document.getElementById('tlk-code')||{}).value||'';const r=await teamApi('/api/team/links/redeem','POST',{code:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRemove(label){if(!await osConfirm('Remove the link with '+label+'?','Their agents lose every permission here, and yours theirs.',{danger:true,confirmText:'Remove'}))return;
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label),'DELETE')){toast('link removed');paintTeamLinks()}}
+async function teamLinkCheck(label,btn){
+  const el=document.getElementById('tlk-r-'+label);if(el)el.textContent='asking…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(label)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(el)el.textContent=r.ok?'Reachable — their agents: '+((r.agents||[]).map(a=>a.name+' ('+a.provider+')').join(', ')||'none')+'. Your agents ask them as name@'+label+'.':(r.error||'not reachable');
 }

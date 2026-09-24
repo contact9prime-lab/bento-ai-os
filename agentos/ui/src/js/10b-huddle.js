@@ -88,6 +88,16 @@ function huddleLive(ev,isCur,kind){
    (the matrix, or swarm). Live only: each answer is its own run, and a reloaded
    conversation finds it in Observability rather than a second store here. */
 function agentMsgLive(ev,isCur){
+  // A question from a LINKED team belongs to no conversation here: it was asked on
+  // another machine or account. Treating "no conversation" as "the open one" put a
+  // stranger's question inside whatever chat the person was reading. The stage shows
+  // who is being consulted and a toast says by whom; nothing is written into a thread.
+  if(!ev.conversation_id){
+    const who=ev.phase==='ask'?ev.to:ev.from;
+    if(typeof crewPulse==='function')crewPulse('say',who,{text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
+    if(ev.phase==='ask'&&typeof toast==='function')toast('↔ '+ev.from+' asked your '+ev.to);
+    return;
+  }
   const e=ev.phase==='ask'
     ?{speaker:ev.from,to:ev.to,text:ev.text,conversation_id:ev.conversation_id}
     :{speaker:ev.from,text:ev.text,model:ev.model,provider:ev.provider,conversation_id:ev.conversation_id};

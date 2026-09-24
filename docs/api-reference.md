@@ -154,6 +154,15 @@ stopped on a headless box could be seen in the logs and never released.
 | PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
 | POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
 | GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
+| GET | `/api/team/limits` | the team's limits (hops, budget, clarify, huddle size and rounds) with their ranges; set them through `PUT /api/config` `{"team":{"limits":{…}}}` — 400 names the range |
+| GET | `/api/team/links` | this machine's name and certificate fingerprint, whether it accepts linked teams, and each link with what it may ask ([linked teams](team.md#linked-teams-your-agents-and-somebody-elses)) |
+| PUT | `/api/team/listen` | `{"on": true}` opens the mTLS listener (admin only; port = server port + 1 or `team.link_port`) |
+| POST | `/api/team/links/invite` | `{"kind": "machine"\|"account"}` — a one-time code, ten minutes; a machine invite also carries this host's certificate fingerprint |
+| POST | `/api/team/links/join` | `{"invite", "label"}` — pair with the machine that invited you (the fingerprint is checked before the code is sent) |
+| POST | `/api/team/links/redeem` | `{"code"}` — link with another account on this machine, as the signed-in person |
+| DELETE | `/api/team/links/{label}` | end a link and revoke every cell that named it (both sides for an account link) |
+| GET | `/api/team/links/{label}/roster` | ask the other side who is on its team |
+| PUT | `/api/team/links/{label}/access` | `{"theirs_may_ask": [agents], "mine_may_ask": bool}` — the link's cells |
 | PUT | `/api/subagents/{name}/brain` | pin one agent to a model (`{"model": "provider/model"}`, `""` = the machine's brain) — [the team](team.md) |
 
 ### Integrations

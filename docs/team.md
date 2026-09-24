@@ -175,6 +175,87 @@ The hash-chained audit ledger (the Audit app, `audit_verify`) records:
 - **every team switch**: the talk mode, the own-providers switch and a model pinned from
   Settings or the CLI (`team.write`, `agent.write`).
 
+## Linked teams: your agents and somebody else's
+
+Your researcher can ask an analyst that lives on **another Bento**: a colleague's laptop,
+the office server, a Pi in another room. It can also ask one that belongs to **another
+account on this machine**. That is a *linked team*. It is the same `ask_agent` with the
+same matrix, and the name carries the link: `analyst@office`.
+
+Both kinds are authenticated. Neither one is a shared password.
+
+### Between machines: mutual TLS, pinned
+
+Each install has its own small certificate authority (`~/.agentos/pki`). It is made the
+first time it is needed and its key never leaves the machine. Linking two machines is a
+handshake:
+
+1. **Office** makes an invite (Settings → AI providers → Team → Linked teams, or
+   `bento link invite machine`). It looks like
+   `bento://link/192.168.1.20:8322/<one-time code>#<office's certificate fingerprint>`.
+   The code works once, lives ten minutes and is stored only as a hash.
+2. **Home** pastes it (`bento link join '<invite>' office`). Home connects and checks the
+   certificate office shows against the fingerprint in the invite **before sending
+   anything**. A machine in the middle is caught there, and it never sees the code.
+3. Home presents the code and its own CA. Office checks the code and answers with its CA.
+   Both sides record the other.
+
+From then on every connection is **mutual TLS**, and each side checks two things. The
+certificate must be issued by the CA it paired with, and it must be the exact certificate
+recorded at pairing. Nothing else gets past the handshake, and no public authority is
+involved. A wrong code is counted: an address that keeps guessing is shut out for ten
+minutes.
+
+The listener is off until you turn it on (**Accept linked teams**, or `bento link listen
+on`). It uses its own port, the server's port + 1 (8322), or `team.link_port`. Turning it on
+is admin-only on a machine with accounts, because it opens a port.
+
+![Settings → Linked teams: this machine's certificate, the listener switch, and one linked machine whose agents may ask the researcher](screenshots/team-links.png)
+
+On a phone the same card stacks, and each tick is a whole label you can tap:
+
+![Linked teams on a 390px phone: the listener switch, Invite and Join, and the agents their team may ask](screenshots/team-links-phone.png)
+
+### Between accounts on one machine: a code, redeemed while signed in
+
+Two people with accounts on the same Bento need no network and no certificates, because
+the server already knows who each of them is. One person makes a code (`bento link invite
+account`). The other redeems it while signed in as themselves (`bento link redeem <code>`).
+Neither can link on the other's behalf. A question crosses in-process, and it is answered
+**in the other person's own directory, under their own gate**, exactly as if it had come
+over the network.
+
+### A link grants nothing
+
+A link says who the other side is. What their agents may ask yours is still the matrix,
+decided on **your** side:
+
+| | Default | Opened by |
+|---|---|---|
+| Their agents asking yours | **refused**, never asked | ticking which of your agents they may ask (`bento link allow office analyst`) |
+| Your agents asking theirs | asks you, every time | **My agents may ask without asking me** (`bento link mine office on`) |
+
+- **Never asked, on the answering side.** A question arriving from a linked team has
+  nobody at the other end of the call to wait for, so an empty cell is a no.
+- **Swarm never reaches across.** Swarm opens empty cells between *your own* agents. A
+  linked team is somebody else's, and every cell to or from one is explicit.
+- **A link principal can do nothing else.** Their agents appear here as `team:<link>/<agent>`,
+  which may be granted `agent.message` and nothing more. Delegating, convening a huddle,
+  writing permissions and defining flows are refused outright.
+- **Every answer from another team is untrusted.** It was not written on this machine, so
+  the asker's turn is held to the same care as after reading a web page. The question is
+  untrusted where it is answered, too.
+- **The limits cross with the question.** The hops, the per-task budget, clarify-back and
+  loop detection hold across the link. The chain records `researcher@home`, so office's
+  analyst asking home's researcher back is a clarification, while a cycle is refused.
+- **Ending a link revokes every cell that named it**, on both sides for an account link.
+  Every step is an audit row: an invite (`link.invite`), a pairing or redemption
+  (`link.write`), each cell (`grant.write`, `grant.revoke`) and the end (`link.revoke`).
+
+Where the answer is shown, the asker's side sees it as an ordinary message, with a face and
+the provider it answered on. The answering side sees the question arrive in its own
+Chat and Crew stage, so a person at either end knows their agents are being consulted.
+
 ## Where it lives
 
 | | |
@@ -188,4 +269,5 @@ The hash-chained audit ledger (the Audit app, `audit_verify`) records:
 | The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py` |
+| Linked teams | `agentos/teamlink.py` (PKI, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py` |

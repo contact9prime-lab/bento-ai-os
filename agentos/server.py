@@ -232,6 +232,10 @@ async def startup():
                                         # user typed while a turn was running (see _queue_add)
                  build={"agent": None, "task": None, "cancel_requested": False,
                         "timed_out": False})  # App Studio build slot (global, one at a time)
+    # Linked teams: the mTLS door, when a person switched it on (it opens a port).
+    if (cfg.get("team") or {}).get("listen"):
+        with contextlib.suppress(Exception):
+            await _team_listen(True)
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -453,10 +457,46 @@ async def startup():
         store.log("system", "permissions framework: legacy grants seeded for existing apps")
 
 
+async def _team_on_ask(lk: dict, req: dict) -> dict:
+    """A request from a linked machine, answered in the account that owns the link —
+    entered here, before anything is read, as the webhook route enters its owner."""
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        async def say(e):
+            await state["broadcast_user"]({"type": "agent_msg", "conversation_id": "", **e}, owner)
+        return await state["fabric"].answer_linked(lk, req, say=say)
+
+
+async def _team_on_event(kind: str, lk: dict):
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        fabricmod.audit_team(state["store"], "link.write", f"link:{lk.get('label')}",
+                             f"linked with {lk.get('peer_name') or lk.get('label')} "
+                             f"({lk.get('kind')}, {kind}); certificate {str(lk.get('peer_host_fp'))[:16]}…")
+        await state["broadcast_user"]({"type": "team_links"}, owner)
+
+
+async def _team_listen(on: bool) -> dict:
+    from . import teamlink
+    cur = state.get("team_listener")
+    if cur and not on:
+        await cur.stop()
+        state["team_listener"] = None
+    if on and not state.get("team_listener"):
+        lst = teamlink.Listener(state["cfg"], on_ask=_team_on_ask, on_event=_team_on_event)
+        await lst.start()
+        state["team_listener"] = lst
+    lst = state.get("team_listener")
+    return {"listening": bool(lst), "port": lst.port if lst else teamlink.team_port(state["cfg"])}
+
+
 @app.on_event("shutdown")
 async def shutdown():
     if state.get("notifd"):
         state["notifd"].stop()
+    if state.get("team_listener"):
+        with contextlib.suppress(Exception):
+            await state["team_listener"].stop()
     if "scheduler" in state:
         state["scheduler"].stop()
     if "telegram" in state:
@@ -8182,6 +8222,153 @@ async def api_subagents():
     return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
             "own_brains": bool((cfg.get("team") or {}).get("own_brains", True)),
             "talk": team_talk(cfg)}
+
+
+@app.get("/api/team/links")
+async def api_team_links():
+    """Who this team is linked with, what each link may do, and whether this machine
+    accepts links at all — the Settings section and `bento link list` read this."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lst = state.get("team_listener")
+    ident = teamlink.ensure_pki()
+    out = []
+    for lk in teamlink.links(owner):
+        out.append({**lk, **fabricmod.link_access(state["store"], lk["label"])})
+    return {"me": {"name": teamlink.machine_name(state["cfg"]), "fingerprint": ident["host_fp"],
+                   "address": teamlink.guess_address(), "port": teamlink.team_port(state["cfg"])},
+            "listening": bool(lst), "accounts": usersmod.enabled(),
+            "can_listen": usersmod.is_admin(owner), "links": out}
+
+
+@app.put("/api/team/listen")
+async def api_team_listen(body: dict):
+    """Accept links from other machines. This OPENS A PORT (mTLS: only a certificate
+    this machine paired with gets further than the pairing handshake), so it is the
+    machine's decision — an admin's, on a machine with accounts — and it is audited."""
+    owner = usersmod.current() or ""
+    if not usersmod.is_admin(owner):
+        return JSONResponse({"error": "only an admin can open this machine to linked teams"},
+                            status_code=403)
+    on = bool((body or {}).get("on"))
+    try:
+        got = await _team_listen(on)
+    except OSError as e:
+        return JSONResponse({"error": f"could not open the link port: {e}"}, status_code=409)
+    state["cfg"].setdefault("team", {})["listen"] = on
+    cfgmod.save_config(state["cfg"])
+    fabricmod.audit_team(state["store"], "team.write", "team:listen",
+                         f"accept linked teams: {on} (port {got['port']}, mTLS)")
+    return got
+
+
+@app.post("/api/team/links/invite")
+async def api_team_link_invite(body: dict):
+    from . import teamlink
+    b = body or {}
+    kind = "account" if b.get("kind") == "account" else "machine"
+    owner = usersmod.current() or ""
+    if kind == "account" and not usersmod.enabled():
+        return JSONResponse({"error": "this machine has no accounts — an account link is "
+                                      "between two people signed in here"}, status_code=400)
+    if kind == "machine" and not state.get("team_listener"):
+        return JSONResponse({"error": "switch on 'Accept linked teams' first — the other "
+                                      "machine has to be able to reach this one"}, status_code=409)
+    inv = teamlink.invite(owner, kind, label=str(b.get("label") or ""),
+                          address=str(b.get("address") or ""),
+                          port=(state["team_listener"].port if state.get("team_listener") else 0),
+                          cfg=state["cfg"])
+    fabricmod.audit_team(state["store"], "link.invite", f"link:{kind}",
+                         f"a one-time {kind} invite was made (expires in {inv['expires_in']}s)")
+    return inv
+
+
+@app.post("/api/team/links/join")
+async def api_team_link_join(body: dict):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lst = state.get("team_listener")
+    try:
+        lk = await teamlink.join(str((body or {}).get("invite") or ""), owner,
+                                 label=str((body or {}).get("label") or ""), cfg=state["cfg"],
+                                 my_port=lst.port if lst else 0)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _team_on_event("joined", lk)
+    return {"ok": True, "link": lk}
+
+
+@app.post("/api/team/links/redeem")
+async def api_team_link_redeem(body: dict):
+    """The second person's half of an account link, redeemed while signed in — the
+    cookie is who they are; the code is that the first person agreed."""
+    from . import teamlink
+    me = usersmod.current() or ""
+    if not usersmod.enabled() or not me:
+        return JSONResponse({"error": "sign in to your account to redeem a link code"}, status_code=400)
+    names = {u["id"]: u.get("name", "") for u in usersmod.list_users()}
+    try:
+        got = teamlink.redeem_account(str((body or {}).get("code") or ""), me, names)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _team_on_event("redeemed", got["mine"])
+    await _team_on_event("redeemed", got["theirs"])
+    return {"ok": True, "link": {k: v for k, v in got["mine"].items()}}
+
+
+@app.delete("/api/team/links/{label}")
+async def api_team_link_remove(label: str):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    theirs = None
+    if lk and lk.get("kind") == "account":
+        theirs = next((x for x in teamlink.links(lk.get("peer") or "")
+                       if x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id")), None)
+    if not lk or not teamlink.remove(owner, label):
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    n = fabricmod.forget_link_grants(state["store"], lk["label"])
+    if theirs:
+        # an account link is one agreement: the other person's half ended with it, and
+        # so do the cells that named it in THEIR database — with a line in their ledger
+        with usersmod.as_user(lk.get("peer") or ""):
+            m = fabricmod.forget_link_grants(state["store"], theirs["label"])
+            fabricmod.audit_team(state["store"], "link.revoke", f"link:{theirs['label']}",
+                                 f"the other account ended this link; {m} permission(s) revoked")
+        await state["broadcast_user"]({"type": "team_links"}, lk.get("peer") or "")
+    fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
+                         f"link ended; {n} permission(s) that named it revoked")
+    await state["broadcast_user"]({"type": "team_links"}, owner)
+    return {"ok": True}
+
+
+@app.get("/api/team/links/{label}/roster")
+async def api_team_link_roster(label: str):
+    """The agents on the other side (names and providers only) — asked live."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    got = (await teamlink.call(lk, {"op": "roster"}, timeout=20) if lk.get("kind") == "machine"
+           else await state["fabric"]._ask_account(lk, {"op": "roster"}))
+    return got if got.get("ok") else JSONResponse(got, status_code=502)
+
+
+@app.put("/api/team/links/{label}/access")
+async def api_team_link_access(label: str, body: dict):
+    """Which of my agents theirs may ask, and whether mine may ask theirs without
+    asking me each time. Ordinary grants — and every change is an audit row."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    b = body or {}
+    got = fabricmod.set_link_access(state["store"], lk["label"],
+                                    b.get("theirs_may_ask") if "theirs_may_ask" in b else None,
+                                    b.get("mine_may_ask") if "mine_may_ask" in b else None)
+    return {"ok": True, **got}
 
 
 @app.get("/api/team/limits")

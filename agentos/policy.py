@@ -109,6 +109,11 @@ BUILTIN_DENY = {
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
     "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    # A linked team's agent (another machine over mTLS, or another account here). Its
+    # whole legitimate reach is asking one of YOUR agents a question — agent.message,
+    # granted cell by cell — and `_default` refuses everything else before any model
+    # default. These rows are belt on top of braces, as for a peer.
+    "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -347,6 +352,8 @@ def call_class(tool: str) -> str:
 # use — a runaway loop passes both by an order of magnitude.
 RATE_DEFAULTS = {
     "app":      {"llm": (6, 60), "tool": (60, 20)},
+    # a linked team's agent: questions, not work — a handful a minute is a conversation
+    "team":     {"llm": (6, 60), "tool": (20, 60)},
     "subagent": {"llm": (20, 60), "tool": (120, 20)},
     "flow":     {"llm": (20, 60), "tool": (120, 20)},
 }
@@ -359,6 +366,7 @@ RATE_DEFAULTS = {
 # llm: 30 model calls in 10 min is far above any real app and far below a spend runaway.
 SUSTAIN_DEFAULTS = {
     "app":      {"llm": (30, 600), "tool": (300, 300)},
+    "team":     {"llm": (30, 600), "tool": (60, 600)},
     "subagent": {"llm": (60, 600), "tool": (600, 300)},
     "flow":     {"llm": (60, 600), "tool": (600, 300)},
 }
@@ -963,6 +971,18 @@ class PDP(usersmod.Scoped):
         risk = ctx.get("risk", "safe")
         reason = ctx.get("reason", "")
         offer = self._offer(principal, action, resource, ctx)
+        if principal.kind == "team":
+            # Another team's agent reaches only what a cell here granted. Never asked —
+            # there is nobody at the end of a network call to wait for — and never
+            # opened by swarm: swarm is about YOUR agents recruiting each other.
+            link, _, who = principal.id.partition("/")
+            to = resource.rsplit("/", 1)[-1]
+            return Decision("deny",
+                            f"{who or 'an agent'} on the linked team '{link}' may not ask {to} "
+                            f"here — allow it in Settings → AI providers → Team → Linked teams"
+                            if action == "agent.message" else
+                            f"a linked team's agent may only ask questions — '{action}' is not "
+                            f"something a link can grant", rule="team-default")
         if action == "agent.message":
             # The matrix cell is empty (no grant either way). Swarm answers yes for
             # every such cell; otherwise a person is asked, and "Allow & remember"
@@ -970,7 +990,9 @@ class PDP(usersmod.Scoped):
             # autonomy is trust in what an agent DOES, not consent for specialists to
             # recruit each other — that is the matrix's question, and only it answers.
             to = resource.rsplit("/", 1)[-1]
-            if team_talk(self.cfg) == "swarm":
+            # a colleague on ANOTHER team (to@link) is never opened by swarm: crossing to
+            # somebody else's machine or account is asked for, cell by cell
+            if team_talk(self.cfg) == "swarm" and "@" not in to:
                 return Decision("allow", rule="swarm")
             return Decision("ask", f"{principal.id} wants to ask {to} a question. "
                                    f"{to} answers on its own model with its own permissions. "

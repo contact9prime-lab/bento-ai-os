@@ -105,3 +105,21 @@ body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tl-row input{width:80px}
 body.dev-touch .tl-row input{min-height:var(--tap)}
 .flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
+/* Linked teams */
+.team-links{display:flex;flex-direction:column;gap:8px;width:100%}
+.tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tlk-actions input{flex:1 1 220px;min-width:0}
+.tlk-invite{padding:8px 10px;border:1px dashed var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-inv-row{display:flex;gap:6px}.tlk-inv-row input{flex:1;min-width:0;font-family:var(--mono,monospace);font-size:var(--fs-xs)}
+.tlk-card{padding:8px 10px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tlk-sub{font-size:var(--fs-sm);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tlk-chk{display:inline-flex;gap:6px;align-items:center}
+/* Settings stacks stretch every input to the row (.prow.stack .pc input); a checkbox
+   stretched to 330px sits nowhere near the words it answers. */
+.pc .tlk-chk input[type=checkbox]{width:auto;flex:none;margin:0}
+/* On touch the LABEL is the target — tapping it toggles the box — so it takes the
+   --tap floor as real size and the box keeps its own. */
+body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
+.tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
+body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}

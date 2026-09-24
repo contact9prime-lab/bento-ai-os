@@ -124,6 +124,21 @@ bento team own off                             # every agent on this machine's b
 bento team matrix                              # who may ask whom
 bento team allow researcher validator          # one cell (also: block, ask)
 bento team talk swarm                          # matrix | swarm | off
+bento team limits hops=3 budget=20             # the limits, within their ranges
+```
+
+Linked teams — another Bento, or another account here — have their own verb:
+
+```bash
+bento link                                     # this machine's certificate and every link
+bento link listen on                           # accept linked teams (mTLS, port 8322)
+bento link invite machine                      # a one-time bento://link/… invite
+bento link join 'bento://link/…' office        # on the other machine
+bento link allow office analyst                # their agents may ask your analyst
+bento link mine office on                      # yours may ask theirs without asking you
+bento link invite account                      # another account here: a code…
+bento link redeem CODE                         # …redeemed while signed in as them
+bento link remove office                       # ends it, and revokes its cells
 ```
 
 In the TUI's chat, `@researcher @validator should we…` starts a huddle, and each turn prints as
