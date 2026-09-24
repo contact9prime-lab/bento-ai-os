@@ -1228,6 +1228,32 @@ Full story in `docs/team.md`. Two features, four rules.
   stored as the message and parsed by `10b-huddle.js` on reload — the page's regex is pinned to
   it in `tests/test_team.py`.
 
+**Agents messaging each other is the matrix, and swarm is the matrix opened — never a
+second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =
+the one asked); each matrix cell is a `grants` row (`fabric.set_cell`, source `matrix`), so
+Permissions and "Allow & remember" read and write the same cells. Five things hold:
+
+- **An empty cell asks at EVERY autonomy level**, and a run with nobody watching refuses it
+  (`headless_approver` excludes `ask_agent`). Autonomy is what an agent may DO; who may recruit
+  whom is only the matrix's question. `team.talk == "swarm"` is the one thing that opens an
+  empty cell (`rule="swarm"`), and an explicit block still wins over it.
+- **Two refusals sit BEFORE grants** (`PDP._decide` 2e): inside a flow run (its consent block
+  has no line for it) and with talk `off`. A desk grant must not widen either.
+- **The conversation's shape is the agent's, never the model's.** `agent.chain`/`root_run`
+  are set by `run_subagent` and injected into `ask_agent` after the model's args, like
+  `brief_item`'s run. `ControlPlane.message` refuses a loop back into the chain,
+  `MESSAGE_MAX_HOPS`, and `MESSAGE_BUDGET` per root task. `tests/test_agent_messages.py`
+  forges `_chain` and checks the loop is still seen.
+- **Taint crosses the hop both ways**: the asker's taint goes with the question, and a
+  tainted colleague's answer comes back prefixed `TAINTED_REPLY` (the same string in
+  agent.py and fabric.py; a test pins that). The agent loop strips it and marks its own turn.
+- **Every permission CHANGE is an audit row**, not only every decision: `Store._audit_grant`
+  runs inside `add_grant`/`update_grant`/`set_grant_surfaces`/`revoke_grant`/
+  `revoke_grants_for`/`delete_app`, attributed to the person or to the system by source.
+  `fabric.audit_team` records the talk mode, the own-providers switch and model pins. And an
+  approval card settled anywhere is closed everywhere (`approval_resolved`); before, a phone
+  kept a live card that could no longer do anything.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

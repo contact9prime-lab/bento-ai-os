@@ -81,3 +81,21 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-row select{flex:0 1 300px;min-width:0}
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
+.hud-to{font-weight:500;color:var(--dim)}
+/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+   ask → allow → block; a real target on a phone, and the grid scrolls sideways
+   rather than squeezing a cell below the tap floor. */
+.team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.team-matrix table{border-collapse:separate;border-spacing:4px}
+.team-matrix th{font-size:var(--fs-xs);font-weight:500;color:var(--dim);text-align:center;padding:0 2px}
+.team-matrix th.tm-row{text-align:left;white-space:nowrap}
+.team-matrix th img.av{width:26px;height:26px;border-radius:7px;display:block;margin:0 auto 2px}
+.team-matrix th.tm-row img.av{display:inline-block;vertical-align:middle;margin:0 6px 0 0}
+.tm-cell{min-width:44px;height:34px;border-radius:9px;border:1px solid var(--line);cursor:pointer;
+  background:transparent;color:var(--dim);font-size:var(--fs-xs);font-weight:600}
+.tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
+.tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
+.tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
+.tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}

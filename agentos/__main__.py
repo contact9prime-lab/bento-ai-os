@@ -3243,6 +3243,59 @@ def _team_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
     act = args.action
+    if act == "talk":
+        want = (args.name or "").strip().lower()
+        if want not in ("off", "matrix", "swarm"):
+            from .policy import team_talk
+            print(f"  agents message each other: {team_talk(cfg)}\n"
+                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first)")
+            return
+        mcfg = cfgmod.load_config()
+        mcfg.setdefault("team", {})["talk"] = want
+        cfgmod.save_config(mcfg)
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                data=_json.dumps({"team": {"talk": want}}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).read()
+            live = " — the running server has it too"
+        except Exception:
+            # no server to record it, so the ledger line is written here (the
+            # server writes its own when it takes the change)
+            fabricmod.audit_team(store, "team.write", "team:talk",
+                                 f"agents message each other: {want} (bento team)")
+            live = " — saved; no server answered, so it applies when one starts"
+        print(f"  agents message each other: {want}{live}")
+        return
+    if act in ("allow", "block", "ask"):
+        try:
+            c = fabricmod.set_cell(store, args.name, args.model,
+                                   {"allow": "allow", "block": "deny", "ask": "ask"}[act])
+        except KeyError as e:
+            print(f"no agent called '{e.args[0]}'")
+            sys.exit(2)
+        except ValueError as e:
+            print(e)
+            sys.exit(2)
+        print(f"  {c['from']} → {c['to']}: {act}")
+        return
+    if act == "matrix":
+        m = fabricmod.matrix(store, cfg)
+        names = m["agents"]
+        if len(names) < 2:
+            print("  two or more specialists are needed before any of them can message another")
+            return
+        blank = "swarm" if m["talk"] == "swarm" else "ask"
+        w = max(len(n) for n in names) + 2
+        print(f"  agents message each other: {m['talk']}   (rows ask, columns answer)\n")
+        print(" " * (w + 2) + "".join(f"{n[:9]:<10}" for n in names))
+        for a in names:
+            row = "".join(f"{('·' if a == b else {'allow': 'allow', 'deny': 'block'}.get(m['cells'].get(f'{a}>{b}', ''), blank)):<10}"
+                          for b in names)
+            print(f"  {a:<{w}}{row}")
+        print("\n  bento team allow|block|ask ASKER ANSWERER · bento team talk matrix|swarm|off")
+        return
     if act == "own":
         want = (args.name or "").strip().lower()
         if want not in ("on", "off"):
@@ -3262,6 +3315,8 @@ def _team_cli(args):
             urllib.request.urlopen(req, timeout=5).read()
             live = " — the running server has it too"
         except Exception:
+            fabricmod.audit_team(store, "team.write", "team:own_brains",
+                                 f"agents answer on their own providers: {want == 'on'} (bento team)")
             live = " — saved; no server answered, so it applies when one starts"
         print(f"  agents answer on their own providers: {want}{live}")
     elif act == "set":
@@ -3293,6 +3348,8 @@ def _team_cli(args):
             name = f"\x1b[1;38;2;{r};{g};{bl}m{name}\x1b[0m"
         print(f"  {name} {b['provider_name'] or '—':<14} {b['short']}"
               + (f"   ({b['note']})" if b["note"] else ""))
+    from .policy import team_talk
+    print(f"\n  agents message each other: {team_talk(cfg)}  (bento team matrix)")
     print("\n  bento team set NAME provider/model · bento team own on|off\n"
           "  talk it through: in chat, \"@researcher @validator should we…\"")
 
@@ -4898,9 +4955,12 @@ def main():
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
-    p_team.add_argument("action", nargs="?", default="list", choices=["list", "set", "own"])
-    p_team.add_argument("name", nargs="?", default="", help="set: the agent · own: on|off")
-    p_team.add_argument("model", nargs="?", default="", help="set: provider/model, or '' for this machine's brain")
+    p_team.add_argument("action", nargs="?", default="list",
+                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask"])
+    p_team.add_argument("name", nargs="?", default="",
+                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker")
+    p_team.add_argument("model", nargs="?", default="",
+                        help="set: provider/model ('' = this machine's brain) · allow/block/ask: the one asked")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")

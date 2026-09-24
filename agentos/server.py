@@ -44,7 +44,7 @@ from . import usage as usagemod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
-from .policy import MAIN, PDP, SURFACES, Principal
+from .policy import MAIN, PDP, SURFACES, Principal, team_talk
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
@@ -2499,6 +2499,12 @@ async def api_put_config(patch: dict):
             cfg[key] = patch[key]
     if isinstance(patch.get("team"), dict) and "own_brains" in patch["team"]:
         cfg.setdefault("team", {})["own_brains"] = bool(patch["team"]["own_brains"])
+        fabricmod.audit_team(state["store"], "team.write", "team:own_brains",
+                             f"agents answer on their own providers: {cfg['team']['own_brains']}")
+    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm"):
+        cfg.setdefault("team", {})["talk"] = patch["team"]["talk"]
+        fabricmod.audit_team(state["store"], "team.write", "team:talk",
+                             f"agents message each other: {cfg['team']['talk']}")
     if isinstance(patch.get("updates"), dict):
         from . import updates as updmod
         u = updmod.conf(cfg)
@@ -5153,8 +5159,11 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         await evsend(ev)
     else:
         await state["broadcast"](ev)
+    outcome = {"approved": False, "how": "timeout"}
     try:
-        return await asyncio.wait_for(fut, timeout=timeout)
+        outcome["approved"] = await asyncio.wait_for(fut, timeout=timeout)
+        outcome["how"] = "answered"
+        return outcome["approved"]
     except asyncio.TimeoutError:
         # NOBODY ANSWERED, which is a different fact from "the person said no" and
         # the two must not keep arriving as the same `False`. A refusal is a
@@ -5168,6 +5177,13 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         return False
     finally:
         state["pending_approvals"].pop(aid, None)
+        # Every screen that drew this card is told it is settled. The card goes to
+        # every client (a phone, the Crew stage, a second window), and one answered
+        # on the desk used to stay live on the phone — a button that does nothing,
+        # which is the dead control the honesty rules forbid.
+        done = {"type": "approval_resolved", "id": aid, **outcome}
+        with contextlib.suppress(Exception):
+            await (evsend(done) if evsend is not None else state["broadcast"](done))
 
 
 # How long an unanswered price card holds the turn before it runs anyway.
@@ -8157,7 +8173,31 @@ async def api_subagents():
     for s in subs:
         s["brain"] = fabricmod.agent_brain(cfg, s)
     return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
-            "own_brains": bool((cfg.get("team") or {}).get("own_brains", True))}
+            "own_brains": bool((cfg.get("team") or {}).get("own_brains", True)),
+            "talk": team_talk(cfg)}
+
+
+@app.get("/api/team/matrix")
+async def api_team_matrix():
+    """Who may ask whom (fabric.matrix — grants rows, drawn as a grid)."""
+    return fabricmod.matrix(state["store"], state["cfg"])
+
+
+@app.put("/api/team/matrix")
+async def api_team_matrix_set(body: dict):
+    """One cell: {from, to, effect: allow|deny|ask}. The person deciding, so it is
+    not an agent-facing door — an agent that could write the matrix could grant
+    itself colleagues (there is deliberately no tool for this)."""
+    b = body or {}
+    try:
+        cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
+                                  str(b.get("to") or ""), str(b.get("effect") or ""))
+    except KeyError as e:
+        return JSONResponse({"error": f"no agent called '{e.args[0]}'"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"])}
 
 
 @app.put("/api/subagents/{name}/brain")

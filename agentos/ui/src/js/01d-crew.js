@@ -164,7 +164,8 @@ function crewPulse(kind,label,ev){
   if(kind==='turn'){CREW.turns++;crewKick();return}
   // a turn of a huddle: the one talking lights up, with its words over its head
   if(kind==='say'){const w=crewMatch(label);
-    if(w){CREW.busy[w]=now;crewSay(w,String((ev&&ev.text)||''),true)}
+    // a question to a colleague says who it is for, so the stage reads as a conversation
+    if(w){CREW.busy[w]=now;crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){

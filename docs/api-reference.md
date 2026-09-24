@@ -153,6 +153,7 @@ stopped on a headless box could be seen in the logs and never released.
 | GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet |
 | PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
 | POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
+| GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
 | PUT | `/api/subagents/{name}/brain` | pin one agent to a model (`{"model": "provider/model"}`, `""` = the machine's brain) — [the team](team.md) |
 
 ### Integrations
@@ -209,6 +210,6 @@ itself. Risk level determines whether they need approval (see [Safety](agent.md#
 `create_app`, `pin_widget`, `configure_agentos`, `add_mcp_server`, `manage_models`, `use_skill`,
 `save_skill`, `delete_skill`, `schedule_task`, `launch_native_app`, `system_control`,
 `telegram_send`, `whatsapp_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
-`set_wallpaper`, `set_avatar`, `huddle`, `set_agent_brain`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
+`set_wallpaper`, `set_avatar`, `huddle`, `ask_agent` (specialists only), `set_agent_brain`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
 
 Get the live list (including MCP tools) from `GET /api/tools`.

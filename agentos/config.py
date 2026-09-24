@@ -151,7 +151,10 @@ DEFAULTS = {
     # or does every agent use this machine's brain? On by default — a researcher on a
     # local model and a validator on Claude is the point of pinning one. Off is the
     # "one bill, one provider" switch. The machine's, not a person's: it decides spend.
-    "team": {"own_brains": True},
+    # talk: how specialists may message each other — "matrix" (each pair is a
+    # permission; an empty cell asks), "swarm" (every cell not explicitly blocked is
+    # open) or "off". Matrix by default: agents recruiting agents is a consent question.
+    "team": {"own_brains": True, "talk": "matrix"},
     "executors": {"claude_code": {"enabled": False, "workspace": "", "model": "",
                                   "tools": ["Read", "Glob", "Grep", "WebSearch"],
                                   "budget_usd": 0}},

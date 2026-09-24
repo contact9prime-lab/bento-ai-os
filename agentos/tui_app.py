@@ -592,6 +592,14 @@ class AgentTUI(App):
                         # answered on first — the terminal form of the chat's card.
                         log.write(f"[b]@{ev.get('speaker', '?')}[/] [grey58]({ev.get('provider') or ev.get('model', '')})[/]  "
                                   f"{ev.get('text', '')}")
+                    elif t == "agent_msg":
+                        # one specialist asking another (the matrix, or swarm), then
+                        # the answer — the same two lines the chat card shows
+                        if ev.get("phase") == "ask":
+                            log.write(f"[b]@{ev.get('from', '?')}[/] [grey58]→ @{ev.get('to', '?')}[/]  {ev.get('text', '')}")
+                        else:
+                            log.write(f"[b]@{ev.get('from', '?')}[/] [grey58]({ev.get('provider') or ev.get('model', '')})[/]  "
+                                      f"{ev.get('text', '')}")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))

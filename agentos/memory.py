@@ -1724,12 +1724,17 @@ class Store:
         self.db.execute("DELETE FROM user_apps WHERE id=?", (aid,))
         self.db.execute("DELETE FROM app_data WHERE app_id=?", (aid,))
         self.db.execute("DELETE FROM app_versions WHERE app_id=?", (aid,))
+        live = [dict(r) for r in self.db.execute(
+            "SELECT * FROM grants WHERE principal_kind='app' AND principal_id=? "
+            "AND revoked_at IS NULL", (aid,)).fetchall()]
         cur = self.db.execute(
             "UPDATE grants SET revoked_at=? WHERE principal_kind='app' AND principal_id=? "
             "AND revoked_at IS NULL", (time.time(), aid))
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            for g in live:
+                self._audit_grant("revoke", g, detail="the app was deleted")
 
     # -- themes ---------------------------------------------------------------
 
@@ -1926,6 +1931,35 @@ class Store:
 
     # -- grants (the permission framework's single source of truth) ----------
 
+    # A permission CHANGE is itself a permission event, so it goes in the same
+    # hash-chained ledger as the decisions it will govern — written here, where every
+    # door (Permissions, the team matrix, "Allow & remember", a flow's reconcile, a
+    # peer key, a plugin) has to pass, so no door can forget to. `logs` keeps its
+    # free-text line as before; this is the record `audit_verify` protects.
+    _PERSON_SOURCES = ("user", "matrix", "approval", "remember", "legacy", "")
+
+    def _audit_grant(self, verb: str, g: dict, detail: str = ""):
+        try:
+            from . import users as _users
+            uid = _users.current() or ""
+        except Exception:
+            uid = ""
+        src = str(g.get("source") or "")
+        who = ("user", "") if src in self._PERSON_SOURCES else ("system", src)
+        self.audit_add(
+            uid=uid, principal_kind=who[0], principal_id=who[1], surface="",
+            action=f"grant.{verb}",
+            resource=f"{g.get('principal_kind', '')}:{g.get('principal_id', '')} "
+                     f"{g.get('action', '')} {g.get('resource', '')}".strip(),
+            effect=str(g.get("effect") or ""), rule=str(g.get("id") or ""),
+            reason=str(g.get("note") or "")[:300], outcome="ok",
+            detail=detail or f"source={src or 'user'}"
+                             + (f" ref={g.get('source_ref')}" if g.get("source_ref") else ""))
+
+    def _grant_row(self, gid: str) -> dict:
+        row = self.db.execute("SELECT * FROM grants WHERE id=?", (gid,)).fetchone()
+        return dict(row) if row else {}
+
     def add_grant(self, principal_kind: str, principal_id: str, action: str, resource: str,
                   effect: str = "allow", source: str = "user", note: str = "",
                   expires_at: float | None = None, surfaces: str = "*",
@@ -1957,6 +1991,7 @@ class Store:
              source, note[:300], surfaces, expires_at, time.time(), source_ref or ""))
         self.db.commit()
         self.grants_version += 1
+        self._audit_grant("write", self._grant_row(gid))
         return gid
 
     def set_grant_surfaces(self, gid: str, surfaces: str) -> bool:
@@ -1967,6 +2002,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("change", self._grant_row(gid), detail=f"surfaces now {surfaces}")
         return bool(cur.rowcount)
 
     def grants_live(self) -> list[dict]:
@@ -1998,6 +2034,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("change", self._grant_row(gid), detail=f"effect now {effect}")
         return bool(cur.rowcount)
 
     def revoke_grant(self, gid: str) -> bool:
@@ -2006,6 +2043,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("revoke", self._grant_row(gid))
         return bool(cur.rowcount)
 
     def revoke_grants_for(self, principal_kind: str, principal_id: str, source: str = "") -> int:
@@ -2016,10 +2054,17 @@ class Store:
         if source:
             q += " AND source=?"
             params.append(source)
+        # the rows about to go, so each revocation is its own ledger line
+        live = [dict(r) for r in self.db.execute(
+            "SELECT * FROM grants WHERE principal_kind=? AND principal_id=? AND revoked_at IS NULL"
+            + (" AND source=?" if source else ""),
+            [principal_kind, principal_id] + ([source] if source else [])).fetchall()]
         cur = self.db.execute(q, params)
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            for g in live:
+                self._audit_grant("revoke", g)
         return cur.rowcount
 
     # -- MCP registry: first-class records of discovered/installed MCP servers ----

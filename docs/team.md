@@ -82,6 +82,77 @@ What you see:
 - **It is bounded.** At most four agents, three rounds and about 120 words a turn. A round in
   which everybody passes ends the huddle early.
 
+## Agents messaging each other: the matrix, and swarm
+
+A huddle is you (or your agent) putting agents in a room. A **message** is one specialist
+deciding, mid-task, to ask another: the researcher checking a figure with the validator before
+it reports back. Each specialist has an `ask_agent` tool. The colleague answers as itself, on
+its own model and with its own permissions, and the answer comes back to the one who asked.
+
+![A researcher on OpenRouter asks the validator on OpenAI, and uses the answer](screenshots/team-message-chat.png)
+
+**Who may ask whom is a permission matrix.** Every pair of agents is a cell: rows ask, columns
+answer. You set it in **Settings → AI providers → Team → Who may ask whom** (tap a cell to cycle
+*ask → allow → block*), with `bento team allow|block|ask ASKER ANSWERER`, or by answering the
+card the first time a pair talks:
+
+![The approval card: researcher wants to ask validator; Allow, Deny, or Allow & remember](screenshots/team-message-approval.png)
+
+**Allow & remember** fills that cell, so the matrix builds itself from your answers. Cells are
+ordinary permissions, so the **Permissions** app lists and revokes the same rows.
+
+![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
+
+**The mode switch** (Settings, or `bento team talk`) has three settings:
+
+| | An empty cell | A cell you allowed | A cell you blocked |
+|---|---|---|---|
+| **Ask me** (the default) | asks you; nobody there = no | talks | refused |
+| **Swarm** | talks, without asking | talks | refused |
+| **Off** | refused | refused | refused |
+
+Swarm is the matrix switched wide open. It is not a second system: every limit below still
+holds, every message is still a run and a ledger row, and a cell you blocked stays blocked.
+
+### What holds in every mode
+
+- **No loops.** AgentOS records who is already in the conversation, and the model cannot edit
+  that record. If the researcher asks the validator, the validator cannot ask the researcher
+  back, even if it tries to hide the chain.
+- **Two hops.** A question can travel A → B → C and no further.
+- **A budget.** One task gets six questions in total, however they branch.
+- **Untrusted content stays marked.** If the validator read a web page to answer, its reply
+  arrives marked, and the researcher's turn is held to the same care as if it had read the page
+  itself. The asker's own untrusted content travels with the question.
+- **Not inside a mission.** A flow's specialists work through its roster (`delegate`). Nothing in
+  a flow's consent screen covers agents messaging each other, so a grant written at the desk
+  does not widen a flow.
+- **Only specialists.** Apps, a flow's master and peers cannot message an agent. Your own agent
+  has `delegate` and `huddle` instead.
+
+### Does full autonomy open the matrix? No.
+
+Autonomy (*balanced*, *full*) is how much an agent may **do** without asking: run a command,
+write a file. Who may **recruit whom** is a different question, and only the matrix answers it.
+An empty cell asks at every autonomy level, including full. On a run nobody is watching (a
+schedule, a webhook), an empty cell is refused rather than answered on nobody's behalf. Only
+**Swarm** opens empty cells. A huddle is different: your own agent convening one follows
+autonomy, because you asked your agent, not a specialist.
+
+### Everything is in the audit ledger
+
+The hash-chained audit ledger (the Audit app, `audit_verify`) records:
+
+- **every decision**: each message asked, allowed, refused or blocked (`agent.message`), each
+  huddle (`agent.huddle`), each model pin by the agent (`agent.write`);
+- **every change to a permission, from any door**: a cell set in Settings or with the CLI,
+  "Allow & remember", the Permissions app, a flow's own permissions, a revoke, and a deleted app
+  taking its permissions with it (`grant.write`, `grant.change`, `grant.revoke`). A change you
+  made is recorded as yours; one the system made (a flow reconciling its permissions) is
+  recorded as the system's, with the flow named;
+- **every team switch**: the talk mode, the own-providers switch and a model pinned from
+  Settings or the CLI (`team.write`, `agent.write`).
+
 ## Where it lives
 
 | | |
@@ -90,4 +161,7 @@ What you see:
 | Pinning a model | `fabric.set_agent_model` — `PUT /api/subagents/{name}/brain`, `set_agent_brain`, `bento team set` |
 | The switch | `team.own_brains` in config (a machine setting: it decides spend) |
 | A huddle | `ControlPlane.huddle` — the `huddle` tool, a `@a @b …` chat message, `agent_say` events |
-| Tests | `tests/test_team.py` |
+| A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
+| The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
+| The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py` |

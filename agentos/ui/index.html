@@ -3490,6 +3490,24 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-row select{flex:0 1 300px;min-width:0}
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
+.hud-to{font-weight:500;color:var(--dim)}
+/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+   ask → allow → block; a real target on a phone, and the grid scrolls sideways
+   rather than squeezing a cell below the tap floor. */
+.team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.team-matrix table{border-collapse:separate;border-spacing:4px}
+.team-matrix th{font-size:var(--fs-xs);font-weight:500;color:var(--dim);text-align:center;padding:0 2px}
+.team-matrix th.tm-row{text-align:left;white-space:nowrap}
+.team-matrix th img.av{width:26px;height:26px;border-radius:7px;display:block;margin:0 auto 2px}
+.team-matrix th.tm-row img.av{display:inline-block;vertical-align:middle;margin:0 6px 0 0}
+.tm-cell{min-width:44px;height:34px;border-radius:9px;border:1px solid var(--line);cursor:pointer;
+  background:transparent;color:var(--dim);font-size:var(--fs-xs);font-weight:600}
+.tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
+.tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
+.tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
+.tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
 </style>
 </head>
 <body>
@@ -5054,7 +5072,8 @@ function crewPulse(kind,label,ev){
   if(kind==='turn'){CREW.turns++;crewKick();return}
   // a turn of a huddle: the one talking lights up, with its words over its head
   if(kind==='say'){const w=crewMatch(label);
-    if(w){CREW.busy[w]=now;crewSay(w,String((ev&&ev.text)||''),true)}
+    // a question to a colleague says who it is for, so the stage reads as a conversation
+    if(w){CREW.busy[w]=now;crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
@@ -9696,6 +9715,20 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'approval_resolved':{
+      // answered somewhere else (or nobody answered): this screen's copy says so and
+      // stops offering buttons — a floating one leaves after a moment
+      // one page can draw the same card twice (Chat and a floating copy), so all of them
+      document.querySelectorAll('[id="ap-'+ev.id+'"]').forEach(box=>{
+        if(!box.classList.contains('resolved')){box.classList.add('resolved');
+          box.querySelector('.atitle').textContent=ev.how==='timeout'?'⌛ Nobody answered':ev.approved?'✓ Allowed':'✕ Denied';}
+        box.querySelectorAll('.btns button').forEach(b=>b.disabled=true);
+        if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
+      });
+      break;}
+    case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
+      if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
+      break;
     case 'agent_say':   // one turn of a huddle (10b-huddle.js)
       if(typeof huddleLive==='function')huddleLive(ev,_cur);
       break;
@@ -10475,15 +10508,15 @@ function huddleParse(text){
 }
 function huddleRow(e){
   return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
-    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)} ${brainChip(e.model,e.provider)}</div>
+    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
 }
 /* `bare`: the message header above already names the room (a huddle started from
    the chat box), so the card does not say it a second time. */
-function huddleCard(entries,agents,bare){
+function huddleCard(entries,agents,bare,kind){
   const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
-  return `<div class="huddle">${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
-    <span>huddle · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
+  return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
+    <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
 }
 /* The label over a huddle started from the chat box: the faces in the room. */
 function huddleWho(names){
@@ -10492,11 +10525,12 @@ function huddleWho(names){
 /* One turn, live. It goes into the assistant message in progress — the tool card
    of the agent's `huddle` call, or the message a "@a @b …" turn opened — and the
    Crew stage hears it too, so the one talking says so over its head. */
-function huddleLive(ev,isCur){
+function huddleLive(ev,isCur,kind){
+  kind=kind||'huddle';
   if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id)
-    actMove(ev.conversation_id,'think',{msg:'huddle · '+ev.speaker+' just spoke'});
+    actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
   if(!curBody)return;
@@ -10504,17 +10538,30 @@ function huddleLive(ev,isCur){
   // the huddle already open directly above the reply keeps growing; anything said
   // in between (text, another tool) means this is a new one
   let card=curBody.previousElementSibling;
-  if(!card||!card.classList.contains('huddle')){
+  if(!card||!card.classList.contains('huddle')||(card.dataset.kind||'huddle')!==kind){
     if(typeof flushText==='function')flushText();
     const holder=document.createElement('div');
-    holder.innerHTML=huddleCard([],[],!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle));
+    holder.innerHTML=huddleCard([],[],kind==='huddle'&&!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle),kind);
     card=holder.firstElementChild;card.querySelector('.mut')?.remove();
     msg.insertBefore(card,curBody);
   }
   card.insertAdjacentHTML('beforeend',huddleRow(ev));
   const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
-  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>huddle · ${esc(who.join(', '))}</span>`;
+  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
   if(typeof scrollDown==='function')scrollDown();
+}
+
+/* One specialist asking another mid-task (`ask_agent`, fabric.message): the
+   question in the asker's face, then the answer in the answerer's, with the brain
+   it answered on. Same card and same stage as a huddle, because it IS agents
+   talking — the difference is who started it (an agent, not you) and what let it
+   (the matrix, or swarm). Live only: each answer is its own run, and a reloaded
+   conversation finds it in Observability rather than a second store here. */
+function agentMsgLive(ev,isCur){
+  const e=ev.phase==='ask'
+    ?{speaker:ev.from,to:ev.to,text:ev.text,conversation_id:ev.conversation_id}
+    :{speaker:ev.from,text:ev.text,model:ev.model,provider:ev.provider,conversation_id:ev.conversation_id};
+  huddleLive(e,isCur,'talk');
 }
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
@@ -10637,8 +10684,23 @@ function setTab(body,all){
       pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
         {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
          f:'team agent model pin provider per agent'}),
+      /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
+         permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
+         every cell you have not blocked is open, so they recruit each other freely,
+         still inside the loop, hop and budget limits. Off: no agent can message
+         another. It applies on the spot; `bento team talk` is the terminal's switch. */
+      pRow('Agents message each other',pSelect('s-team-talk',[
+          ['matrix','Ask me (the matrix below)'],
+          ['swarm','Swarm — they ask each other freely'],
+          ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
+        {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
+         f:'team agents message talk each other swarm matrix permission ask'}),
+      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
+         f:'team matrix who may ask whom agents grid permission'}),
     ],{f:'team agents providers huddle'}));
     setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamMatrix,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -10889,6 +10951,11 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tt=main.querySelector('#s-team-talk');
+  if(tt)tt.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
+    cfg.team={...(cfg.team||{}),talk:tt.value};paintTeamMatrix();
+    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents may ask each other freely',off:'agents no longer message each other'}[tt.value])};
   const tw=main.querySelector('#s-team-own');
   if(tw)tw.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
@@ -11546,6 +11613,32 @@ async function paintTeamBrains(){
       headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
     if(r.error){toast(r.error);return}
     toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
+}
+
+/* The matrix: rows ask, columns answer. Each cell is a grant row (fabric.matrix);
+   a tap cycles ask → allow → block and writes it through PUT /api/team/matrix. In
+   swarm mode an unset cell reads "swarm" (open) — only a block closes it. */
+async function paintTeamMatrix(){
+  const box=document.getElementById('s-team-matrix');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
+  const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
+  if(names.length<2){box.textContent='Two or more specialists are needed before any of them can message another.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off — no agent can message another. Choose "Ask me" or "Swarm" above to use the matrix.';return}
+  box.classList.remove('mut');
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell not blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
   });
 }
 /* ================= WhatsApp: the two things a form cannot say =================

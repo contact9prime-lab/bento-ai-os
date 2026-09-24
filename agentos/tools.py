@@ -972,6 +972,28 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {e}"
         return res["text"]
 
+    async def ask_agent(self, agent: str, question: str, _from: str = "", _chain=None,
+                        _root: str = "", _run_id: str = "", _conv: str = "", _space: str = "",
+                        _taint=None) -> str:
+        """A specialist asks another specialist a question and waits for the answer.
+
+        Everything with an underscore is the agent loop's, never the model's (see
+        agent.py): who is asking, the chain so far, the task and the taint. The gate
+        already decided whether this pair may talk (agent.message — the matrix, or
+        swarm); fabric.message decides whether the conversation may grow."""
+        if not self.fabric:
+            return "[error] fabric not available"
+        if not _from:
+            return ("[error] ask_agent is for specialists — use delegate for one agent's "
+                    "work, or huddle to have several talk it through")
+
+        async def say(e):
+            if self.broadcast:
+                await self.broadcast({"type": "agent_msg", "conversation_id": _conv, **e})
+        return await self.fabric.message(_from, agent, question, list(_chain or [_from]),
+                                         root=_root, conversation_id=_conv, space_id=_space,
+                                         taint=list(_taint or []), say=say, parent_run=_run_id)
+
     async def set_agent_brain(self, agent: str, model: str = "") -> str:
         """Point one agent at a model on any provider here ('' = the machine's brain)."""
         from . import fabric as fabricmod
@@ -3431,7 +3453,9 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = {"_flow", "_run_id"} if name == "brief_item" else set()
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else
+                    {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
+                    if name == "ask_agent" else set())
             return await fn(**{k: v for k, v in args.items() if not k.startswith("_") or k in keep})
         except TypeError as e:
             return f"[error] bad arguments for {name}: {e}"
@@ -3717,6 +3741,22 @@ TOOL_SCHEMAS = [
                 "rounds": {"type": "integer", "description": "1-3 (default 2)."},
             },
             "required": ["agents", "topic"],
+        },
+    },
+    {
+        "name": "ask_agent",
+        "description": "Ask another agent on your team a question and wait for its answer — "
+                       "a colleague with different expertise, tools or model (e.g. the "
+                       "researcher asking the validator to check a figure). It answers as "
+                       "itself. Whether you may ask that agent is the person's decision; a "
+                       "refusal means answer from what you have. Keep it to one clear question.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agent": {"type": "string", "description": "Who to ask, e.g. 'validator'."},
+                "question": {"type": "string", "description": "Self-contained — they see nothing else."},
+            },
+            "required": ["agent", "question"],
         },
     },
     {

@@ -38,15 +38,15 @@ function huddleParse(text){
 }
 function huddleRow(e){
   return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
-    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)} ${brainChip(e.model,e.provider)}</div>
+    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
 }
 /* `bare`: the message header above already names the room (a huddle started from
    the chat box), so the card does not say it a second time. */
-function huddleCard(entries,agents,bare){
+function huddleCard(entries,agents,bare,kind){
   const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
-  return `<div class="huddle">${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
-    <span>huddle · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
+  return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
+    <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
 }
 /* The label over a huddle started from the chat box: the faces in the room. */
 function huddleWho(names){
@@ -55,11 +55,12 @@ function huddleWho(names){
 /* One turn, live. It goes into the assistant message in progress — the tool card
    of the agent's `huddle` call, or the message a "@a @b …" turn opened — and the
    Crew stage hears it too, so the one talking says so over its head. */
-function huddleLive(ev,isCur){
+function huddleLive(ev,isCur,kind){
+  kind=kind||'huddle';
   if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id)
-    actMove(ev.conversation_id,'think',{msg:'huddle · '+ev.speaker+' just spoke'});
+    actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
   if(!curBody)return;
@@ -67,15 +68,28 @@ function huddleLive(ev,isCur){
   // the huddle already open directly above the reply keeps growing; anything said
   // in between (text, another tool) means this is a new one
   let card=curBody.previousElementSibling;
-  if(!card||!card.classList.contains('huddle')){
+  if(!card||!card.classList.contains('huddle')||(card.dataset.kind||'huddle')!==kind){
     if(typeof flushText==='function')flushText();
     const holder=document.createElement('div');
-    holder.innerHTML=huddleCard([],[],!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle));
+    holder.innerHTML=huddleCard([],[],kind==='huddle'&&!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle),kind);
     card=holder.firstElementChild;card.querySelector('.mut')?.remove();
     msg.insertBefore(card,curBody);
   }
   card.insertAdjacentHTML('beforeend',huddleRow(ev));
   const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
-  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>huddle · ${esc(who.join(', '))}</span>`;
+  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
   if(typeof scrollDown==='function')scrollDown();
+}
+
+/* One specialist asking another mid-task (`ask_agent`, fabric.message): the
+   question in the asker's face, then the answer in the answerer's, with the brain
+   it answered on. Same card and same stage as a huddle, because it IS agents
+   talking — the difference is who started it (an agent, not you) and what let it
+   (the matrix, or swarm). Live only: each answer is its own run, and a reloaded
+   conversation finds it in Observability rather than a second store here. */
+function agentMsgLive(ev,isCur){
+  const e=ev.phase==='ask'
+    ?{speaker:ev.from,to:ev.to,text:ev.text,conversation_id:ev.conversation_id}
+    :{speaker:ev.from,text:ev.text,model:ev.model,provider:ev.provider,conversation_id:ev.conversation_id};
+  huddleLive(e,isCur,'talk');
 }

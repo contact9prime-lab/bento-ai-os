@@ -23,6 +23,8 @@ from .executors import tool_detail
 from .policy import MAIN, Principal
 from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
 
+TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
+
 # Tools whose output is written by somebody other than the user. What they
 # return is data to be reasoned about, never instructions to be followed — see
 # `policy.taint_mode` for what the OS does about it. `mcp_*` is matched by
@@ -374,6 +376,11 @@ class Agent:
         # there is no un-reading it, so "the last tool was safe" is not a reason
         # to drop the ceiling back down.
         self.taint: list[dict] = []
+        # a conversation between agents: who is already in it, and the task it
+        # belongs to (fabric.run_subagent sets both for a specialist; ask_agent reads
+        # them from HERE, never from its arguments)
+        self.chain: list[str] = []
+        self.root_run = ""
         # Tools this turn has used or explicitly unlocked with `find_tools`. They
         # stay on the table for the rest of the turn even when the user's words
         # never mentioned them — see toolscope.py.
@@ -564,6 +571,10 @@ class Agent:
 
     def _tools(self) -> list:
         schemas = self.toolbox.schemas()
+        if self.principal.kind != "subagent":
+            # ask_agent is a specialist's way to reach a colleague; your agent has
+            # delegate and huddle, and offering it a third door would only confuse it
+            schemas = [t for t in schemas if t["name"] != "ask_agent"]
         if self.tool_filter is not None:
             keep = set(self.tool_filter)
             # an explicit list is somebody's decision; scoping never second-guesses it
@@ -710,6 +721,16 @@ class Agent:
             # Toolbox.execute.
             args = {**args, "_ctx": {"conversation_id": self.conversation_id,
                                      "space_id": self.space_id}}
+        elif name == "ask_agent":
+            # Who is asking, who is already in the conversation, which task and which
+            # untrusted content it carries: the AGENT's, injected after the model's
+            # args like brief_item's run — a model that could name its chain could
+            # erase itself from it and loop.
+            args = {**args, "_from": self.principal.id if self.principal.kind == "subagent" else "",
+                    "_chain": list(self.chain), "_root": self.root_run or getattr(self, "run_id", "") or "",
+                    "_run_id": getattr(self, "run_id", "") or "",
+                    "_conv": self.conversation_id or "", "_space": self.space_id or "",
+                    "_taint": list(self.taint)}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items
@@ -806,6 +827,10 @@ class Agent:
         # reaches the model, and remember it for the rest of the turn: from
         # this point on the PDP holds risky steps back for a human.
         untrusted = ok and is_untrusted(name) and bool(output.strip())
+        if ok and name == "ask_agent" and output.startswith(TAINTED_REPLY):
+            # the colleague read something nobody here wrote: its answer arrives as
+            # what it is, and this turn inherits the ceiling
+            output, untrusted = output[len(TAINTED_REPLY):], True
         if untrusted:
             src = _untrusted_source(name, args)
             self.taint.append({"tool": name, "source": src})

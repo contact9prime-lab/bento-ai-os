@@ -457,6 +457,20 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'approval_resolved':{
+      // answered somewhere else (or nobody answered): this screen's copy says so and
+      // stops offering buttons — a floating one leaves after a moment
+      // one page can draw the same card twice (Chat and a floating copy), so all of them
+      document.querySelectorAll('[id="ap-'+ev.id+'"]').forEach(box=>{
+        if(!box.classList.contains('resolved')){box.classList.add('resolved');
+          box.querySelector('.atitle').textContent=ev.how==='timeout'?'⌛ Nobody answered':ev.approved?'✓ Allowed':'✕ Denied';}
+        box.querySelectorAll('.btns button').forEach(b=>b.disabled=true);
+        if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
+      });
+      break;}
+    case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
+      if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
+      break;
     case 'agent_say':   // one turn of a huddle (10b-huddle.js)
       if(typeof huddleLive==='function')huddleLive(ev,_cur);
       break;

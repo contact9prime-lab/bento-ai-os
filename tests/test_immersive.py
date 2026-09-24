@@ -410,7 +410,7 @@ def test_a_bubble_says_only_what_happened():
     none is chatter on a timer."""
     assert "crewSay(who,'done" in CREW_CODE
     assert "crewSay(c.name,'hello!')" in CREW_CODE
-    assert "crewSay(w,String((ev&&ev.text)||''),true)" in CREW_CODE
+    assert "crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)" in CREW_CODE
     assert CREW_CODE.count("crewSay(") == 4, "one definition, three sayings — nothing else talks"
     step = CREW_CODE.split("function crewStep(")[1].split("\nfunction ")[0]
     assert "CREW_SAY_MS" in step, "a bubble must go away"

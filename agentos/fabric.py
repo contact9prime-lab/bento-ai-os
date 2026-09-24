@@ -133,13 +133,84 @@ def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
             raise ValueError(f"'{model}' is not a model on a provider here — write it as "
                              f"provider/model, with provider one of: {', '.join(known)}")
     store.save_subagent({**defn, "model": model})
-    return agent_brain(cfg, store.get_subagent(name))
+    brain = agent_brain(cfg, store.get_subagent(name))
+    audit_team(store, "agent.write", f"agent:subagent/{defn['name']}",
+               f"model {defn.get('model') or '(machine brain)'} -> {model or '(machine brain)'}; "
+               f"answers on {brain['provider_name']}")
+    return brain
 
 
+def audit_team(store, action: str, resource: str, detail: str):
+    """A team setting changed — the talk mode (swarm opens the matrix), the
+    own-providers switch, an agent's model. They decide who may reach whom and who is
+    billed, so they go in the same ledger as the permissions, as the person's act."""
+    try:
+        from . import users as _users
+        uid = _users.current() or ""
+    except Exception:
+        uid = ""
+    store.audit_add(uid=uid, principal_kind="user", principal_id="", action=action,
+                    resource=resource, effect="allow", rule="person", outcome="ok",
+                    detail=detail[:1000])
+
+
+MESSAGE_MAX_HOPS = 2        # A asks B asks C, and no further: a chain is a conversation
+MESSAGE_BUDGET = 6          # questions one task may send in total, however they branch
+# The reply of an agent that read untrusted content carries this, so the ASKER's turn
+# is marked tainted too (agent.py strips it and marks). A page read by B must not reach
+# A as if B had written it — that is prompt injection travelling one hop.
+TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"
 HUDDLE_MAX_AGENTS = 4       # a huddle is a conversation, not a meeting
 HUDDLE_MAX_ROUNDS = 3
 HUDDLE_WORDS = 120          # per turn: long enough to argue, short enough to read
 HUDDLE_CONTEXT = 6_000      # chars of transcript handed to each turn
+
+
+def matrix(store, cfg: dict) -> dict:
+    """The team's messaging matrix: who may ask whom. It is not a table of its own —
+    each cell is a `grants` row (principal subagent:<asker>, action agent.message,
+    resource agent:subagent/<asked>), so the Permissions app lists and revokes the
+    same rows this draws, and an "Allow & remember" on an ask fills a cell here.
+
+    A cell is 'allow', 'deny' or '' (nothing written: matrix mode asks, swarm allows).
+    A wildcard grant (resource agent:subagent/*) fills its whole row."""
+    from .policy import team_talk
+    names = [s["name"] for s in store.list_subagents()]
+    cells: dict = {}
+    for g in store.list_grants(principal_kind="subagent"):
+        if g.get("action") != "agent.message":
+            continue
+        frm, res = g.get("principal_id") or "", str(g.get("resource") or "")
+        to = res.rsplit("/", 1)[-1] if res.startswith("agent:subagent/") else ""
+        targets = [n for n in names if n != frm] if to == "*" else [to]
+        for t in targets:
+            k = f"{frm}>{t}"
+            if g.get("effect") == "deny" or cells.get(k) != "deny":
+                cells[k] = "deny" if g.get("effect") == "deny" else "allow"
+    return {"talk": team_talk(cfg), "agents": names, "cells": cells}
+
+
+def set_cell(store, frm: str, to: str, effect: str) -> dict:
+    """Write one cell: 'allow', 'deny', or 'ask' (clear it). The rows written here are
+    marked source='matrix' and are the ones this function replaces; a person's
+    hand-written grant for the same pair is revoked only because this IS a person,
+    deciding that exact pair again, in the one place that shows it."""
+    if effect not in ("allow", "deny", "ask"):
+        raise ValueError("a cell is allow, deny or ask")
+    names = {s["name"].lower(): s["name"] for s in store.list_subagents()}
+    a, b = names.get((frm or "").lower()), names.get((to or "").lower())
+    if not a or not b:
+        raise KeyError(frm if not a else to)
+    if a == b:
+        raise ValueError("an agent does not message itself")
+    res = f"agent:subagent/{b}"
+    for g in store.list_grants(principal_kind="subagent", principal_id=a):
+        if g.get("action") == "agent.message" and g.get("resource") == res:
+            store.revoke_grant(g["id"])
+    if effect != "ask":
+        store.add_grant("subagent", a, "agent.message", res, effect=effect, source="matrix",
+                        note=f"{a} {'may' if effect == 'allow' else 'may not'} ask {b}")
+    return {"from": a, "to": b, "effect": effect}
 
 
 def huddle_text(agents: list, rounds: int, transcript: list) -> str:
@@ -486,7 +557,8 @@ class ControlPlane(usersmod.Scoped):
                            conversation_id: str = "", ui_emit=None,
                            agent_slot: dict | None = None, space_id: str = "",
                            flow: str = "", origin: dict | None = None,
-                           escalate: bool = False, taint: list | None = None) -> dict:
+                           escalate: bool = False, taint: list | None = None,
+                           chain: list | None = None, root: str = "") -> dict:
         """ui_emit: optional passthrough for the agent's live events (text/tool/error) —
         set when a subagent runs inside a chat so the user watches it work inline.
         agent_slot: optional dict that receives {"agent": <Agent>} so the caller's
@@ -559,8 +631,10 @@ class ControlPlane(usersmod.Scoped):
                                  persist=False)
 
         async def headless_approver(_n, _a, _r, _offer=None):
-            # no human inside a data plane: gated actions need effective 'full'
-            return eff_autonomy == "full"
+            # no human inside a data plane: gated actions need effective 'full' —
+            # except a message to another agent, whose ask is the matrix's question
+            # and must never be answered by autonomy on nobody's behalf
+            return eff_autonomy == "full" and _n != "ask_agent"
 
         if approver is None and escalate:
             # inside a flow, a gated action is worth interrupting a person for — the run
@@ -577,11 +651,23 @@ class ControlPlane(usersmod.Scoped):
         for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
             if t not in tools:
                 tools.append(t)
+        # ...and may ask a colleague, when the team talks at all. Not inside a flow (its
+        # consent block has no line for it — the gate refuses anyway, this keeps the
+        # schema honest) and not inside a huddle turn, which is already a conversation.
+        from .policy import team_talk
+        if team_talk(self.cfg) != "off" and not flow and kind != "huddle" \
+                and "ask_agent" not in tools:
+            tools.append("ask_agent")
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("subagent", defn["name"]), flow=flow or "")
         agent.run_id = run_id            # brief_item stamps the run it was written in
+        # who is already in this conversation of agents, and which task it belongs
+        # to: set HERE, never taken from a tool argument, so a model cannot shorten
+        # its own chain to get past the loop and hop checks
+        agent.chain = list(chain or []) + [defn["name"]]
+        agent.root_run = root or run_id
         if taint:
             # a child handed untrusted material inherits the ceiling that came with it:
             # the page does not become trustworthy by being passed along
@@ -637,7 +723,78 @@ class ControlPlane(usersmod.Scoped):
                          {"status": status, "ref": defn["name"], "parent_run": parent_run,
                           "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
-                "model": model, "usage": usage, "steps": trace}
+                "model": model, "usage": usage, "steps": trace,
+                "tainted": bool(agent.taint)}
+
+    # -- messages: one specialist asking another -----------------------------------
+
+    _sent: dict = {}                 # root run -> questions sent (MESSAGE_BUDGET)
+
+    async def message(self, sender: str, target: str, question: str, chain: list,
+                      root: str = "", conversation_id: str = "", space_id: str = "",
+                      taint: list | None = None, say=None, parent_run: str = "") -> str:
+        """`sender` asks `target` a question mid-task and waits for the answer.
+
+        Permission was decided before this runs — the ask_agent call passed the gate
+        as `agent.message` (the matrix cell, or swarm). What this adds is what a cell
+        cannot express: the conversation's shape. The chain (who is already talking,
+        set by the run and never by the model) refuses a loop back to anybody in it;
+        MESSAGE_MAX_HOPS refuses a chain that has grown too long; MESSAGE_BUDGET caps
+        how many questions one task may send, however they branch. Each refusal is a
+        sentence the asking model can act on — answer from what you have.
+
+        The target answers as ITSELF: its own model, tools and permissions, in its own
+        run (kind "message", visible in Observability). The asker's taint goes with the
+        question, and a reply from an agent that read untrusted content comes back
+        marked (TAINTED_REPLY), so the ceiling follows the content across the hop."""
+        target = (target or "").strip().lstrip("@")
+        d = self.store.get_subagent(target) if target else None
+        if not d:
+            have = ", ".join(x["name"] for x in self.store.list_subagents()
+                             if x["name"] != sender) or "(nobody)"
+            return f"[error] no agent called '{target}' — you can ask: {have}"
+        target = d["name"]
+        chain = list(chain or [sender])
+        if target.lower() == (sender or "").lower():
+            return "[error] that is you — answer it yourself"
+        if target.lower() in (c.lower() for c in chain):
+            return (f"[refused] {target} is already in this conversation "
+                    f"({' → '.join(chain)}) — asking back would loop. Answer from what you have.")
+        if len(chain) > MESSAGE_MAX_HOPS:
+            return (f"[refused] this question has already passed {len(chain) - 1} agents "
+                    f"({' → '.join(chain)}); the limit is {MESSAGE_MAX_HOPS}. "
+                    f"Answer from what you have.")
+        key = root or chain[0]
+        if len(self._sent) > 500:
+            self._sent.clear()
+        if self._sent.get(key, 0) >= MESSAGE_BUDGET:
+            return (f"[refused] this task has used its {MESSAGE_BUDGET} questions to other "
+                    f"agents. Answer from what you have.")
+        self._sent[key] = self._sent.get(key, 0) + 1
+        question = " ".join(str(question or "").split())[:2000]
+        if say:
+            try:
+                await say({"phase": "ask", "from": sender, "to": target, "text": question})
+            except Exception:
+                pass
+        task = (f"{sender} (another agent on this team) asks you:\n\n{question}\n\n"
+                f"Answer {sender} directly and briefly, from your own expertise and tools. "
+                f"You are answering a colleague, not the person — do not greet, do not ask "
+                f"them to wait.")
+        res = await self.run_subagent(d, task, kind="message", parent_run=parent_run,
+                                      conversation_id=conversation_id, space_id=space_id,
+                                      taint=taint, chain=chain, root=key)
+        text = (res["content"] or res["fault"] or "(no answer)").strip()
+        if say:
+            brain = agent_brain(self.cfg, d)
+            try:
+                await say({"phase": "reply", "from": target, "to": sender,
+                           "text": " ".join(text.split())[:1200], "model": res["model"],
+                           "provider": brain["provider_name"]})
+            except Exception:
+                pass
+        head = f"[{target} · {res['model']}]\n"
+        return (TAINTED_REPLY if res.get("tainted") else "") + head + text[:3500]
 
     # -- huddles: agents talking to each other ---------------------------------------
 

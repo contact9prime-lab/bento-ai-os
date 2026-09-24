@@ -87,10 +87,14 @@ _DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE
 # could would be spending on several models with nobody at the keyboard; and a flow's
 # consent block has no line for it yet, so it is refused rather than half-granted.
 _NO_HUDDLE = [("agent.huddle", "*")]
+# Messaging is between SPECIALISTS. An app, a flow's master or a peer is not on the
+# team: a flow already has `delegate` for its roster, and anything else messaging an
+# agent would be starting work under that agent's name with nobody's consent.
+_NO_MESSAGE = [("agent.message", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
     "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -98,13 +102,13 @@ BUILTIN_DENY = {
     # (its roster) can satisfy one. The agents it starts run as `subagent`, which IS
     # denied above — which is what makes the tree exactly two deep, enforced by the gate
     # rather than by a counter somebody has to remember to increment.
-    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE,
+    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
     # A peer is another machine holding a minted key to this one's agent-share
     # door. Its entire legitimate reach is `agent.share` — written as a grant
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -134,6 +138,15 @@ _SPACE = {"list_spaces": ("space.read", "space:*"),
           "create_space": ("space.write", ""),
           "switch_space": ("space.write", ""),
           "timeline": ("space.read", "")}
+
+
+def team_talk(cfg: dict) -> str:
+    """How specialists may message each other: 'off', 'matrix' (the default — each
+    pair is a grant, and an empty cell asks) or 'swarm' (every cell a person has not
+    explicitly blocked is open). One reading, used by the gate, the tool and every
+    surface that shows the switch."""
+    v = str(((cfg or {}).get("team") or {}).get("talk") or "matrix").lower()
+    return v if v in ("off", "matrix", "swarm") else "matrix"
 
 
 def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
@@ -215,6 +228,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # A huddle starts several agents talking, each a run on its own model: its own
     # action, so "may delegate to the researcher" does not quietly become "may convene
     # the whole team", and the resource names exactly who is in the room.
+    # One specialist asking another mid-task. Its own action so the matrix of who
+    # may message whom is a set of grants: principal = the asker, resource = the one
+    # asked. "May delegate" and "may message" stay apart — a message is a question to
+    # a peer, never a way to start work under somebody else's name.
+    if name == "ask_agent":
+        return "agent.message", f"agent:subagent/{str(args.get('agent', '')).strip().lstrip('@') or '*'}"
     if name == "huddle":
         who = sorted({str(a).strip().lstrip("@").lower() for a in (args.get("agents") or [])
                       if str(a).strip()})
@@ -862,6 +881,18 @@ class PDP(usersmod.Scoped):
             rl = self._rate_check(principal, ctx)
             if rl is not None:
                 return rl
+        # 2e. agent messages: two refusals no grant can undo. Inside a flow run the
+        # consent block the person enabled has no line for agents messaging each
+        # other, so a matrix grant written at the desk must not widen it; and with
+        # the team's talk switch off, the matrix is not consulted at all.
+        if action == "agent.message":
+            if ctx.get("flow"):
+                return Decision("deny", "agents inside a flow work through its roster "
+                                        "(delegate) — a flow's permissions do not include "
+                                        "agents messaging each other", rule="message-flow")
+            if team_talk(self.cfg) == "off":
+                return Decision("deny", "agent-to-agent messages are switched off "
+                                        "(Settings → AI providers → Team)", rule="message-off")
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""))
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
@@ -910,6 +941,19 @@ class PDP(usersmod.Scoped):
         risk = ctx.get("risk", "safe")
         reason = ctx.get("reason", "")
         offer = self._offer(principal, action, resource, ctx)
+        if action == "agent.message":
+            # The matrix cell is empty (no grant either way). Swarm answers yes for
+            # every such cell; otherwise a person is asked, and "Allow & remember"
+            # writes the cell. Checked before the autonomy defaults on purpose: full
+            # autonomy is trust in what an agent DOES, not consent for specialists to
+            # recruit each other — that is the matrix's question, and only it answers.
+            to = resource.rsplit("/", 1)[-1]
+            if team_talk(self.cfg) == "swarm":
+                return Decision("allow", rule="swarm")
+            return Decision("ask", f"{principal.id} wants to ask {to} a question. "
+                                   f"{to} answers on its own model with its own permissions. "
+                                   f"'Allow & remember' fills this cell of the team's matrix.",
+                            rule="default", grant_offer=offer)
         if principal.kind == "peer":
             # Checked before every other default, model.use included: a peer is
             # not a person at this machine, and "safe" calls are not free for a

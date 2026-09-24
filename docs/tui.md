@@ -121,6 +121,9 @@ colour (a pipe, `NO_COLOR`) it describes each character in words instead.
 bento team                                     # each agent and the provider it answers on
 bento team set validator anthropic/claude-sonnet-5
 bento team own off                             # every agent on this machine's brain
+bento team matrix                              # who may ask whom
+bento team allow researcher validator          # one cell (also: block, ask)
+bento team talk swarm                          # matrix | swarm | off
 ```
 
 In the TUI's chat, `@researcher @validator should we…` starts a huddle, and each turn prints as

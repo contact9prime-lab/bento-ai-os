@@ -119,8 +119,23 @@ function setTab(body,all){
       pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
         {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
          f:'team agent model pin provider per agent'}),
+      /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
+         permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
+         every cell you have not blocked is open, so they recruit each other freely,
+         still inside the loop, hop and budget limits. Off: no agent can message
+         another. It applies on the spot; `bento team talk` is the terminal's switch. */
+      pRow('Agents message each other',pSelect('s-team-talk',[
+          ['matrix','Ask me (the matrix below)'],
+          ['swarm','Swarm — they ask each other freely'],
+          ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
+        {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
+         f:'team agents message talk each other swarm matrix permission ask'}),
+      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
+         f:'team matrix who may ask whom agents grid permission'}),
     ],{f:'team agents providers huddle'}));
     setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamMatrix,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -371,6 +386,11 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tt=main.querySelector('#s-team-talk');
+  if(tt)tt.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
+    cfg.team={...(cfg.team||{}),talk:tt.value};paintTeamMatrix();
+    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents may ask each other freely',off:'agents no longer message each other'}[tt.value])};
   const tw=main.querySelector('#s-team-own');
   if(tw)tw.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
@@ -1028,5 +1048,31 @@ async function paintTeamBrains(){
       headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
     if(r.error){toast(r.error);return}
     toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
+}
+
+/* The matrix: rows ask, columns answer. Each cell is a grant row (fabric.matrix);
+   a tap cycles ask → allow → block and writes it through PUT /api/team/matrix. In
+   swarm mode an unset cell reads "swarm" (open) — only a block closes it. */
+async function paintTeamMatrix(){
+  const box=document.getElementById('s-team-matrix');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
+  const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
+  if(names.length<2){box.textContent='Two or more specialists are needed before any of them can message another.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off — no agent can message another. Choose "Ask me" or "Swarm" above to use the matrix.';return}
+  box.classList.remove('mut');
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell not blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
   });
 }
