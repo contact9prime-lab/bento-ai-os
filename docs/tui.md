@@ -131,14 +131,16 @@ Linked teams — another Bento, or another account here — have their own verb:
 
 ```bash
 bento link                                     # this machine's certificate and every link
-bento link listen on                           # accept linked teams (mTLS, port 8322)
-bento link invite machine                      # a one-time bento://link/… invite
-bento link join 'bento://link/…' office        # on the other machine
+bento link request office.local                # ask; shows six digits and waits for the answer
+bento link requests                            # requests waiting here, with their digits
+bento link approve 7a89ed8e                    # …check the digits match, then say yes (or deny)
+bento link request account bob                 # another account here: Bob approves as himself
+bento link listen on                           # let other machines ask (mTLS, port 8322)
 bento link allow office analyst                # their agents may ask your analyst
 bento link mine office on                      # yours may ask theirs without asking you
-bento link invite account                      # another account here: a code…
-bento link redeem CODE                         # …redeemed while signed in as them
 bento link remove office                       # ends it, and revokes its cells
+bento link invite machine                      # headless: a one-time bento://link/… line
+bento link join 'bento://link/…' office        # …redeemed on the other machine
 ```
 
 In the TUI's chat, `@researcher @validator should we…` starts a huddle, and each turn prints as

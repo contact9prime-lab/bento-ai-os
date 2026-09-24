@@ -109,6 +109,26 @@ body.dev-touch .tl-row input{min-height:var(--tap)}
 .team-links{display:flex;flex-direction:column;gap:8px;width:100%}
 .tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tlk-actions input{flex:1 1 220px;min-width:0}
+.pc .tlk-actions input,.pc .tlk-actions select{flex:1 1 220px;width:auto;min-width:0}
+.tlk-ask{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.tlk-waiting{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.tlk-req{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  padding:10px 12px;border:1px solid color-mix(in srgb,var(--acc) 55%,var(--line));border-radius:10px;
+  background:color-mix(in srgb,var(--acc) 7%,var(--bg2))}
+.tlk-req.out{border-color:var(--line);background:var(--bg2)}
+.tlk-req>div:first-child{flex:1 1 260px;min-width:0}
+.tlk-req p{margin:0 0 4px}.tlk-req small{display:block}
+.tlk-req-act{display:flex;gap:6px;flex:none}
+/* the six digits are the whole check, so they read like a number on a card reader */
+.tlk-sas{font-family:var(--mono,monospace);font-size:1.35em;font-weight:700;letter-spacing:.08em;
+  padding:1px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--line);white-space:nowrap}
+.tlk-sas-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 4px}
+.tlk-more{margin-top:10px}.tlk-more summary{cursor:pointer;color:var(--txt2,var(--txt));padding:6px 0;list-style:none}
+.tlk-more summary::-webkit-details-marker{display:none}
+.tlk-more summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-more[open] summary::before{content:'▾'}
+.tlk-more[open]{display:flex;flex-direction:column;gap:8px}
+body.dev-touch .tlk-req-act button,body.dev-touch .tlk-more summary{min-height:var(--tap)}
+body.dev-touch .tlk-more summary{display:flex;align-items:center}
 .tlk-invite{padding:8px 10px;border:1px dashed var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
 .tlk-inv-row{display:flex;gap:6px}.tlk-inv-row input{flex:1;min-width:0;font-family:var(--mono,monospace);font-size:var(--fs-xs)}
 .tlk-card{padding:8px 10px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}

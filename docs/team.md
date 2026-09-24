@@ -184,46 +184,82 @@ same matrix, and the name carries the link: `analyst@office`.
 
 Both kinds are authenticated. Neither one is a shared password.
 
-### Between machines: mutual TLS, pinned
+### Linking two machines: ask, approve, compare six digits
+
+It works like signing a TV into a streaming account, or pairing a phone over Bluetooth
+(the OAuth *device flow*). Nothing is copied from one screen to the other.
+
+1. **Home** types the other machine's name or address and presses **Ask to link**
+   (Settings → AI providers → Team → Linked teams, or `bento link request office.local`).
+   Home shows six digits: *Waiting for office to approve. Make sure it shows 506 883.*
+2. **Office** gets a card on every screen that is open (a toast with **Review**, the
+   Settings card, a line in the TUI): *home asks to link its team with yours. Check that
+   home shows 506 883.* **Approve** or **Deny**, or `bento link approve <id>`.
+3. Home hears the answer within two seconds. On a yes both sides are linked at the same
+   moment. If home has gone away by then, neither side is linked.
+
+![Home has asked office to link and shows the six digits to compare](screenshots/team-link-ask.png)
+
+![Office gets the request: the same six digits, Approve and Deny, and a toast with Review](screenshots/team-link-approve.png)
+
+**The six digits are the security check.** Each side computes them on its own from the
+two certificates it actually saw, and they are never sent over the network. A machine in
+the middle would have to show each side its own certificate, because it does not hold
+the real one's key, so the two screens would show different digits. That is why the card
+says to deny when they differ. It is Bluetooth's *numeric comparison* for the same
+reason: two machines that have never met share nothing else to check each other with.
+`tests/test_teamlink_request.py` puts a real relay in the middle and checks that the
+digits disagree.
+
+Other rules the request follows:
+
+- **Approving lets nothing through yet.** The next step is ticking which of your agents
+  theirs may ask (below).
+- **One card per machine.** Asking again replaces the card, **Withdraw** removes it, and a
+  request nobody answers expires after ten minutes. Five requests per address per ten
+  minutes is the ceiling, because each request puts a card on somebody's screen.
+- **Who owns it.** On a machine with accounts, anyone signed in may approve a machine's
+  request, and the link lands in *their* account, with *their* agents.
+
+On a phone the card stacks, and Approve and Deny are full-size buttons:
+
+![The request on a 390px phone: the digits, Approve and Deny](screenshots/team-link-approve-phone.png)
+
+### Underneath: each install is its own certificate authority
 
 Each install has its own small certificate authority (`~/.agentos/pki`). It is made the
-first time it is needed and its key never leaves the machine. Linking two machines is a
-handshake:
+first time it is needed and its key never leaves the machine. Approving trades the two
+CAs. From then on every connection is **mutual TLS**, and each side checks two things:
+the certificate must be issued by the CA it linked with, and it must be the exact
+certificate recorded when linking. Nothing else gets past the handshake, and no public
+authority is involved.
 
-1. **Office** makes an invite (Settings → AI providers → Team → Linked teams, or
-   `bento link invite machine`). It looks like
-   `bento://link/192.168.1.20:8322/<one-time code>#<office's certificate fingerprint>`.
-   The code works once, lives ten minutes and is stored only as a hash.
-2. **Home** pastes it (`bento link join '<invite>' office`). Home connects and checks the
-   certificate office shows against the fingerprint in the invite **before sending
-   anything**. A machine in the middle is caught there, and it never sees the code.
-3. Home presents the code and its own CA. Office checks the code and answers with its CA.
-   Both sides record the other.
+Other machines can ask only while this one is listening (**Let other machines ask to
+link**, or `bento link listen on`). The listener uses its own port: the server's port + 1
+(8322), or `team.link_port`. Turning it on is admin-only on a machine with accounts,
+because it opens a port. Asking another machine needs nothing turned on here.
 
-From then on every connection is **mutual TLS**, and each side checks two things. The
-certificate must be issued by the CA it paired with, and it must be the exact certificate
-recorded at pairing. Nothing else gets past the handshake, and no public authority is
-involved. A wrong code is counted: an address that keeps guessing is shut out for ten
-minutes.
+![Settings → Linked teams: the address box, this machine's certificate, the listener switch, and one linked machine whose agents may ask the researcher](screenshots/team-links.png)
 
-The listener is off until you turn it on (**Accept linked teams**, or `bento link listen
-on`). It uses its own port, the server's port + 1 (8322), or `team.link_port`. Turning it on
-is admin-only on a machine with accounts, because it opens a port.
+![Linked teams on a 390px phone](screenshots/team-links-phone.png)
 
-![Settings → Linked teams: this machine's certificate, the listener switch, and one linked machine whose agents may ask the researcher](screenshots/team-links.png)
+**For a machine nobody can approve on** (a headless box set up over SSH), the older invite
+is folded away under *Use an invite code instead*. `bento link invite machine` prints a
+`bento://link/HOST:PORT/CODE#FINGERPRINT` line and `bento link join '<line>'` redeems it
+on the other machine. The code works once, lives ten minutes and is stored only as a
+hash. The joiner checks the fingerprint before sending the code, and an address that
+keeps guessing is shut out.
 
-On a phone the same card stacks, and each tick is a whole label you can tap:
+### Between accounts on one machine: pick the person, they approve
 
-![Linked teams on a 390px phone: the listener switch, Invite and Join, and the agents their team may ask](screenshots/team-links-phone.png)
-
-### Between accounts on one machine: a code, redeemed while signed in
-
-Two people with accounts on the same Bento need no network and no certificates, because
-the server already knows who each of them is. One person makes a code (`bento link invite
-account`). The other redeems it while signed in as themselves (`bento link redeem <code>`).
-Neither can link on the other's behalf. A question crosses in-process, and it is answered
-**in the other person's own directory, under their own gate**, exactly as if it had come
-over the network.
+Two people with accounts on the same Bento need no network, no certificates and no
+digits, because the server already knows who each of them is. Pick the other account and
+press **Ask this account to link** (`bento link request account bob`). Bob sees the
+request when signed in as himself and approves it (`bento link approve <id> --user bob`).
+Only Bob can say yes, and nobody can link on another person's behalf. A question crosses
+in-process, and it is answered **in the other person's own directory, under their own
+gate**, exactly as if it had come over the network. (A code redeemed while signed in,
+`bento link invite account` / `redeem`, still works too.)
 
 ### A link grants nothing
 
@@ -249,8 +285,10 @@ decided on **your** side:
   loop detection hold across the link. The chain records `researcher@home`, so office's
   analyst asking home's researcher back is a clarification, while a cycle is refused.
 - **Ending a link revokes every cell that named it**, on both sides for an account link.
-  Every step is an audit row: an invite (`link.invite`), a pairing or redemption
-  (`link.write`), each cell (`grant.write`, `grant.revoke`) and the end (`link.revoke`).
+  Every step is an audit row, on the side where it happened: a request (`link.request`),
+  an approval or refusal (`link.approve`, `link.deny`), an invite (`link.invite`), the
+  link itself (`link.write`), each cell (`grant.write`, `grant.revoke`) and the end
+  (`link.revoke`).
 
 Where the answer is shown, the asker's side sees it as an ordinary message, with a face and
 the provider it answered on. The answering side sees the question arrive in its own
@@ -269,5 +307,5 @@ Chat and Crew stage, so a person at either end knows their agents are being cons
 | The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
-| Linked teams | `agentos/teamlink.py` (PKI, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py` |
+| Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py` |

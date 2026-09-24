@@ -3429,6 +3429,99 @@ def _link_cli(args):
             fabricmod.audit_team(store, "team.write", "team:listen", f"accept linked teams: {a1} (bento link)")
             print(f"  saved: {a1}; no server answered, so the door opens when it starts")
         return
+    if act == "request":
+        # The device flow from a terminal: ask, show the six digits, and wait here for
+        # the other side's answer — no string to carry between machines.
+        if a1 == "account":
+            names = {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+            if not names or not owner:
+                print("  an account link is between two accounts on this machine — use --user")
+                sys.exit(2)
+            to = next((uid for uid, n in names.items() if uid == (a2 or "").lower() or n == (a2 or "").lower()), "")
+            try:
+                r = teamlink.request_account(owner, to, names)
+            except ValueError as e:
+                print(f"  {e}")
+                sys.exit(2)
+            fabricmod.audit_team(store, "link.request", f"link:{r['to_name']}",
+                                 f"asked {r['to_name']} to link teams (bento link)")
+            print(f"  asked {r['to_name']}. They approve in Settings → Team, or:\n"
+                  f"    bento link approve {r['id']} --user {r['to_name']}")
+            return
+        if not a1:
+            print("  bento link request ADDRESS   — the other machine, e.g. office.local or 192.168.1.20\n"
+                  "  bento link request account NAME — another account on this machine")
+            sys.exit(2)
+
+        async def go():
+            p = await teamlink.request_link(a1, owner, cfg=cfg, label=a2 or "",
+                                            my_port=port if (cfg.get("team") or {}).get("listen") else 0)
+            fabricmod.audit_team(store, "link.request", f"link:{p['name']}",
+                                 f"asked {p['name']} at {p['host']}:{p['port']} to link (code {p['sas']}; bento link)")
+            print(f"  asked {p['name']} ({p['host']}:{p['port']}).\n\n"
+                  f"      {p['sas']}\n\n"
+                  f"  Approve it there (Settings → Team, or bento link requests) and check it shows\n"
+                  f"  these same six digits. Different digits: deny it — something is in between.\n"
+                  f"  Waiting up to ten minutes… (Ctrl-C withdraws)")
+            try:
+                return p, await teamlink.wait_link(p)
+            except (KeyboardInterrupt, _aio.CancelledError):
+                await teamlink.cancel_link(p)
+                raise
+        try:
+            p, got = _aio.run(go())
+        except (ValueError, ConnectionError) as e:
+            print(f"  {e}")
+            sys.exit(2)
+        except KeyboardInterrupt:
+            print("\n  withdrawn")
+            sys.exit(1)
+        if got["state"] != "approved":
+            print(f"  {p['name']}: " + {"denied": "said no", "expired": "nobody answered in ten minutes",
+                                         "withdrawn": "withdrawn"}.get(got["state"], got.get("error") or got["state"]))
+            sys.exit(1)
+        lk = got["link"]
+        fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
+                             f"{p['name']} approved (bento link); certificate {lk['peer_host_fp'][:16]}…")
+        print(f"  ✓ linked with {lk['label']}. Nothing is allowed yet:\n"
+              f"    bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+        return
+    if act == "requests":
+        rs = teamlink.requests(owner)
+        if not rs["incoming"] and not rs["outgoing"]:
+            print("  no link requests waiting")
+            return
+        for r in rs["incoming"]:
+            if r["kind"] == "machine":
+                print(f"  {r['id']}  {r['name']} ({r.get('addr', '')}) asks to link — code {r['sas']}\n"
+                      f"            check the asking machine shows the same, then: bento link approve {r['id']}")
+            else:
+                print(f"  {r['id']}  {r['name']} (an account here) asks to link — bento link approve {r['id']}")
+        for r in rs["outgoing"]:
+            print(f"  {r['id']}  you asked {r.get('to_name')} — waiting")
+        return
+    if act in ("approve", "deny"):
+        names = {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+        try:
+            if act == "deny":
+                r = teamlink.deny(a1 or "", owner)
+                fabricmod.audit_team(store, "link.deny", f"link:{r.get('name')}",
+                                     f"refused a link request from {r.get('name')} (bento link)")
+                print(f"  refused {r.get('name')}")
+                return
+            got = teamlink.approve(a1 or "", owner, label=a2 or "", names=names)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        if got.get("pending"):
+            r = got["pending"]
+            fabricmod.audit_team(store, "link.approve", f"link:{r.get('name')}",
+                                 f"approved {r.get('name')}'s link request (code {r.get('sas')}; bento link)")
+            print(f"  approved — {r.get('name')} is linked the moment it hears back (it asks every "
+                  f"two seconds while it waits).")
+        else:
+            print(f"  ✓ linked with {got['mine']['label']}")
+        return
     if act == "invite":
         kind = "account" if a1 == "account" else "machine"
         inv = teamlink.invite(owner, kind, label=a2 or "", cfg=cfg)
@@ -3497,7 +3590,8 @@ def _link_cli(args):
           f"accepting links: {'on, port ' + str(port) if (cfg.get('team') or {}).get('listen') else 'off'}")
     ls = teamlink.links(owner)
     if not ls:
-        print("\n  no linked teams — bento link invite (here) · bento link join INVITE (there)")
+        print("\n  no linked teams — bento link request ADDRESS (they approve) · "
+              "bento link requests (to approve one here)")
         return
     for lk in ls:
         acc = fabricmod.link_access(store, lk["label"])
@@ -5109,13 +5203,15 @@ def main():
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
-                        choices=["list", "listen", "invite", "join", "redeem", "remove",
-                                 "allow", "disallow", "mine"])
+                        choices=["list", "request", "requests", "approve", "deny", "listen", "invite",
+                                 "join", "redeem", "remove", "allow", "disallow", "mine"])
     p_link.add_argument("arg1", nargs="?", default="",
-                        help="listen: on|off · invite: machine|account · join: the invite · "
+                        help="request: the other machine's address, or 'account' · approve/deny: the "
+                             "request's id · listen: on|off · invite: machine|account · join: the invite · "
                              "redeem: the code · remove/allow/disallow/mine: the link")
     p_link.add_argument("arg2", nargs="?", default="",
-                        help="invite/join: a label · allow/disallow: one of your agents · mine: on|off")
+                        help="request account: the account · invite/join/request: a label · "
+                             "allow/disallow: one of your agents · mine: on|off")
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",

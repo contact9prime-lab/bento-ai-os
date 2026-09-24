@@ -468,6 +468,16 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
 
 
 async def _team_on_event(kind: str, lk: dict):
+    if kind == "request":
+        # A machine is asking to link. Nobody owns it yet — whoever approves does — so
+        # it is recorded in the machine's ledger and announced on every screen here.
+        with usersmod.as_user(""):
+            fabricmod.audit_team(state["store"], "link.request", f"link:{lk.get('name')}",
+                                 f"{lk.get('name')} at {lk.get('addr')} asked to link "
+                                 f"(code {lk.get('sas')}); certificate {str(lk.get('peer_host_fp'))[:16]}…")
+        await state["broadcast"]({"type": "team_link_request", "kind": "machine",
+                                  "id": lk.get("id"), "name": lk.get("name"), "sas": lk.get("sas")})
+        return
     owner = lk.get("owner") or ""
     with usersmod.as_user(owner):
         fabricmod.audit_team(state["store"], "link.write", f"link:{lk.get('label')}",
@@ -8235,10 +8245,18 @@ async def api_team_links():
     out = []
     for lk in teamlink.links(owner):
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"])})
+    reqs = teamlink.requests(owner)
+    names = _team_names()
     return {"me": {"name": teamlink.machine_name(state["cfg"]), "fingerprint": ident["host_fp"],
                    "address": teamlink.guess_address(), "port": teamlink.team_port(state["cfg"])},
             "listening": bool(lst), "accounts": usersmod.enabled(),
-            "can_listen": usersmod.is_admin(owner), "links": out}
+            "can_listen": usersmod.is_admin(owner), "links": out,
+            "incoming": reqs["incoming"], "outgoing": reqs["outgoing"] + _team_outgoing(owner),
+            # who an account request could go to: everyone here but you and those you
+            # are already linked with
+            "others": [{"id": uid, "name": n} for uid, n in names.items()
+                       if uid != owner and not any(l.get("kind") == "account" and l.get("peer") == uid
+                                                   for l in out)]}
 
 
 @app.put("/api/team/listen")
@@ -8314,6 +8332,121 @@ async def api_team_link_redeem(body: dict):
     await _team_on_event("redeemed", got["mine"])
     await _team_on_event("redeemed", got["theirs"])
     return {"ok": True, "link": {k: v for k, v in got["mine"].items()}}
+
+
+def _team_names() -> dict:
+    return {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+
+
+def _team_outgoing(owner: str) -> list[dict]:
+    """Machine requests this account sent and is waiting on (the server polls them in
+    the background — the device flow's loop). Finished ones linger a minute so the
+    screen can say how it ended, then go."""
+    out, now = [], time.time()
+    book = state.setdefault("team_outgoing", {})
+    for rid, p in list(book.items()):
+        if p.get("done") and now - p["done"] > 60:
+            book.pop(rid, None)
+            continue
+        if (p.get("owner") or "") == (owner or ""):
+            out.append({k: p.get(k) for k in ("id", "kind", "name", "host", "port", "sas", "state", "error")})
+    return out
+
+
+async def _team_wait(p: dict):
+    from . import teamlink
+    got = await teamlink.wait_link(p)
+    p.update(state=got["state"], error=got.get("error", ""), done=time.time())
+    if got["state"] == "approved":
+        await _team_on_event("they approved", {**got["link"], "owner": p.get("owner") or ""})
+    await state["broadcast_user"]({"type": "team_links", "outcome": got["state"], "name": p.get("name")},
+                                  p.get("owner") or "")
+
+
+@app.post("/api/team/links/request")
+async def api_team_link_request(body: dict):
+    """Ask to link — the one-tap way in. `{"address": "office.local"}` asks another
+    machine (its person approves; both screens show the same six digits);
+    `{"account": "bob"}` asks another account here (Bob approves, signed in as Bob)."""
+    from . import teamlink
+    b = body or {}
+    owner = usersmod.current() or ""
+    if b.get("account"):
+        names = _team_names()
+        if not names or not owner:
+            return JSONResponse({"error": "sign in to your account to link with another account"}, status_code=400)
+        want = str(b["account"]).strip().lower()
+        to = next((uid for uid, n in names.items() if uid == want or n == want), "")
+        try:
+            r = teamlink.request_account(owner, to, names)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        fabricmod.audit_team(state["store"], "link.request", f"link:{r['to_name']}",
+                             f"asked {r['to_name']} to link teams")
+        await state["broadcast_user"]({"type": "team_link_request", "kind": "account",
+                                       "id": r["id"], "name": r["name"]}, to)
+        return {"ok": True, "request": r}
+    lst = state.get("team_listener")
+    try:
+        p = await teamlink.request_link(str(b.get("address") or ""), owner, cfg=state["cfg"],
+                                        my_port=lst.port if lst else 0, label=str(b.get("label") or ""))
+    except (ValueError, ConnectionError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    p.update(kind="machine", state="pending")
+    state.setdefault("team_outgoing", {})[p["id"]] = p
+    p["task"] = asyncio.create_task(_team_wait(p))
+    fabricmod.audit_team(state["store"], "link.request", f"link:{p['name']}",
+                         f"asked {p['name']} at {p['host']}:{p['port']} to link (code {p['sas']}); "
+                         f"certificate {p['fp'][:16]}…")
+    return {"ok": True, "request": {k: p[k] for k in ("id", "kind", "name", "host", "port", "sas", "state")}}
+
+
+@app.post("/api/team/links/requests/{rid}/{verb}")
+async def api_team_link_answer(rid: str, verb: str, body: dict | None = None):
+    """Approve or deny a request waiting here. A machine's request becomes YOUR link
+    (your agents are the ones it reaches); an account's becomes both halves at once."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    if verb not in ("approve", "deny"):
+        return JSONResponse({"error": "approve or deny"}, status_code=404)
+    try:
+        if verb == "deny":
+            r = teamlink.deny(rid, owner)
+            fabricmod.audit_team(state["store"], "link.deny", f"link:{r.get('name')}",
+                                 f"refused a link request from {r.get('name')}")
+            if r["kind"] == "account":
+                await state["broadcast_user"]({"type": "team_links", "outcome": "denied",
+                                               "name": r.get("to_name")}, r.get("from") or "")
+            await state["broadcast"]({"type": "team_links"})
+            return {"ok": True, "state": "denied"}
+        got = teamlink.approve(rid, owner, label=str((body or {}).get("label") or ""), names=_team_names())
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if got.get("pending"):
+        r = got["pending"]
+        fabricmod.audit_team(state["store"], "link.approve", f"link:{r.get('name')}",
+                             f"approved {r.get('name')}'s link request (code {r.get('sas')})")
+        await state["broadcast"]({"type": "team_links"})
+        return {"ok": True, "state": "approved", "note": f"{r.get('name')} will be linked the moment it hears back"}
+    await _team_on_event("approved", got["mine"])
+    await _team_on_event("approved", got["theirs"])
+    return {"ok": True, "state": "linked", "link": got["mine"]}
+
+
+@app.delete("/api/team/links/requests/{rid}")
+async def api_team_link_withdraw(rid: str):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    p = state.setdefault("team_outgoing", {}).get(rid)
+    if p and (p.get("owner") or "") == owner:
+        if p.get("task") and not p["task"].done():
+            p["task"].cancel()
+        await teamlink.cancel_link(p)
+        state["team_outgoing"].pop(rid, None)
+        return {"ok": True}
+    if teamlink.withdraw(rid, owner):
+        return {"ok": True}
+    return JSONResponse({"error": "no request of yours by that id"}, status_code=404)
 
 
 @app.delete("/api/team/links/{label}")

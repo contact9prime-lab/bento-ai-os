@@ -600,6 +600,12 @@ class AgentTUI(App):
                         else:
                             log.write(f"[b]@{ev.get('from', '?')}[/] [grey58]({ev.get('provider') or ev.get('model', '')})[/]  "
                                       f"{ev.get('text', '')}")
+                    elif t == "team_link_request":
+                        # somebody asks to link; answering is a verb, not a keypress here,
+                        # so the line says which one (the digits are the check)
+                        log.write(f"[yellow]↔ {ev.get('name', '?')} asks to link"
+                                  f"{' — code ' + ev['sas'] if ev.get('sas') else ''}.[/] "
+                                  f"[grey58]bento link requests · bento link approve {ev.get('id', '')}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))

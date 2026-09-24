@@ -60,6 +60,10 @@ MAX_LINE = 256 * 1024           # one request or answer, in bytes
 GUESS_LIMIT = 10                # wrong codes from one address before it is refused
 GUESS_WINDOW = 600
 ASK_TIMEOUT = 900               # how long an asker waits for the other team's answer
+REQUEST_TTL = 600               # seconds a link request waits for somebody to answer it
+REQUEST_LIMIT = 5               # link requests one address may make per GUESS_WINDOW
+MAX_PENDING = 8                 # requests waiting on this machine at once
+POLL_EVERY = 2.0                # seconds between the requester's "decided yet?"
 
 
 _ROOT: "contextvars.ContextVar[Path | None]" = contextvars.ContextVar("teamlink_root", default=None)
@@ -188,12 +192,14 @@ def _load() -> dict:
         d = {}
     d.setdefault("links", [])
     d.setdefault("invites", [])
+    d.setdefault("requests", [])
     return d
 
 
 def _save(d: dict):
     now = time.time()
     d["invites"] = [i for i in d["invites"] if i.get("expires", 0) > now and not i.get("used")]
+    d["requests"] = [r for r in d.get("requests", []) if r.get("expires", 0) > now]
     _write_private(links_path(), json.dumps(d, indent=1).encode())
 
 
@@ -323,6 +329,165 @@ def redeem_account(code: str, redeemer: str, names: dict | None = None) -> dict:
     return {"mine": b, "theirs": a}
 
 
+# ---- requests: the one-tap way in -------------------------------------------------------
+#
+# The invite above is a string one person copies to another. A REQUEST is the OAuth
+# device flow instead: the side that wants the link types an address (or picks an
+# account) and presses Request; the other side gets an Approve / Deny card; both
+# screens show the same six digits. Nothing is copied by hand.
+#
+# The digits are the security, not decoration. They are computed on EACH side from the
+# two certificates that side actually saw (`sas`), never sent — so a machine in the
+# middle, which has to show each side its own certificate, makes the two screens
+# disagree. It is Bluetooth's numeric comparison, for the same reason: the first
+# contact between two machines that share nothing has no other way to be checked.
+
+def sas(fp_a: str, fp_b: str) -> str:
+    """Six digits both sides compute alone from the two certificate fingerprints."""
+    a, b = sorted([str(fp_a), str(fp_b)])
+    n = int(hashlib.sha256(f"bento-link:{a}:{b}".encode()).hexdigest(), 16) % 1_000_000
+    t = f"{n:06d}"
+    return f"{t[:3]} {t[3:]}"
+
+
+def parse_address(s: str, cfg: dict | None = None) -> tuple[str, int]:
+    """`office.local`, `office.local:8322`, `192.168.1.20`, `[fe80::1]:8322`, or the
+    address the other desktop is open at (`http://office.local:8321` — the link port is
+    one above it unless that machine chose another)."""
+    raw = (s or "").strip()
+    m = re.match(r"^https?://(\[[^\]]+\]|[^:/]+)(?::(\d+))?/?", raw)
+    if m:
+        web = int(m.group(2) or 8321)
+        return m.group(1).strip("[]"), web + 1
+    m = re.fullmatch(r"(\[[^\]]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?", raw)
+    if not m:
+        raise ValueError("type the other machine's name or address, e.g. office.local or "
+                         "192.168.1.20 (add :PORT if it is not 8322)")
+    return m.group(1).strip("[]"), int(m.group(2) or 8322)
+
+
+def _chains(host_pem_or_der, ca_pem: str) -> bool:
+    """Is this host certificate signed by this CA? Checked at the request so a
+    mismatched pair is refused with a sentence, not at the first ask with a TLS error."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ec
+    try:
+        raw = host_pem_or_der.encode() if isinstance(host_pem_or_der, str) else host_pem_or_der
+        host = (x509.load_pem_x509_certificate(raw) if raw.startswith(b"-----")
+                else x509.load_der_x509_certificate(raw))
+        ca = x509.load_pem_x509_certificate(ca_pem.encode())
+        ca.public_key().verify(host.signature, host.tbs_certificate_bytes,
+                               ec.ECDSA(host.signature_hash_algorithm))
+        return host.issuer == ca.subject
+    except Exception:
+        return False
+
+
+def _req_view(r: dict) -> dict:
+    return {k: v for k, v in r.items() if k not in ("token_hash", "peer_ca", "peer_host")}
+
+
+def requests(owner: str | None) -> dict:
+    """What is waiting: requests from other MACHINES (anybody here may answer one, and
+    the link lands in whoever answers), and requests between ACCOUNTS — the ones asking
+    you, and the ones you sent."""
+    out = {"incoming": [], "outgoing": []}
+    me = owner or ""
+    for r in _load()["requests"]:
+        if r.get("state") != "pending":
+            continue
+        if r["kind"] == "machine":
+            out["incoming"].append(_req_view(r))
+        elif r.get("to") == me:
+            out["incoming"].append(_req_view(r))
+        elif r.get("from") == me:
+            out["outgoing"].append(_req_view(r))
+    return out
+
+
+def request_account(frm: str, to: str, names: dict | None = None) -> dict:
+    """Ask another account on this machine to link. No code: the server already knows
+    who both of you are (the signed cookie), so the only question left is whether THEY
+    agree — and only they, signed in, can answer it."""
+    names = names or {}
+    if not to or to not in names:
+        raise ValueError("there is no account by that name here")
+    if (frm or "") == to:
+        raise ValueError("that is you — pick another account")
+    d = _load()
+    if any(lk.get("kind") == "account" and (lk.get("owner") or "") == (frm or "") and lk.get("peer") == to
+           for lk in d["links"]):
+        raise ValueError(f"you are already linked with {names.get(to, to)}")
+    d["requests"] = [r for r in d["requests"] if not (
+        r["kind"] == "account" and r.get("from") == (frm or "") and r.get("to") == to)]
+    r = {"id": secrets.token_hex(4), "kind": "account", "from": frm or "", "to": to,
+         "name": names.get(frm or "", "") or "account", "to_name": names.get(to, to),
+         "state": "pending", "created": time.time(), "expires": time.time() + REQUEST_TTL}
+    d["requests"].append(r)
+    _save(d)
+    return _req_view(r)
+
+
+def _take_request(d: dict, rid: str, owner: str) -> dict:
+    for r in d["requests"]:
+        if r.get("id") == rid and r.get("state") == "pending":
+            if r["kind"] == "account" and r.get("to") != (owner or ""):
+                break                      # only the person asked may answer
+            return r
+    raise ValueError("that request has been answered, withdrawn or has expired")
+
+
+def approve(rid: str, owner: str, label: str = "", names: dict | None = None) -> dict:
+    """Say yes. A machine request becomes a link owned by whoever approved it (their
+    agents are the ones it reaches); an account request becomes both halves at once."""
+    d = _load()
+    r = _take_request(d, rid, owner)
+    if r["kind"] == "account":
+        names = names or {}
+        pair = secrets.token_hex(6)
+        mine = _add_link(d, kind="account", owner=owner or "", peer=r["from"], pair_id=pair,
+                         label=label or names.get(r["from"]) or r.get("name") or "account")
+        theirs = _add_link(d, kind="account", owner=r["from"], peer=owner or "", pair_id=pair,
+                           label=names.get(owner or "") or "account")
+        d["requests"].remove(r)
+        _save(d)
+        return {"mine": mine, "theirs": theirs}
+    if any(lk.get("peer_host_fp") == r["peer_host_fp"] for lk in d["links"]):
+        d["requests"].remove(r)
+        _save(d)
+        raise ValueError("that machine is already linked here")
+    # The link is written when the asker COLLECTS this answer (Listener._poll), not now:
+    # an asker that went away would otherwise leave a half-link here, and its retry would
+    # be refused as "already linked". Both halves appear together, or neither does.
+    r["state"] = "approved"
+    r["owner"] = owner or ""
+    r["label"] = _label(label) if label else ""
+    _save(d)
+    return {"mine": None, "theirs": None, "pending": _req_view(r)}
+
+
+def deny(rid: str, owner: str) -> dict:
+    d = _load()
+    r = _take_request(d, rid, owner)
+    if r["kind"] == "account":
+        d["requests"].remove(r)
+    else:
+        r["state"] = "denied"              # the requester is told, then it goes
+    _save(d)
+    return _req_view(r)
+
+
+def withdraw(rid: str, owner: str) -> bool:
+    """The asker changed their mind (an account request; a machine request is withdrawn
+    over the wire, by its token — `cancel_link`)."""
+    d = _load()
+    n = len(d["requests"])
+    d["requests"] = [r for r in d["requests"] if not (
+        r.get("id") == rid and r["kind"] == "account" and r.get("from") == (owner or ""))]
+    _save(d)
+    return len(d["requests"]) < n
+
+
 # ---- TLS contexts -----------------------------------------------------------------------
 
 def _SSLContext(proto: int) -> ssl.SSLContext:
@@ -431,6 +596,7 @@ class Listener:
         self.server = None
         self.port = 0
         self._guess: dict = {}
+        self._asks: dict = {}
         self.root = home()
 
     async def start(self, host: str = "0.0.0.0", port: int | None = None):
@@ -453,6 +619,79 @@ class Listener:
         self._guess[addr] = hits
         return len(hits) >= GUESS_LIMIT
 
+    def _asking_too_often(self, addr: str) -> bool:
+        """A request puts a card on somebody's screen, so asking is metered apart from
+        guessing: five an address per ten minutes is a person retrying, not a flood."""
+        now = time.time()
+        hits = [t for t in self._asks.get(addr, []) if t > now - GUESS_WINDOW]
+        self._asks[addr] = hits
+        if len(hits) >= REQUEST_LIMIT:
+            return True
+        hits.append(now)
+        return False
+
+    async def _request(self, req: dict, addr: str) -> dict:
+        if self._asking_too_often(addr):
+            return {"ok": False, "error": "too many link requests from this address — wait ten minutes"}
+        ca, host = str(req.get("ca") or ""), str(req.get("host") or "")
+        if not (ca.startswith("-----BEGIN CERTIFICATE") and host.startswith("-----BEGIN CERTIFICATE")):
+            return {"ok": False, "error": "the asking machine sent no usable certificate"}
+        fp = fingerprint(host)
+        if not _chains(host, ca):
+            return {"ok": False, "error": "the asking machine's certificate is not signed by its own CA"}
+        d = _load()
+        if any(lk.get("peer_host_fp") == fp for lk in d["links"]):
+            return {"ok": False, "error": "that machine is already linked here"}
+        # one waiting request per machine: asking again replaces the card, never stacks it
+        d["requests"] = [r for r in d["requests"] if r.get("peer_host_fp") != fp]
+        if sum(1 for r in d["requests"] if r["kind"] == "machine" and r.get("state") == "pending") >= MAX_PENDING:
+            return {"ok": False, "error": "this machine has too many link requests waiting — try later"}
+        token = secrets.token_urlsafe(24)
+        ident = ensure_pki()
+        r = {"id": secrets.token_hex(4), "kind": "machine", "token_hash": _hash(token),
+             "name": _label(req.get("name")), "peer_ca": ca, "peer_host": host, "peer_host_fp": fp,
+             "addr": addr, "port": int(req.get("port") or 0), "sas": sas(ident["host_fp"], fp),
+             "state": "pending", "created": time.time(), "expires": time.time() + REQUEST_TTL}
+        d["requests"].append(r)
+        _save(d)
+        if self.on_event:
+            await self.on_event("request", _req_view(r))
+        return {"ok": True, "token": token, "name": machine_name(self.cfg), "expires_in": REQUEST_TTL}
+
+    async def _poll(self, req: dict, addr: str, cancel: bool = False) -> dict:
+        if self._guessing(addr):
+            return {"ok": False, "error": "too many wrong requests from this address — wait"}
+        h = _hash(str(req.get("token") or ""))
+        d = _load()
+        r = next((x for x in d["requests"] if x.get("kind") == "machine"
+                  and secrets.compare_digest(x.get("token_hash", ""), h)), None)
+        if not r:
+            self._guess.setdefault(addr, []).append(time.time())
+            return {"ok": True, "state": "expired"}
+        if cancel:
+            d["requests"].remove(r)
+            _save(d)
+            return {"ok": True, "state": "withdrawn"}
+        if r["state"] == "pending":
+            return {"ok": True, "state": "pending", "expires_in": int(r["expires"] - time.time())}
+        d["requests"].remove(r)            # an answer is collected once
+        if r["state"] == "denied":
+            _save(d)
+            return {"ok": True, "state": "denied"}
+        if any(lk.get("peer_host_fp") == r["peer_host_fp"] for lk in d["links"]):
+            _save(d)
+            return {"ok": False, "state": "error", "error": "that machine is already linked here"}
+        lk = _add_link(d, kind="machine", owner=r.get("owner") or "",
+                       label=r.get("label") or r.get("name") or "team", peer_ca=r["peer_ca"],
+                       peer_host_fp=r["peer_host_fp"], peer_name=r.get("name") or "",
+                       url=f"{r['addr']}:{r['port']}" if r.get("port") else "", direction="they asked")
+        _save(d)
+        if self.on_event:
+            await self.on_event("approved", {k: v for k, v in lk.items() if k != "peer_ca"})
+        ident = ensure_pki()
+        return {"ok": True, "state": "approved", "ca": ident["ca"], "host_fp": ident["host_fp"],
+                "name": machine_name(self.cfg), "label_here": lk["label"]}
+
     async def _handle(self, reader, writer):
         _ROOT.set(self.root)             # this task is this machine, whatever started it
         addr = (writer.get_extra_info("peername") or ("?",))[0]
@@ -469,6 +708,10 @@ class Listener:
 
     async def _dispatch(self, req: dict, fp: str, addr: str) -> dict:
         op = str(req.get("op") or "")
+        if op == "request":
+            return await self._request(req, addr)
+        if op in ("poll", "cancel"):
+            return await self._poll(req, addr, cancel=op == "cancel")
         if op == "pair":
             if self._guessing(addr):
                 return {"ok": False, "error": "too many wrong codes from this address — wait and ask for a new one"}
@@ -567,6 +810,99 @@ async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = 
                    url=f"{inv['host']}:{inv['port']}", direction="you joined")
     _save(d)
     return {k: v for k, v in lk.items() if k != "peer_ca"}
+
+
+async def _tofu(host: str, port: int):
+    """A first-contact connection: no CA yet, so the certificate is read, not trusted —
+    the caller pins it, and the six digits are what a person checks it with."""
+    ident = ensure_pki()
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(
+            host, port, ssl=_client_ctx(None, ident), server_hostname=SNI,
+            limit=MAX_LINE + 1), 15)
+    except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
+        raise ConnectionError(f"could not reach {host}:{port} ({type(e).__name__}) — is Bento "
+                              f"running there with 'Accept linked teams' on, and the port open?")
+    obj = writer.get_extra_info("ssl_object")
+    der = obj.getpeercert(binary_form=True) if obj else b""
+    return reader, writer, hashlib.sha256(der).hexdigest() if der else "", der
+
+
+async def _once(host: str, port: int, payload: dict, pin: str = "") -> tuple[dict, str, bytes]:
+    reader, writer, fp, der = await _tofu(host, port)
+    try:
+        if pin and fp != pin:
+            raise ValueError("a different machine answered at that address than the one "
+                             "you asked (its certificate changed) — nothing was sent")
+        writer.write((json.dumps(payload) + "\n").encode())
+        await writer.drain()
+        return await _read_line(reader), fp, der
+    finally:
+        writer.close()
+
+
+async def request_link(address: str, owner: str, cfg: dict | None = None, my_port: int = 0,
+                       label: str = "") -> dict:
+    """Ask the machine at `address` to link. Returns the pending request — including the
+    six digits to compare — for `poll_link` / `wait_link` to follow."""
+    host, port = parse_address(address, cfg)
+    ident = ensure_pki()
+    got, fp, _ = await _once(host, port, {"op": "request", "name": machine_name(cfg),
+                                          "ca": ident["ca"], "host": ident["host"],
+                                          "port": int(my_port or 0)})
+    if not got.get("ok"):
+        raise ValueError(got.get("error") or "the other machine refused")
+    if fp == ident["host_fp"]:
+        raise ValueError("that address is this machine")
+    return {"id": secrets.token_hex(4), "host": host, "port": port, "fp": fp,
+            "token": got["token"], "name": _label(got.get("name")), "owner": owner or "",
+            "label": label, "sas": sas(fp, ident["host_fp"]),
+            "expires": time.time() + int(got.get("expires_in") or REQUEST_TTL)}
+
+
+async def poll_link(p: dict) -> dict:
+    """Has the other side answered? On yes, the link is recorded HERE, pinned to the
+    certificate seen when the request was made — the one the digits were computed from."""
+    try:
+        got, fp, der = await _once(p["host"], p["port"], {"op": "poll", "token": p["token"]}, pin=p["fp"])
+    except ConnectionError as e:
+        return {"state": "pending", "note": str(e)}      # a blip is not an answer; keep asking
+    except ValueError as e:
+        return {"state": "error", "error": str(e)}
+    st = got.get("state") or ("error" if not got.get("ok") else "pending")
+    if st != "approved":
+        return {"state": st, "error": got.get("error", "")}
+    if got.get("host_fp") != p["fp"] or not _chains(der, str(got.get("ca") or "")):
+        return {"state": "error", "error": "the other machine's answer does not match its certificate — refused"}
+    d = _load()
+    lk = _add_link(d, kind="machine", owner=p.get("owner") or "",
+                   label=p.get("label") or got.get("name") or "team", peer_ca=got["ca"],
+                   peer_host_fp=p["fp"], peer_name=_label(got.get("name")),
+                   url=f"{p['host']}:{p['port']}", direction="you asked")
+    _save(d)
+    return {"state": "approved", "link": {k: v for k, v in lk.items() if k != "peer_ca"}}
+
+
+async def cancel_link(p: dict) -> None:
+    try:
+        await _once(p["host"], p["port"], {"op": "cancel", "token": p["token"]}, pin=p["fp"])
+    except Exception:
+        pass                                             # it expires on its own anyway
+
+
+async def wait_link(p: dict, every: float = POLL_EVERY, on_tick=None) -> dict:
+    """Poll until the other side answers or the request expires — the device flow's
+    loop, shared by the server's background task and `bento link request`."""
+    while True:
+        got = await poll_link(p)
+        if got["state"] != "pending":
+            return got
+        if time.time() > p["expires"]:
+            await cancel_link(p)
+            return {"state": "expired"}
+        if on_tick:
+            on_tick(got)
+        await asyncio.sleep(every)
 
 
 # ---- addresses ---------------------------------------------------------------------------

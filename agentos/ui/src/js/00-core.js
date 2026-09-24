@@ -117,10 +117,17 @@ function md(src){
   return h.replace(/\x00B(\d+)\x00/g,(m,i)=>blocks[+i]);
 }
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
-function toast(t){
+/* toast(text) says something happened. toast(text,{label,go,ms}) also offers the one
+   thing to do about it (a link request: "Review"); it stays longer, and is the only
+   part of the stack that takes a tap — the rest of #toasts lets clicks through. */
+function toast(t,act){
   let box=document.getElementById('toasts');
   if(!box){box=document.createElement('div');box.id='toasts';document.body.appendChild(box)}
   const d=document.createElement('div');d.className='toast';d.textContent=t;
+  if(act&&act.label&&typeof act.go==='function'){
+    const b=document.createElement('button');b.className='endbtn toast-act';b.textContent=act.label;
+    b.onclick=()=>{d.remove();act.go()};d.classList.add('has-act');d.appendChild(b);
+  }
   box.prepend(d);
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
@@ -129,7 +136,7 @@ function toast(t){
     const done=()=>d.remove();
     if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
     else done();
-  },3500);
+  },(act&&act.ms)||3500);
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 

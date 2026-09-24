@@ -471,6 +471,17 @@ function handle(ev){
     case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
       if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
       break;
+    case 'team_link_request':   // somebody asks to link (a machine, or an account here)
+      toast((ev.kind==='account'?ev.name+' asks to link teams with you':ev.name+' asks to link its team with yours'+(ev.sas?' · code '+ev.sas:'')),
+        {label:'Review',go:()=>openLinkedTeams(),ms:15000});
+      if(typeof paintTeamLinks==='function')paintTeamLinks();
+      break;
+    case 'team_links':   // a link made, ended, or an answer to a request of ours
+      if(ev.outcome&&ev.name)toast(ev.outcome==='approved'?'✓ '+ev.name+' approved — linked'
+        :ev.outcome==='denied'?ev.name+' said no to linking':ev.outcome==='expired'?'Nobody at '+ev.name+' answered in ten minutes'
+        :ev.name+': '+ev.outcome);
+      if(typeof paintTeamLinks==='function')paintTeamLinks();
+      break;
     case 'agent_say':   // one turn of a huddle (10b-huddle.js)
       if(typeof huddleLive==='function')huddleLive(ev,_cur);
       break;

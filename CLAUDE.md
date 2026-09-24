@@ -1268,7 +1268,27 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
 `agentos/teamlink.py` links this team to another: another Bento (**machine**, mutual TLS)
 or another account on this one (**account**, a code redeemed while signed in). Either way
 the result is `ask_agent("analyst@office")`, the same matrix, and the answering side's
-own gate. Full story in `docs/team.md` → Linked teams. Six things are load-bearing:
+own gate. Full story in `docs/team.md` → Linked teams.
+
+**The way in is a REQUEST, the OAuth device flow; the invite string is the headless
+fallback.** One side types an address and presses Ask (`request_link`); the other gets
+an Approve / Deny card on every screen; the asker polls (`wait_link`, every 2s, ten
+minutes). Three things keep that safe, each pinned by `tests/test_teamlink_request.py`:
+
+- **The six digits are computed, never sent** (`sas(fp_a, fp_b)` over the two
+  certificates each side SAW). A machine in the middle must show each side its own
+  certificate, so the screens disagree — the test stands a real relay in the middle. A
+  code sent over the wire would be one the middle could rewrite.
+- **Both halves or neither.** Approve only marks the request; the asked side writes its
+  link when the asker COLLECTS the answer (`Listener._poll`). Writing it at Approve left
+  a half-link when the asker had gone away, and its retry was refused "already linked".
+- **A request puts a card on somebody's screen**, so asking is metered per address
+  (`REQUEST_LIMIT`), one card per machine (asking again replaces it), `MAX_PENDING`
+  overall, and the host certificate must chain to the CA it came with (`_chains`).
+  Between accounts there are no digits — the cookie already says who both are — and only
+  the account asked can approve (`_take_request`).
+
+Six things are load-bearing underneath:
 
 - **Each install is its own CA, and a link pins TWO things.** The peer's certificate must
   chain to the CA exchanged at pairing AND match the host fingerprint recorded then
@@ -1298,8 +1318,11 @@ own gate. Full story in `docs/team.md` → Linked teams. Six things are load-bea
   rule had put a stranger's question inside whatever chat the person was reading.
 
 Ending a link revokes every cell that named it (`forget_link_grants`, both halves of an
-account link). Every step is an audit row: `link.invite`, `link.write` (paired or redeemed),
-`grant.write`/`grant.revoke` (the cells), `link.revoke` (ended).
+account link). Every step is an audit row: `link.request`, `link.approve`/`link.deny`,
+`link.invite`, `link.write` (linked), `grant.write`/`grant.revoke` (the cells),
+`link.revoke` (ended). The server broadcast `team_links` for a long time with nothing
+listening; `09-websocket.js` now repaints on it, and `team_link_request` is a toast with
+Review (`toast(text, {label, go})` — the one toast that takes a tap).
 The listener is admin-only because it opens a port, and it is off until switched on.
 
 ## Window chrome: the rules that keep a stack readable
