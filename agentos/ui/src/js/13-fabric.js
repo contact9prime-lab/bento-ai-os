@@ -922,13 +922,15 @@ async function delFlow(name){
 /* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
 var FLW=null;
 async function openFLW(name,draft){
-  const [subs,tools,skills,models]=await Promise.all([
+  const [subs,tools,skills,models,links]=await Promise.all([
     fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]})),
+    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]}))]);
   const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
   FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
+    links:(links.links||[]).map(l=>l.label),
     models:models.models||[],q:'',draft:(draft||null),
     d:ex?JSON.parse(JSON.stringify(ex))
        :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
@@ -970,6 +972,36 @@ function flwRoster(nm,on){
   if(on&&!r.some(x=>x.subagent===nm))r.push({subagent:nm,why:''});
   if(!on)FLW.d.roster=r.filter(x=>x.subagent!==nm);
   flwPreview();
+}
+/* An agent on a LINKED team (analyst@office) can be on a mission's roster. The task
+   crosses the link as a question; what it does there is that team's decision — their
+   gate, their standing permissions — and its answer lands here untrusted. Who you may
+   ask is theirs to say, so "Who?" asks them live rather than guessing a name. */
+function flwLinkedHTML(d){
+  const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
+  const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
+      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
+        <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
+      <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
+    <div class="mut flw-linked-why" id="flw-lwho"></div>`;
+}
+function flwAddLinked(name){
+  const a=(name||(document.getElementById('flw-la')||{}).value||'').trim(), l=(document.getElementById('flw-ll')||{}).value||'';
+  if(!a||!l){toast('name one of their agents — Who? asks them');return}
+  flwCollect();flwRoster(a+'@'+l,true);drawFLW();
+}
+async function flwLinkedWho(){
+  const l=(document.getElementById('flw-ll')||{}).value||'', box=document.getElementById('flw-lwho');if(!box)return;
+  box.textContent='asking '+l+'…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(!document.body.contains(box))return;
+  box.innerHTML=!r.ok?esc(r.error||'not reachable')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
   const s=FLW.d.sinks||[];
@@ -1044,7 +1076,8 @@ function drawFLW(){
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
       onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
-  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'));
+  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
+    +flwLinkedHTML(d);
   const q=(FLW.q||'').toLowerCase();
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);

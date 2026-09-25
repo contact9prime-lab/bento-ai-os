@@ -92,15 +92,19 @@ function buildApprovalBox(ev,cur){
               :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
   // the face of whoever is asking: your agent, or the specialist that wants this
+  // a linked team's standing offer (team.act) is about one of YOUR agents: resource "agent|action|scope"
   const askKey=!ev.offer||ev.offer.principal_kind==='user'?'@agent'
-    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id:'';
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id
+    :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
+  // an offer may name itself ("Always let home have analyst do this") — the words say
+  // exactly what the button writes, which "Allow & remember" does not for another team
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelector('.always').onclick=async()=>{
     if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
       resolveApproval(ev.id,true,true);
-      toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
     }else{
       const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
       await addPolicy('allow',pat);
@@ -572,6 +576,7 @@ function permPrincipalLabel(kind,id){
   // for your permission it reads as though YOU are the one being restricted.
   if(kind==='user')return agentName();
   if(kind==='subagent')return 'agent "'+id+'"';
+  if(kind==='team')return 'the linked team "'+String(id||'').replace(/\/\*$/,'')+'"';
   return kind+(id?' "'+id+'"':'');
 }
 function flushText(){

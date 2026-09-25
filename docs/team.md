@@ -359,13 +359,94 @@ anything by itself.
   for them. What an agent you ticked can *read*, their question can ask it to *repeat*. So
   tick agents whose reach you are happy to share. A "front desk" specialist with no file or
   memory tools is the safe shape.
-- **A question from another team can never make your agent *change* anything.** It arrives
-  marked untrusted, so every step that would change something needs a person, and nobody is
-  at your end of their question to say yes. It is refused, **at full autonomy too** (see
-  [security](security.md), the taint ceiling). Reading stays possible. That is the honest
-  limit above: what the answering agent can read, it can put in its answer.
+- **A question from another team cannot make your agent *change* anything unless you said
+  so.** It arrives marked untrusted, so every step that would change something needs a
+  person. If one of your screens is open, you get the card: it says which team asked which
+  of your agents to do what. If none is open, the answer is no, straight away. That holds
+  **at full autonomy too** (see [security](security.md), the taint ceiling). The one way to
+  say yes ahead of time is a *standing permission* (next section). Reading stays possible.
+  That is the honest limit above: what the answering agent can read, it can put in its
+  answer.
 - **Their model calls cost you nothing, and yours cost them.** Asking is bounded by the
   hop, budget and rate ceilings below, on both sides.
+
+### Standing permissions: saying yes ahead of time
+
+Sometimes you *want* another team's questions to change something here. For example, their
+Monday mission asks your analyst to file the weekly report into a folder you both read. The
+default above would put a card on your screen every Monday, or refuse when nobody is there.
+A standing permission is that yes, given once and narrowly:
+
+> **home** may have **analyst** **write files in** `~/shared/reports`, until 25 October.
+
+It is one team, one of your agents, one action and one folder or tool. You give it in two
+places:
+
+- **On the card.** When their question needs a person, the card's third button reads
+  **Always let home have analyst do this**. For a file, it covers the file's *folder*, because
+  a weekly report gets a new name every week.
+- **In Settings → AI providers → Team → the link → Without asking me.** Pick the agent, the
+  action and the folder or tool, and optionally a number of days. From a terminal:
+  `bento link let home analyst fs.write ~/shared/reports --days 30`. List them with
+  `bento link standing home`; remove one with `bento link unlet home <id>`.
+
+![The card when a linked team's question needs a person: it names the team and the agent, and its third button writes exactly one standing permission](screenshots/team-standing-card.png)
+
+![Settings → the link → Without asking me: one standing permission (analyst may write files in a shared folder, until a date) and the form to add another](screenshots/team-standing.png)
+
+On a phone the same section stacks, and every control keeps the tap floor:
+
+![The same Without asking me section on a 390px phone, stacked, every control at the tap floor](screenshots/team-standing-phone.png)
+
+What it can never be, whoever asks:
+
+| Refused | Why |
+|---|---|
+| A shell (`run_command`, `run_python`), sending anything out, anything confirmed every time, anything that changes this OS | `tool.use` is an allow-list, currently `save_report` and `notify`. A deny-list is correct only until the next tool is added. |
+| Delegating, huddles, defining agents or missions, fetching the web | only `fs.write`, `memory.write`, `kg.write`, `media.generate`, `media.write` and those tools can be standing |
+| Everything (`*`), `/`, a system folder, `/tmp`, **any home folder itself** | name a folder *inside* your home, never the home |
+| A hidden file or folder anywhere in the path (`.bashrc`, `.ssh`, `.git/hooks`, `.config/autostart`) | where a written file becomes code that runs |
+
+What still holds while one is in place:
+
+- **It is matched against where the write really lands.** `~` is expanded, a relative path is
+  taken from the workspace (as the write tool does), and `..` and symlinks are resolved. A
+  glob is not a path: `shared/*` also matches `shared/../../.bashrc` as text, so the text
+  the model wrote is never what is checked.
+- **It applies only when everything untrusted in the run came from that one team.** If your
+  analyst also read a web page or a mail on the way, or a second team's answer, the card is
+  back.
+- **It sits inside the ceiling, never above it.** Hard blocks, built-in denies, the channel
+  and rate ceilings still apply, an explicit **deny** row for that agent still wins, and
+  **strict** in *Content from outside* still refuses. Settings says so when that is why
+  yours are not in use.
+- **It is a grants row** (`team:<link>/*`, action `team.act`). So it is in Permissions,
+  every change is an audit row (`grant.write`, `grant.revoke`), it can expire, and
+  **ending the link revokes it** with every cell that named it.
+
+### A mission with an agent on a linked team
+
+A mission's roster can name an agent on another team: `analyst@office`. In the Missions
+editor, type their agent's name next to the link (**Who?** asks them live which agents you
+may ask) and **Add**. From anywhere else, the roster entry is just that string. A mission on
+a schedule is still a mission, so this is how "every Monday at 9, have the office analyst
+file the report" is built.
+
+![The Missions editor: analyst@home on the roster as a linked-team member, and the row to add another](screenshots/mission-linked-roster.png)
+
+- **Saved only when the link exists here.** Otherwise the save says there is no linked team
+  of that name.
+- **The consent screen says what it means.** The mission grants itself `agent.invoke` on
+  `analyst@office`, with the sentence "sends tasks, and the handles passed with them, to
+  analyst on the linked team 'office'; what it does there is office's decision, and its
+  answers are untrusted here". It gets **no envelope here**: that agent runs on their
+  machine, under their gate.
+- **The task crosses as a question.** It goes as a question from `<mission>-master` with up
+  to 600 characters of each handle passed along, 2,000 in all. It is answered by their agent
+  with their tools. Anything it would *change* there needs their person or their standing
+  permission (above). Their cell for your team still has to allow that agent at all.
+- **The answer lands on the board untrusted.** The handle is marked tainted, so anything the
+  mission builds from it is held to the care of content from outside.
 
 ### Security: what was checked, and the ceilings
 
@@ -425,5 +506,7 @@ the link's own name, which you chose, is what is verified.
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
 | People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |
+| Standing permissions | `policy.STANDING_ACTIONS` / `STANDING_TOOLS` / `standing_refusal` / `PDP._standing` (at the taint ceiling) / `_standing_offer` (the card) — `fabric.standing` / `add_standing`; `/api/team/links/{label}/standing`, `bento link let/standing/unlet` |
+| A linked agent on a mission | `flows.validate` / `declared_grants` (`agent@link`), `ControlPlane._master_tools.delegate_linked` |
 | Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, identity, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py`, `tests/test_team_security.py`, `tests/test_team_standing.py` |

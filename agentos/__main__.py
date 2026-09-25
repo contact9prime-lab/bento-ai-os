@@ -3684,6 +3684,52 @@ def _link_cli(args):
         print(f"  {lk['label']}: their agents may ask {', '.join(got['theirs_may_ask']) or 'nobody'}; "
               f"mine ask theirs {'freely' if got['mine_may_ask'] else 'after asking me'}")
         return
+    if act in ("let", "unlet", "standing"):
+        # Standing permissions: what that team may have one of YOUR agents do without a
+        # person saying yes each time (policy.STANDING_ACTIONS; the same rows Settings and
+        # the approval card's "Always" write, and Permissions revokes).
+        from .policy import STANDING_ACTIONS, STANDING_TOOLS, taint_mode
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if act == "let":
+            rest = list(getattr(args, "rest", []) or [])
+            if not a2 or len(rest) < 2:
+                print(f"  bento link let {lk['label']} AGENT ACTION SCOPE [--days N]\n"
+                      f"    ACTION: {', '.join(STANDING_ACTIONS)}\n"
+                      f"    SCOPE:  a folder by full path (~/shared) · a tool ({', '.join(STANDING_TOOLS)}) · "
+                      f"memory:user · kg:<space> · media:image")
+                sys.exit(2)
+            try:
+                got = fabricmod.add_standing(store, lk["label"], a2, rest[0], rest[1],
+                                             days=getattr(args, "days", None))
+            except ValueError as e:
+                print(f"  refused: {e}")
+                sys.exit(2)
+            print(f"  {lk['label']} may now have {got['agent']} {got['action']} {got['scope']} "
+                  f"without asking" + (f" for {args.days:g} day(s)" if getattr(args, "days", None) else "")
+                  + f"  (id {got['id']} · bento link unlet {lk['label']} {got['id']})")
+        elif act == "unlet":
+            if not any(x["id"] == a2 for x in fabricmod.standing(store, lk["label"])):
+                print(f"  no standing permission {a2 or '(id)'} on {lk['label']} — bento link standing {lk['label']}")
+                sys.exit(2)
+            store.revoke_grant(a2)
+            print(f"  revoked {a2}: {lk['label']} asks a person again for that")
+            return
+        rows = fabricmod.standing(store, lk["label"])
+        mode = taint_mode(cfg)
+        print(f"  what {lk['label']} may have your agents do without asking:")
+        for x in rows:
+            exp = time.strftime(" until %Y-%m-%d", time.localtime(x["expires_at"])) if x.get("expires_at") else ""
+            print(f"    {x['id']}  {x['agent']:<12} {x['action']:<13} {x['scope']}{exp}")
+        if not rows:
+            print("    nothing — every change their questions ask for needs a person here")
+        if mode != "ask":
+            print("  (not in use: 'Content from outside' is "
+                  + ("strict, so nothing another team asks may change anything)" if mode == "strict"
+                     else "off, so these are not needed)"))
+        return
     # list
     print(f"  this machine: {teamlink.machine_name(cfg)}  certificate {ident['host_fp'][:16]}…  "
           f"accepting links: {'on, port ' + str(port) if (cfg.get('team') or {}).get('listen') else 'off'}")
@@ -3698,6 +3744,8 @@ def _link_cli(args):
               f"    their agents may ask: {', '.join(acc['theirs_may_ask']) or 'nobody'}\n"
               f"    mine ask theirs: {'freely' if acc['mine_may_ask'] else 'after asking me'}   "
               f"(as NAME@{lk['label']})")
+        for x in fabricmod.standing(store, lk["label"]):
+            print(f"    without asking: {x['agent']} {x['action']} {x['scope']}")
 
 
 def _brief_cli(args):
@@ -5304,16 +5352,19 @@ def main():
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
-                                 "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine"])
+                                 "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
+                                 "let", "unlet", "standing"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
-                             "redeem: the code · remove/allow/disallow/mine: the link")
+                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
-                             "allow/disallow: one of your agents · mine: on|off")
+                             "allow/disallow/let: one of your agents · mine: on|off · unlet: the id")
     p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    p_link.add_argument("--days", type=float, default=None,
+                        help="let: the standing permission ends after this many days")
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",

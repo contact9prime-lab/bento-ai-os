@@ -113,7 +113,19 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
         sub = (item.get("subagent") or "").strip()
         if not sub:
             continue
-        if store is not None and sub not in pending and not store.get_subagent(sub):
+        if "@" in sub:
+            # an agent on a LINKED team (analyst@office): it works on that machine, so the
+            # check is that the link exists here, not that the agent does
+            agent, _, label = sub.partition("@")
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", agent) or not label:
+                raise ValueError(f"'{sub}' is not an agent on a linked team — write it as agent@link")
+            if store is not None:
+                from . import teamlink
+                from . import users as _users
+                if not teamlink.find(_users.current() or "", label):
+                    raise ValueError(f"there is no linked team called '{label}' — link it first "
+                                     f"(Settings → AI providers → Team → Linked teams)")
+        elif store is not None and sub not in pending and not store.get_subagent(sub):
             raise ValueError(f"no subagent named '{sub}' — create it in Workflows → Agents first")
         roster.append({"subagent": sub, "why": (item.get("why") or "").strip()[:200]})
     if not roster:
@@ -289,8 +301,17 @@ def declared_grants(flow: dict) -> list[dict]:
 
     # 1. the flow's own roster: the only thing that satisfies the `roster` deny default
     for sub in roster:
+        if "@" in sub:
+            agent, _, label = sub.partition("@")
+            add("flow", name, "agent.invoke", f"agent:subagent/{sub}",
+                note=f"sends tasks — and the handles passed with them — to {agent} on the linked "
+                     f"team '{label}'; what it does there is {label}'s decision, and its answers "
+                     f"are untrusted here")
+            continue
         add("flow", name, "agent.invoke", f"agent:subagent/{sub}",
             note=f"on the roster of the '{name}' flow")
+    # a member on another team gets no envelope HERE: it runs there, under their gate
+    roster = [r for r in roster if "@" not in r]
 
     # 2. what the roster may do. The flow declares once; every member gets the same
     #    envelope, because "who may fetch" is a property of the mission, not of which
@@ -942,10 +963,19 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     for r in (draft.get("roster") or []):
         if isinstance(r, str):
             r = {"subagent": r}
-        if (r.get("subagent") or "") in have:
+        sub = r.get("subagent") or ""
+        if sub in have:
             roster.append(r)
+        elif "@" in sub:
+            # an agent on a linked team — kept when that link exists here
+            from . import teamlink
+            from . import users as _users
+            if teamlink.find(_users.current() or "", sub.partition("@")[2]):
+                roster.append(r)
+            else:
+                dropped_agents.append(sub)
         else:
-            dropped_agents.append(r.get("subagent") or "?")
+            dropped_agents.append(sub or "?")
     draft["roster"] = roster
     perms = draft.get("permissions") or {}
     dropped_tools = [t for t in (perms.get("tools") or []) if t not in known_tools]

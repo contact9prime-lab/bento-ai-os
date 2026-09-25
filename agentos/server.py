@@ -45,6 +45,8 @@ from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
 from .policy import MAIN, PDP, SURFACES, Principal, team_talk
+from .policy import STANDING_ACTIONS as _STANDING_ACTIONS, STANDING_TOOLS as _STANDING_TOOLS
+from .policy import taint_mode as _taint_mode
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
@@ -205,6 +207,7 @@ async def startup():
     # delivered and how a paused run asks a person are injected, the same way broadcast is.
     control.deliver = _flow_deliver
     control.approvals = _flow_approval
+    control.linked_approvals = _linked_approval
     scheduler.fabric = control
     pdp = PDP(cfg, store)
     pdp.mcp = mcp
@@ -5652,6 +5655,24 @@ async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
                                   run_id=run_id, flow=flow, unanswered=missed)
 
 
+async def _linked_approval(lk: dict, frm: str, agent: str, name: str, args: dict,
+                           reason: str, offer: dict | None) -> bool:
+    """A step another team's question wants one of YOUR agents to take, which needs a
+    person (policy.needs_person). Asked of the link's owner, on their own screens only —
+    and when none is open, refused at once: their mission should hear "no" now, not in
+    fifteen minutes. The card names the team and, when the gate offered one, the choice
+    to allow it from now on (a standing permission, policy._standing_offer)."""
+    owner = lk.get("owner") or ""
+    if not any((state.get("client_uids") or {}).get(ws, "") == owner for ws in state.get("clients") or ()):
+        return False
+    who = f"{frm} on the linked team '{lk.get('label')}'"
+
+    async def to_owner(ev):
+        await state["broadcast_user"](ev, owner)
+    return await request_approval(name, args, f"{who} asked your {agent} to do this. {reason}",
+                                  offer=offer, evsend=to_owner, timeout=120)
+
+
 def chat_id_of(origin: dict, run: dict) -> str:
     """The Telegram chat a run belongs to, or '' — the run's own origin when the caller
     did not carry one, so a scheduled run still answers in the chat that set it up."""
@@ -5729,7 +5750,7 @@ async def resolve_approval(aid: str, approved: bool, remember: bool = False):
         o = entry["offer"]
         state["store"].add_grant(o["principal_kind"], o["principal_id"], o["action"],
                                  o["resource"], source="user",
-                                 note="allowed & remembered from an approval prompt")
+                                 note=o.get("note") or "allowed & remembered from an approval prompt")
         state["store"].log("policy", f"grant remembered: {o['action']} {o['resource']}",
                            {"principal": f"{o['principal_kind']}:{o['principal_id']}",
                             "action": o["action"], "resource": o["resource"],
@@ -8429,7 +8450,8 @@ async def api_team_links():
     out = []
     for lk in teamlink.links(owner):
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
-                    "peer_identity": _team_peer_identity(lk)})
+                    "peer_identity": _team_peer_identity(lk),
+                    "standing": fabricmod.standing(state["store"], lk["label"])})
     reqs = teamlink.requests(owner, _team_who(owner))
     for r in reqs["incoming"]:
         if r.get("kind") == "account":
@@ -8440,6 +8462,10 @@ async def api_team_links():
             "listening": bool(lst), "accounts": usersmod.enabled(),
             "can_listen": usersmod.is_admin(owner), "links": out,
             "incoming": reqs["incoming"], "outgoing": reqs["outgoing"] + _team_outgoing(owner),
+            # standing permissions apply only while outside content is ASKED about
+            "standing_applies": _taint_mode(state["cfg"]) == "ask",
+            "standing_note": _standing_note(state["cfg"]),
+            "standing_actions": list(_STANDING_ACTIONS), "standing_tools": list(_STANDING_TOOLS),
             # who an account request could go to: everyone here but you and those you
             # are already linked with
             "others": [{"id": uid, "name": n} for uid, n in names.items()
@@ -8781,6 +8807,62 @@ async def api_team_link_remove(label: str):
     fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
                          f"link ended; {n} permission(s) that named it revoked")
     await state["broadcast_user"]({"type": "team_links"}, owner)
+    return {"ok": True}
+
+
+@app.get("/api/team/links/{label}/standing")
+async def api_team_link_standing(label: str):
+    """What this side lets that team have its agents DO without a person — and whether
+    the 'Content from outside' setting lets any of it apply at all."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    return {"standing": fabricmod.standing(state["store"], lk["label"]),
+            "actions": list(_STANDING_ACTIONS), "tools": list(_STANDING_TOOLS),
+            "applies": _taint_mode(state["cfg"]) == "ask", "note": _standing_note(state["cfg"])}
+
+
+def _standing_note(cfg: dict) -> str:
+    """Why standing permissions are not in use here, or '' when they are."""
+    mode = _taint_mode(cfg)
+    return "" if mode == "ask" else (
+        "Your 'Content from outside' setting is strict, so nothing another team asks may change "
+        "anything — these are kept but not used." if mode == "strict" else
+        "Your 'Content from outside' setting is off, so nothing asks first and these are not needed.")
+
+
+@app.post("/api/team/links/{label}/standing")
+async def api_team_link_standing_add(label: str, body: dict):
+    """Let that team have one of your agents do one thing, in one scope, without asking.
+    `{"agent", "action": "fs.write", "scope": "~/shared", "days": 30}` — refused for what
+    can never be standing (policy.standing_refusal). A grants row: audited, revocable."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    b = body or {}
+    try:
+        got = fabricmod.add_standing(state["store"], lk["label"], str(b.get("agent") or ""),
+                                     str(b.get("action") or ""), str(b.get("scope") or ""),
+                                     days=float(b["days"]) if b.get("days") else None)
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast_user"]({"type": "grants"}, owner)
+    return {"ok": True, **got}
+
+
+@app.delete("/api/team/links/{label}/standing/{gid}")
+async def api_team_link_standing_revoke(label: str, gid: str):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk or not any(x["id"] == gid for x in fabricmod.standing(state["store"], lk["label"])):
+        return JSONResponse({"error": "no such standing permission on that link"}, status_code=404)
+    state["store"].revoke_grant(gid)
+    await state["broadcast_user"]({"type": "grants"}, owner)
     return {"ok": True}
 
 

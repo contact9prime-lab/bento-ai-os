@@ -456,6 +456,97 @@ def needs_person() -> str:
     return _NEEDS_PERSON.get()
 
 
+# ---- standing permissions for a linked team ----------------------------------------------
+#
+# A question from another team taints the run that answers it, so every step that would
+# change something needs a person — and nobody is at a network call to say yes. That is
+# the right default and the wrong ceiling for work you WANT another team to hand you: a
+# scheduled mission on their machine asking your analyst to write this week's report
+# into a shared folder. A standing permission is that one decision made ahead of time,
+# by the person here, narrowly:
+#
+#   principal team:<link>/*   action team.act   resource "<agent>|<action>|<scope>"
+#
+# an ordinary grants row (Permissions lists and revokes it; ending the link revokes it;
+# every change is an audit row). It lifts the taint ceiling for exactly that agent doing
+# exactly that action inside that scope — and only when EVERY untrusted thing in the run
+# came from that same link (a page the analyst also fetched is not covered). It never
+# reaches past the ceiling: hard blocks, built-in denies, the channel and rate ceilings
+# and any explicit deny row still apply; `strict` taint still refuses; and the actions
+# confirmed every time (ALWAYS_ASK) and self-modification can never be made standing.
+STANDING_ACTIONS = ("fs.write", "memory.write", "kg.write", "media.generate", "media.write",
+                    "tool.use")
+# tool.use is an ALLOW-list, not a deny-list: "tool.use" also names a shell
+# (run_command, run_python), git pushes, messages sent out and the desktop's own
+# controls, and a deny-list is correct only until the next tool is added. These two
+# make something here and change nothing else.
+STANDING_TOOLS = ("save_report", "notify")
+_NO_STANDING_DIRS = {"/", "/home", "/Users", "/root", "/etc", "/usr", "/bin", "/sbin", "/lib",
+                     "/lib64", "/boot", "/var", "/opt", "/srv", "/tmp", "/dev", "/proc", "/sys",
+                     "/System", "/Library", "/Applications", "/private", "/private/tmp"}
+
+
+def standing_resource(agent: str, action: str, scope: str) -> str:
+    return f"{agent}|{action}|{scope}"
+
+
+def standing_refusal(action: str, scope: str) -> str:
+    """Why this could never be a standing permission ('' when it could)."""
+    if action not in STANDING_ACTIONS:
+        return (f"'{action}' cannot be allowed ahead of time for another team — only "
+                f"{', '.join(STANDING_ACTIONS)}")
+    sc = (scope or "").strip()
+    if not sc or sc in ("*", "fs:*", "fs:/*", "tool:*", "memory:*", "kg:*", "media:*"):
+        return "say exactly what it covers — a folder, a tool — never everything"
+    if action == "fs.write":
+        if not sc.startswith("fs:/"):
+            return "a folder is given as a full path (~/shared or /srv/reports)"
+        folder = sc[3:].rstrip("*").rstrip("/") or "/"
+        top = folder.strip("/").split("/")
+        if folder in _NO_STANDING_DIRS or folder == os.path.expanduser("~").rstrip("/") or \
+                (top[0] in ("home", "Users") and len(top) <= 2) or \
+                any(part.startswith(".") for part in folder.split("/")):
+            return (f"'{folder}' is too wide to hand another team — name a folder inside it "
+                    f"(~/shared, ~/reports), never your home, a system folder or a hidden one")
+    if action == "tool.use":
+        name = sc[5:].split(" ", 1)[0].rstrip("*") if sc.startswith("tool:") else ""
+        if name not in STANDING_TOOLS:
+            return (f"'{name or sc}' cannot be allowed ahead of time for another team — of the "
+                    f"tools, only {', '.join(STANDING_TOOLS)}: the rest reach a shell, send "
+                    f"something out or change this OS, and each of those is a person's yes")
+    return ""
+
+
+def _fs_real(resource: str, workspace: str = "") -> str:
+    """`fs:<path>` as the write will actually land: `~` expanded, a relative path taken
+    from the workspace (tools._abs), `..` and symlinks resolved. A glob is not a path —
+    `fs:/shared/*` also matches `fs:/shared/../../home/me/.bashrc` — so a standing
+    permission is matched against THIS, never against the text a model wrote."""
+    raw = resource[3:] if resource.startswith("fs:") else resource
+    p = os.path.expanduser(raw or "")
+    if not os.path.isabs(p):
+        p = os.path.join(os.path.expanduser(workspace or "~"), p)
+    return "fs:" + os.path.realpath(p)
+
+
+def _hidden(resource: str) -> bool:
+    """A hidden file or folder anywhere in the path — .bashrc, .ssh, .config/autostart,
+    .git/hooks: the places where a written file becomes code that runs. A standing
+    permission never covers one, whatever folder it names."""
+    return any(p.startswith(".") for p in resource[3:].split("/") if p)
+
+
+def _link_only_taint(taint) -> str:
+    """The one link every untrusted thing in this run came from, or '' when anything
+    else (a page, a mail, a second link) tainted it too."""
+    labels = set()
+    for t in taint or []:
+        if not isinstance(t, dict) or t.get("tool") != "linked team":
+            return ""
+        labels.add(str(t.get("source") or ""))
+    return labels.pop() if len(labels) == 1 else ""
+
+
 def taint_mode(cfg: dict) -> str:
     m = str(((cfg.get("security") or {}).get("taint")) or "ask")
     return m if m in TAINT_MODES else "ask"
@@ -778,6 +869,45 @@ class PDP(usersmod.Scoped):
         self._skills[key] = (now + 5, names)
         return names
 
+    def _standing(self, principal: Principal, action: str, resource: str, taint) -> dict | None:
+        """The standing permission that covers this step, or None (see STANDING_ACTIONS)."""
+        link = _link_only_taint(taint)
+        if not link or principal.kind != "subagent" or action not in STANDING_ACTIONS:
+            return None
+        if action == "fs.write":
+            resource = _fs_real(resource, self.cfg.get("workspace", ""))
+        for g in self._grants():
+            if (g.get("principal_kind") == "team" and g.get("principal_id") == f"{link}/*"
+                    and g.get("action") == "team.act" and g.get("effect", "allow") == "allow"):
+                agent, _, rest = str(g.get("resource") or "").partition("|")
+                act, _, scope = rest.partition("|")
+                if agent == principal.id and act == action and scope and \
+                        not standing_refusal(act, scope) and _match(scope, resource) and \
+                        not (action == "fs.write" and _hidden(resource)):
+                    return g
+        return None
+
+    def _standing_offer(self, principal: Principal, action: str, resource: str, taint) -> dict | None:
+        """What "Always allow" on the card would write: this agent, this action, and for a
+        file its FOLDER (a report is rewritten every week; allowing one exact path would
+        ask again the first time the name changed)."""
+        link = _link_only_taint(taint)
+        if not link or principal.kind != "subagent" or action not in STANDING_ACTIONS:
+            return None
+        if action == "fs.write":
+            resource = _fs_real(resource, self.cfg.get("workspace", ""))
+            if _hidden(resource):
+                return None
+        scope = resource
+        if action == "fs.write" and resource.startswith("fs:/") and "/" in resource[4:]:
+            scope = resource.rsplit("/", 1)[0] + "/*"
+        if standing_refusal(action, scope):
+            return None
+        return {"principal_kind": "team", "principal_id": f"{link}/*", "action": "team.act",
+                "resource": standing_resource(principal.id, action, scope),
+                "label": f"Always let {link} have {principal.id} do this",
+                "note": f"{link} may have {principal.id} {action} {scope} without asking"}
+
     def _matching(self, principal: Principal, action: str, resource: str,
                   flow: str = "") -> list[dict]:
         """The grants that apply — and, inside a flow's run, ONLY that flow's
@@ -884,7 +1014,12 @@ class PDP(usersmod.Scoped):
         # conversation are held back for a human.
         taint = ctx.get("taint") or []
         mode = taint_mode(self.cfg)
-        if taint and risk != "safe" and mode != "off":
+        standing = None
+        if taint and risk != "safe" and mode == "ask":
+            standing = self._standing(principal, action, resource, taint)
+        if standing:
+            ctx["_standing"] = standing
+        elif taint and risk != "safe" and mode != "off":
             where = taint_summary(taint)
             if mode == "strict":
                 return Decision("deny",
@@ -892,13 +1027,17 @@ class PDP(usersmod.Scoped):
                                 f"security.taint is set to strict, so it may not take "
                                 f"actions that change anything",
                                 rule="taint")
-            return Decision("ask",
-                            f"{ctx.get('reason') or 'This changes something.'} This turn has "
-                            f"also read untrusted content ({where}) — content from outside "
-                            f"this machine can be written to look like an instruction, so "
-                            f"this step is being shown to you rather than assumed.",
-                            rule="taint")   # deliberately no grant_offer: "remember this"
-                                            # would hand the next web page the same key
+            dec = Decision("ask",
+                           f"{ctx.get('reason') or 'This changes something.'} This turn has "
+                           f"also read untrusted content ({where}) — content from outside "
+                           f"this machine can be written to look like an instruction, so "
+                           f"this step is being shown to you rather than assumed.",
+                           rule="taint")   # no ordinary grant_offer: "remember this" would
+                                           # hand the next web page the same key — but a
+                                           # LINKED TEAM is an authenticated party, so the
+                                           # card may offer a standing permission for it
+            dec.grant_offer = self._standing_offer(principal, action, resource, taint)
+            return dec
         # 2d. the rate ceiling. Before grants, for the same reason as the two above:
         # "allow fetch_url" is consent to fetch pages, not consent to fetch them without
         # end. This is the only ceiling that can decide, by itself, to stop something.
@@ -951,6 +1090,12 @@ class PDP(usersmod.Scoped):
             if g.get("effect", "allow") == "allow":
                 # persisted consent satisfies the approval requirement
                 return Decision("allow", rule=g["id"])
+        if ctx.get("_standing"):
+            # the person here allowed this team this step ahead of time (see _standing);
+            # checked AFTER the deny rows above, so an explicit deny still wins
+            g = ctx["_standing"]
+            return Decision("allow", g.get("note") or "a standing permission for a linked team",
+                            rule=g["id"])
         # IO gate: consent exists but is scoped to OTHER surfaces — the call arriving
         # via this gate is not permitted; enforcement sites log this as an IO error
         if any(g.get("effect", "allow") == "allow" for g in matched):

@@ -1375,6 +1375,34 @@ listening; `09-websocket.js` now repaints on it, and `team_link_request` is a to
 Review (`toast(text, {label, go})` — the one toast that takes a tap).
 The listener is admin-only because it opens a port, and it is off until switched on.
 
+**A standing permission is the one "remember" a tainted step may offer, and only for a
+link.** A linked team's question taints the answering run, so a write needs a person — the
+link owner's own screens get the card (`control.linked_approvals`), and with none open it is
+refused AT ONCE rather than holding their mission. A web page is anyone; a link is an
+authenticated party, so the taint card may offer `PDP._standing_offer` and
+`add_standing`/Settings/`bento link let` write the same row: `team:<link>/*`, `team.act`,
+resource `agent|action|scope`. Five things keep it narrow (`tests/test_team_standing.py`):
+
+- **It lifts ONLY the taint ceiling, and only when every taint entry came from that one
+  link** (`_link_only_taint`) — a page the agent also read brings the card back. It is
+  checked AFTER the deny rows, so an explicit deny wins, and `strict` still refuses.
+- **fs scopes are matched against `policy._fs_real`**, never the text: a glob is not a path,
+  and `fs:/shared/*` matches `fs:/shared/../../.bashrc` as a string. A hidden segment
+  (`_hidden`) is never covered, whatever folder was allowed.
+- **`STANDING_TOOLS` is an ALLOW-list** (`save_report`, `notify`). `tool.use` also names a
+  shell, git push and outbound messages, and a deny-list is right only until the next tool.
+  Homes, system folders and `/tmp` are refused as scopes (`standing_refusal`).
+- **`standing_refusal` is re-checked at match time**, so a row written straight into grants
+  by some other door still cannot cover what the save would have refused.
+- **`forget_link_grants` revokes them with the cells**, because they are `team:<label>/*` rows.
+
+**A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
+(`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
+sentence naming the other team and NO envelope for that member (it runs under their gate);
+`delegate` routes it through `delegate_linked` → `ControlPlane.message`, and the handle lands
+`tainted=1`. There is no way to reach further across the link than a question: the other
+side's cell, standing permissions and person still decide.
+
 ## People on linked teams: messages, and no agent reads them
 
 `agentos/teamchat.py` + the `team_messages` table + Team Chat (`24c-teamchat.js`) + `bento link

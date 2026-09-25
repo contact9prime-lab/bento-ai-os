@@ -3517,6 +3517,11 @@ body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tl-row input{width:80px}
 body.dev-touch .tl-row input{min-height:var(--tap)}
 .flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
+/* a roster member on a linked team (13-fabric.js flwLinkedHTML) */
+.flw-linked{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.flw-linked input{flex:1 1 140px;min-width:0}.flw-linked select{flex:0 1 140px;min-width:0}
+.flw-linked-why{font-size:var(--fs-xs);margin:4px 0}
+body.dev-touch .flw-linked input,body.dev-touch .flw-linked select,body.dev-touch .flw-linked button{min-height:var(--tap)}
 /* Linked teams */
 .team-links{display:flex;flex-direction:column;gap:8px;width:100%}
 .tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -3555,6 +3560,18 @@ body.dev-touch .tlk-more summary{display:flex;align-items:center}
 body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
 .tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
 body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+/* standing permissions — the same disclosure shape as "Use an invite code instead" */
+.tlk-stand summary{cursor:pointer;font-size:var(--fs-sm);color:var(--txt2,var(--txt));padding:4px 0;list-style:none}
+.tlk-stand summary::-webkit-details-marker{display:none}
+.tlk-stand summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-stand[open] summary::before{content:'▾'}
+.tlk-stand[open]{display:flex;flex-direction:column;gap:6px}
+.tlk-stand .tlk-why{margin:0;font-size:var(--fs-xs)}
+.tlk-stand-row{display:flex;gap:8px;align-items:center;font-size:var(--fs-sm)}
+.tlk-stand-row>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.pc .tlk-stand-add select{flex:0 1 150px}.pc .tlk-stand-add input[data-sa=days]{flex:0 1 150px}
+body.dev-touch .tlk-stand summary{min-height:var(--tap);display:flex;align-items:center}
+body.dev-touch .tlk-stand-row button,body.dev-touch .tlk-stand-add select,
+body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
 
 /* ---- Team Chat (24c-teamchat.js) ---- */
 .tc{display:grid;grid-template-columns:230px 1fr;height:100%;min-height:0}
@@ -9488,15 +9505,19 @@ function buildApprovalBox(ev,cur){
               :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
   // the face of whoever is asking: your agent, or the specialist that wants this
+  // a linked team's standing offer (team.act) is about one of YOUR agents: resource "agent|action|scope"
   const askKey=!ev.offer||ev.offer.principal_kind==='user'?'@agent'
-    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id:'';
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id
+    :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
+  // an offer may name itself ("Always let home have analyst do this") — the words say
+  // exactly what the button writes, which "Allow & remember" does not for another team
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelector('.always').onclick=async()=>{
     if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
       resolveApproval(ev.id,true,true);
-      toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
     }else{
       const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
       await addPolicy('allow',pat);
@@ -9968,6 +9989,7 @@ function permPrincipalLabel(kind,id){
   // for your permission it reads as though YOU are the one being restricted.
   if(kind==='user')return agentName();
   if(kind==='subagent')return 'agent "'+id+'"';
+  if(kind==='team')return 'the linked team "'+String(id||'').replace(/\/\*$/,'')+'"';
   return kind+(id?' "'+id+'"':'');
 }
 function flushText(){
@@ -11900,6 +11922,7 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      ${tlStandHTML(l,mine,d)}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
@@ -11930,7 +11953,45 @@ async function paintTeamLinks(){
   box.querySelectorAll('input[data-link]').forEach(cb=>cb.onchange=async()=>{
     const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
+  box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+}
+/* Standing permissions: what a linked team may have one of YOUR agents change without a
+   person here saying yes. A question from another team is untrusted, so by default it can
+   make an agent read and answer, never write — this is that yes given ahead of time, for
+   one agent, one action, one folder or tool. The same rows the approval card's "Always
+   let …" writes and Permissions revokes; the server refuses what can never be standing
+   (a shell, a home, a hidden folder) with a sentence, which is shown as it comes.
+   Faces: TUI is `bento link let/standing/unlet` (no pointer needed); SUI is this page,
+   nothing native — and the card that offers it goes only to the link owner's screens. */
+var TL_STAND_OPEN={};
+var TL_ACT_WORDS={'fs.write':'write files in','memory.write':'remember things','kg.write':'add to the knowledge graph',
+  'media.generate':'generate images','media.write':'save assets','tool.use':'use the tool'};
+function tlScope(s){return String(s||'').replace(/^(fs|tool):/,'').replace(/\/?\*$/,'')}
+function tlStandHTML(l,mine,d){
+  const rows=l.standing||[], lab=esc(l.label);
+  return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
+    <p class="mut tlk-why">A question from ${lab} can make your agents read and answer, never change anything — a person here is asked first, and when nobody is watching the answer is no. Allow one thing here ahead of time: that agent, that action, inside that folder. If the agent also read a web page or a mail on the way, you are asked again.</p>
+    ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
+    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
+      <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
+      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
+  </details>`;
+}
+async function tlStandAdd(label,btn){
+  const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';
+  if(!v('scope').trim()){toast('say which folder or tool — never everything');return}
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing','POST',
+    {agent:v('agent'),action:v('action'),scope:v('scope').trim(),days:v('days')?Number(v('days')):null});
+  if(r){TL_STAND_OPEN[label]=true;toast(label+' may now have '+r.agent+' '+(TL_ACT_WORDS[r.action]||r.action)+' '+tlScope(r.scope)+' without asking');paintTeamLinks()}
+}
+async function tlStandRemove(label,id){
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing/'+encodeURIComponent(id),'DELETE')){
+    TL_STAND_OPEN[label]=true;toast('removed — '+label+' asks a person again for that');paintTeamLinks()}
 }
 async function teamApi(url,method,body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
@@ -14254,13 +14315,15 @@ async function delFlow(name){
 /* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
 var FLW=null;
 async function openFLW(name,draft){
-  const [subs,tools,skills,models]=await Promise.all([
+  const [subs,tools,skills,models,links]=await Promise.all([
     fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]})),
+    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]}))]);
   const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
   FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
+    links:(links.links||[]).map(l=>l.label),
     models:models.models||[],q:'',draft:(draft||null),
     d:ex?JSON.parse(JSON.stringify(ex))
        :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
@@ -14302,6 +14365,36 @@ function flwRoster(nm,on){
   if(on&&!r.some(x=>x.subagent===nm))r.push({subagent:nm,why:''});
   if(!on)FLW.d.roster=r.filter(x=>x.subagent!==nm);
   flwPreview();
+}
+/* An agent on a LINKED team (analyst@office) can be on a mission's roster. The task
+   crosses the link as a question; what it does there is that team's decision — their
+   gate, their standing permissions — and its answer lands here untrusted. Who you may
+   ask is theirs to say, so "Who?" asks them live rather than guessing a name. */
+function flwLinkedHTML(d){
+  const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
+  const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
+      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
+        <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
+      <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
+    <div class="mut flw-linked-why" id="flw-lwho"></div>`;
+}
+function flwAddLinked(name){
+  const a=(name||(document.getElementById('flw-la')||{}).value||'').trim(), l=(document.getElementById('flw-ll')||{}).value||'';
+  if(!a||!l){toast('name one of their agents — Who? asks them');return}
+  flwCollect();flwRoster(a+'@'+l,true);drawFLW();
+}
+async function flwLinkedWho(){
+  const l=(document.getElementById('flw-ll')||{}).value||'', box=document.getElementById('flw-lwho');if(!box)return;
+  box.textContent='asking '+l+'…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(!document.body.contains(box))return;
+  box.innerHTML=!r.ok?esc(r.error||'not reachable')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
   const s=FLW.d.sinks||[];
@@ -14376,7 +14469,8 @@ function drawFLW(){
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
       onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
-  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'));
+  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
+    +flwLinkedHTML(d);
   const q=(FLW.q||'').toLowerCase();
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);

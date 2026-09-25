@@ -1169,6 +1169,7 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      ${tlStandHTML(l,mine,d)}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
@@ -1199,7 +1200,45 @@ async function paintTeamLinks(){
   box.querySelectorAll('input[data-link]').forEach(cb=>cb.onchange=async()=>{
     const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
+  box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+}
+/* Standing permissions: what a linked team may have one of YOUR agents change without a
+   person here saying yes. A question from another team is untrusted, so by default it can
+   make an agent read and answer, never write — this is that yes given ahead of time, for
+   one agent, one action, one folder or tool. The same rows the approval card's "Always
+   let …" writes and Permissions revokes; the server refuses what can never be standing
+   (a shell, a home, a hidden folder) with a sentence, which is shown as it comes.
+   Faces: TUI is `bento link let/standing/unlet` (no pointer needed); SUI is this page,
+   nothing native — and the card that offers it goes only to the link owner's screens. */
+var TL_STAND_OPEN={};
+var TL_ACT_WORDS={'fs.write':'write files in','memory.write':'remember things','kg.write':'add to the knowledge graph',
+  'media.generate':'generate images','media.write':'save assets','tool.use':'use the tool'};
+function tlScope(s){return String(s||'').replace(/^(fs|tool):/,'').replace(/\/?\*$/,'')}
+function tlStandHTML(l,mine,d){
+  const rows=l.standing||[], lab=esc(l.label);
+  return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
+    <p class="mut tlk-why">A question from ${lab} can make your agents read and answer, never change anything — a person here is asked first, and when nobody is watching the answer is no. Allow one thing here ahead of time: that agent, that action, inside that folder. If the agent also read a web page or a mail on the way, you are asked again.</p>
+    ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
+    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
+      <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
+      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
+  </details>`;
+}
+async function tlStandAdd(label,btn){
+  const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';
+  if(!v('scope').trim()){toast('say which folder or tool — never everything');return}
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing','POST',
+    {agent:v('agent'),action:v('action'),scope:v('scope').trim(),days:v('days')?Number(v('days')):null});
+  if(r){TL_STAND_OPEN[label]=true;toast(label+' may now have '+r.agent+' '+(TL_ACT_WORDS[r.action]||r.action)+' '+tlScope(r.scope)+' without asking');paintTeamLinks()}
+}
+async function tlStandRemove(label,id){
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing/'+encodeURIComponent(id),'DELETE')){
+    TL_STAND_OPEN[label]=true;toast('removed — '+label+' asks a person again for that');paintTeamLinks()}
 }
 async function teamApi(url,method,body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));

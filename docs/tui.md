@@ -140,6 +140,9 @@ bento link request account bob                 # another account here: Bob appro
 bento link listen on                           # let other machines ask (mTLS, port 8322)
 bento link allow office analyst                # their agents may ask your analyst
 bento link mine office on                      # yours may ask theirs without asking you
+bento link let office analyst fs.write ~/shared/reports --days 30
+                                               # their questions may have analyst write there, unasked
+bento link standing office                     # what they may have your agents change · unlet ID
 bento link say office "Is the Q3 deck ready?"   # write to the people on that team
 bento link chat office                         # the conversation (pulls anything waiting)
 bento link remove office                       # ends it, and revokes its cells

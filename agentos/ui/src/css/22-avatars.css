@@ -105,6 +105,11 @@ body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tl-row input{width:80px}
 body.dev-touch .tl-row input{min-height:var(--tap)}
 .flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
+/* a roster member on a linked team (13-fabric.js flwLinkedHTML) */
+.flw-linked{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.flw-linked input{flex:1 1 140px;min-width:0}.flw-linked select{flex:0 1 140px;min-width:0}
+.flw-linked-why{font-size:var(--fs-xs);margin:4px 0}
+body.dev-touch .flw-linked input,body.dev-touch .flw-linked select,body.dev-touch .flw-linked button{min-height:var(--tap)}
 /* Linked teams */
 .team-links{display:flex;flex-direction:column;gap:8px;width:100%}
 .tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -143,6 +148,18 @@ body.dev-touch .tlk-more summary{display:flex;align-items:center}
 body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
 .tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
 body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+/* standing permissions — the same disclosure shape as "Use an invite code instead" */
+.tlk-stand summary{cursor:pointer;font-size:var(--fs-sm);color:var(--txt2,var(--txt));padding:4px 0;list-style:none}
+.tlk-stand summary::-webkit-details-marker{display:none}
+.tlk-stand summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-stand[open] summary::before{content:'▾'}
+.tlk-stand[open]{display:flex;flex-direction:column;gap:6px}
+.tlk-stand .tlk-why{margin:0;font-size:var(--fs-xs)}
+.tlk-stand-row{display:flex;gap:8px;align-items:center;font-size:var(--fs-sm)}
+.tlk-stand-row>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.pc .tlk-stand-add select{flex:0 1 150px}.pc .tlk-stand-add input[data-sa=days]{flex:0 1 150px}
+body.dev-touch .tlk-stand summary{min-height:var(--tap);display:flex;align-items:center}
+body.dev-touch .tlk-stand-row button,body.dev-touch .tlk-stand-add select,
+body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
 
 /* ---- Team Chat (24c-teamchat.js) ---- */
 .tc{display:grid;grid-template-columns:230px 1fr;height:100%;min-height:0}
