@@ -9669,7 +9669,10 @@ async def api_chat(body: dict, request: Request):
         pass
 
     async def approver(_n, _a, _r, _offer=None):
-        return cfg.get("autonomy") == "full"
+        # nobody is at an app's turn to ask: autonomy answers, never for what must be
+        # a person's (policy.needs_person)
+        from .policy import needs_person
+        return cfg.get("autonomy") == "full" and not needs_person()
 
     # apps call from inside the desktop (GUI); everything else is the headless API gate
     from . import executors as execmod

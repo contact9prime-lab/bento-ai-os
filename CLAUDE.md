@@ -1061,6 +1061,14 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   choice (per-user uid / containers) in the design doc, and the docs say so rather than
   overclaiming.
 
+- **A decision that must be a PERSON's is never answered by autonomy.** The taint ceiling's
+  `ask` and the ALWAYS_ASK actions set `policy.needs_person()` (a contextvar the agent loop
+  sets around the approver call). Every approver that answers on autonomy — the headless and
+  flow approvers in `fabric.py`, the scheduler, the app-turn route — refuses it; Telegram and
+  WhatsApp ASK the person instead of answering for them. Before, "held for you, full autonomy
+  too" was true only with a screen: a linked team's question drove a full-capped specialist
+  to write a file. `tests/test_team_security.py` scans every approver for the check — a new
+  one that returns on `"full"` without it fails the suite.
 - **The ledger is tamper-evident and can be fail-closed.** Every `audit` row carries the
   acting `uid`, a `seq` and a `row_hash` chaining it to the previous row; `audit_verify()`
   finds the first edit or deletion. `security.audit_fail_closed` refuses an ALLOW whose
@@ -1344,6 +1352,9 @@ ceilings in `docs/team.md`):
 - **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
   allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
   an agent that exists and one that does not (it was an enumeration oracle).
+- **A link reaches no resource on the far side** — nine wire ops, none of which reads, writes
+  or runs anything; an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
+  one honest limit: what an allowed agent can READ, a question can ask it to repeat.
 - **A linked team's refusal is theirs**: `_message_linked` prefixes `TAINTED_REPLY` on refusals
   too. Their `error` wording reached the agent unmarked — an injection channel around the taint.
 - **A machine's request reaches only who it is for** (`teamlink.may_answer`): the account named

@@ -343,6 +343,30 @@ the provider it answered on. On the answering side the question shows on the Cre
 knows their agents are being consulted. It is never written into a chat you have open: it
 belongs to no conversation here.
 
+### What a link lets either machine do on the other
+
+A link is **between equals**. Neither machine is the other's master, and the link reaches no
+file, command, tool or model on the far side. The wire carries nine requests: pair,
+request, poll, cancel, hello, roster, ask, chat and pull. None of them reads, writes or runs
+anything by itself.
+
+- **Your agents can only *ask a question* of the agents they let you ask.** Their agent
+  answers with *its* tools, under *their* permissions, on *their* model and their bill, and
+  you get text back. You cannot reach their files, their shell, their memory or their keys.
+  If you want their machine to do something for you, their agent decides whether to, within
+  what their side allowed it.
+- **The same holds the other way.** Nothing of yours is reachable until you tick an agent
+  for them. What an agent you ticked can *read*, their question can ask it to *repeat*. So
+  tick agents whose reach you are happy to share. A "front desk" specialist with no file or
+  memory tools is the safe shape.
+- **A question from another team can never make your agent *change* anything.** It arrives
+  marked untrusted, so every step that would change something needs a person, and nobody is
+  at your end of their question to say yes. It is refused, **at full autonomy too** (see
+  [security](security.md), the taint ceiling). Reading stays possible. That is the honest
+  limit above: what the answering agent can read, it can put in its answer.
+- **Their model calls cost you nothing, and yours cost them.** Asking is bounded by the
+  hop, budget and rate ceilings below, on both sides.
+
 ### Security: what was checked, and the ceilings
 
 Linked teams and Team Chat were reviewed as an attacker would read them: a hostile linked

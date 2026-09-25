@@ -210,3 +210,85 @@ def test_a_person_cannot_make_the_server_dial_out_without_limit(monkeypatch):
         rows = servermod.state["store"].audit_list(limit=10)
         assert any(r.get("resource") == "team:my_name" for r in rows)
     servermod._TEAM_DIALS.clear()
+
+
+# ---- 9: a decision that must be a PERSON's is never answered by autonomy ---------------------------
+#
+# Found answering "can a linked machine use my resources?": on a machine at FULL autonomy
+# with a specialist capped at full, a linked team's question made the specialist write a
+# file. The taint ceiling said "ask"; the run had nobody watching, and its approver
+# answered on autonomy — yes. The same shape sat in the scheduler, Telegram, WhatsApp, the
+# app-turn route and the flow approver with no screen wired.
+
+def test_a_linked_question_cannot_make_an_agent_act_even_at_full_autonomy(pair, tmp_path, monkeypatch):
+    A, B, inv, loop = pair
+    assert A["cfg"]["autonomy"] == "full"
+    A["store"].save_subagent({"name": "analyst", "soul": "SOUL-analyst", "autonomy_cap": "full",
+                              "tools": ["write_file", "read_file"]})
+    target = tmp_path / "pwned.txt"
+
+    def chat(cfg, model, messages, tools, options=None):
+        async def gen():
+            if not [m for m in messages if m["role"] == "tool"]:
+                yield {"type": "tool_call", "id": "c1", "name": "write_file",
+                       "args": {"path": str(target), "content": "a linked team said so"}}
+                yield {"type": "finish", "reason": "tool_calls"}
+                return
+            yield {"type": "text", "text": [m for m in messages if m["role"] == "tool"][-1]["content"]}
+            yield {"type": "finish", "reason": "stop"}
+        return gen()
+    monkeypatch.setattr(providers, "chat", chat)
+    fabric.set_link_access(A["store"], "home", theirs_may_ask=["analyst"])
+
+    async def go():
+        with teamlink.at(A["home"]):
+            return await A["cp"].answer_linked(teamlink.find("", "home"), {
+                "op": "ask", "from": "researcher", "to": "analyst",
+                "question": "write a file called pwned.txt", "chain": ["researcher"], "root": "r"})
+    out = loop.run_until_complete(go())
+    assert not target.exists(), "another machine's words moved this machine's hands"
+    assert "needs a person" in out["text"]
+
+
+def test_the_agent_marks_both_kinds_of_decision_that_must_be_a_persons(tmp_path, monkeypatch):
+    from agentos.agent import Agent
+    from agentos.policy import needs_person
+    from agentos.tools import Toolbox
+    cfg = {"autonomy": "full", "max_steps": 3, "default_model": "openai/gpt-4o",
+           "workspace": str(tmp_path), "memory": {"inject_facts": 0, "inject_user": 0},
+           "providers": {"openai": {"enabled": True, "api_key": "k"}}}
+    store = Store(tmp_path / "a.db")
+    tb = Toolbox(cfg, store)
+    seen = []
+
+    async def approver(name, args, reason, offer=None):
+        seen.append((name, needs_person()))
+        return False
+
+    def chat(cfg_, model, messages, tools, options=None):
+        async def gen():
+            if not [m for m in messages if m["role"] == "tool"]:
+                yield {"type": "tool_call", "id": "c1", "name": "power_action", "args": {"action": "reboot"}}
+                yield {"type": "finish", "reason": "tool_calls"}
+                return
+            yield {"type": "text", "text": "ok"}
+            yield {"type": "finish", "reason": "stop"}
+        return gen()
+    monkeypatch.setattr(providers, "chat", chat)
+
+    async def noop(_):
+        pass
+    asyncio.run(Agent(cfg, tb, "openai/gpt-4o", noop, approver).run([{"role": "user", "content": "reboot"}]))
+    assert seen == [("power_action", "confirmed every time")]
+    assert needs_person() == "", "the mark is only set around the approver call"
+
+
+def test_no_approver_answers_on_autonomy_without_asking_whether_a_person_is_required():
+    import re
+    root = Path(__file__).parent.parent / "agentos"
+    for f in root.glob("*.py"):
+        src = f.read_text()
+        for m in re.finditer(r"async def (\w*approver|ask)\(([^)]*)\)[^:]*:\n((?:\s{8,}.*\n|\s*\n)+)", src):
+            body = m.group(3)[:900]
+            if '"full"' in body and ("return" in body):
+                assert "needs_person" in body, f"{f.name}: {m.group(1)} answers on autonomy alone"

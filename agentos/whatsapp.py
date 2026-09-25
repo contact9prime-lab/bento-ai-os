@@ -452,7 +452,10 @@ class WhatsAppBridge(usersmod.Scoped):
             pass
 
         async def approver(name, args, reason, offer=None) -> bool:
-            if self.cfg.get("autonomy") == "full":
+            # full autonomy answers for you — except a step that must be a
+            # person's (policy.needs_person): you are right here, so you are asked
+            from .policy import needs_person
+            if self.cfg.get("autonomy") == "full" and not needs_person():
                 return True
             return await self.ask_approval(wa_id, name, args, reason, offer=offer)
 

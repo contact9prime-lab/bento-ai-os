@@ -87,6 +87,17 @@ So AgentOS does not try to detect the attack. It bounds the blast radius:
   tainted turn's *risky* steps are held for you — **at `full` autonomy too**, because full
   autonomy is trust placed in your instructions, not a stranger's. Safe steps are never
   escalated, so reading and researching stay as fast as they were.
+- **"Held for you" means a person, everywhere, and never autonomy on nobody's behalf.** Until
+  2026-09 that was true in a chat with a screen and false in every run with nobody watching.
+  A specialist the agent delegated to, a scheduled job, an app's turn and a linked team's
+  question all answered "ask" with autonomy: at `full`, *yes*. Telegram and WhatsApp, at
+  `full`, answered for you instead of asking you in the chat you were in. It was found by
+  sending a linked team's question to a specialist capped at full autonomy: the specialist
+  wrote a file. Now the agent loop marks the two kinds of decision that must be a person's
+  (`policy.needs_person`: after untrusted content, and the actions confirmed every time). An
+  approver that can reach you asks you. One that cannot (a schedule, a data plane) refuses,
+  and the agent is told why. `tests/test_team_security.py` holds it, including a scan that
+  fails if any approver answers on autonomy without checking the mark.
 - The ceiling is checked **before grants**, exactly like the read-only channel ceiling.
   "Allow `fetch_url` everywhere" is consent for the agent to fetch pages; it is not consent
   for a fetched page to spend the grant on something else. For the same reason the approval

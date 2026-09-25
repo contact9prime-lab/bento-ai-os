@@ -607,8 +607,10 @@ class ControlPlane(usersmod.Scoped):
         """
         async def ask(name, args, reason, offer=None) -> bool:
             if not self.approvals:
-                # nobody to ask: the historical behaviour, made explicit
-                return eff_autonomy == "full"
+                # nobody to ask: autonomy answers — except what must be a person's
+                # (policy.needs_person), which nobody can answer here
+                from .policy import needs_person
+                return eff_autonomy == "full" and not needs_person()
             inst = self.instances.get(run_id) or {}
             inst["state"] = "paused"
             budget.pause()
@@ -731,9 +733,12 @@ class ControlPlane(usersmod.Scoped):
 
         async def headless_approver(_n, _a, _r, _offer=None):
             # no human inside a data plane: gated actions need effective 'full' —
-            # except a message to another agent, whose ask is the matrix's question
-            # and must never be answered by autonomy on nobody's behalf
-            return eff_autonomy == "full" and _n != "ask_agent"
+            # except a message to another agent, whose ask is the matrix's question,
+            # and a step that must be a PERSON's (after untrusted content — every
+            # linked team's question is — or confirmed every time): autonomy never
+            # answers those on nobody's behalf
+            from .policy import needs_person
+            return eff_autonomy == "full" and _n != "ask_agent" and not needs_person()
 
         if approver is None and escalate:
             # inside a flow, a gated action is worth interrupting a person for — the run

@@ -764,10 +764,14 @@ class Agent:
                 dec = Decision("ask", reason)
             else:
                 dec = Decision("allow")
+        must_person = ""
         if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
             # power/session actions confirm EVERY time — full autonomy included;
             # only an explicit user-written grant (rule != default) skips the ask
             dec.effect = "ask"
+            must_person = "confirmed every time"
+        if dec.effect == "ask" and dec.rule == "taint":
+            must_person = "after untrusted content"
 
         approved = None
         _started = time.time()
@@ -777,10 +781,20 @@ class Agent:
             await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": True})
-            approved = await self.approver(name, args, dec.reason or reason,
-                                           dec.grant_offer)
+            from .policy import _NEEDS_PERSON
+            tok = _NEEDS_PERSON.set(must_person) if must_person else None
+            try:
+                approved = await self.approver(name, args, dec.reason or reason,
+                                               dec.grant_offer)
+            finally:
+                if tok is not None:
+                    _NEEDS_PERSON.reset(tok)
             if approved:
                 output = await self.toolbox.execute(name, args)
+            elif must_person:
+                output = (f"[denied] This step needs a person to say yes ({must_person}), and "
+                          f"nobody said yes. Autonomy does not answer it. Try a read-only "
+                          f"alternative, or tell the user what you wanted to do and why.")
             else:
                 output = ("[denied] This action was not approved for "
                           f"{self.principal.label} at the current autonomy level. Try a "

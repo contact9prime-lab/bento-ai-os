@@ -229,8 +229,11 @@ class Scheduler(usersmod.Scoped):
             pass
 
         async def approver(_name, _args, _reason, _offer=None) -> bool:
-            # No one is watching: only 'full' autonomy may take risky actions.
-            return self.cfg.get("autonomy") == "full"
+            # No one is watching: only 'full' autonomy may take risky actions — and
+            # never one that must be a person's (a job that read a web page, then was
+            # told by it to do something; policy.needs_person).
+            from .policy import needs_person
+            return self.cfg.get("autonomy") == "full" and not needs_person()
 
         model = self.cfg.get("default_model") or ""
         result_text = ""

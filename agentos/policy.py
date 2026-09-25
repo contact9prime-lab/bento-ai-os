@@ -439,6 +439,23 @@ class RateMeter:
         self._calls.pop(label, None)
 
 
+# A decision that must reach a PERSON — the taint ceiling ("this step is being shown to
+# you rather than assumed") and the actions confirmed every time, full autonomy included.
+# Autonomy is trust in YOUR instructions; neither rule is about that. So the agent loop
+# sets this around the approver call, and every approver that answers on autonomy when
+# nobody is watching (a headless run, a schedule, a linked team's question) or answers
+# for a person who IS reachable (Telegram, WhatsApp) checks it first: nobody there means
+# no, and somebody there means ask them. Found by driving a linked team's question into a
+# file write on a machine at full autonomy — the ask was answered by nobody, yes.
+import contextvars as _cv
+_NEEDS_PERSON: "_cv.ContextVar[str]" = _cv.ContextVar("needs_person", default="")
+
+
+def needs_person() -> str:
+    """Why the decision being approved right now must be a person's ('' when it need not)."""
+    return _NEEDS_PERSON.get()
+
+
 def taint_mode(cfg: dict) -> str:
     m = str(((cfg.get("security") or {}).get("taint")) or "ask")
     return m if m in TAINT_MODES else "ask"
