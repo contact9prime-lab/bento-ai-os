@@ -64,6 +64,9 @@ REQUEST_TTL = 600               # seconds a link request waits for somebody to a
 REQUEST_LIMIT = 5               # link requests one address may make per GUESS_WINDOW
 MAX_PENDING = 8                 # requests waiting on this machine at once
 POLL_EVERY = 2.0                # seconds between the requester's "decided yet?"
+MAX_OPEN = 64                   # connections handled at once; more are closed at the door
+FIRST_LINE = 10.0               # seconds a connection has to say what it wants
+PEER_CALLS = 240                # calls a minute from one linked machine, of every kind
 
 
 _ROOT: "contextvars.ContextVar[Path | None]" = contextvars.ContextVar("teamlink_root", default=None)
@@ -178,6 +181,27 @@ def _label(s: str) -> str:
     return s or "team"
 
 
+# ---- text from elsewhere ------------------------------------------------------------------
+#
+# Anything another team wrote — a message, a name, a question, an answer — reaches a
+# terminal (`bento link chat`, the chat TUI) as well as a page. A page escapes HTML; a
+# terminal obeys escape sequences: ESC ] 52 writes the clipboard, ESC ] 0 retitles the
+# window, and a bidi override (U+202E) makes a line display as something it is not. So
+# every such string passes `plain()` on the way IN, once, where it is received — not at
+# each place it is shown, which is how one of them gets forgotten.
+
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def plain(s, limit: int = 4000, newlines: bool = True) -> str:
+    """Text safe to show anywhere: control characters, C1 codes and bidi overrides
+    removed, newlines kept (or folded) and the length cut."""
+    t = _CONTROL.sub("", str(s if s is not None else ""))
+    if not newlines:
+        t = " ".join(t.split())
+    return t[:limit].strip()
+
+
 # ---- identity: who the other team IS, as they present themselves ---------------------------
 #
 # A link is a certificate, which is proof and says nothing a person can recognise. So
@@ -190,8 +214,8 @@ def _label(s: str) -> str:
 def clean_identity(x) -> dict:
     from . import avatars
     x = x if isinstance(x, dict) else {}
-    out = {"agent_name": str(x.get("agent_name") or "")[:40].strip(),
-           "person": str(x.get("person") or "")[:40].strip()}
+    out = {"agent_name": plain(x.get("agent_name"), 40, newlines=False),
+           "person": plain(x.get("person"), 40, newlines=False)}
     for k in ("agent", "me"):
         if isinstance(x.get(k), dict):
             out[k] = avatars.clean(x[k])
@@ -314,6 +338,15 @@ def remove(owner: str, label: str) -> bool:
 
 
 # ---- invites -------------------------------------------------------------------------------
+
+def _port(v) -> int:
+    """A port the other side SAYS it listens on: a number in range, or none."""
+    try:
+        p = int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+    return p if 0 < p < 65536 else 0
+
 
 def _hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
@@ -438,17 +471,33 @@ def _req_view(r: dict) -> dict:
     return {k: v for k, v in r.items() if k not in ("token_hash", "peer_ca", "peer_host")}
 
 
-def requests(owner: str | None) -> dict:
-    """What is waiting: requests from other MACHINES (anybody here may answer one, and
-    the link lands in whoever answers), and requests between ACCOUNTS — the ones asking
-    you, and the ones you sent."""
+def may_answer(r: dict, owner: str, who: dict | None = None) -> bool:
+    """Who may see and answer a MACHINE's request. On a machine without accounts, the
+    one person there. With accounts: the account the asker named (`ada@office.local`),
+    or — when nobody was named — an admin, whose machine it is. Shown to everybody, the
+    first person to tap Approve owned a link the asker meant for somebody else, and saw
+    an address they had no business seeing."""
+    who = who or {}
+    if not who.get("multi"):
+        return True
+    want = (r.get("to_account") or "").lower()
+    if want:
+        return want in {(owner or "").lower(), str(who.get("name") or "").lower()}
+    return bool(who.get("admin"))
+
+
+def requests(owner: str | None, who: dict | None = None) -> dict:
+    """What is waiting: requests from other MACHINES this person may answer (see
+    `may_answer`; the link lands in whoever answers), and requests between ACCOUNTS —
+    the ones asking you, and the ones you sent."""
     out = {"incoming": [], "outgoing": []}
     me = owner or ""
     for r in _load()["requests"]:
         if r.get("state") != "pending":
             continue
         if r["kind"] == "machine":
-            out["incoming"].append(_req_view(r))
+            if may_answer(r, me, who):
+                out["incoming"].append(_req_view(r))
         elif r.get("to") == me:
             out["incoming"].append(_req_view(r))
         elif r.get("from") == me:
@@ -479,20 +528,23 @@ def request_account(frm: str, to: str, names: dict | None = None) -> dict:
     return _req_view(r)
 
 
-def _take_request(d: dict, rid: str, owner: str) -> dict:
+def _take_request(d: dict, rid: str, owner: str, who: dict | None = None) -> dict:
     for r in d["requests"]:
         if r.get("id") == rid and r.get("state") == "pending":
             if r["kind"] == "account" and r.get("to") != (owner or ""):
                 break                      # only the person asked may answer
+            if r["kind"] == "machine" and not may_answer(r, owner, who):
+                break                      # nor a machine's, unless it is theirs to answer
             return r
     raise ValueError("that request has been answered, withdrawn or has expired")
 
 
-def approve(rid: str, owner: str, label: str = "", names: dict | None = None) -> dict:
+def approve(rid: str, owner: str, label: str = "", names: dict | None = None,
+            who: dict | None = None) -> dict:
     """Say yes. A machine request becomes a link owned by whoever approved it (their
     agents are the ones it reaches); an account request becomes both halves at once."""
     d = _load()
-    r = _take_request(d, rid, owner)
+    r = _take_request(d, rid, owner, who)
     if r["kind"] == "account":
         names = names or {}
         pair = secrets.token_hex(6)
@@ -517,9 +569,9 @@ def approve(rid: str, owner: str, label: str = "", names: dict | None = None) ->
     return {"mine": None, "theirs": None, "pending": _req_view(r)}
 
 
-def deny(rid: str, owner: str) -> dict:
+def deny(rid: str, owner: str, who: dict | None = None) -> dict:
     d = _load()
-    r = _take_request(d, rid, owner)
+    r = _take_request(d, rid, owner, who)
     if r["kind"] == "account":
         d["requests"].remove(r)
     else:
@@ -649,6 +701,8 @@ class Listener:
         self.port = 0
         self._guess: dict = {}
         self._asks: dict = {}
+        self._peer_calls: dict = {}
+        self._open = 0
         self.root = home()
 
     async def start(self, host: str = "0.0.0.0", port: int | None = None):
@@ -702,8 +756,9 @@ class Listener:
         ident = ensure_pki()
         r = {"id": secrets.token_hex(4), "kind": "machine", "token_hash": _hash(token),
              "name": _label(req.get("name")), "peer_ca": ca, "peer_host": host, "peer_host_fp": fp,
-             "addr": addr, "port": int(req.get("port") or 0), "sas": sas(ident["host_fp"], fp),
+             "addr": addr, "port": _port(req.get("port")), "sas": sas(ident["host_fp"], fp),
              "identity": clean_identity(req.get("identity")),
+             "to_account": re.sub(r"[^a-z0-9._-]", "", str(req.get("to") or "").lower())[:32],
              "state": "pending", "created": time.time(), "expires": time.time() + REQUEST_TTL}
         d["requests"].append(r)
         _save(d)
@@ -753,18 +808,43 @@ class Listener:
         except Exception:
             return {}
 
+    def _peer_busy(self, fp: str) -> bool:
+        """A linked peer's calls, all kinds, per minute. Asks are also held by the PDP's
+        own ceiling; this one covers what the PDP never sees (hello, roster, a pull)."""
+        now = time.time()
+        hits = [t for t in self._peer_calls.get(fp, []) if t > now - 60]
+        if len(hits) >= PEER_CALLS:
+            self._peer_calls[fp] = hits
+            return True
+        hits.append(now)
+        self._peer_calls[fp] = hits
+        return False
+
     async def _handle(self, reader, writer):
         _ROOT.set(self.root)             # this task is this machine, whatever started it
         addr = (writer.get_extra_info("peername") or ("?",))[0]
+        if self._open >= MAX_OPEN:
+            # at the ceiling: close at once rather than queue — a pile of half-open
+            # connections is exactly what a flood is trying to build
+            writer.close()
+            return
+        self._open += 1
         try:
-            req = await _read_line(reader)
-            out = await self._dispatch(req, _peer_fp(writer), addr)
+            req = await _read_line(reader, timeout=FIRST_LINE)
+            fp = _peer_fp(writer)
+            if fp and _by_fp(fp) and self._peer_busy(fp):
+                out = {"ok": False, "error": "too many requests from your team — slow down"}
+            else:
+                out = await self._dispatch(req, fp, addr)
         except Exception as e:           # a malformed request gets a sentence, never a trace
             out = {"ok": False, "error": f"bad request: {type(e).__name__}"}
         try:
             writer.write((json.dumps(out) + "\n").encode())
             await writer.drain()
+        except Exception:
+            pass
         finally:
+            self._open -= 1
             writer.close()
 
     async def _dispatch(self, req: dict, fp: str, addr: str) -> dict:
@@ -791,7 +871,7 @@ class Listener:
             lk = _add_link(d, kind="machine", owner=inv["owner"],
                            label=inv.get("label") or str(req.get("name") or "team"),
                            peer_ca=peer_ca, peer_host_fp=peer_fp, peer_name=_label(req.get("name")),
-                           url=f"{addr}:{int(req.get('port') or 0)}" if req.get("port") else "",
+                           url=f"{addr}:{_port(req.get('port'))}" if _port(req.get("port")) else "",
                            direction="they joined", peer_identity=clean_identity(req.get("identity")))
             _save(d)
             if self.on_event:
@@ -914,13 +994,19 @@ async def _once(host: str, port: int, payload: dict, pin: str = "") -> tuple[dic
 
 async def request_link(address: str, owner: str, cfg: dict | None = None, my_port: int = 0,
                        label: str = "", identity: dict | None = None) -> dict:
-    """Ask the machine at `address` to link. Returns the pending request — including the
-    six digits to compare — for `poll_link` / `wait_link` to follow."""
-    host, port = parse_address(address, cfg)
+    """Ask the machine at `address` to link. `ada@office.local` addresses the request to
+    Ada's account there (on a machine with accounts only she sees it; with no name, its
+    admins do). Returns the pending request — including the six digits to compare — for
+    `poll_link` / `wait_link` to follow."""
+    rest, to = str(address or "").strip(), ""
+    if "@" in rest and "://" not in rest:
+        to, rest = rest.split("@", 1)
+    host, port = parse_address(rest, cfg)
     ident = ensure_pki()
     got, fp, _ = await _once(host, port, {"op": "request", "name": machine_name(cfg),
                                           "ca": ident["ca"], "host": ident["host"],
-                                          "port": int(my_port or 0), "identity": identity or {}})
+                                          "port": int(my_port or 0), "identity": identity or {},
+                                          "to": to.strip().lower()})
     if not got.get("ok"):
         raise ValueError(got.get("error") or "the other machine refused")
     if fp == ident["host_fp"]:

@@ -218,8 +218,12 @@ Other rules the request follows:
 - **One card per machine.** Asking again replaces the card, **Withdraw** removes it, and a
   request nobody answers expires after ten minutes. Five requests per address per ten
   minutes is the ceiling, because each request puts a card on somebody's screen.
-- **Who owns it.** On a machine with accounts, anyone signed in may approve a machine's
-  request, and the link lands in *their* account, with *their* agents.
+- **Who it reaches.** On a machine without accounts, the one person there. On a machine
+  with accounts, you can address the request to a person: `ada@office.local`. Only Ada sees
+  that card and only Ada can approve it, and the link lands in her account with her agents.
+  A request addressed to nobody goes to the admins, since it is their machine. (Before this
+  rule, every account saw every card, and whoever tapped Approve first won a link meant for
+  somebody else.)
 
 On a phone the card stacks, and Approve and Deny are full-size buttons:
 
@@ -310,6 +314,9 @@ decided on **your** side:
 | Their agents asking yours | **refused**, never asked | ticking which of your agents they may ask (`bento link allow office analyst`) |
 | Your agents asking theirs | asks you, every time | **My agents may ask without asking me** (`bento link mine office on`) |
 
+- **Not even names.** Before a cell allows anything, a linked team sees none of your agents:
+  **Check** on their side shows only the agents you let them ask. A refusal reads the same
+  whether the agent they named exists or not, so they cannot list your team by guessing.
 - **Never asked, on the answering side.** A question arriving from a linked team has
   nobody at the other end of the call to wait for, so an empty cell is a no.
 - **Swarm never reaches across.** Swarm opens empty cells between *your own* agents. A
@@ -317,9 +324,10 @@ decided on **your** side:
 - **A link principal can do nothing else.** Their agents appear here as `team:<link>/<agent>`,
   which may be granted `agent.message` and nothing more. Delegating, convening a huddle,
   writing permissions and defining flows are refused outright.
-- **Every answer from another team is untrusted.** It was not written on this machine, so
-  the asker's turn is held to the same care as after reading a web page. The question is
-  untrusted where it is answered, too.
+- **Every answer from another team is untrusted, refusals included.** It was not written on
+  this machine, so the asker's turn is held to the same care as after reading a web page.
+  That covers a refusal's wording too, which they chose. The question is untrusted where it
+  is answered, too.
 - **The limits cross with the question.** The hops, the per-task budget, clarify-back and
   loop detection hold across the link. The chain records `researcher@home`, so office's
   analyst asking home's researcher back is a clarification, while a cycle is refused.
@@ -330,8 +338,54 @@ decided on **your** side:
   (`link.revoke`).
 
 Where the answer is shown, the asker's side sees it as an ordinary message, with a face and
-the provider it answered on. The answering side sees the question arrive in its own
-Chat and Crew stage, so a person at either end knows their agents are being consulted.
+the provider it answered on. On the answering side the question shows on the Crew stage
+(the agent being asked lights up) and as a toast saying who asked, so a person at either end
+knows their agents are being consulted. It is never written into a chat you have open: it
+belongs to no conversation here.
+
+### Security: what was checked, and the ceilings
+
+Linked teams and Team Chat were reviewed as an attacker would read them: a hostile linked
+machine, a stranger on the network, and another account on the same machine. Every finding
+below was fixed and has a test in `tests/test_team_security.py`, most against real TLS
+listeners.
+
+**Who they are.** Between machines: mutual TLS, pinned to one certificate that chains to one
+CA exchanged at linking; the six digits catch a machine in the middle at that first
+contact. Between accounts: the signed cookie, and only the person asked can approve.
+
+**What a link reveals.** Nothing until you allow it: not your agents' names, not their
+providers. A refusal is worded the same whether an agent exists or not.
+
+**What crosses as text.** Everything another team writes (a message, a name, a question, an
+answer, a refusal) is cleaned where it arrives. Control codes, terminal escape sequences and
+bidi overrides are removed, so it cannot retitle your terminal, write your clipboard, or make
+a line display as something it is not. Pages escape HTML, and the chat TUI prints markup as
+text (a `[link=…]` from someone else is not a link). Answers and refusals from another team
+are marked untrusted for your agents. Nothing a person writes in Team Chat reaches any agent.
+
+**Who a request reaches.** The person it names, or the admins (see above). A conversation
+belongs to one link: removing "office" and later linking a different machine called
+"office" does not show the old thread as if it were with the new one.
+
+**The ceilings:**
+
+| What | Ceiling | Why |
+|---|---|---|
+| Wrong pairing codes from one address | 10 per 10 min | guessing |
+| Link requests from one address | 5 per 10 min, one card per machine, 8 waiting at most | each one puts a card on a screen |
+| Calls from one linked machine, of every kind | 240 a minute | hello, roster and pulls never reach the permission gate's own ceiling |
+| Connections the listener handles at once | 64; a connection must say what it wants within 10 s | a pile of half-open connections is what a flood builds |
+| Link attempts one person makes (Ask, Join) | 10 per 10 min | asking makes this machine dial an address someone typed; unbounded, that is a way to probe a network |
+| Messages from one link | 30 a minute, 4,000 characters each | a runaway sender |
+| Unread messages from one link | 500, then the sender is told to wait | messages are yours and never pruned, so only a reader can make room |
+| A question from another team | 2,000 characters; an answer 6,000 | cost on the answering side, flooding on the asking side |
+
+**What is not claimed.** The listener is TLS on an open port, so a determined flood can still
+cost handshakes. The ceilings bound what each connection can do, not how many arrive at the
+network card. On a machine with accounts, an admin can read every account's files, as
+`docs/users.md` says. The name a linked machine gives its person is what that machine says;
+the link's own name, which you chose, is what is verified.
 
 ## Where it lives
 

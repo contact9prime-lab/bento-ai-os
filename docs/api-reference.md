@@ -151,13 +151,14 @@ stopped on a headless box could be seen in the logs and never released.
 | GET | `/api/wallpapers`, `/{id}`, POST `/{id}/set`, DELETE `/{id}` | wallpaper gallery |
 | GET | `/api/avatars` | every character (you, your agent, each specialist) with its recipe, version and description, plus the palette the editor offers; generates any that are new |
 | GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet; `recipe=<json>` in place of `key` paints a character from ANOTHER team (held to the closed set) |
+| POST | `/api/avatars/{key}/design` | `{"description"}` — design a character from words: the machine's model picks from the closed set (invented values are left out and listed in `dropped`); with no model answering, the palette's words are matched and `how` says `words`. Applied at once; `previous` is what Undo PUTs back |
 | PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `outfit`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
 | POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
 | GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
 | GET | `/api/team/limits` | the team's limits (hops, budget, clarify, huddle size and rounds) with their ranges; set them through `PUT /api/config` `{"team":{"limits":{…}}}` — 400 names the range |
 | GET | `/api/team/links` | this machine's name and certificate fingerprint, whether it accepts linked teams, each link with what it may ask, requests waiting (`incoming`, `outgoing`) and the accounts you could ask (`others`) ([linked teams](team.md#linked-teams-your-agents-and-somebody-elses)) |
 | PUT | `/api/team/listen` | `{"on": true}` opens the mTLS listener (admin only; port = server port + 1 or `team.link_port`) |
-| POST | `/api/team/links/request` | ask to link: `{"address": "office.local"}` (another machine; returns the six digits to compare, and the server waits for the answer in the background) or `{"account": "bob"}` (another account here) |
+| POST | `/api/team/links/request` | ask to link: `{"address": "office.local"}` or `"ada@office.local"` to address a person there (another machine; 10 attempts per person per 10 minutes; returns the six digits to compare, and the server waits for the answer in the background) or `{"account": "bob"}` (another account here) |
 | POST | `/api/team/links/requests/{id}/approve` · `/deny` | answer a request waiting here; a machine's lands in the approver's account |
 | DELETE | `/api/team/links/requests/{id}` | withdraw a request you sent |
 | POST | `/api/team/links/invite` | the headless alternative to a request: `{"kind": "machine"\|"account"}` — a one-time code, ten minutes; a machine invite also carries this host's certificate fingerprint |

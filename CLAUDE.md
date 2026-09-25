@@ -1200,6 +1200,13 @@ things keep it true:
   demotion). `@agent` and `@me` are generated with a per-install salt, and an untouched default
   is re-drawn once (`_is_untouched_default`): unsalted, the hash of `@agent` was the same person
   on every machine — two linked teams showed identical twins as their leads.
+- **Designing one with AI is the closed set again, not a second painter.** `avatars.design_prompt`
+  shows the model every palette value and asks for JSON; `read_design` validates each field ALONE
+  (an invented one is dropped and NAMED in `dropped`, never painted); `from_words` matches the
+  palette's own words when no model answers, and the route's `how`/`said` says which happened —
+  "designed by AI" when it was a word match would be a lie. One designer for the editor's box
+  (`POST /api/avatars/{key}/design`, applied at once, `previous` for Undo) and `bento avatar
+  design`; in chat the agent IS the designer, through `set_avatar`.
 - **Another team's face is a recipe, painted here.** It travels as `identity` on every link
   answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
   is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
@@ -1327,6 +1334,28 @@ Six things are load-bearing underneath:
   and toasts when `conversation_id` is empty; the websocket's "no id = the open one"
   rule had put a stranger's question inside whatever chat the person was reading.
 
+**The security review's rules** (each pinned by `tests/test_team_security.py`; full table of
+ceilings in `docs/team.md`):
+
+- **Text from elsewhere passes `teamlink.plain` where it ARRIVES** — messages, names, questions,
+  answers, refusals: no C0/C1 controls (terminal escapes write clipboards and retitle windows),
+  no bidi overrides. Once, on the way in, never at each place it is shown. The chat TUI also
+  escapes Rich markup (`tui_app._esc`) on every line carrying someone else's words.
+- **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
+  allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
+  an agent that exists and one that does not (it was an enumeration oracle).
+- **A linked team's refusal is theirs**: `_message_linked` prefixes `TAINTED_REPLY` on refusals
+  too. Their `error` wording reached the agent unmarked — an injection channel around the taint.
+- **A machine's request reaches only who it is for** (`teamlink.may_answer`): the account named
+  in `ada@office.local`, or the admins when nobody was named; the toast goes only to them. Shown
+  to everyone, the first tap won a link meant for somebody else.
+- **Conversations are keyed by the link's ID, never its label** — labels are reused after a remove.
+- **Ceilings on everything a remote or a person can repeat**: `PEER_CALLS` per linked machine,
+  `MAX_OPEN` connections and a `FIRST_LINE` deadline in the listener, `_team_dial_ok` on how often
+  a person can make this server dial out (request/join — otherwise a network probe), and
+  `teamchat.MAX_UNREAD` as back-pressure because messages are never pruned. A claimed port is
+  range-checked (`_port`); renaming yourself is audited.
+
 Ending a link revokes every cell that named it (`forget_link_grants`, both halves of an
 account link). Every step is an audit row: `link.request`, `link.approve`/`link.deny`,
 `link.invite`, `link.write` (linked), `grant.write`/`grant.revoke` (the cells),
@@ -1354,7 +1383,8 @@ Full story in `docs/team.md`. Four rules:
   IGNORE`); what cannot be handed over now rides the next exchange — the answer to their next
   message, `chat_pull`, the 30s sweep (which pulls only while a socket is connected, and makes
   no connection at all with no machine links). A refusal marks the row `delivered=-1` so the
-  sweep stops knocking.
+  sweep stops knocking. Rows key on the link's ID; 500 unread from one link and the sender is
+  told to wait (`MAX_UNREAD`) — the only honest ceiling on a table that is never pruned.
 - **A person is who the server knows.** On a machine with accounts the sender is the account's
   name; `team.my_name` exists only where there are no accounts (`PUT /api/team/me` refuses
   otherwise) — a name somebody can type is not an identity.

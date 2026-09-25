@@ -1232,5 +1232,8 @@ async function teamLinkRemove(label){if(!await osConfirm('Remove the link with '
 async function teamLinkCheck(label,btn){
   const el=document.getElementById('tlk-r-'+label);if(el)el.textContent='asking…';
   const r=await fetch('/api/team/links/'+encodeURIComponent(label)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
-  if(el)el.textContent=r.ok?'Reachable — their agents: '+((r.agents||[]).map(a=>a.name+' ('+a.provider+')').join(', ')||'none')+'. Your agents ask them as name@'+label+'.':(r.error||'not reachable');
+  // they show only the agents they let your team ask — a link grants nothing, not even names
+  if(el)el.textContent=!r.ok?(r.error||'not reachable')
+    :(r.agents||[]).length?'Reachable. Your agents may ask: '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+' — as name@'+label+'.'
+    :'Reachable. They have not let your team ask any of their agents yet — that is their choice, on their side.';
 }

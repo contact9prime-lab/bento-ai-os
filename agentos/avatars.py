@@ -589,6 +589,121 @@ def terminal(rec: dict, crop: str = "", frame: int = 0) -> list[str]:
     return lines
 
 
+# ---- designing one from a description -------------------------------------------------
+#
+# "A calm senior engineer with a grey bun and glasses, in a navy blazer" -> a recipe.
+# The model picks, the closed set decides: every field it returns goes through
+# validate() one at a time, so a wrong one is dropped and named rather than failing the
+# whole design, and nothing outside the palettes can ever be painted. With no model to
+# ask, `from_words` matches the palette's own names in what was typed — and the result
+# SAYS it matched words, because "designed by AI" when it was not would be a lie.
+
+DESIGN_FIELDS = ("skin", "hair", "style", "shirt", "outfit", "pants", "glasses", "blush")
+_SYNONYMS = {"purple": "violet", "blue": "sky", "yellow": "gold", "orange": "amber",
+             "red": "coral", "pink": "rose", "navy": "sky", "suit": "blazer", "jacket": "blazer",
+             "hood": "hoodie", "sweatshirt": "hoodie", "tee": "shirt", "t-shirt": "shirt",
+             "jeans": "denim", "gray": "grey", "silver": "grey", "white": "grey", "blond": "blonde", "ginger": "auburn",
+             "brunette": "dark brown", "spectacles": "glasses", "specs": "glasses",
+             "ponytail": "bun", "afro": "curly", "shaved": "bald", "rosy": "blush"}
+
+
+def design_prompt(description: str, who: str = "") -> tuple[str, str]:
+    """(system, prompt) for a model: the whole palette, and JSON only."""
+    pal = palette()
+    system = ("You design small pixel-art characters by choosing from FIXED options. Answer "
+              "ONLY with one compact JSON object and no prose. Use only the values listed; "
+              "leave out any field the description does not suggest.")
+    prompt = (f"Design {who or 'this character'} from this description:\n\"{description}\"\n\n"
+              f"Fields and their ONLY allowed values:\n"
+              f"- skin: {', '.join(x['name'] for x in pal['skin'])}\n"
+              f"- hair (colour): {', '.join(x['name'] for x in pal['hair'])}\n"
+              f"- style (hair): {', '.join(pal['style'])}\n"
+              f"- shirt (the colour they wear): {', '.join(x['name'] for x in pal['shirt'])}\n"
+              f"- outfit: {', '.join(pal['outfit'])} (blazer = the lead, the one in charge)\n"
+              f"- pants: {', '.join(x['name'] for x in pal['pants'])}\n"
+              f"- glasses: true or false\n- blush: true or false\n"
+              f'Also add "note": one short sentence on the look you chose.\n'
+              f'Example: {{"hair": "grey", "style": "bun", "glasses": true, "outfit": "blazer", '
+              f'"shirt": "violet", "note": "a calm lead with a grey bun"}}')
+    return system, prompt
+
+
+def read_design(raw: str) -> tuple[dict, list, str]:
+    """A model's answer -> (patch, dropped, note). Each field is validated ALONE, so one
+    invented value costs that field, not the design."""
+    import re as _re
+    m = _re.search(r"\{.*\}", raw or "", _re.S)
+    try:
+        d = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        d = {}
+    patch, dropped = {}, []
+    for k in DESIGN_FIELDS:
+        if k not in d or d[k] in (None, ""):
+            continue
+        v = d[k]
+        if isinstance(v, str):
+            v = _SYNONYMS.get(v.strip().lower(), v)
+        try:
+            patch.update(validate({k: v}))
+        except ValueError:
+            dropped.append(f"{k}={str(d[k])[:20]}")
+    note = str(d.get("note") or "")[:140] if isinstance(d, dict) else ""
+    return patch, dropped, note
+
+
+def from_words(description: str) -> dict:
+    """The palette's own names, found in what was typed. Crude on purpose: it only
+    ever picks something that was literally said (or a common synonym of it)."""
+    import re as _re
+    t = " " + _re.sub(r"[^a-z\- ]", " ", (description or "").lower()) + " "
+    for a, b in _SYNONYMS.items():
+        t = t.replace(f" {a} ", f" {b} ")
+    words = t.split()
+    patch: dict = {}
+
+    def near(i, nouns):          # "<value> hair" / "<value> skin" / "<value> shirt"
+        return i + 1 < len(words) and words[i + 1] in nouns
+
+    names2 = {n: n for n, _ in HAIRS}
+    for i, w in enumerate(words):
+        two = f"{w} {words[i + 1]}" if i + 1 < len(words) else ""
+        if two in names2 and i + 2 < len(words) and words[i + 2] in ("hair", "haired"):
+            patch["hair"] = two
+        elif w in names2 and near(i, ("hair", "haired", "bun", "bob", "curls")):
+            patch.setdefault("hair", w)
+        if w in {n for n, _ in SKINS} and near(i, ("skin", "skinned")):
+            patch["skin"] = w
+        if w in {n for n, _ in HUES} and near(i, ("shirt", "blazer", "hoodie", "top", "jumper")):
+            patch["shirt"] = w
+        if w in {n for n, _ in PANTS} and near(i, ("trousers", "pants", "slacks")):
+            patch["pants"] = w
+    if "denim" in words:
+        patch.setdefault("pants", "denim")
+    for st in STYLES:
+        if st in words:
+            patch.setdefault("style", st)
+    for o in OUTFITS:
+        if o in words:
+            patch["outfit"] = o
+    if "glasses" in words:
+        patch["glasses"] = not _re.search(r"\b(no|without)\s+glasses", t)
+    if "blush" in words:
+        patch["blush"] = True
+    if "shirt" not in patch:     # a bare colour word is the shirt ("in violet")
+        for n, _ in HUES:
+            if n in words:
+                patch["shirt"] = n
+                break
+    out = {}
+    for k, v in patch.items():
+        try:
+            out.update(validate({k: v}))
+        except ValueError:
+            pass
+    return out
+
+
 def palette() -> dict:
     """What the editor offers — the same closed sets validate() accepts."""
     return {"skin": [{"i": i, "name": n, "rgb": list(c)} for i, (n, c) in enumerate(SKINS)],

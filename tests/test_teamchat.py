@@ -111,12 +111,12 @@ def test_a_message_is_held_to_its_shape():
 
 def test_receiving_dedupes_counts_and_honours_the_mute(tmp_path):
     s = Store(tmp_path / "a.db")
-    lk = {"label": "office", "owner": ""}
+    lk = {"id": "l1", "label": "office", "owner": ""}
     m = {"id": "abcdef0123456789", "text": "hi", "sender": "ada"}
     got, why = teamchat.receive(s, "", lk, m)
     assert got and not why
     assert teamchat.receive(s, "", lk, m) == (None, ""), "a retried delivery is one row"
-    assert len(s.team_msgs("office")) == 1
+    assert len(s.team_msgs("l1")) == 1
     assert teamchat.receive(s, "", {**lk, "chat_muted": True}, {**m, "id": "b" * 16})[1].startswith("they are not taking")
     teamchat._meter.clear()
     for i in range(teamchat.RATE):
@@ -155,7 +155,7 @@ def office(tmp_path):
             msg, why = teamchat.receive(ostore, "", lk, req.get("message"))
             if why:
                 return {"ok": False, "error": why, "refused": True}
-        waiting = ostore.team_msg_pending(lk["label"])
+        waiting = ostore.team_msg_pending(lk["id"])
         ostore.team_msg_delivered([m["id"] for m in waiting])
         return {"ok": True, "messages": [{k: m[k] for k in ("id", "text", "ts", "sender", "look")} for m in waiting]}
 
@@ -194,8 +194,7 @@ def test_write_deliver_answer_and_read(office):
     cl, servermod, lk, ostore, muted, loop = office
     r = cl.post("/api/team/chat/office", json={"text": "Is the Q3 deck ready?"}).json()
     assert r["ok"] and r["delivered"], r
-    got = ostore.team_msgs("office")[0] if ostore.team_msgs("office") else ostore.team_msgs(
-        next(iter(ostore.team_threads())))[0]
+    got = ostore.team_msgs(next(iter(ostore.team_threads())))[0]
     assert got["text"] == "Is the Q3 deck ready?" and got["dir"] == "in"
     assert got["look"], "the sender's face travelled with it"
 
@@ -217,9 +216,9 @@ def test_the_other_side_can_close_the_door_and_is_not_knocked_on(office):
     muted["on"] = True
     r = cl.post("/api/team/chat/office", json={"text": "hello?"}).json()
     assert r["ok"] and not r["delivered"] and "not taking messages" in r["note"]
-    row = [m for m in servermod.state["store"].team_msgs("office") if m["text"] == "hello?"][0]
+    row = [m for m in servermod.state["store"].team_msgs(lk["id"]) if m["text"] == "hello?"][0]
     assert row["delivered"] == -1, "refused, and not retried every thirty seconds"
-    assert servermod.state["store"].team_msg_pending("office") == []
+    assert servermod.state["store"].team_msg_pending(lk["id"]) == []
 
 
 def test_muting_here_refuses_theirs_in_words_and_is_audited(office):
@@ -247,7 +246,7 @@ def test_a_machine_that_cannot_be_reached_keeps_the_message_for_the_next_exchang
     here = teamlink.find("", "office")
     got = asyncio.run(servermod._team_chat_in(here, {"op": "chat_pull"}))
     assert [m["text"] for m in got["messages"]] == ["for later"]
-    assert servermod.state["store"].team_msg_pending("office") == []
+    assert servermod.state["store"].team_msg_pending(lk["id"]) == []
 
 
 # ---- the terminal, between accounts --------------------------------------------------------------

@@ -241,7 +241,8 @@ def test_a_link_grants_nothing_until_a_cell_on_the_answering_side_allows_it(pair
     A, B, inv, loop = pair
     monkeypatch.setattr(providers, "chat", _scripted())
     res = _ask(B, loop)
-    assert "may not ask analyst here" in res["content"], "office refused: no cell for home/*"
+    assert "not allowed here" in res["content"], "office refused: no cell for home/*"
+    assert res["tainted"], "the refusal's wording is theirs, so it arrives marked untrusted too"
     assert not [r for r in A["store"].fabric_runs(limit=20) if r["kind"] == "linked"]
     fabric.set_link_access(A["store"], "home", theirs_may_ask=["analyst"])
     res = _ask(B, loop)
@@ -345,7 +346,7 @@ def test_an_account_asks_another_in_process_under_the_other_persons_gate(account
             return await m["cp"].message("researcher", "analyst@bob", "what is Pro churn?",
                                          ["researcher"], root="t1")
     out = asyncio.run(ask())
-    assert "may not ask analyst here" in out, "bob has not allowed ada's agents"
+    assert "not allowed here" in out, "bob has not allowed ada's agents"
     with usersmod.as_user(bob):
         fabric.set_link_access(usersmod.store_for(bob), "ada", theirs_may_ask=["analyst"])
     out = asyncio.run(ask())

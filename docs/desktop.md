@@ -265,6 +265,15 @@ glance instead of reading names.
   install draws its own agent and its own "you", so two linked Bentos never show the same person.
   The outfit is a choice like the rest (*Wears: shirt · blazer · hoodie*), and a reroll keeps it,
   so the lead is never demoted by accident.
+- **Design one with AI.** At the top of the character editor, describe them: *"a calm lead
+  with a grey bun and glasses, in a violet blazer"*. Then press **Design**. Your machine's
+  model picks the look, but only from the same options the editor offers. Anything it makes
+  up (a cape, green skin) is left out and named, so what you get is always something you could
+  have clicked. It applies at once, says who designed it, and **Undo** puts back the previous
+  look exactly. With no model set up, or none answering, it matches the words you used ("grey
+  bun", "glasses", "hoodie") and says so, rather than claiming AI did it. The same designer is
+  `bento avatar design NAME "…"` in a terminal. In chat, ask your agent ("make yourself look
+  like a calm librarian"): it is the designer there, choosing through its `set_avatar` tool.
 - **Change anybody.** Click a face in Settings → Appearance → Characters, or **Look** on a
   specialist's card. Every choice is saved the moment you click it and every surface changes as you
   pick; **Surprise me** is a new look in the same shirt colour. Or ask: *"give the researcher
@@ -280,6 +289,8 @@ glance instead of reading names.
 
 ![Your agent in the editor: the teal blazer, white shirt, tie and gold pin, and "Wears: blazer · the lead"](screenshots/characters-lead.png)
 
+![Design with AI: "a calm lead with a grey bun and glasses, in a violet blazer — but give her a cape" became the look on the left; the cape is named as not an option, and Undo is one tap away](screenshots/characters-design.png)
+
 ![Logs with the face of whoever acted on each line](screenshots/characters-logs.png)
 
 **They work together, on different providers.** Each specialist can answer on its own AI
@@ -294,6 +305,7 @@ bento avatar                       # everybody, side by side
 bento avatar show researcher
 bento avatar set researcher hair=pink style=bun glasses=yes
 bento avatar set agent outfit=blazer    # the lead's look (shirt | blazer | hoodie)
+bento avatar design agent "a calm lead with a grey bun and glasses, in a violet blazer"
 bento avatar reroll writer
 ```
 

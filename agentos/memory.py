@@ -71,7 +71,9 @@ CREATE TABLE IF NOT EXISTS avatars (
 -- is not a project.
 CREATE TABLE IF NOT EXISTS team_messages (
     id TEXT PRIMARY KEY,
-    link TEXT,                   -- the link's label HERE
+    link TEXT,                   -- the link's ID here (never its label: a label is reused
+                                 -- when a link is removed and another made, and the old
+                                 -- conversation must not appear to be with the new party)
     dir TEXT,                    -- 'in' | 'out'
     sender TEXT,                 -- the name the sender goes by
     look TEXT DEFAULT '{}',      -- the sender's character recipe (avatars.clean'd)
@@ -2437,6 +2439,10 @@ class Store:
                             (link,)).rowcount
         self.db.commit()
         return n
+
+    def team_unread(self, link: str) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM team_messages WHERE link=? AND dir='in' AND read=0",
+                               (link,)).fetchone()[0]
 
     def team_msg_pending(self, link: str) -> list[dict]:
         rows = self.db.execute("SELECT * FROM team_messages WHERE link=? AND dir='out' AND delivered=0 "

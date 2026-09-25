@@ -994,20 +994,27 @@ class ControlPlane(usersmod.Scoped):
             got = await teamlink.call(lk, req)
         else:
             got = await self._ask_account(lk, req)
+        # Everything below came from ANOTHER team — a refusal's wording included, which is
+        # text they chose and once reached this agent unmarked. All of it is cleaned
+        # (teamlink.plain: no control codes, no bidi tricks), cut, and marked untrusted.
         if not got.get("ok"):
-            return f"[refused] {target}: {got.get('error') or 'no answer'}"
+            return (f"{TAINTED_REPLY}[refused] {target}: "
+                    f"{teamlink.plain(got.get('error') or 'no answer', 300, newlines=False)}")
         if got.get("back"):
-            return (f"{TAINTED_REPLY}[{target} asks you back before answering] {got['back']}\n"
+            return (f"{TAINTED_REPLY}[{target} asks you back before answering] "
+                    f"{teamlink.plain(got['back'], 1000)}\n"
                     f"Ask {target} again, with the answer.")
-        text = str(got.get("text") or "(no answer)").strip()
+        text = teamlink.plain(got.get("text") or "(no answer)", 6000)
+        model = teamlink.plain(got.get("model", ""), 80, newlines=False)
+        provider = teamlink.plain(got.get("provider", ""), 40, newlines=False)
         if say:
             try:
                 await say({"phase": "reply", "from": target, "to": sender,
-                           "text": " ".join(text.split())[:1200], "model": got.get("model", ""),
-                           "provider": got.get("provider", "")})
+                           "text": " ".join(text.split())[:1200], "model": model,
+                           "provider": provider})
             except Exception:
                 pass
-        return TAINTED_REPLY + f"[{target} · {got.get('model', '')}]\n" + text[:3500]
+        return TAINTED_REPLY + f"[{target} · {model}]\n" + text[:3500]
 
     async def _ask_account(self, lk: dict, req: dict) -> dict:
         """The same question to another account on THIS machine: no network — the
@@ -1028,26 +1035,34 @@ class ControlPlane(usersmod.Scoped):
         caller entered that account). THEIR agent is principal team:<link>/<agent>;
         this machine's matrix decides — refused unless a cell here allows it. The
         answering agent runs with the question marked untrusted: it came from outside."""
+        from . import teamlink
         if req.get("op") == "roster":
+            # ONLY the agents this link may ask. Listing everybody — names and the
+            # provider each runs on — was the one thing a link granted without a cell.
+            allowed = set(link_access(self.store, lk["label"])["theirs_may_ask"])
             return {"ok": True, "agents": [
                 {"name": sa["name"], "provider": agent_brain(self.cfg, sa)["provider_name"]}
-                for sa in self.store.list_subagents()]}
-        to = str(req.get("to") or "").strip()
+                for sa in self.store.list_subagents() if sa["name"] in allowed]}
+        to = re.sub(r"[^A-Za-z0-9_.-]", "", str(req.get("to") or ""))[:64]
         frm = re.sub(r"[^A-Za-z0-9_-]", "", str(req.get("from") or ""))[:40] or "agent"
-        d = self.store.get_subagent(to) if to else None
-        if not d:
-            return {"ok": False, "error": f"no agent called '{to}' on this team"}
         pdp = getattr(self.toolbox, "pdp", None)
         if pdp is None:
             return {"ok": False, "error": "this team has no permission gate wired"}
+        # The gate BEFORE the lookup: "no agent called X" for a name that does not exist
+        # and "not allowed" for one that does was a way to list this team's agents
+        # without ever being allowed to ask one.
         from .policy import Principal
         dec = pdp.decide(Principal("team", f"{lk['label']}/{frm}"), "agent.message",
-                         f"agent:subagent/{d['name']}", {"surface": "team", "risk": "safe"})
+                         f"agent:subagent/{to}", {"surface": "team", "risk": "safe"})
         if dec.effect != "allow":
-            return {"ok": False, "error": dec.reason or "not allowed here"}
+            return {"ok": False, "error": "not allowed here — the other side chooses which of "
+                                          "its agents your team may ask"}
+        d = self.store.get_subagent(to) if to else None
+        if not d:
+            return {"ok": False, "error": f"no agent called '{to}' on this team"}
         # the chain crossed a link: their names carry the link, so a loop back is still seen
-        chain = [f"{c}@{lk['label']}" if "@" not in str(c) else str(c)
-                 for c in (req.get("chain") or [frm])][:10]
+        chain = [re.sub(r"[^A-Za-z0-9_@.-]", "", str(c))[:80] for c in (req.get("chain") or [frm])][:10]
+        chain = [f"{c}@{lk['label']}" if "@" not in c else c for c in chain if c]
         lim = team_limits(self.cfg)
         key = f"link:{lk.get('id')}:{req.get('root') or ''}"
         if d["name"].lower() in (c.lower() for c in chain) or len(chain) > lim["hops"]:
@@ -1056,7 +1071,7 @@ class ControlPlane(usersmod.Scoped):
             return {"ok": False, "error": f"this team's budget of {lim['budget']} questions "
                                           f"for that task is used"}
         self._sent[key] = self._sent.get(key, 0) + 1
-        question = " ".join(str(req.get("question") or "").split())[:2000]
+        question = teamlink.plain(req.get("question"), 2000, newlines=False)
         if say:
             try:
                 await say({"phase": "ask", "from": f"{frm}@{lk['label']}", "to": d["name"],

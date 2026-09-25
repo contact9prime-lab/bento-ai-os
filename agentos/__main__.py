@@ -3186,7 +3186,8 @@ def _avatar_cli(args):
                 print("  " + "  ".join(f[ln] if f[ln].strip() else " " * 14 for f in faces))
             print("  " + "  ".join(p["label"][:14].center(14) for p in row))
             print()
-        print("  bento avatar show NAME · set NAME hair=pink style=bun glasses=yes · reroll NAME")
+        print("  bento avatar show NAME · set NAME hair=pink style=bun glasses=yes · reroll NAME\n"
+              "  bento avatar design NAME \"a calm lead with a grey bun, in a violet blazer\"")
         return
 
     key = resolve(args.name)
@@ -3198,6 +3199,36 @@ def _avatar_cli(args):
     try:
         if args.action == "reroll":
             av.reroll(store, cfg, key)
+        elif args.action == "design":
+            # The same designer as the editor's box: the machine's model picks from the
+            # closed set; with none answering, the palette's words in the description.
+            from . import providers
+            from .teamlink import plain
+            desc = plain(" ".join(args.changes), 300, newlines=False)
+            if len(desc) < 3:
+                print('  bento avatar design NAME "a calm lead with a grey bun and glasses, in a violet blazer"')
+                sys.exit(2)
+            patch, dropped, note, how, model = {}, [], "", "words", cfg.get("default_model", "")
+            if model:
+                system, prompt = av.design_prompt(desc, label)
+                try:
+                    import asyncio as _aio
+                    raw = _aio.run(_aio.wait_for(providers.complete(cfg, model, prompt, system=system), 25))
+                    patch, dropped, note = av.read_design(raw)
+                    how = "model" if patch else how
+                except Exception:
+                    pass
+            if not patch:
+                patch = av.from_words(desc)
+            if not patch:
+                print("  that did not name anything a character can have — try a hair colour or style,\n"
+                      "  glasses, a colour to wear, or blazer / hoodie")
+                sys.exit(2)
+            av.update(store, cfg, key, patch)
+            print(f"  designed by {model}" + (f" — {note}" if note else "") if how == "model" else
+                  "  no model answered, so this matched the words you used")
+            if dropped:
+                print(f"  left out (not an option): {', '.join(dropped)}")
         elif args.action == "set":
             patch = {}
             for kv in args.changes:
@@ -3513,8 +3544,8 @@ def _link_cli(args):
                     teamchat.receive(store, owner, lk, m)
         if act == "chat":
             _aio.run(pull())
-            msgs = store.team_msgs(lk["label"])
-            store.team_msg_read(lk["label"])
+            msgs = store.team_msgs(lk["id"])
+            store.team_msg_read(lk["id"])
             print(f"  {lk['label']}" + (f" — {lk.get('peer_identity', {}).get('agent_name')}'s team"
                                         if (lk.get('peer_identity') or {}).get('agent_name') else ""))
             show(msgs) if msgs else print("  no messages yet — bento link say " + lk["label"] + " 'hello'")
@@ -3525,7 +3556,7 @@ def _link_cli(args):
         except ValueError as e:
             print(f"  {e}")
             sys.exit(2)
-        store.team_msg_add(lk["label"], m, "out")
+        store.team_msg_add(lk["id"], m, "out")
         wire = {k: m[k] for k in ("id", "text", "ts", "sender", "look")}
         if lk.get("kind") == "account":
             peer = lk.get("peer") or ""
@@ -3551,7 +3582,9 @@ def _link_cli(args):
             print(f"  kept — {got.get('error')}; the server sends it again when it can")
         return
     if act == "requests":
-        rs = teamlink.requests(owner)
+        who = {"multi": usersmod.enabled(), "admin": usersmod.is_admin(owner or ""),
+               "name": (usersmod.get(owner) or {}).get("name", "") if owner else ""}
+        rs = teamlink.requests(owner, who)
         if not rs["incoming"] and not rs["outgoing"]:
             print("  no link requests waiting")
             return
@@ -3566,14 +3599,16 @@ def _link_cli(args):
         return
     if act in ("approve", "deny"):
         names = {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+        who = {"multi": usersmod.enabled(), "admin": usersmod.is_admin(owner or ""),
+               "name": (usersmod.get(owner) or {}).get("name", "") if owner else ""}
         try:
             if act == "deny":
-                r = teamlink.deny(a1 or "", owner)
+                r = teamlink.deny(a1 or "", owner, who)
                 fabricmod.audit_team(store, "link.deny", f"link:{r.get('name')}",
                                      f"refused a link request from {r.get('name')} (bento link)")
                 print(f"  refused {r.get('name')}")
                 return
-            got = teamlink.approve(a1 or "", owner, label=a2 or "", names=names)
+            got = teamlink.approve(a1 or "", owner, label=a2 or "", names=names, who=who)
         except ValueError as e:
             print(f"  {e}")
             sys.exit(2)
@@ -5261,9 +5296,10 @@ def main():
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
     p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
-    p_av.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "reroll"])
+    p_av.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "reroll", "design"])
     p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
-    p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes")
+    p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes · "
+                                                   "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",

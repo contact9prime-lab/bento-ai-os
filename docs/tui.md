@@ -110,6 +110,7 @@ bento avatar                                   # everybody's face, side by side
 bento avatar show writer                       # one, full height
 bento avatar set me hair=blue style=bob        # the same choices as the editor
 bento avatar reroll researcher                 # a new look, same shirt colour
+bento avatar design agent "a calm lead with a grey bun, in a violet blazer"   # the machine's model designs it
 ```
 
 It reads and writes the rows directly, so it works with the server down. Without
@@ -132,6 +133,7 @@ Linked teams — another Bento, or another account here — have their own verb:
 ```bash
 bento link                                     # this machine's certificate and every link
 bento link request office.local                # ask; shows six digits and waits for the answer
+bento link request ada@office.local            # …addressed to Ada's account there
 bento link requests                            # requests waiting here, with their digits
 bento link approve 7a89ed8e                    # …check the digits match, then say yes (or deny)
 bento link request account bob                 # another account here: Bob approves as himself

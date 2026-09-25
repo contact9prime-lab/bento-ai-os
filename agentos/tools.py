@@ -4508,7 +4508,9 @@ DESKTOP_TOOL_SCHEMAS = [
                        "`who` to hear how they look now and every option. Changes pick from a fixed "
                        "set: skin, hair colour, hair style, shirt colour, outfit (shirt, blazer — the lead's, "
                        "yours by default — or hoodie), pants, glasses, blush — or reroll for a new look in "
-                       "the same colour and outfit.",
+                       "the same colour and outfit. Asked to design someone from a description "
+                       "(\"make yourself look like a calm librarian\"), YOU are the designer: pick "
+                       "the fields that fit and set them in one call.",
         "parameters": {"type": "object", "properties": {
             "who": {"type": "string", "description": "'me' for the user, 'yourself' for you, or a specialist's name."},
             "skin": {"type": "string"}, "hair": {"type": "string"}, "style": {"type": "string"},

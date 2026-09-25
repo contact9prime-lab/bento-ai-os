@@ -140,6 +140,10 @@ async function avatarEdit(key){
       <div class="dlg-m">${a.key==='@me'?'You, as the crew sees you — beside your messages.'
         :a.key==='@agent'?'Your agent — in the middle of the stage, and beside every reply.'
         :'This specialist, everywhere it appears: the stage, chat, logs and Missions.'}</div>
+      <form class="ave-design"><input class="ave-desc" maxlength="300" autocomplete="off"
+          placeholder="Describe them — e.g. a calm lead with a grey bun and glasses, in a violet blazer"
+          aria-label="Describe the character"><button class="pact" type="submit">Design</button></form>
+      <div class="ave-said mut" aria-live="polite"></div>
       <div class="ave-body"><div class="ave-stage"></div><div class="ave-rows"></div></div>
       <div class="ave-about mut"></div>
       <div class="dlg-b"><button class="ave-reroll" title="A new look, keeping the shirt colour">Surprise me</button><button class="dlg-ok">Done</button></div></div>`;
@@ -149,6 +153,29 @@ async function avatarEdit(key){
   scr.querySelector('.dlg-ok').onclick=close;
   scr.onclick=e=>{if(e.target===scr)close()};
   scr.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  /* Design with AI: the machine's model picks from the same closed set the swatches
+     offer, so what comes back is always something this editor could have clicked. It
+     applies at once like every other choice here, and Undo puts the look back. */
+  scr.querySelector('.ave-design').onsubmit=async e=>{
+    e.preventDefault();
+    const inp=scr.querySelector('.ave-desc'),said=scr.querySelector('.ave-said'),btn=scr.querySelector('.ave-design button');
+    const description=inp.value.trim();if(!description){inp.focus();return}
+    btn.disabled=true;said.textContent='Designing…';
+    const r=await fetch('/api/avatars/'+encodeURIComponent(key)+'/design',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({description})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    btn.disabled=false;
+    if(r.error){said.textContent=r.error;return}
+    await avatarsChanged();draw();
+    const by=r.how==='model'?'Designed by '+(r.model||'your model')+(r.note?' — '+r.note:'.'):r.said;
+    said.innerHTML=esc(by)+(r.dropped&&r.dropped.length?' <span>Left out (not an option): '+esc(r.dropped.join(', '))+'.</span>':'')
+      +' <button class="endbtn ave-undo" type="button">Undo</button>';
+    said.querySelector('.ave-undo').onclick=async()=>{
+      const p=r.previous||{};
+      await fetch('/api/avatars/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({skin:p.skin,hair:p.hair,style:p.style,pants:p.pants,glasses:!!p.glasses,blush:!!p.blush,hue:p.hue,outfit:p.outfit})});
+      await avatarsChanged();draw();said.textContent='Put back as it was.';
+    };
+  };
   scr.querySelector('.ave-reroll').onclick=async()=>{
     await fetch('/api/avatars/'+encodeURIComponent(key)+'/reroll',{method:'POST'});
     await avatarsChanged();draw();

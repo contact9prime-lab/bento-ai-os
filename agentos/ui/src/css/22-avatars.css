@@ -180,3 +180,9 @@ body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
 body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);min-width:var(--tap)}
 .tlk-req>.av{width:44px;height:44px;flex:none}
 .tlk-head .av{width:26px;height:26px}
+
+/* Design with AI, at the top of the character editor */
+.ave-design{display:flex;gap:8px;margin:4px 0 2px}
+.ave-design .ave-desc{flex:1;min-width:0}
+.ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}

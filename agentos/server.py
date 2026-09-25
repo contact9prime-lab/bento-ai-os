@@ -458,6 +458,33 @@ async def startup():
         store.log("system", "permissions framework: legacy grants seeded for existing apps")
 
 
+def _team_who(owner: str) -> dict:
+    """The person looking, as teamlink.may_answer needs them: whether this machine has
+    accounts, whether they are an admin, and their account's name."""
+    u = usersmod.get(owner) if owner else None
+    return {"multi": usersmod.enabled(), "admin": usersmod.is_admin(owner or ""),
+            "name": (u or {}).get("name", "")}
+
+
+_TEAM_DIALS: dict = {}
+TEAM_DIALS = 10            # new-link attempts (Ask, Join) one person may make per 10 minutes
+
+
+def _team_dial_ok(owner: str) -> bool:
+    """Asking to link makes THIS machine open a TLS connection to an address a person
+    typed. That is the feature — and, unbounded, a way to have the server probe a
+    network on somebody's behalf (the error says refused, timed out, or not TLS). Ten
+    attempts in ten minutes is plenty for a person and useless for a scan."""
+    now = time.time()
+    hits = [t for t in _TEAM_DIALS.get(owner or "", []) if t > now - 600]
+    if len(hits) >= TEAM_DIALS:
+        _TEAM_DIALS[owner or ""] = hits
+        return False
+    hits.append(now)
+    _TEAM_DIALS[owner or ""] = hits
+    return True
+
+
 def _team_identity(owner: str) -> dict:
     """Who answers for `owner`'s team (teamchat.identity), read in their own home."""
     from . import teamchat
@@ -479,7 +506,7 @@ async def _team_chat_in(lk: dict, req: dict) -> dict:
                 return {"ok": False, "error": why, "refused": True}
             if msg:
                 await state["broadcast_user"]({"type": "team_message", **msg}, owner)
-        waiting = store.team_msg_pending(lk["label"])
+        waiting = store.team_msg_pending(lk["id"])
         store.team_msg_delivered([m["id"] for m in waiting])
         if waiting:
             await state["broadcast_user"]({"type": "team_message_delivered", "link": lk["label"],
@@ -507,7 +534,7 @@ async def _team_chat_push(lk: dict) -> dict:
     from . import teamlink
     owner = lk.get("owner") or ""
     with usersmod.as_user(owner):
-        waiting = state["store"].team_msg_pending(lk["label"])
+        waiting = state["store"].team_msg_pending(lk["id"])
     if not lk.get("url"):
         return {"ok": False, "queued": len(waiting)}
     got = {}
@@ -546,7 +573,7 @@ async def _team_chat_sweep():
                 if lk.get("kind") != "machine" or not lk.get("url"):
                     continue
                 with usersmod.as_user(lk.get("owner") or ""):
-                    pending = state["store"].team_msg_pending(lk["label"])
+                    pending = state["store"].team_msg_pending(lk["id"])
                 if pending or state.get("clients"):
                     await _team_chat_push(lk)
 
@@ -572,8 +599,16 @@ async def _team_on_event(kind: str, lk: dict):
             fabricmod.audit_team(state["store"], "link.request", f"link:{lk.get('name')}",
                                  f"{lk.get('name')} at {lk.get('addr')} asked to link "
                                  f"(code {lk.get('sas')}); certificate {str(lk.get('peer_host_fp'))[:16]}…")
-        await state["broadcast"]({"type": "team_link_request", "kind": "machine",
-                                  "id": lk.get("id"), "name": lk.get("name"), "sas": lk.get("sas")})
+        ev = {"type": "team_link_request", "kind": "machine", "id": lk.get("id"),
+              "name": lk.get("name"), "sas": lk.get("sas")}
+        if not usersmod.enabled():
+            await state["broadcast"](ev)
+        else:
+            # only the account it was addressed to, or — addressed to nobody — the admins
+            from . import teamlink
+            for u in usersmod.list_users():
+                if teamlink.may_answer(lk, u["id"], _team_who(u["id"])):
+                    await state["broadcast_user"](ev, u["id"])
         return
     owner = lk.get("owner") or ""
     with usersmod.as_user(owner):
@@ -8303,6 +8338,47 @@ async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: i
                     headers={"Cache-Control": "private, max-age=86400"})
 
 
+@app.post("/api/avatars/{key}/design")
+async def api_avatar_design(key: str, body: dict):
+    """Design a character from a description. The machine's model picks from the closed
+    set (avatars.design_prompt / read_design); with no model answering, the palette's own
+    words in the description are matched instead — and the answer says which happened.
+    Applied at once, like every other choice in the editor; `previous` is what Undo puts
+    back. The description is the person's own and goes nowhere but their model."""
+    from . import teamlink
+    store, cfg = state["store"], state["cfg"]
+    if not avatarsmod.is_known(store, cfg, key):
+        return JSONResponse({"error": f"nobody called '{key}' has a character here"}, status_code=404)
+    desc = teamlink.plain((body or {}).get("description"), 300, newlines=False)
+    if len(desc) < 3:
+        return JSONResponse({"error": "describe them first — a few words is enough"}, status_code=400)
+    who = (cfg.get("agent_name") or "your agent") if key == avatarsmod.AGENT else (
+        "the person using this computer" if key == avatarsmod.ME else f"a specialist called {key}")
+    patch, dropped, note, how, model = {}, [], "", "words", cfg.get("default_model", "")
+    if model:
+        system, prompt = avatarsmod.design_prompt(desc, who)
+        with contextlib.suppress(Exception):
+            raw = await asyncio.wait_for(providers.complete(cfg, model, prompt, system=system), 25)
+            patch, dropped, note = avatarsmod.read_design(raw)
+            if patch:
+                how = "model"
+    if not patch:
+        patch = avatarsmod.from_words(desc)
+    if not patch:
+        return JSONResponse({"error": "that did not name anything a character can have — try a hair "
+                                      "colour or style, glasses, a colour to wear, or blazer / hoodie"},
+                            status_code=400)
+    avatarsmod.ensure(store, cfg)
+    previous = avatarsmod.recipe_for(store, key)
+    rec = avatarsmod.update(store, cfg, key, patch)
+    await state["broadcast_user"]({"type": "avatars", "key": key}, usersmod.current() or "")
+    return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec), "previous": previous,
+            "how": how, "model": model if how == "model" else "", "note": note, "dropped": dropped,
+            "said": ("" if how == "model" else
+                     "No model answered, so this matched the words you used." if model else
+                     "No model is set up, so this matched the words you used.")}
+
+
 @app.put("/api/avatars/{key}")
 async def api_avatar_set(key: str, body: dict):
     """Change part of a character. The same closed set the agent's tool and the CLI
@@ -8354,7 +8430,7 @@ async def api_team_links():
     for lk in teamlink.links(owner):
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
                     "peer_identity": _team_peer_identity(lk)})
-    reqs = teamlink.requests(owner)
+    reqs = teamlink.requests(owner, _team_who(owner))
     for r in reqs["incoming"]:
         if r.get("kind") == "account":
             r["identity"] = _team_identity(r.get("from") or "")
@@ -8418,6 +8494,9 @@ async def api_team_link_join(body: dict):
     from . import teamlink
     owner = usersmod.current() or ""
     lst = state.get("team_listener")
+    if not _team_dial_ok(owner):
+        return JSONResponse({"error": "that is ten link attempts in ten minutes — wait a little"},
+                            status_code=429)
     try:
         lk = await teamlink.join(str((body or {}).get("invite") or ""), owner, identity=_team_identity(owner),
                                  label=str((body or {}).get("label") or ""), cfg=state["cfg"],
@@ -8499,6 +8578,9 @@ async def api_team_link_request(body: dict):
                                        "id": r["id"], "name": r["name"]}, to)
         return {"ok": True, "request": r}
     lst = state.get("team_listener")
+    if not _team_dial_ok(owner):
+        return JSONResponse({"error": "that is ten link attempts in ten minutes — wait a little"},
+                            status_code=429)
     try:
         p = await teamlink.request_link(str(b.get("address") or ""), owner, cfg=state["cfg"],
                                         identity=_team_identity(owner),
@@ -8524,7 +8606,7 @@ async def api_team_link_answer(rid: str, verb: str, body: dict | None = None):
         return JSONResponse({"error": "approve or deny"}, status_code=404)
     try:
         if verb == "deny":
-            r = teamlink.deny(rid, owner)
+            r = teamlink.deny(rid, owner, _team_who(owner))
             fabricmod.audit_team(state["store"], "link.deny", f"link:{r.get('name')}",
                                  f"refused a link request from {r.get('name')}")
             if r["kind"] == "account":
@@ -8532,7 +8614,8 @@ async def api_team_link_answer(rid: str, verb: str, body: dict | None = None):
                                                "name": r.get("to_name")}, r.get("from") or "")
             await state["broadcast"]({"type": "team_links"})
             return {"ok": True, "state": "denied"}
-        got = teamlink.approve(rid, owner, label=str((body or {}).get("label") or ""), names=_team_names())
+        got = teamlink.approve(rid, owner, label=str((body or {}).get("label") or ""), names=_team_names(),
+                               who=_team_who(owner))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     if got.get("pending"):
@@ -8593,8 +8676,8 @@ async def api_team_chat_thread(label: str, pull: int = 1):
         with contextlib.suppress(Exception):
             await asyncio.wait_for(_team_chat_push(lk), 6)
     store = state["store"]
-    msgs = store.team_msgs(lk["label"])
-    if store.team_msg_read(lk["label"]):
+    msgs = store.team_msgs(lk["id"])
+    if store.team_msg_read(lk["id"]):
         await state["broadcast_user"]({"type": "team_message_read", "link": lk["label"]}, owner)
     return {"link": {k: v for k, v in lk.items() if k != "peer_ca"}, "identity": _team_peer_identity(lk),
             "me": _team_identity(owner), "messages": msgs,
@@ -8614,7 +8697,7 @@ async def api_team_chat_send(label: str, body: dict):
         m = teamchat.new_message((body or {}).get("text"), _team_identity(owner))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    state["store"].team_msg_add(lk["label"], m, "out")
+    state["store"].team_msg_add(lk["id"], m, "out")
     await state["broadcast_user"]({"type": "team_message", **m, "dir": "out", "link": lk["label"]}, owner)
     if lk.get("kind") == "account":
         peer = lk.get("peer") or ""
@@ -8666,10 +8749,12 @@ async def api_team_me(body: dict):
     if usersmod.enabled():
         return JSONResponse({"error": "on a machine with accounts, messages carry your account's "
                                       "name — change it in Users"}, status_code=400)
-    name = str((body or {}).get("name") or "").strip()[:40]
+    from . import teamlink
+    name = teamlink.plain((body or {}).get("name"), 40, newlines=False)
     state["cfg"].setdefault("team", {})["my_name"] = name
     cfgmod.save_config(state["cfg"])
-    from . import teamlink
+    fabricmod.audit_team(state["store"], "team.write", "team:my_name",
+                         f"the name messages carry: {name or '(the machine name)'}")
     return {"ok": True, "name": name or teamlink.machine_name(state["cfg"])}
 
 
