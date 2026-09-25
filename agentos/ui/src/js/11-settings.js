@@ -1169,6 +1169,7 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      ${tlMissionsHTML(l)}
       ${tlStandHTML(l,mine,d)}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
@@ -1228,6 +1229,29 @@ function tlStandHTML(l,mine,d){
       <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
       :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
   </details>`;
+}
+/* Their missions that use YOUR agents — recorded here when they save one (or on its first
+   question), so the side that does the work can see what the other side decided and stop
+   it. Stop is a deny row the gate enforces (fabric.stop_mission); the record stays. The
+   name is their machine's claim: to stop a MACHINE, untick the agent above. */
+function tlMissionsHTML(l){
+  const ms=l.missions||[], lab=esc(l.label);
+  if(!ms.length)return '';
+  const when=t=>t?new Date(t*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'never';
+  return `<div class="tlk-miss"><div class="tlk-miss-h">Their missions that use your agents</div>
+    ${ms.map(m=>`<div class="tlk-miss-row${m.stopped?' stopped':''}">
+      <div class="tlk-miss-main"><b>${esc(m.mission)}</b>
+        <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
+        ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
+        <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' — '+esc(m.text):''}</div></div>
+      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+  </div>`;
+}
+async function tlMissionStop(label,mission,stop){
+  if(stop&&!await osConfirm('Stop '+label+'’s mission “'+mission+'”?',
+     'Its questions to your agents are refused here from now on, and they are told so. The record stays; Allow again undoes it.',{confirmText:'Stop'}))return;
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/missions/'+encodeURIComponent(mission)+'/'+(stop?'stop':'allow'),'POST',{});
+  if(r){toast(stop?'stopped — '+label+'’s mission is refused here':'allowed again');paintTeamLinks()}
 }
 async function tlStandAdd(label,btn){
   const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';

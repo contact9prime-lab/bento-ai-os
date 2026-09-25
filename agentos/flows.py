@@ -215,6 +215,53 @@ def _weekday(v) -> int:
     raise ValueError(f"'{v}' is not a day of the week — write it as monday … sunday")
 
 
+def schedule_words(store, name: str) -> str:
+    """How a flow starts, in the words a person on ANOTHER team reads in their record of
+    it ("every Monday at 09:00", "when a message matches"). Only what is armed here."""
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    out = []
+    for t in store.flow_triggers(flow=name, enabled_only=True):
+        c = t.get("config") or {}
+        if isinstance(c, str):
+            try:
+                c = json.loads(c)
+            except ValueError:
+                c = {}
+        k = t.get("kind")
+        if k == "cron":
+            ty = c.get("type")
+            if ty == "daily":
+                out.append(f"every day at {c.get('at', '')}")
+            elif ty == "weekly":
+                d = c.get("day")
+                d = days[d] if isinstance(d, int) and 0 <= d < 7 else str(d or "")
+                out.append(f"every {d} at {c.get('at', '')}")
+            elif ty == "interval":
+                out.append(f"every {c.get('minutes')} minutes")
+            else:
+                out.append("once")
+        elif k == "message":
+            out.append("when a message matches")
+        elif k == "webhook":
+            out.append("when its web address is called")
+        elif k == "os_event":
+            out.append(f"on {c.get('event', 'an OS event')}")
+        elif k == "flow_done":
+            out.append("after another mission")
+    return ", ".join(dict.fromkeys(out)) or "when started by hand"
+
+
+def linked_members(flow: dict) -> dict:
+    """{link label: [their agents]} — the roster members that live on linked teams."""
+    out: dict = {}
+    for r in flow.get("roster") or []:
+        sub = r.get("subagent") if isinstance(r, dict) else str(r)
+        if sub and "@" in sub:
+            agent, _, label = sub.partition("@")
+            out.setdefault(label, []).append(agent)
+    return out
+
+
 def _validate_trigger(t: dict) -> dict:
     kind = (t.get("kind") or "").strip()
     if kind not in TRIGGER_KINDS:

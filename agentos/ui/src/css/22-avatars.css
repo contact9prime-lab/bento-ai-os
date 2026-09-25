@@ -148,6 +148,14 @@ body.dev-touch .tlk-more summary{display:flex;align-items:center}
 body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
 .tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
 body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+/* their missions that use your agents (tlMissionsHTML) */
+.tlk-miss{display:flex;flex-direction:column;gap:6px}
+.tlk-miss-h{font-size:var(--fs-sm);color:var(--txt2,var(--txt))}
+.tlk-miss-row{display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:var(--fs-sm)}
+.tlk-miss-row.stopped{border-style:dashed;opacity:.8}
+.tlk-miss-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tlk-miss-main .tlk-why{flex-basis:100%;margin:0;font-size:var(--fs-xs);overflow-wrap:anywhere}
+body.dev-touch .tlk-miss-row button{min-height:var(--tap)}
 /* standing permissions — the same disclosure shape as "Use an invite code instead" */
 .tlk-stand summary{cursor:pointer;font-size:var(--fs-sm);color:var(--txt2,var(--txt));padding:4px 0;list-style:none}
 .tlk-stand summary::-webkit-details-marker{display:none}

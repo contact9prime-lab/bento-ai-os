@@ -21,6 +21,7 @@ setup") via the existing turn/error logs.
 """
 
 import asyncio
+import json
 import re
 import time
 
@@ -345,13 +346,145 @@ def add_standing(store, label: str, agent: str, action: str, scope: str,
     return {"id": gid, "agent": agent, "action": action, "scope": scope, "expires_at": exp}
 
 
+# ---- a linked team's missions, recorded on the side that does the work ------------------
+#
+# A mission on THEIR machine may put one of MY agents on its roster (analyst@office). The
+# decision to do that was theirs and lives in their grants; this side would otherwise see
+# only a stream of questions. So the mission is announced here (op "mission": on save,
+# enable, disable and delete, and on its first question if the announcement never
+# arrived) and recorded as grants rows HERE, which is what makes it auditable and
+# stoppable by the person whose agents do the work:
+#
+#   record  team:<link>/<mission>-master  team.mission  agent:subagent/<agent>   (allow)
+#   stop    team:<link>/<mission>-master  agent.message agent:subagent/*         (deny)
+#
+# The record authorises nothing — `team.mission` is not an action anything is allowed
+# BY, so unticking the agent in the link's cell still stops every mission at once. The
+# stop is an ordinary deny row, so the gate refuses that mission's questions with no
+# special case, and Permissions shows and removes it like any other. Every write, change
+# and revoke of either is an audit row; every question the mission sent is one too
+# (agent.message by that principal), which is where "last used" and "runs" come from.
+#
+# One honest limit: the mission's NAME is the other machine's claim. The link proves
+# which machine asked, not which of its missions — a machine that wanted to dodge a stop
+# could send under another name. Stopping one mission is for a partner you trust to be
+# honest; unticking the agent, or ending the link, is what stops a machine.
+MISSION_ACTION = "team.mission"
+MAX_LINKED_MISSIONS = 50
+
+
+def mission_sender(name: str) -> str:
+    """The sender a mission's questions carry (`<mission>-master`), cut the way
+    answer_linked cuts a sender — so the record, the stop and the ledger name one principal."""
+    return re.sub(r"[^A-Za-z0-9_-]", "", f"{name}-master")[:40]
+
+
+def _mission_meta(g: dict) -> dict:
+    try:
+        return json.loads(g.get("source_ref") or "{}") if str(g.get("source_ref") or "").startswith("{") else {}
+    except ValueError:
+        return {}
+
+
+def linked_missions(store, label: str) -> list[dict]:
+    """The missions on a linked team that use my agents, as recorded here — with whether I
+    stopped each one, and, from the ledger, when it last asked and how many times."""
+    by = {}
+    for g in store.list_grants(principal_kind="team"):
+        pid = str(g.get("principal_id") or "")
+        if not pid.startswith(f"{label}/") or pid.endswith("/*"):
+            continue
+        sender = pid.split("/", 1)[1]
+        if g.get("action") == MISSION_ACTION:
+            m = by.setdefault(sender, {"sender": sender, "agents": [], "stopped": "", "record_ids": []})
+            meta = _mission_meta(g)
+            m.update({"mission": meta.get("name") or sender.removesuffix("-master"),
+                      "text": meta.get("text", ""), "schedule": meta.get("schedule", ""),
+                      "enabled": bool(meta.get("enabled", True)), "recorded_at": g.get("created_at"),
+                      "how": meta.get("how", "")})
+            m["agents"].append(str(g.get("resource") or "").rsplit("/", 1)[-1])
+            m["record_ids"].append(g["id"])
+        elif g.get("action") == "agent.message" and g.get("effect") == "deny":
+            m = by.setdefault(sender, {"sender": sender, "agents": [], "stopped": "", "record_ids": [],
+                                       "mission": sender.removesuffix("-master")})
+            m["stopped"] = g["id"]
+    out = []
+    for m in by.values():
+        row = store.db.execute(
+            "SELECT MAX(ts), COUNT(*) FROM audit WHERE principal_kind='team' AND principal_id=? "
+            "AND action='agent.message' AND effect='allow'", (f"{label}/{m['sender']}",)).fetchone()
+        m["last_used"], m["runs"] = (row[0], row[1]) if row else (None, 0)
+        m["agents"] = sorted(set(m["agents"]))
+        out.append(m)
+    return sorted(out, key=lambda m: m.get("mission") or "")
+
+
+def record_mission(store, label: str, info: dict, how: str = "announced") -> dict:
+    """Record (or update, or forget) one of a linked team's missions HERE. Only agents this
+    link's cell lets them ask are recorded — the rest are returned as `not_allowed`, so
+    their editor can say so at save time rather than on the first Monday it fails."""
+    from . import teamlink
+    name = re.sub(r"[^A-Za-z0-9_.-]", "", str((info or {}).get("name") or ""))[:64]
+    if not name:
+        return {"ok": False, "error": "a mission needs a name"}
+    sender = mission_sender(name)
+    pid = f"{label}/{sender}"
+    live = [g for g in store.list_grants(principal_kind="team", principal_id=pid)
+            if g.get("action") == MISSION_ACTION]
+    stopped = any(g.get("action") == "agent.message" and g.get("effect") == "deny"
+                  for g in store.list_grants(principal_kind="team", principal_id=pid))
+    if info.get("deleted"):
+        for g in live:
+            store.revoke_grant(g["id"])
+        return {"ok": True, "recorded": [], "not_allowed": [], "stopped": stopped, "forgotten": True}
+    if not live and len({m["sender"] for m in linked_missions(store, label)}) >= MAX_LINKED_MISSIONS:
+        return {"ok": False, "error": f"this team already records {MAX_LINKED_MISSIONS} of your missions"}
+    allowed = set(link_access(store, label)["theirs_may_ask"])
+    asked = [re.sub(r"[^A-Za-z0-9_.-]", "", str(a))[:64] for a in (info.get("agents") or [])][:20]
+    want = sorted({a for a in asked if a in allowed})
+    meta = {"name": name, "how": how,
+            "text": teamlink.plain(info.get("text") or "", 300, newlines=False),
+            "schedule": teamlink.plain(info.get("schedule") or "", 80, newlines=False),
+            "enabled": bool(info.get("enabled", True))}
+    ref = json.dumps(meta, sort_keys=True)
+    for g in live:
+        agent = str(g.get("resource") or "").rsplit("/", 1)[-1]
+        if agent not in want or (g.get("source_ref") or "") != ref:
+            store.revoke_grant(g["id"])        # changed on their side: re-recorded below
+    for a in want:
+        when = f" ({meta['schedule']})" if meta["schedule"] else ""
+        off = "" if meta["enabled"] else " — switched off on their side"
+        store.add_grant("team", pid, MISSION_ACTION, f"agent:subagent/{a}", source="link",
+                        source_ref=ref,
+                        note=f"{label}'s mission '{name}'{when} sends tasks to {a}{off}")
+    return {"ok": True, "recorded": want, "not_allowed": sorted(set(asked) - allowed),
+            "stopped": stopped}
+
+
+def stop_mission(store, label: str, mission: str, stop: bool = True) -> dict:
+    """Stop (or allow again) one linked mission's questions HERE: a deny row the gate
+    enforces, audited, listed in Permissions. Its record stays, so what it was stays said."""
+    sender = mission_sender(mission)
+    pid = f"{label}/{sender}"
+    rows = [g for g in store.list_grants(principal_kind="team", principal_id=pid)
+            if g.get("action") == "agent.message" and g.get("effect") == "deny"]
+    if stop and not rows:
+        store.add_grant("team", pid, "agent.message", "agent:subagent/*", effect="deny", source="user",
+                        note=f"stopped: {label}'s mission '{mission}' may not ask my agents")
+    if not stop:
+        for g in rows:
+            store.revoke_grant(g["id"])
+    return next((m for m in linked_missions(store, label) if m["sender"] == sender),
+                {"sender": sender, "mission": mission, "stopped": "", "agents": []})
+
+
 def forget_link_grants(store, label: str) -> int:
     """A link ended: every cell that named it goes, both directions — and every standing
     permission it held (those are team:<label>/* rows too)."""
     n = 0
     for g in store.list_grants():
-        if g.get("action") == "team.act" and g.get("principal_kind") == "team" and \
-                str(g.get("principal_id") or "") == f"{label}/*":
+        if g.get("action") in ("team.act", MISSION_ACTION) and g.get("principal_kind") == "team" and \
+                str(g.get("principal_id") or "").startswith(f"{label}/"):
             n += bool(store.revoke_grant(g["id"]))
             continue
         if g.get("action") != "agent.message":
@@ -896,7 +1029,8 @@ class ControlPlane(usersmod.Scoped):
 
     async def message(self, sender: str, target: str, question: str, chain: list,
                       root: str = "", conversation_id: str = "", space_id: str = "",
-                      taint: list | None = None, say=None, parent_run: str = "") -> str:
+                      taint: list | None = None, say=None, parent_run: str = "",
+                      mission: dict | None = None) -> str:
         """`sender` asks `target` a question mid-task and waits for the answer.
 
         Permission was decided before this runs — the ask_agent call passed the gate
@@ -916,7 +1050,7 @@ class ControlPlane(usersmod.Scoped):
             # a colleague on a LINKED team: another machine over mTLS, or another account
             return await self._message_linked(sender, target, question, list(chain or [sender]),
                                               root=root, conversation_id=conversation_id,
-                                              say=say, parent_run=parent_run)
+                                              say=say, parent_run=parent_run, mission=mission)
         d = self.store.get_subagent(target) if target else None
         if not d:
             have = ", ".join(x["name"] for x in self.store.list_subagents()
@@ -1002,7 +1136,7 @@ class ControlPlane(usersmod.Scoped):
 
     async def _message_linked(self, sender: str, target: str, question: str, chain: list,
                               root: str = "", conversation_id: str = "", say=None,
-                              parent_run: str = "") -> str:
+                              parent_run: str = "", mission: dict | None = None) -> str:
         """`researcher` asks `analyst@office`. The gate already decided this side's cell
         (agent.message on agent:subagent/analyst@office — asked, never swarmed). Here:
         the conversation's shape (the same loop, hop and budget rules as at home), then
@@ -1046,6 +1180,8 @@ class ControlPlane(usersmod.Scoped):
                 pass
         req = {"op": "ask", "from": sender, "to": name, "question": question,
                "chain": chain, "root": key}
+        if mission:
+            req["mission"] = mission    # so the other side can record it on first use
         if lk.get("kind") == "machine":
             got = await teamlink.call(lk, req)
         else:
@@ -1071,6 +1207,47 @@ class ControlPlane(usersmod.Scoped):
             except Exception:
                 pass
         return TAINTED_REPLY + f"[{target} · {model}]\n" + text[:3500]
+
+    def mission_card(self, flow: dict, label: str, deleted: bool = False) -> dict:
+        """What the other team records about one of OUR missions: its name, which of
+        their agents it uses, what it is for, when it runs, whether it is on."""
+        from . import flows as flowsmod
+        return {"name": flow.get("name", ""), "agents": flowsmod.linked_members(flow).get(label, []),
+                "text": str(flow.get("mission") or "")[:300],
+                "schedule": flowsmod.schedule_words(self.store, flow.get("name", "")),
+                "enabled": bool(flow.get("enabled")), "deleted": bool(deleted)}
+
+    async def announce_mission(self, flow: dict, deleted: bool = False,
+                               labels: list | None = None) -> dict:
+        """Tell every linked team a mission names that it does — on save, enable, disable
+        and delete — so the side doing the work holds its own record (record_mission).
+        Best effort: an unreachable team records it on the mission's first question.
+        `labels` also reaches a team the mission USED to name, so it can forget it."""
+        from . import flows as flowsmod
+        from . import teamlink
+        from . import users as usersmod
+        owner = usersmod.current() or ""
+        out = {}
+        for label in sorted(set(flowsmod.linked_members(flow)) | set(labels or [])):
+            lk = teamlink.find(owner, label)
+            if not lk:
+                out[label] = {"ok": False, "error": f"no linked team called '{label}'"}
+                continue
+            gone = deleted or label not in flowsmod.linked_members(flow)
+            req = {"op": "mission", "mission": self.mission_card(flow, label, deleted=gone)}
+            try:
+                got = await asyncio.wait_for(
+                    teamlink.call(lk, req) if lk.get("kind") == "machine" else self._ask_account(lk, req),
+                    timeout=10)
+            except Exception as e:
+                got = {"ok": False, "error": f"could not reach {label} ({type(e).__name__})"}
+            out[label] = {k: got.get(k) for k in ("ok", "error", "recorded", "not_allowed", "stopped")
+                          if k in got}
+            audit_team(self.store, "link.mission", f"link:{label}",
+                       f"told {label} about the mission '{flow.get('name')}'"
+                       + (" (deleted)" if gone else "") + ": "
+                       + ("recorded there" if got.get("ok") else f"not delivered — {got.get('error')}"))
+        return out
 
     async def _ask_account(self, lk: dict, req: dict) -> dict:
         """The same question to another account on THIS machine: no network — the
@@ -1099,8 +1276,29 @@ class ControlPlane(usersmod.Scoped):
             return {"ok": True, "agents": [
                 {"name": sa["name"], "provider": agent_brain(self.cfg, sa)["provider_name"]}
                 for sa in self.store.list_subagents() if sa["name"] in allowed]}
+        if req.get("op") == "mission":
+            # one of THEIR missions names one of my agents: recorded here, where the work
+            # is done, so the person here can see it, audit it and stop it
+            got = record_mission(self.store, lk["label"], req.get("mission") or {})
+            if got.get("ok"):
+                audit_team(self.store, "link.mission", f"link:{lk['label']}",
+                           f"{lk['label']} announced its mission "
+                           f"'{(req.get('mission') or {}).get('name', '')}'"
+                           + (" (deleted)" if (req.get("mission") or {}).get("deleted") else "")
+                           + f"; recorded for {', '.join(got['recorded']) or 'no agent'}")
+            return got
         to = re.sub(r"[^A-Za-z0-9_.-]", "", str(req.get("to") or ""))[:64]
         frm = re.sub(r"[^A-Za-z0-9_-]", "", str(req.get("from") or ""))[:40] or "agent"
+        meta = req.get("mission") if isinstance(req.get("mission"), dict) else None
+        if meta and mission_sender(meta.get("name") or "") == frm:
+            # a mission's question with no record here — its announcement never arrived
+            # (saved from a terminal, or while this machine was off): recorded on first use
+            if not any(m["sender"] == frm and m.get("record_ids") for m in linked_missions(self.store, lk["label"])):
+                got = record_mission(self.store, lk["label"], meta, how="first question")
+                if got.get("recorded"):
+                    audit_team(self.store, "link.mission", f"link:{lk['label']}",
+                               f"{lk['label']}'s mission '{meta.get('name')}' asked for the first "
+                               f"time; recorded for {', '.join(got['recorded'])}")
         pdp = getattr(self.toolbox, "pdp", None)
         if pdp is None:
             return {"ok": False, "error": "this team has no permission gate wired"}
@@ -1111,6 +1309,10 @@ class ControlPlane(usersmod.Scoped):
         dec = pdp.decide(Principal("team", f"{lk['label']}/{frm}"), "agent.message",
                          f"agent:subagent/{to}", {"surface": "team", "risk": "safe"})
         if dec.effect != "allow":
+            if any(m["sender"] == frm and m["stopped"] for m in linked_missions(self.store, lk["label"])):
+                # said plainly: their mission was stopped HERE, by a person, on purpose
+                return {"ok": False, "error": f"this team stopped your mission "
+                                              f"'{frm.removesuffix('-master')}' from asking its agents"}
             return {"ok": False, "error": "not allowed here — the other side chooses which of "
                                           "its agents your team may ask"}
         d = self.store.get_subagent(to) if to else None
@@ -1363,9 +1565,10 @@ class ControlPlane(usersmod.Scoped):
             await self._emit(run_id, "node_add", {"node_id": node, "agent": sub, "task": (task or "")[:140],
                                                   "deps": handles, "parent": run_id,
                                                   "seq": state["delegations"]})
-            text = await self.message(f"{flow['name']}-master", sub, question,
-                                      chain=[f"{flow['name']}-master"], root=run_id,
-                                      conversation_id=conversation_id, space_id=space_id)
+            text = await self.message(mission_sender(flow["name"]), sub, question,
+                                      chain=[mission_sender(flow["name"])], root=run_id,
+                                      conversation_id=conversation_id, space_id=space_id,
+                                      mission=self.mission_card(flow, sub.partition("@")[2]))
             body = text[len(TAINTED_REPLY):] if text.startswith(TAINTED_REPLY) else text
             ok = not body.startswith("[refused]")
             handle = self.store.next_handle(run_id, "a")

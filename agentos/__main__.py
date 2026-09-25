@@ -3684,6 +3684,34 @@ def _link_cli(args):
         print(f"  {lk['label']}: their agents may ask {', '.join(got['theirs_may_ask']) or 'nobody'}; "
               f"mine ask theirs {'freely' if got['mine_may_ask'] else 'after asking me'}")
         return
+    if act in ("missions", "stop", "resume"):
+        # That team's missions that use MY agents, recorded here when they saved them (or
+        # on their first question) — and the switch that stops one (fabric.stop_mission).
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if act in ("stop", "resume"):
+            if not any(m["mission"] == a2 for m in fabricmod.linked_missions(store, lk["label"])):
+                print(f"  {lk['label']} has no mission called '{a2 or '(name)'}' recorded here — "
+                      f"bento link missions {lk['label']}")
+                sys.exit(2)
+            fabricmod.stop_mission(store, lk["label"], a2, stop=act == "stop")
+            print(f"  {lk['label']}'s mission '{a2}' "
+                  + ("is stopped: its questions are refused here" if act == "stop"
+                     else "may ask your agents again (within what the link allows)"))
+            return
+        ms = fabricmod.linked_missions(store, lk["label"])
+        print(f"  {lk['label']}'s missions that use your agents:")
+        for m in ms:
+            last = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["last_used"])) if m.get("last_used") else "never"
+            state_ = "STOPPED" if m["stopped"] else ("on" if m.get("enabled", True) else "off on their side")
+            print(f"    {m['mission']:<20} {state_:<18} {', '.join(m['agents']) or '-'}\n"
+                  f"      {m.get('schedule') or ''}{' · ' if m.get('schedule') else ''}asked {m['runs']} time(s), last {last}"
+                  + (f"\n      {m['text'][:120]}" if m.get("text") else ""))
+        if not ms:
+            print("    none recorded — a mission there that names one of your agents shows up here")
+        return
     if act in ("let", "unlet", "standing"):
         # Standing permissions: what that team may have one of YOUR agents do without a
         # person saying yes each time (policy.STANDING_ACTIONS; the same rows Settings and
@@ -3746,6 +3774,9 @@ def _link_cli(args):
               f"(as NAME@{lk['label']})")
         for x in fabricmod.standing(store, lk["label"]):
             print(f"    without asking: {x['agent']} {x['action']} {x['scope']}")
+        for m in fabricmod.linked_missions(store, lk["label"]):
+            print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
+                  + (" (stopped)" if m["stopped"] else ""))
 
 
 def _brief_cli(args):
@@ -5353,15 +5384,17 @@ def main():
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
                                  "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
-                                 "let", "unlet", "standing"])
+                                 "let", "unlet", "standing", "missions", "stop", "resume"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
-                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing: the link")
+                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
+                             "resume: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
-                             "allow/disallow/let: one of your agents · mine: on|off · unlet: the id")
+                             "allow/disallow/let: one of your agents · mine: on|off · unlet: the id · "
+                             "stop/resume: their mission")
     p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
     p_link.add_argument("--days", type=float, default=None,
                         help="let: the standing permission ends after this many days")

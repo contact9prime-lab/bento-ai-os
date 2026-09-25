@@ -143,6 +143,8 @@ bento link mine office on                      # yours may ask theirs without as
 bento link let office analyst fs.write ~/shared/reports --days 30
                                                # their questions may have analyst write there, unasked
 bento link standing office                     # what they may have your agents change · unlet ID
+bento link missions office                     # their missions that use your agents, as recorded here
+bento link stop office weekly-report           # refuse that mission's questions here · resume undoes it
 bento link say office "Is the Q3 deck ready?"   # write to the people on that team
 bento link chat office                         # the conversation (pulls anything waiting)
 bento link remove office                       # ends it, and revokes its cells

@@ -591,7 +591,11 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     with usersmod.as_user(owner):
         async def say(e):
             await state["broadcast_user"]({"type": "agent_msg", "conversation_id": "", **e}, owner)
-        return await state["fabric"].answer_linked(lk, req, say=say)
+        out = await state["fabric"].answer_linked(lk, req, say=say)
+        if req.get("op") == "mission":
+            # their mission was recorded (or forgotten) here: Settings repaints the list
+            await state["broadcast_user"]({"type": "team_links"}, owner)
+        return out
 
 
 async def _team_on_event(kind: str, lk: dict):
@@ -8451,7 +8455,8 @@ async def api_team_links():
     for lk in teamlink.links(owner):
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
                     "peer_identity": _team_peer_identity(lk),
-                    "standing": fabricmod.standing(state["store"], lk["label"])})
+                    "standing": fabricmod.standing(state["store"], lk["label"]),
+                    "missions": fabricmod.linked_missions(state["store"], lk["label"])})
     reqs = teamlink.requests(owner, _team_who(owner))
     for r in reqs["incoming"]:
         if r.get("kind") == "account":
@@ -8866,6 +8871,39 @@ async def api_team_link_standing_revoke(label: str, gid: str):
     return {"ok": True}
 
 
+@app.get("/api/team/links/{label}/missions")
+async def api_team_link_missions(label: str):
+    """That team's missions that use your agents, as recorded HERE — what each is for, when
+    it runs, which of your agents, when it last asked and how often, and whether you
+    stopped it. Recorded when they save it, or on its first question."""
+    from . import teamlink
+    lk = teamlink.find(usersmod.current() or "", label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    return {"missions": fabricmod.linked_missions(state["store"], lk["label"])}
+
+
+@app.post("/api/team/links/{label}/missions/{mission}/{verb}")
+async def api_team_link_mission_stop(label: str, mission: str, verb: str):
+    """`stop` refuses that mission's questions here (a deny row the gate enforces);
+    `allow` removes it. Both are audited; the record of the mission stays."""
+    from . import teamlink
+    if verb not in ("stop", "allow"):
+        return JSONResponse({"error": "stop or allow"}, status_code=404)
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    if not any(m["mission"] == mission or m["sender"] == fabricmod.mission_sender(mission)
+               for m in fabricmod.linked_missions(state["store"], lk["label"])):
+        return JSONResponse({"error": f"{label} has no mission called '{mission}' recorded here"},
+                            status_code=404)
+    got = fabricmod.stop_mission(state["store"], lk["label"], mission, stop=verb == "stop")
+    await state["broadcast_user"]({"type": "grants"}, owner)
+    await state["broadcast_user"]({"type": "team_links"}, owner)
+    return {"ok": True, "mission": got}
+
+
 @app.get("/api/team/links/{label}/roster")
 async def api_team_link_roster(label: str):
     """The agents on the other side (names and providers only) — asked live."""
@@ -9198,17 +9236,29 @@ async def api_enable_flow(name: str, body: dict | None = None):
         return JSONResponse({"error": str(e)}, status_code=404)
     await state["broadcast"]({"type": "fabric_defs"})
     await state["broadcast"]({"type": "grants"})
-    return {"flow": flow, "report": report}
+    return {"flow": flow, "report": report, "linked": await _announce_linked(flow)}
+
+
+async def _announce_linked(flow: dict | None, before: dict | None = None, deleted: bool = False) -> dict:
+    """A mission that names an agent on a linked team is recorded on THAT team too
+    (fabric.record_mission) — told here on save, enable, disable and delete, including a
+    team the mission no longer names, so it can forget it. {} when none is involved."""
+    f = flow or before or {}
+    was = list(flowsmod.linked_members(before or {}))
+    if not f or not (flowsmod.linked_members(f) or was):
+        return {}
+    return await state["fabric"].announce_mission(f, deleted=deleted, labels=was)
 
 
 @app.post("/api/flows/{name}/discard")
 async def api_discard_flow(name: str):
+    before = state["store"].get_flow(name)
     res = flowsmod.discard(state["store"], name)
     if not res.get("ok"):
         return JSONResponse({"error": f"no flow '{name}'"}, status_code=404)
     await state["broadcast"]({"type": "fabric_defs"})
     await state["broadcast"]({"type": "grants"})
-    return res
+    return {**res, "linked": await _announce_linked(None, before, deleted=True)}
 
 
 @app.post("/api/flows/preview")
@@ -9224,23 +9274,25 @@ async def api_flows_preview(body: dict):
 
 @app.post("/api/flows")
 async def api_save_flow(body: dict):
+    before = state["store"].get_flow(str((body or {}).get("name") or ""))
     try:
         flow, report = flowsmod.save(state["store"], body or {})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "fabric_defs"})
     await state["broadcast"]({"type": "grants"})
-    return {"flow": flow, "report": report}
+    return {"flow": flow, "report": report, "linked": await _announce_linked(flow, before)}
 
 
 @app.delete("/api/flows/{name}")
 async def api_delete_flow(name: str):
+    before = state["store"].get_flow(name)
     res = flowsmod.delete(state["store"], name)
     if not res.get("ok"):
         return JSONResponse({"error": f"no flow '{name}'"}, status_code=404)
     await state["broadcast"]({"type": "fabric_defs"})
     await state["broadcast"]({"type": "grants"})
-    return res
+    return {**res, "linked": await _announce_linked(None, before, deleted=True)}
 
 
 @app.post("/api/flows/{name}/run")

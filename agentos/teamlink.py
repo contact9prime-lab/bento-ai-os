@@ -887,7 +887,7 @@ class Listener:
         if op == "hello":
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
                     "identity": self._ident(lk.get("owner") or "")}
-        if op in ("ask", "roster", "chat", "chat_pull") and self.on_ask:
+        if op in ("ask", "roster", "mission", "chat", "chat_pull") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

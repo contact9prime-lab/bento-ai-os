@@ -346,9 +346,10 @@ belongs to no conversation here.
 ### What a link lets either machine do on the other
 
 A link is **between equals**. Neither machine is the other's master, and the link reaches no
-file, command, tool or model on the far side. The wire carries nine requests: pair,
-request, poll, cancel, hello, roster, ask, chat and pull. None of them reads, writes or runs
-anything by itself.
+file, command, tool or model on the far side. The wire carries ten requests: pair,
+request, poll, cancel, hello, roster, ask, mission, chat and pull. None of them reads, writes
+or runs anything by itself. (`mission` only *records* one of your missions on their side;
+see below.)
 
 - **Your agents can only *ask a question* of the agents they let you ask.** Their agent
   answers with *its* tools, under *their* permissions, on *their* model and their bill, and
@@ -448,6 +449,47 @@ file the report" is built.
 - **The answer lands on the board untrusted.** The handle is marked tainted, so anything the
   mission builds from it is held to the care of content from outside.
 
+### The other side keeps its own record, and can stop it
+
+Putting `analyst@office` on your roster is *your* decision, and it lives in *your* grants. But
+office's analyst does the work, so office keeps its own record too. That record is what lets
+office's person see it, audit it and stop it without asking you.
+
+- **Told when it changes.** Saving, enabling, disabling or deleting the mission tells every
+  linked team it names (a `mission` request over the link, or in-process for an account). A
+  team it no longer names is told as well, so it can forget it. If they cannot be reached,
+  it is recorded on the mission's **first question** instead. Nothing that uses their agents
+  goes unrecorded there.
+- **What they hold.** One grants row per agent, on their side: `team:<you>/<mission>-master`,
+  action `team.mission`, resource `agent:subagent/analyst`. The note says what it is for and
+  when it runs ("home's mission 'weekly-report' (every Monday at 09:00) sends tasks to
+  analyst"). It appears in their Permissions app and in Settings → the link → **Their missions
+  that use your agents**, with how many times it has asked and when it last did. Both numbers
+  are read from their ledger, which already has an `agent.message` row for every question.
+  `bento link missions home` shows the same.
+![Office's Settings → the link to home → Their missions that use your agents: vendor-digest stopped by you, weekly-report on, each with its schedule, what it is for and how often it asked](screenshots/team-their-missions.png)
+
+![The same list on a 390px phone: each mission stacked, with Stop or Allow again at the tap floor](screenshots/team-their-missions-phone.png)
+
+- **Stop.** Their **Stop** (`bento link stop home weekly-report`) writes a deny row
+  (`agent.message` on `agent:subagent/*` for that mission's principal). Deny wins at the gate,
+  so its next question is refused before any agent runs. Your run is told so in words: "this
+  team stopped your mission 'weekly-report' from asking its agents". **Allow again**
+  (`bento link resume …`) removes the row. Re-saving your mission never undoes a stop, and your
+  editor says it is stopped when you save.
+- **Audited on both sides.** Theirs: `link.mission` (announced, first question, deleted), and
+  `grant.write` / `grant.revoke` for the record and for a stop. Yours: `link.mission` for each
+  announcement, delivered or not. Each question is the usual `agent.message` row on theirs.
+- **The record grants nothing.** `team.mission` is not an action anything is allowed *by*.
+  Unticking the analyst in the link's cell still stops every mission at once, record or not.
+  Only agents the cell allows are recorded at all, and your editor is told which it has not
+  (**office has not let your team ask writer**). There are at most 50 records per link.
+- **The honest limit.** The mission's *name* is your machine's claim. The link proves which
+  machine asked, not which of its missions. A machine that wanted to dodge a stop could ask
+  under another name. Stopping one mission is for a partner you trust to be honest; unticking
+  the agent, or ending the link, is what stops a machine. Ending the link revokes the records
+  with everything else.
+
 ### Security: what was checked, and the ceilings
 
 Linked teams and Team Chat were reviewed as an attacker would read them: a hostile linked
@@ -508,5 +550,6 @@ the link's own name, which you chose, is what is verified.
 | People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |
 | Standing permissions | `policy.STANDING_ACTIONS` / `STANDING_TOOLS` / `standing_refusal` / `PDP._standing` (at the taint ceiling) / `_standing_offer` (the card) — `fabric.standing` / `add_standing`; `/api/team/links/{label}/standing`, `bento link let/standing/unlet` |
 | A linked agent on a mission | `flows.validate` / `declared_grants` (`agent@link`), `ControlPlane._master_tools.delegate_linked` |
+| The other side's record of it | `ControlPlane.announce_mission` (on save/enable/delete, `server._announce_linked`, the `create_flow`/`enable_flow` tools) → op `mission` → `fabric.record_mission`; first question → the same; `fabric.linked_missions` / `stop_mission`; `/api/team/links/{label}/missions*`, `bento link missions/stop/resume` |
 | Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, identity, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py`, `tests/test_team_security.py`, `tests/test_team_standing.py` |
+| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py`, `tests/test_team_security.py`, `tests/test_team_standing.py`, `tests/test_team_missions.py` |

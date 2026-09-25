@@ -2136,6 +2136,12 @@ class Toolbox(usersmod.Scoped):
                                  for g in would[:8]) + (" …" if len(would) > 8 else ""))
         lines.append("Tell the user to open Workflows → Flows to read it and press Enable — "
                      "you cannot enable it yourself, and a test run works before then.")
+        if flowsmod.linked_members(flow) and getattr(self, "fabric", None):
+            with contextlib.suppress(Exception):
+                for k, v in (await self.fabric.announce_mission(flow)).items():
+                    lines.append(f"linked team {k}: " + ("recorded on their side"
+                                 + (f"; they have not let your team ask {', '.join(v['not_allowed'])}"
+                                    if v.get("not_allowed") else "") if v.get("ok") else str(v.get("error"))))
         return "\n".join(lines)
 
     async def search_docs(self, query: str, limit: int = 6) -> str:
@@ -2212,9 +2218,16 @@ class Toolbox(usersmod.Scoped):
                 await self.broadcast({"type": "fabric_defs"})
                 await self.broadcast({"type": "grants"})
         g = report["grants"]
+        linked = ""
+        if flowsmod.linked_members(flow) and getattr(self, "fabric", None):
+            # the linked team records this mission on its side (fabric.record_mission)
+            with contextlib.suppress(Exception):
+                told = await self.fabric.announce_mission(flow)
+                linked = "; " + ", ".join(f"{k}: {'recorded' if v.get('ok') else v.get('error')}"
+                                          for k, v in told.items())
         return (f"flow '{name}' is now {'live' if enabled else 'off'} — "
                 f"{g['added']} permission(s) granted, {g['revoked']} taken back, "
-                f"triggers {'armed' if enabled else 'disarmed'}")
+                f"triggers {'armed' if enabled else 'disarmed'}{linked}")
 
     # --- OpenClaw plugins ------------------------------------------------
     # The same shape as flows, for the same reason: the model may put a candidate

@@ -1352,7 +1352,7 @@ ceilings in `docs/team.md`):
 - **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
   allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
   an agent that exists and one that does not (it was an enumeration oracle).
-- **A link reaches no resource on the far side** — nine wire ops, none of which reads, writes
+- **A link reaches no resource on the far side** — ten wire ops, none of which reads, writes
   or runs anything; an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
   one honest limit: what an allowed agent can READ, a question can ask it to repeat.
 - **A linked team's refusal is theirs**: `_message_linked` prefixes `TAINTED_REPLY` on refusals
@@ -1402,6 +1402,26 @@ sentence naming the other team and NO envelope for that member (it runs under th
 `delegate` routes it through `delegate_linked` → `ControlPlane.message`, and the handle lands
 `tainted=1`. There is no way to reach further across the link than a question: the other
 side's cell, standing permissions and person still decide.
+
+**The side that does the work keeps its own record of the mission.** `announce_mission` (on
+save/enable/disable/delete — `server._announce_linked`, and the `create_flow`/`enable_flow`
+tools) sends op `mission`; the receiver writes `team:<link>/<mission>-master team.mission
+agent:subagent/<agent>` rows (`record_mission`, details in `source_ref` JSON), and a question
+carrying `mission` meta records it on first use when the announcement never arrived. Four
+things keep it honest (`tests/test_team_missions.py`):
+
+- **The record authorises NOTHING.** Nothing is allowed BY `team.mission`; making the record an
+  `agent.message` allow would have outlived an unticked cell. Only cell-allowed agents are
+  recorded, and `not_allowed` goes back so the editor says so at save time.
+- **Stop is a deny row** (`stop_mission`: `agent.message` on `agent:subagent/*` for that
+  principal), so the gate refuses with no special case and Permissions can remove it. A re-save
+  or a first-use record never touches it. The refusal says "stopped your mission" in words.
+- **Use is read from the ledger** (`linked_missions`: audit rows for that principal), never a
+  counter kept beside it that could disagree.
+- **`mission_sender` is the one spelling** of `<mission>-master`, cut exactly as
+  `answer_linked` cuts a sender — the record, the stop and the ledger must name one principal.
+  The name is the other machine's CLAIM; stopping a mission is for an honest partner, and the
+  docs say that unticking the agent is what stops a machine.
 
 ## People on linked teams: messages, and no agent reads them
 

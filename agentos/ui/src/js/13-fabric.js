@@ -733,7 +733,19 @@ async function enableFlow(name,on){
   const g=r.report.grants;
   toast(on?`“${name}” is live · ${g.added} permission${g.added===1?'':'s'} granted`
           :`“${name}” is off · ${g.revoked} permission${g.revoked===1?'':'s'} taken back`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
+}
+/* A mission naming an agent on a linked team is recorded on THAT team too (the server
+   tells it on save / enable / delete). What they answered is said here, once: recorded,
+   refused an agent their side has not let you ask, stopped by them, or unreachable (it
+   will be recorded on the mission's first question instead). */
+function flwLinkedToast(linked){
+  const parts=Object.entries(linked||{}).map(([lab,v])=>!v.ok?lab+': '+(v.error||'not reached')+' — recorded there on its first question'
+    :v.stopped?lab+' has STOPPED this mission on their side'
+    :(v.not_allowed||[]).length?lab+' has not let your team ask '+v.not_allowed.join(', ')
+    :'recorded on '+lab+'’s side — they can see and stop it');
+  if(parts.length)setTimeout(()=>toast(parts.join(' · ')),1600);
 }
 async function discardFlow(name){
   if(!await osConfirm('Discard the draft “'+name+'”?',
@@ -1311,6 +1323,7 @@ async function flwSave(){
   FLW=null;drawFLW();
   toast((made.length?`created ${made.join(', ')} · `:'')
     +`flow saved · ${g.added} permissions granted, ${g.revoked} revoked · ${t.added+t.updated} triggers`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
 }
 

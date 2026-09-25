@@ -156,7 +156,7 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
 | GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
 | GET | `/api/team/limits` | the team's limits (hops, budget, clarify, huddle size and rounds) with their ranges; set them through `PUT /api/config` `{"team":{"limits":{…}}}` — 400 names the range |
-| GET | `/api/team/links` | this machine's name and certificate fingerprint, whether it accepts linked teams, each link with what it may ask and its standing permissions, requests waiting (`incoming`, `outgoing`) and the accounts you could ask (`others`) ([linked teams](team.md#linked-teams-your-agents-and-somebody-elses)) |
+| GET | `/api/team/links` | this machine's name and certificate fingerprint, whether it accepts linked teams, each link with what it may ask, its standing permissions and their missions recorded here, requests waiting (`incoming`, `outgoing`) and the accounts you could ask (`others`) ([linked teams](team.md#linked-teams-your-agents-and-somebody-elses)) |
 | PUT | `/api/team/listen` | `{"on": true}` opens the mTLS listener (admin only; port = server port + 1 or `team.link_port`) |
 | POST | `/api/team/links/request` | ask to link: `{"address": "office.local"}` or `"ada@office.local"` to address a person there (another machine; 10 attempts per person per 10 minutes; returns the six digits to compare, and the server waits for the answer in the background) or `{"account": "bob"}` (another account here) |
 | POST | `/api/team/links/requests/{id}/approve` · `/deny` | answer a request waiting here; a machine's lands in the approver's account |
@@ -175,6 +175,8 @@ stopped on a headless box could be seen in the logs and never released.
 | GET | `/api/team/links/{label}/standing` | what that team may have your agents change without a person, the actions and tools that can be standing, and `applies`/`note` (not in use under strict or off) ([standing permissions](team.md#standing-permissions-saying-yes-ahead-of-time)) |
 | POST | `/api/team/links/{label}/standing` | `{"agent", "action": "fs.write", "scope": "~/shared", "days": 30}` — one agent, one action, one folder or tool; a 400 with the sentence for what can never be standing (a shell, a home, a hidden folder) |
 | DELETE | `/api/team/links/{label}/standing/{id}` | revoke one |
+| GET | `/api/team/links/{label}/missions` | that team's missions that use your agents, as recorded here: agents, what it is for, when it runs, how many times it asked and when it last did (from the ledger), and whether you stopped it ([the other side's record](team.md#the-other-side-keeps-its-own-record-and-can-stop-it)) |
+| POST | `/api/team/links/{label}/missions/{mission}/stop` · `/allow` | stop one of their missions asking your agents (a deny row), or allow it again; audited |
 | PUT | `/api/subagents/{name}/brain` | pin one agent to a model (`{"model": "provider/model"}`, `""` = the machine's brain) — [the team](team.md) |
 
 ### Integrations
