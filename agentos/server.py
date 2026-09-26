@@ -36,6 +36,7 @@ from . import mcpbridge
 from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
+from . import playground as playgroundmod
 from . import vault as vaultmod
 from . import signin as signinmod
 from . import mail as mailmod
@@ -149,6 +150,9 @@ async def startup():
     async def broadcast(event: dict):
         """Machine-wide: a fact true for the whole box (wallpaper, an MCP consent
         prompt). A turn is NOT machine-wide — use `broadcast_user` for it."""
+        # agents talking, collected for whoever listens off the desktop (a Telegram
+        # turn's comic strip) — the one place every such event already passes
+        playgroundmod.observe(event)
         dead = []
         for ws in clients:
             try:
@@ -165,6 +169,7 @@ async def startup():
         can answer an approval — "any client may answer" was always meant among a
         person's OWN sessions, not across accounts. On a single-user machine
         every uid is '' and this is exactly `broadcast`."""
+        playgroundmod.observe(event)
         dead = []
         for ws in clients:
             if client_uids.get(ws, "") != uid:
@@ -8467,6 +8472,46 @@ async def api_office_set(body: dict):
     office.record(state["store"], "office changed: " + office.describe(v))
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {**v, "ok": True, "dropped": dropped}
+
+
+@app.post("/api/office/setup")
+async def api_office_setup(body: dict):
+    """The setup arc's crew step (onboarding.crew): every character generated and
+    stored, and the office created in the chosen style — one call, the same code
+    `bento setup` runs."""
+    from . import office, onboarding
+    b = body or {}
+    try:
+        out = onboarding.crew(state["cfg"], state["store"], str(b.get("style") or ""),
+                              str(b.get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    office.record(state["store"], "office created in setup: " + office.describe(out["office"]))
+    uid = usersmod.current() or ""
+    await state["broadcast_user"]({"type": "office"}, uid)
+    await state["broadcast_user"]({"type": "avatars"}, uid)
+    return {"ok": True, **out}
+
+
+@app.get("/api/office/rollcall.png")
+async def api_office_rollcall_png(style: str = "", name: str = ""):
+    """The office as a picture — rooms, people, who is busy — drawn by comic.py, the
+    same picture Telegram's /office sends. `style`/`name` preview a choice without
+    saving it (the setup step shows the office before it is created)."""
+    from . import comic, knowledge, office, playground
+    cfg = state["cfg"]
+    if style or name:
+        cfg = dict(cfg)
+        try:
+            fields, _ = office.clean({k: v for k, v in (("style", style), ("name", name)) if v}, known=None)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        cfg["office"] = {**office.current(state["cfg"]), **fields}
+    avatarsmod.ensure(state["store"], state["cfg"])
+    rows = playground.rollcall(state["store"], cfg, lead_busy=knowledge.active_turns() > 0)
+    png = comic.rollcall_image(state["store"], cfg, rows, office.current(cfg)["name"])
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.put("/api/office/place")

@@ -47,6 +47,76 @@ the answer.
 
 ![A live run in the Space station style: the researcher standing at the validator's desk in Build, its question and the validator's answer in balloons, and the same turns in the chat on the right](screenshots/office-live.png)
 
+## In setup: your crew and your office
+
+The setup arc has a step for it, right after "Build a specialist": **Meet your crew and
+set up the office**. It gives everyone a stored character: you, your agent and every
+specialist, each with a tap for a new look. You pick the office's style and the name on
+its door, and see a preview of it with your crew inside before anything is saved. The
+preview is the same picture your phone gets from `/office`. The step is ticked by
+evidence: an office somebody created, from here, the Office's Design, the agent or
+`bento office`.
+
+![The setup step: the crew's seven faces, the office styles with Startup loft chosen, the name on the door, and a preview of the office with everybody standing in it](screenshots/setup-crew.png)
+
+`bento setup` walks the same step in a terminal. It shows the faces in half blocks (or
+describes them without colour), lists the seven styles, asks for the name, and runs the
+same code as the wizard.
+
+![The same step on a 390px phone: the faces wrap into rows and the step scrolls](screenshots/setup-crew-phone.png)
+
+## Everywhere else: the play strip
+
+A turn happens in more places than the Office. **Chat, the agent panel in every app, and
+the prompt bar's card** each get the playground at the size of a line, which we call the
+play strip. It shows:
+- the faces of whoever is working on that turn;
+- a **!** when work lands on somebody;
+- a comic burst for each tool call, with the real tool name beside it;
+- a short balloon when one agent asks another.
+
+When the turn ends, the strip stays as a still record of who took part and how many steps
+each took. A plain reply with no tools and no colleagues gets no strip at all.
+
+![Chat while the team works: the play strip shows Aria, the researcher she handed the work to, and the validator the researcher is asking, with the question in a balloon; below it, the conversation in comic balloons](screenshots/playstrip-chat.png)
+
+![The same reply once the turn is over: the strip keeps who took part and their step counts, and the answer is written below the talk](screenshots/playstrip-chat-done.png)
+
+It follows the same rules as the Office: every mark is an event, fed by the same seam, with
+the same faces and the same words. Agents talking to each other in Chat are now comic
+balloons beside their faces. When the agent's hands touch an app window, the window gets
+the same burst in its corner.
+
+![The Files app's agent panel with a play strip: the researcher asking the validator](screenshots/playstrip-app.png)
+
+![Chat on a 390px phone with the play strip at the top of the reply](screenshots/playstrip-phone.png)
+
+## On your phone: Telegram
+
+Telegram can't run the Office, so it gets the Office as **pictures**, drawn on this machine
+in your office's style with the same characters:
+
+- **When agents talk during a turn you started from Telegram**, the reply is followed by a
+  comic strip of that exchange: one panel per line, in order. Every word is also in the
+  photo's caption. The picture's lettering is a small pixel font, so a line in another
+  script, or mostly emoji, shows "(below)" in its balloon and you read it in the caption.
+  A turn in which nobody talked sends nothing extra. `telegram.comics: false` in the
+  config switches the strips off.
+- **`/office`** sends the office right now: each room, its people, a BUSY tag over whoever
+  has a run open, and what that run is doing. The caption is the same roll call in words.
+
+![A comic strip sent to Telegram: the researcher asks the validator whether the prices are current, and the validator answers, drawn in the office's style](screenshots/telegram-strip.png)
+
+![The /office picture: Aria's office, Research, Writing and Build, with everybody standing in their room](screenshots/telegram-office.png)
+
+"Busy" is only ever a run that is open right now. A run left open by a crash more than an
+hour ago doesn't count, and an agent with nothing open is shown as free. `bento office`
+prints the same roll call. A terminal can't see a chat turn running inside the server,
+so it says that about your agent instead of calling it free.
+
+The pictures need nothing extra installed. They are drawn with the Python standard
+library, like the characters themselves.
+
 ## Make it your office
 
 Press **✎ Design**:
@@ -89,7 +159,7 @@ or the other way round.
 ## From a terminal
 
 There is nothing to animate in a terminal, but the office is a plan too, and
-`bento office` shows it and edits it:
+`bento office` shows it, says who is at work right now, and edits it:
 
 ```
 $ bento office

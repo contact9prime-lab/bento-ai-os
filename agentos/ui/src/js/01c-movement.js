@@ -83,11 +83,12 @@ function movementCovered(){
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
 /* The ONE seam between the OS's events and the scenes that draw them: the Crew stage
-   (01d) and the Office playground (24d). A new scene is one line here, not five more
+   (01d), the Office playground (24d) and the play strip (24e). A new scene is one line here, not five more
    edits in a websocket that knows nothing about scenes. */
 function scenePulse(kind,label,ev){
   if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(typeof officePulse==='function')officePulse(kind,label,ev);
+  if(typeof playPulse==='function')playPulse(kind,label,ev);     // the play strip (24e): Chat, apps, the bar
 }
 function movementPulse(kind,label,ev){
   // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a

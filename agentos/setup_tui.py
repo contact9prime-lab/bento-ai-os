@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import getpass
 import shutil
+import sys
 import textwrap
 
 from . import config as cfgmod
@@ -376,6 +377,38 @@ def _step_channel(cfg, store) -> None:
           "gets through.")
 
 
+def _step_crew(cfg, store) -> None:
+    """The crew and the office, in a terminal: the faces are the same pixels (half
+    blocks), the office is the same plan. What a terminal cannot show is the office
+    at work — it says where that is rather than pretending."""
+    import os as _os
+    from . import avatars, office
+    people = avatars.ensure(store, cfg)
+    colour = sys.stdout.isatty() and not _os.environ.get("NO_COLOR")
+    print("\n  Your crew:")
+    if colour:
+        row = people[:6]
+        faces = [avatars.terminal(p["recipe"], crop="face") for p in row]
+        for ln in range(len(faces[0])):
+            print("    " + "  ".join(f[ln] if f[ln].strip() else " " * 14 for f in faces))
+        print("    " + "  ".join(("you" if p["key"] == avatars.ME else p["label"])[:14].center(14) for p in row))
+    else:
+        for p in people:
+            print(f"    {('you' if p['key'] == avatars.ME else p['label']):<14} {p.get('about', '')}")
+    print("\n  The office they work in:")
+    styles = list(office.STYLES)
+    for i, k in enumerate(styles, 1):
+        print(f"    {i}. {office.STYLES[k]['label']:<16} {office.STYLES[k]['blurb']}")
+    pick = _ask("Style", "1")
+    style = styles[int(pick) - 1] if pick.isdigit() and 1 <= int(pick) <= len(styles) else office.DEFAULT_STYLE
+    name = _ask("Name on the door", office.current(cfg)["name"])
+    out = ob.crew(cfg, store, style, name)
+    _save(cfg)
+    office.record(store, "office created in setup: " + office.describe(out["office"]))
+    print("  ✓ " + office.describe(out["office"]))
+    print("    Watch them work in the desktop's Office app; `bento office` shows the plan here.")
+
+
 def _step_look(cfg, store) -> None:
     """A terminal can pick a theme; it cannot show you one.
 
@@ -455,7 +488,7 @@ def _step_account(cfg, store) -> None:
 HANDLERS = {
     "name": _step_name, "model": _step_model, "hello": _step_hello,
     "fork": _step_fork, "app": _step_app,
-    "agent": _step_agent, "flow": _step_flow, "schedule": _step_schedule,
+    "agent": _step_agent, "crew": _step_crew, "flow": _step_flow, "schedule": _step_schedule,
     "channel": _step_channel, "look": _step_look, "account": _step_account,
 }
 

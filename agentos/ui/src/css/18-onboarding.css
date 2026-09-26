@@ -152,3 +152,13 @@
 .ob-needs button{border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 10px;color:var(--txt)}
 /* the second and third choice on the brain step sat flush under the card above */
 .ob-body .job-q{margin-top:var(--sp-4)}
+/* the crew step: faces to tap for a new look, the office's name, and its preview */
+.ob-faces{display:flex;flex-wrap:wrap;gap:10px}
+.ob-face{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 8px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--bg3);min-width:72px;font-size:var(--fs-xs)}
+.ob-face:hover{border-color:var(--acc)}
+.ob-face img.ob-face-img{width:52px;height:52px;border-radius:10px;border:2px solid #191827;background:#fff;image-rendering:pixelated;margin:0}
+.ob-crew-name{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:var(--fs-sm);color:var(--dim)}
+.ob-crew-name input{flex:1;max-width:240px}
+.ob-crew-prev{display:block;width:100%;max-width:640px;margin:8px 0 4px;border-radius:10px;border:2px solid #191827;image-rendering:pixelated;background:#1b2233}
+body.dev-touch .ob-face,body.dev-touch .ob-crew-name input{min-height:var(--tap)}

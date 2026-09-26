@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0 — 2026-09-26
+
+**The playground everywhere.** The Office's comic look now appears wherever your agents
+work, not only in the Office app:
+- **Chat, every app's agent panel and the prompt bar** get a *play strip* while a turn runs:
+  - the faces of whoever is working on it;
+  - a "!" when work lands on somebody;
+  - a comic burst per tool call;
+  - a balloon when one agent asks another.
+
+  When the turn ends, the strip stays as a record of who took part. Agents talking in Chat
+  are comic balloons, and an app window the agent changes gets the same burst.
+- **Telegram gets pictures.** When agents talk during a turn you started from your phone,
+  the reply is followed by a comic strip of the exchange, drawn in your office's style with
+  the same characters, with every word in the caption. `/office` sends the office right now:
+  who is in which room and who is busy with what.
+- **Setup creates your crew and your office.** A new step, *Meet your crew and set up the
+  office*, gives everyone a character (tap for a new look) and lets you pick the office's
+  style and name, with a preview of it before it's saved. `bento setup` walks the same
+  step, and `bento office` now also says who is at work right now.
+
+The pictures are drawn with the Python standard library and a pixel font of our own, so
+nothing new is installed. (`docs/office.md`.)
+
 ## 0.5.0 — 2026-09-26
 
 **Every agent is a brain, hands, permissions and skills, and Settings has one place for each.**

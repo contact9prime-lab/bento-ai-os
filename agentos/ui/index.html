@@ -2747,6 +2747,16 @@ body.glass-off .win{background:var(--bg)!important}
 .ob-needs button{border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 10px;color:var(--txt)}
 /* the second and third choice on the brain step sat flush under the card above */
 .ob-body .job-q{margin-top:var(--sp-4)}
+/* the crew step: faces to tap for a new look, the office's name, and its preview */
+.ob-faces{display:flex;flex-wrap:wrap;gap:10px}
+.ob-face{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 8px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--bg3);min-width:72px;font-size:var(--fs-xs)}
+.ob-face:hover{border-color:var(--acc)}
+.ob-face img.ob-face-img{width:52px;height:52px;border-radius:10px;border:2px solid #191827;background:#fff;image-rendering:pixelated;margin:0}
+.ob-crew-name{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:var(--fs-sm);color:var(--dim)}
+.ob-crew-name input{flex:1;max-width:240px}
+.ob-crew-prev{display:block;width:100%;max-width:640px;margin:8px 0 4px;border-radius:10px;border:2px solid #191827;image-rendering:pixelated;background:#1b2233}
+body.dev-touch .ob-face,body.dev-touch .ob-crew-name input{min-height:var(--tap)}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -3842,6 +3852,70 @@ body.dev-mobile .of-le:nth-child(n+3){display:none}
 body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,body.dev-touch .of-x,
 body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn{min-height:var(--tap)}
 body.dev-touch .of-x{min-width:var(--tap)}
+/* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
+   The Office's comic language at the size of a line: ink outlines, white balloons, yellow
+   bursts with a red word. Like the Office canvas these are a comic's own colours — a
+   balloon is white with black ink on every theme — while the strip's frame and names use
+   the theme's tokens, so it sits in Chat on Nova and on Ember alike. */
+:root{--comic-ink:#191827;--comic-burst:#ffe14d;--comic-word:#e11d48;--comic-paper:#ffffff}
+
+.pstrip{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin:4px 0 10px;padding:52px 10px 8px;
+  border:2px solid var(--comic-ink);border-radius:12px;position:relative;overflow:visible;
+  background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--txt) 16%,transparent) 1px,transparent 1.6px) 0 0/7px 7px,
+    color-mix(in srgb,var(--acc) 7%,var(--bg2));
+  box-shadow:3px 3px 0 var(--comic-ink)}
+.pstrip.done{padding-top:8px;box-shadow:none;border-style:dashed;border-color:color-mix(in srgb,var(--txt) 30%,transparent)}
+.ps-p{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:44px}
+.ps-p img.ps-face{width:34px;height:34px;border-radius:9px;border:2px solid var(--comic-ink);background:var(--comic-paper);
+  image-rendering:pixelated;margin:0}
+.ps-n{font-size:var(--fs-2xs);font-weight:700;color:var(--txt);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-c{position:absolute;top:-6px;right:-8px;font-size:10px;font-weight:800;color:var(--dim)}
+.ps-c:empty{display:none}
+.ps-p.on img.ps-face{border-color:var(--acc);box-shadow:0 0 0 2px var(--comic-ink);animation:ps-hop .5s ease-in-out infinite alternate}
+.pstrip.done .ps-p img.ps-face{animation:none}
+@keyframes ps-hop{from{transform:translateY(0)}to{transform:translateY(-3px)}}
+
+/* a "!" when work lands, and a burst per tool call: both play once and are removed */
+.ps-pop{position:absolute;top:-24px;left:50%;font:italic 900 22px/1 var(--sans);color:var(--comic-burst);
+  -webkit-text-stroke:1.5px var(--comic-ink);transform:translateX(-50%);animation:ps-pop 1.4s ease-out forwards;pointer-events:none}
+/* the headroom above the faces is where balloons and bursts appear; room for two lines */
+.ps-burst{position:absolute;top:-30px;left:24px;padding:5px 10px;white-space:nowrap;pointer-events:none;z-index:2;
+  font:italic 900 11px/1 var(--sans);color:var(--comic-word);background:var(--comic-burst);
+  clip-path:polygon(0 18%,14% 22%,10% 0,30% 16%,46% 2%,56% 20%,78% 4%,76% 24%,100% 20%,88% 44%,100% 64%,82% 70%,90% 100%,64% 80%,48% 100%,40% 80%,16% 96%,20% 72%,0 74%,10% 48%);
+  animation:ps-pop 1.4s ease-out forwards}
+@keyframes ps-pop{0%{opacity:0;transform:translateX(-50%) scale(.3)}15%{opacity:1;transform:translateX(-50%) scale(1.12)}
+  25%{transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-6px)}}
+.ps-burst{animation-name:ps-burst}
+@keyframes ps-burst{0%{opacity:0;transform:scale(.3) rotate(-8deg)}15%{opacity:1;transform:scale(1.12) rotate(-4deg)}
+  25%{transform:scale(1) rotate(-4deg)}80%{opacity:1}100%{opacity:0;transform:translateY(-6px) rotate(-4deg)}}
+/* a short balloon when an agent asks, answers or speaks in a huddle */
+.ps-say{position:absolute;bottom:calc(100% + 6px);left:-6px;z-index:3;max-width:min(260px,70vw);width:max-content;
+  padding:5px 9px;border-radius:10px;font-size:var(--fs-xs);font-weight:600;line-height:1.3;white-space:normal;
+  color:var(--comic-ink);background:var(--comic-paper);border:2px solid var(--comic-ink);pointer-events:none}
+.ps-say::after{content:'';position:absolute;left:16px;bottom:-8px;border:6px solid transparent;border-top-color:var(--comic-ink)}
+
+/* an app window the agent's hands touched: the same burst, over its corner */
+.win-burst{position:absolute;top:34px;right:18px;z-index:30;padding:9px 16px;pointer-events:none;
+  font:italic 900 16px/1 var(--sans);color:var(--comic-word);background:var(--comic-burst);
+  clip-path:polygon(0 18%,14% 22%,10% 0,30% 16%,46% 2%,56% 20%,78% 4%,76% 24%,100% 20%,88% 44%,100% 64%,82% 70%,90% 100%,64% 80%,48% 100%,40% 80%,16% 96%,20% 72%,0 74%,10% 48%);
+  animation:ps-burst 1.4s ease-out forwards}
+
+/* agents talking in Chat: each line is a comic balloon beside its speaker's face */
+.huddle .hud-row img.av-who{width:36px;height:36px;flex:0 0 36px;border:2px solid var(--comic-ink);background:var(--comic-paper);image-rendering:pixelated}
+.huddle .hud-say{position:relative;background:var(--comic-paper);color:var(--comic-ink);border:2px solid var(--comic-ink);
+  border-radius:12px;padding:6px 10px;box-shadow:2px 2px 0 var(--comic-ink)}
+.huddle .hud-say::before{content:'';position:absolute;left:-10px;top:10px;border:5px solid transparent;border-right:6px solid var(--comic-ink)}
+.huddle .hud-say .hud-who{color:var(--comic-ink)}
+.huddle .hud-say .brainchip{color:#475569;border-color:#cbd5e1;background:#f1f5f9}
+.huddle .hud-say .brainchip b{color:var(--comic-ink)}
+.huddle .hud-to{color:#64748b}
+.huddle .hud-text a{color:#1d4ed8}
+.huddle .hud-row{border-top:0}
+
+@media (prefers-reduced-motion:reduce){
+  .ps-p.on img.ps-face,.ps-pop,.ps-burst,.win-burst{animation:none}
+  .ps-pop,.ps-burst,.win-burst{opacity:1}
+}
 </style>
 </head>
 <body>
@@ -4671,6 +4745,22 @@ async function avatarEdit(key){
   scr.querySelector('.dlg-ok').focus();
 }
 avatarsLoad();
+/* ================= The comic words: one vocabulary for the playground =================
+   A tool call is drawn as a burst with a word in it — in the Office, on the play strip in
+   Chat and in every app's agent panel, and on an app window the agent's hands touch. The
+   word lives here, once, so "FETCH!" means the same thing on every surface; the real
+   tool name is always printed beside it, so the joke never hides what actually ran.
+   `var` and a function: the bundle is one script and the Office (24d) and the strip
+   (24e) read these at run time. */
+var COMIC_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
+  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
+  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
+  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!',
+  create_app:'BUILD!',control_desktop:'ZAP!',set_wallpaper:'SPLASH!',set_office:'REDECORATE!',
+  set_avatar:'NEW LOOK!',create_flow:'PLAN!',schedule_task:'TICK-TOCK!'};
+function comicWord(tool){
+  return COMIC_WORDS[tool]||String(tool||'').replace(/_/g,' ').toUpperCase().slice(0,12)+'!';
+}
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
@@ -5181,11 +5271,12 @@ function movementCovered(){
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
 /* The ONE seam between the OS's events and the scenes that draw them: the Crew stage
-   (01d) and the Office playground (24d). A new scene is one line here, not five more
+   (01d), the Office playground (24d) and the play strip (24e). A new scene is one line here, not five more
    edits in a websocket that knows nothing about scenes. */
 function scenePulse(kind,label,ev){
   if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(typeof officePulse==='function')officePulse(kind,label,ev);
+  if(typeof playPulse==='function')playPulse(kind,label,ev);     // the play strip (24e): Chat, apps, the bar
 }
 function movementPulse(kind,label,ev){
   // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a
@@ -6968,7 +7059,11 @@ function miniFeed(box,opts){
     if(!body){body=document.createElement('div');body.className='mf-body body';box.appendChild(body)}};
   // Which conversation this feed is watching. Known from the first event that
   // carries it — a brand-new thread has no id until the server names it.
-  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id};
+  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id;
+    // the play strip (24e) for this conversation goes just above the live row — every
+    // app's agent panel and the prompt bar's card; the Office has its own canvas
+    if(ev&&ev.conversation_id&&!opts.noStrip&&typeof playHost==='function')
+      playHost(ev.conversation_id,()=>({parent:box,before:working&&working.isConnected?working:null}))};
   return {
     // Called twice on purpose: once locally the instant the message is sent,
     // then again on the server's turn_start. The second call must not wipe the
@@ -7066,6 +7161,7 @@ function agentHands(ev){
   if(!appId)return;
   const w=(typeof winsOf==='function'?winsOf(appId):[])[0];
   const els=[w&&w.el,document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`)].filter(Boolean);
+  if(w&&typeof playWindowBurst==='function')playWindowBurst(w,ev.name);   // the Office's word, on the window
   els.forEach(el=>{
     el.classList.add('agent-touch');
     clearTimeout(el._ht);el._ht=setTimeout(()=>el.classList.remove('agent-touch'),2600);
@@ -7203,7 +7299,7 @@ async function initCopilot(w,panel){
   };
   function mkSink(){
     if(live)return live;
-    live=miniFeed(feedEl,{scrollEl:feedEl,
+    live=miniFeed(feedEl,{scrollEl:feedEl,noStrip:!!panel.closest('.of-chat'),
       onStart:()=>setBusy(true),
       onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
       onEnd:()=>{live=null;setBusy(false);startersEl.style.display='none'}});
@@ -9954,6 +10050,8 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // the play strip (24e) goes at the top of this reply, once there is something to show
+      if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
@@ -10289,6 +10387,15 @@ function curWho(){
   const sp=CUR_ENGINE.speaker;
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
+}
+/* Where Chat puts a turn's play strip: under the name of the reply being written, in
+   the conversation that is open — never in whichever chat happens to be on screen. */
+function chatPlayHost(cid){
+  if(!feed||typeof currentConv==='undefined'||currentConv!==cid)return null;
+  if(!curBody)startAssistant();
+  if(!curBody)return null;
+  const msg=curBody.parentNode,who=msg.querySelector('.who');
+  return {parent:msg,before:who?who.nextSibling:msg.firstChild};
 }
 function startAssistant(){
   if(!feed)return;
@@ -16307,6 +16414,11 @@ var OB_PANES={
           device. Nothing to register. Unofficial — it says so before anything installs.</span></button>
     </div>`,
 
+  crew:s=>`<p class="mut">These are the people you will see at work — here, in Chat, in
+      every app's panel and in the pictures your phone gets. Tap a face for a new look;
+      pick the office they work in. All of it changes later in the Office's Design.</p>
+    <div id="ob-crew"><p class="mut">Drawing your crew…</p></div>`,
+
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
@@ -16758,6 +16870,54 @@ var OB_WIRE={
                          :`${body.name} can sign in, here and from their phone`,'ok');
         if(typeof usersBoot==='function')usersBoot();
         setTimeout(()=>obRefresh(false),900);
+      }finally{btn.disabled=false}
+    };
+  },
+
+  /* The crew step: characters generated and stored, the office created — and shown
+     before it is saved, as the same picture the phone's /office sends. */
+  async crew(){
+    const box=$('#ob-crew');if(!box)return;
+    let v;
+    try{
+      if(typeof avatarsLoad==='function'){AVATARS.pending=null;await avatarsLoad()}
+      v=await (await fetch('/api/office')).json();
+    }catch(e){box.innerHTML='<p class="mut">Could not reach the server.</p>';return}
+    const people=typeof AVATARS!=='undefined'?AVATARS.list:[];
+    let style=v.office.style,name=v.office.name;
+    const faces=()=>people.map(p=>`<button class="ob-face" data-key="${esc(p.key)}" title="${esc(p.about||'')} — tap for a new look">
+        ${avatarImg(p.key,'ob-face-img')}<span>${esc(p.key==='@me'?'you':p.label)}</span></button>`).join('');
+    const preview=()=>`/api/office/rollcall.png?style=${encodeURIComponent(style)}&name=${encodeURIComponent(name)}&t=${Date.now()}`;
+    box.innerHTML=`<div class="job-q"><span>Your crew</span><div class="ob-faces">${faces()}</div>
+        ${people.length<=2?`<p class="mut">Specialists you make later take a desk with a face of their own.</p>`:''}</div>
+      <div class="job-q"><span>The office</span>
+        <div class="ob-swatches">${Object.entries(v.styles).map(([k,st])=>`
+          <button class="ob-sw${k===style?' on':''}" data-style="${esc(k)}" title="${esc(st.blurb)}">
+            <i style="background:linear-gradient(135deg,${st.wall} 0 45%,${st.floor[0]} 45%)"></i>${esc(st.label)}</button>`).join('')}</div>
+        <label class="ob-crew-name">Name on the door <input id="ob-crew-name" maxlength="24" value="${esc(name)}"></label></div>
+      <img class="ob-crew-prev" id="ob-crew-prev" alt="A preview of your office with your crew in it" src="${preview()}">
+      <div class="job-go"><button class="wiz-next" id="ob-crew-go">Create my office</button>
+        <button class="wiz-back" id="ob-crew-open">Open the Office</button></div>`;
+    const refresh=()=>{$('#ob-crew-prev').src=preview()};
+    box.querySelectorAll('.ob-sw').forEach(b=>b.onclick=()=>{style=b.dataset.style;
+      box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x===b));refresh()});
+    $('#ob-crew-name').onchange=e=>{name=e.target.value.trim()||name;refresh()};
+    box.querySelectorAll('.ob-face').forEach(b=>b.onclick=async()=>{
+      await fetch('/api/avatars/'+encodeURIComponent(b.dataset.key)+'/reroll',{method:'POST'});
+      if(typeof avatarsChanged==='function')avatarsChanged();
+      AVATARS.pending=null;await avatarsLoad();
+      b.querySelector('img').outerHTML=avatarImg(b.dataset.key,'ob-face-img');refresh();
+    });
+    $('#ob-crew-open').onclick=()=>{obClose();openApp('office')};
+    $('#ob-crew-go').onclick=async()=>{
+      const btn=$('#ob-crew-go');btn.disabled=true;
+      try{
+        const r=await fetch('/api/office/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({style,name:$('#ob-crew-name').value.trim()})});
+        const d=await r.json();
+        if(!r.ok)return obMsg(d.error||'could not create the office','err');
+        obMsg('your office is ready — '+(d.office&&d.office.office?d.office.office.name:''),'ok');
+        obRefresh(true);
       }finally{btn.disabled=false}
     };
   },
@@ -20976,13 +21136,6 @@ var OF_SPEED=170;         // walking, world units a second
 var OF_SAY_MS=5200;       // a speech balloon's life
 var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
 var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
-/* A tool's comic word. The real tool name is always printed under it, so the joke never
-   hides what actually ran. */
-var OF_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
-  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
-  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
-  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!'};
-
 function renderOffice(el,w){
   // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
   // everybody where they are — rebuilding the canvas would teleport a walker home.
@@ -21186,7 +21339,7 @@ function officeBurst(p,tool){
   if(!p)return;const now=performance.now();
   // the same step can arrive twice (the chat stream and the run's own telemetry)
   if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
-  OFFICE.bursts.push({p,tool,word:OF_WORDS[tool]||String(tool).replace(/_/g,' ').toUpperCase().slice(0,12)+'!',
+  OFFICE.bursts.push({p,tool,word:comicWord(tool),
     at:now,rot:(Math.random()-.5)*.3});
   if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
   p.busy=now;officeKick();
@@ -21794,6 +21947,164 @@ async function officeSave(patch){
     if(d.dropped&&d.dropped.length)toast('not placed — nobody here is called '+d.dropped.join(', '));
     OFFICE.view=d;officeLayout();officeDesignPaint();
   }catch(e){toast('could not change the office')}
+}
+/* ================= The play strip: the Office, one line tall, wherever a turn is shown =================
+   The Office is a whole window. A turn happens in many more places — Chat, the agent panel
+   inside every app, the prompt bar's card — and the playground belongs there too, at the
+   size of a line: the faces of whoever is working on THIS turn, a "!" when work lands on
+   somebody, a comic burst for each tool call with the real tool name beside it, and a short
+   balloon when one agent asks another. When the turn ends the strip stays as a still,
+   honest record of who worked on it and how many steps each took.
+
+   The Office's rules, unchanged:
+   - **Only events.** Every mark on a strip is something the server said happened: a
+     `turn_start` names the lead (or the `@specialist` answering), `tool_start` bursts,
+     `delegate` and a mission's `node_add` bring a colleague in, `agent_msg` asks and
+     answers, a run's `step` bursts on the one it belongs to. Nothing idles for the look.
+   - **One seam.** scenePulse (01c) feeds the Crew stage, the Office and this.
+   - **The same people and words.** Faces are avatarImg (the server's characters); the
+     burst words are comicWord (00f), the Office's own.
+   - **Placed by the surface that shows the turn.** A surface calls playHost(cid, fn) when
+     it knows the conversation; `fn` says where a strip would go. Nothing is inserted until
+     there is something to show, so a plain reply gets no strip at all.
+
+   Cost: a few DOM nodes per turn; bursts are CSS animations removed after they play; no
+   timers run when nothing happens. Reduced motion: the marks appear without moving.
+   Faces — GUI/SUI: this. TUI: the chat TUI already prints each agent's line and each tool
+   call; `bento office` has the roll call. Telegram: the same exchange as a comic strip
+   picture (agentos/comic.py). `var` and function declarations only. */
+var PLAY={hosts:new Map(),strips:new Map(),lead:{},runs:{},sent:{}};
+
+/* A surface that shows conversation `cid` says where its strip would go: `fn()` returns
+   {parent, before} (insert before `before`, or append to `parent`), or null when it cannot
+   show one right now. */
+function playHost(cid,fn){
+  if(!cid)return;
+  PLAY.hosts.set(cid,fn);
+  if(PLAY.hosts.size>60)PLAY.hosts.delete(PLAY.hosts.keys().next().value);
+}
+function playStripOf(cid,create){
+  let s=cid&&PLAY.strips.get(cid);
+  if(s&&s.el.isConnected&&!s.done)return s;
+  if(!create||!cid)return null;
+  const host=PLAY.hosts.get(cid),at=host&&host();
+  if(!at||!at.parent)return null;
+  const el=document.createElement('div');el.className='pstrip';el.setAttribute('aria-hidden','true');
+  at.parent.insertBefore(el,at.before||null);
+  s={cid,el,cast:new Map(),done:false};
+  PLAY.strips.set(cid,s);
+  if(PLAY.strips.size>40)PLAY.strips.delete(PLAY.strips.keys().next().value);
+  // the lead of this turn stands first, even before it has done anything
+  playMember(s,PLAY.lead[cid]||'@agent');
+  return s;
+}
+function playName(key){return key==='@agent'?(typeof agentName==='function'?agentName():'agent'):key}
+function playMember(s,key,pop){
+  let m=s.cast.get(key);
+  if(!m){
+    const el=document.createElement('span');el.className='ps-p';el.dataset.key=key;
+    el.innerHTML=(typeof avatarImg==='function'?avatarImg(key,'ps-face'):'')
+      +`<span class="ps-n">${esc(playName(key))}</span><span class="ps-c"></span>`;
+    s.el.appendChild(el);
+    m={key,el,steps:0,sayT:0};s.cast.set(key,m);
+  }
+  if(pop)playMark(m,'ps-pop','!');
+  return m;
+}
+/* A mark that plays once and leaves: a "!" or a burst. */
+function playMark(m,cls,text,title){
+  const b=document.createElement('span');b.className=cls;b.textContent=text;if(title)b.title=title;
+  m.el.appendChild(b);
+  setTimeout(()=>b.remove(),1500);
+}
+function playWork(s,key,on){
+  const m=playMember(s,key);m.el.classList.toggle('on',!!on);return m;
+}
+function playStep(s,key,tool){
+  const m=playWork(s,key,true);
+  m.steps++;
+  m.el.querySelector('.ps-c').textContent='×'+m.steps;
+  playMark(m,'ps-burst',comicWord(tool),tool);
+}
+function playSay(s,key,text){
+  const m=playMember(s,key);
+  let b=m.el.querySelector('.ps-say');
+  if(!b){b=document.createElement('span');b.className='ps-say';m.el.appendChild(b)}
+  b.textContent=String(text||'').replace(/\s+/g,' ').slice(0,70);
+  clearTimeout(m.sayT);m.sayT=setTimeout(()=>b.remove(),6000);
+}
+/* The turn is over: the strip keeps who took part and how many steps each took, and
+   stops saying anybody is working. A strip where only the lead appeared and nothing
+   happened is removed — it would be a record of nothing. */
+function playEnd(cid){
+  const s=PLAY.strips.get(cid);if(!s)return;
+  s.done=true;s.el.classList.add('done');
+  s.cast.forEach(m=>{m.el.classList.remove('on');m.el.querySelectorAll('.ps-say,.ps-burst,.ps-pop').forEach(x=>x.remove())});
+  if(s.cast.size<=1&&![...s.cast.values()].some(m=>m.steps))s.el.remove();
+  PLAY.strips.delete(cid);
+}
+/* Which conversation a colleague's run belongs to: the one that last handed it work or
+   asked it something. A run's own events carry its id and its agent, not the chat. */
+function playFor(agent){return agent&&PLAY.sent[String(agent).toLowerCase()]}
+
+function playPulse(kind,label,ev){
+  ev=ev||{};
+  const cid=ev.conversation_id||'';
+  if(kind==='turn'){if(cid){PLAY.lead[cid]=ev.speaker||'@agent'}return}
+  if(kind==='turnend'){playEnd(label);delete PLAY.lead[label];return}
+  if(kind==='tool'){
+    const s=playStripOf(cid,true);if(!s)return;
+    const lead=PLAY.lead[cid]||'@agent';
+    playStep(s,lead,label);
+    if(label==='delegate'&&ev.args&&ev.args.subagent){
+      const to=String(ev.args.subagent);
+      PLAY.sent[to.toLowerCase()]=cid;
+      playWork(s,to,true);playMark(playMember(s,to),'ps-pop','!');
+    }
+    return;
+  }
+  if(kind==='msg'){
+    const s=playStripOf(cid,true);if(!s)return;
+    if(ev.phase==='ask'){
+      PLAY.sent[String(ev.to||'').toLowerCase()]=cid;
+      playSay(s,ev.from,'@'+ev.to+' '+(ev.text||''));playWork(s,ev.to,true);
+    }else{playSay(s,ev.from,ev.text||'')}
+    return;
+  }
+  if(kind==='say'){
+    if(ev.kind==='talk')return;             // asks and answers arrive as 'msg'
+    const s=playStripOf(cid,true);if(!s)return;
+    playSay(s,ev.speaker||label,ev.text||'');playWork(s,ev.speaker||label,true);
+    return;
+  }
+  if(kind==='flow'){
+    const e=ev.event;
+    if(e==='node_add'&&ev.agent){
+      const c=playFor(ev.agent)||cid;const s=playStripOf(c,!!c);if(!s)return;
+      playWork(s,ev.agent,true);playMark(playMember(s,ev.agent),'ps-pop','!');return;
+    }
+    if(e==='status'&&ev.ref){
+      const c=playFor(ev.ref);if(!c)return;
+      if(ev.status==='running'){PLAY.runs[ev.run_id]={cid:c,key:ev.ref};return}
+      delete PLAY.runs[ev.run_id];
+      const s=playStripOf(c,false);if(s)playWork(s,ev.ref,false);
+      return;
+    }
+    if(e==='step'&&ev.status==='start'){
+      const r=PLAY.runs[ev.run_id];if(!r)return;
+      const s=playStripOf(r.cid,true);if(s)playStep(s,r.key,ev.tool);
+    }
+  }
+}
+
+/* An app window the agent's hands just touched gets a burst too — the same word the
+   strip and the Office would show, over the corner of the thing being changed. */
+function playWindowBurst(win,tool){
+  if(!win||!win.el)return;
+  const b=document.createElement('span');b.className='win-burst';b.setAttribute('aria-hidden','true');
+  b.textContent=comicWord(tool);
+  win.el.appendChild(b);
+  setTimeout(()=>b.remove(),1500);
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

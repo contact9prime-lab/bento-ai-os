@@ -11,9 +11,9 @@ uv run agentos
 ```
 
 The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens onto
-**setup** — eleven steps down the left, one at a time on the right.
+**setup** — twelve steps down the left, one at a time on the right.
 
-![The first-run setup screen: a rail of eleven steps down the left with the first one selected, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply" above the field](screenshots/onboarding-1-name.png)
+![The first-run setup screen: the rail of setup steps down the left with the first one selected, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply" above the field](screenshots/onboarding-1-name.png)
 
 It is not a settings form with a progress bar. Every step **produces something real** and
 shows it happening, and every step says what you will end up with before it asks you for
@@ -25,6 +25,7 @@ anything:
 | Give it a brain | a model this machine can actually reach |
 | Watch it answer | a real reply, from your model, in front of you |
 | Build a specialist | an agent you can call by name with `@` |
+| Meet your crew and set up the office | everyone's pixel-art character and an office they work in — see [The Office](office.md) |
 | Give it a mission | a flow you can run, and watch run |
 | Let it run without you | something on the clock, with a next run time |
 | Reach it from your phone | a paired chat that answers as your agent |
@@ -56,7 +57,7 @@ You do not have to wait for a fresh install to see it. **Setup** is an ordinary 
 in the deck, the start menu and the omnibar — so you can open the arc any time to look
 at what a step actually does.
 
-![The Setup app in a window: the eleven-step rail on the left with "Give it a brain" ticked, and on the right the "Build a specialist" step showing the researcher-plus card and a Create this agent button](screenshots/setup-app.png)
+![The Setup app in a window: the rail of setup steps on the left with "Give it a brain" ticked, and on the right the "Build a specialist" step showing the researcher-plus card and a Create this agent button](screenshots/setup-app.png)
 
 It is the **same arc**, not a preview of it: same catalogue, same probe, same panes,
 same buttons. A tour mode that only showed you the steps would be a second

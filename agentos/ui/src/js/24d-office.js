@@ -45,13 +45,6 @@ var OF_SPEED=170;         // walking, world units a second
 var OF_SAY_MS=5200;       // a speech balloon's life
 var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
 var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
-/* A tool's comic word. The real tool name is always printed under it, so the joke never
-   hides what actually ran. */
-var OF_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
-  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
-  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
-  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!'};
-
 function renderOffice(el,w){
   // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
   // everybody where they are — rebuilding the canvas would teleport a walker home.
@@ -255,7 +248,7 @@ function officeBurst(p,tool){
   if(!p)return;const now=performance.now();
   // the same step can arrive twice (the chat stream and the run's own telemetry)
   if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
-  OFFICE.bursts.push({p,tool,word:OF_WORDS[tool]||String(tool).replace(/_/g,' ').toUpperCase().slice(0,12)+'!',
+  OFFICE.bursts.push({p,tool,word:comicWord(tool),
     at:now,rot:(Math.random()-.5)*.3});
   if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
   p.busy=now;officeKick();

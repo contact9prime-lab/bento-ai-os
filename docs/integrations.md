@@ -28,6 +28,7 @@ commands; every other enabled chat can only converse.
 | `/status` | model, autonomy, and whether a turn is running |
 | `/model` `[id]` | what can answer; with an id, switch this machine to it |
 | `/agents` | the specialists this machine has |
+| `/office` | the office right now, as a picture: each room, its people, and who is busy with what |
 | `/run <agent> <task>` | hand a task to one of them |
 | `/flows` · `/flow <name> [input]` | standing missions, and running one now |
 | `/tools [search]` | what the agent can do |

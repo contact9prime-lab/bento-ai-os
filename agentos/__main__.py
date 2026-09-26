@@ -3172,6 +3172,11 @@ def _office_cli(args):
     try:
         if a in ("show", "list"):
             print(of.text(of.view(cfg, store)))
+            # who is at work right now: the same rows Telegram's /office draws
+            from . import playground as _pg
+            print("\n  Right now:")
+            for ln in _pg.rollcall_text(_pg.rollcall(store, cfg, lead_busy=None)).splitlines():
+                print("    " + ln)
             print("\n  The desktop's Office app animates this: agents walk over to ask each other,"
                   "\n  huddles gather in the meeting room. A terminal shows the plan, not the play.")
             return

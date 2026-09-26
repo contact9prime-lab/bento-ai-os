@@ -195,7 +195,9 @@ def test_unskipping_offers_it_again(store):
 def test_everything_answered_counts_as_finished(store):
     cfg = {"agent_name": "Bento", "default_model": "ollama/x",
            "telegram": {"enabled": True, "bot_token": "t", "owner_chat_id": 1},
-           "desktop": {"theme": "bento"}}
+           "desktop": {"theme": "bento"},
+           # the crew step: an office somebody created (its characters come with it)
+           "office": {"style": "space", "name": "Orbit HQ"}}
     # A machine that stays single-user is a finished machine, not an unfinished
     # one — which is the whole reason the account step is optional.
     ob.skip(cfg, "account")

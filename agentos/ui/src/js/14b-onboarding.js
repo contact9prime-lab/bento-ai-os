@@ -336,6 +336,11 @@ var OB_PANES={
           device. Nothing to register. Unofficial — it says so before anything installs.</span></button>
     </div>`,
 
+  crew:s=>`<p class="mut">These are the people you will see at work — here, in Chat, in
+      every app's panel and in the pictures your phone gets. Tap a face for a new look;
+      pick the office they work in. All of it changes later in the Office's Design.</p>
+    <div id="ob-crew"><p class="mut">Drawing your crew…</p></div>`,
+
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
@@ -787,6 +792,54 @@ var OB_WIRE={
                          :`${body.name} can sign in, here and from their phone`,'ok');
         if(typeof usersBoot==='function')usersBoot();
         setTimeout(()=>obRefresh(false),900);
+      }finally{btn.disabled=false}
+    };
+  },
+
+  /* The crew step: characters generated and stored, the office created — and shown
+     before it is saved, as the same picture the phone's /office sends. */
+  async crew(){
+    const box=$('#ob-crew');if(!box)return;
+    let v;
+    try{
+      if(typeof avatarsLoad==='function'){AVATARS.pending=null;await avatarsLoad()}
+      v=await (await fetch('/api/office')).json();
+    }catch(e){box.innerHTML='<p class="mut">Could not reach the server.</p>';return}
+    const people=typeof AVATARS!=='undefined'?AVATARS.list:[];
+    let style=v.office.style,name=v.office.name;
+    const faces=()=>people.map(p=>`<button class="ob-face" data-key="${esc(p.key)}" title="${esc(p.about||'')} — tap for a new look">
+        ${avatarImg(p.key,'ob-face-img')}<span>${esc(p.key==='@me'?'you':p.label)}</span></button>`).join('');
+    const preview=()=>`/api/office/rollcall.png?style=${encodeURIComponent(style)}&name=${encodeURIComponent(name)}&t=${Date.now()}`;
+    box.innerHTML=`<div class="job-q"><span>Your crew</span><div class="ob-faces">${faces()}</div>
+        ${people.length<=2?`<p class="mut">Specialists you make later take a desk with a face of their own.</p>`:''}</div>
+      <div class="job-q"><span>The office</span>
+        <div class="ob-swatches">${Object.entries(v.styles).map(([k,st])=>`
+          <button class="ob-sw${k===style?' on':''}" data-style="${esc(k)}" title="${esc(st.blurb)}">
+            <i style="background:linear-gradient(135deg,${st.wall} 0 45%,${st.floor[0]} 45%)"></i>${esc(st.label)}</button>`).join('')}</div>
+        <label class="ob-crew-name">Name on the door <input id="ob-crew-name" maxlength="24" value="${esc(name)}"></label></div>
+      <img class="ob-crew-prev" id="ob-crew-prev" alt="A preview of your office with your crew in it" src="${preview()}">
+      <div class="job-go"><button class="wiz-next" id="ob-crew-go">Create my office</button>
+        <button class="wiz-back" id="ob-crew-open">Open the Office</button></div>`;
+    const refresh=()=>{$('#ob-crew-prev').src=preview()};
+    box.querySelectorAll('.ob-sw').forEach(b=>b.onclick=()=>{style=b.dataset.style;
+      box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x===b));refresh()});
+    $('#ob-crew-name').onchange=e=>{name=e.target.value.trim()||name;refresh()};
+    box.querySelectorAll('.ob-face').forEach(b=>b.onclick=async()=>{
+      await fetch('/api/avatars/'+encodeURIComponent(b.dataset.key)+'/reroll',{method:'POST'});
+      if(typeof avatarsChanged==='function')avatarsChanged();
+      AVATARS.pending=null;await avatarsLoad();
+      b.querySelector('img').outerHTML=avatarImg(b.dataset.key,'ob-face-img');refresh();
+    });
+    $('#ob-crew-open').onclick=()=>{obClose();openApp('office')};
+    $('#ob-crew-go').onclick=async()=>{
+      const btn=$('#ob-crew-go');btn.disabled=true;
+      try{
+        const r=await fetch('/api/office/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({style,name:$('#ob-crew-name').value.trim()})});
+        const d=await r.json();
+        if(!r.ok)return obMsg(d.error||'could not create the office','err');
+        obMsg('your office is ready — '+(d.office&&d.office.office?d.office.office.name:''),'ok');
+        obRefresh(true);
       }finally{btn.disabled=false}
     };
   },

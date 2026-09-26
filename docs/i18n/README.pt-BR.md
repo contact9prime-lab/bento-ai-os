@@ -43,7 +43,7 @@ solução de problemas.
 
 ---
 
-## A configuração tem onze passos, e cada um deixa algo para trás
+## A configuração tem doze passos, e cada um deixa algo para trás
 
 Não é um formulário de configurações com uma barra de progresso. Cada passo **produz algo real** — um modelo
 que responde, um agente que existe, um fluxo que roda, um agendamento que dispara — e diz o que
@@ -306,7 +306,7 @@ o Bento, e então *prova que funciona* fazendo uma pergunta ao servidor em execu
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Depois abra **http://127.0.0.1:8321**, ou rode `bento setup` para os mesmos onze passos em um terminal.
+Depois abra **http://127.0.0.1:8321**, ou rode `bento setup` para os mesmos doze passos em um terminal.
 
 Se houver um terminal para perguntar, o instalador pergunta duas coisas antes de terminar: se esta máquina
 deve ser alcançável a partir dos seus outros dispositivos e — em caso afirmativo — se você entra com uma

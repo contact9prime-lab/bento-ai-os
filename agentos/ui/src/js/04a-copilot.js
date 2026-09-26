@@ -111,7 +111,11 @@ function miniFeed(box,opts){
     if(!body){body=document.createElement('div');body.className='mf-body body';box.appendChild(body)}};
   // Which conversation this feed is watching. Known from the first event that
   // carries it — a brand-new thread has no id until the server names it.
-  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id};
+  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id;
+    // the play strip (24e) for this conversation goes just above the live row — every
+    // app's agent panel and the prompt bar's card; the Office has its own canvas
+    if(ev&&ev.conversation_id&&!opts.noStrip&&typeof playHost==='function')
+      playHost(ev.conversation_id,()=>({parent:box,before:working&&working.isConnected?working:null}))};
   return {
     // Called twice on purpose: once locally the instant the message is sent,
     // then again on the server's turn_start. The second call must not wipe the
@@ -209,6 +213,7 @@ function agentHands(ev){
   if(!appId)return;
   const w=(typeof winsOf==='function'?winsOf(appId):[])[0];
   const els=[w&&w.el,document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`)].filter(Boolean);
+  if(w&&typeof playWindowBurst==='function')playWindowBurst(w,ev.name);   // the Office's word, on the window
   els.forEach(el=>{
     el.classList.add('agent-touch');
     clearTimeout(el._ht);el._ht=setTimeout(()=>el.classList.remove('agent-touch'),2600);
@@ -346,7 +351,7 @@ async function initCopilot(w,panel){
   };
   function mkSink(){
     if(live)return live;
-    live=miniFeed(feedEl,{scrollEl:feedEl,
+    live=miniFeed(feedEl,{scrollEl:feedEl,noStrip:!!panel.closest('.of-chat'),
       onStart:()=>setBusy(true),
       onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
       onEnd:()=>{live=null;setBusy(false);startersEl.style.display='none'}});

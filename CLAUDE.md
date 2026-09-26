@@ -1308,6 +1308,31 @@ things keep it true:
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
   dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
 
+**The playground off the Office** (`agentos/playground.py`, `agentos/comic.py`, `24e-playstrip.js`,
+`00f-comic.js`; `tests/test_playground.py`). Same rules, other media:
+
+- **The play strip** is the Office at the size of a line in Chat, every app's agent panel and the
+  prompt bar's card. It is fed ONLY by `scenePulse` (nothing else calls `playPulse`) and placed by
+  the surface that shows the turn (`playHost(cid, fn)` — Chat's `chatPlayHost` checks the turn is
+  the OPEN conversation, `miniFeed` inserts above its live row, the Office's own chat opts out).
+  Nothing is inserted until something happens; a strip of nothing is removed at turn end.
+- **One vocabulary**: `comicWord()` in `00f-comic.js` is the burst word everywhere (Office, strip,
+  app window). The real tool name is always shown beside it.
+- **Telegram gets pictures, and the picture never carries words the caption does not.** The
+  server's broadcast feeds `playground.observe`; a Telegram turn opens a tap on its conversation
+  and, if agents talked, sends ONE `comic.strip` with every word in the caption. The pixel font is
+  ASCII: a run it cannot draw becomes "...", a mostly-other-script line says "(below)" — never a
+  silently shortened sentence (found: "नमस्ते दुनिया, how are you" drew as ", how are you").
+- **Busy is a run OPEN in `fabric_runs`**, newer than `STALE_S` (a crash's leftover is not work);
+  a process that cannot see chat turns passes `lead_busy=None` and says so. `rollcall()` feeds
+  `/office`, `bento office` and the setup preview (`/api/office/rollcall.png`) alike.
+- **`comic.py` is stdlib only**, the avatars.py argument: Pillow happens to be in a dev venv and
+  is NOT a dependency. People are `avatars.paint`; this module paints panels and lettering only.
+- **Setup creates the crew and the office** (`crew` step, `onboarding.crew` — the wizard and
+  `bento setup` run the same function), ticked on evidence (a saved office), needing nothing
+  first. `AGENTOS_TELEGRAM_API` points the bridge at a stand-in, the `AGENTOS_SIGNIN_BASE` idea,
+  so a whole phone turn can be walked through without a bot.
+
 ## The team: each agent on its own provider, and huddles
 
 Full story in `docs/team.md`. Two features, four rules.
