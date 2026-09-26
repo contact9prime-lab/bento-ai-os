@@ -3804,6 +3804,11 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .agn-hands{border-left:3px solid color-mix(in srgb,var(--txt) 55%,transparent)}
 .agn-team{border-left:3px solid #60a5fa}.agn-mission{border-left:3px solid #fbbf24}
 .agraph-cols{display:none}
+
+/* the face on an agent's card is the door to its look (Settings → Agents) */
+.ag-face{display:inline-flex;padding:0;border-radius:8px;background:none;border:1px solid transparent;cursor:pointer}
+.ag-face:hover{border-color:var(--acc)}
+body.dev-touch .ag-face{min-width:var(--tap);min-height:var(--tap);align-items:center;justify-content:center}
 /* ================= Office: the playground (24d-office.js) =================
    Two columns on a wide window — the office, and the chat on the right — and one on a
    narrow one, where the chat is a sheet behind the Chat button. The canvas draws its
@@ -4705,6 +4710,11 @@ function avatarSprite(key,px){
    editing changes in Chat, in Logs and on the stage behind the dialog while you
    pick. The options are the server's own closed set (`palette`), so nothing can be
    offered here that the server would then refuse. */
+/* The same editor, opened on its "describe it" box — the Agents page's ✦ button. */
+async function avatarDesignAsk(key){
+  await avatarEdit(key);
+  const d=document.querySelector('.dlg-scrim .ave-desc');if(d)d.focus();
+}
 async function avatarEdit(key){
   await avatarsLoad();
   const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
@@ -11439,6 +11449,11 @@ function setTab(body,all){
     P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), an executor (<a href="#" onclick="settingsGo('executors');return false">Executors</a> — what it can reach), permissions and skills — and everything any of them does is in the ledger.</p>`);
     P.push(pGroup('Lead agent',[
       pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      // the character is part of who the agent is, so it is edited HERE as well as in
+      // Appearance — looking for it on the agent's own page and not finding it was the report
+      pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
+        +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
+        {desc:'Its character in Chat, Logs, the Office and the Crew stage. Pick from the palette, or describe it in words.',f:'agent look character avatar face appearance'}),
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
@@ -13815,10 +13830,11 @@ async function renderAgentsList(){
     <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
-      <div class="ag-h">${avatarImg(a.key,'av-tool')}<b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
+        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
         <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}

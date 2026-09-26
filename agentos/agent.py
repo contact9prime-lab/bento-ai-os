@@ -659,6 +659,15 @@ class Agent:
                 mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
                              + "\n".join(f"- {f}" for f in facts[-n_facts:])
                              + "\n=== end knowledge graph ===\n")
+        if self.principal is MAIN and self.tool_filter is None:
+            # The lead knows WHO its specialists are, not only that `delegate` exists:
+            # asked to "build a tool" with a toolsmith on the roster, it built the tool
+            # itself. One list, the same one a forwarded Claude Code turn gets.
+            try:
+                from .executors import team_note
+                mem_text += team_note(store.list_subagents(), prefix="")
+            except Exception:
+                pass
         skills = self.toolbox.store.list_skills()
         if skills:
             mem_text += ("\n\nSkills — proven procedures. Load one with `use_skill(name)` BEFORE starting "

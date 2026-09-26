@@ -147,10 +147,11 @@ async function renderAgentsList(){
     <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
-      <div class="ag-h">${avatarImg(a.key,'av-tool')}<b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
+        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
         <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}

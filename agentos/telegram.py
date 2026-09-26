@@ -322,7 +322,11 @@ class TelegramBridge(usersmod.Scoped):
                         reply, _run = await execmod.forward(
                             engine, text, self.cfg,
                             str(_cfgmod.AGENTOS_HOME / "workspace"),
-                            session_id=self._exec_sessions.get(cid, ""))
+                            session_id=self._exec_sessions.get(cid, ""),
+                            # the team door: "build me a tool" from the phone reaches
+                            # the toolsmith as it does at the desk
+                            team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
+                                  "conversation_id": cid, "surface": "telegram"})
                         if _run and _run.session_id:
                             self._exec_sessions[cid] = _run.session_id
                     finally:

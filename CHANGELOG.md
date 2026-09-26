@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.2 — 2026-09-26
+
+**Your lead hands work to the team, whatever its brain.**
+- Ask for a job one of your specialists was made for ("build me a tool" with a toolsmith on
+  the roster) and the lead hands it over, then tells you what they did. It is now told who
+  its specialists are and what each is for.
+- This works when the brain is Claude Code: a chat turn forwarded to it can now reach your
+  specialists (`delegate` and `huddle`), each hand-over checked and recorded like any other.
+  The same from Telegram and WhatsApp.
+- `@toolsmith …` always goes to the toolsmith, and `@a @b …` always starts a huddle. With
+  Claude Code as the brain, both used to be answered by Claude Code itself. WhatsApp now
+  understands `@name` too.
+
+**Change an agent's look from its own card.** Settings → Agents has a *Look* row on every
+agent and on your lead: *Change…* opens the character editor, *✦ Describe it* opens it on
+the describe box, and the face on the card does the same.
+
 ## 0.6.1 — 2026-09-26
 
 **After an update, everything works — for everybody on the machine.**

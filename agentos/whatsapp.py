@@ -543,13 +543,31 @@ class WhatsAppBridge(usersmod.Scoped):
 
         model = self.cfg.get("default_model") or ""
         from . import executors as execmod
+        from . import fabric as fabricmod
         engine = execmod.resolve_engine(self.cfg)
-        if engine != "aria":
+        mention = (fabricmod.parse_mention(self.store, text)
+                   if getattr(self.toolbox, "fabric", None) else None)
+        if mention:
+            # '@toolsmith …' from the phone goes straight to that specialist, as it does
+            # on Telegram and at the desk — whatever the machine's brain is
+            defn, task = mention
+            _k.turn_started()
+            try:
+                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
+                                                             approver=approver)
+            finally:
+                _k.turn_ended()
+            reply = (f"@{defn['name']} · {res['status']}\n\n"
+                     + (res["content"] or res["fault"] or "(no output)"))
+            result = {"steps": res["steps"]}
+        elif engine != "aria":
             _k.turn_started()
             try:
                 reply, run = await execmod.forward(
                     engine, text, self.cfg, str(cfgmod.AGENTOS_HOME / "workspace"),
-                    session_id=self._exec_sessions.get(cid, ""))
+                    session_id=self._exec_sessions.get(cid, ""),
+                    team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
+                          "conversation_id": cid, "surface": "whatsapp"})
                 if run and run.session_id:
                     self._exec_sessions[cid] = run.session_id
             finally:

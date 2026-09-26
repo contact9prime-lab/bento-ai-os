@@ -598,6 +598,20 @@ audit rows. Five things are load-bearing:
 `executors.MCP_ENGINES` is the list of executors that can be driven this way — Claude
 Code today — and `runs_missions()` is the one question every surface asks.
 
+**A forwarded CHAT turn gets a team door, and an address beats the brain.** Reported as: a
+toolsmith on the roster, "build me a tool", and Claude Code built it with Bash and Write. The
+forwarded turn knew nothing of the team (`context_for` even says it cannot use this OS's
+tools), and the chat handler checked `model == "claude-code"` BEFORE `@mention`/huddle/message
+trigger, so `@toolsmith …` was forwarded too. Now: explicit routing is checked first;
+`executors.open_team_door` (chat, and `forward(team=…)` from Telegram and WhatsApp) opens a
+bridge session offering exactly `TEAM_TOOLS` (`delegate`, `huddle`), served by an Agent of the
+turn's principal, surface and approver, adds `--mcp-config` + `--allowedTools mcp__bento` but
+NOT `--strict-mcp-config` (it is the person's own chat), and appends `team_note()` — the same
+list the built-in lead's `_system` gets (`prefix=""`). The chat relay drops the CLI's copy of
+an `mcp__bento__*` tool event, because the gate already emits one. `delegate`/`huddle` are in
+`toolscope.CORE`, so a narrowed set never names people the lead cannot reach. A scheduled
+turn gets no door: nobody is there to approve a hand-over.
+
 ## OpenClaw plugins: the lifecycle is ours, the runtime is not
 
 `agentos/ocplugins.py` installs OpenClaw's plugins through this OS's review — scan,

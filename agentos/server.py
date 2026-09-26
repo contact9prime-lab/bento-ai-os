@@ -10755,7 +10755,11 @@ async def _run_chat(cid: str, data: dict):
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
                 flow_hit = None
-        if model == "claude-code":
+        # An explicit address wins over the brain: `@toolsmith …`, `@a @b …` and a message
+        # trigger go to the specialist / the huddle / the flow even when the machine's
+        # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
+        # tool` was forwarded to Claude Code, which built it itself.
+        if model == "claude-code" and not (mention or huddle_hit or flow_hit):
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
             # indicator, global turn slot, Stop, persistence — because its stream is
@@ -10808,6 +10812,18 @@ async def _run_chat(cid: str, data: dict):
                     env.context += execmod.new_app_note(checkout)
                 except Exception:
                     checkout = None
+            # The team door. A forwarded turn has Claude Code's own tools and knew
+            # nothing of the person's specialists, so "build me a tool" was built by
+            # Claude Code while the toolsmith made for it sat idle. With specialists
+            # here, the turn also gets `delegate` and `huddle` over the run bridge —
+            # an Agent of this chat's principal, surface and approver, so every
+            # hand-over passes the same gate as a built-in turn's — and a note naming
+            # who does what (execmod.team_note). Closed in `finally` below.
+            from . import spaces as _spacemod
+            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            team_token = execmod.open_team_door(
+                env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
+                space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
             run = execmod.Run()
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
                           "model": "claude-code", "executor": run, "uid": owner}
@@ -10823,12 +10839,21 @@ async def _run_chat(cid: str, data: dict):
             async def _relay(ev: dict):
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
+                # A team-door call is shown by the GATE (the Agent emits tool_start /
+                # tool_end as `delegate`); the CLI's own copy of it would be a second
+                # card for the same step — the rule the flow bridge learned first.
+                if ev.get("type") in ("tool_start", "tool_end") and \
+                        str(ev.get("name") or "").startswith(f"mcp__{execmod.BRIDGE_SERVER}__"):
+                    return
                 await evsend(ev)
 
             try:
                 await execmod.run_task(text, env, _relay, run)
             finally:
                 execmod.stop(run)          # a cancelled turn must not leave it running
+                if team_token:
+                    from . import mcpbridge as _bridge
+                    _bridge.close_session(team_token)
             if run.session_id:
                 # Keep the executor's own session so the next turn in this chat is a
                 # continuation rather than a stranger with no memory of the last one.

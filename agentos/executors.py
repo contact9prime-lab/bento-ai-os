@@ -82,6 +82,11 @@ class Envelope:
     # because "the OS can rewrite itself" is a decision someone makes on purpose,
     # not a side effect of enabling an executor.
     allow_source: bool = False
+    # The team door: (bridge url, token) when this chat turn may hand work to the
+    # person's specialists. A forwarded turn keeps its own native tools; this adds
+    # exactly one MCP server offering `delegate` and `huddle`, each call through this
+    # OS's gate (mcpbridge). Empty = no door, the envelope as it always was.
+    team_mcp: tuple = ()
 
     def describe(self) -> str:
         """One sentence a person can approve or refuse."""
@@ -110,7 +115,7 @@ class Envelope:
                       if c in "\n\t" or ord(c) >= 32)
         return Envelope(workspace=ws, tools=tools, model=self.model,
                         budget_usd=budget, session_id=self.session_id, context=ctx,
-                        allow_source=bool(self.allow_source))
+                        allow_source=bool(self.allow_source), team_mcp=tuple(self.team_mcp or ()))
 
 
 @dataclass
@@ -221,7 +226,7 @@ def envelope_from(cfg: dict, workspace_default: str) -> "Envelope":
 
 async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
-                  context: str = "") -> tuple[str, "Run | None"]:
+                  context: str = "", team: dict | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -246,8 +251,18 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     # Always, even when the surface supplies nothing of its own: a forwarded
     # Telegram or scheduled turn otherwise arrives believing it owns the desktop.
     env.context = context_for(context)
+    # `team`: {toolbox, store, approver, conversation_id, surface} from a phone
+    # channel, so a turn sent from Telegram or WhatsApp can hand over too
+    token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
+                           team.get("approver"), conversation_id=team.get("conversation_id", ""),
+                           surface=team.get("surface", "gui"), text=text) if team else ""
     run = Run()
-    await run_task(text, env, sink, run)
+    try:
+        await run_task(text, env, sink, run)
+    finally:
+        if token:
+            from . import mcpbridge
+            mcpbridge.close_session(token)
     said = "".join(collected)
     if said.strip():
         return said, run
@@ -1212,6 +1227,71 @@ async def install(note=None) -> tuple[bool, str]:
     return True, "Claude Code installed — run `claude` once to sign in"
 
 
+TEAM_TOOLS = ("delegate", "huddle")      # what the team door offers a forwarded chat turn
+
+
+def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
+    """Who the person's specialists are, for a forwarded chat turn that can reach them.
+
+    Without it Claude Code answered "build me a tool" by building the tool itself,
+    with the toolsmith the person made for exactly that sitting idle: nothing had
+    told it the team existed, and the context even said it could not use this OS's
+    tools. One line per specialist — its name and the first sentence of its soul,
+    which is how the person described the job."""
+    rows = []
+    for sa in subagents or []:
+        if sa.get("enabled") is False or not sa.get("name"):
+            continue
+        soul = " ".join(str(sa.get("soul") or "").split())
+        first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
+        rows.append(f"- {sa['name']}: {first}")
+    if not rows:
+        return ""
+    return ("\n\nYOUR TEAM. The person has specialists on this machine, each built for a job:\n"
+            + "\n".join(rows[:20])
+            + f"\nWhen what they ask for is one of those jobs, HAND IT OVER: call "
+              f"{prefix}delegate with {{\"subagent\": name, \"task\": a self-contained brief}} "
+              f"and report what they did. {prefix}huddle has two to four of them talk a "
+              "question through. Do the work yourself only when nobody fits, or when the "
+              "person asks you to."
+            + (" Those two tools are this OS's: every call is checked against its "
+               "permissions and recorded." if prefix else ""))
+
+
+def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
+                   conversation_id: str = "", surface: str = "gui", space_id: str = "",
+                   text: str = "") -> str:
+    """Give a forwarded chat turn a way to hand work to the person's specialists.
+
+    A forwarded turn has the executor's own tools and knew nothing of the team, so
+    "build me a tool" was built by Claude Code while the toolsmith the person made
+    for it sat idle. With specialists here, this opens a run bridge (mcpbridge)
+    offering exactly `delegate` and `huddle`, served by an Agent of this turn's
+    principal, surface and approver — so every hand-over passes the same gate, and
+    asks the same person, as a built-in turn's — and appends the note naming who does
+    what. Sets `env.team_mcp` and `env.context`; returns the token for the caller to
+    `mcpbridge.close_session` when the turn ends ('' when there is no team or no door).
+
+    Chat, Telegram and WhatsApp call this; a scheduled turn does not (nobody is there
+    to approve a hand-over, and a mission is the way to give a schedule a team)."""
+    subs = [sa for sa in (store.list_subagents() if store else []) if sa.get("enabled") is not False]
+    if not subs or toolbox is None:
+        return ""
+    from . import mcpbridge
+    from .agent import Agent
+    agent = Agent(cfg, toolbox, "", emit, approver, conversation_id=conversation_id,
+                  surface=surface, tool_filter=list(TEAM_TOOLS), space_id=space_id)
+    agent._task_text = text
+    schemas = [t for t in agent._tools() if t["name"] in TEAM_TOOLS]
+    if not schemas:
+        return ""                    # the gate hides both from this principal: no door
+    token = mcpbridge.open_session(agent, schemas, label="chat team door", max_calls=8)
+    port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
+    env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
+    env.context = (env.context or "") + team_note(subs)
+    return token
+
+
 def permission_mode(env: Envelope) -> str:
     """Which CLI permission mode matches the envelope we already agreed.
 
@@ -1278,6 +1358,15 @@ def build_command(task: str, env: Envelope) -> list[str]:
            "--max-budget-usd", f"{env.budget_usd:.2f}"]
     if env.allow_source and env.context:
         env = Envelope(**{**env.__dict__, "context": env.context + source_note(source_root())})
+    if env.team_mcp:
+        # The person's specialists, reachable from a forwarded chat: ONE extra MCP
+        # server (the bridge, bound to this turn), allowed by name so a headless
+        # permission mode does not refuse it. Not --strict-mcp-config: this is the
+        # person's own chat session, and what their Claude Code already had stays.
+        url, token = env.team_mcp
+        cmd += ["--mcp-config", json.dumps({"mcpServers": {BRIDGE_SERVER: {
+                    "type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"}}}}),
+                "--allowedTools", f"mcp__{BRIDGE_SERVER}"]
     if env.context:
         # The executor's equivalent of the local agent's extra_system: what the
         # person is looking at while they type. A delegated copilot turn without

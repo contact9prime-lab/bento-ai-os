@@ -63,6 +63,9 @@ CORE = {
     "save_report", "llm_generate",
     # find the other eighty
     "find_tools", "use_skill",
+    # hand it to the team: the prompt names the specialists (executors.team_note), and a
+    # narrowed set that dropped `delegate` would name people the lead cannot reach
+    "delegate", "huddle",
 }
 
 DEFAULTS = {
