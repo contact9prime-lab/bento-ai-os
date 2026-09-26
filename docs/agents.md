@@ -87,6 +87,9 @@ chosen in AI providers. Below it, **Your agents** shows each specialist on one c
 - **Look**: its character, the same one in Chat, the Office and the Crew stage. **Change…**
   opens the editor, **✦ Describe it** opens it on the box where you say what you want in
   words. Tapping the face on the card does the same. (From a terminal: `bento avatar`.)
+
+  ![An agent card in Settings → Agents with its Look row: Change… and ✦ Describe it](screenshots/settings-agents-look.png)
+
 - **Brain**: what it answers on right now, and why when that is not its own pick.
 - **Hands**: which executor it has. Changing it applies at once and is recorded.
 - **Permissions**: its autonomy and what it has been allowed or refused, by kind (files,
