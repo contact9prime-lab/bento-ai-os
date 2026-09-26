@@ -215,7 +215,7 @@ def test_movement_costs_what_it_says():
 def test_movement_parts_are_the_machine_s_parts():
     """Every moving part maps to something real, and the events come from the
     stream the page already has — nothing polls for animation's sake."""
-    assert "movementPulse('tool',ev.name)" in WS
+    assert "movementPulse('tool',ev.name,ev)" in WS   # the event travels on: the Office needs its conversation
     assert "movementPulse('flow'" in WS and "ev.event!=='heartbeat'" in WS
     assert "movementPulse('done',ev.flow)" in WS
     assert "RUNNING.size" in MOVE                                   # the train and the balance follow the turn

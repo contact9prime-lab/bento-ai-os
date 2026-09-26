@@ -22,6 +22,20 @@ own wallpaper. **Themes → Build a theme** builds your own look and feel, previ
 - corners, depth, glass, font and text size;
 - a wallpaper made from your colours.
 
+**The Office: watch your agents work.** A new app draws your agents as a comic-strip office.
+Your agent sits in the corner office, each specialist has a desk in a department, and there
+is a meeting room and a lounge. Everything in it moves because something really happened:
+- a paper flies to a desk when a mission or your agent hands out work;
+- a monitor lights up and a comic burst names each tool call;
+- an agent walks across the office to ask another one something, then walks back after
+  the answer;
+- a huddle gathers round the meeting table.
+
+The chat is on the right. **✎ Design** changes the style (seven, from Pop comic to Space
+station), the departments and who sits in them, the shared rooms, the decor and the pet. You
+can also ask your agent to redesign it (`set_office`). `bento office` shows the plan in a
+terminal and edits it there. (`docs/office.md`.)
+
 **Toasts and panels that read at a glance.** A toast now shows what kind of news it is — done,
 warning, failure or just information — with an icon, a ✕ and a bar that runs down while it waits;
 hover holds it, and a failure stays twice as long. The notification centre is a stack of cards

@@ -535,7 +535,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              # which executor profile (hands) MY master agent works with. Personal:
              # the profiles themselves live in my own database, and choosing one
              # narrows what my agent reaches, never anybody else's.
-             "agent_profile")
+             "agent_profile",
+             # how MY office playground looks and who sits in which department. Personal
+             # by the character editor's argument: it costs nothing and reaches nothing.
+             "office")
 
 
 def machine_view(cfg: dict) -> dict:

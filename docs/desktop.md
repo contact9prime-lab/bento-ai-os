@@ -540,6 +540,7 @@ See [Models & Appearance](models.md) for more.
 | App | Purpose |
 |---|---|
 | **Agent Chat** | talk to the agent — streaming replies, tool activity, approvals, voice |
+| **Office** | watch your agents work in a comic office: they get work, walk over to ask each other and huddle — [The Office](office.md) |
 | **Applications** | launch any program installed on your computer |
 | **Web** | open web pages in your real system browser |
 | **Files** | browse your workspace; click a file to open it |

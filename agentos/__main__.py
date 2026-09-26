@@ -3149,6 +3149,71 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+def _office_cli(args):
+    """`bento office` — the Office playground, as a terminal can have it.
+
+    The TUI face of a place that is otherwise a picture: which departments there are,
+    who sits in each, and the same editor as the desktop's (office.py's closed set).
+    What a terminal cannot have is the animation — agents walking over to ask each
+    other, papers flying to a desk — and this says so rather than pretending; the
+    live version of "who is doing what" in a terminal is `bento flow runs` and the
+    chat TUI. Reads and writes config directly, so it works with the server down.
+    """
+    from . import office as of
+    from . import config as _cfgmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    a, rest = args.action, list(args.args or [])
+
+    def done(msg):
+        _cfgmod.save_config(cfg)
+        of.record(store, msg)
+        print(of.text(of.view(cfg, store)))
+
+    try:
+        if a in ("show", "list"):
+            print(of.text(of.view(cfg, store)))
+            print("\n  The desktop's Office app animates this: agents walk over to ask each other,"
+                  "\n  huddles gather in the meeting room. A terminal shows the plan, not the play.")
+            return
+        if a == "styles":
+            for k, st in of.STYLES.items():
+                print(f"  {k:<8} {st['label']:<16} {st['blurb']}")
+            return
+        if a == "style" and rest:
+            of.save(cfg, store, {"style": " ".join(rest)})
+            return done(f"style set to {of.current(cfg)['style']}")
+        if a == "name" and rest:
+            of.save(cfg, store, {"name": " ".join(rest)})
+            return done(f"office renamed to {of.current(cfg)['name']}")
+        if a == "move" and rest:
+            of.place(cfg, store, rest[0], " ".join(rest[1:]), getattr(args, "color", "") or "")
+            return done(f"{rest[0]} moved to {' '.join(rest[1:]) or of.FLOOR}")
+        if a == "dept-rm" and rest:
+            name = " ".join(rest).lower()
+            cur = of.current(cfg)["departments"]
+            left = [d for d in cur if d["name"].lower() != name]
+            if len(left) == len(cur):
+                raise ValueError(f"there is no department called '{' '.join(rest)}'")
+            of.save(cfg, store, {"departments": left})
+            return done(f"department {' '.join(rest)} removed; its people are on the open floor")
+        if a in ("meeting", "lounge") and rest:
+            of.save(cfg, store, {a: rest[0].lower() in ("on", "yes", "true", "1")})
+            return done(f"{a} {'on' if of.current(cfg)[a] else 'off'}")
+        if a == "decor":
+            of.save(cfg, store, {"decor": [x for x in rest if x.lower() != "none"]})
+            return done("decor: " + (", ".join(of.current(cfg)["decor"]) or "none"))
+        if a == "pet" and rest:
+            of.save(cfg, store, {"pet": rest[0]})
+            return done(f"pet: {of.current(cfg)['pet']}")
+    except ValueError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(2)
+    print("  bento office [show] · styles · style NAME · name TEXT · move AGENT [DEPARTMENT] [--color C]\n"
+          "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none",
+          file=sys.stderr)
+    sys.exit(2)
+
+
 def _avatar_cli(args):
     """`bento avatar` — the crew's characters in a terminal, and the same editor.
 
@@ -5547,6 +5612,13 @@ def main():
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes · "
                                                    "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
+    p_of.add_argument("action", nargs="?", default="show",
+                      choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
+                               "lounge", "decor", "pet"])
+    p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night")
+    p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
+    p_of.add_argument("--user", default="", help="whose office, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
@@ -5768,6 +5840,8 @@ def main():
         _team_cli(args)
     elif args.cmd == "avatar":
         _avatar_cli(args)
+    elif args.cmd == "office":
+        _office_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "vault":

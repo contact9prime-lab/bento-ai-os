@@ -209,6 +209,10 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # refusable, apart from every other tool — a cosmetic change is still a change.
     if name == "set_avatar":
         return "avatar.write", f"avatar:{args.get('who') or '*'}"
+    # The office playground's look: its own action for the same reason — "may redecorate
+    # my office" is grantable, and refusable, apart from every tool that does real work.
+    if name == "set_office":
+        return "office.write", "office:*"
     if name in _SPACE:
         action, res = _SPACE[name]
         if not res:

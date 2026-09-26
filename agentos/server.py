@@ -8444,6 +8444,48 @@ async def api_avatar_reroll(key: str):
     return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec)}
 
 
+@app.get("/api/office")
+async def api_office():
+    """The Office playground: the rooms and who really sits in them (agentos/office.py).
+    The page lays it out and animates it from the live events; it decides nothing here."""
+    from . import office
+    return office.view(state["cfg"], state["store"])
+
+
+@app.put("/api/office")
+async def api_office_set(body: dict):
+    """Change the office — style, name, departments, shared rooms, decor, pet. The same
+    closed set the agent's `set_office` and `bento office` use; a refusal names the
+    choices, and a department member who is nobody here is dropped and named."""
+    from . import office
+    try:
+        got, dropped = office.save(state["cfg"], state["store"], body or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    v = office.view(state["cfg"], state["store"])
+    office.record(state["store"], "office changed: " + office.describe(v))
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {**v, "ok": True, "dropped": dropped}
+
+
+@app.put("/api/office/place")
+async def api_office_place(body: dict):
+    """One specialist to one department (drag-and-drop in the editor): `{agent, department}`.
+    An empty department puts it back on the open floor."""
+    from . import office
+    b = body or {}
+    try:
+        office.place(state["cfg"], state["store"], str(b.get("agent") or ""),
+                     str(b.get("department") or ""), str(b.get("color") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    office.record(state["store"], f"{b.get('agent')} moved to {b.get('department') or office.FLOOR}")
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {**office.view(state["cfg"], state["store"]), "ok": True}
+
+
 @app.get("/api/subagents")
 async def api_subagents():
     """The roster, each with the brain it actually answers on (fabric.agent_brain) —

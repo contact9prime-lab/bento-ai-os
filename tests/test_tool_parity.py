@@ -27,7 +27,7 @@ from agentos.tools import (ALWAYS_ASK, BUILTIN_THEMES,              # noqa: E402
 NEW_TOOLS = ["desktop_state", "control_desktop", "manage_window", "list_themes",
              "wifi", "bluetooth", "set_brightness", "audio", "power_profile",
              "lock_screen", "power_action", "list_notifications", "take_screenshot",
-             "set_avatar"]
+             "set_avatar", "set_office"]
 
 
 @pytest.fixture()
@@ -103,6 +103,8 @@ def test_builtin_themes_present():
     ("take_screenshot", {}, "risky"),
     # a character's look: cosmetic, the person's own rows, and it asks nobody
     ("set_avatar", {"who": "writer", "hair": "pink"}, "safe"),
+    # the office's look: cosmetic too, the person's own config
+    ("set_office", {"style": "space"}, "safe"),
 ])
 def test_desktop_risk_levels(toolbox, name, args, want):
     assert toolbox.risk_of(name, args)[0] == want

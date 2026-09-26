@@ -67,7 +67,7 @@ GROUPS = {
     "Apps & missions": ["create_app", "read_app_data", "create_flow", "enable_flow", "list_flows",
                         "run_flow", "schedule_task", "create_trigger", "list_automations",
                         "run_automation", "save_automation"],
-    "Team": ["delegate", "huddle", "ask_agent", "create_subagent", "set_agent_brain", "set_avatar"],
+    "Team": ["delegate", "huddle", "ask_agent", "create_subagent", "set_agent_brain", "set_avatar", "set_office"],
     "Skills & tools": ["use_skill", "save_skill", "delete_skill", "find_tools", "search_docs",
                        "add_mcp_server", "discover_mcp_servers", "install_mcp_server", "llm_generate"],
 }

@@ -1280,6 +1280,34 @@ things keep it true:
   full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
   five skins before believing it.
 
+## The Office: the crew at work, and nothing moves that did not happen
+
+`agentos/office.py` (the plan: style, departments, who sits where, shared rooms, decor, pet) +
+`24d-office.js` (the comic canvas) + `bento office` + the agent's `set_office`. Full story in
+`docs/office.md`; `tests/test_office.py` pins what follows.
+
+- **Every movement is an event.** A paper flies on `node_add`/`delegate`, a monitor lights on a
+  run's `status`, a burst names each `step`, an agent WALKS to a colleague on `agent_msg` ask and
+  back after the reply, a huddle gathers on `turn_start.huddle`/`agent_say`. Idle agents sit.
+  They must not wander for the look — an office that strolls about says work is happening when
+  none is. Only the pet wanders, and it is visibly not an agent.
+- **One seam.** `scenePulse()` in `01c-movement.js` feeds the Crew stage and the Office; nothing
+  else calls `officePulse`. `tool_start`/`turn_start` pass their event on, because the Office
+  attributes a tool to the conversation's speaker (`convWho`) and a bare `step` to its run
+  (`runs[run_id]`).
+- **An answer can arrive before the asker has walked over** — a fast model answers in a second,
+  a walk takes three. The reply waits on `visit.reply` until the question has been said at the
+  desk; heard in the other order it is a conversation that makes no sense.
+- **The plan is office.py's closed set and the cast is the real one**: an unknown member is
+  dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
+  USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
+  and the window's ✦ is hidden — a second copy of the same thread would be two chats.
+- **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
+  (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
+  re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
+  dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
+
 ## The team: each agent on its own provider, and huddles
 
 Full story in `docs/team.md`. Two features, four rules.

@@ -235,6 +235,7 @@ function copilotStarters(appId){
     mcp:['What tools do I have?','Find and add a calendar server','Which server is failing?'],
     permissions:['What can apps do right now?','Anything risky granted?','Tighten the defaults'],
     tokens:['Where do my tokens go?','Cheaper model for background work?','Usage this week'],
+    office:['Design my office as a space station','Put my specialists in departments','Get the team to huddle on a question'],
     fabric:['Build me a research team','Why did the last run stall?','Add a validator step'],
     snapshots:['Snapshot before I experiment','What changed since yesterday?'],
     mission:['How healthy is the system?','What needs my attention?'],

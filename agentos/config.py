@@ -218,6 +218,9 @@ DEFAULTS = {
     # the executor profile (hands) the lead agent works with — agentos/hands.py;
     # "default" is every tool, anywhere the machine allows, as before profiles existed
     "agent_profile": "default",
+    # the Office playground: style, departments, shared rooms, decor — agentos/office.py.
+    # Empty means the default office; a USER_KEY, because how my office looks is mine.
+    "office": {},
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight
     # (fold it in) or is a separate ask (leave it queued for the next turn). Off = every
