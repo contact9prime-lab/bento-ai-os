@@ -313,7 +313,13 @@ function wizEnter(){
 async function factoryReset(){
   if(!await osConfirm('Factory reset Bento Box AI?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
   if(!await osConfirm('Really wipe everything?','This cannot be undone.',{danger:true,confirmText:'Reset'}))return;
-  await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+  // the server refuses a remote browser and a non-admin: say so, never reload as if it
+  // had worked — a reset that silently did nothing is the dead control in its worst place
+  let r,d={};
+  try{r=await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+    d=await r.json().catch(()=>({}))}
+  catch(e){return toast('could not reach the server — nothing was reset',{kind:'err'})}
+  if(!r.ok)return toast('nothing was reset — '+(d.error||'HTTP '+r.status),{kind:'err'});
   location.reload();
 }
 

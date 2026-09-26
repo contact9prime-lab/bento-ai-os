@@ -45,13 +45,6 @@ var OF_SPEED=170;         // walking, world units a second
 var OF_SAY_MS=5200;       // a speech balloon's life
 var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
 var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
-/* A tool's comic word. The real tool name is always printed under it, so the joke never
-   hides what actually ran. */
-var OF_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
-  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
-  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
-  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!'};
-
 function renderOffice(el,w){
   // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
   // everybody where they are — rebuilding the canvas would teleport a walker home.
@@ -66,17 +59,22 @@ function renderOffice(el,w){
     <div class="of-stage">
       <div class="of-bar"><b class="of-title">Office</b><span class="of-line" id="of-line">opening…</span>
         <span style="flex:1"></span>
+        <button class="endbtn of-vz" title="Visit a linked team's office">⇄ Visit</button>
+        <button class="endbtn of-snap" data-ic="camera" title="Send the office right now, as a picture, to your phone">◉ Snap</button>
         <button class="endbtn of-dz" data-ic="palette" title="Change how the office looks and who sits where">✎ Design</button>
         <button class="endbtn of-ct" title="Talk to your agent">Chat</button></div>
       <div class="of-scroll"><canvas class="of-cv" aria-hidden="true"></canvas>
         <div class="of-empty" hidden></div></div>
       <div class="of-log" role="log" aria-live="polite" aria-label="What the office is doing"></div>
       <div class="of-design" hidden></div>
+      <div class="of-visit" hidden></div>
     </div>
     <div class="of-chat"></div>
   </div>`;
   OFFICE.cv=el.querySelector('.of-cv');OFFICE.ctx=OFFICE.cv.getContext('2d');
   el.querySelector('.of-dz').onclick=()=>officeDesign(!OFFICE.design);
+  el.querySelector('.of-snap').onclick=officeSnap;
+  el.querySelector('.of-vz').onclick=()=>officeVisit(OFFICE.visiting===undefined?'':null);
   el.querySelector('.of-ct').onclick=()=>el.querySelector('.of-wrap').classList.toggle('chat-open');
   OFFICE.cv.addEventListener('click',officeTap);
   const chat=el.querySelector('.of-chat');
@@ -91,12 +89,12 @@ function renderOffice(el,w){
 function officeClose(w){
   cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
-  OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;
+  OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
   return true;
 }
 async function officeLoad(){
   try{
-    const [v,sa]=await Promise.all([fetch('/api/office').then(r=>r.json()),
+    const [v,sa]=await Promise.all([apiJSON('/api/office'),
       fetch('/api/subagents').then(r=>r.json()).catch(()=>({}))]);
     OFFICE.view=v;OFFICE.brains={};
     (sa.subagents||sa.agents||[]).forEach(s=>{if(s&&s.name)OFFICE.brains[s.name]=(s.brain&&s.brain.provider_name)||''});
@@ -105,7 +103,7 @@ async function officeLoad(){
     OFFICE.loaded=true;
     officeLayout();
     if(OFFICE.design)officeDesignPaint();
-  }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office'}
+  }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office — '+(e.message||e)}
 }
 /* The roster moved (a specialist made or deleted, a face changed): reload the plan. */
 function officeReload(){if(OFFICE.w)officeLoad()}
@@ -255,7 +253,7 @@ function officeBurst(p,tool){
   if(!p)return;const now=performance.now();
   // the same step can arrive twice (the chat stream and the run's own telemetry)
   if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
-  OFFICE.bursts.push({p,tool,word:OF_WORDS[tool]||String(tool).replace(/_/g,' ').toUpperCase().slice(0,12)+'!',
+  OFFICE.bursts.push({p,tool,word:comicWord(tool),
     at:now,rot:(Math.random()-.5)*.3});
   if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
   p.busy=now;officeKick();
@@ -796,6 +794,7 @@ function officeEmpty(){
 /* ---------------- Design: how the office looks, and who sits where ---------------- */
 function officeDesign(open){
   const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-design');if(!el)return;
+  if(open&&O.visiting!==undefined)officeVisit(null);   // one panel over the office at a time
   O.design=open;el.hidden=!open;
   O.w.el.querySelector('.of-dz').classList.toggle('on',open);
   if(open)officeDesignPaint();
@@ -807,7 +806,8 @@ function officeDesignPaint(){
   const opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
   el.innerHTML=`<div class="of-dh"><b>Design your office</b><button class="of-x" aria-label="Close">✕</button></div>
     <div class="of-sec">Describe it</div>
-    <div class="of-row"><input class="of-ask" placeholder="a cosy space station with a research wing"><button class="endbtn primary of-askb">Ask ${esc(officeName('@agent'))}</button></div>
+    <div class="of-row"><input class="of-ask" placeholder="a cosy space station with a research wing"><button class="endbtn primary of-askb">Design it</button></div>
+    <div class="of-said mut" aria-live="polite"></div>
     <div class="of-sec">Style</div>
     <div class="of-styles">${Object.entries(v.styles).map(([k,s])=>`<button class="of-style${k===of.style?' on':''}" data-st="${k}" title="${esc(s.blurb)}">
       <i style="background:linear-gradient(135deg,${s.wall} 0 38%,${s.floor[0]} 38% 72%,${s.accent} 72%)"></i><span>${esc(s.label)}</span></button>`).join('')}</div>
@@ -831,10 +831,8 @@ function officeDesignPaint(){
     <div class="of-chips">${v.pets.map(p=>`<button class="of-chip${of.pet===p?' on':''}" data-pet="${p}">${esc(p)}</button>`).join('')}</div>`;
   const q=s=>el.querySelector(s),qa=s=>el.querySelectorAll(s);
   q('.of-x').onclick=()=>officeDesign(false);
-  const ask=()=>{const t=q('.of-ask').value.trim();if(!t)return;
-    const i=O.w.el.querySelector('.of-chat .cp-in');if(!i)return;
-    i.value='Redesign my office: '+t;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
-    O.w.el.querySelector('.of-wrap').classList.add('chat-open');q('.of-ask').value=''};
+  // the server designs it (not the chat): a turn forwarded to an executor has no set_office
+  const ask=()=>officeDescribe(q('.of-ask'),q('.of-said'),q('.of-askb'));
   q('.of-askb').onclick=ask;q('.of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
   qa('.of-style').forEach(b=>b.onclick=()=>officeSave({style:b.dataset.st}));
   q('.of-name').onchange=e=>officeSave({name:e.target.value});
@@ -854,6 +852,121 @@ function officeDesignPaint(){
   qa('[data-dec]').forEach(b=>b.onclick=()=>{const d=b.dataset.dec;
     officeSave({decor:of.decor.includes(d)?of.decor.filter(x=>x!==d):[...of.decor,d]})});
   qa('[data-pet]').forEach(b=>b.onclick=()=>officeSave({pet:b.dataset.pet}));
+}
+/* "Describe it", in the Office, Settings → Appearance and the setup step: one call to
+   /api/office/design, which asks the machine's brain to choose from the closed set and
+   says when it matched the words instead. Applied at once, so the answer is an Undo. */
+async function officeDescribe(input,said,btn){
+  const t=(input&&input.value||'').trim();if(!t){toast('describe it first — a few words is enough');return null}
+  if(btn)btn.disabled=true;if(said)said.textContent='designing…';
+  let d;
+  try{d=await apiJSON('/api/office/design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({description:t})})}
+  catch(e){if(said)said.textContent=e.message;if(btn)btn.disabled=false;return null}
+  if(btn)btn.disabled=false;input.value='';
+  const how=d.how==='brain'?`designed by ${d.who||'your agent'}`:d.said;
+  const drop=(d.dropped||[]).length?` · not used: ${d.dropped.join(', ')}`:'';
+  if(OFFICE.w){OFFICE.view=d;officeLayout();if(OFFICE.design)officeDesignPaint()}
+  // the design panel repaints itself above, so the line may be a fresh element now
+  if(said&&!said.isConnected&&OFFICE.w)said=OFFICE.w.el.querySelector('.of-said');
+  if(said){said.innerHTML=`${esc(how)} — ${esc(d.office.name)}, ${esc((d.styles[d.office.style]||{}).label||d.office.style)}${esc(drop)} <button class="endbtn of-undo">Undo</button>`;
+    said.querySelector('.of-undo').onclick=async()=>{await officeSave(d.previous);
+      const s2=said.isConnected?said:OFFICE.w&&OFFICE.w.el.querySelector('.of-said');if(s2)s2.textContent='put back as it was'}}
+  officeLog('office redesigned: '+t);
+  return d;
+}
+/* Visit a linked team's office. Their answer is the look, their lead and ONLY the
+   agents this link may ask (fabric.office_for_link on their side, cleaned by
+   teamlink.clean_office on ours) and the picture is drawn HERE by our painter, so
+   nothing they send reaches this page as anything but a value. A person in it is a
+   door to a chat: one of YOUR agents carries the question (linkedAsk), because that
+   is the path the matrix and their gate already govern.
+   `label`: '' opens the list, a label visits it, null closes the panel. */
+async function officeVisit(label){
+  const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-visit');if(!el)return;
+  if(label===null){el.hidden=true;O.visiting=undefined;O.w.el.querySelector('.of-vz').classList.remove('on');return}
+  if(O.design)officeDesign(false);
+  el.hidden=false;O.visiting=label;O.w.el.querySelector('.of-vz').classList.add('on');
+  el.innerHTML=`<div class="of-dh"><b>Visit a linked team</b><button class="of-x" aria-label="Close">✕</button></div><div class="of-vbody mut">…</div>`;
+  el.querySelector('.of-x').onclick=()=>officeVisit(null);
+  const body=el.querySelector('.of-vbody');
+  let links;try{links=(await apiJSON('/api/team/links')).links||[]}catch(e){body.textContent=e.message;return}
+  if(!links.length){body.innerHTML=`No linked teams yet. A link connects your team with another Bento, or another account here —
+      <button class="endbtn" onclick="openLinkedTeams()">Link a team</button>`;return}
+  const face=l=>{const id=l.peer_identity||{};return id.agent?avatarRecipeImg(id.agent,'',(id.agent_name||l.label)):''};
+  const list=links.map(l=>`<button class="of-vteam${l.label===label?' on':''}" data-l="${esc(l.label)}">${face(l)}
+      <span class="grow"><b>${esc(l.label)}</b> <span class="mut">${l.kind==='account'?'an account here':'another machine'}</span></span></button>`).join('');
+  if(!label){body.classList.remove('mut');body.innerHTML=list;
+    body.querySelectorAll('.of-vteam').forEach(b=>b.onclick=()=>officeVisit(b.dataset.l));return}
+  body.innerHTML=list+'<div class="of-vat mut">knocking…</div>';
+  body.querySelectorAll('.of-vteam').forEach(b=>b.onclick=()=>officeVisit(b.dataset.l));
+  const at=body.querySelector('.of-vat');
+  let v;try{v=await apiJSON('/api/team/links/'+encodeURIComponent(label)+'/office')}catch(e){at.textContent=e.message;return}
+  if(O.visiting!==label)return;
+  at.classList.remove('mut');
+  const people=v.rows.filter(r=>r.key!=='@agent');
+  const lead=v.rows.find(r=>r.key==='@agent');
+  at.innerHTML=`<img class="of-vpic" alt="${esc(v.office.name)}, ${esc(label)}'s office, with the people you may ask" src="/api/team/links/${encodeURIComponent(label)}/office.png?t=${Date.now()}">
+    ${lead?`<div class="of-vwho">${avatarRecipeImg(lead.recipe,'',lead.label)}<span class="grow"><b>${esc(lead.label)}</b> <span class="mut">their lead</span></span></div>`:''}
+    ${people.map(r=>`<div class="of-vwho">${avatarRecipeImg(r.recipe,'',r.label)}<span class="grow"><b>${esc(r.label)}</b>
+        <span class="mut">${r.working?'busy':'free'}</span></span><button class="endbtn" data-ask="${esc(r.key)}">Ask ${esc(r.label)}</button></div>`).join('')
+      ||`<p class="mut">None of their agents may be asked over this link yet — that is their cell to tick, on their side.</p>`}
+    <p class="mut">What you see is what this link lets you ask, nothing more. A question goes through one of your agents, under your matrix, and is answered under theirs.</p>`;
+  at.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>linkedAsk(b.dataset.ask,label));
+}
+/* Start a chat with somebody on a linked team: Chat opens with the question addressed
+   to one of YOUR specialists, who asks them (ask_agent → the matrix → their gate).
+   Prefilled, never sent — the person finishes the sentence. With no specialist here
+   there is nobody to carry it, and the toast says so with the door to make one. */
+async function linkedAsk(who,label){
+  let mine=[];
+  try{mine=((await apiJSON('/api/subagents')).subagents||[]).filter(s=>s.enabled!==false).map(s=>s.name)}catch(e){}
+  if(!mine.length)return toast('agents on another team are reached through one of yours — make a specialist first',
+    {label:'New agent',go:()=>{openApp('settings');setTimeout(()=>typeof agentEdit==='function'&&agentEdit(''),400)}});
+  const carrier=mine.includes('researcher')?'researcher':mine[0];
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value=`@${carrier} ask ${who}@${label}: `;i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast(`finish the question — @${carrier} carries it to ${who} on ${label}`);
+}
+/* Snap: the roll-call picture (who is at work, as /office draws it) to Telegram and
+   WhatsApp, whichever are set up. With neither, the refusal says which to set up and
+   the picture is still one tap away — never a button that does nothing. */
+async function officeSnap(){
+  const b=OFFICE.w&&OFFICE.w.el.querySelector('.of-snap');if(b)b.disabled=true;
+  try{
+    const r=await fetch('/api/office/snap',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json().catch(()=>({}));
+    if(r.status===404)return toast('this AgentOS server is running older code than this page — restart it to snap',{kind:'err'});
+    if(!r.ok)return toast('could not send it — '+(d.error||'HTTP '+r.status),
+      {kind:'warn',label:'Open the picture',go:()=>window.open('/api/office/rollcall.png?t='+Date.now(),'_blank')});
+    toast('✓ the office, sent to '+d.sent.join(' and ')+((d.notes||[]).length?' · '+d.notes.join(' · '):''));
+    officeLog('snapped to '+d.sent.join(' and '));
+  }finally{if(b)b.disabled=false}
+}
+/* Settings → Appearance → Office. The Office window's own Design panel is the full
+   editor; this is the part that belongs with the look. */
+async function officeSettingsPaint(){
+  const box=document.getElementById('s-office');if(!box)return;
+  let v;try{v=await apiJSON('/api/office')}catch(e){box.innerHTML='<p class="mut">could not load the office — '+esc(e.message)+'</p>';return}
+  OFFICE.view=OFFICE.view||v;
+  const of=v.office,opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
+  box.innerHTML=`<div class="prow"><div class="pl">Style<small id="s-of-blurb">${esc((v.styles[of.style]||{}).blurb||'')}</small></div>
+      <div class="pc"><select id="s-of-style" aria-label="Office style">${Object.entries(v.styles).map(([k,st])=>opt(k,st.label,k===of.style)).join('')}</select></div></div>
+    <div class="prow"><div class="pl">Name on the door</div><div class="pc"><input id="s-of-name" maxlength="24" value="${esc(of.name)}"></div></div>
+    <div class="prow"><div class="pl">Office pet</div><div class="pc"><select id="s-of-pet" aria-label="Office pet">${v.pets.map(p=>opt(p,p,p===of.pet)).join('')}</select></div></div>
+    <div class="prow"><div class="pl">Describe it<small>Your agent chooses a style, name, rooms, decor and pet from what you write; with no brain set up, the words are matched instead, and it says so.</small></div>
+      <div class="pc"><input id="s-of-ask" maxlength="300" placeholder="a cosy space station with a research wing"><button class="endbtn" id="s-of-askb">Design it</button></div></div>
+    <div class="prow"><div class="pl"><span class="mut" id="s-of-said" aria-live="polite"></span></div>
+      <div class="pc"><button class="endbtn" onclick="openApp('office')">Open the Office</button></div></div>`;
+  const put=async patch=>{await officeSave(patch);officeSettingsPaint()};
+  box.querySelector('#s-of-style').onchange=e=>put({style:e.target.value});
+  box.querySelector('#s-of-name').onchange=e=>put({name:e.target.value});
+  box.querySelector('#s-of-pet').onchange=e=>put({pet:e.target.value});
+  const ask=async()=>{const d=await officeDescribe(box.querySelector('#s-of-ask'),box.querySelector('#s-of-said'),box.querySelector('#s-of-askb'));
+    if(!d)return;box.querySelector('#s-of-style').value=d.office.style;
+    box.querySelector('#s-of-blurb').textContent=(d.styles[d.office.style]||{}).blurb||'';box.querySelector('#s-of-name').value=d.office.name;
+    box.querySelector('#s-of-pet').value=d.office.pet};
+  box.querySelector('#s-of-askb').onclick=ask;box.querySelector('#s-of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
 }
 async function officeSave(patch){
   try{

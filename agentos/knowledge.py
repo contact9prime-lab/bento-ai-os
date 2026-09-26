@@ -100,6 +100,12 @@ def turn_ended():
     _last_turn["ts"] = time.time()
 
 
+def active_turns() -> int:
+    """How many turns are running right now, on any surface — the lead's BUSY in the
+    playground roll call (agentos/playground.py)."""
+    return _active_turns["n"]
+
+
 def last_turn_ts() -> float:
     """Timestamp idle periods are measured from (last turn, else process start)."""
     return _last_turn["ts"] or _last_turn["boot"]

@@ -44,7 +44,7 @@ referencia de la API y resolución de problemas.
 
 ---
 
-## La configuración son once pasos, y cada uno deja algo tras de sí
+## La configuración son doce pasos, y cada uno deja algo tras de sí
 
 No es un formulario de ajustes con una barra de progreso. Cada paso **produce algo real** — un modelo
 que responde, un agente que existe, un flujo que se ejecuta, una programación que se dispara — y dice
@@ -313,7 +313,7 @@ activa, una programación, o pidiéndola por su nombre. [Más →](../desktop.md
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Después abre **http://127.0.0.1:8321**, o ejecuta `bento setup` para los mismos once pasos en una terminal.
+Después abre **http://127.0.0.1:8321**, o ejecuta `bento setup` para los mismos doce pasos en una terminal.
 
 Si hay una terminal en la que preguntar, el instalador pregunta dos cosas antes de terminar: si esta
 máquina debe ser alcanzable desde tus otros dispositivos y — de ser así — si inicias sesión con una

@@ -117,6 +117,24 @@ function homeChips(){
   const p=(typeof cfg!=='undefined'&&cfg&&cfg.persona)||'';
   return HOME_CHIPS_BY[p]||HOME_CHIPS;
 }
+/* Linked teams on the home screen: one chip per team with the faces of the people this
+   link lets you ask; a tap visits their office (the Office's Visit panel), where each
+   person is a door to a chat. Fetched at most every five minutes — every visit is a
+   call to another machine — and nothing is drawn for a machine with no links. */
+var HOME_LINKS={at:0,teams:[]};
+async function homeLinks(h){
+  const box=h.querySelector('.hm-links');if(!box)return;
+  if(!HOME_LINKS.at||Date.now()-HOME_LINKS.at>300000){
+    HOME_LINKS.at=Date.now();
+    try{HOME_LINKS.teams=((await (await fetch('/api/team/visitors')).json()).teams||[]).filter(t=>t.ok)}catch(e){HOME_LINKS.teams=[]}
+  }
+  const html=HOME_LINKS.teams.map(t=>`<button class="hm-link" data-l="${esc(t.label)}" title="Visit ${esc(t.name)} — ${esc(t.label)}'s office">`
+    +(t.people||[]).slice(0,4).map(p=>avatarRecipeImg(p.recipe,'av-play',p.label)).join('')
+    +`<span>${esc(t.label)} <em>· ${esc(t.name)}</em></span></button>`).join('');
+  if(box.dataset.h!==html){box.dataset.h=html;box.innerHTML=html;
+    box.querySelectorAll('.hm-link').forEach(b=>b.onclick=()=>{openApp('office');setTimeout(()=>officeVisit(b.dataset.l),350)})}
+  box.hidden=!HOME_LINKS.teams.length;
+}
 function homeRender(){
   const h=document.getElementById('home');if(!h)return;
   if(!IMMERSIVE.on){h.hidden=true;clearInterval(IMMERSIVE.homeT);IMMERSIVE.homeT=0;return}
@@ -148,6 +166,18 @@ function homeRender(){
   if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
   line.classList.toggle('br-open',!n&&!!br);
   line.onclick=(!n&&br)?()=>openApp('brief'):null;
+  // the playground's front door: the crew's own faces, one tap to the Office. The same
+  // characters as everywhere else (avatarImg); nothing here says anyone is busy unless
+  // a turn is running, because the Office itself is where that is shown.
+  const play=h.querySelector('.hm-play');
+  if(play){
+    const crew=(typeof AVATARS!=='undefined'&&AVATARS.list||[]).filter(p=>p.key!=='@me').slice(0,5);
+    const ph=crew.map(p=>avatarImg(p.key,'av-play')).join('')
+      +`<span>${n?'See them at work in the Office':'Your office'}</span>`;
+    if(play.dataset.h!==ph){play.dataset.h=ph;play.innerHTML=ph}
+    play.hidden=!crew.length;
+  }
+  homeLinks(h);
   h.hidden=false;
   const band=immersiveWallBand();
   if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();

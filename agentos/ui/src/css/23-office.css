@@ -28,9 +28,19 @@
 .of-chat .cp-feed,.of-chat .cp-starters,.of-chat .cp-inbar{min-width:0}
 
 /* the designer: a panel over the office's right edge, so the change is seen as it is made */
-.of-design{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
+.of-design,.of-visit{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
   background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--el-4);padding:10px 14px 16px}
-.of-design[hidden]{display:none}
+.of-design[hidden],.of-visit[hidden]{display:none}
+/* a visit: their office as our painter draws it, and a door to each person in it */
+.of-visit{width:min(460px,calc(100% - 20px))}
+.of-vpic{width:100%;image-rendering:pixelated;border-radius:var(--r-md);border:1px solid var(--line);margin:6px 0;background:var(--bg3)}
+.of-vteam{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:var(--r-md);
+  background:var(--bg3);border:1px solid var(--line);margin:4px 0;color:var(--txt)}
+.of-vteam.on{border-color:var(--acc)}
+.of-vteam img.av{width:26px;height:26px;border-radius:7px;image-rendering:pixelated}
+.of-vwho{display:flex;align-items:center;gap:8px;margin:5px 0}
+.of-vwho img.av{width:28px;height:28px;border-radius:7px;image-rendering:pixelated}
+.of-vwho .grow{flex:1;min-width:0}
 .of-dh{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .of-x{color:var(--dim);border-radius:var(--r-sm);padding:4px 8px}
 .of-x:hover{color:var(--txt);background:var(--bg3)}
@@ -39,6 +49,8 @@
 .of-row{display:flex;align-items:center;gap:8px;margin:5px 0}
 .of-row input{flex:1;min-width:0}
 .of-row select{flex:none;max-width:48%}
+.of-said{font-size:var(--fs-sm);margin:2px 0 6px;min-height:1em}
+.of-said .endbtn{margin-left:6px}
 .of-who .of-an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .of-sw{width:14px;height:14px;border-radius:4px;flex:none;border:2px solid #191827}
 .of-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
@@ -67,5 +79,6 @@ body.dev-mobile .of-wrap.chat-open .of-chat{display:flex}
 body.dev-mobile .of-le:nth-child(n+3){display:none}
 /* a fingertip: every control in the designer and the bar at the floor, as real size */
 body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,body.dev-touch .of-x,
-body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn{min-height:var(--tap)}
+body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn,
+body.dev-touch .of-vteam,body.dev-touch .of-visit .endbtn{min-height:var(--tap)}
 body.dev-touch .of-x{min-width:var(--tap)}

@@ -141,6 +141,13 @@ process.stdin.on('data', async (chunk) => {
         const jid = String(cmd.to).includes('@') ? cmd.to : `${cmd.to}@s.whatsapp.net`;
         const r = await sock.sendMessage(jid, { text: String(cmd.text || '') });
         out({ type: 'sent', to: cmd.to, id: (r && r.key && r.key.id) || '', ref: cmd.id || '' });
+      } else if (cmd.type === 'image') {
+        // the Office's roll call or a comic strip: bytes, never a URL to fetch
+        if (!sock) throw new Error('not connected');
+        const jid = String(cmd.to).includes('@') ? cmd.to : `${cmd.to}@s.whatsapp.net`;
+        const r = await sock.sendMessage(jid, { image: Buffer.from(String(cmd.data || ''), 'base64'),
+                                                 caption: String(cmd.caption || '') });
+        out({ type: 'sent', to: cmd.to, id: (r && r.key && r.key.id) || '', ref: cmd.id || '' });
       } else if (cmd.type === 'logout') {
         stopping = true;
         if (sock) await sock.logout().catch(() => {});

@@ -43,7 +43,7 @@ Fehlerbehebung.
 
 ---
 
-## Die Einrichtung hat elf Schritte, und jeder hinterlässt etwas
+## Die Einrichtung hat zwölf Schritte, und jeder hinterlässt etwas
 
 Kein Einstellungsformular mit Fortschrittsbalken. Jeder Schritt **erzeugt etwas Reales** — ein Modell,
 das antwortet, einen Agenten, der existiert, einen Flow, der läuft, einen Zeitplan, der auslöst — und sagt Ihnen,
@@ -306,7 +306,7 @@ Bento und *beweist dann, dass es funktioniert*, indem er dem laufenden Server ei
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-Öffnen Sie dann **http://127.0.0.1:8321** oder führen Sie `bento setup` aus für dieselben elf Schritte in einem Terminal.
+Öffnen Sie dann **http://127.0.0.1:8321** oder führen Sie `bento setup` aus für dieselben zwölf Schritte in einem Terminal.
 
 Wenn es ein Terminal gibt, auf dem gefragt werden kann, stellt der Installer zwei Fragen, bevor er fertig
 ist: ob diese Maschine von Ihren anderen Geräten aus erreichbar sein soll, und — wenn ja — ob Sie sich mit

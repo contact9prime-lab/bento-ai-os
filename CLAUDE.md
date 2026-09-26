@@ -1308,6 +1308,81 @@ things keep it true:
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
   dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
 
+**The playground off the Office** (`agentos/playground.py`, `agentos/comic.py`, `24e-playstrip.js`,
+`00f-comic.js`; `tests/test_playground.py`). Same rules, other media:
+
+- **The play strip** is the Office at the size of a line in Chat, every app's agent panel and the
+  prompt bar's card. It is fed ONLY by `scenePulse` (nothing else calls `playPulse`) and placed by
+  the surface that shows the turn (`playHost(cid, fn)` — Chat's `chatPlayHost` checks the turn is
+  the OPEN conversation, `miniFeed` inserts above its live row, the Office's own chat opts out).
+  Nothing is inserted until something happens; a strip of nothing is removed at turn end.
+- **One vocabulary**: `comicWord()` in `00f-comic.js` is the burst word everywhere (Office, strip,
+  app window). The real tool name is always shown beside it.
+- **Telegram gets pictures, and the picture never carries words the caption does not.** The
+  server's broadcast feeds `playground.observe`; a Telegram turn opens a tap on its conversation
+  and, if agents talked, sends ONE `comic.strip` with every word in the caption. The pixel font is
+  ASCII: a run it cannot draw becomes "...", a mostly-other-script line says "(below)" — never a
+  silently shortened sentence (found: "नमस्ते दुनिया, how are you" drew as ", how are you").
+- **Busy is a run OPEN in `fabric_runs`**, newer than `STALE_S` (a crash's leftover is not work);
+  a process that cannot see chat turns passes `lead_busy=None` and says so. `rollcall()` feeds
+  `/office`, `bento office` and the setup preview (`/api/office/rollcall.png`) alike.
+- **`comic.py` is stdlib only**, the avatars.py argument: Pillow happens to be in a dev venv and
+  is NOT a dependency. People are `avatars.paint`; this module paints panels and lettering only.
+- **Setup creates the crew and the office** (`crew` step, `onboarding.crew` — the wizard and
+  `bento setup` run the same function), ticked on evidence (a saved office), needing nothing
+  first. `AGENTOS_TELEGRAM_API` points the bridge at a stand-in, the `AGENTOS_SIGNIN_BASE` idea,
+  so a whole phone turn can be walked through without a bot.
+- **WhatsApp is Telegram's equal here**: `send_photo` on both transports (Cloud API uploads the
+  bytes to `/media` and sends by id; the linked device takes one base64 frame over stdio), the
+  same strips and `/office`, and ONE `_refusal()` for text and pictures — the 24-hour window
+  applies to an image too. **Snap** is `playground.snap()`, called by the Office's button and
+  `bento office snap`: a set-up channel that refused is always said; an unset one only when named
+  or when nothing went anywhere. A linked device is held by the server, so the terminal says so.
+- **Describing the office goes through the SERVER, never the chat** (`POST /api/office/design`,
+  `executors.ask_once`). The first cut typed "Redesign my office: …" into the Office's chat — and
+  a chat forwarded to Claude Code has no `set_office`, so it went looking for "Let it work on
+  AgentOS itself". The brain picks from the closed set (`office.read_design`, each field alone,
+  invented ones dropped and NAMED); with nothing answering `office.from_words` matches and `said`
+  says so; a tie goes to the word said LAST (the noun: "a cosy greenhouse" is a greenhouse).
+  One function on the page (`officeDescribe`) serves the Office, Settings → Appearance → Office
+  and the setup step; the answer carries `previous`, which is Undo.
+- **Visiting a linked team's office is wire op `office`** — see the linked-teams rules below. The
+  crew stage's visitors and the home screen's chips come from `/api/team/visitors`, which reads
+  the per-(user, link) visit cache (`_VISITS`, 5 minutes): a paint must never be a call to another
+  machine. The stage canvas sits under the desktop and cannot be tapped, so the DOOR to a visitor
+  is the home chip or the Office's Visit, and asking one is `linkedAsk()` — Chat prefilled with
+  `@<your specialist> ask <name>@<link>: `, never sent, because a question to a linked team goes
+  through one of YOUR agents under the matrix; there is no second path.
+
+**A server older than its page is the commonest failure after an update, so it is designed
+for.** Reported as: after `bento update`, the Office "could not load", Executors and the agents
+map sat on "loading…", and "＋ New agent" never appeared. The pull put a new `index.html` on disk
+while the old Python kept answering, and the new page called routes that did not exist yet.
+- **The server pins the page it started with** (`_pin_page`) and serves it while
+  `pending_restart()` (the build on disk ≠ the running build) — a matching pair — with
+  `X-Bento-Waiting`; the page's `updateWaitingCheck()` offers Restart (loopback only). A rebuild
+  without a commit keeps the build equal, so development still sees its changes.
+- **A pane reads through `apiJSON`, never a bare `.json()`**: a 404 is JSON, so `.json()`
+  "succeeded" and the pane threw later with "loading…" on screen for good. `apiJSON` names the
+  old-server case; a failed Agents list still draws "＋ New agent" (the editor saves through the
+  older `/api/subagents`). `tests/test_update_everyone.py` pins both.
+- **Every home migrates, in a FRESH process** (`bento migrate` → `migrate.everyone`, run by
+  `updates.apply` after deps and by the server at start): the process doing the pull imported the
+  old code. Per home: `Store._migrate`, `hands.ensure_builtins`, `avatars.ensure`. One broken
+  home never stops the others, and each prints one line.
+
+**Every door asks who you are.** The TUI and the plain REPL sent no cookie, and on a machine with
+accounts `_authed` refuses a cookieless caller, loopback included — so every tab was empty and
+the title read "no model". Both now sign in through `/api/users/login`, keep the token in memory
+for the session, send it on every call AND the socket (`additional_headers`), show the ACCOUNT's
+agent from `/api/config`, and sign out with Ctrl+O (a binding hidden by `check_action` where
+there are no accounts). **Starting over has two verbs and they never blur**: `bento setup
+--again` / *Walk me through it* (`onboarding.restart`, deletes nothing) and `bento reset` /
+Factory reset (`setup.factory_reset`). The CLI reset refuses while a server answers (it would
+write its config back over the wipe), demands a typed phrase with no `--yes`, and wants an admin
+on a machine with accounts; the GUI's reset now reports a refusal instead of reloading as if it
+had worked.
+
 ## The team: each agent on its own provider, and huddles
 
 Full story in `docs/team.md`. Two features, four rules.
@@ -1435,8 +1510,10 @@ ceilings in `docs/team.md`):
 - **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
   allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
   an agent that exists and one that does not (it was an enumeration oracle).
-- **A link reaches no resource on the far side** — ten wire ops, none of which reads, writes
-  or runs anything; an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
+- **A link reaches no resource on the far side** — eleven wire ops, none of which reads, writes
+  or runs anything (`office`, a visit, answers with `fabric.office_for_link`: the look, the lead
+  and only the agents the link's cells allow, busy/free and never the work; `teamlink.clean_office`
+  holds it to the closed sets where it arrives); an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
   one honest limit: what an allowed agent can READ, a question can ask it to repeat.
 - **A linked team's refusal is theirs**: `_message_linked` prefixes `TAINTED_REPLY` on refusals
   too. Their `error` wording reached the agent unmarked — an injection channel around the taint.

@@ -185,6 +185,18 @@ API the 24-hour window means an 08:00 briefing cannot reach a chat that has been
 quiet since Sunday, so a WhatsApp job is told to `save_report` **first** and
 message second — a refused send then loses nothing.
 
+## Pictures: the Office and its comic strips
+
+WhatsApp gets the Office the way Telegram does (see [the Office](office.md)): `/office`
+sends a picture of who is at work right now, a turn in which your agents talked ends with
+a comic strip of what they said (every word is also in the caption), and the Office's
+**Snap** button sends the roll call without you asking. `whatsapp.comics: false` in the
+config stops the strips.
+
+Both transports carry pictures. Over the Cloud API the picture is uploaded to Meta first
+and sent by its media id, and the 24-hour window applies to it exactly as to text. Over a
+linked device it goes over the same bridge as your messages, with no window.
+
 ## What it is allowed to do
 
 `whatsapp` is a real IO gate, like `gui` and `telegram`, so permissions can be scoped

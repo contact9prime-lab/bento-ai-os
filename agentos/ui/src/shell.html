@@ -82,7 +82,9 @@
        opens — the desktop is then wallpaper and dock, nothing else. -->
   <div id="home" hidden>
     <div class="hm-greet"><div class="hm-hi"></div><div class="hm-date"></div></div>
-    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div></div>
+    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div>
+      <button class="hm-play" onclick="openApp('office')" hidden></button>
+      <div class="hm-links" hidden></div></div>
   </div>
   <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
        #desktop is position:fixed, which creates a stacking context, so a deck

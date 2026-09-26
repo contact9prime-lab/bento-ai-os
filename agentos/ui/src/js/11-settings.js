@@ -152,7 +152,7 @@ function setTab(body,all){
        step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
        11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
        this page — nothing native, nothing touching the compositor. */
-    P.push(`<h2>Executors</h2><p class="lead">Hands. An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<h2>Executors</h2><p class="lead">An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
     P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
     setTimeout(renderHands,0);
     P.push(pGroup('The machine\u2019s own limit',[
@@ -184,13 +184,13 @@ function setTab(body,all){
        and may talk to colleagues and linked teams — all of it read from ONE answer,
        agentmap.overview(), which the map below and `bento agents` read too.
        11e-hands.js draws the list and the map. */
-    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), hands (<a href="#" onclick="settingsGo('executors');return false">Executors</a>), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), an executor (<a href="#" onclick="settingsGo('executors');return false">Executors</a> — what it can reach), permissions and skills — and everything any of them does is in the ledger.</p>`);
     P.push(pGroup('Lead agent',[
       pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
-      pRow('Hands','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
-        {desc:'The executor it works with: what it can reach. It applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
+        {desc:'What it can reach — tools, folders, web, MCP. Defined in Executors; it applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
       pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
       pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
@@ -312,6 +312,12 @@ function setTab(body,all){
         {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
     ],{f:'characters avatars faces'}));
+    /* The Office is the crew's scene, so its design lives beside the characters: the
+       style, the name on the door, the pet — and "describe it", which the machine's
+       brain turns into a design (POST /api/office/design, the same call as the
+       Office's own Design panel and the setup step). Departments and who sits where
+       stay in the Office, where you can see the desks. Terminal: `bento office`. */
+    P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -395,7 +401,7 @@ function setTab(body,all){
          f:'setup onboarding wizard app steps arc walkthrough tour open'}),
       pRow('Run it again from the start','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
         {desc:'The same steps, full screen, with anything you skipped offered again. Still not a reset — see Factory reset below for that.',
-         f:'setup onboarding wizard first run walkthrough tour again restart'}),
+         f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
@@ -405,7 +411,7 @@ function setTab(body,all){
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
       pRow('Factory reset','<button class="endbtn" style="border-color:var(--err);color:var(--err)" onclick="factoryReset()">Reset…</button>',
-        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings, then runs first-time setup again. Take a Snapshot first.',f:'factory reset wipe danger'}),
+        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings — and every account, on a machine with accounts — then runs first-time setup again. Only from the machine itself, and only an admin. Take a Snapshot first. Terminal: bento reset.',f:'factory reset wipe danger environment start over clean onboarding again everything'}),
     ],{danger:true,f:'danger zone factory reset'}));
   }
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
@@ -429,6 +435,7 @@ function setTab(body,all){
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
+  if(main.querySelector('#s-office'))officeSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   const bm=main.querySelector('#s-build-model');
   if(bm)fetch('/api/models').then(r=>r.json()).then(d=>{

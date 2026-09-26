@@ -355,6 +355,22 @@ class BaileysTransport:
             self.store.log("whatsapp", f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
 
+    async def send_photo(self, png: bytes, caption: str, wa_id: str) -> str:
+        """A picture, over the same stdio line as text (base64 in one frame — a roll
+        call is tens of kilobytes). Addressed like `send`: the learned jid first."""
+        if self.state != "ready":
+            return (f"[error] the WhatsApp link is not connected "
+                    f"({self.state}{': ' + self.error if self.error else ''})")
+        import base64
+        to = self._jids.get(wa_id) or wa_id
+        ok = await self._write({"type": "image", "to": to, "caption": caption or "",
+                                "data": base64.b64encode(png).decode()})
+        if not ok:
+            return "[error] the WhatsApp bridge is not running"
+        if self.store:
+            self.store.log("whatsapp", f"→ sent a picture: {(caption or '')[:120]}")
+        return "sent via WhatsApp"
+
     def info(self) -> dict:
         return {"mode": "baileys", "installed": installed(), "paired": paired(),
                 "state": self.state, "qr": self.qr, "qr_svg": self.qr_svg,

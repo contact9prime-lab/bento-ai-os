@@ -36,6 +36,7 @@ from . import mcpbridge
 from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
+from . import playground as playgroundmod
 from . import vault as vaultmod
 from . import signin as signinmod
 from . import mail as mailmod
@@ -136,6 +137,16 @@ async def startup():
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
     _running_build()        # pinned now: the build that is answering, not the one on disk later
+    _pin_page()             # and the page that matches it (see index())
+    # every home on the machine brought up to this code — the machine's and each
+    # account's — before the first request touches any of them (agentos/migrate.py)
+    try:
+        from . import migrate as _migrate
+        for r in _migrate.everyone():
+            if not r["ok"]:
+                print(f"  ! {r['home']} could not be brought up to date: {r['error']}")
+    except Exception as e:
+        print(f"  ! could not bring the accounts up to date: {e}")
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
     clients: set[WebSocket] = set()
@@ -149,6 +160,9 @@ async def startup():
     async def broadcast(event: dict):
         """Machine-wide: a fact true for the whole box (wallpaper, an MCP consent
         prompt). A turn is NOT machine-wide — use `broadcast_user` for it."""
+        # agents talking, collected for whoever listens off the desktop (a Telegram
+        # turn's comic strip) — the one place every such event already passes
+        playgroundmod.observe(event)
         dead = []
         for ws in clients:
             try:
@@ -165,6 +179,7 @@ async def startup():
         can answer an approval — "any client may answer" was always meant among a
         person's OWN sessions, not across accounts. On a single-user machine
         every uid is '' and this is exactly `broadcast`."""
+        playgroundmod.observe(event)
         dead = []
         for ws in clients:
             if client_uids.get(ws, "") != uid:
@@ -681,8 +696,49 @@ async def shutdown():
 NO_STORE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
 
 
+_PAGE: list = []          # [(build, bytes)] — the page this process started with
+_DISK: dict = {"at": 0.0, "build": ""}
+
+
+def _pin_page() -> None:
+    """Keep the page that matches the code this process runs. A `git pull` changes
+    index.html on disk at once, but the Python answering it only changes at a
+    restart — and a NEW page talking to an OLD server calls routes that do not exist
+    yet: the Office "could not load", Executors and the agents map stuck on
+    "loading…". That is how the first update after this work was reported."""
+    if not _PAGE:
+        try:
+            _PAGE.append((_running_build(), (UI_DIR / "index.html").read_bytes()))
+        except Exception:
+            pass
+
+
+def _disk_build() -> str:
+    """The commit on disk, re-read at most every five seconds (it is a git call)."""
+    now = time.time()
+    if now - _DISK["at"] > 5:
+        from . import versioning
+        _DISK.update(at=now, build=versioning.build())
+    return _DISK["build"]
+
+
+def pending_restart() -> str:
+    """The build waiting on disk when it is not the one running, else ''."""
+    disk, running = _disk_build(), _running_build()
+    return disk if disk and running and disk != running else ""
+
+
 @app.get("/")
 async def index():
+    """The page for the code that is RUNNING. When an update has landed on disk but
+    the server has not restarted into it, this serves the page the server started
+    with — a matching pair — and the page says an update is waiting (see
+    /api/update's `pending_restart`). Editing and rebuilding the UI without a commit
+    keeps the build the same, so development still sees its changes on reload."""
+    waiting = await asyncio.to_thread(pending_restart)
+    if waiting and _PAGE:
+        return Response(content=_PAGE[0][1], media_type="text/html",
+                        headers={**NO_STORE, "X-Bento-Waiting": waiting})
     return FileResponse(UI_DIR / "index.html", headers=NO_STORE)
 
 
@@ -1019,6 +1075,8 @@ async def api_update_status(check: bool = False):
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
             "build": _running_build(),
+            # an update on disk that this process has not restarted into yet
+            "pending_restart": await asyncio.to_thread(pending_restart),
             "branch": updmod.conf(cfg).get("branch"),
             "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
             "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
@@ -1118,6 +1176,24 @@ async def api_update_apply(request: Request, body: dict | None = None):
         desktopmod.restart_service()
     asyncio.create_task(_finish())
     return {**res, "restarting": True}
+
+
+@app.post("/api/update/restart")
+async def api_update_restart(request: Request):
+    """Restart into the code on disk — what the "an update is waiting" notice's button
+    does. Loopback only, like installing: restarting is replacing the code that
+    enforces every other permission here. The page is told to reload first."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "restart it from the machine itself: bento service restart"},
+                            status_code=403)
+
+    async def _go():
+        await state["broadcast"]({"type": "reload", "delay": 6000})
+        await asyncio.sleep(0.8)
+        from . import desktop as desktopmod
+        desktopmod.restart_service()
+    asyncio.create_task(_go())
+    return {"ok": True, "restarting": True}
 
 
 @app.post("/api/shell/reload")
@@ -8394,11 +8470,13 @@ async def api_avatar_design(key: str, body: dict):
         return JSONResponse({"error": "describe them first — a few words is enough"}, status_code=400)
     who = (cfg.get("agent_name") or "your agent") if key == avatarsmod.AGENT else (
         "the person using this computer" if key == avatarsmod.ME else f"a specialist called {key}")
-    patch, dropped, note, how, model = {}, [], "", "words", cfg.get("default_model", "")
-    if model:
-        system, prompt = avatarsmod.design_prompt(desc, who)
+    patch, dropped, note, how = {}, [], "", "words"
+    # the machine's brain, whichever it is — an executor included (executors.ask_once)
+    from . import executors as _execmod
+    system, prompt = avatarsmod.design_prompt(desc, who)
+    raw, model = await _execmod.ask_once(cfg, system, prompt, timeout=60)
+    if raw:
         with contextlib.suppress(Exception):
-            raw = await asyncio.wait_for(providers.complete(cfg, model, prompt, system=system), 25)
             patch, dropped, note = avatarsmod.read_design(raw)
             if patch:
                 how = "model"
@@ -8415,7 +8493,7 @@ async def api_avatar_design(key: str, body: dict):
     return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec), "previous": previous,
             "how": how, "model": model if how == "model" else "", "note": note, "dropped": dropped,
             "said": ("" if how == "model" else
-                     "No model answered, so this matched the words you used." if model else
+                     "No model answered, so this matched the words you used." if _execmod.has_brain(cfg) else
                      "No model is set up, so this matched the words you used.")}
 
 
@@ -8467,6 +8545,112 @@ async def api_office_set(body: dict):
     office.record(state["store"], "office changed: " + office.describe(v))
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {**v, "ok": True, "dropped": dropped}
+
+
+@app.post("/api/office/design")
+async def api_office_design(body: dict):
+    """Design the office from a description — the Office's "Describe it", Settings →
+    Appearance and the setup step. The MACHINE's brain picks from the closed set
+    (executors.ask_once: Claude Code or whatever answers turns here — a chat forwarded
+    to an executor has no set_office, so the design cannot go through chat there);
+    with nothing answering, the words are matched, and `said` says which happened.
+    Applied at once; `previous` is what Undo puts back."""
+    from . import executors as execmod, office, teamlink
+    cfg, store = state["cfg"], state["store"]
+    desc = teamlink.plain((body or {}).get("description"), 300, newlines=False)
+    if len(desc) < 3:
+        return JSONResponse({"error": "describe it first — a few words is enough"}, status_code=400)
+    v = office.view(cfg, store)
+    system, prompt = office.design_prompt(desc, v)
+    raw, who = await execmod.ask_once(cfg, system, prompt)
+    patch, dropped = office.read_design(raw, v["agents"]) if raw else ({}, [])
+    how = "brain" if patch else "words"
+    if not patch:
+        patch = office.from_words(desc)
+    if not patch:
+        return JSONResponse({"error": "that did not name anything an office can have — try a style "
+                                      "(space station, loft, greenhouse…), a pet, decor, or 'called …'"},
+                            status_code=400)
+    previous = office.current_of(v)
+    office.save(cfg, store, patch)
+    cfgmod.save_config(cfg)
+    nv = office.view(cfg, store)
+    office.record(store, f"office designed from \"{desc}\" ({how}): " + office.describe(nv))
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {**nv, "ok": True, "how": how, "who": who if how == "brain" else "", "dropped": dropped,
+            "previous": previous,
+            "said": ("" if how == "brain" else
+                     "Nothing answered, so this matched the words you used." if execmod.has_brain(cfg) else
+                     "No brain is set up, so this matched the words you used.")}
+
+
+@app.post("/api/office/setup")
+async def api_office_setup(body: dict):
+    """The setup arc's crew step (onboarding.crew): every character generated and
+    stored, and the office created in the chosen style — one call, the same code
+    `bento setup` runs."""
+    from . import office, onboarding
+    b = body or {}
+    try:
+        out = onboarding.crew(state["cfg"], state["store"], str(b.get("style") or ""),
+                              str(b.get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    office.record(state["store"], "office created in setup: " + office.describe(out["office"]))
+    uid = usersmod.current() or ""
+    await state["broadcast_user"]({"type": "office"}, uid)
+    await state["broadcast_user"]({"type": "avatars"}, uid)
+    return {"ok": True, **out}
+
+
+@app.get("/api/office/rollcall")
+async def api_office_rollcall():
+    """The roll call in rows and words — the TUI's Office tab. The same rows the
+    picture is drawn from, so the terminal and the phone cannot disagree."""
+    from . import knowledge, office, playground
+    rows = playground.rollcall(state["store"], state["cfg"], lead_busy=knowledge.active_turns() > 0)
+    return {"rows": rows, "text": playground.rollcall_text(rows),
+            "plan": office.text(office.view(state["cfg"], state["store"]))}
+
+
+@app.get("/api/office/rollcall.png")
+async def api_office_rollcall_png(style: str = "", name: str = ""):
+    """The office as a picture — rooms, people, who is busy — drawn by comic.py, the
+    same picture Telegram's /office sends. `style`/`name` preview a choice without
+    saving it (the setup step shows the office before it is created)."""
+    from . import comic, knowledge, office, playground
+    cfg = state["cfg"]
+    if style or name:
+        cfg = dict(cfg)
+        try:
+            fields, _ = office.clean({k: v for k, v in (("style", style), ("name", name)) if v}, known=None)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        cfg["office"] = {**office.current(state["cfg"]), **fields}
+    avatarsmod.ensure(state["store"], state["cfg"])
+    rows = playground.rollcall(state["store"], cfg, lead_busy=knowledge.active_turns() > 0)
+    png = comic.rollcall_image(state["store"], cfg, rows, office.current(cfg)["name"])
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/office/snap")
+async def api_office_snap(body: dict | None = None):
+    """Snap: the office right now, as the roll-call picture, sent to the person's phone —
+    Telegram, WhatsApp or both (`to`: "telegram" | "whatsapp" | "" for every channel
+    that is set up). A channel that is not set up is SAID, never skipped in silence;
+    with none at all the answer is the sentence that would fix it. The same picture as
+    /office on either channel and `bento office snap`."""
+    from . import knowledge, playground
+    to = str((body or {}).get("to") or "").lower()
+    if to not in ("", "telegram", "whatsapp"):
+        return JSONResponse({"error": "send it to telegram or whatsapp"}, status_code=400)
+    avatarsmod.ensure(state["store"], state["cfg"])
+    out = await playground.snap(state["cfg"], state["store"], state["telegram"], state["whatsapp"],
+                                to, lead_busy=knowledge.active_turns() > 0)
+    if not out["sent"]:
+        return JSONResponse({"error": "; ".join(out["notes"]), "notes": out["notes"]}, status_code=400)
+    return {"ok": True, **out}
 
 
 @app.put("/api/office/place")
@@ -8959,6 +9143,84 @@ async def api_team_link_mission_stop(label: str, mission: str, verb: str):
     await state["broadcast_user"]({"type": "grants"}, owner)
     await state["broadcast_user"]({"type": "team_links"}, owner)
     return {"ok": True, "mission": got}
+
+
+_VISITS: dict = {}      # (user, link label) -> (when, the cleaned visit)
+VISIT_TTL = 300         # a visit is a call to another machine: at most one per link per 5 min
+
+
+async def _team_visit(label: str, fresh: bool = False) -> dict:
+    """A linked team's office, as they let this link see it (wire op `office`,
+    answered by fabric.office_for_link over there; cleaned by teamlink.clean_office
+    here). Cached per USER and link — two people here may each have a link called
+    'office', and one must never be shown the other's."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return {"ok": False, "error": f"no link called '{label}'", "status": 404}
+    hit = _VISITS.get((owner, label))
+    if hit and not fresh and time.time() - hit[0] < VISIT_TTL:
+        return hit[1]
+    try:
+        got = (await teamlink.call(lk, {"op": "office"}, timeout=15) if lk.get("kind") == "machine"
+               else await state["fabric"]._ask_account(lk, {"op": "office"}))
+    except Exception as e:
+        got = {"ok": False, "error": f"could not reach {label} ({type(e).__name__})"}
+    if not got.get("ok"):
+        # an older Bento on the other side does not know the op: said as that
+        err = teamlink.plain(got.get("error") or "no answer", 200, newlines=False)
+        if "unknown request" in err:
+            err = f"{label} runs an older AgentOS that cannot show its office yet"
+        return {"ok": False, "error": err, "status": 502}
+    out = {"ok": True, "label": label, "kind": lk.get("kind"), **teamlink.clean_office(got),
+           "identity": _team_peer_identity(lk)}
+    _VISITS[(owner, label)] = (time.time(), out)
+    return out
+
+
+@app.get("/api/team/links/{label}/office")
+async def api_team_link_office(label: str, fresh: int = 0):
+    """Visit a linked team's office: its look, its lead and the agents this link may ask
+    — never more (a link grants nothing, not even names). `text` is the terminal's."""
+    v = await _team_visit(label, bool(fresh))
+    if not v.get("ok"):
+        return JSONResponse({"error": v["error"]}, status_code=v.get("status", 502))
+    from . import teamlink
+    return {**v, "text": teamlink.visit_text(label, v)}
+
+
+@app.get("/api/team/links/{label}/office.png")
+async def api_team_link_office_png(label: str):
+    """Their office, drawn HERE by this machine's painter from the cleaned visit — the
+    same picture as our own roll call, in their style and with their looks."""
+    from . import comic
+    v = await _team_visit(label)
+    if not v.get("ok"):
+        return JSONResponse({"error": v["error"]}, status_code=v.get("status", 502))
+    lead = next((r["label"] for r in v["rows"] if r["key"] == "@agent"), "")
+    cfg = {"office": v["office"], "agent_name": lead}
+    png = comic.rollcall_image(state["store"], cfg, v["rows"], f"{v['office']['name']} · {label}")
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/team/visitors")
+async def api_team_visitors():
+    """Every linked team's people, for the Crew stage and the home screen: at most four
+    links, each from the visit cache (so the stage costs a call per link per five
+    minutes, never per frame). A team that cannot be reached is listed with why."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    links = teamlink.links(owner)[:4]
+    got = await asyncio.gather(*[_team_visit(lk["label"]) for lk in links])
+    out = []
+    for lk, v in zip(links, got):
+        if v.get("ok"):
+            out.append({"label": lk["label"], "name": v["office"]["name"], "ok": True,
+                        "people": [{k: r[k] for k in ("key", "label", "recipe", "working")} for r in v["rows"]]})
+        else:
+            out.append({"label": lk["label"], "ok": False, "error": v["error"]})
+    return {"teams": out}
 
 
 @app.get("/api/team/links/{label}/roster")

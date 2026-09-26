@@ -54,7 +54,8 @@ function avatarSrc(key,o){
    closed set). Still this file, so there is still one door that builds the URL. */
 function avatarRecipeSrc(rec,o){
   o=o||{};
-  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))+(o.crop===''?'':'&crop='+(o.crop||'face'));
+  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
+    +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';

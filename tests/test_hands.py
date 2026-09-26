@@ -163,7 +163,7 @@ def test_the_terminal_and_the_routes(tmp_path):
     assert "no web" in run("hands", "show", "reports").stdout
     assert run("agents", "hands", "@agent", "reports").returncode == 0
     out = run("agents").stdout
-    assert "hands      reports" in out
+    assert "executor   reports" in out     # on screen and in the terminal it is an executor
     assert run("hands", "rm", "default").returncode == 2
 
 
@@ -186,7 +186,7 @@ def test_settings_has_three_clear_places():
     js = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
     assert "['agent','◈','Agents','agent']" in js
     assert "The brains." in js and 'id="exec-list"' in js, "installed agents are listed with the brains"
-    assert 'id="hands-list"' in js and "Hands." in js
+    assert 'id="hands-list"' in js and "An executor is what an agent can reach" in js
     assert 'id="agents-list"' in js and 'id="agents-graph"' in js and "Working together" in js
     ui = (ROOT / "agentos/ui/src/js/11e-hands.js").read_text()
     assert "/api/agents/graph" in ui and "/api/hands/" in ui

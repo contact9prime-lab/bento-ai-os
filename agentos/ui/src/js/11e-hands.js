@@ -19,7 +19,9 @@ function settingsGo(tab){
 /* ---------------- Executors: the hands editor ---------------- */
 async function renderHands(){
   const box=document.getElementById('hands-list');if(!box)return;
-  try{HANDS.data=await fetch('/api/hands').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load executors</p>';return}
+  // apiJSON, never a bare .json(): a server older than the page answers 404 with JSON, and
+  // reading that as the list threw later and left "loading…" on screen for good
+  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors — '+esc(e.message)+'</p>';return}
   const d=HANDS.data;
   box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
@@ -126,7 +128,11 @@ async function setAgentHands(key,profile){
 }
 async function renderAgentsList(){
   const box=document.getElementById('agents-list');if(!box)return;
-  try{AGENTS.data=await fetch('/api/agents').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load agents</p>';return}
+  try{AGENTS.data=await apiJSON('/api/agents')}catch(e){
+    // the editor saves through /api/subagents, which is older than this list: adding an
+    // agent must not depend on the overview having loaded
+    box.innerHTML='<p class="mut">could not load agents — '+esc(e.message)+'</p>'
+      +'<div class="tlk-actions"><button class="pact" onclick="agentEdit(\'\')">＋ New agent</button></div>';return}
   const d=AGENTS.data,profs=d.profiles||[];
   const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
   const lead=d.agents.find(a=>a.master);
@@ -146,7 +152,7 @@ async function renderAgentsList(){
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
-        <div><span class="ag-k">Hands</span><select aria-label="Hands for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
@@ -170,7 +176,7 @@ var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transpar
   talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await fetch('/api/agents/graph').then(r=>r.json())}catch(e){box.textContent='could not load the map';return}
+  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map — '+e.message;return}
   box.classList.remove('mut');
   const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
   const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
@@ -193,5 +199,5 @@ async function renderAgentsGraph(){
       return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
         ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
     </div></div>
-    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Hands</span><span>Skills</span></div>`;
+    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Executors</span><span>Skills</span></div>`;
 }

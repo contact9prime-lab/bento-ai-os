@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 ---
 
-## 설정은 열한 단계이며, 각 단계는 무언가를 남긴다
+## 설정은 열두 단계이며, 각 단계는 무언가를 남긴다
 
 진행 막대가 달린 설정 양식이 아닙니다. 모든 단계는 **실제로 무언가를 만들어냅니다** — 답하는 모델,
 존재하는 에이전트, 실행되는 플로우, 발화하는 스케줄 — 그리고 무엇을 요청하기 전에 당신이 결국 무엇을
@@ -303,7 +303,7 @@ Telegram은 **관리자 콘솔**이기도 합니다: `/agents`, `/run`, `/flows`
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
-그런 다음 **http://127.0.0.1:8321**을 열거나, 터미널에서 같은 열한 단계를 위해 `bento setup`을 실행하세요.
+그런 다음 **http://127.0.0.1:8321**을 열거나, 터미널에서 같은 열두 단계를 위해 `bento setup`을 실행하세요.
 
 물어볼 터미널이 있다면, 설치 프로그램은 끝내기 전에 두 가지를 묻습니다. 이 기계가 당신의 다른 기기에서
 닿을 수 있어야 하는지, 그리고 그렇다면 **암호구**로 로그인할지 **계정**으로 로그인할지입니다. 화면이 없는

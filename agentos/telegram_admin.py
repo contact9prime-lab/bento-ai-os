@@ -38,6 +38,7 @@ COMMANDS = [
     ("/status", "", "model, autonomy, what is running"),
     ("/model", "[id]", "show what can answer; with an id, switch this machine to it"),
     ("/agents", "", "the specialists this machine has"),
+    ("/office", "", "the office right now — who is at work, as a picture"),
     ("/run", "<agent> <task>", "hand a task to one of them"),
     ("/flows", "", "standing missions, and whether they are armed"),
     ("/flow", "<name> [input]", "run one now"),
@@ -46,6 +47,11 @@ COMMANDS = [
     ("/perms", "", "who has been granted what"),
     ("/clear", "", "wipe this conversation and start fresh"),
 ]
+
+
+def office_name_of(cfg: dict) -> str:
+    from . import office
+    return office.current(cfg)["name"]
 
 
 # What every enabled chat may use. Administration is not in here: a command the
@@ -194,6 +200,17 @@ class Console:
                            if tools else f"\n   read-only · {a.get('model') or 'default model'}"))
         return _lines("▲ Agents  (/run <agent> <task>)", rows,
                       "none yet — ask me to build one and I will")
+
+    async def _cmd_office(self, chat_id: int, arg: str) -> str:
+        """The Office's roll call as a picture: each room, its people, BUSY over whoever
+        has a run open and what it is doing — the same rows `bento office` prints, so
+        the phone and the terminal cannot disagree about who is at work."""
+        from . import comic, knowledge, playground
+        tg = self.tg
+        rows = playground.rollcall(tg.store, tg.cfg, lead_busy=knowledge.active_turns() > 0)
+        png = comic.rollcall_image(tg.store, tg.cfg, rows, f"{office_name_of(tg.cfg)} · who is at work")
+        out = await tg.send_photo(png, playground.rollcall_text(rows), chat_id)
+        return "" if not out.startswith("[error]") else "▲ " + playground.rollcall_text(rows)
 
     async def _cmd_flows(self, chat_id: int, arg: str) -> str:
         rows = []

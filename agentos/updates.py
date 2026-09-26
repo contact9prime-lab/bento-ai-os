@@ -713,6 +713,18 @@ async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = Fals
             return rollback(f"dependencies could not be installed: {out[-300:]}")
         restore_derived(root)          # whatever the sync rewrote is not the user's
 
+    # Every home on the machine — the machine's and each account's — brought up to the
+    # new code NOW, in a fresh process: this one imported the old code, and the new
+    # migrations are only in the files just pulled (agentos/migrate.py says why this
+    # cannot be left to whichever request touches a person's database first).
+    say("bringing every account up to date…")
+    ok, out = _run([_python(root), "-m", "agentos", "migrate"], cwd=root, timeout=APPLY_TIMEOUT)
+    for line in (out or "").strip().splitlines()[-12:]:
+        if line.strip():
+            say("  " + line.strip())
+    if not ok:
+        return rollback(f"the new version could not update every account: {out[-300:]}")
+
     if run_tests:
         # Code that cannot pass its own tests must not become the code answering
         # turns — but "its own tests" has to mean the tests the UPDATE affected,

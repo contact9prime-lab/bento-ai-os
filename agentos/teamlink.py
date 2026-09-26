@@ -222,6 +222,53 @@ def clean_identity(x) -> dict:
     return out
 
 
+VISIT_ROWS = 24          # people drawn from one visit; an office is not a census
+
+
+def clean_office(got) -> dict:
+    """A linked team's office, as it ARRIVES: the style, pet and colours held to this
+    machine's closed sets, every name through `plain`, every look through
+    `avatars.clean`, and `working` only ever True, False or None (not shared). What the
+    other side claimed beyond that is dropped — it is their answer, drawn by OUR
+    painter, so nothing in it may reach the page as anything but a value."""
+    from . import avatars, office
+    g = got if isinstance(got, dict) else {}
+    o = g.get("office") if isinstance(g.get("office"), dict) else {}
+    rows = []
+    for r in (g.get("rows") if isinstance(g.get("rows"), list) else [])[:VISIT_ROWS * 4]:
+        if len(rows) >= VISIT_ROWS:
+            break
+        if not isinstance(r, dict):
+            continue
+        key = "@agent" if r.get("key") == "@agent" else re.sub(r"[^A-Za-z0-9_.-]", "", str(r.get("key") or ""))[:40]
+        if not key:
+            continue
+        w = r.get("working")
+        rows.append({"room": plain(r.get("room"), 24, newlines=False) or "Office",
+                     "color": r["color"] if r.get("color") in office.COLORS else "slate",
+                     "key": key, "label": plain(r.get("label"), 40, newlines=False) or key,
+                     "working": w if w is True or w is False else None,
+                     "recipe": avatars.clean(r["recipe"] if isinstance(r.get("recipe"), dict) else {})})
+    return {"office": {"style": o["style"] if o.get("style") in office.STYLES else office.DEFAULT_STYLE,
+                       "name": plain(o.get("name"), 24, newlines=False) or "Their office",
+                       "pet": o["pet"] if o.get("pet") in office.PETS else "none"},
+            "rows": rows}
+
+
+def visit_text(label: str, v: dict) -> str:
+    """A visit in words — `bento office visit` and the Visit route's `text`."""
+    lines, room = [f"{v['office']['name']} — {label}'s office"], None
+    for r in v["rows"]:
+        if r["room"] != room:
+            room = r["room"]
+            lines.append(room)
+        state = "busy" if r["working"] else "not shared" if r["working"] is None else "free"
+        lines.append(f"  {r['label']}: {state}")
+    if len(v["rows"]) <= 1:
+        lines.append("Only their lead is shown: none of their agents may be asked over this link yet.")
+    return "\n".join(lines)
+
+
 def note_identity(owner: str, label: str, ident) -> None:
     """Record what a linked team says it looks like, when it changed. Written only on a
     difference, so a chatty link does not rewrite links.json on every message."""
@@ -887,7 +934,7 @@ class Listener:
         if op == "hello":
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
                     "identity": self._ident(lk.get("owner") or "")}
-        if op in ("ask", "roster", "mission", "chat", "chat_pull") and self.on_ask:
+        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

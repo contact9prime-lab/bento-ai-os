@@ -3149,6 +3149,66 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+RESET_PHRASE = "reset everything"
+
+
+def _reset_cli(args):
+    """`bento reset` — the desktop's Factory reset, from a terminal: every memory,
+    conversation, app, specialist, flow, the soul, the settings, and on a machine with
+    accounts every account and its home. Then first-run setup starts again.
+
+    Two refusals, each for a real reason:
+    - **A running server.** It holds the config in memory and writes it back, so a wipe
+      underneath it would be quietly undone; and it would keep answering with a
+      database that no longer matches. Stop it first — the sentence names the command.
+    - **No typed phrase.** There is deliberately no `--yes`: this cannot be undone, and
+      a flag is what a script or a pasted line supplies without anybody reading it.
+      With no terminal to type into, it refuses.
+    """
+    from . import config as _cfgmod
+    port = getattr(args, "port", 0) or _cfgmod.load_config().get("port", 8321)
+    if _server_answers(port):
+        print(f"✗ AgentOS is running on port {port}. Stop it first, then reset:\n"
+              f"    bento service stop      (or Ctrl+C where `bento serve` is running)\n"
+              f"  From the desktop instead: Settings → System → Danger zone → Factory reset.",
+              file=sys.stderr)
+        sys.exit(1)
+    print("  This wipes EVERYTHING on this machine: memory, knowledge, conversations, apps,\n"
+          "  specialists, flows, the soul and every setting — and, if there are accounts,\n"
+          "  every account and its home. It cannot be undone. (Settings → Snapshots first,\n"
+          "  if you might want any of it back.)")
+    if not sys.stdin.isatty():
+        print("✗ refused: there is no terminal to confirm in, and this has no --yes on purpose.",
+              file=sys.stderr)
+        sys.exit(2)
+    from . import users as _users
+    if _users.enabled():
+        # the route's rule, in a terminal: only an admin wipes a machine with accounts
+        import getpass
+        try:
+            who = input("  An admin's name: ").strip()
+            pw = getpass.getpass("  Their password: ")
+        except (EOFError, KeyboardInterrupt):
+            who, pw = "", ""
+        u = _users.by_name(who) if who else None
+        if not (u and _users.is_admin(u["id"]) and _users.check_password(u["id"], pw)):
+            print("✗ refused: only an admin can reset a machine with accounts. Nothing was changed.",
+                  file=sys.stderr)
+            sys.exit(2)
+    try:
+        said = input(f"  Type \"{RESET_PHRASE}\" to go ahead: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        said = ""
+    if said != RESET_PHRASE:
+        print("  Nothing was changed.")
+        sys.exit(1)
+    from . import setup as _setupmod
+    from .memory import Store
+    cfg = _cfgmod.load_config()
+    _setupmod.factory_reset(cfg, Store(_cfgmod.DB_PATH))
+    print("✓ reset. Start it again and setup begins: `bento` (the desktop wizard) or `bento setup`.")
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -3172,6 +3232,11 @@ def _office_cli(args):
     try:
         if a in ("show", "list"):
             print(of.text(of.view(cfg, store)))
+            # who is at work right now: the same rows Telegram's /office draws
+            from . import playground as _pg
+            print("\n  Right now:")
+            for ln in _pg.rollcall_text(_pg.rollcall(store, cfg, lead_busy=None)).splitlines():
+                print("    " + ln)
             print("\n  The desktop's Office app animates this: agents walk over to ask each other,"
                   "\n  huddles gather in the meeting room. A terminal shows the plan, not the play.")
             return
@@ -3205,11 +3270,92 @@ def _office_cli(args):
         if a == "pet" and rest:
             of.save(cfg, store, {"pet": rest[0]})
             return done(f"pet: {of.current(cfg)['pet']}")
+        if a == "design" and rest:
+            # the same designer as the Office's "Describe it": the machine's brain picks
+            # from the closed set, and with nothing answering the words are matched
+            import asyncio as _aio
+            from . import executors as _ex
+            desc = " ".join(rest)[:300]
+            v = of.view(cfg, store)
+            system, prompt = of.design_prompt(desc, v)
+            raw, who = _aio.run(_ex.ask_once(cfg, system, prompt))
+            patch, dropped = of.read_design(raw, v["agents"]) if raw else ({}, [])
+            how = f"designed by {who}" if patch else (
+                "nothing answered, so this matched the words you used" if _ex.has_brain(cfg)
+                else "no brain is set up, so this matched the words you used")
+            patch = patch or of.from_words(desc)
+            if not patch:
+                raise ValueError("that did not name anything an office can have — try a style "
+                                 "(space station, loft, greenhouse…), a pet, decor, or 'called …'")
+            of.save(cfg, store, patch)
+            print(f"  {how[0].upper() + how[1:]}.")
+            if dropped:
+                print(f"  not used: {', '.join(dropped)}")
+            return done(f"office designed from \"{desc}\" ({how})")
+        if a == "picture":
+            # the roll call as a PNG — for a box with no screen and no channel set up
+            from . import comic, playground as _pg
+            path = rest[0] if rest else "office.png"
+            rows = _pg.rollcall(store, cfg, lead_busy=None)
+            with open(path, "wb") as f:
+                f.write(comic.rollcall_image(store, cfg, rows, of.current(cfg)["name"]))
+            print(f"✓ the office, drawn to {path}")
+            return
+        if a == "visit":
+            # a linked team's office, as that link lets you see it: the same answer the
+            # desktop's Visit shows (fabric.office_for_link over there, clean_office here)
+            import asyncio as _aio
+            from . import teamlink, users as _users
+            from . import fabric as _fab
+            owner = getattr(args, "user", "") or ""
+            if not rest:
+                names = [lk["label"] for lk in teamlink.links(owner)]
+                print("  bento office visit LINK — linked: " + (", ".join(names) or "none (bento link request ADDRESS)"))
+                return
+            lk = teamlink.find(owner, rest[0])
+            if not lk:
+                raise ValueError(f"no link called '{rest[0]}'")
+            if lk.get("kind") == "account":
+                peer = lk.get("peer") or ""
+                theirs = next((x for x in teamlink.links(peer) if x.get("kind") == "account"
+                               and x.get("pair_id") == lk.get("pair_id")), None)
+                if not theirs:
+                    raise ValueError("the other account has ended this link")
+                with _users.as_user(peer):
+                    got = _fab.office_for_link(_users.store_for(peer), _users.cfg_for(peer), theirs["label"])
+            else:
+                got = _aio.run(teamlink.call(lk, {"op": "office"}, timeout=15))
+            if not got.get("ok"):
+                raise ValueError(teamlink.plain(got.get("error") or "no answer", 200, newlines=False))
+            for ln in teamlink.visit_text(lk["label"], teamlink.clean_office(got)).splitlines():
+                print("  " + ln)
+            print("\n  Ask one of them through yours: in chat, @researcher ask NAME@" + lk["label"] + ": …")
+            return
+        if a == "snap":
+            # Snap from a terminal: the same function as the Office's button. A linked
+            # WhatsApp is held by the running server, so it is said, not attempted.
+            import asyncio as _aio
+            from . import playground as _pg
+            from . import whatsapp as _wa
+            from .telegram import TelegramBridge
+            to = (rest[0].lower() if rest else "")
+            if to not in ("", "telegram", "whatsapp"):
+                raise ValueError("snap to telegram or whatsapp (or neither, for every channel set up)")
+            tg = TelegramBridge(cfg, store, None, None)
+            wa = None if _wa.conf(cfg).get("mode") == "baileys" else _wa.WhatsAppBridge(cfg, store, None, None)
+            out = _aio.run(_pg.snap(cfg, store, tg, wa, to, lead_busy=None))
+            for n in out["notes"]:
+                print(f"  {n}")
+            if not out["sent"]:
+                sys.exit(1)
+            print(f"✓ the office, sent to {' and '.join(out['sent'])}")
+            return
     except ValueError as e:
         print(f"✗ {e}", file=sys.stderr)
         sys.exit(2)
     print("  bento office [show] · styles · style NAME · name TEXT · move AGENT [DEPARTMENT] [--color C]\n"
-          "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none",
+          "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none\n"
+          "  design WORDS · snap [telegram|whatsapp] · picture [FILE.png] · visit LINK",
           file=sys.stderr)
     sys.exit(2)
 
@@ -5203,7 +5349,12 @@ def main():
     p_help.add_argument("--all", action="store_true",
                         help="every command, including the ones --help does not list")
 
-    verb("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
+    p_setup = verb("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
+    p_setup.add_argument("--again", action="store_true",
+                         help="walk every step again, skipped ones included — nothing is wiped")
+    p_setup.add_argument("--user", default="", help="whose setup, on a machine with users")
+    p_reset = verb("reset", help="factory reset: wipe everything on this machine and start setup again")
+    p_reset.add_argument("--port", type=int, default=0, help="the server's port, if not the configured one")
 
     p_serve = verb("serve", help="start the AgentOS server + UI (default)")
     p_serve.add_argument("--host", default="127.0.0.1")
@@ -5612,11 +5763,14 @@ def main():
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes · "
                                                    "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    verb("migrate")   # unlisted: what `bento update` runs in a fresh process, for every account
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
-                               "lounge", "decor", "pet"])
-    p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night")
+                               "lounge", "decor", "pet", "design", "snap", "picture", "visit"])
+    p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night"
+                                              " · design: a description in words · snap: telegram|whatsapp"
+                                              " · picture: FILE.png · visit: LINK")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
@@ -5763,7 +5917,17 @@ def main():
         # finished in the other picks up exactly where it was left.
         from . import setup_tui
         cfg, store = _open_store(getattr(args, "user", ""))
+        if getattr(args, "again", False):
+            # the desktop's "Walk me through it": skips and confirmations cleared, the
+            # arc from the top — onboarding.restart, which never deletes anything
+            from . import onboarding as _ob
+            from . import config as _cfgmod
+            _ob.restart(cfg)
+            _cfgmod.save_config(cfg)
+            print("  Walking every step again — nothing has been deleted. (A wipe is `bento reset`.)")
         setup_tui.run(cfg, store)
+    elif args.cmd == "reset":
+        _reset_cli(args)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():
@@ -5842,6 +6006,10 @@ def main():
         _avatar_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
+    elif args.cmd == "migrate":
+        from . import migrate as _mig
+        rows = _mig.everyone(log=print)
+        sys.exit(0 if all(r["ok"] for r in rows) else 1)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "vault":

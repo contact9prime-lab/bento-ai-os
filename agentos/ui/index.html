@@ -2747,6 +2747,19 @@ body.glass-off .win{background:var(--bg)!important}
 .ob-needs button{border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 10px;color:var(--txt)}
 /* the second and third choice on the brain step sat flush under the card above */
 .ob-body .job-q{margin-top:var(--sp-4)}
+/* the crew step: faces to tap for a new look, the office's name, and its preview */
+.ob-faces{display:flex;flex-wrap:wrap;gap:10px}
+.ob-face{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 8px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--bg3);min-width:72px;font-size:var(--fs-xs)}
+.ob-face:hover{border-color:var(--acc)}
+.ob-face img.ob-face-img{width:52px;height:52px;border-radius:10px;border:2px solid #191827;background:#fff;image-rendering:pixelated;margin:0}
+.ob-crew-name{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:var(--fs-sm);color:var(--dim)}
+.ob-crew-name input{flex:1;max-width:240px}
+.ob-crew-ask{display:flex;gap:6px;flex:1;min-width:0}
+.ob-crew-ask input{max-width:none}
+#ob-crew-said{margin-top:6px;font-size:var(--fs-sm)}
+.ob-crew-prev{display:block;width:100%;max-width:640px;margin:8px 0 4px;border-radius:10px;border:2px solid #191827;image-rendering:pixelated;background:#1b2233}
+body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-crew-askb{min-height:var(--tap)}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -3251,6 +3264,26 @@ body.immersive .hm-chip{min-height:36px;padding:0 15px;border-radius:999px;font-
   border-top-color:color-mix(in srgb,var(--txt) 24%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   box-shadow:0 8px 24px rgba(0,0,0,.25);transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
 body.immersive .hm-chip:hover{background:color-mix(in srgb,var(--txt) 14%,transparent);transform:translateY(-2px)}
+body.immersive .hm-play{display:inline-flex;align-items:center;gap:0;min-height:var(--tap,40px);padding:4px 16px 4px 8px;border-radius:999px;pointer-events:auto;
+  font-size:var(--fs-sm);font-weight:600;color:color-mix(in srgb,var(--txt) 90%,transparent);cursor:pointer;
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:transform var(--d-base) var(--ease-spring)}
+body.immersive .hm-play[hidden]{display:none}
+body.immersive .hm-play:hover{transform:translateY(-2px)}
+body.immersive .hm-play img.av-play{width:28px;height:28px;border-radius:8px;margin-right:-6px;
+  border:2px solid color-mix(in srgb,var(--bg) 80%,transparent);image-rendering:pixelated}
+body.immersive .hm-play span{margin-left:14px}
+body.immersive.omni-pop .hm-play{opacity:0;pointer-events:none}
+body.immersive .hm-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;pointer-events:auto}
+body.immersive .hm-links[hidden]{display:none}
+body.immersive .hm-link{display:inline-flex;align-items:center;min-height:var(--tap,40px);padding:4px 14px 4px 8px;border-radius:999px;cursor:pointer;
+  font-size:var(--fs-xs);font-weight:600;color:color-mix(in srgb,var(--txt) 80%,transparent);
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border:1px dashed color-mix(in srgb,var(--txt) 22%,transparent)}
+body.immersive .hm-link img.av-play{width:24px;height:24px;border-radius:7px;margin-right:-5px;image-rendering:pixelated;
+  border:2px solid color-mix(in srgb,var(--bg) 80%,transparent)}
+body.immersive .hm-link span{margin-left:12px}
+body.immersive .hm-link em{font-style:normal;font-weight:500;opacity:.7}
+body.immersive.omni-pop .hm-links{opacity:0;pointer-events:none}
 body.immersive .hm-now{font-size:var(--fs-sm);color:color-mix(in srgb,var(--txt) 55%,transparent);text-shadow:0 1px 8px rgba(0,0,0,.4)}
 /* the prompt bar in the scene: upper third, wide, the results list drops below it */
 body.immersive:not(.has-win):not(.deck-full) #omnibar{bottom:auto;top:20%;width:min(720px,88vw);height:56px;padding:0 18px;gap:12px}
@@ -3801,9 +3834,19 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .of-chat .cp-feed,.of-chat .cp-starters,.of-chat .cp-inbar{min-width:0}
 
 /* the designer: a panel over the office's right edge, so the change is seen as it is made */
-.of-design{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
+.of-design,.of-visit{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
   background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--el-4);padding:10px 14px 16px}
-.of-design[hidden]{display:none}
+.of-design[hidden],.of-visit[hidden]{display:none}
+/* a visit: their office as our painter draws it, and a door to each person in it */
+.of-visit{width:min(460px,calc(100% - 20px))}
+.of-vpic{width:100%;image-rendering:pixelated;border-radius:var(--r-md);border:1px solid var(--line);margin:6px 0;background:var(--bg3)}
+.of-vteam{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;border-radius:var(--r-md);
+  background:var(--bg3);border:1px solid var(--line);margin:4px 0;color:var(--txt)}
+.of-vteam.on{border-color:var(--acc)}
+.of-vteam img.av{width:26px;height:26px;border-radius:7px;image-rendering:pixelated}
+.of-vwho{display:flex;align-items:center;gap:8px;margin:5px 0}
+.of-vwho img.av{width:28px;height:28px;border-radius:7px;image-rendering:pixelated}
+.of-vwho .grow{flex:1;min-width:0}
 .of-dh{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .of-x{color:var(--dim);border-radius:var(--r-sm);padding:4px 8px}
 .of-x:hover{color:var(--txt);background:var(--bg3)}
@@ -3812,6 +3855,8 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .of-row{display:flex;align-items:center;gap:8px;margin:5px 0}
 .of-row input{flex:1;min-width:0}
 .of-row select{flex:none;max-width:48%}
+.of-said{font-size:var(--fs-sm);margin:2px 0 6px;min-height:1em}
+.of-said .endbtn{margin-left:6px}
 .of-who .of-an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .of-sw{width:14px;height:14px;border-radius:4px;flex:none;border:2px solid #191827}
 .of-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
@@ -3840,8 +3885,73 @@ body.dev-mobile .of-wrap.chat-open .of-chat{display:flex}
 body.dev-mobile .of-le:nth-child(n+3){display:none}
 /* a fingertip: every control in the designer and the bar at the floor, as real size */
 body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,body.dev-touch .of-x,
-body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn{min-height:var(--tap)}
+body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn,
+body.dev-touch .of-vteam,body.dev-touch .of-visit .endbtn{min-height:var(--tap)}
 body.dev-touch .of-x{min-width:var(--tap)}
+/* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
+   The Office's comic language at the size of a line: ink outlines, white balloons, yellow
+   bursts with a red word. Like the Office canvas these are a comic's own colours — a
+   balloon is white with black ink on every theme — while the strip's frame and names use
+   the theme's tokens, so it sits in Chat on Nova and on Ember alike. */
+:root{--comic-ink:#191827;--comic-burst:#ffe14d;--comic-word:#e11d48;--comic-paper:#ffffff}
+
+.pstrip{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin:4px 0 10px;padding:52px 10px 8px;
+  border:2px solid var(--comic-ink);border-radius:12px;position:relative;overflow:visible;
+  background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--txt) 16%,transparent) 1px,transparent 1.6px) 0 0/7px 7px,
+    color-mix(in srgb,var(--acc) 7%,var(--bg2));
+  box-shadow:3px 3px 0 var(--comic-ink)}
+.pstrip.done{padding-top:8px;box-shadow:none;border-style:dashed;border-color:color-mix(in srgb,var(--txt) 30%,transparent)}
+.ps-p{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:44px}
+.ps-p img.ps-face{width:34px;height:34px;border-radius:9px;border:2px solid var(--comic-ink);background:var(--comic-paper);
+  image-rendering:pixelated;margin:0}
+.ps-n{font-size:var(--fs-2xs);font-weight:700;color:var(--txt);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-c{position:absolute;top:-6px;right:-8px;font-size:10px;font-weight:800;color:var(--dim)}
+.ps-c:empty{display:none}
+.ps-p.on img.ps-face{border-color:var(--acc);box-shadow:0 0 0 2px var(--comic-ink);animation:ps-hop .5s ease-in-out infinite alternate}
+.pstrip.done .ps-p img.ps-face{animation:none}
+@keyframes ps-hop{from{transform:translateY(0)}to{transform:translateY(-3px)}}
+
+/* a "!" when work lands, and a burst per tool call: both play once and are removed */
+.ps-pop{position:absolute;top:-24px;left:50%;font:italic 900 22px/1 var(--sans);color:var(--comic-burst);
+  -webkit-text-stroke:1.5px var(--comic-ink);transform:translateX(-50%);animation:ps-pop 1.4s ease-out forwards;pointer-events:none}
+/* the headroom above the faces is where balloons and bursts appear; room for two lines */
+.ps-burst{position:absolute;top:-30px;left:24px;padding:5px 10px;white-space:nowrap;pointer-events:none;z-index:2;
+  font:italic 900 11px/1 var(--sans);color:var(--comic-word);background:var(--comic-burst);
+  clip-path:polygon(0 18%,14% 22%,10% 0,30% 16%,46% 2%,56% 20%,78% 4%,76% 24%,100% 20%,88% 44%,100% 64%,82% 70%,90% 100%,64% 80%,48% 100%,40% 80%,16% 96%,20% 72%,0 74%,10% 48%);
+  animation:ps-pop 1.4s ease-out forwards}
+@keyframes ps-pop{0%{opacity:0;transform:translateX(-50%) scale(.3)}15%{opacity:1;transform:translateX(-50%) scale(1.12)}
+  25%{transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-6px)}}
+.ps-burst{animation-name:ps-burst}
+@keyframes ps-burst{0%{opacity:0;transform:scale(.3) rotate(-8deg)}15%{opacity:1;transform:scale(1.12) rotate(-4deg)}
+  25%{transform:scale(1) rotate(-4deg)}80%{opacity:1}100%{opacity:0;transform:translateY(-6px) rotate(-4deg)}}
+/* a short balloon when an agent asks, answers or speaks in a huddle */
+.ps-say{position:absolute;bottom:calc(100% + 6px);left:-6px;z-index:3;max-width:min(260px,70vw);width:max-content;
+  padding:5px 9px;border-radius:10px;font-size:var(--fs-xs);font-weight:600;line-height:1.3;white-space:normal;
+  color:var(--comic-ink);background:var(--comic-paper);border:2px solid var(--comic-ink);pointer-events:none}
+.ps-say::after{content:'';position:absolute;left:16px;bottom:-8px;border:6px solid transparent;border-top-color:var(--comic-ink)}
+
+/* an app window the agent's hands touched: the same burst, over its corner */
+.win-burst{position:absolute;top:34px;right:18px;z-index:30;padding:9px 16px;pointer-events:none;
+  font:italic 900 16px/1 var(--sans);color:var(--comic-word);background:var(--comic-burst);
+  clip-path:polygon(0 18%,14% 22%,10% 0,30% 16%,46% 2%,56% 20%,78% 4%,76% 24%,100% 20%,88% 44%,100% 64%,82% 70%,90% 100%,64% 80%,48% 100%,40% 80%,16% 96%,20% 72%,0 74%,10% 48%);
+  animation:ps-burst 1.4s ease-out forwards}
+
+/* agents talking in Chat: each line is a comic balloon beside its speaker's face */
+.huddle .hud-row img.av-who{width:36px;height:36px;flex:0 0 36px;border:2px solid var(--comic-ink);background:var(--comic-paper);image-rendering:pixelated}
+.huddle .hud-say{position:relative;background:var(--comic-paper);color:var(--comic-ink);border:2px solid var(--comic-ink);
+  border-radius:12px;padding:6px 10px;box-shadow:2px 2px 0 var(--comic-ink)}
+.huddle .hud-say::before{content:'';position:absolute;left:-10px;top:10px;border:5px solid transparent;border-right:6px solid var(--comic-ink)}
+.huddle .hud-say .hud-who{color:var(--comic-ink)}
+.huddle .hud-say .brainchip{color:#475569;border-color:#cbd5e1;background:#f1f5f9}
+.huddle .hud-say .brainchip b{color:var(--comic-ink)}
+.huddle .hud-to{color:#64748b}
+.huddle .hud-text a{color:#1d4ed8}
+.huddle .hud-row{border-top:0}
+
+@media (prefers-reduced-motion:reduce){
+  .ps-p.on img.ps-face,.ps-pop,.ps-burst,.win-burst{animation:none}
+  .ps-pop,.ps-burst,.win-burst{opacity:1}
+}
 </style>
 </head>
 <body>
@@ -3929,7 +4039,9 @@ body.dev-touch .of-x{min-width:var(--tap)}
        opens — the desktop is then wallpaper and dock, nothing else. -->
   <div id="home" hidden>
     <div class="hm-greet"><div class="hm-hi"></div><div class="hm-date"></div></div>
-    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div></div>
+    <div class="hm-below"><div class="hm-chips"></div><div class="hm-now"></div>
+      <button class="hm-play" onclick="openApp('office')" hidden></button>
+      <div class="hm-links" hidden></div></div>
   </div>
   <!-- the app deck: bento tiles above the bar. Inside #desktop on purpose —
        #desktop is position:fixed, which creates a stacking context, so a deck
@@ -4436,7 +4548,7 @@ var UI_ICONS={
   agent:'M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9zM12 8.5v7M8.2 10.5l3.8 2.2 3.8-2.2',
   executors:'M4 12h11M11 7l5 5-5 5M20 5v14',
   channels:'M5 6.5h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-7.5L8 20v-3.5H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8.5 10.5h7M8.5 13.5h4',
-  accounts:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  accounts:'M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 7l9 6 9-6',
   locale:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z',
   keys:'M9 6a3 3 0 1 0-3 3h3zM15 6a3 3 0 1 1 3 3h-3zM9 18a3 3 0 1 1-3-3h3zM15 18a3 3 0 1 0 3-3h-3zM9 9h6v6H9z',
   voice:'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6',
@@ -4542,7 +4654,8 @@ function avatarSrc(key,o){
    closed set). Still this file, so there is still one door that builds the URL. */
 function avatarRecipeSrc(rec,o){
   o=o||{};
-  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))+(o.crop===''?'':'&crop='+(o.crop||'face'));
+  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
+    +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';
@@ -4671,6 +4784,22 @@ async function avatarEdit(key){
   scr.querySelector('.dlg-ok').focus();
 }
 avatarsLoad();
+/* ================= The comic words: one vocabulary for the playground =================
+   A tool call is drawn as a burst with a word in it — in the Office, on the play strip in
+   Chat and in every app's agent panel, and on an app window the agent's hands touch. The
+   word lives here, once, so "FETCH!" means the same thing on every surface; the real
+   tool name is always printed beside it, so the joke never hides what actually ran.
+   `var` and a function: the bundle is one script and the Office (24d) and the strip
+   (24e) read these at run time. */
+var COMIC_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
+  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
+  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
+  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!',
+  create_app:'BUILD!',control_desktop:'ZAP!',set_wallpaper:'SPLASH!',set_office:'REDECORATE!',
+  set_avatar:'NEW LOOK!',create_flow:'PLAN!',schedule_task:'TICK-TOCK!'};
+function comicWord(tool){
+  return COMIC_WORDS[tool]||String(tool||'').replace(/_/g,' ').toUpperCase().slice(0,12)+'!';
+}
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
@@ -4992,6 +5121,24 @@ function homeChips(){
   const p=(typeof cfg!=='undefined'&&cfg&&cfg.persona)||'';
   return HOME_CHIPS_BY[p]||HOME_CHIPS;
 }
+/* Linked teams on the home screen: one chip per team with the faces of the people this
+   link lets you ask; a tap visits their office (the Office's Visit panel), where each
+   person is a door to a chat. Fetched at most every five minutes — every visit is a
+   call to another machine — and nothing is drawn for a machine with no links. */
+var HOME_LINKS={at:0,teams:[]};
+async function homeLinks(h){
+  const box=h.querySelector('.hm-links');if(!box)return;
+  if(!HOME_LINKS.at||Date.now()-HOME_LINKS.at>300000){
+    HOME_LINKS.at=Date.now();
+    try{HOME_LINKS.teams=((await (await fetch('/api/team/visitors')).json()).teams||[]).filter(t=>t.ok)}catch(e){HOME_LINKS.teams=[]}
+  }
+  const html=HOME_LINKS.teams.map(t=>`<button class="hm-link" data-l="${esc(t.label)}" title="Visit ${esc(t.name)} — ${esc(t.label)}'s office">`
+    +(t.people||[]).slice(0,4).map(p=>avatarRecipeImg(p.recipe,'av-play',p.label)).join('')
+    +`<span>${esc(t.label)} <em>· ${esc(t.name)}</em></span></button>`).join('');
+  if(box.dataset.h!==html){box.dataset.h=html;box.innerHTML=html;
+    box.querySelectorAll('.hm-link').forEach(b=>b.onclick=()=>{openApp('office');setTimeout(()=>officeVisit(b.dataset.l),350)})}
+  box.hidden=!HOME_LINKS.teams.length;
+}
 function homeRender(){
   const h=document.getElementById('home');if(!h)return;
   if(!IMMERSIVE.on){h.hidden=true;clearInterval(IMMERSIVE.homeT);IMMERSIVE.homeT=0;return}
@@ -5023,6 +5170,18 @@ function homeRender(){
   if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
   line.classList.toggle('br-open',!n&&!!br);
   line.onclick=(!n&&br)?()=>openApp('brief'):null;
+  // the playground's front door: the crew's own faces, one tap to the Office. The same
+  // characters as everywhere else (avatarImg); nothing here says anyone is busy unless
+  // a turn is running, because the Office itself is where that is shown.
+  const play=h.querySelector('.hm-play');
+  if(play){
+    const crew=(typeof AVATARS!=='undefined'&&AVATARS.list||[]).filter(p=>p.key!=='@me').slice(0,5);
+    const ph=crew.map(p=>avatarImg(p.key,'av-play')).join('')
+      +`<span>${n?'See them at work in the Office':'Your office'}</span>`;
+    if(play.dataset.h!==ph){play.dataset.h=ph;play.innerHTML=ph}
+    play.hidden=!crew.length;
+  }
+  homeLinks(h);
   h.hidden=false;
   const band=immersiveWallBand();
   if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
@@ -5181,11 +5340,12 @@ function movementCovered(){
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
 /* The ONE seam between the OS's events and the scenes that draw them: the Crew stage
-   (01d) and the Office playground (24d). A new scene is one line here, not five more
+   (01d), the Office playground (24d) and the play strip (24e). A new scene is one line here, not five more
    edits in a websocket that knows nothing about scenes. */
 function scenePulse(kind,label,ev){
   if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(typeof officePulse==='function')officePulse(kind,label,ev);
+  if(typeof playPulse==='function')playPulse(kind,label,ev);     // the play strip (24e): Chat, apps, the bar
 }
 function movementPulse(kind,label,ev){
   // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a
@@ -5384,7 +5544,9 @@ if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')mo
    `var`, not `let`: the bundle is one script. */
 var CREW={on:false,cv:null,ctx:null,raf:0,last:0,t:0,W:0,H:0,dpr:1,font:'',static:false,
   cast:[],rosterAt:0,busy:{},tool:null,turns:0,drawn:0,drawMs:0,greeted:0,
-  arrive:{},said:{},known:null};
+  arrive:{},said:{},known:null,guests:[],guestsAt:0};
+var CREW_GUESTS=4;                    // visitors from linked teams, at the stage's right edge
+var CREW_GUEST_MS=300000;             // their roster is a call to another machine: every 5 min
 var CREW_SHEETS={};                   // key → {img,v}: one sheet per character, from the server
 var CREW_WALK_MS=2600;                // a new specialist's walk in from the edge
 var CREW_SAY_MS=3800;                 // how long a bubble stays up
@@ -5468,6 +5630,24 @@ async function crewRoster(force){
     if(CREW.known)CREW.cast.forEach(c=>{if(!CREW.known.has(c.name)){CREW.arrive[c.name]=now;crewSay(c.name,'hello!')}});
     CREW.known=new Set(CREW.cast.map(c=>c.name));
     crewKick();
+  }catch(e){}
+  crewGuests();
+}
+/* Linked teams' people, standing at the edge of the stage as visitors: only the ones
+   their link lets you ask (the server's /api/team/visitors, which says nothing more
+   than a visit to their office would). The canvas cannot be tapped — it sits under
+   the desktop — so the door to them is the home screen's row and the Office's Visit. */
+async function crewGuests(){
+  if(!CREW.on||performance.now()-CREW.guestsAt<CREW_GUEST_MS&&CREW.guestsAt)return;
+  CREW.guestsAt=performance.now();
+  try{
+    const d=await (await fetch('/api/team/visitors')).json();
+    const out=[];
+    for(const t of (d.teams||[]))if(t.ok)for(const p of (t.people||[])){
+      if(p.key==='@agent'&&(t.people||[]).length>1)continue;   // their lead only when alone
+      out.push({key:'v:'+t.label+'/'+p.key,name:p.label,label:t.label,rec:p.recipe,working:!!p.working});
+    }
+    CREW.guests=out.slice(0,CREW_GUESTS);crewKick();
   }catch(e){}
 }
 /* The roster or somebody's look changed: a new sheet for anybody whose version
@@ -5573,6 +5753,7 @@ function crewSkin(ink, h, lit){
    has loaded, a stable fallback from the name, so the first frame is not grey. */
 var CREW_AGENT_HUE=172;               // the server's AGENT_HUE: the desktop's teal
 function crewHueOf(key){
+  const g=CREW.guests.find(x=>x.key===key);if(g)return g.rec.hue;
   const a=(typeof AVATARS!=='undefined')&&AVATARS.by[key];
   if(a&&a.recipe&&typeof a.recipe.hue==='number')return a.recipe.hue;
   return key==='@agent'?CREW_AGENT_HUE:Math.floor(crewHash(key)*360);
@@ -5587,7 +5768,9 @@ function crewSheet(key){
   if(!e||e.v!==v){
     const img=new Image();img.decoding='async';
     img.onload=crewKick;
-    img.src=avatarSrc(key,{sheet:1});
+    // a visitor from a linked team: painted from the look that travelled with the visit
+    const g=CREW.guests.find(x=>x.key===key);
+    img.src=g?avatarRecipeSrc(g.rec,{sheet:1}):avatarSrc(key,{sheet:1});
     e=CREW_SHEETS[key]={img,v};
   }
   return e.img.complete&&e.img.naturalWidth?e.img:null;
@@ -5757,6 +5940,13 @@ function crewDraw(dt){
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
       crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
+  });
+  // Visitors from linked teams: smaller, at the right edge past the floor, each named
+  // with the team they are from. Busy is theirs to say (their office answered it).
+  C.guests.forEach((g,i)=>{
+    const gx=Math.min(W-scale*.45,W/2+span/2+scale*(.55+i*.8));
+    crewFigure(ctx,gx,ground,scale*.78,ink,g.key,g.rec.hue,g.working?.35:0,0,
+      crewFit(g.name,scale*.8,scale*.78),'@'+g.label,g.working,false);
   });
   // What somebody SAID: a hello on arrival, "done" when its work finished.
   // A flat rounded box and a two-pixel tail, above the head and clear of the
@@ -6968,7 +7158,11 @@ function miniFeed(box,opts){
     if(!body){body=document.createElement('div');body.className='mf-body body';box.appendChild(body)}};
   // Which conversation this feed is watching. Known from the first event that
   // carries it — a brand-new thread has no id until the server names it.
-  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id};
+  const bind=ev=>{if(working&&ev&&ev.conversation_id)working.dataset.cid=ev.conversation_id;
+    // the play strip (24e) for this conversation goes just above the live row — every
+    // app's agent panel and the prompt bar's card; the Office has its own canvas
+    if(ev&&ev.conversation_id&&!opts.noStrip&&typeof playHost==='function')
+      playHost(ev.conversation_id,()=>({parent:box,before:working&&working.isConnected?working:null}))};
   return {
     // Called twice on purpose: once locally the instant the message is sent,
     // then again on the server's turn_start. The second call must not wipe the
@@ -7066,6 +7260,7 @@ function agentHands(ev){
   if(!appId)return;
   const w=(typeof winsOf==='function'?winsOf(appId):[])[0];
   const els=[w&&w.el,document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`)].filter(Boolean);
+  if(w&&typeof playWindowBurst==='function')playWindowBurst(w,ev.name);   // the Office's word, on the window
   els.forEach(el=>{
     el.classList.add('agent-touch');
     clearTimeout(el._ht);el._ht=setTimeout(()=>el.classList.remove('agent-touch'),2600);
@@ -7203,7 +7398,7 @@ async function initCopilot(w,panel){
   };
   function mkSink(){
     if(live)return live;
-    live=miniFeed(feedEl,{scrollEl:feedEl,
+    live=miniFeed(feedEl,{scrollEl:feedEl,noStrip:!!panel.closest('.of-chat'),
       onStart:()=>setBusy(true),
       onTool:()=>{clearTimeout(panel._rt);panel._rt=setTimeout(()=>refreshApp(w.id),450)},
       onEnd:()=>{live=null;setBusy(false);startersEl.style.display='none'}});
@@ -8303,7 +8498,12 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','office','store','browser','files','terminal','taskmgr'];
+// the Office joined the dock after people had saved theirs: added ONCE beside Chat, and
+// never again — somebody who removes it has decided
+try{if(!localStorage.getItem('dock-office')){localStorage.setItem('dock-office','1');
+  if(!DOCK.includes('office')){const i=DOCK.indexOf('chat');DOCK.splice(i<0?DOCK.length:i+1,0,'office');
+    if(localStorage.getItem('dock'))localStorage.setItem('dock',JSON.stringify(DOCK))}}}catch(e){}
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{
@@ -9954,6 +10154,8 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // the play strip (24e) goes at the top of this reply, once there is something to show
+      if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
@@ -10289,6 +10491,15 @@ function curWho(){
   const sp=CUR_ENGINE.speaker;
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
+}
+/* Where Chat puts a turn's play strip: under the name of the reply being written, in
+   the conversation that is open — never in whichever chat happens to be on screen. */
+function chatPlayHost(cid){
+  if(!feed||typeof currentConv==='undefined'||currentConv!==cid)return null;
+  if(!curBody)startAssistant();
+  if(!curBody)return null;
+  const msg=curBody.parentNode,who=msg.querySelector('.who');
+  return {parent:msg,before:who?who.nextSibling:msg.firstChild};
 }
 function startAssistant(){
   if(!feed)return;
@@ -10769,6 +10980,7 @@ async function loadConfig(){
   if(cfg&&cfg.desktop&&cfg.desktop.wallpaper_preset&&!$('#wall').classList.contains('has'))loadWallpaper();
   if(typeof scLoad==='function')scLoad();   // custom keybindings take effect immediately
   if(typeof homeRender==='function')homeRender();   // the home chips follow cfg.persona
+  if(typeof omniPresence==='function')omniPresence(true);   // "Ask <your agent's name>" 
   paintForwardChip();
   paintModelChip();
 }
@@ -11192,7 +11404,7 @@ function setTab(body,all){
        step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
        11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
        this page — nothing native, nothing touching the compositor. */
-    P.push(`<h2>Executors</h2><p class="lead">Hands. An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<h2>Executors</h2><p class="lead">An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
     P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
     setTimeout(renderHands,0);
     P.push(pGroup('The machine\u2019s own limit',[
@@ -11224,13 +11436,13 @@ function setTab(body,all){
        and may talk to colleagues and linked teams — all of it read from ONE answer,
        agentmap.overview(), which the map below and `bento agents` read too.
        11e-hands.js draws the list and the map. */
-    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), hands (<a href="#" onclick="settingsGo('executors');return false">Executors</a>), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), an executor (<a href="#" onclick="settingsGo('executors');return false">Executors</a> — what it can reach), permissions and skills — and everything any of them does is in the ledger.</p>`);
     P.push(pGroup('Lead agent',[
       pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
-      pRow('Hands','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
-        {desc:'The executor it works with: what it can reach. It applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
+        {desc:'What it can reach — tools, folders, web, MCP. Defined in Executors; it applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
       pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
       pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
@@ -11352,6 +11564,12 @@ function setTab(body,all){
         {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
     ],{f:'characters avatars faces'}));
+    /* The Office is the crew's scene, so its design lives beside the characters: the
+       style, the name on the door, the pet — and "describe it", which the machine's
+       brain turns into a design (POST /api/office/design, the same call as the
+       Office's own Design panel and the setup step). Departments and who sits where
+       stay in the Office, where you can see the desks. Terminal: `bento office`. */
+    P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -11435,7 +11653,7 @@ function setTab(body,all){
          f:'setup onboarding wizard app steps arc walkthrough tour open'}),
       pRow('Run it again from the start','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
         {desc:'The same steps, full screen, with anything you skipped offered again. Still not a reset — see Factory reset below for that.',
-         f:'setup onboarding wizard first run walkthrough tour again restart'}),
+         f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
@@ -11445,7 +11663,7 @@ function setTab(body,all){
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
       pRow('Factory reset','<button class="endbtn" style="border-color:var(--err);color:var(--err)" onclick="factoryReset()">Reset…</button>',
-        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings, then runs first-time setup again. Take a Snapshot first.',f:'factory reset wipe danger'}),
+        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings — and every account, on a machine with accounts — then runs first-time setup again. Only from the machine itself, and only an admin. Take a Snapshot first. Terminal: bento reset.',f:'factory reset wipe danger environment start over clean onboarding again everything'}),
     ],{danger:true,f:'danger zone factory reset'}));
   }
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
@@ -11469,6 +11687,7 @@ function setTab(body,all){
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
+  if(main.querySelector('#s-office'))officeSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   const bm=main.querySelector('#s-build-model');
   if(bm)fetch('/api/models').then(r=>r.json()).then(d=>{
@@ -13468,7 +13687,9 @@ function settingsGo(tab){
 /* ---------------- Executors: the hands editor ---------------- */
 async function renderHands(){
   const box=document.getElementById('hands-list');if(!box)return;
-  try{HANDS.data=await fetch('/api/hands').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load executors</p>';return}
+  // apiJSON, never a bare .json(): a server older than the page answers 404 with JSON, and
+  // reading that as the list threw later and left "loading…" on screen for good
+  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors — '+esc(e.message)+'</p>';return}
   const d=HANDS.data;
   box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
@@ -13575,7 +13796,11 @@ async function setAgentHands(key,profile){
 }
 async function renderAgentsList(){
   const box=document.getElementById('agents-list');if(!box)return;
-  try{AGENTS.data=await fetch('/api/agents').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load agents</p>';return}
+  try{AGENTS.data=await apiJSON('/api/agents')}catch(e){
+    // the editor saves through /api/subagents, which is older than this list: adding an
+    // agent must not depend on the overview having loaded
+    box.innerHTML='<p class="mut">could not load agents — '+esc(e.message)+'</p>'
+      +'<div class="tlk-actions"><button class="pact" onclick="agentEdit(\'\')">＋ New agent</button></div>';return}
   const d=AGENTS.data,profs=d.profiles||[];
   const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
   const lead=d.agents.find(a=>a.master);
@@ -13595,7 +13820,7 @@ async function renderAgentsList(){
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
-        <div><span class="ag-k">Hands</span><select aria-label="Hands for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
@@ -13619,7 +13844,7 @@ var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transpar
   talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await fetch('/api/agents/graph').then(r=>r.json())}catch(e){box.textContent='could not load the map';return}
+  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map — '+e.message;return}
   box.classList.remove('mut');
   const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
   const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
@@ -13642,7 +13867,7 @@ async function renderAgentsGraph(){
       return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
         ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
     </div></div>
-    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Hands</span><span>Skills</span></div>`;
+    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Executors</span><span>Skills</span></div>`;
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -15556,7 +15781,13 @@ function wizEnter(){
 async function factoryReset(){
   if(!await osConfirm('Factory reset Bento Box AI?','This wipes ALL data: memory, knowledge graph, conversations, apps, subagents, logs, soul and settings. The first-run wizard will start over.',{confirmText:'Reset'}))return;
   if(!await osConfirm('Really wipe everything?','This cannot be undone.',{danger:true,confirmText:'Reset'}))return;
-  await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+  // the server refuses a remote browser and a non-admin: say so, never reload as if it
+  // had worked — a reset that silently did nothing is the dead control in its worst place
+  let r,d={};
+  try{r=await fetch('/api/setup/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+    d=await r.json().catch(()=>({}))}
+  catch(e){return toast('could not reach the server — nothing was reset',{kind:'err'})}
+  if(!r.ok)return toast('nothing was reset — '+(d.error||'HTTP '+r.status),{kind:'err'});
   location.reload();
 }
 
@@ -16307,6 +16538,11 @@ var OB_PANES={
           device. Nothing to register. Unofficial — it says so before anything installs.</span></button>
     </div>`,
 
+  crew:s=>`<p class="mut">These are the people you will see at work — here, in Chat, in
+      every app's panel and in the pictures your phone gets. Tap a face for a new look;
+      pick the office they work in. All of it changes later in the Office's Design.</p>
+    <div id="ob-crew"><p class="mut">Drawing your crew…</p></div>`,
+
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
@@ -16758,6 +16994,63 @@ var OB_WIRE={
                          :`${body.name} can sign in, here and from their phone`,'ok');
         if(typeof usersBoot==='function')usersBoot();
         setTimeout(()=>obRefresh(false),900);
+      }finally{btn.disabled=false}
+    };
+  },
+
+  /* The crew step: characters generated and stored, the office created — and shown
+     before it is saved, as the same picture the phone's /office sends. */
+  async crew(){
+    const box=$('#ob-crew');if(!box)return;
+    let v;
+    try{
+      if(typeof avatarsLoad==='function'){AVATARS.pending=null;await avatarsLoad()}
+      v=await (await fetch('/api/office')).json();
+    }catch(e){box.innerHTML='<p class="mut">Could not reach the server.</p>';return}
+    const people=typeof AVATARS!=='undefined'?AVATARS.list:[];
+    let style=v.office.style,name=v.office.name;
+    const faces=()=>people.map(p=>`<button class="ob-face" data-key="${esc(p.key)}" title="${esc(p.about||'')} — tap for a new look">
+        ${avatarImg(p.key,'ob-face-img')}<span>${esc(p.key==='@me'?'you':p.label)}</span></button>`).join('');
+    const preview=()=>`/api/office/rollcall.png?style=${encodeURIComponent(style)}&name=${encodeURIComponent(name)}&t=${Date.now()}`;
+    box.innerHTML=`<div class="job-q"><span>Your crew</span><div class="ob-faces">${faces()}</div>
+        ${people.length<=2?`<p class="mut">Specialists you make later take a desk with a face of their own.</p>`:''}</div>
+      <div class="job-q"><span>The office</span>
+        <div class="ob-swatches">${Object.entries(v.styles).map(([k,st])=>`
+          <button class="ob-sw${k===style?' on':''}" data-style="${esc(k)}" title="${esc(st.blurb)}">
+            <i style="background:linear-gradient(135deg,${st.wall} 0 45%,${st.floor[0]} 45%)"></i>${esc(st.label)}</button>`).join('')}</div>
+        <label class="ob-crew-name">Name on the door <input id="ob-crew-name" maxlength="24" value="${esc(name)}"></label>
+        <label class="ob-crew-name">Or describe it <span class="ob-crew-ask"><input id="ob-crew-ask" maxlength="300"
+          placeholder="a cosy greenhouse called The Nursery, with a cat"><button class="wiz-back" id="ob-crew-askb">Design it</button></span></label>
+        <div class="mut" id="ob-crew-said" aria-live="polite"></div></div>
+      <img class="ob-crew-prev" id="ob-crew-prev" alt="A preview of your office with your crew in it" src="${preview()}">
+      <div class="job-go"><button class="wiz-next" id="ob-crew-go">Create my office</button>
+        <button class="wiz-back" id="ob-crew-open">Open the Office</button></div>`;
+    const refresh=()=>{$('#ob-crew-prev').src=preview()};
+    box.querySelectorAll('.ob-sw').forEach(b=>b.onclick=()=>{style=b.dataset.style;
+      box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x===b));refresh()});
+    $('#ob-crew-name').onchange=e=>{name=e.target.value.trim()||name;refresh()};
+    box.querySelectorAll('.ob-face').forEach(b=>b.onclick=async()=>{
+      await fetch('/api/avatars/'+encodeURIComponent(b.dataset.key)+'/reroll',{method:'POST'});
+      if(typeof avatarsChanged==='function')avatarsChanged();
+      AVATARS.pending=null;await avatarsLoad();
+      b.querySelector('img').outerHTML=avatarImg(b.dataset.key,'ob-face-img');refresh();
+    });
+    $('#ob-crew-open').onclick=()=>{obClose();openApp('office')};
+    // the same designer as the Office's "Describe it" and Settings → Appearance; it saves,
+    // so the step is done by it as well as by the button below
+    const describe=async()=>{const d=await officeDescribe($('#ob-crew-ask'),$('#ob-crew-said'),$('#ob-crew-askb'));
+      if(!d)return;style=d.office.style;name=d.office.name;$('#ob-crew-name').value=name;
+      box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x.dataset.style===style));refresh();obRefresh(true)};
+    $('#ob-crew-askb').onclick=describe;$('#ob-crew-ask').onkeydown=e=>{if(e.key==='Enter')describe()};
+    $('#ob-crew-go').onclick=async()=>{
+      const btn=$('#ob-crew-go');btn.disabled=true;
+      try{
+        const r=await fetch('/api/office/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({style,name:$('#ob-crew-name').value.trim()})});
+        const d=await r.json();
+        if(!r.ok)return obMsg(d.error||'could not create the office','err');
+        obMsg('your office is ready — '+(d.office&&d.office.office?d.office.office.name:''),'ok');
+        obRefresh(true);
       }finally{btn.disabled=false}
     };
   },
@@ -20976,13 +21269,6 @@ var OF_SPEED=170;         // walking, world units a second
 var OF_SAY_MS=5200;       // a speech balloon's life
 var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
 var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
-/* A tool's comic word. The real tool name is always printed under it, so the joke never
-   hides what actually ran. */
-var OF_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
-  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
-  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
-  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!'};
-
 function renderOffice(el,w){
   // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
   // everybody where they are — rebuilding the canvas would teleport a walker home.
@@ -20997,17 +21283,22 @@ function renderOffice(el,w){
     <div class="of-stage">
       <div class="of-bar"><b class="of-title">Office</b><span class="of-line" id="of-line">opening…</span>
         <span style="flex:1"></span>
+        <button class="endbtn of-vz" title="Visit a linked team's office">⇄ Visit</button>
+        <button class="endbtn of-snap" data-ic="camera" title="Send the office right now, as a picture, to your phone">◉ Snap</button>
         <button class="endbtn of-dz" data-ic="palette" title="Change how the office looks and who sits where">✎ Design</button>
         <button class="endbtn of-ct" title="Talk to your agent">Chat</button></div>
       <div class="of-scroll"><canvas class="of-cv" aria-hidden="true"></canvas>
         <div class="of-empty" hidden></div></div>
       <div class="of-log" role="log" aria-live="polite" aria-label="What the office is doing"></div>
       <div class="of-design" hidden></div>
+      <div class="of-visit" hidden></div>
     </div>
     <div class="of-chat"></div>
   </div>`;
   OFFICE.cv=el.querySelector('.of-cv');OFFICE.ctx=OFFICE.cv.getContext('2d');
   el.querySelector('.of-dz').onclick=()=>officeDesign(!OFFICE.design);
+  el.querySelector('.of-snap').onclick=officeSnap;
+  el.querySelector('.of-vz').onclick=()=>officeVisit(OFFICE.visiting===undefined?'':null);
   el.querySelector('.of-ct').onclick=()=>el.querySelector('.of-wrap').classList.toggle('chat-open');
   OFFICE.cv.addEventListener('click',officeTap);
   const chat=el.querySelector('.of-chat');
@@ -21022,12 +21313,12 @@ function renderOffice(el,w){
 function officeClose(w){
   cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
-  OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;
+  OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
   return true;
 }
 async function officeLoad(){
   try{
-    const [v,sa]=await Promise.all([fetch('/api/office').then(r=>r.json()),
+    const [v,sa]=await Promise.all([apiJSON('/api/office'),
       fetch('/api/subagents').then(r=>r.json()).catch(()=>({}))]);
     OFFICE.view=v;OFFICE.brains={};
     (sa.subagents||sa.agents||[]).forEach(s=>{if(s&&s.name)OFFICE.brains[s.name]=(s.brain&&s.brain.provider_name)||''});
@@ -21036,7 +21327,7 @@ async function officeLoad(){
     OFFICE.loaded=true;
     officeLayout();
     if(OFFICE.design)officeDesignPaint();
-  }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office'}
+  }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office — '+(e.message||e)}
 }
 /* The roster moved (a specialist made or deleted, a face changed): reload the plan. */
 function officeReload(){if(OFFICE.w)officeLoad()}
@@ -21186,7 +21477,7 @@ function officeBurst(p,tool){
   if(!p)return;const now=performance.now();
   // the same step can arrive twice (the chat stream and the run's own telemetry)
   if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
-  OFFICE.bursts.push({p,tool,word:OF_WORDS[tool]||String(tool).replace(/_/g,' ').toUpperCase().slice(0,12)+'!',
+  OFFICE.bursts.push({p,tool,word:comicWord(tool),
     at:now,rot:(Math.random()-.5)*.3});
   if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
   p.busy=now;officeKick();
@@ -21727,6 +22018,7 @@ function officeEmpty(){
 /* ---------------- Design: how the office looks, and who sits where ---------------- */
 function officeDesign(open){
   const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-design');if(!el)return;
+  if(open&&O.visiting!==undefined)officeVisit(null);   // one panel over the office at a time
   O.design=open;el.hidden=!open;
   O.w.el.querySelector('.of-dz').classList.toggle('on',open);
   if(open)officeDesignPaint();
@@ -21738,7 +22030,8 @@ function officeDesignPaint(){
   const opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
   el.innerHTML=`<div class="of-dh"><b>Design your office</b><button class="of-x" aria-label="Close">✕</button></div>
     <div class="of-sec">Describe it</div>
-    <div class="of-row"><input class="of-ask" placeholder="a cosy space station with a research wing"><button class="endbtn primary of-askb">Ask ${esc(officeName('@agent'))}</button></div>
+    <div class="of-row"><input class="of-ask" placeholder="a cosy space station with a research wing"><button class="endbtn primary of-askb">Design it</button></div>
+    <div class="of-said mut" aria-live="polite"></div>
     <div class="of-sec">Style</div>
     <div class="of-styles">${Object.entries(v.styles).map(([k,s])=>`<button class="of-style${k===of.style?' on':''}" data-st="${k}" title="${esc(s.blurb)}">
       <i style="background:linear-gradient(135deg,${s.wall} 0 38%,${s.floor[0]} 38% 72%,${s.accent} 72%)"></i><span>${esc(s.label)}</span></button>`).join('')}</div>
@@ -21762,10 +22055,8 @@ function officeDesignPaint(){
     <div class="of-chips">${v.pets.map(p=>`<button class="of-chip${of.pet===p?' on':''}" data-pet="${p}">${esc(p)}</button>`).join('')}</div>`;
   const q=s=>el.querySelector(s),qa=s=>el.querySelectorAll(s);
   q('.of-x').onclick=()=>officeDesign(false);
-  const ask=()=>{const t=q('.of-ask').value.trim();if(!t)return;
-    const i=O.w.el.querySelector('.of-chat .cp-in');if(!i)return;
-    i.value='Redesign my office: '+t;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
-    O.w.el.querySelector('.of-wrap').classList.add('chat-open');q('.of-ask').value=''};
+  // the server designs it (not the chat): a turn forwarded to an executor has no set_office
+  const ask=()=>officeDescribe(q('.of-ask'),q('.of-said'),q('.of-askb'));
   q('.of-askb').onclick=ask;q('.of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
   qa('.of-style').forEach(b=>b.onclick=()=>officeSave({style:b.dataset.st}));
   q('.of-name').onchange=e=>officeSave({name:e.target.value});
@@ -21786,6 +22077,121 @@ function officeDesignPaint(){
     officeSave({decor:of.decor.includes(d)?of.decor.filter(x=>x!==d):[...of.decor,d]})});
   qa('[data-pet]').forEach(b=>b.onclick=()=>officeSave({pet:b.dataset.pet}));
 }
+/* "Describe it", in the Office, Settings → Appearance and the setup step: one call to
+   /api/office/design, which asks the machine's brain to choose from the closed set and
+   says when it matched the words instead. Applied at once, so the answer is an Undo. */
+async function officeDescribe(input,said,btn){
+  const t=(input&&input.value||'').trim();if(!t){toast('describe it first — a few words is enough');return null}
+  if(btn)btn.disabled=true;if(said)said.textContent='designing…';
+  let d;
+  try{d=await apiJSON('/api/office/design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({description:t})})}
+  catch(e){if(said)said.textContent=e.message;if(btn)btn.disabled=false;return null}
+  if(btn)btn.disabled=false;input.value='';
+  const how=d.how==='brain'?`designed by ${d.who||'your agent'}`:d.said;
+  const drop=(d.dropped||[]).length?` · not used: ${d.dropped.join(', ')}`:'';
+  if(OFFICE.w){OFFICE.view=d;officeLayout();if(OFFICE.design)officeDesignPaint()}
+  // the design panel repaints itself above, so the line may be a fresh element now
+  if(said&&!said.isConnected&&OFFICE.w)said=OFFICE.w.el.querySelector('.of-said');
+  if(said){said.innerHTML=`${esc(how)} — ${esc(d.office.name)}, ${esc((d.styles[d.office.style]||{}).label||d.office.style)}${esc(drop)} <button class="endbtn of-undo">Undo</button>`;
+    said.querySelector('.of-undo').onclick=async()=>{await officeSave(d.previous);
+      const s2=said.isConnected?said:OFFICE.w&&OFFICE.w.el.querySelector('.of-said');if(s2)s2.textContent='put back as it was'}}
+  officeLog('office redesigned: '+t);
+  return d;
+}
+/* Visit a linked team's office. Their answer is the look, their lead and ONLY the
+   agents this link may ask (fabric.office_for_link on their side, cleaned by
+   teamlink.clean_office on ours) and the picture is drawn HERE by our painter, so
+   nothing they send reaches this page as anything but a value. A person in it is a
+   door to a chat: one of YOUR agents carries the question (linkedAsk), because that
+   is the path the matrix and their gate already govern.
+   `label`: '' opens the list, a label visits it, null closes the panel. */
+async function officeVisit(label){
+  const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-visit');if(!el)return;
+  if(label===null){el.hidden=true;O.visiting=undefined;O.w.el.querySelector('.of-vz').classList.remove('on');return}
+  if(O.design)officeDesign(false);
+  el.hidden=false;O.visiting=label;O.w.el.querySelector('.of-vz').classList.add('on');
+  el.innerHTML=`<div class="of-dh"><b>Visit a linked team</b><button class="of-x" aria-label="Close">✕</button></div><div class="of-vbody mut">…</div>`;
+  el.querySelector('.of-x').onclick=()=>officeVisit(null);
+  const body=el.querySelector('.of-vbody');
+  let links;try{links=(await apiJSON('/api/team/links')).links||[]}catch(e){body.textContent=e.message;return}
+  if(!links.length){body.innerHTML=`No linked teams yet. A link connects your team with another Bento, or another account here —
+      <button class="endbtn" onclick="openLinkedTeams()">Link a team</button>`;return}
+  const face=l=>{const id=l.peer_identity||{};return id.agent?avatarRecipeImg(id.agent,'',(id.agent_name||l.label)):''};
+  const list=links.map(l=>`<button class="of-vteam${l.label===label?' on':''}" data-l="${esc(l.label)}">${face(l)}
+      <span class="grow"><b>${esc(l.label)}</b> <span class="mut">${l.kind==='account'?'an account here':'another machine'}</span></span></button>`).join('');
+  if(!label){body.classList.remove('mut');body.innerHTML=list;
+    body.querySelectorAll('.of-vteam').forEach(b=>b.onclick=()=>officeVisit(b.dataset.l));return}
+  body.innerHTML=list+'<div class="of-vat mut">knocking…</div>';
+  body.querySelectorAll('.of-vteam').forEach(b=>b.onclick=()=>officeVisit(b.dataset.l));
+  const at=body.querySelector('.of-vat');
+  let v;try{v=await apiJSON('/api/team/links/'+encodeURIComponent(label)+'/office')}catch(e){at.textContent=e.message;return}
+  if(O.visiting!==label)return;
+  at.classList.remove('mut');
+  const people=v.rows.filter(r=>r.key!=='@agent');
+  const lead=v.rows.find(r=>r.key==='@agent');
+  at.innerHTML=`<img class="of-vpic" alt="${esc(v.office.name)}, ${esc(label)}'s office, with the people you may ask" src="/api/team/links/${encodeURIComponent(label)}/office.png?t=${Date.now()}">
+    ${lead?`<div class="of-vwho">${avatarRecipeImg(lead.recipe,'',lead.label)}<span class="grow"><b>${esc(lead.label)}</b> <span class="mut">their lead</span></span></div>`:''}
+    ${people.map(r=>`<div class="of-vwho">${avatarRecipeImg(r.recipe,'',r.label)}<span class="grow"><b>${esc(r.label)}</b>
+        <span class="mut">${r.working?'busy':'free'}</span></span><button class="endbtn" data-ask="${esc(r.key)}">Ask ${esc(r.label)}</button></div>`).join('')
+      ||`<p class="mut">None of their agents may be asked over this link yet — that is their cell to tick, on their side.</p>`}
+    <p class="mut">What you see is what this link lets you ask, nothing more. A question goes through one of your agents, under your matrix, and is answered under theirs.</p>`;
+  at.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>linkedAsk(b.dataset.ask,label));
+}
+/* Start a chat with somebody on a linked team: Chat opens with the question addressed
+   to one of YOUR specialists, who asks them (ask_agent → the matrix → their gate).
+   Prefilled, never sent — the person finishes the sentence. With no specialist here
+   there is nobody to carry it, and the toast says so with the door to make one. */
+async function linkedAsk(who,label){
+  let mine=[];
+  try{mine=((await apiJSON('/api/subagents')).subagents||[]).filter(s=>s.enabled!==false).map(s=>s.name)}catch(e){}
+  if(!mine.length)return toast('agents on another team are reached through one of yours — make a specialist first',
+    {label:'New agent',go:()=>{openApp('settings');setTimeout(()=>typeof agentEdit==='function'&&agentEdit(''),400)}});
+  const carrier=mine.includes('researcher')?'researcher':mine[0];
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value=`@${carrier} ask ${who}@${label}: `;i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast(`finish the question — @${carrier} carries it to ${who} on ${label}`);
+}
+/* Snap: the roll-call picture (who is at work, as /office draws it) to Telegram and
+   WhatsApp, whichever are set up. With neither, the refusal says which to set up and
+   the picture is still one tap away — never a button that does nothing. */
+async function officeSnap(){
+  const b=OFFICE.w&&OFFICE.w.el.querySelector('.of-snap');if(b)b.disabled=true;
+  try{
+    const r=await fetch('/api/office/snap',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json().catch(()=>({}));
+    if(r.status===404)return toast('this AgentOS server is running older code than this page — restart it to snap',{kind:'err'});
+    if(!r.ok)return toast('could not send it — '+(d.error||'HTTP '+r.status),
+      {kind:'warn',label:'Open the picture',go:()=>window.open('/api/office/rollcall.png?t='+Date.now(),'_blank')});
+    toast('✓ the office, sent to '+d.sent.join(' and ')+((d.notes||[]).length?' · '+d.notes.join(' · '):''));
+    officeLog('snapped to '+d.sent.join(' and '));
+  }finally{if(b)b.disabled=false}
+}
+/* Settings → Appearance → Office. The Office window's own Design panel is the full
+   editor; this is the part that belongs with the look. */
+async function officeSettingsPaint(){
+  const box=document.getElementById('s-office');if(!box)return;
+  let v;try{v=await apiJSON('/api/office')}catch(e){box.innerHTML='<p class="mut">could not load the office — '+esc(e.message)+'</p>';return}
+  OFFICE.view=OFFICE.view||v;
+  const of=v.office,opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
+  box.innerHTML=`<div class="prow"><div class="pl">Style<small id="s-of-blurb">${esc((v.styles[of.style]||{}).blurb||'')}</small></div>
+      <div class="pc"><select id="s-of-style" aria-label="Office style">${Object.entries(v.styles).map(([k,st])=>opt(k,st.label,k===of.style)).join('')}</select></div></div>
+    <div class="prow"><div class="pl">Name on the door</div><div class="pc"><input id="s-of-name" maxlength="24" value="${esc(of.name)}"></div></div>
+    <div class="prow"><div class="pl">Office pet</div><div class="pc"><select id="s-of-pet" aria-label="Office pet">${v.pets.map(p=>opt(p,p,p===of.pet)).join('')}</select></div></div>
+    <div class="prow"><div class="pl">Describe it<small>Your agent chooses a style, name, rooms, decor and pet from what you write; with no brain set up, the words are matched instead, and it says so.</small></div>
+      <div class="pc"><input id="s-of-ask" maxlength="300" placeholder="a cosy space station with a research wing"><button class="endbtn" id="s-of-askb">Design it</button></div></div>
+    <div class="prow"><div class="pl"><span class="mut" id="s-of-said" aria-live="polite"></span></div>
+      <div class="pc"><button class="endbtn" onclick="openApp('office')">Open the Office</button></div></div>`;
+  const put=async patch=>{await officeSave(patch);officeSettingsPaint()};
+  box.querySelector('#s-of-style').onchange=e=>put({style:e.target.value});
+  box.querySelector('#s-of-name').onchange=e=>put({name:e.target.value});
+  box.querySelector('#s-of-pet').onchange=e=>put({pet:e.target.value});
+  const ask=async()=>{const d=await officeDescribe(box.querySelector('#s-of-ask'),box.querySelector('#s-of-said'),box.querySelector('#s-of-askb'));
+    if(!d)return;box.querySelector('#s-of-style').value=d.office.style;
+    box.querySelector('#s-of-blurb').textContent=(d.styles[d.office.style]||{}).blurb||'';box.querySelector('#s-of-name').value=d.office.name;
+    box.querySelector('#s-of-pet').value=d.office.pet};
+  box.querySelector('#s-of-askb').onclick=ask;box.querySelector('#s-of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
+}
 async function officeSave(patch){
   try{
     const r=await fetch('/api/office',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
@@ -21794,6 +22200,164 @@ async function officeSave(patch){
     if(d.dropped&&d.dropped.length)toast('not placed — nobody here is called '+d.dropped.join(', '));
     OFFICE.view=d;officeLayout();officeDesignPaint();
   }catch(e){toast('could not change the office')}
+}
+/* ================= The play strip: the Office, one line tall, wherever a turn is shown =================
+   The Office is a whole window. A turn happens in many more places — Chat, the agent panel
+   inside every app, the prompt bar's card — and the playground belongs there too, at the
+   size of a line: the faces of whoever is working on THIS turn, a "!" when work lands on
+   somebody, a comic burst for each tool call with the real tool name beside it, and a short
+   balloon when one agent asks another. When the turn ends the strip stays as a still,
+   honest record of who worked on it and how many steps each took.
+
+   The Office's rules, unchanged:
+   - **Only events.** Every mark on a strip is something the server said happened: a
+     `turn_start` names the lead (or the `@specialist` answering), `tool_start` bursts,
+     `delegate` and a mission's `node_add` bring a colleague in, `agent_msg` asks and
+     answers, a run's `step` bursts on the one it belongs to. Nothing idles for the look.
+   - **One seam.** scenePulse (01c) feeds the Crew stage, the Office and this.
+   - **The same people and words.** Faces are avatarImg (the server's characters); the
+     burst words are comicWord (00f), the Office's own.
+   - **Placed by the surface that shows the turn.** A surface calls playHost(cid, fn) when
+     it knows the conversation; `fn` says where a strip would go. Nothing is inserted until
+     there is something to show, so a plain reply gets no strip at all.
+
+   Cost: a few DOM nodes per turn; bursts are CSS animations removed after they play; no
+   timers run when nothing happens. Reduced motion: the marks appear without moving.
+   Faces — GUI/SUI: this. TUI: the chat TUI already prints each agent's line and each tool
+   call; `bento office` has the roll call. Telegram: the same exchange as a comic strip
+   picture (agentos/comic.py). `var` and function declarations only. */
+var PLAY={hosts:new Map(),strips:new Map(),lead:{},runs:{},sent:{}};
+
+/* A surface that shows conversation `cid` says where its strip would go: `fn()` returns
+   {parent, before} (insert before `before`, or append to `parent`), or null when it cannot
+   show one right now. */
+function playHost(cid,fn){
+  if(!cid)return;
+  PLAY.hosts.set(cid,fn);
+  if(PLAY.hosts.size>60)PLAY.hosts.delete(PLAY.hosts.keys().next().value);
+}
+function playStripOf(cid,create){
+  let s=cid&&PLAY.strips.get(cid);
+  if(s&&s.el.isConnected&&!s.done)return s;
+  if(!create||!cid)return null;
+  const host=PLAY.hosts.get(cid),at=host&&host();
+  if(!at||!at.parent)return null;
+  const el=document.createElement('div');el.className='pstrip';el.setAttribute('aria-hidden','true');
+  at.parent.insertBefore(el,at.before||null);
+  s={cid,el,cast:new Map(),done:false};
+  PLAY.strips.set(cid,s);
+  if(PLAY.strips.size>40)PLAY.strips.delete(PLAY.strips.keys().next().value);
+  // the lead of this turn stands first, even before it has done anything
+  playMember(s,PLAY.lead[cid]||'@agent');
+  return s;
+}
+function playName(key){return key==='@agent'?(typeof agentName==='function'?agentName():'agent'):key}
+function playMember(s,key,pop){
+  let m=s.cast.get(key);
+  if(!m){
+    const el=document.createElement('span');el.className='ps-p';el.dataset.key=key;
+    el.innerHTML=(typeof avatarImg==='function'?avatarImg(key,'ps-face'):'')
+      +`<span class="ps-n">${esc(playName(key))}</span><span class="ps-c"></span>`;
+    s.el.appendChild(el);
+    m={key,el,steps:0,sayT:0};s.cast.set(key,m);
+  }
+  if(pop)playMark(m,'ps-pop','!');
+  return m;
+}
+/* A mark that plays once and leaves: a "!" or a burst. */
+function playMark(m,cls,text,title){
+  const b=document.createElement('span');b.className=cls;b.textContent=text;if(title)b.title=title;
+  m.el.appendChild(b);
+  setTimeout(()=>b.remove(),1500);
+}
+function playWork(s,key,on){
+  const m=playMember(s,key);m.el.classList.toggle('on',!!on);return m;
+}
+function playStep(s,key,tool){
+  const m=playWork(s,key,true);
+  m.steps++;
+  m.el.querySelector('.ps-c').textContent='×'+m.steps;
+  playMark(m,'ps-burst',comicWord(tool),tool);
+}
+function playSay(s,key,text){
+  const m=playMember(s,key);
+  let b=m.el.querySelector('.ps-say');
+  if(!b){b=document.createElement('span');b.className='ps-say';m.el.appendChild(b)}
+  b.textContent=String(text||'').replace(/\s+/g,' ').slice(0,70);
+  clearTimeout(m.sayT);m.sayT=setTimeout(()=>b.remove(),6000);
+}
+/* The turn is over: the strip keeps who took part and how many steps each took, and
+   stops saying anybody is working. A strip where only the lead appeared and nothing
+   happened is removed — it would be a record of nothing. */
+function playEnd(cid){
+  const s=PLAY.strips.get(cid);if(!s)return;
+  s.done=true;s.el.classList.add('done');
+  s.cast.forEach(m=>{m.el.classList.remove('on');m.el.querySelectorAll('.ps-say,.ps-burst,.ps-pop').forEach(x=>x.remove())});
+  if(s.cast.size<=1&&![...s.cast.values()].some(m=>m.steps))s.el.remove();
+  PLAY.strips.delete(cid);
+}
+/* Which conversation a colleague's run belongs to: the one that last handed it work or
+   asked it something. A run's own events carry its id and its agent, not the chat. */
+function playFor(agent){return agent&&PLAY.sent[String(agent).toLowerCase()]}
+
+function playPulse(kind,label,ev){
+  ev=ev||{};
+  const cid=ev.conversation_id||'';
+  if(kind==='turn'){if(cid){PLAY.lead[cid]=ev.speaker||'@agent'}return}
+  if(kind==='turnend'){playEnd(label);delete PLAY.lead[label];return}
+  if(kind==='tool'){
+    const s=playStripOf(cid,true);if(!s)return;
+    const lead=PLAY.lead[cid]||'@agent';
+    playStep(s,lead,label);
+    if(label==='delegate'&&ev.args&&ev.args.subagent){
+      const to=String(ev.args.subagent);
+      PLAY.sent[to.toLowerCase()]=cid;
+      playWork(s,to,true);playMark(playMember(s,to),'ps-pop','!');
+    }
+    return;
+  }
+  if(kind==='msg'){
+    const s=playStripOf(cid,true);if(!s)return;
+    if(ev.phase==='ask'){
+      PLAY.sent[String(ev.to||'').toLowerCase()]=cid;
+      playSay(s,ev.from,'@'+ev.to+' '+(ev.text||''));playWork(s,ev.to,true);
+    }else{playSay(s,ev.from,ev.text||'')}
+    return;
+  }
+  if(kind==='say'){
+    if(ev.kind==='talk')return;             // asks and answers arrive as 'msg'
+    const s=playStripOf(cid,true);if(!s)return;
+    playSay(s,ev.speaker||label,ev.text||'');playWork(s,ev.speaker||label,true);
+    return;
+  }
+  if(kind==='flow'){
+    const e=ev.event;
+    if(e==='node_add'&&ev.agent){
+      const c=playFor(ev.agent)||cid;const s=playStripOf(c,!!c);if(!s)return;
+      playWork(s,ev.agent,true);playMark(playMember(s,ev.agent),'ps-pop','!');return;
+    }
+    if(e==='status'&&ev.ref){
+      const c=playFor(ev.ref);if(!c)return;
+      if(ev.status==='running'){PLAY.runs[ev.run_id]={cid:c,key:ev.ref};return}
+      delete PLAY.runs[ev.run_id];
+      const s=playStripOf(c,false);if(s)playWork(s,ev.ref,false);
+      return;
+    }
+    if(e==='step'&&ev.status==='start'){
+      const r=PLAY.runs[ev.run_id];if(!r)return;
+      const s=playStripOf(r.cid,true);if(s)playStep(s,r.key,ev.tool);
+    }
+  }
+}
+
+/* An app window the agent's hands just touched gets a burst too — the same word the
+   strip and the Office would show, over the corner of the thing being changed. */
+function playWindowBurst(win,tool){
+  if(!win||!win.el)return;
+  const b=document.createElement('span');b.className='win-burst';b.setAttribute('aria-hidden','true');
+  b.textContent=comicWord(tool);
+  win.el.appendChild(b);
+  setTimeout(()=>b.remove(),1500);
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -23152,11 +23716,13 @@ async function aboutCheck(a){
    agent when the row is "Ask …". Answers stream into cards above the bar. */
 const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
-function omniPresence(){
+function omniPresence(force){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
   const n=RUNNING.size;
   orb.classList.toggle('busy',n>0);
-  if(!inp||inp.value||document.activeElement===inp)return;
+  // `force`: the config just arrived (a signed-in person's agent has its own name) —
+  // the bar is often focused at first paint, and the Aria it showed then would stay
+  if(!inp||inp.value||(document.activeElement===inp&&!force))return;
   // The bar is the one thing always on screen, so it is often where somebody
   // looks to ask "is it stuck?" — it answers with the step, not with "working".
   const live=n===1?actLine([...RUNNING][0]):'';
@@ -24067,6 +24633,24 @@ connect();
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);
 })();
+/* An update that landed on disk but is not running yet. The server keeps serving the
+   page that matches its own code (server.index), so nothing is half-new — and this
+   says why the new things are not here yet, with the one button that fixes it. A
+   remote browser is told to restart it from the machine: restarting replaces the
+   code that enforces every permission, so it is loopback-only like installing. */
+async function updateWaitingCheck(){
+  try{
+    const d=await (await fetch('/api/update')).json();
+    if(!d.pending_restart)return;
+    toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
+      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+        const r=await fetch('/api/update/restart',{method:'POST'});
+        const j=await r.json().catch(()=>({}));
+        toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});
+      }});
+  }catch(e){}
+}
+setTimeout(updateWaitingCheck,2500);
 </script>
 </body>
 </html>

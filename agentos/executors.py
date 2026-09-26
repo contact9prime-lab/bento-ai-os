@@ -299,6 +299,39 @@ def context_for(ui_context: str) -> str:
     return (preamble + ("\n\n" + body if body else "")).strip()
 
 
+def has_brain(cfg: dict) -> bool:
+    """Is anything set up to answer — an executor or a provider model?"""
+    return resolve_engine(cfg) != "aria" or bool(cfg.get("default_model"))
+
+
+async def ask_once(cfg: dict, system: str, prompt: str, timeout: float = 120) -> tuple[str, str]:
+    """One answer, no tools, from whatever brain this machine runs on — the executor
+    (Claude Code, Hermes, OpenClaw) when that is the brain, the default provider model
+    otherwise. Returns (text, who answered), or ("", "") when nothing could answer.
+
+    For the designers (a character, the office) that turn a description into choices
+    from a closed set: they need the MACHINE's brain, not a provider key. Asking only
+    `default_model` made them silently fall back to word matching on a machine whose
+    brain is Claude Code — found when "design my office as a space station" came back
+    as an offer to edit the Office's source instead."""
+    engine = resolve_engine(cfg)
+    try:
+        if engine != "aria":
+            from . import config as _cfgmod
+            reply, _run = await asyncio.wait_for(
+                forward(engine, system + "\n\n" + prompt, cfg,
+                        str(_cfgmod.AGENTOS_HOME / "workspace")), timeout)
+            return (reply or ""), engine
+        model = cfg.get("default_model") or ""
+        if not model:
+            return "", ""
+        from . import providers
+        return (await asyncio.wait_for(providers.complete(cfg, model, prompt, system=system), timeout)
+                or ""), model
+    except Exception:
+        return "", ""
+
+
 def builtin_app_note(app_id: str, allow_source: bool) -> str:
     """What to say about a BUILT-IN app — part of AgentOS itself, not a DB row.
 
@@ -307,12 +340,21 @@ def builtin_app_note(app_id: str, allow_source: bool) -> str:
     app, and a dead end, since App Studio cannot touch Settings either. When the
     source is not granted, the honest answer names the switch that grants it.
     """
+    if app_id == "office":
+        # The office's LOOK is data, not source: it is changed by this OS's own designer,
+        # which any brain can drive. Sending somebody to "let it work on AgentOS itself"
+        # to repaint an office was the wrong door entirely.
+        return ("\nIMPORTANT: the Office's look (style, name, departments, decor, pet) is a "
+                "setting, not code. You cannot change it from this chat, and it is NOT done "
+                "by editing AgentOS. Tell the person: press ✎ Design → \"Describe it\" in the "
+                "Office (or Settings → Appearance → Office) and type what they want — this "
+                "OS's own designer asks the machine's brain and applies it.")
     if not allow_source:
         return (f"\nIMPORTANT: \"{app_id}\" is a BUILT-IN part of AgentOS — its window "
                 "is the OS's own source code, not a database row and not something "
                 "App Studio can edit. You have NOT been given that source, so you "
                 "cannot change it from here. Say exactly that, and say the switch is "
-                "\"Let it work on AgentOS itself\" in Settings → Executors. Do not "
+                "\"Let it work on AgentOS itself\" in Settings → AI providers → Claude Code. Do not "
                 "suggest App Studio for this, and do not look for it in the database.")
     return (f"\n\"{app_id}\" is a BUILT-IN part of AgentOS and you DO have its source. "
             f"Its window is drawn by JavaScript in {source_root()}/agentos/ui/src/js/ "

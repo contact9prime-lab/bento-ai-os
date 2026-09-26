@@ -365,6 +365,26 @@ body.immersive .hm-chip{min-height:36px;padding:0 15px;border-radius:999px;font-
   border-top-color:color-mix(in srgb,var(--txt) 24%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   box-shadow:0 8px 24px rgba(0,0,0,.25);transition:background var(--d-fast) var(--ease-out),transform var(--d-base) var(--ease-spring)}
 body.immersive .hm-chip:hover{background:color-mix(in srgb,var(--txt) 14%,transparent);transform:translateY(-2px)}
+body.immersive .hm-play{display:inline-flex;align-items:center;gap:0;min-height:var(--tap,40px);padding:4px 16px 4px 8px;border-radius:999px;pointer-events:auto;
+  font-size:var(--fs-sm);font-weight:600;color:color-mix(in srgb,var(--txt) 90%,transparent);cursor:pointer;
+  background:color-mix(in srgb,var(--txt) 8%,transparent);border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:transform var(--d-base) var(--ease-spring)}
+body.immersive .hm-play[hidden]{display:none}
+body.immersive .hm-play:hover{transform:translateY(-2px)}
+body.immersive .hm-play img.av-play{width:28px;height:28px;border-radius:8px;margin-right:-6px;
+  border:2px solid color-mix(in srgb,var(--bg) 80%,transparent);image-rendering:pixelated}
+body.immersive .hm-play span{margin-left:14px}
+body.immersive.omni-pop .hm-play{opacity:0;pointer-events:none}
+body.immersive .hm-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;pointer-events:auto}
+body.immersive .hm-links[hidden]{display:none}
+body.immersive .hm-link{display:inline-flex;align-items:center;min-height:var(--tap,40px);padding:4px 14px 4px 8px;border-radius:999px;cursor:pointer;
+  font-size:var(--fs-xs);font-weight:600;color:color-mix(in srgb,var(--txt) 80%,transparent);
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border:1px dashed color-mix(in srgb,var(--txt) 22%,transparent)}
+body.immersive .hm-link img.av-play{width:24px;height:24px;border-radius:7px;margin-right:-5px;image-rendering:pixelated;
+  border:2px solid color-mix(in srgb,var(--bg) 80%,transparent)}
+body.immersive .hm-link span{margin-left:12px}
+body.immersive .hm-link em{font-style:normal;font-weight:500;opacity:.7}
+body.immersive.omni-pop .hm-links{opacity:0;pointer-events:none}
 body.immersive .hm-now{font-size:var(--fs-sm);color:color-mix(in srgb,var(--txt) 55%,transparent);text-shadow:0 1px 8px rgba(0,0,0,.4)}
 /* the prompt bar in the scene: upper third, wide, the results list drops below it */
 body.immersive:not(.has-win):not(.deck-full) #omnibar{bottom:auto;top:20%;width:min(720px,88vw);height:56px;padding:0 18px;gap:12px}

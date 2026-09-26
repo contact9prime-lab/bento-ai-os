@@ -258,6 +258,8 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // the play strip (24e) goes at the top of this reply, once there is something to show
+      if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
       loadConvs(); break;}
@@ -593,6 +595,15 @@ function curWho(){
   const sp=CUR_ENGINE.speaker;
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
+}
+/* Where Chat puts a turn's play strip: under the name of the reply being written, in
+   the conversation that is open — never in whichever chat happens to be on screen. */
+function chatPlayHost(cid){
+  if(!feed||typeof currentConv==='undefined'||currentConv!==cid)return null;
+  if(!curBody)startAssistant();
+  if(!curBody)return null;
+  const msg=curBody.parentNode,who=msg.querySelector('.who');
+  return {parent:msg,before:who?who.nextSibling:msg.firstChild};
 }
 function startAssistant(){
   if(!feed)return;

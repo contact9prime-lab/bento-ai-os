@@ -185,7 +185,7 @@ def text(ov: dict) -> str:
                    + ("  (lead agent)" if a["master"] else ""))
         out.append(f"    brain      {b['provider_name']} · {b['short']}"
                    + (f"  — {b['note']}" if b.get("note") else ""))
-        out.append(f"    hands      {h['name']} — {h['summary']}")
+        out.append(f"    executor   {h['name']} — {h['summary']}")
         fams = ", ".join(f"{k} {v['allow']}✓{(' ' + str(v['deny']) + '✗') if v['deny'] else ''}"
                          for k, v in sorted(au["families"].items()))
         out.append(f"    authority  autonomy {au['autonomy']}"

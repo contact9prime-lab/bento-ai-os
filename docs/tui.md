@@ -12,6 +12,18 @@ The TUI talks to the same server and the same WebSocket event stream as the brow
 so conversations, memory, approvals, and running turns are shared across every surface — a
 turn you start in the TUI streams into the browser too, and vice versa.
 
+## Signing in
+
+On a machine with accounts (see [Users](users.md)) the TUI starts with a sign-in: your
+name and password, the same ones as the desktop and the phone. The server refuses every
+call from anybody who has not signed in, the terminal included, so until then there is
+nothing to show. After signing in, the title bar names **your** agent and its brain, not
+the machine's, and every tab reads your own home. **Ctrl+O** signs out and asks again.
+The key only appears on a machine with accounts, because with none there is nobody to
+sign out as. The session lasts until you quit; nothing is saved to disk.
+
+The plain REPL fallback asks the same two questions before its first prompt.
+
 ## Tabs
 
 | Tab | What it does |
@@ -24,7 +36,8 @@ turn you start in the TUI streams into the browser too, and vice versa.
 | **Team** | Subagents & workflow observability |
 | **Logs** | The system log, live |
 | **Docs** | This manual, rendered in the terminal |
-| **Config** | Providers, autonomy, agent name |
+| **Office** (`o`) | The office plan and who is at work right now (the same roll call as the phone's picture), your linked teams, **Snap to my phone**, and a *Describe it* box that redesigns it |
+| **Config** | Providers, autonomy, agent name — and **Start over**: *Walk me through it* (every setup step again, nothing deleted) and *Factory reset…* (type `reset everything` to confirm) |
 
 ## Finding your way around the CLI
 
@@ -41,6 +54,26 @@ Nothing is hidden in the sense of removed. Every verb `--all` lists is a real co
 with its own `--help`; the short page exists because thirty-nine of them in one flat
 list reads as "you have to understand all of this first", when on a fresh machine the
 answer is one word long.
+
+## Starting over
+
+```bash
+bento setup --again     # every step offered again, skipped ones included — nothing is deleted
+bento reset             # factory reset: wipes everything on this machine, then setup starts again
+```
+
+`bento reset` is the desktop's Settings → System → Danger zone → Factory reset. It
+removes memory, conversations, apps, specialists, flows, the soul and every setting, and
+on a machine with accounts every account and its home. It refuses in three cases, and
+says which:
+
+- **The server is running.** A running server keeps the settings in memory and would
+  write them back over the reset. Stop it first (`bento service stop`), or use the
+  desktop's button, which resets the running server itself.
+- **The phrase is not typed.** You type `reset everything`. There is no `--yes`, on
+  purpose, and with no terminal to type into (a pipe, a script) it refuses.
+- **You are not an admin.** On a machine with accounts it asks for an admin's name and
+  password first.
 
 ## Setting the machine up from a terminal
 

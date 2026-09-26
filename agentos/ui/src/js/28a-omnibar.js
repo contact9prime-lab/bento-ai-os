@@ -6,11 +6,13 @@
    agent when the row is "Ask …". Answers stream into cards above the bar. */
 const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
-function omniPresence(){
+function omniPresence(force){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
   const n=RUNNING.size;
   orb.classList.toggle('busy',n>0);
-  if(!inp||inp.value||document.activeElement===inp)return;
+  // `force`: the config just arrived (a signed-in person's agent has its own name) —
+  // the bar is often focused at first paint, and the Aria it showed then would stay
+  if(!inp||inp.value||(document.activeElement===inp&&!force))return;
   // The bar is the one thing always on screen, so it is often where somebody
   // looks to ask "is it stuck?" — it answers with the step, not with "working".
   const live=n===1?actLine([...RUNNING][0]):'';

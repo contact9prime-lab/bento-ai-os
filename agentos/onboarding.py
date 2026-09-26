@@ -108,6 +108,18 @@ STEPS: list[Step] = [
                "This is the unit everything else is assembled from.",
          produces="an agent you can call by name with @",
          panel=""),
+    # Right after the specialist, so it arrives with a face and a desk. The characters
+    # (you, your agent, every specialist) are generated and STORED here, and the office
+    # they are seen working in is created — so the first mission anybody watches runs in
+    # a place they chose, with people they recognise, rather than in a default nobody
+    # looked at. It needs nothing first: a character exists whatever the agent is called.
+    Step("crew", "Meet your crew and set up the office", icon="◍",
+         blurb="Everybody on this machine gets a pixel-art character — you, your agent, "
+               "every specialist — and an office where you watch them work: papers to "
+               "desks, walking over to ask each other, huddles round the table.",
+         produces="your crew's characters and an office they work in, "
+                  "on the desktop, in Chat and on your phone",
+         panel="office"),
     Step("flow", "Give the specialist a mission", icon="⚙", needs=("agent",),
          blurb="A flow is a standing mission and a roster. The orchestrator decides "
                "who does what while it runs — you do not draw the steps.",
@@ -235,6 +247,18 @@ def state(cfg: dict, store=None) -> dict:
             if not people:
                 return "todo", ""
             return "done", ", ".join(u["name"] for u in people[:3])
+        if sid == "crew":
+            # Evidence: an office somebody saved (the step, the Office's designer, the
+            # agent's set_office or `bento office` — any of them counts).
+            of = cfg.get("office") or {}
+            if not of:
+                return "todo", ""
+            try:
+                from . import office as officemod
+                cur = officemod.current(cfg)
+                return "done", f"{cur['name']} · {officemod.STYLES[cur['style']]['label']}"
+            except Exception:
+                return "done", "set"
         if sid == "look":
             d = cfg.get("desktop") or {}
             if d.get("wallpaper_preset") or d.get("theme") or "voice_tts" in d:
@@ -418,6 +442,22 @@ STARTER_APP = {
       document.getElementById('s').textContent='saved'}catch(e){}},400)});
 </script>""",
 }
+
+
+def crew(cfg: dict, store, style: str = "", name: str = "") -> dict:
+    """The crew step's work, for the wizard and `bento setup` alike: every character
+    generated and stored (avatars.ensure — you, your agent, each specialist), and the
+    office created in the chosen style with its name on the door. The caller saves
+    config. Returns the office view and the people, so both faces can show them."""
+    from . import avatars, office
+    people = avatars.ensure(store, cfg)
+    patch = {"style": style or office.DEFAULT_STYLE}
+    if name:
+        patch["name"] = name
+    office.save(cfg, store, patch)
+    return {"office": office.view(cfg, store),
+            "people": [{"key": p["key"], "label": p["label"], "about": p.get("about", "")}
+                       for p in people]}
 
 
 def starter_app(store) -> dict:

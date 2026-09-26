@@ -32,6 +32,7 @@ edits the same config with the server down.
 """
 from __future__ import annotations
 
+import json
 import re
 
 #: The look of the whole floor. `floor` is two tones of one pattern, `wall` the band at
@@ -278,3 +279,92 @@ def record(store, detail: str) -> None:
                         detail=str(detail)[:1000])
     except Exception:
         pass
+
+
+# ---- designing it from a description -------------------------------------------------
+#
+# "A cosy space station with a research wing" -> an office. The machine's brain picks
+# (executors.ask_once — the executor or the provider model, whichever answers turns);
+# the closed set decides: every field goes through clean() on its own, so one wrong
+# value is dropped and NAMED rather than failing the whole design. With no brain to
+# ask, the style names, pets and decor in the words are matched — and the answer
+# says which happened, the character designer's rule.
+
+def design_prompt(description: str, v: dict) -> tuple[str, str]:
+    system = ("You design an office for a person's AI agents. Answer with ONE JSON object "
+              "and nothing else — no prose, no code fence.")
+    agents = ", ".join(v["agents"]) or "(none yet)"
+    prompt = (
+        f'The person asked for: "{description}"\n\n'
+        "Fields and their ONLY allowed values:\n"
+        f'- "style": one of {", ".join(STYLES)} '
+        f'({"; ".join(k + " = " + s["label"] for k, s in STYLES.items())})\n'
+        '- "name": the name on the door, at most 24 characters\n'
+        f'- "departments": a list of up to {MAX_DEPTS} objects {{"name", "color", "members"}}; '
+        f'color one of {", ".join(COLORS)}; members only from: {agents}\n'
+        '- "meeting": true/false (a meeting room, where huddles gather)\n'
+        '- "lounge": true/false\n'
+        f'- "decor": a list from {", ".join(DECOR)}\n'
+        f'- "pet": one of {", ".join(PETS)}\n'
+        "Set only the fields the description is about. Keep the current departments unless "
+        f"asked to change them. Currently: {json.dumps(current_of(v))}")
+    return system, prompt
+
+
+def current_of(v: dict) -> dict:
+    o = v["office"]
+    return {k: o[k] for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet")}
+
+
+def read_design(raw: str, known: list[str]) -> tuple[dict, list[str]]:
+    """The model's JSON, field by field through the closed set. Returns (patch,
+    dropped) — dropped names every field or member that was not allowed."""
+    m = re.search(r"\{.*\}", str(raw or ""), re.S)
+    if not m:
+        return {}, []
+    try:
+        data = json.loads(m.group(0))
+    except Exception:
+        return {}, []
+    patch, dropped = {}, []
+    for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet"):
+        if k not in data:
+            continue
+        try:
+            got, lost = clean({k: data[k]}, known=known)
+            patch.update(got)
+            dropped += [f"member {x}" for x in lost]
+        except ValueError:
+            dropped.append(f"{k} {data[k]!r}")
+    return patch, dropped
+
+
+_STYLE_WORDS = {"pop": ("pop", "comic", "cartoon"), "loft": ("loft", "startup", "brick", "wood"),
+                "tower": ("tower", "glass", "corporate", "skyscraper"), "cozy": ("cozy", "cosy", "studio", "warm"),
+                "space": ("space", "station", "spaceship", "orbit", "sci-fi", "scifi"),
+                "garden": ("garden", "greenhouse", "plants", "green"), "night": ("night", "dark", "late")}
+
+
+def from_words(description: str) -> dict:
+    """With no brain to ask: the closed set's own words in what was typed."""
+    t = " " + re.sub(r"[^a-z0-9\- ]", " ", str(description or "").lower()) + " "
+    patch: dict = {}
+    # the style whose words appear most: "a cosy space station" is a station, cosily.
+    # A tie goes to the word said LAST — the noun follows its adjectives, so "a cosy
+    # greenhouse" is a greenhouse, cosily, not a cosy studio.
+    hits = {k: (sum(f" {w} " in t for w in words), max((t.rfind(f" {w} ") for w in words), default=-1))
+            for k, words in _STYLE_WORDS.items()}
+    best = max(hits, key=lambda k: hits[k])
+    if hits[best][0]:
+        patch["style"] = best
+    for p in PETS[1:]:
+        if f" {p} " in t:
+            patch["pet"] = p
+    decor = [d for d in DECOR if f" {d.rstrip('s')}" in t]
+    if decor:
+        patch["decor"] = decor
+    m = re.search(r"(?:called|named)\s+[\"']?(.+?)(?:[\"',.;]|\s+(?:with|and|for|in|that|where)\s|$)",
+                  str(description or ""))
+    if m and m.group(1).strip():
+        patch["name"] = _plain(m.group(1))
+    return patch

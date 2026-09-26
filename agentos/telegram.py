@@ -8,6 +8,7 @@ Commands: /start pairs, /clear wipes the Telegram session, /status pings.
 """
 
 import asyncio
+import os
 import json
 import time
 
@@ -20,6 +21,20 @@ from .agent import Agent
 from . import users as usersmod
 
 API = "https://api.telegram.org/bot{token}/{method}"
+
+
+def api_url(token: str, method: str) -> str:
+    """Telegram's Bot API — or, with AGENTOS_TELEGRAM_API=http://127.0.0.1:8429, a
+    stand-in at that address with the same paths, so a whole Telegram turn (the reply,
+    the comic strip, /office) can be walked through without a real bot. The same idea
+    as AGENTOS_SIGNIN_BASE for the sign-in doors."""
+    base = os.environ.get("AGENTOS_TELEGRAM_API", "").rstrip("/")
+    return f"{base}/bot{token}/{method}" if base else API.format(token=token, method=method)
+
+
+def office_name(cfg: dict) -> str:
+    from . import office
+    return office.current(cfg)["name"]
 CHUNK = 3900  # Telegram hard limit is 4096
 
 
@@ -49,7 +64,7 @@ class TelegramBridge(usersmod.Scoped):
     async def _api(self, method: str, **params):
         token = self._t().get("bot_token", "")
         async with httpx.AsyncClient(timeout=70) as client:
-            r = await client.post(API.format(token=token, method=method), json=params)
+            r = await client.post(api_url(token, method), json=params)
         data = r.json()
         if not data.get("ok"):
             raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
@@ -96,6 +111,43 @@ class TelegramBridge(usersmod.Scoped):
             return f"[error] telegram send failed: {e}"
         self.store.log("telegram", f"→ sent: {text[:200]}")
         return "sent via Telegram"
+
+    async def send_photo(self, png: bytes, caption: str = "", chat_id: int | None = None) -> str:
+        """A picture into the chat — the playground's comic strips and roll call
+        (agentos/comic.py). The caption carries every word the picture could not."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        token = self._t().get("bot_token", "")
+        if not token or not chat_id:
+            return "[error] Telegram is not set up"
+        try:
+            async with httpx.AsyncClient(timeout=70) as client:
+                r = await client.post(api_url(token, "sendPhoto"),
+                                      data={"chat_id": str(chat_id), "caption": (caption or "")[:1024]},
+                                      files={"photo": ("office.png", png, "image/png")})
+            data = r.json()
+            if not data.get("ok"):
+                raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
+        except Exception as e:
+            return f"[error] telegram photo failed: {e}"
+        self.store.log("telegram", f"→ sent a picture: {(caption or '')[:120]}")
+        return "sent via Telegram"
+
+    async def send_talk(self, lines: list, chat_id: int) -> None:
+        """Agents talked during this chat's turn: the exchange as a comic strip, the
+        way the Office shows it on the desk. Only when they really talked (a turn
+        with no agent-to-agent lines sends nothing extra), and switched off with
+        telegram.comics = false. Never fatal — the reply has already been sent."""
+        if not lines or self._t().get("comics") is False:
+            return
+        try:
+            from . import comic, playground
+            first = lines[0]
+            title = f"{office_name(self.cfg)} · {first['speaker']}" + (
+                f" asks {first['to']}" if first.get("to") and first.get("kind") == "ask" else " talks")
+            png = comic.strip(self.store, self.cfg, lines, title)
+            await self.send_photo(png, playground.caption(lines), chat_id)
+        except Exception as e:
+            self.store.log("telegram", f"could not draw the comic strip: {e}")
 
     def _conversation(self, chat: dict) -> str:
         """One persistent conversation per Telegram chat."""
@@ -217,6 +269,10 @@ class TelegramBridge(usersmod.Scoped):
             pass
         try:
             cid = self._conversation(chat)
+            # agents talking inside this turn are collected here and sent back as a
+            # comic strip after the reply (playground.listen; closed in `finally`)
+            from . import playground as _pg
+            tap = _pg.listen(cid)
             # The same rebuild as the desktop: a thread answered from the phone
             # must see what the thread saw at the desk, tool traces included. A
             # bespoke last-30 window here is how one conversation ends up with
@@ -288,6 +344,7 @@ class TelegramBridge(usersmod.Scoped):
             _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
                           surface="telegram", conversation_id=cid)
             await self.send(reply, chat_id)
+            await self.send_talk(_pg.close(cid, tap), chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge
             knowledge.schedule_extraction(self.cfg, self.store, cid, text, reply, self.broadcast)
@@ -295,6 +352,8 @@ class TelegramBridge(usersmod.Scoped):
             await self.send(f"[error] {type(e).__name__}: {e}", chat_id)
         finally:
             self._busy = False
+            if "tap" in locals():
+                _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
 
     async def send_brief(self, text: str, rows: list, chat_id: int | None = None) -> str:
         """The Brief's digest with Done / Later / decision buttons under it — the
