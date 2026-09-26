@@ -11,8 +11,8 @@ model when one is available.
 
 ### "Approval needed", and I cannot find the card
 
-Press **Review** on the toast, or tap the "waiting for you to approve …" line. Either one shows
-the card, floating at the top right if its own place is hidden. See
+Press **Review** on the toast, or on the "waiting for you to approve …" line. Either one shows
+the card: in Chat when that conversation is open there, otherwise floating at the top right. See
 [team.md](team.md#an-approval-you-can-always-reach).
 
 ### An app is missing from the dock (the Office, say)

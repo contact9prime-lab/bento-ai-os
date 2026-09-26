@@ -91,27 +91,76 @@ var APPROVALS={};
    card has a box but nobody can see it. `offsetParent` is no test — a floating card is
    position:fixed and has none. */
 function approvalShown(b){
-  if(!b||b.classList.contains('resolved'))return false;
+  if(!b||b.classList.contains('resolved')||!b.isConnected)return false;
   const r=b.getBoundingClientRect();
   if(!(r.width>0&&r.height>0))return false;
-  if(b.checkVisibility)return b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-  return getComputedStyle(b).visibility!=='hidden';
+  if(r.bottom<=0||r.top>=innerHeight||r.right<=0||r.left>=innerWidth)return false;
+  if(b.checkVisibility&&!b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}))return false;
+  if(!b.checkVisibility&&getComputedStyle(b).visibility==='hidden')return false;
+  // displayed is not SEEN: the prompt bar's answer card sits under any window, and a
+  // card inside it passed every test above while Chat covered it. Something of the
+  // card must be the topmost thing at a point on screen.
+  const x=Math.min(Math.max(r.left+r.width/2,0),innerWidth-1);
+  const pts=[[x,r.top+8],[x,r.top+r.height/2],[x,r.bottom-8]];
+  return pts.some(([px,py])=>{if(py<0||py>=innerHeight)return false;
+    const t=document.elementFromPoint(px,py);return !!(t&&b.contains(t))});
 }
 function approvalVisible(id){
   return [...document.querySelectorAll('[id="ap-'+id+'"]')].some(approvalShown);
 }
 function approvalFloat(ev){
-  if([...document.querySelectorAll('[id="ap-'+ev.id+'"].ap-float')].length)return;
+  // one float per approval; an existing one is brought back to the top of the page
+  const had=document.querySelector('[id="ap-'+ev.id+'"].ap-float');
+  if(had){if(had.nextSibling)document.body.appendChild(had);return had}
   const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
   document.body.appendChild(box);
   box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
   return box;
 }
+/* Where a waiting card belongs NOW. The place a card was put can stop existing (the
+   prompt bar's answer card is closed by its own "Open in Chat", taking the approval
+   with it) or be covered (a window opened over it). Reported as a hand-over "waiting
+   for you to approve delegate" in Chat with no card anywhere on the page. So while
+   anything waits, each card is checked: shown and on top → fine; its conversation
+   open in Chat → drawn there; otherwise → floated. Runs only while APPROVALS is not
+   empty, and stops itself. */
+var APPROVAL_WATCH=0;
+function approvalHome(id){
+  const ev=APPROVALS[id];if(!ev)return;
+  if(approvalVisible(id))return;
+  const feed=document.getElementById('feed');
+  const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
+  if(chatOpen&&!feed.querySelector('[id="ap-'+id+'"]')){
+    const box=buildApprovalBox(ev,true),w=document.getElementById('working');
+    if(w&&w.parentNode===feed)feed.insertBefore(box,w);else feed.appendChild(box);
+    box.scrollIntoView({block:'center'});
+    // the float, if there was one, is no longer the only door
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());
+    if(approvalVisible(id))return;
+  }
+  approvalFloat(ev);
+}
+function approvalShownArea(el){
+  const r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))return false;
+  const t=document.elementFromPoint(Math.min(Math.max(r.left+r.width/2,0),innerWidth-1),
+                                    Math.min(Math.max(r.top+r.height/2,0),innerHeight-1));
+  return !!(t&&el.contains(t));
+}
+function approvalWatch(){
+  if(APPROVAL_WATCH)return;
+  APPROVAL_WATCH=setInterval(()=>{
+    const ids=Object.keys(APPROVALS);
+    if(!ids.length){clearInterval(APPROVAL_WATCH);APPROVAL_WATCH=0;return}
+    if(document.hidden)return;
+    ids.forEach(approvalHome);
+  },1200);
+}
 function approvalReveal(id){
   const ev=id?APPROVALS[id]:APPROVALS[Object.keys(APPROVALS).pop()];
   if(!ev)return toast('nothing is waiting for you now');
-  const shown=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown);
-  const box=shown||approvalFloat(ev);if(!box)return;
+  approvalHome(ev.id);
+  const box=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown)
+    ||document.querySelector('[id="ap-'+ev.id+'"].ap-float');if(!box)return;
   box.scrollIntoView({block:'center',behavior:'smooth'});
   box.classList.remove('ap-flash');void box.offsetWidth;box.classList.add('ap-flash');
 }
@@ -406,7 +455,8 @@ function handle(ev){
       // Placed is not SEEN: a turn from the prompt bar puts its card in the bar's
       // answer card, which hides the moment a window opens — found as a hand-over
       // to the toolsmith that waited five minutes on a question nobody could see.
-      requestAnimationFrame(()=>{if(APPROVALS[ev.id]&&!approvalVisible(ev.id))approvalFloat(ev)});
+      requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
+      approvalWatch();
       toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
       scrollDown(); break;}
     case 'error':{
