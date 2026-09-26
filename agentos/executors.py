@@ -87,17 +87,29 @@ class Envelope:
     # exactly one MCP server offering `delegate` and `huddle`, each call through this
     # OS's gate (mcpbridge). Empty = no door, the envelope as it always was.
     team_mcp: tuple = ()
+    # Which installed agent this envelope is for. The folder, the tools and the
+    # context are one setting shared by every executor (Settings → Executors); how
+    # they become flags is each CLI's own business (`build_command`).
+    engine: str = "claude-code"
+    # The conversation so far, for a CLI this OS cannot resume a session of: without
+    # it every follow-up reached Gemini CLI / Codex as a stranger's first message.
+    transcript: str = ""
 
     def describe(self) -> str:
         """One sentence a person can approve or refuse."""
         tools = ", ".join(self.tools) if self.tools else "no tools"
         writes = any(t in self.tools for t in ("Write", "Edit", "Bash"))
         where = self.workspace
-        if self.allow_source:
+        if self.allow_source and self.engine != "codex":
             where += " and AgentOS's own source"
-        return (f"Claude Code in {where} with {tools}"
+        title = EXECUTORS_BY_ID.get(self.engine, {}).get("title", self.engine)
+        # Only Claude Code takes a spend ceiling; saying "up to $2" of a CLI that
+        # has no such flag would be a promise nothing keeps.
+        spend = (f", up to ${self.budget_usd:.2f}" if self.engine == "claude-code"
+                 else " — no spend ceiling of its own; it uses whatever it is signed in with")
+        return (f"{title} in {where} with {tools}"
                 f"{' (can change files and run commands)' if writes else ' (read-only)'}"
-                f", up to ${self.budget_usd:.2f}")
+                f"{spend}")
 
     def sanitized(self) -> "Envelope":
         """Clamp anything the caller got wrong rather than trusting it."""
@@ -115,7 +127,9 @@ class Envelope:
                       if c in "\n\t" or ord(c) >= 32)
         return Envelope(workspace=ws, tools=tools, model=self.model,
                         budget_usd=budget, session_id=self.session_id, context=ctx,
-                        allow_source=bool(self.allow_source), team_mcp=tuple(self.team_mcp or ()))
+                        allow_source=bool(self.allow_source), team_mcp=tuple(self.team_mcp or ()),
+                        engine=self.engine if self.engine in DRIVEN else "claude-code",
+                        transcript=str(self.transcript or "")[-6000:])
 
 
 @dataclass
@@ -140,6 +154,7 @@ class Run:
     saw_text: bool = False         # did any assistant text stream? decides the result fallback
     tokens_in: int = 0             # from the result event's usage — what a mission row counts
     tokens_out: int = 0
+    engine: str = "claude-code"    # whose stream this is: decides how a line is read
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -162,7 +177,21 @@ class Run:
 #
 # The UI states this rather than implying totality.
 # Derived from the catalogue below, so adding an executor is one edit.
-ENGINES = ("aria", "claude-code", "hermes", "openclaw")
+ENGINES = ("aria", "claude-code", "gemini-cli", "codex", "hermes", "openclaw")
+# The agents this OS can actually DRIVE: start headless, read a stream of JSON events
+# from, and stop. Each has a command builder and a stream reader below. Hermes and
+# OpenClaw are detected and offered, but nothing here knows their headless stream,
+# so a turn to them is refused in a sentence rather than — as it did before this
+# list existed — quietly running Claude Code under their name.
+DRIVEN = ("claude-code", "gemini-cli", "codex")
+# Which of them can take a session id back and continue it. The others are handed
+# the conversation so far in the prompt (`Envelope.transcript`).
+RESUMES = ("claude-code",)
+
+
+def drives(engine: str) -> bool:
+    """Can this OS run a turn on this executor (not just detect it)?"""
+    return engine in DRIVEN
 # Executors that can run a MISSION: started with their native tools off and this
 # OS's tools served to them over MCP (mcpbridge.py), so every call passes the PDP.
 # Needs a CLI that takes an MCP config, a strict flag for it, and a tool allow-list
@@ -212,15 +241,22 @@ def default_budget() -> float:
             else DEFAULT_BUDGET_USD)
 
 
-def envelope_from(cfg: dict, workspace_default: str) -> "Envelope":
-    """The configured envelope — one reading of config, used by every surface."""
-    conf = ((cfg or {}).get("executors") or {}).get("claude_code") or {}
+def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code") -> "Envelope":
+    """The configured envelope — one reading of config, used by every surface.
+
+    The folder, tools and budget are the one envelope Settings → Executors edits
+    (stored under `claude_code`, where it always lived); the MODEL is each executor's
+    own (`executor_model`), because "opus" means nothing to Gemini CLI."""
+    ex = (cfg or {}).get("executors") or {}
+    conf = ex.get("claude_code") or {}
+    engine = engine if engine in DRIVEN else "claude-code"
     return Envelope(
         workspace=conf.get("workspace") or workspace_default,
         tools=tuple(conf.get("tools") or DEFAULT_TOOLS),
-        model=conf.get("model", ""),
+        model=str((ex.get(_exec_conf_key(engine)) or {}).get("model", "")),
         budget_usd=float(conf.get("budget_usd") or default_budget()),
         allow_source=bool(conf.get("allow_source")),
+        engine=engine,
     ).sanitized()
 
 
@@ -246,8 +282,12 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
         if emit:
             await emit(ev)
 
-    env = envelope_from(cfg, workspace_default)
-    env.session_id = session_id
+    if not drives(engine):
+        title = EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
+        return (f"[error] {title} is installed, but AgentOS cannot run a turn on it yet — "
+                f"choose another brain in Settings → AI providers"), None
+    env = envelope_from(cfg, workspace_default, engine)
+    env.session_id = session_id if engine in RESUMES else ""
     # Always, even when the surface supplies nothing of its own: a forwarded
     # Telegram or scheduled turn otherwise arrives believing it owns the desktop.
     env.context = context_for(context)
@@ -256,7 +296,7 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text) if team else ""
-    run = Run()
+    run = Run(engine=engine)
     try:
         await run_task(text, env, sink, run)
     finally:
@@ -319,32 +359,48 @@ def has_brain(cfg: dict) -> bool:
     return resolve_engine(cfg) != "aria" or bool(cfg.get("default_model"))
 
 
-async def ask_once(cfg: dict, system: str, prompt: str, timeout: float = 120) -> tuple[str, str]:
+async def ask_brain(cfg: dict, system: str, prompt: str, timeout: float = 180,
+                    model: str = "") -> tuple[str, str, str]:
     """One answer, no tools, from whatever brain this machine runs on — the executor
-    (Claude Code, Hermes, OpenClaw) when that is the brain, the default provider model
-    otherwise. Returns (text, who answered), or ("", "") when nothing could answer.
+    (Claude Code, Gemini CLI, Codex) when that is the brain, the default provider model
+    otherwise, or `model` when a caller names one. Returns (text, who answered, why
+    not): `why` is a sentence when nothing answered, "" when something did.
 
-    For the designers (a character, the office) that turn a description into choices
-    from a closed set: they need the MACHINE's brain, not a provider key. Asking only
-    `default_model` made them silently fall back to word matching on a machine whose
-    brain is Claude Code — found when "design my office as a space station" came back
-    as an offer to edit the Office's source instead."""
-    engine = resolve_engine(cfg)
+    For the designers that turn words into a closed set (a character, the office) and
+    the drafts that turn words into a definition (a mission, a specialist): they need
+    the MACHINE's brain, not a provider key. Asking only `default_model` broke all of
+    them on a machine whose brain is Claude Code — "Draft it" in the agent editor and
+    "Draft a flow" answered "no model configured" there, which read as the editor being
+    broken."""
+    engine = "aria" if model else resolve_engine(cfg)
     try:
         if engine != "aria":
             from . import config as _cfgmod
             reply, _run = await asyncio.wait_for(
                 forward(engine, system + "\n\n" + prompt, cfg,
                         str(_cfgmod.AGENTOS_HOME / "workspace")), timeout)
-            return (reply or ""), engine
-        model = cfg.get("default_model") or ""
+            reply = reply or ""
+            if reply.startswith("[error]"):
+                return "", engine, f"{engine} could not answer: {reply[7:].strip()}"
+            return reply, engine, ("" if reply.strip() else f"{engine} said nothing")
+        model = model or cfg.get("default_model") or ""
         if not model:
-            return "", ""
+            return "", "", ("no brain is set up — choose one in Settings → AI providers "
+                            "(a model, or an agent installed here such as Claude Code)")
         from . import providers
-        return (await asyncio.wait_for(providers.complete(cfg, model, prompt, system=system), timeout)
-                or ""), model
-    except Exception:
-        return "", ""
+        text = await asyncio.wait_for(providers.complete(cfg, model, prompt, system=system), timeout)
+        return (text or ""), model, ("" if (text or "").strip() else f"{model} said nothing")
+    except asyncio.TimeoutError:
+        return "", engine, f"{engine if engine != 'aria' else model} took longer than {int(timeout)}s"
+    except Exception as e:
+        return "", engine, f"{engine if engine != 'aria' else (model or 'the model')} could not answer: {e}"
+
+
+async def ask_once(cfg: dict, system: str, prompt: str, timeout: float = 120) -> tuple[str, str]:
+    """`ask_brain` for callers that fall back on their own when nothing answers (the
+    office and character designers match words instead): (text, who), or ("", "")."""
+    text, who, why = await ask_brain(cfg, system, prompt, timeout)
+    return (text, who) if not why else ("", "")
 
 
 def builtin_app_note(app_id: str, allow_source: bool) -> str:
@@ -841,6 +897,39 @@ EXECUTOR_CATALOGUE = (
         "docs": "https://claude.com/claude-code",
     },
     {
+        "id": "gemini-cli",
+        "title": "Gemini CLI",
+        "what": "Google's open-source coding agent as the engine. It signs in with "
+                "your Google account (or a Gemini API key you give it yourself) — "
+                "AgentOS never passes it a key.",
+        "builtin": False,
+        "licence": "Apache-2.0",
+        "bins": ("gemini",),
+        # npm's own global install, into THIS account's ~/.local rather than a
+        # system prefix that would need root — the bin lands in ~/.local/bin, which
+        # the extended PATH already searches.
+        "install_cmd": "npm install --global --prefix ~/.local @google/gemini-cli",
+        "install_note": "Installs Google's Gemini CLI (Apache-2.0) with npm into your own "
+                        "account. Needs Node.js 20 or newer. Run `gemini` once to sign in.",
+        "signin_cmd": "gemini",
+        "docs": "https://github.com/google-gemini/gemini-cli",
+    },
+    {
+        "id": "codex",
+        "title": "Codex CLI",
+        "what": "OpenAI's open-source coding agent as the engine. It signs in with "
+                "your ChatGPT account (or an API key you give it yourself) — AgentOS "
+                "never passes it a key.",
+        "builtin": False,
+        "licence": "Apache-2.0",
+        "bins": ("codex",),
+        "install_cmd": "npm install --global --prefix ~/.local @openai/codex",
+        "install_note": "Installs OpenAI's Codex CLI (Apache-2.0) with npm into your own "
+                        "account. Needs Node.js. Run `codex login` once to sign in.",
+        "signin_cmd": "codex login",
+        "docs": "https://github.com/openai/codex",
+    },
+    {
         "id": "hermes",
         "title": "Hermes",
         "what": "Nous Research's self-hosted assistant as the engine. It brings its "
@@ -935,7 +1024,8 @@ def _probe_now(executor_id: str) -> dict:
     base = {"id": spec["id"], "title": spec["title"], "what": spec["what"],
             "builtin": spec.get("builtin", False), "licence": spec.get("licence", ""),
             "docs": spec.get("docs", ""), "install_cmd": spec.get("install_cmd", ""),
-            "install_note": spec.get("install_note", ""), "repo": spec.get("repo", "")}
+            "install_note": spec.get("install_note", ""), "repo": spec.get("repo", ""),
+            "signin_cmd": spec.get("signin_cmd", ""), "drives": spec["id"] in DRIVEN}
     if spec.get("builtin"):
         return {**base, "installed": True, "path": "", "version": "", "why_not": ""}
     # Claude Code keeps its own resolver: several copies on one machine is normal
@@ -1010,6 +1100,12 @@ PROVIDER_EXECUTORS = (
 AGENT_MODELS = {
     "claude-code": (("", "whatever Claude Code is set to"),
                     ("opus", "opus"), ("sonnet", "sonnet"), ("haiku", "haiku")),
+    # The model names each CLI's own documentation uses for `--model`; newer ones
+    # arrive through the empty choice, which is whatever the CLI is set to.
+    "gemini-cli": (("", "whatever Gemini CLI is set to"),
+                   ("gemini-2.5-pro", "gemini-2.5-pro"), ("gemini-2.5-flash", "gemini-2.5-flash")),
+    "codex": (("", "whatever Codex is set to"),
+              ("gpt-5-codex", "gpt-5-codex"), ("gpt-5", "gpt-5")),
 }
 # Anything not listed above brings its own model configuration and AgentOS does
 # not pretend to know it. One honest choice rather than an invented list.
@@ -1093,8 +1189,12 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
             "id": spec["id"], "name": r.get("title") or spec["title"],
             "what": r.get("what", spec.get("what", "")),
             "kind": "agent", "engine": spec["id"], "provider": "",
-            "available": bool(r.get("installed")),
-            "reason": r.get("why_not", ""),
+            # installed is not enough: a brain this OS cannot run a turn on is a
+            # dead choice, and choosing it used to start Claude Code under its name
+            "available": bool(r.get("installed")) and spec["id"] in DRIVEN,
+            "reason": r.get("why_not", "") or (
+                "" if spec["id"] in DRIVEN else
+                f"{spec['title']} is installed, but AgentOS cannot run a turn on it yet."),
             "detail": r.get("version", ""),
             "licence": r.get("licence", spec.get("licence", "")),
             "install_cmd": r.get("install_cmd", spec.get("install_cmd", "")),
@@ -1227,7 +1327,11 @@ async def install(note=None) -> tuple[bool, str]:
     return True, "Claude Code installed — run `claude` once to sign in"
 
 
-TEAM_TOOLS = ("delegate", "huddle")      # what the team door offers a forwarded chat turn
+# What the team door offers a forwarded chat turn: the specialists, and MISSIONS —
+# "watch my Downloads" answered with a launchd plist this OS could not see or stop was
+# the report. create_flow lands DISABLED (enabling is the person's grant), list_flows
+# lets it see what already runs, so it edits rather than duplicates.
+TEAM_TOOLS = ("delegate", "huddle", "create_flow", "list_flows")
 
 
 def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
@@ -1238,6 +1342,14 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
     told it the team existed, and the context even said it could not use this OS's
     tools. One line per specialist — its name and the first sentence of its soul,
     which is how the person described the job."""
+    missions = (f"\n\nMISSIONS. Anything that should keep happening on its own — watch a folder, "
+                f"every morning, when a message arrives — is a mission: create it with "
+                f"{prefix}create_flow (a trigger such as {{\"kind\":\"os_event\",\"config\":"
+                f"{{\"event\":\"file_change\",\"path\":\"~/Downloads\"}}}} or a daily cron) and "
+                f"tell the person to switch it on in Missions → Build. It lands off because "
+                f"switching it on is what grants it. NEVER set it up yourself as a cron job, "
+                f"launchd agent, background loop or script: this OS could not see it, stop it "
+                f"or show what it did. {prefix}list_flows shows what already runs.")
     rows = []
     for sa in subagents or []:
         if sa.get("enabled") is False or not sa.get("name"):
@@ -1246,8 +1358,8 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
         first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
         rows.append(f"- {sa['name']}: {first}")
     if not rows:
-        return ""
-    return ("\n\nYOUR TEAM. The person has specialists on this machine, each built for a job:\n"
+        return missions
+    return missions + ("\n\nYOUR TEAM. The person has specialists on this machine, each built for a job:\n"
             + "\n".join(rows[:20])
             + f"\nWhen what they ask for is one of those jobs, HAND IT OVER: call "
               f"{prefix}delegate with {{\"subagent\": name, \"task\": a self-contained brief}} "
@@ -1256,6 +1368,30 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
               "person asks you to."
             + (" Those two tools are this OS's: every call is checked against its "
                "permissions and recorded." if prefix else ""))
+
+
+def team_hint(subagents: list) -> str:
+    """`team_note` for an executor with no door: the same roster, and the honest way
+    to reach it — the person addresses the specialist themselves."""
+    rows = []
+    for sa in subagents or []:
+        if sa.get("enabled") is False or not sa.get("name"):
+            continue
+        soul = " ".join(str(sa.get("soul") or "").split())
+        first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
+        rows.append(f"- {sa['name']}: {first}")
+    missions = ("\n\nMISSIONS. Anything that should keep happening on its own — watch a folder, "
+                "every morning — is a mission in this OS's Missions app. You cannot create one "
+                "from here: say so, and tell the person to describe it under Missions → Run → "
+                "Describe your own. NEVER set it up yourself as a cron job, launchd agent, "
+                "background loop or script: this OS could not see it, stop it or show what it did.")
+    if not rows:
+        return missions
+    return missions + ("\n\nTHE PERSON'S TEAM. They have specialists on this machine, each built "
+                       "for a job:\n" + "\n".join(rows[:20])
+                       + "\nYou cannot hand work to them from here. When what they ask for is "
+                         "one of those jobs, say who fits and tell them to write "
+                         "`@name <the task>` in chat, which reaches that specialist directly.")
 
 
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
@@ -1275,11 +1411,22 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     Chat, Telegram and WhatsApp call this; a scheduled turn does not (nobody is there
     to approve a hand-over, and a mission is the way to give a schedule a team)."""
     subs = [sa for sa in (store.list_subagents() if store else []) if sa.get("enabled") is not False]
-    if not subs or toolbox is None:
+    if toolbox is None:
         return ""
+    if env.engine not in MCP_ENGINES:
+        # Gemini CLI and Codex are not started with a per-run MCP config here, so
+        # there is no door to open — but the person's team is still THEIRS: say who
+        # does what and how to reach them, rather than letting the executor do the
+        # toolsmith's job in silence (the report that started the team door).
+        env.context = (env.context or "") + team_hint(subs)
+        return ""
+    # a machine with no specialists still gets the door: missions need no team
     from . import mcpbridge
     from .agent import Agent
-    agent = Agent(cfg, toolbox, "", emit, approver, conversation_id=conversation_id,
+
+    async def _quiet(_ev):
+        pass
+    agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
                   surface=surface, tool_filter=list(TEAM_TOOLS), space_id=space_id)
     agent._task_text = text
     schemas = [t for t in agent._tools() if t["name"] in TEAM_TOOLS]
@@ -1348,6 +1495,10 @@ def build_command(task: str, env: Envelope) -> list[str]:
     headless run from blocking forever on a prompt nobody can answer — the run is
     already limited to what we allowed, so there is nothing left to ask about.
     """
+    if env.engine == "gemini-cli":
+        return _gemini_command(task, env)
+    if env.engine == "codex":
+        return _codex_command(task, env)
     exe = claude_exe() or "claude"
     cmd = [exe, "--print", as_prose(task),
            "--output-format", "stream-json", "--verbose",
@@ -1377,6 +1528,56 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.session_id:
         cmd += ["--resume", env.session_id]
     return cmd
+
+
+def _prompt_for(task: str, env: Envelope) -> str:
+    """One prompt for a CLI with no system-prompt flag: the context, the conversation
+    so far (it cannot resume a session), then the task — each labelled, so the
+    executor can tell what it is looking at from what it is being asked."""
+    parts = []
+    if env.context:
+        parts.append("CONTEXT (from AgentOS, the desktop you are answering inside):\n" + env.context)
+    if env.transcript:
+        parts.append("THE CONVERSATION SO FAR:\n" + env.transcript)
+    parts.append(("THE REQUEST:\n" if parts else "") + as_prose(task))
+    return "\n\n".join(parts)
+
+
+def _gemini_command(task: str, env: Envelope) -> list[str]:
+    """Gemini CLI, headless: `--prompt` with `--output-format stream-json`.
+
+    The envelope becomes its approval mode. Headless, Gemini CLI runs only the tools
+    that need no confirmation — its read-only ones — so the default envelope stays
+    read-only with no flag at all; Write/Edit becomes `auto_edit`, a shell becomes
+    `yolo`. There is no spend flag, and `describe()` says so rather than pretending."""
+    exe = _find_bin(("gemini",)) or "gemini"
+    cmd = [exe, "--prompt", _prompt_for(task, env), "--output-format", "stream-json"]
+    if "Bash" in env.tools:
+        cmd += ["--approval-mode", "yolo"]
+    elif any(t in env.tools for t in ("Write", "Edit")):
+        cmd += ["--approval-mode", "auto_edit"]
+    if env.allow_source:
+        cmd += ["--include-directories", source_root()]
+    if env.model:
+        cmd += ["--model", env.model]
+    return cmd
+
+
+def _codex_command(task: str, env: Envelope) -> list[str]:
+    """Codex CLI, headless: `codex exec --json`, sandboxed to the workspace.
+
+    Codex has no tool list to narrow — it is a shell agent — so the envelope becomes
+    its SANDBOX: read-only unless Write, Edit or Bash was allowed, then writes inside
+    the workspace only. `exec` never stops to ask. `--skip-git-repo-check` because the
+    workspace is a folder of AgentOS's, not a repository the person checked out."""
+    exe = _find_bin(("codex",)) or "codex"
+    writes = any(t in env.tools for t in ("Write", "Edit", "Bash"))
+    cmd = [exe, "exec", "--json", "--skip-git-repo-check",
+           "--sandbox", "workspace-write" if writes else "read-only",
+           "--cd", env.workspace]
+    if env.model:
+        cmd += ["--model", env.model]
+    return cmd + [_prompt_for(task, env)]
 
 
 # Credentials that make the Claude Code CLI bill per token against an API
@@ -1628,6 +1829,137 @@ def translate(event: dict, run: Run) -> list[dict]:
     return out
 
 
+def translate_gemini(event: dict, run: Run) -> list[dict]:
+    """One Gemini CLI `stream-json` event → AgentOS turn events (the same shapes
+    `translate` makes for Claude Code, so no surface knows which CLI answered)."""
+    kind = event.get("type")
+    out: list[dict] = []
+    if kind == "init":
+        run.session_id = str(event.get("session_id") or "")
+        run.model = str(event.get("model") or "")
+        out.append({"type": "engine_info", "engine": "gemini-cli", "model": run.model,
+                    "version": "", "tools": [], "mcp": []})
+        out.append({"type": "status", "message": f"Gemini CLI is ready"
+                    f"{' on ' + run.model if run.model else ''} — reading the task"})
+    elif kind == "message":
+        if event.get("role") == "assistant" and event.get("content"):
+            run.saw_text = True
+            out.append({"type": "text_delta", "text": str(event["content"])})
+    elif kind == "tool_use":
+        name = str(event.get("tool_name") or "tool")
+        args = event.get("parameters") or {}
+        detail = tool_detail(name, args if isinstance(args, dict) else {})
+        run.steps += 1
+        run.last = f"{name}{' · ' + detail if detail else ''}"
+        cid = str(event.get("tool_id") or "")
+        run.calls[cid] = (name, detail)
+        out.append({"type": "tool_start", "call_id": cid, "name": name, "args": args,
+                    "detail": detail, "step": run.steps, "pending_approval": False})
+    elif kind == "tool_result":
+        cid = str(event.get("tool_id") or "")
+        name, detail = run.calls.pop(cid, ("", ""))
+        ok = event.get("status") == "success"
+        err = event.get("error") or {}
+        output = event.get("output") if ok else (err.get("message") if isinstance(err, dict) else err)
+        out.append({"type": "tool_end", "call_id": cid, "name": name, "detail": detail,
+                    "output": str(output or "")[:4000], "ok": ok})
+    elif kind == "error":
+        msg = str(event.get("message") or "Gemini CLI reported an error")
+        if event.get("severity") == "warning":
+            out.append({"type": "status", "message": msg[:300]})
+        else:
+            out.append({"type": "error", "message": msg[:500]})
+            run.reported_error = True
+    elif kind == "result":
+        stats = event.get("stats") or {}
+        if isinstance(stats, dict):
+            run.tokens_in = int(stats.get("input_tokens") or 0)
+            run.tokens_out = int(stats.get("output_tokens") or 0)
+        run.turns += 1
+        if event.get("status") not in (None, "success") and not run.reported_error:
+            err = event.get("error") or {}
+            out.append({"type": "error", "message": str(
+                (err.get("message") if isinstance(err, dict) else err) or
+                "Gemini CLI ended without finishing — run `gemini` once in a terminal to "
+                "check it is signed in")[:500]})
+            run.reported_error = True
+    return out
+
+
+def translate_codex(event: dict, run: Run) -> list[dict]:
+    """One Codex CLI `exec --json` event → AgentOS turn events.
+
+    Codex reports work as ITEMS (a message, a command, a file change, an MCP call),
+    each started and completed; a command is the only step it takes on the machine,
+    so it is shown as `shell` with the command line as its detail."""
+    kind = event.get("type")
+    out: list[dict] = []
+    item = event.get("item") or {}
+    itype = item.get("type") if isinstance(item, dict) else ""
+    if kind == "thread.started":
+        run.session_id = str(event.get("thread_id") or "")
+        out.append({"type": "engine_info", "engine": "codex", "model": run.model,
+                    "version": "", "tools": [], "mcp": []})
+        out.append({"type": "status", "message": "Codex is ready — reading the task"})
+    elif kind == "item.started" and itype in ("command_execution", "mcp_tool_call", "web_search"):
+        if itype == "command_execution":
+            name, args = "shell", {"command": item.get("command", "")}
+            detail = str(item.get("command") or "")[:120]
+        elif itype == "web_search":
+            name, args = "web_search", {"query": item.get("query", "")}
+            detail = str(item.get("query") or "")[:120]
+        else:
+            name = f"{item.get('server', 'mcp')}.{item.get('tool', 'tool')}"
+            args = item.get("arguments") or {}
+            detail = ""
+        run.steps += 1
+        run.last = f"{name}{' · ' + detail if detail else ''}"
+        cid = str(item.get("id") or "")
+        run.calls[cid] = (name, detail)
+        out.append({"type": "tool_start", "call_id": cid, "name": name, "args": args,
+                    "detail": detail, "step": run.steps, "pending_approval": False})
+    elif kind == "item.completed":
+        cid = str(item.get("id") or "")
+        if itype == "agent_message" and item.get("text"):
+            run.saw_text = True
+            out.append({"type": "text_delta", "text": str(item["text"])})
+        elif itype == "reasoning" and item.get("text"):
+            out.append({"type": "thinking_delta", "text": str(item["text"])})
+        elif itype in ("command_execution", "mcp_tool_call", "web_search"):
+            name, detail = run.calls.pop(cid, ("", ""))
+            ok = item.get("status") not in ("failed", "declined") and \
+                item.get("exit_code") in (None, 0)
+            output = item.get("aggregated_output") or item.get("result") or item.get("error") or ""
+            out.append({"type": "tool_end", "call_id": cid, "name": name, "detail": detail,
+                        "output": str(output)[:4000], "ok": ok})
+        elif itype == "file_change":
+            paths = ", ".join(str(c.get("path", "")) for c in (item.get("changes") or [])
+                              if isinstance(c, dict))[:200]
+            run.steps += 1
+            out.append({"type": "tool_start", "call_id": cid, "name": "edit", "args": {},
+                        "detail": paths, "step": run.steps, "pending_approval": False})
+            out.append({"type": "tool_end", "call_id": cid, "name": "edit", "detail": paths,
+                        "output": "", "ok": item.get("status") != "failed"})
+        elif itype == "error" and item.get("message"):
+            out.append({"type": "status", "message": str(item["message"])[:300]})
+    elif kind == "turn.completed":
+        usage = event.get("usage") or {}
+        if isinstance(usage, dict):
+            run.tokens_in += int(usage.get("input_tokens") or 0)
+            run.tokens_out += int(usage.get("output_tokens") or 0)
+        run.turns += 1
+    elif kind in ("turn.failed", "error"):
+        err = event.get("error") or {}
+        msg = (err.get("message") if isinstance(err, dict) else "") or event.get("message") or \
+            "Codex ended without finishing — run `codex login` once in a terminal to check it is signed in"
+        out.append({"type": "error", "message": str(msg)[:500]})
+        run.reported_error = True
+    return out
+
+
+TRANSLATORS = {"claude-code": translate, "gemini-cli": translate_gemini, "codex": translate_codex}
+
+
 # How big one line of the CLI's stream may be.
 #
 # `stream-json` puts one whole event on one line, and an event carries whole tool
@@ -1693,6 +2025,7 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     """
     env = env.sanitized()
     run = run or Run()
+    run.engine = env.engine
     Path(env.workspace).mkdir(parents=True, exist_ok=True)
 
     # Say what the silence is. An external CLI executor spends its first stretch
@@ -1737,10 +2070,12 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:
                 line = await asyncio.wait_for(proc.stdout.readline(), STARTUP_TIMEOUT)
         except asyncio.TimeoutError:
             await _reap(proc)
+            spec = EXECUTORS_BY_ID.get(run.engine) or EXECUTORS_BY_ID["claude-code"]
             await emit({"type": "error",
-                        "message": (f"Claude Code produced no output within "
+                        "message": (f"{spec['title']} produced no output within "
                                     f"{int(STARTUP_TIMEOUT)}s and was stopped. It is "
-                                    f"usually waiting to sign in — run `claude` once in a "
+                                    f"usually waiting to sign in — run "
+                                    f"`{spec.get('signin_cmd') or 'claude'}` once in a "
                                     f"terminal — or it could not reach the network. "
                                     f"Nothing was billed.")})
             run.reported_error = True
@@ -1776,7 +2111,9 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:
             event = json.loads(text)
         except json.JSONDecodeError:
             continue          # the CLI also prints non-JSON chatter; it isn't ours
-        for out in translate(event, run):
+        if not isinstance(event, dict):
+            continue
+        for out in TRANSLATORS.get(run.engine, translate)(event, run):
             await emit(out)
 
     await proc.wait()

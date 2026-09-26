@@ -37,6 +37,7 @@ package manager's own error, and can never report success it did not achieve.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 
 from . import osdetect
@@ -325,6 +326,38 @@ CATALOG: dict[str, dict] = {
             "" if (shutil.which("git") and shutil.which("python3")) else
             "git and python3 are needed to build Hermes from source."),
     },
+    # Gemini CLI and Codex: both Apache-2.0 and both published on npm, so the command
+    # is npm's own — into THIS account's ~/.local (no sudo, no root-owned copy), which
+    # puts the binary in ~/.local/bin where the executor probe already looks. Node is
+    # never installed for you, the WhatsApp bridge's rule: it is a language runtime.
+    "gemini-cli": {
+        "packages": {}, "method": "script", "licence": "Apache-2.0",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Gemini CLI (engine)",
+        "unlocks": "Answer with Google's Gemini CLI instead of the built-in agent — in "
+                   "chat, from the prompt bar and on your phone. It signs in with your "
+                   "Google account (run `gemini` once); AgentOS never passes it a key.",
+        "argv": lambda: _npm_user_argv("@google/gemini-cli"),
+        "detect": lambda: _executor_installed("gemini-cli"),
+        "why_unavailable": lambda: (
+            "" if _npm() else
+            "Node.js (with npm) is not installed. AgentOS will not install a language "
+            "runtime for you — on Debian/Ubuntu: sudo apt install nodejs npm"),
+    },
+    "codex": {
+        "packages": {}, "method": "script", "licence": "Apache-2.0",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Codex CLI (engine)",
+        "unlocks": "Answer with OpenAI's Codex CLI instead of the built-in agent — in "
+                   "chat, from the prompt bar and on your phone. It signs in with your "
+                   "ChatGPT account (run `codex login` once); AgentOS never passes it a key.",
+        "argv": lambda: _npm_user_argv("@openai/codex"),
+        "detect": lambda: _executor_installed("codex"),
+        "why_unavailable": lambda: (
+            "" if _npm() else
+            "Node.js (with npm) is not installed. AgentOS will not install a language "
+            "runtime for you — on Debian/Ubuntu: sudo apt install nodejs npm"),
+    },
     "whatsapp-bridge": {
         "packages": {}, "method": "script", "licence": "MIT (Baileys)",
         "group": "optional", "for_session": False,
@@ -362,6 +395,21 @@ GROUPS = ("required", "recommended", "optional")
 def _executor_installed(eid: str) -> bool:
     from . import executors as execmod
     return bool(execmod.probe(eid).get("installed"))
+
+
+def _npm() -> str:
+    from .mcp_client import _extended_path
+    return shutil.which("npm", path=_extended_path()) or ""
+
+
+def _npm_user_argv(package: str) -> list:
+    """`npm install --global --prefix ~/.local <package>` — the command the executor
+    catalogue shows (`install_cmd`), as argv. [] without npm, which is how the
+    consent screen learns to say "needs Node.js" instead of offering a dead button."""
+    npm = _npm()
+    if not npm:
+        return []
+    return [npm, "install", "--global", "--prefix", os.path.expanduser("~/.local"), package]
 
 
 def _claude_code_argv() -> list:

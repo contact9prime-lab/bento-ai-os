@@ -642,6 +642,7 @@ escritorio 2", "cada mañana informa las tendencias de redes sociales a mi Teleg
 ## Modelos y proveedores
 
 - **Ollama** (local) — autodetectado; nada sale de tu máquina.
+- **Claude Code**, **Gemini CLI** o **Codex** — un agente de IA ya instalado aquí puede ser el cerebro, con la sesión iniciada en tu propia cuenta; AgentOS nunca le pasa una clave.
 - **Anthropic**, **OpenAI**, **OpenRouter**, o cualquier endpoint **compatible con OpenAI** (LM Studio, vLLM,
   Groq, …).
 - **Generación de imágenes** — modelos de imagen de Google Gemini u OpenAI cuando hay una clave configurada,

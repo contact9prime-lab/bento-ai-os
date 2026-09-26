@@ -218,7 +218,7 @@ async function loadConvs(){
   box.innerHTML='';
   // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
   // their own sections so app-scoped exchanges never drown the real chats
-  const groups=[['Desktop',c=>c.origin==='omni'],
+  const groups=[['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
@@ -494,9 +494,12 @@ function paintForwardChip(){
    text — calling that "Aria" is the kind of quiet mislabelling that makes a
    forwarding machine confusing, and the model is shown alongside so the answer
    to "what is this running on" is on screen rather than something you ask. */
+/* the agents a turn can be forwarded to (executors.DRIVEN) — kept in step by
+   tests/test_executors_more.py, since the label is the only place the page names them */
+var EXEC_TITLES={'claude-code':'Claude Code','gemini-cli':'Gemini CLI','codex':'Codex'};
 function engineLabel(engine,model){
-  const mark={'claude-code':'◈'}[engine]||'▲';
-  const name={'claude-code':'Claude Code'}[engine]||agentName();
+  const mark=EXEC_TITLES[engine]?'◈':'▲';
+  const name=EXEC_TITLES[engine]||agentName();
   const m=(model||'').trim();
   return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
 }

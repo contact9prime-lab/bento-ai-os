@@ -629,6 +629,7 @@ bento app                  # open as a chromeless desktop window any time
 ## 모델 & 제공자
 
 - **Ollama** (로컬) — 자동 발견됨; 아무것도 당신의 기계를 떠나지 않습니다.
+- **Claude Code**, **Gemini CLI** 또는 **Codex** — 여기에 이미 설치된 AI 에이전트가 두뇌가 될 수 있으며, 당신의 계정으로 로그인합니다; AgentOS는 키를 절대 넘기지 않습니다.
 - **Anthropic**, **OpenAI**, **OpenRouter**, 또는 모든 **OpenAI 호환** 엔드포인트(LM Studio, vLLM,
   Groq, …).
 - **이미지 생성** — 키가 설정되면 Google Gemini 또는 OpenAI 이미지 모델, 그렇지 않으면 무료 폴백.

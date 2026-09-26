@@ -486,6 +486,13 @@ def forward_cmd(engine: str | None):
         if not info.get("available"):
             print(info.get("reason", "Claude Code is not available"))
             return
+    elif want != "aria":
+        info = execmod.probe(want)
+        if not info.get("installed"):
+            print(info.get("why_not") or f"{want} is not installed")
+            if info.get("install_cmd"):
+                print(f"  install it: {info['install_cmd']}  ({info.get('licence', '')})")
+            return
     cfg["engine"] = want
     cfgmod.save_config(cfg)
     if want == "aria":
@@ -2515,7 +2522,7 @@ def _flow_cli(args):
     if act == "list":
         rows = store.list_flows()
         if not rows:
-            print("no flows yet — make one in Workflows → Flows, or with the API")
+            print("no flows yet — make one in Missions → Build, or with the API")
             return
         for f in rows:
             trigs = store.flow_triggers(f["name"])
@@ -2733,7 +2740,7 @@ def _flow_cli(args):
     if act == "hooks":
         hooks = store.flow_triggers(args.name, kind="webhook")
         if not hooks:
-            print(f"'{args.name}' has no webhook trigger — add one in Workflows → Flows")
+            print(f"'{args.name}' has no webhook trigger — add one in Missions → Build")
             return
         for t in hooks:
             url = flowsmod.hook_url(cfg, args.name, t)
@@ -3466,6 +3473,68 @@ def _avatar_cli(args):
               f"            glasses=yes|no  blush=yes|no")
 
 
+def _team_draft(args, cfg, store, colour):
+    """`bento team draft "<what it should do>"` — the agent editor's Draft it, in a
+    terminal: the machine's brain drafts the name, the persona, the tools, the look and
+    any new skills it would bring; ALL of it is printed in full before anything is
+    written, and saving is a question (or `--yes`). The same save as the editor's
+    (flows.save_specialist), so a skill of that name that already exists is kept."""
+    import asyncio as _asyncio
+    from . import avatars as av
+    from . import flows as flowsmod
+    from .tools import TOOL_SCHEMAS
+    desc = " ".join(x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x).strip()
+    if not desc:
+        print('say what it should do:  bento team draft "someone who files the invoices that arrive"')
+        return 2
+    tools = [{"name": t["name"], "description": t.get("description", "")} for t in TOOL_SCHEMAS]
+    print("drafting — the brain designs it, this can take a minute…")
+    d = _asyncio.run(flowsmod.compose_subagent(cfg, store, desc, tools))
+    if d.get("error"):
+        print(d["error"])
+        return 1
+    b = (lambda t: f"\033[1m{t}\033[0m") if colour else (lambda t: t)
+    rec = av.clean({**av.recipe_for(store, d["name"]), **(d.get("look") or {})})
+    print(f"\n{b('@' + d['name'])}  ·  drafted by {d.get('model_used') or 'the brain'}\n")
+    if colour:
+        for line in av.terminal(rec, crop="face"):
+            print("  " + line)
+    print(f"{b('Look')}     {av.describe(rec)}" + (f" — {d['look_note']}" if d.get("look_note") else ""))
+    print(f"{b('Persona')}")
+    for para in (d.get("soul") or "").splitlines() or [""]:
+        print("  " + para)
+    print(f"{b('Tools')}    {', '.join(d.get('tools') or []) or 'the safe read-only set'}")
+    print(f"{b('Skills')}   {', '.join(d.get('skills') or []) or 'none installed that fit'}")
+    for sk in d.get("new_skills") or []:
+        print(f"\n{b('New skill')} {sk['name']} — {sk['description']}")
+        for line in sk["content"].splitlines():
+            print("  │ " + line)
+    print(f"{b('Limits')}   {d['autonomy_cap']} · {d['max_steps']} steps · {d['max_seconds']}s")
+    for w in d.get("warnings") or []:
+        print(f"  note: {w}")
+    if store.get_subagent(d["name"]):
+        print(f"\n@{d['name']} already exists — nothing saved. Edit it in Settings → Agents, "
+              f"or draft again with different words.")
+        return 1
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            print("\nnot saved — run again with --yes to save it as shown")
+            return 0
+        ans = input(f"\nSave @{d['name']}" + (f" and create {len(d['new_skills'])} new skill(s)"
+                    if d.get("new_skills") else "") + "? [y/N] ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("not saved")
+            return 0
+    rep = flowsmod.save_specialist(store, cfg, {k: v for k, v in d.items() if k in (
+        "name", "soul", "tools", "skills", "autonomy_cap", "max_steps", "max_seconds", "new_skills", "look")})
+    print(f"saved @{d['name']}" + (f" · created {', '.join(rep['skills_created'])}" if rep["skills_created"] else "")
+          + (f" · kept your existing {', '.join(rep['skills_kept'])}" if rep["skills_kept"] else ""))
+    if rep["look_error"]:
+        print(rep["look_error"])
+    print(f"address it in chat with @{d['name']} — change anything in Settings → Agents")
+    return 0
+
+
 def _team_cli(args):
     """`bento team` — who answers on which AI provider, in a terminal.
 
@@ -3486,6 +3555,8 @@ def _team_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
     act = args.action
+    if act == "draft":
+        return _team_draft(args, cfg, store, colour)
     if act == "limits":
         pairs = [x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x]
         if pairs:
@@ -5391,7 +5462,7 @@ def main():
     p_eval.add_argument("--json", action="store_true", help="print the raw report")
 
     p_fwd = verb("forward", help="make this machine answer with another agent (or show what it does now)")
-    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
+    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "gemini-cli", "codex", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
     p_prof = verb("profile", help="footprint profile — lite keeps nothing "
@@ -5404,8 +5475,8 @@ def main():
     # No `choices=`: the executors are a probe of this machine, and a hardcoded
     # list here is how `bento forward` ended up unable to name Hermes or OpenClaw.
     p_brain.add_argument("executor", nargs="?", help="ollama | openai | anthropic | google | "
-                                                    "openrouter | custom | claude-code | hermes | "
-                                                    "openclaw | aria")
+                                                    "openrouter | custom | claude-code | gemini-cli | "
+                                                    "codex | aria")
     p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default")
 
     p_del = verb("delegate", help="hand a task to an executor (Claude Code) and stream it here")
@@ -5794,13 +5865,16 @@ def main():
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
-                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits"])
+                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits",
+                                 "draft"])
     p_team.add_argument("name", nargs="?", default="",
-                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker")
+                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker "
+                             "· draft: what the new agent should do, in words")
     p_team.add_argument("model", nargs="?", default="",
                         help="set: provider/model ('' = this machine's brain) · allow/block/ask: the one asked")
     p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
+    p_team.add_argument("--yes", action="store_true", help="draft: save what was drafted without asking")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])

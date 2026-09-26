@@ -951,11 +951,8 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     sends to Telegram" are the same question from two starting points, so they take one path.
     """
     from . import knowledge as _k
-    from . import providers as _p
+    from . import executors as _ex
 
-    model = model or cfg.get("default_model") or ""
-    if not model:
-        return {"error": "no model configured — set one in the Models app first"}
     if current:
         keep = ("name", "description", "mission", "roster", "permissions", "sinks",
                 "autonomy_cap", "max_delegations", "max_steps", "max_seconds")
@@ -980,13 +977,12 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
                            for p in parts) or "  (nothing in the catalogue matches this request)"
     prompt = COMPOSE_PROMPT.format(intent=intent, agents=agents,
                                    tools=tool_lines, skills=skills, parts=part_lines)
-    try:
-        raw = await _p.complete(cfg, model, prompt,
-                                system="You are a systems designer. Answer with JSON only.")
-    except Exception as e:
-        # The model is a capability like any other: when it is missing or misconfigured,
-        # say which one and what went wrong, rather than letting a 500 stand in for it.
-        return {"error": f"{model} could not answer: {e}"}
+    # the MACHINE's brain (executors.ask_brain) — Claude Code when that is what answers
+    # here; a named `model` still wins. When nothing answers, the sentence says why.
+    raw, model, why = await _ex.ask_brain(cfg, "You are a systems designer. Answer with JSON only.",
+                                          prompt, model=model)
+    if why:
+        return {"error": why}
     draft = _k._parse_json(raw)
     if not draft:
         return {"error": f"{model} did not return a usable design — try again, or write it "
@@ -1077,6 +1073,9 @@ Tools it can be given (use these names EXACTLY; anything not listed does not exi
 
 Installed skills: {skills}
 
+How it can LOOK — a small pixel character, chosen ONLY from these values:
+{look}
+
 RULES
 - The `soul` is written in the second person and says what it does AND how it behaves when
   unsure: "You research. Gather real information with your tools, verify it, and return a
@@ -1085,12 +1084,76 @@ RULES
   (use_skill, recall, kg_query, remember) is always included — never list those.
 - `max_steps` 4-20, `max_seconds` 120-600. A validator needs fewer than a researcher.
 - `autonomy_cap` is paranoid | balanced | full. Prefer balanced.
+- `skills` names INSTALLED skills only. When the job needs know-how none of them gives
+  (a house style, a checklist, the steps of a procedure), propose it in `new_skills`: at
+  most two, each a name, one-line description and the instructions themselves in
+  markdown (under 1500 characters). Propose none when the installed ones cover it.
+- `look` picks a face that fits the job from the values above; leave out what does not
+  matter. {look_rule}
 
 Reply with JSON only:
 {{"name": "short-kebab-name", "soul": "...", "tools": ["..."], "skills": [],
+  "new_skills": [{{"name": "kebab-name", "description": "...", "content": "## When ...\\n1. ..."}}],
+  "look": {{"hair": "...", "style": "...", "shirt": "...", "glasses": false, "note": "..."}},
   "autonomy_cap": "balanced", "max_steps": 12, "max_seconds": 300,
   "notes": "one sentence on what you assumed"}}
 """
+
+_SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{1,47}$")
+MAX_NEW_SKILLS = 2
+
+
+def _look_lines() -> str:
+    from . import avatars as _av
+    pal = _av.palette()
+    return "\n".join((
+        f"- skin: {', '.join(x['name'] for x in pal['skin'])}",
+        f"- hair (colour): {', '.join(x['name'] for x in pal['hair'])}",
+        f"- style (hair): {', '.join(pal['style'])}",
+        f"- shirt (the colour it wears): {', '.join(x['name'] for x in pal['shirt'])}",
+        f"- outfit: {', '.join(o for o in pal['outfit'] if o != 'blazer')} (the blazer is the lead's)",
+        f"- pants: {', '.join(x['name'] for x in pal['pants'])}",
+        "- glasses, blush: true or false"))
+
+
+def read_new_skills(raw, installed: set) -> tuple[list, list, list]:
+    """A model's `new_skills` -> (proposals, already_installed, warnings).
+
+    A proposal is only ever shown, never written: the editor lists it with its full
+    text and a tick, and the person's Save creates it. A name that is already
+    installed is ATTACHED, never proposed — `save_skill` would overwrite the one the
+    person has, which is the silent loss this refuses."""
+    props, attach, warn = [], [], []
+    for sk in (raw if isinstance(raw, list) else [])[:MAX_NEW_SKILLS * 2]:
+        if not isinstance(sk, dict):
+            continue
+        name = re.sub(r"[^a-z0-9-]+", "-", str(sk.get("name") or "").lower()).strip("-")[:48]
+        content = str(sk.get("content") or "").strip()[:4000]
+        if not _SKILL_NAME.match(name) or len(content) < 20:
+            warn.append(f"a proposed skill was unusable and left out ({name or 'no name'})")
+            continue
+        if name in installed:
+            attach.append(name)
+            continue
+        if len(props) >= MAX_NEW_SKILLS or any(p["name"] == name for p in props):
+            continue
+        props.append({"name": name, "content": content,
+                      "description": " ".join(str(sk.get("description") or "").split())[:200]})
+    return props, attach, warn
+
+
+def read_look(raw) -> tuple[dict, list, str]:
+    """A model's `look` -> (patch, dropped, note), through the ONE designer's validator
+    (avatars.read_design), so a drafted face is the closed set like any other. The
+    blazer is the lead's, and a specialist never takes it."""
+    from . import avatars as _av
+    if not isinstance(raw, dict) or not raw:
+        return {}, [], ""
+    patch, dropped, note = _av.read_design(json.dumps(raw))
+    if patch.get("outfit") == "blazer":
+        patch.pop("outfit")
+        dropped.append("outfit=blazer (the lead's)")
+    return patch, dropped, note
 
 
 async def compose_subagent(cfg: dict, store, request: str, tools: list,
@@ -1102,11 +1165,8 @@ async def compose_subagent(cfg: dict, store, request: str, tools: list,
     two different starting points.
     """
     from . import knowledge as _k
-    from . import providers as _p
+    from . import executors as _ex
 
-    model = model or cfg.get("default_model") or ""
-    if not model:
-        return {"error": "no model configured — set one in the Models app first"}
     if current:
         intent = ("REVISE this existing subagent. Keep its name. Change only what the request "
                   "asks for, and return the WHOLE definition:\n"
@@ -1118,22 +1178,28 @@ async def compose_subagent(cfg: dict, store, request: str, tools: list,
         intent = f"THE USER WANTS:\n{(request or '').strip()[:1000]}"
     tool_lines = "\n".join(f"  - {t['name']}: {' '.join((t.get('description') or '').split())[:90]}"
                            for t in (tools or [])[:120]) or "  (none)"
-    skills = ", ".join(s["name"] for s in store.list_skills()) or "(none installed)"
-    try:
-        raw = await _p.complete(cfg, model,
-                                SUBAGENT_PROMPT.format(intent=intent, tools=tool_lines,
-                                                       skills=skills),
-                                system="You are a systems designer. Answer with JSON only.")
-    except Exception as e:
-        return {"error": f"{model} could not answer: {e}"}
+    installed = {s["name"] for s in store.list_skills()}
+    skills = ", ".join(sorted(installed)) or "(none installed)"
+    look_rule = ("This is a REVISION: include `look` only if the change asks about how it "
+                 "looks." if current else "Always include it.")
+    raw, model, why = await _ex.ask_brain(
+        cfg, "You are a systems designer. Answer with JSON only.",
+        SUBAGENT_PROMPT.format(intent=intent, tools=tool_lines, skills=skills,
+                               look=_look_lines(), look_rule=look_rule), model=model)
+    if why:
+        return {"error": why}
     d = _k._parse_json(raw)
     if not d:
         return {"error": f"{model} did not return a usable design — try again, or write it by hand"}
     known = {t["name"] for t in (tools or [])}
     dropped = [t for t in (d.get("tools") or []) if t not in known]
     d["tools"] = [t for t in (d.get("tools") or []) if t in known]
+    new, attach, skill_warn = read_new_skills(d.get("new_skills"), installed)
     d["skills"] = [s["name"] for s in store.list_skills()
-                   if s["name"] in set(d.get("skills") or [])]
+                   if s["name"] in set(d.get("skills") or []) | set(attach)]
+    d["new_skills"] = new
+    look, look_dropped, look_note = read_look(d.get("look"))
+    d["look"], d["look_note"] = look, look_note
     if current:
         d["name"] = current.get("name") or d.get("name") or ""
     if not _NAME_RE.match((d.get("name") or "").strip()):
@@ -1144,10 +1210,54 @@ async def compose_subagent(cfg: dict, store, request: str, tools: list,
     d["max_steps"] = max(2, min(int(d.get("max_steps") or 12), 40))
     d["max_seconds"] = max(30, min(int(d.get("max_seconds") or 300), 1800))
     d["warnings"] = ([f"dropped tools this machine does not have: {', '.join(dropped)}"]
-                     if dropped else [])
+                     if dropped else []) + skill_warn + (
+        [f"left out of the look: {', '.join(look_dropped)}"] if look_dropped else [])
     d["model_used"] = model
     d["request"] = (request or "").strip()[:1000]
     return d
+
+
+def save_specialist(store, cfg: dict, d: dict) -> dict:
+    """Save an agent from the editor (or `bento team add`): the definition, the new
+    skills the person kept, and the look — one computation for every door.
+
+    `new_skills` are the drafted proposals the person TICKED, as edited on screen. Each
+    is created only if no skill of that name exists: `save_skill` updates by name, so
+    writing through it would replace a skill somebody already relies on. A collision is
+    attached instead and said. `look` is a patch of the closed set, applied after the
+    agent exists (a face belongs to somebody on this machine)."""
+    from . import avatars as _av
+    name = str(d.get("name") or "").strip()
+    if not _NAME_RE.match(name):
+        raise ValueError("a name is one word: letters, digits, - or _")
+    created, kept = [], []
+    skills = [s for s in (d.get("skills") or []) if isinstance(s, str)]
+    for sk in (d.get("new_skills") or [])[:MAX_NEW_SKILLS]:
+        if not isinstance(sk, dict):
+            continue
+        nm = re.sub(r"[^a-z0-9-]+", "-", str(sk.get("name") or "").lower()).strip("-")[:48]
+        content = str(sk.get("content") or "").strip()[:8000]
+        if not _SKILL_NAME.match(nm) or not content:
+            continue
+        if store.get_skill(nm):
+            kept.append(nm)
+        else:
+            store.save_skill(nm, " ".join(str(sk.get("description") or "").split())[:200],
+                             content, source=f"drafted for {name}")
+            created.append(nm)
+        if nm not in skills:
+            skills.append(nm)
+    defn = {k: v for k, v in d.items() if k not in ("new_skills", "look")}
+    defn["skills"] = skills
+    sid = store.save_subagent(defn)
+    look, look_error = None, ""
+    if d.get("look"):
+        try:
+            look = _av.update(store, cfg, name, d["look"])
+        except (KeyError, ValueError) as e:
+            look_error = f"its look was not applied: {e}"
+    return {"id": sid, "skills_created": created, "skills_kept": kept,
+            "look": look, "look_error": look_error}
 
 
 def seed_builtin(store) -> bool:
@@ -1155,7 +1265,7 @@ def seed_builtin(store) -> bool:
 
     Seeded WITHOUT triggers on purpose: a fresh install that starts doing things
     unattended at 08:00 because it was installed is a surprise, not a feature. The
-    trigger is one click away in Workflows → Flows, made deliberately.
+    trigger is one click away in Missions → Build, made deliberately.
     """
     if store.list_flows():
         return False
@@ -1178,7 +1288,7 @@ def seed_builtin(store) -> bool:
     })
     try:
         store.log("system", "flows: seeded the built-in 'daily-briefing' flow (no trigger — "
-                            "add one in Workflows → Flows to make it run by itself)")
+                            "add one in Missions → Build to make it run by itself)")
     except Exception:
         pass
     return True

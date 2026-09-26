@@ -34,7 +34,8 @@ lists only the models that executor can actually run:
 | Anthropic / OpenAI / Google / OpenRouter | cloud APIs, billed per token | pinned + whatever the provider lists |
 | llama.cpp / LM Studio / vLLM | the `custom` OpenAI-compatible base URL | whatever you pinned |
 | Claude Code | Anthropic's CLI answers the turn, on your subscription | `opus`, `sonnet`, `haiku`, or its own default |
-| Hermes / OpenClaw | another installed agent answers the turn | its own configuration |
+| Gemini CLI / Codex | another installed agent answers the turn | its own configuration |
+| Hermes / OpenClaw | detected only: AgentOS cannot drive them yet, and a turn to one is refused in a sentence | — |
 
 Picking a provider writes `engine: "aria"` and `default_model`; picking an agent
 writes `engine` and that executor's own `model`. Each remembers its own model, so

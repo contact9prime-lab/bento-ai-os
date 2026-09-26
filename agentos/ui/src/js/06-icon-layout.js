@@ -261,7 +261,10 @@ function dockCtxMenu(e,id,a){
   if(a.multi||!open.length)items.push({label:open.length?'New window':'Open',fn:()=>openAppNew(id)});
   if(open.length)items.push({label:'Close '+(open.length>1?'all windows':'window'),fn:()=>open.forEach(closeWin)});
   items.push(null,{label:'Remove from Dock',fn:()=>{
-    DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('removed from dock')}});
+    DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();
+    // say the way back: a removed icon stays removed, and "where did the Office go?" was the report
+    toast('removed '+(a.title||id)+' from the dock — the Launcher still has it; right-click it there → Pin to dock',
+      {label:'Undo',go:()=>pinToDock(id)})}});
   showCtxItems(e,items);
 }
 /* ---- dock magnification: continuous neighbor falloff, macOS-style ---- */

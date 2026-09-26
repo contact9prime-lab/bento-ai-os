@@ -645,6 +645,7 @@ bureau 2 », « chaque matin, rapporte les tendances des réseaux sociaux à mon
 ## Modèles et fournisseurs
 
 - **Ollama** (local) — auto-découvert ; rien ne quitte votre machine.
+- **Claude Code**, **Gemini CLI** ou **Codex** — un agent IA déjà installé ici peut être le cerveau, connecté avec votre propre compte ; AgentOS ne lui transmet jamais de clé.
 - **Anthropic**, **OpenAI**, **OpenRouter**, ou tout point de terminaison **compatible OpenAI** (LM Studio, vLLM,
   Groq, …).
 - **Génération d'images** — modèles d'image Google Gemini ou OpenAI lorsqu'une clé est définie, repli gratuit sinon.

@@ -9,6 +9,25 @@ don't call tools reliably. Switch to a **tool-capable model** — any `qwen` mod
 in the chat window's model dropdown, and retry. App builds automatically retry with a tool-capable
 model when one is available.
 
+### "Approval needed", and I cannot find the card
+
+Press **Review** on the toast, or tap the "waiting for you to approve …" line. Either one shows
+the card, floating at the top right if its own place is hidden. See
+[team.md](team.md#an-approval-you-can-always-reach).
+
+### An app is missing from the dock (the Office, say)
+
+It was removed from the dock, not uninstalled. Open the Launcher, find it (or type its name into
+the prompt bar), then right-click it → **Pin to dock**. The Office also has a door on the home
+screen, *Your office*.
+
+### Gemini CLI or Codex does not answer
+
+Run it once in a terminal to sign in: `gemini`, or `codex login`. A turn that waits three minutes
+with no output is stopped with that same sentence. If it is not installed, **Settings → AI
+providers** offers the npm command and shows its licence. It needs Node.js, which AgentOS does
+not install for you.
+
 ### An app build returns nothing
 
 Same cause. Pick a tool-capable model. You can also use the **Store → Apps** tab, whose curated

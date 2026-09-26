@@ -2122,7 +2122,7 @@ class Toolbox(usersmod.Scoped):
                 # Never enabled from a tool. A flow's definition is a set of standing
                 # permissions, so enabling one is granting them — and an agent that could
                 # do that could grant itself anything by writing a flow that says so.
-                # The user enables it in Workflows → Flows, having read what it grants.
+                # The user enables it in Missions → Build, having read what it grants.
                 "enabled": 0})
         except ValueError as e:
             return f"[error] {e}"
@@ -2134,7 +2134,7 @@ class Toolbox(usersmod.Scoped):
         lines.append(f"enabling it would grant {len(would)} permission(s): "
                      + ", ".join(f"{'deny ' if g['effect'] == 'deny' else ''}{g['resource']}"
                                  for g in would[:8]) + (" …" if len(would) > 8 else ""))
-        lines.append("Tell the user to open Workflows → Flows to read it and press Enable — "
+        lines.append("Tell the user to open Missions → Build to read it and press Enable — "
                      "you cannot enable it yourself, and a test run works before then.")
         if flowsmod.linked_members(flow) and getattr(self, "fabric", None):
             with contextlib.suppress(Exception):
@@ -4259,7 +4259,10 @@ TOOL_SCHEMAS = [
                        "'whenever X happens, have someone…'. Saving the same name again edits it. "
                        "The flow is ALWAYS created disabled and you cannot enable it: its definition is a set "
                        "of standing permissions, so enabling it is the user's decision. Say what it would "
-                       "grant and point them at Workflows → Flows.",
+                       "grant and point them at Missions → Build, where they turn it on. Anything that "
+                       "should keep happening on its own — watch a folder, every morning, when mail "
+                       "arrives — belongs HERE, never in a cron job, launchd agent or background script "
+                       "this OS cannot see or stop.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -4268,7 +4271,7 @@ TOOL_SCHEMAS = [
                 "roster": {"type": "array", "items": {"type": "object"}, "description": "[{\"subagent\":\"researcher\",\"why\":\"what it is for here\"}] — the ONLY agents it may call. Must not be empty."},
                 "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\",\"talk\":false}. talk:true lets its specialists consult each other. Grant the fewest that let the mission succeed."},
                 "description": {"type": "string"},
-                "triggers": {"type": "array", "items": {"type": "object"}, "description": "[{\"kind\":\"cron\",\"config\":{\"type\":\"daily\",\"at\":\"08:00\"}}] · message/webhook/os_event also. Only if the user asked for one."},
+                "triggers": {"type": "array", "items": {"type": "object"}, "description": "[{\"kind\":\"cron\",\"config\":{\"type\":\"daily\",\"at\":\"08:00\"}}] · a folder: {\"kind\":\"os_event\",\"config\":{\"event\":\"file_change\",\"path\":\"~/Downloads\"}} · message/webhook also. Only if the user asked for one."},
                 "sinks": {"type": "array", "items": {"type": "object"}, "description": "Where the answer goes: [{\"kind\":\"origin\"}] (default, answers where it was triggered), telegram, gui, notify, report."},
                 "new_agents": {"type": "array", "items": {"type": "object"}, "description": "Specialists to create with it, when no existing subagent fits: [{\"name\":…,\"soul\":…,\"tools\":[…]}]. An existing name is never overwritten."},
             },

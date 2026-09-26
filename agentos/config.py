@@ -13,7 +13,7 @@ SOUL_PATH = AGENTOS_HOME / "soul.md"
 # Which agents may answer. Named here rather than imported from executors.py,
 # because that module imports this one and the reverse would be a cycle; a test
 # asserts the two lists stay equal, which is the only thing that could drift.
-ENGINE_NAMES = ("aria", "claude-code", "hermes", "openclaw")
+ENGINE_NAMES = ("aria", "claude-code", "gemini-cli", "codex", "hermes", "openclaw")
 
 DEFAULT_SOUL = """# Soul of this AgentOS
 

@@ -636,6 +636,7 @@ Peça em linguagem simples: *"adicione o canal MCP do github", "construa um rast
 ## Modelos e provedores
 
 - **Ollama** (local) — autodescoberto; nada sai da sua máquina.
+- **Claude Code**, **Gemini CLI** ou **Codex** — um agente de IA já instalado aqui pode ser o cérebro, conectado com a sua própria conta; o AgentOS nunca lhe passa uma chave.
 - **Anthropic**, **OpenAI**, **OpenRouter**, ou qualquer endpoint **compatível com OpenAI** (LM Studio, vLLM,
   Groq, …).
 - **Geração de imagens** — modelos de imagem do Google Gemini ou da OpenAI quando uma chave está definida, fallback

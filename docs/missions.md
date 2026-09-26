@@ -77,9 +77,36 @@ where every step passes the permission gate. Two ways do:
   the hands are this OS's. Nothing to configure: the Missions app says
   "Missions run on Claude Code" when it applies.
 
-An executor that cannot take this OS's tools over MCP (Hermes, OpenClaw today)
-can answer chats but not run a mission, and the Missions app, the wizard and
+An executor that cannot take this OS's tools over MCP (Gemini CLI, Codex, Hermes and
+OpenClaw today) can answer chats but not run a mission, and the Missions app, the wizard and
 `bento job list` say so before the Run button, with the fix.
+
+## Describe your own
+
+![Missions → Run: "Watch my Downloads folder" typed into Describe your own, and the
+drafted mission below it — off until you turn it on, starting when ~/Downloads changes,
+with the five things it would be allowed to do in plain words and Turn it on / Open in
+Build](screenshots/missions-describe-your-own.png)
+
+The Run tab has a box for a mission no recipe covers. Say what it should do in a
+sentence and press **Draft it**. The machine's brain designs it (Claude Code, Gemini CLI,
+Codex or a provider model — whichever answers your chats), and the draft lands in your
+list **switched off**. The card says:
+
+- what it will do, in its own words;
+- when it starts (*when ~/Downloads changes*, *every day at 08:00*) and who is on the team;
+- everything turning it on would allow, in plain words: *researcher may read
+  ~/Downloads*, *it may hand work to researcher*.
+
+**Turn it on** grants exactly that list. **Open in Build** takes you to the editor to
+change it first. ✕ throws the card away; the draft stays in Build, off, until you delete
+it. Nothing is granted until you turn it on, so drafting a mission is safe to try.
+
+The same happens when you ask for standing work in chat. "Watch my Downloads folder" makes
+a mission, even when your brain is Claude Code. Claude Code is told to use `create_flow` and
+never to set it up itself as a cron job or launchd agent, which this OS could not see or
+stop. Gemini CLI and Codex cannot create one from a chat, so they say so and send you to
+**Describe your own**.
 
 ## Schedules
 
@@ -116,7 +143,8 @@ never run must not look armed. A mission that would only *use* an account
 A mission is a flow with a recipe behind it, and the *Build* tab of the Missions app
 is the editor for flows: the flows themselves, the specialist agents on their rosters,
 and every run. It is where a mission a recipe made is changed, and where a flow is
-written from scratch — by hand, or drafted from a sentence. A draft names the tools
+written from scratch — by hand, or drafted from a sentence. Drafting works on whatever
+brain the machine runs on, including Claude Code, Gemini CLI and Codex. A draft names the tools
 and agents it would use and, when the request's own words match a first-party MCP
 server in the catalogue, offers it as a part with a Connect button. Offered, never
 granted: the draft's permissions never gain a server you did not add yourself.

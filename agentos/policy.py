@@ -1244,7 +1244,7 @@ class PDP(usersmod.Scoped):
                                 rule="roster-ungranted", grant_offer=offer)
             return Decision("deny",
                             f"'{principal.id}' may only delegate to the agents on its roster — "
-                            f"add one in Workflows → Flows and save, which writes the grant",
+                            f"add one in Missions → Build and save, which writes the grant",
                             rule="roster")
         if action == "skill.use" and principal.kind in ("subagent", "flow"):
             # An allow-list cannot be expressed as grants: deny is evaluated first and

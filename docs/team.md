@@ -24,6 +24,8 @@ does the reading, and the expensive one gets the judgement calls.
   billed.
 - **From a terminal**, `bento team` lists everyone, `bento team set writer openai/gpt-4o` pins
   one, and `bento team own on|off` is the switch below. It works with the server down.
+  `bento team draft "…"` drafts a new specialist, with its persona, look and skills, and asks
+  before saving it (see [agents.md](agents.md#making-an-agent)).
 
 ![Settings → Agents → Working together: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
 
@@ -81,6 +83,23 @@ What you see:
   Typing the names yourself is your consent, the same as addressing one agent directly.
 - **It is bounded.** At most four agents, three rounds and about 120 words a turn. A round in
   which everybody passes ends the huddle early.
+
+### An approval you can always reach
+
+![A hand-over to the toolsmith waiting for approval: the card floats top right, above the other
+windows, and the toast "approval needed — delegate" has a Review button](screenshots/approval-reachable.png)
+
+A hand-over, a huddle or a risky step below full autonomy waits for you. The card is put where
+the turn is: in Chat, or in the prompt bar's answer card. When that place is hidden (you opened
+a window, or you are in another chat) a copy of the card floats at the top right. Answering
+either one closes both, on every screen. You can also reach it these ways:
+
+- **Review** on the "approval needed" toast;
+- tapping the "waiting for you to approve …" line in Chat or an app's agent panel;
+- tapping the "replied" bubble.
+
+Before, a turn from the prompt bar put its card inside the bar's answer card, which hides when a
+window opens. The hand-over then waited for five minutes on a question nobody could see.
 
 ## Agents messaging each other: the matrix, and swarm
 
