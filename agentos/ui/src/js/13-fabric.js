@@ -54,11 +54,17 @@ const SAW_PRESETS={
   'Files & shell':['run_command','read_file','write_file','list_dir','system_info'],
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
+var SAW_MODELS=null;   // the Brain list from the last open: shown at once next time
 async function openSAW(name,opts){
-  const [tools,skills,models]=await Promise.all([
+  // Tools and skills are this machine's own lists and answer in milliseconds. The
+  // MODELS ask every provider, and the editor used to wait for them before drawing:
+  // "the agent UI takes a lot of time to open". It opens now, and the Brain list is
+  // filled in when it arrives (sawModelsArrive), without touching what was typed.
+  const modelsP=fetch('/api/models').then(r=>r.json()).catch(()=>null);
+  const [tools,skills]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
-    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]}))]);
+  const models={models:SAW_MODELS||[]};
   const ex=name?(window.__subagents||{})[name]:null;
   // onSaved/onCancel let another editor borrow this wizard: creating the specialist and
   // the flow that needs it is one thought, and making someone leave, create three
@@ -74,6 +80,19 @@ async function openSAW(name,opts){
           tools:[...((opts||{}).tools||[])],skills:[],autonomy_cap:'balanced',
           max_steps:12,max_seconds:300,builtin:0,target:'local'}};
   drawSAW();
+  const mine=SAW;
+  modelsP.then(m=>{if(m&&m.models){SAW_MODELS=m.models;if(SAW===mine)sawModelsArrive(m.models)}});
+}
+/* The Brain list arrived after the editor opened: refill the one select, keep the
+   choice, and leave every field somebody may be typing in alone. */
+function sawModelsArrive(list){
+  SAW.models=list;
+  const sel=document.getElementById('sw-model');if(!sel)return;
+  const keep=sel.value||SAW.d.model||'';
+  sel.innerHTML=['<option value="">this machine\'s brain (the default)</option>']
+    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}</option>`)).join('');
+  if(keep&&!list.some(m=>m.id===keep))sel.insertAdjacentHTML('beforeend',`<option value="${esc(keep)}">${esc(keep)} (not offered now)</option>`);
+  sel.value=keep;
 }
 function sawClose(){const cb=SAW&&SAW.onCancel;SAW=null;drawSAW();if(cb)cb()}
 /* Draft a specialist, or revise the one on screen. Same call either way — "make it also
@@ -158,7 +177,9 @@ function drawSAW(){
   let inner='';
   if(st===1){
     const opts=['<option value="">this machine\'s brain (the default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`))
+      // its own pin, even before the list has arrived — or Next would unpin it
+      .concat(d.model&&!SAW.models.some(m=>m.id===d.model)?[`<option value="${esc(d.model)}" selected>${esc(d.model)}</option>`]:[]).join('');
     inner=`<div class="saw-ai">
         <label for="sw-ai">✦ ${SAW.exists?'Ask for a change':'Describe it'}</label>
         <div class="sub">${SAW.exists

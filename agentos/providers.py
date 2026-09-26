@@ -18,7 +18,9 @@ chat() yields event dicts:
 Anthropic/OpenAI-compatible). Callers that don't pass options get provider defaults.
 """
 
+import asyncio
 import json
+import time
 import uuid
 from typing import AsyncIterator
 
@@ -527,26 +529,60 @@ async def available_models(cfg: dict) -> list[dict]:
     endpoint does not advertise (a private deployment, an alias) must not vanish
     from the picker just because a listing succeeded.
     """
-    out: list[dict] = []
     p = cfg["providers"]
-    if p["ollama"].get("enabled", True):
-        for m in await ollama_models(p["ollama"]["base_url"]):
-            out.append({"id": f"ollama/{m}", "provider": "ollama", "name": m})
-    for prov in ("anthropic", "openai", "openrouter", "google", "custom"):
-        conf = p.get(prov) or {}
-        if not (conf.get("enabled") and (conf.get("api_key") or prov == "custom")):
-            continue
-        names = list(conf.get("models") or [])
+    # Asked of every endpoint AT ONCE, and kept for a minute. It was one after another
+    # with nothing kept: Ollama (up to 5s) then each provider (up to 6s per URL
+    # spelling), on every open of the agent editor, the chat picker and Settings —
+    # "the agent UI takes a lot of time to open". Measured against four endpoints that
+    # each answer in 2s: 8.35s on every call before; 2.0s the first time, ~0 after.
+    # The key is a hash of the provider settings, so adding a key or a model is seen
+    # at once; no key is kept in memory by it.
+    key = _models_key(p)
+    hit = _MODELS_CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < MODELS_TTL:
+        return [dict(m) for m in hit[1]]
+    provs = [prov for prov in ("anthropic", "openai", "openrouter", "google", "custom")
+             if (p.get(prov) or {}).get("enabled")
+             and ((p.get(prov) or {}).get("api_key") or prov == "custom")]
+
+    async def _none():
+        return []
+    ollama_on = p["ollama"].get("enabled", True)
+    results = await asyncio.gather(
+        ollama_models(p["ollama"]["base_url"]) if ollama_on else _none(),
         # Anthropic has no OpenAI-style /models endpoint; the rest do.
-        if prov != "anthropic":
-            fetched = await openai_models(openai_base(prov, conf), conf.get("api_key", ""))
-            names += [m for m in fetched if m not in names]
+        *[(openai_models(openai_base(prov, p[prov]), p[prov].get("api_key", ""))
+           if prov != "anthropic" else _none()) for prov in provs],
+        return_exceptions=True)
+    out: list[dict] = []
+    for m in (results[0] if isinstance(results[0], list) else []):
+        out.append({"id": f"ollama/{m}", "provider": "ollama", "name": m})
+    for prov, fetched in zip(provs, results[1:]):
+        names = list(p[prov].get("models") or [])
+        names += [m for m in (fetched if isinstance(fetched, list) else []) if m not in names]
         for m in names:
             out.append({"id": f"{prov}/{m}", "provider": prov, "name": m})
     # A pinned model is somebody's explicit choice and is never filtered; a
     # FETCHED one is a whole catalogue, and catalogues contain embedders, image
     # and speech models that cannot answer a turn.
-    return [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p)]
+    out = [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p)]
+    _MODELS_CACHE.clear()          # one entry: the current settings
+    _MODELS_CACHE[key] = (time.monotonic(), [dict(m) for m in out])
+    return out
+
+
+MODELS_TTL = 60.0
+_MODELS_CACHE: dict = {}
+
+
+def forget_models() -> None:
+    """Drop the kept list — after pulling a model, or when somebody presses Refresh."""
+    _MODELS_CACHE.clear()
+
+
+def _models_key(providers_cfg: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(providers_cfg, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def _pinned(providers_cfg: dict) -> set:

@@ -2477,6 +2477,7 @@ async def api_models_pull(body: dict):
             state["store"].log("system", f"pulled model {name}")
         except Exception as e:
             await state["broadcast"]({"type": "model_pull", "name": name, "status": f"error: {e}", "done": True})
+        providers.forget_models()        # the kept list would not have it for a minute
         await state["broadcast"]({"type": "models"})
 
     asyncio.create_task(pull())
@@ -2493,6 +2494,7 @@ async def api_models_delete(name: str):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     state["store"].log("system", f"deleted model {name}")
+    providers.forget_models()
     await state["broadcast"]({"type": "models"})
     return {"ok": True}
 
@@ -2564,6 +2566,7 @@ async def api_brains(refresh: bool = False):
     cfg = state["cfg"]
     if refresh:                      # the panel's ↻ button: ask the machine again
         await asyncio.to_thread(execmod.forget_probes)
+        providers.forget_models()
     models = await providers.available_models(cfg)
     # `brains()` probes the roster, and a probe runs `--version` on real
     # binaries. Awaiting that on the event loop is how the update check froze

@@ -910,7 +910,11 @@ sense" when it was missing:
   is null for a fixed card), and `approvalFloat` puts a copy top right when it is not. The
   toast's Review, the "waiting for you" line and the bubble all call `approvalReveal`.
   `approval_resolved` closes every copy. Found as a hand-over that waited five minutes inside
-  the prompt bar's hidden answer card.
+  the prompt bar's hidden answer card. Then found again: "Open in Chat" CLOSES that card, and
+  the approval went with it, AFTER the one check had passed. So the check is a watch
+  (`approvalWatch`, only while something waits) and `approvalHome` re-homes: in Chat when
+  its conversation is open there, floated otherwise. `approvalShown` asks `elementFromPoint`,
+  because a card under a window is displayed and not seen.
 - **A turn that MAKES something offers the door to it.** `10a-handoff.js` maps
   the creating tools (`create_app`, `create_flow`, `enable_flow`,
   `save_automation`, `schedule_task`) to the app that owns the result, and the
@@ -1700,6 +1704,11 @@ is three standing costs paid by machines that were not using the feature.
   after every page, with the whole list — 219 pages of a file growing to 11.9 MB
   is ~1.3 GB written per sync, daily, to storage that wears out. Publish in
   memory every page; write every few seconds.
+- **A model list is a network call per provider.** `providers.available_models` asks them
+  all at once (`gather`) and keeps the answer for a minute, keyed on a hash of the provider
+  settings. One after another with nothing kept, it made every agent-editor open wait up to
+  5s + 12s per provider. `forget_models()` on Refresh, pull and delete. The editor opens
+  before it arrives anyway (`sawModelsArrive`).
 - **A probe is a process.** `executors.probe()` caches for five minutes and
   `forget_probes()` is called on the way out of any install. Uncached it cost
   1.2s per `/api/executors` call, and the chat header, Settings and the wizard
