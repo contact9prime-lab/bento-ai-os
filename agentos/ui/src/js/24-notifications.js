@@ -32,7 +32,7 @@ async function renderNotifList(){
       ${n.body?`<div class="np-body">${esc(n.body)}</div>`:''}
       <button class="np-x" onclick="dismissNotif(${n.id})">✕</button>
     </div>`).join('')}</div>`).join('')
-    ||'<p class="mut" style="padding:10px">nothing here — you\'re all caught up</p>');
+    ||`<div class="np-empty">${svgBell(22)}<b>You\u2019re all caught up</b><span>Notifications from your apps, missions and linked teams land here.</span></div>`);
   const dnd=$('#np-dnd');
   dnd.innerHTML=svgBell(13)+(d.dnd?'<span class="np-slash"></span>':'');
   dnd.title=d.dnd?'Do not disturb is on':'Do not disturb';

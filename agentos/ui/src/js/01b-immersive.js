@@ -1,4 +1,4 @@
-/* ================= immersive experience (beta) =================
+/* ================= immersive experience (the default look) =================
    (Numbered 01b: it has to have put `immersive` on <body> before 02-themes
    applies a theme, or the first paint is the standard look and then jumps.)
 
@@ -16,7 +16,13 @@
 /* Monday first, as the server counts them (flows.WEEKDAYS). Shared by the flow
    editor, the scheduler and the Missions catalogue. */
 var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+/* ON by default (2026-09): the immersive look is the desktop now, and the standard
+   one is what somebody switches to. Only an explicit '0' — this browser switched it
+   off — keeps it off; everything it restyles is still scoped to body.immersive, so
+   off stays byte-for-byte the standard desktop. A storage that throws (a private
+   window) gets the default. */
+function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
+var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
@@ -192,7 +198,7 @@ function setImmersive(on){
   if(typeof glassProbe==='function')glassProbe(true);       // one more blurred surface — can this machine still draw it?
   if(typeof suiSyncStruts==='function')suiSyncStruts();     // the dock's band changed height
   if(typeof refreshApp==='function'){refreshApp('settings');refreshApp('themes')}
-  if(typeof toast==='function')toast(on?'Immersive experience on (beta) — Settings → Appearance turns it off':'Back to the standard desktop');
+  if(typeof toast==='function')toast(on?'Immersive experience on — Settings → Appearance turns it off':'Back to the standard desktop');
 }
 /* The wallpaper drifts a few pixels against the pointer, so the desktop reads as
    a scene with depth instead of a picture. It is a transform on one composited

@@ -247,7 +247,7 @@ function handle(ev){
       }
       break;}
     case 'turn_start':{
-      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
+      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id,ev);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||''),
@@ -280,7 +280,7 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
-      if(typeof movementPulse==='function')movementPulse('tool',ev.name);   // a tick on the dial (Movement scene)
+      if(typeof movementPulse==='function')movementPulse('tool',ev.name,ev);   // a tick on the dial (Movement scene)
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -458,7 +458,9 @@ function handle(ev){
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
       fabricLiveRefresh(); break;
-    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
+    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
+      if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
+    case 'office': refreshApp('office'); break;   // the office's look or its seating changed
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{

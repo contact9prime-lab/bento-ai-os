@@ -33,7 +33,7 @@
 .sawsub{font-size:var(--fs-sm);color:var(--dim);margin:0 0 12px;line-height:1.5}
 .teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:8px;cursor:pointer;transition:border-color var(--d-fast) var(--ease-out);background:var(--bg3)}
 .teamcard:hover{border-color:var(--acc)}
-.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:var(--acc-grad)}
 .teamcard .n{font-size:var(--fs-base);font-weight:650;color:var(--txt)}
 .teamcard .meta{font-size:var(--fs-sm);color:var(--dim);margin-top:3px;line-height:1.5}
 .teamcard .meta b{color:var(--txt);font-weight:600}
@@ -41,7 +41,7 @@
 .badge{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:var(--r-full);font-size:var(--fs-2xs);color:var(--dim2);margin-left:6px;vertical-align:1px}
 
 #welcome{text-align:center;padding-top:7vh}
-#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
+#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:var(--acc-grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
 #welcome p{color:var(--dim);margin-bottom:26px;font-size:var(--fs-base)}
 .chips{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:600px;margin:0 auto}
 .chip{padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg2);color:var(--dim);font-size:var(--fs-sm);transition:border-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);text-align:left}
@@ -187,7 +187,7 @@
 #mic{position:absolute;right:46px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-base);display:flex;align-items:center;justify-content:center}
 #mic:hover{background:var(--bg4);color:var(--txt)}
 #mic.rec{background:var(--err);color:#fff;animation:pulse 1.2s infinite}
-#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
+#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
 #send:disabled{opacity:.35;cursor:default}
 #send.stop{background:var(--err);color:#fff;font-size:var(--fs-sm)}
 
@@ -232,7 +232,7 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 /* the door on a failed turn: what to do about it, next to what went wrong */
 .errmsg{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
-  background:var(--acc);color:#04211c;min-height:30px}
+  background:var(--acc);color:var(--on-acc);min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
 /* ---- attached images: one strip on every agent surface ---- */
 .att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}

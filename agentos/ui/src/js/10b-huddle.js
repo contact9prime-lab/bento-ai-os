@@ -57,7 +57,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
-  if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
+  scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
@@ -92,9 +92,11 @@ function agentMsgLive(ev,isCur){
   // another machine or account. Treating "no conversation" as "the open one" put a
   // stranger's question inside whatever chat the person was reading. The stage shows
   // who is being consulted and a toast says by whom; nothing is written into a thread.
+  // the Office walks the asker over to the one it asked, and back after the answer
+  scenePulse('msg',ev.from,ev);
   if(!ev.conversation_id){
     const who=ev.phase==='ask'?ev.to:ev.from;
-    if(typeof crewPulse==='function')crewPulse('say',who,{text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
+    if(typeof crewPulse==='function')crewPulse('say',who,{kind:'talk',text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
     if(ev.phase==='ask'&&typeof toast==='function')toast('↔ '+ev.from+' asked your '+ev.to);
     return;
   }

@@ -3,7 +3,7 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .row{display:flex;gap:10px}
 .row>*{flex:1}
 .pad input,.pad select,.pad textarea{width:100%}
-.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700}
+.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700}
 .provbox{border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:12px}
 .provbox .ptitle{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:var(--fs-md)}
 .provbox .ptitle input[type=checkbox]{width:auto}
@@ -85,7 +85,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .pbody{flex:1;overflow:auto;padding:14px;min-height:0}
 .pbody.flush{padding:0}
 .pbody input,.pbody select,.pbody textarea{width:100%}
-.pact{padding:8px 14px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
+.pact{padding:8px 14px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 .pact:disabled{opacity:.4}
 .pact.stop{background:var(--err);color:#fff}
 .pghost{padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm);white-space:nowrap}
@@ -165,8 +165,8 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-stage{width:min(560px,92vw);max-height:86vh;display:flex;flex-direction:column}
 .wiz-step{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-3);
   padding:var(--sp-6) var(--sp-5)}
-.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));
-  display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;
+.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:var(--acc-grad);
+  display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:var(--fs-3xl);font-weight:900;
   box-shadow:0 0 60px rgba(94,234,212,.28)}
 .wiz-mark-sm{width:46px;height:46px;font-size:var(--fs-xl);border-radius:var(--r-lg);align-self:center;flex:none}
 .wiz-title{font-size:var(--fs-2xl);font-weight:800;letter-spacing:.3px}
@@ -174,7 +174,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-q{font-size:var(--fs-md);font-weight:600;margin-top:var(--sp-3)}
 .wiz-input{width:min(320px,80vw);text-align:center;font-size:var(--fs-lg);padding:10px 14px;border-radius:var(--r-md)}
 .wiz-next{margin-top:var(--sp-4);padding:10px 26px;border-radius:var(--r-full);font-size:var(--fs-base);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;
+  background:var(--acc-grad);color:#06211d;
   transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
 .wiz-next:hover{transform:translateY(-1px);box-shadow:var(--el-2)}
 .wiz-back{font-size:var(--fs-sm);color:var(--dim)}
@@ -194,7 +194,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-convo{display:flex;flex-direction:column;gap:var(--sp-3);overflow-y:auto;max-height:62vh;padding:4px}
 .wiz-msg{display:flex;gap:10px;align-items:flex-start}
 .wiz-ava{width:34px;height:34px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-weight:800;font-size:var(--fs-base);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-weight:800;font-size:var(--fs-base);background:var(--acc-grad);color:#06211d}
 .wiz-say{background:var(--bg3);border:1px solid var(--line);border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);
   padding:10px 14px;font-size:var(--fs-base);line-height:1.55;min-height:20px;min-width:60px}
 .wiz-chips{display:flex;flex-wrap:wrap;gap:8px;padding-left:44px}
@@ -221,7 +221,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   border:1px solid var(--line);background:var(--bg2)}
 .auto-top{display:flex;align-items:center;gap:9px}
 .auto-ic{width:30px;height:30px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-lg);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+  font-size:var(--fs-lg);background:var(--acc-grad);color:var(--on-acc)}
 .auto-nm{font-size:var(--fs-base);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .auto-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
@@ -298,3 +298,19 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
    state, not a hover: it must be legible without pointing at it. */
 .item.on{border-color:color-mix(in srgb,var(--acc) 45%,var(--line));
   background:color-mix(in srgb,var(--acc) 8%,transparent)}
+
+/* ---- the Theme Builder (18-themes-personalize.js) ---- */
+.tb .tb-sec{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.tb .tb-sec>summary{cursor:pointer}
+.tb .tb-quick{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}
+.tb .tb-quick label{display:flex;flex-direction:column;gap:4px;margin:0;font-size:var(--fs-sm);color:var(--dim)}
+.tb input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);background:none;border-radius:var(--r-sm);cursor:pointer}
+.tb .tb-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 18px;padding-top:8px}
+.tb .tb-colors label{display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400}
+.tb .tb-colors span{flex:1}.tb .tb-colors code{font-size:10.5px;color:var(--dim2)}
+.tb .tb-slide{display:flex;align-items:center;gap:12px;margin:0;font-size:var(--fs-sm)}
+.tb .tb-slide input{flex:1;max-width:320px}
+.tb .tb-note{margin:0;font-size:var(--fs-xs)}
+body.dev-touch .tb input[type=color],body.dev-touch .tb select,body.dev-touch .tb button,body.dev-touch .tb .tb-sec>summary{min-height:var(--tap)}
+body.dev-touch .tb input[type=color]{min-width:var(--tap)}
+body.dev-touch .tb .seg button{min-height:var(--tap)}

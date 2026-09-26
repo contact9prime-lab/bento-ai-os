@@ -119,14 +119,47 @@ real time.
 
 Open **Settings → Appearance** and pick a theme; the entire interface recolors instantly:
 
-- **AgentOS** (teal, default)
+- **Nova** (modern, the default): deep ink, an electric indigo-to-violet accent carried
+  into buttons and highlights as a gradient, white text on the accent, the Geist typeface,
+  softer and larger corners, and its own wallpaper
+- **AgentOS** (teal)
 - **Ember** (dark — warm orange accent)
 - **Ember** (light)
 - **Dracula**
 - **Nord**
 - **Frost** (glass) · **Field** (warm light) · **Shell** (terminal) · **Aura** (voice-first)
 
-Your choice is remembered.
+Your choice is remembered. A browser that never chose gets Nova.
+
+![Nova, the default look: the greeting and the prompt bar over its indigo-violet wallpaper](screenshots/nova-desktop.png)
+
+![Chat in Nova: the violet send button, white text on the accent, the Geist typeface](screenshots/nova-chat.png)
+
+![Nova on a 390px phone: the greeting, the prompt bar and the dock](screenshots/nova-desktop-phone.png)
+
+### Build your own
+
+**Themes → Build a theme** builds the whole look and feel, and the desktop changes live
+while you edit:
+
+- **Colours**: pick light or dark, a background tint and two accents, and **Generate
+  palette** derives every surface, border and text colour from them. Fine-tune any single
+  colour after that, including the text that sits on the accent.
+- **The contrast is said out loud**: "Text on surfaces 15.9:1 ✓ · muted text 9.2:1 ✓ ·
+  text on the accent 7.7:1 ✓". A palette under 4.5:1 is marked, never silently saved.
+- **Shape** (corner roundness), **Depth** (flat / soft / normal / deep shadows), **Glass**
+  (solid / frosted / clear), **Type** (a font, or any web font, and the text size), and
+  **Wallpaper** (keep yours, one of the built-ins, or one made from your colours).
+- **Start from** any theme, **Save & apply**, or **Export** it as a file to share.
+
+![The Theme Builder: a green palette generated from three colours, the contrast line, and the corners, depth and glass controls](screenshots/theme-builder.png)
+
+![The Theme Builder on a 390px phone, every control at the tap floor](screenshots/theme-builder-phone.png)
+
+Every control writes a token the whole desktop already reads (`--r-md`, `--el-3`,
+`--glass-blur`, `--fs-base`, `--acc-grad`, `--on-acc`…). Asking your agent to "design a warm
+sunset theme" uses the same names (the `create_theme` tool). A terminal has no palette or
+glass, so the builder has no terminal face; asking in chat is the words-only way to build one.
 
 ### Design-language themes
 
@@ -174,9 +207,10 @@ transparency and you get four windows of text legible through each other.
 
 Flat themes cost nothing to begin with, so none of this applies to them.
 
-### Immersive experience (beta)
+### Immersive experience
 
-**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays a design
+**Settings → Appearance → Immersive experience** is on by default (switch it off there for
+the plain desktop; the choice is remembered per browser). It is a *look*, not a theme: it lays a design
 system, a scene and motion over whichever theme is on, so an immersive Dracula is still Dracula.
 It was built ground-up in five phases, each judged in a real browser and by the OS's own agent:
 
@@ -235,6 +269,26 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   would be telling you something untrue about what you have.
 
   ![The same scene on a machine with no specialists: the agent alone, under the line "No specialists yet — ask for one and they take a place here"](screenshots/crew-scene-empty.png)
+- **Toasts and panels.** A toast says what KIND of news it is before you read it: a green tick
+  for something done, amber for a warning, red for a failure, the accent for anything else — worked
+  out from the sentence itself, so every one of the few hundred toasts in the apps got it without an
+  edit. Each has a ✕, and a thin bar that runs down while it waits; hovering holds it, and a failure
+  stays on screen twice as long as a success, because it is the one you need to read. The newest is
+  on top and at most five are kept. The notification centre is a stack of cards with a hover ✕ (always
+  shown on a touch screen), an important one lit on its edge and a critical one washed red, and "all
+  caught up" when there is nothing. The control centre is a set of tiles with an icon each —
+  sound and brightness across, network and power side by side, notifications along the bottom — and a
+  tile whose control this machine cannot offer says so instead of standing empty. On a phone a toast is the full width of the screen.
+
+  ![Toasts in the immersive look: a green done, an accent request with a Review button, a red failure and an amber warning, each with a dismiss button and a timer bar](screenshots/panels-toasts.png)
+
+  ![The notification centre: cards for each notification, an important one lit on its edge and a stopped mission washed red](screenshots/panels-notif.png)
+
+  ![The notification centre with nothing in it, saying you are all caught up](screenshots/panels-notif-empty.png)
+
+  ![The control centre: sound, brightness, network and power tiles with icons, brightness saying it is not available here, and Notifications along the bottom](screenshots/panels-control.png)
+
+  ![Toasts on a 390px phone, each the full width of the screen](screenshots/panels-toasts-phone.png)
 - **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
   and the kit all work at 390px, and every new control meets the 44px tap floor.
 
@@ -486,6 +540,7 @@ See [Models & Appearance](models.md) for more.
 | App | Purpose |
 |---|---|
 | **Agent Chat** | talk to the agent — streaming replies, tool activity, approvals, voice |
+| **Office** | watch your agents work in a comic office: they get work, walk over to ask each other and huddle — [The Office](office.md) |
 | **Applications** | launch any program installed on your computer |
 | **Web** | open web pages in your real system browser |
 | **Files** | browse your workspace; click a file to open it |

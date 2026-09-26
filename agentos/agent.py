@@ -571,6 +571,14 @@ class Agent:
 
     def _tools(self) -> list:
         schemas = self.toolbox.schemas()
+        # The agent's HANDS first (its executor profile): a tool it cannot pick up is
+        # not offered at all, whatever the lists below say — the gate would refuse it
+        # anyway (policy step 2a), and a model shown a tool it cannot use wastes steps.
+        reach = self.toolbox.pdp.reach_of(self.principal) if self.toolbox.pdp else None
+        if reach:
+            from . import hands
+            keep = set(hands.tools_allowed(reach["spec"], [t["name"] for t in schemas]))
+            schemas = [t for t in schemas if t["name"] in keep]
         if self.principal.kind != "subagent":
             # ask_agent is a specialist's way to reach a colleague; your agent has
             # delegate and huddle, and offering it a third door would only confuse it

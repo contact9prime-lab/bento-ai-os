@@ -135,6 +135,7 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
 async def startup():
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
+    _running_build()        # pinned now: the build that is answering, not the one on disk later
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
     clients: set[WebSocket] = set()
@@ -966,6 +967,19 @@ def _pending_sync(cfg: dict) -> list:
     return asyncio.run(updmod.pending(cfg, limit=15))
 
 
+_BUILD: list = []
+
+
+def _running_build() -> str:
+    """The commit THIS process was started from — read once, because the checkout
+    on disk can move under a running server (an update not yet restarted into), and
+    the card must name the code that is answering, not the code that is waiting."""
+    if not _BUILD:
+        from . import versioning
+        _BUILD.append(versioning.build())
+    return _BUILD[0]
+
+
 @app.get("/api/update")
 async def api_update_status(check: bool = False):
     """What version this is, and whether there is a newer one.
@@ -1004,6 +1018,7 @@ async def api_update_status(check: bool = False):
     # panel that looks exactly like "check for updates does nothing".
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
+            "build": _running_build(),
             "branch": updmod.conf(cfg).get("branch"),
             "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
             "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
@@ -8429,6 +8444,48 @@ async def api_avatar_reroll(key: str):
     return {"ok": True, "recipe": rec, "about": avatarsmod.describe(rec)}
 
 
+@app.get("/api/office")
+async def api_office():
+    """The Office playground: the rooms and who really sits in them (agentos/office.py).
+    The page lays it out and animates it from the live events; it decides nothing here."""
+    from . import office
+    return office.view(state["cfg"], state["store"])
+
+
+@app.put("/api/office")
+async def api_office_set(body: dict):
+    """Change the office — style, name, departments, shared rooms, decor, pet. The same
+    closed set the agent's `set_office` and `bento office` use; a refusal names the
+    choices, and a department member who is nobody here is dropped and named."""
+    from . import office
+    try:
+        got, dropped = office.save(state["cfg"], state["store"], body or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    v = office.view(state["cfg"], state["store"])
+    office.record(state["store"], "office changed: " + office.describe(v))
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {**v, "ok": True, "dropped": dropped}
+
+
+@app.put("/api/office/place")
+async def api_office_place(body: dict):
+    """One specialist to one department (drag-and-drop in the editor): `{agent, department}`.
+    An empty department puts it back on the open floor."""
+    from . import office
+    b = body or {}
+    try:
+        office.place(state["cfg"], state["store"], str(b.get("agent") or ""),
+                     str(b.get("department") or ""), str(b.get("color") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    office.record(state["store"], f"{b.get('agent')} moved to {b.get('department') or office.FLOOR}")
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {**office.view(state["cfg"], state["store"]), "ok": True}
+
+
 @app.get("/api/subagents")
 async def api_subagents():
     """The roster, each with the brain it actually answers on (fabric.agent_brain) —
@@ -8940,6 +8997,87 @@ async def api_team_limits():
     lim = fabricmod.team_limits(state["cfg"])
     return {"limits": lim, "ranges": {k: {"default": d, "min": lo, "max": hi, "what": w}
                                       for k, (d, lo, hi, w) in fabricmod.LIMITS.items()}}
+
+
+# ---- Brains, hands and agents (agentos/hands.py, agentos/agentmap.py) ----------------
+#
+# An agent gets a BRAIN (AI providers), HANDS (an executor profile: tools, folders, web,
+# MCP), AUTHORITY (its grants) and COMPANY (colleagues, linked teams, missions). These
+# routes are the Settings pages' doors; `bento hands` and `bento agents` are the same
+# functions from a terminal. Every write is an audit row (hands._audit).
+
+@app.get("/api/hands")
+async def api_hands():
+    """The executor profiles, which agents use each, and the catalogue the editor needs."""
+    from . import agentmap, hands
+    store, cfg = state["store"], state["cfg"]
+    ov = agentmap.overview(store, cfg)
+    used: dict = {}
+    for a in ov["agents"]:
+        used.setdefault(a["hands"]["name"].lower(), []).append(a["name"])
+    names = [t["name"] for t in state["toolbox"].schemas() if not t["name"].startswith(("mcp_", "ocp_"))]
+    grouped = {g: [n for n in ns if n in names] for g, ns in hands.GROUPS.items()}
+    placed = {n for ns in grouped.values() for n in ns}
+    grouped["Other"] = sorted(n for n in names if n not in placed)
+    return {"profiles": [{**p, "used_by": used.get(p["name"].lower(), [])} for p in hands.list_profiles(store)],
+            "tools": {g: ns for g, ns in grouped.items() if ns},
+            "shell_tools": list(hands.SHELL_TOOLS),
+            "mcp": sorted((cfg.get("mcp_servers") or {}).keys()),
+            "workspace": cfg.get("workspace", ""),
+            "sandbox": bool((cfg.get("sandbox") or {}).get("enabled"))}
+
+
+@app.put("/api/hands/{name}")
+async def api_hands_save(name: str, body: dict):
+    """Create or change a profile: `{"spec": {tools, folders, web, mcp}, "description"}`."""
+    from . import hands
+    try:
+        p = hands.save(state["store"], name, (body or {}).get("spec") or {},
+                       (body or {}).get("description") or "")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "profile": p}
+
+
+@app.delete("/api/hands/{name}")
+async def api_hands_delete(name: str):
+    from . import hands
+    try:
+        moved = hands.delete(state["store"], name)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "moved_to_default": moved}
+
+
+@app.get("/api/agents")
+async def api_agents():
+    """Every agent with its brain, hands, authority, skills and company — one answer
+    for Settings → Agents, the map and `bento agents`."""
+    from . import agentmap
+    return agentmap.overview(state["store"], state["cfg"])
+
+
+@app.get("/api/agents/graph")
+async def api_agents_graph():
+    from . import agentmap
+    ov = agentmap.overview(state["store"], state["cfg"])
+    return {**agentmap.graph(ov), "talk": ov["talk"]}
+
+
+@app.put("/api/agents/{key}/hands")
+async def api_agent_hands(key: str, body: dict):
+    """Give an agent hands: `{"profile": "read-only"}`. `@agent` is the lead agent."""
+    from . import hands
+    try:
+        got = hands.assign(state["store"], state["cfg"], key, str((body or {}).get("profile") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if key in ("@agent", "master"):
+        cfgmod.save_config(state["cfg"])
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "profile": got}
 
 
 @app.get("/api/team/matrix")

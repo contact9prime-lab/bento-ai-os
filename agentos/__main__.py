@@ -3149,6 +3149,71 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+def _office_cli(args):
+    """`bento office` — the Office playground, as a terminal can have it.
+
+    The TUI face of a place that is otherwise a picture: which departments there are,
+    who sits in each, and the same editor as the desktop's (office.py's closed set).
+    What a terminal cannot have is the animation — agents walking over to ask each
+    other, papers flying to a desk — and this says so rather than pretending; the
+    live version of "who is doing what" in a terminal is `bento flow runs` and the
+    chat TUI. Reads and writes config directly, so it works with the server down.
+    """
+    from . import office as of
+    from . import config as _cfgmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    a, rest = args.action, list(args.args or [])
+
+    def done(msg):
+        _cfgmod.save_config(cfg)
+        of.record(store, msg)
+        print(of.text(of.view(cfg, store)))
+
+    try:
+        if a in ("show", "list"):
+            print(of.text(of.view(cfg, store)))
+            print("\n  The desktop's Office app animates this: agents walk over to ask each other,"
+                  "\n  huddles gather in the meeting room. A terminal shows the plan, not the play.")
+            return
+        if a == "styles":
+            for k, st in of.STYLES.items():
+                print(f"  {k:<8} {st['label']:<16} {st['blurb']}")
+            return
+        if a == "style" and rest:
+            of.save(cfg, store, {"style": " ".join(rest)})
+            return done(f"style set to {of.current(cfg)['style']}")
+        if a == "name" and rest:
+            of.save(cfg, store, {"name": " ".join(rest)})
+            return done(f"office renamed to {of.current(cfg)['name']}")
+        if a == "move" and rest:
+            of.place(cfg, store, rest[0], " ".join(rest[1:]), getattr(args, "color", "") or "")
+            return done(f"{rest[0]} moved to {' '.join(rest[1:]) or of.FLOOR}")
+        if a == "dept-rm" and rest:
+            name = " ".join(rest).lower()
+            cur = of.current(cfg)["departments"]
+            left = [d for d in cur if d["name"].lower() != name]
+            if len(left) == len(cur):
+                raise ValueError(f"there is no department called '{' '.join(rest)}'")
+            of.save(cfg, store, {"departments": left})
+            return done(f"department {' '.join(rest)} removed; its people are on the open floor")
+        if a in ("meeting", "lounge") and rest:
+            of.save(cfg, store, {a: rest[0].lower() in ("on", "yes", "true", "1")})
+            return done(f"{a} {'on' if of.current(cfg)[a] else 'off'}")
+        if a == "decor":
+            of.save(cfg, store, {"decor": [x for x in rest if x.lower() != "none"]})
+            return done("decor: " + (", ".join(of.current(cfg)["decor"]) or "none"))
+        if a == "pet" and rest:
+            of.save(cfg, store, {"pet": rest[0]})
+            return done(f"pet: {of.current(cfg)['pet']}")
+    except ValueError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(2)
+    print("  bento office [show] · styles · style NAME · name TEXT · move AGENT [DEPARTMENT] [--color C]\n"
+          "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none",
+          file=sys.stderr)
+    sys.exit(2)
+
+
 def _avatar_cli(args):
     """`bento avatar` — the crew's characters in a terminal, and the same editor.
 
@@ -3258,7 +3323,7 @@ def _avatar_cli(args):
 def _team_cli(args):
     """`bento team` — who answers on which AI provider, in a terminal.
 
-    The TUI face of Settings → AI providers → Team. `list` prints each agent with
+    The TUI face of Settings → Agents → Working together. `list` prints each agent with
     the brain it answers on RIGHT NOW (fabric.agent_brain — the same answer the Crew
     stage's tag and the chat's chip show) and why, if that is not its pin. `set`
     pins one agent through the same door the page and the agent's tool use
@@ -3777,6 +3842,141 @@ def _link_cli(args):
         for m in fabricmod.linked_missions(store, lk["label"]):
             print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
                   + (" (stopped)" if m["stopped"] else ""))
+
+
+def _hands_cli(args):
+    """`bento hands` — executor profiles (an agent's hands) from a terminal: the same
+    rows Settings → Executors edits (agentos/hands.py). Works with the server down;
+    every write is an audit row."""
+    from . import hands
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act, name = args.action, (args.name or "").strip()
+    if act == "list":
+        for p in hands.list_profiles(store):
+            print(f"  {p['name']:<14} {'(built in) ' if p['builtin'] else ''}{p['summary']}")
+            if p.get("description"):
+                print(f"  {'':<14} {p['description'][:110]}")
+        print("\n  bento hands show NAME · bento hands set NAME --tools … --folder PATH:rw … "
+              "· bento agents hands AGENT NAME")
+        return 0
+    if not name:
+        print(f"  bento hands {act} NAME")
+        return 2
+    if act == "show":
+        p = hands.get(store, name)
+        if not p:
+            print(f"  no executor called '{name}'")
+            return 2
+        sp = p["spec"]
+        print(f"{p['name']}{'  (built in)' if p['builtin'] else ''}\n  {p['summary']}")
+        print(f"  tools    {', '.join(sp['tools']) or 'none'}")
+        print("  folders  " + (", ".join(f"{f['path']} ({f['mode']})" for f in sp["folders"]) or "none"))
+        print(f"  web      {sp['web'] if isinstance(sp['web'], str) else ', '.join(sp['web'])}")
+        print(f"  mcp      {', '.join(sp['mcp']) or 'none'}")
+        if "*" in sp["tools"] or any(t in sp["tools"] for t in hands.SHELL_TOOLS):
+            print("  note     a shell reaches whatever the machine's folder jail allows, not only "
+                  "these folders")
+        return 0
+    if act == "rm":
+        try:
+            n = hands.delete(store, name)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        print(f"✓ deleted {name}" + (f"; {n} agent(s) moved to default" if n else ""))
+        return 0
+    # set: start from the profile as it is (or from nothing, for a new one), change
+    # only what was given — a flag left out keeps its value
+    cur = hands.get(store, name)
+    spec = dict(cur["spec"]) if cur else {"tools": [], "folders": [], "web": "none", "mcp": []}
+    if args.tools is not None:
+        spec["tools"] = [t.strip() for t in args.tools.split(",") if t.strip()]
+    if args.folder:
+        fl = []
+        for f in args.folder:
+            path, _, mode = f.rpartition(":") if f.rsplit(":", 1)[-1] in ("ro", "rw") else (f, "", "rw")
+            fl.append({"path": path, "mode": mode or "rw"})
+        spec["folders"] = fl
+    if args.web:
+        spec["web"] = args.web[0] if len(args.web) == 1 and args.web[0] in ("any", "none") else args.web
+    if args.mcp is not None:
+        spec["mcp"] = [m.strip() for m in args.mcp.split(",") if m.strip()]
+    try:
+        p = hands.save(store, name, spec, args.description if args.description is not None
+                       else (cur or {}).get("description", ""))
+    except ValueError as e:
+        print(f"✗ {e}")
+        return 2
+    print(f"✓ {p['name']}: {p['summary']}")
+    return 0
+
+
+def _agents_cli(args):
+    """`bento agents` — every agent with its brain, hands, authority, skills and
+    company (agentos/agentmap.py, the map Settings → Agents draws); `hands AGENT
+    PROFILE` gives one its hands."""
+    from . import agentmap, hands
+    from . import config as cfgmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    if args.action == "hands":
+        if not args.agent or not args.profile:
+            print("  bento agents hands AGENT PROFILE   (AGENT: @agent for the lead, or a specialist)")
+            return 2
+        try:
+            got = hands.assign(store, cfg, args.agent, args.profile)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        if args.agent in ("@agent", "master"):
+            cfgmod.save_config(cfg)
+        print(f"✓ {args.agent} now works with the '{got}' executor")
+        return 0
+    ov = agentmap.overview(store, cfg)
+    if args.action == "map":
+        g = agentmap.graph(ov)
+        label = {n["id"]: n["label"] for n in g["nodes"]}
+        for e in g["edges"]:
+            print(f"  {label.get(e['from'], e['from']):<18} ─{e['label']}→  {label.get(e['to'], e['to'])}")
+        return 0
+    print(agentmap.text(ov))
+    return 0
+
+
+def _version_cli(args):
+    """`bento version` — the number and the build; `bump` moves it (VERSION,
+    pyproject.toml and the changelog heading together); `check BASE` is what CI runs:
+    exit 1 when something that ships changed since BASE and the number did not."""
+    from . import versioning as vmod
+    if args.action == "bump":
+        try:
+            got = vmod.bump(args.arg or "patch", to=args.to)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        print(f"✓ {got['from']} → {got['to']}  ({', '.join(got['files'])})")
+        print("  write what changed under the new heading in CHANGELOG.md, then commit all three")
+        return 0
+    if args.action == "check":
+        base = args.arg or "origin/master"
+        r = vmod.needs_bump(base)
+        if r["error"]:
+            print(f"✗ {r['error']}")
+            return 2
+        if r["needed"]:
+            print(f"✗ {len(r['shipped'])} shipped file(s) changed since {base}, and the version is "
+                  f"still {r['head_version'] or '?'} (it was {r['base_version'] or '?'} there).")
+            for p in r["shipped"][:12]:
+                print(f"    {p}")
+            if len(r["shipped"]) > 12:
+                print(f"    … and {len(r['shipped']) - 12} more")
+            print("  Every change that ships moves the version, so `bento update` on a machine\n"
+                  "  says something new arrived. Run:  bento version bump patch   (or minor)")
+            return 1
+        print(f"✓ version {r['head_version']}"
+              + (f" (was {r['base_version']} on {base})" if r["shipped"] else " — nothing that ships changed"))
+        return 0
+    print(f"Bento Box AI {vmod.label()}")
+    return 0
 
 
 def _brief_cli(args):
@@ -4485,7 +4685,8 @@ def _update_cli(args) -> int:
     remote = state.get("remote") or "origin"
     tracked = f"{remote}/{state.get('tracks')}"
 
-    print(f"Bento Box AI {upd.current()}")
+    from . import versioning as _vmod
+    print(f"Bento Box AI {_vmod.label() or upd.current()}")
     print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
     print(f"  source:    github.com/{state.get('repo') or upd.DEFAULT_REPO} @ {state.get('tracks')}"
           + ("" if remote == "origin" else f"  — a fork; `bento update --official` goes back"))
@@ -4529,8 +4730,8 @@ def _update_cli(args) -> int:
         # The number in VERSION moves only at a release; the code moves every
         # push. "Same version" was read as "nothing new" — say what it means.
         print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on {tracked} — "
-              f"still version {upd.current()} (that number only moves at a release), "
-              f"but newer code")
+              f"newer code, still published as {upd.current()} (the version moves with the "
+              f"next bump; the build hash shows the code moved)")
 
     # The changelog nobody maintains by hand: the commits themselves, already
     # fetched by the check rather than fetched a second time here.
@@ -4616,9 +4817,17 @@ def _update_cli(args) -> int:
         return 0
     if result.get("switched"):
         print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
+    was = upd.current()
+    now = result.get("version") or "?"
     print(f"✓ updated {result['from']} → {result['to']} "
-          f"({result['files']} files, now {result.get('version') or '?'}, "
-          f"from {result.get('source') or tracked})")
+          f"({result['files']} files, from {result.get('source') or tracked})")
+    # The number a person reads, before and after — read from disk AFTER the pull,
+    # because this process imported the old one. Same number means the changes
+    # landed without a release bump (a push the version workflow has not caught up
+    # with yet), and saying so beats letting it read as "nothing happened".
+    print(f"  version {was} → {now} (build {result['to']})" if now != was else
+          f"  version {now}, build {result['from']} → {result['to']} — new code under the "
+          f"same number; the next release moves it")
     # What actually landed. Printed after the fact as well as before it, because
     # an unattended update (a watcher, a cron line) is one nobody read the preview
     # of — this is the only place that machine's operator ever sees what changed.
@@ -5074,6 +5283,29 @@ def main():
     # is asking the user to know which OS they are on to control their own agent.
     # Checking is the default and changes nothing; installing is an explicit flag.
     # A bare verb must not rewrite the code that is answering the user's turns.
+    p_hands = verb("hands", help="executor profiles — what each agent's hands reach (tools, folders, web, MCP)")
+    p_hands.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "rm"])
+    p_hands.add_argument("name", nargs="?", default="")
+    p_hands.add_argument("--tools", default=None, help="comma-separated tool names, or *")
+    p_hands.add_argument("--folder", action="append", default=[],
+                         help="PATH[:ro|rw] (repeat); * = anywhere the machine allows, @workspace")
+    p_hands.add_argument("--web", action="append", default=[], help="any | none | URL pattern (repeat)")
+    p_hands.add_argument("--mcp", default=None, help="comma-separated MCP server names, or *")
+    p_hands.add_argument("--description", default=None)
+    p_hands.add_argument("--user", default="", help="whose profiles, on a machine with users")
+    p_agents = verb("agents", help="every agent: its brain, hands, authority, skills and who it works with")
+    p_agents.add_argument("action", nargs="?", default="list", choices=["list", "map", "hands"])
+    p_agents.add_argument("agent", nargs="?", default="")
+    p_agents.add_argument("profile", nargs="?", default="")
+    p_agents.add_argument("--user", default="", help="whose agents, on a machine with users")
+    # Hidden (no help=): a release chore, not an everyday verb. `bento help --all`
+    # lists it. Terminal-only by nature — there is no GUI for bumping a version,
+    # and the GUI/SUI face of the result is the version + build on the update card.
+    p_ver = verb("version")
+    p_ver.add_argument("action", nargs="?", default="show", choices=["show", "bump", "check"])
+    p_ver.add_argument("arg", nargs="?", default="",
+                       help="bump: patch|minor|major (or --to) · check: the base, e.g. origin/master")
+    p_ver.add_argument("--to", default="", help="bump to exactly this version")
     p_upd = verb("update",
                            help="check for a newer AgentOS, and pull it with --apply")
     p_upd.add_argument("--apply", action="store_true",
@@ -5380,6 +5612,13 @@ def main():
     p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes · "
                                                    "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
+    p_of.add_argument("action", nargs="?", default="show",
+                      choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
+                               "lounge", "decor", "pet"])
+    p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night")
+    p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
+    p_of.add_argument("--user", default="", help="whose office, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
@@ -5551,6 +5790,12 @@ def main():
         desktop.uninstall()
     elif args.cmd == "update":
         raise SystemExit(_update_cli(args))
+    elif args.cmd == "version":
+        raise SystemExit(_version_cli(args))
+    elif args.cmd == "hands":
+        raise SystemExit(_hands_cli(args))
+    elif args.cmd == "agents":
+        raise SystemExit(_agents_cli(args))
     elif args.cmd == "service":
         raise SystemExit(_service_cli(args))
     elif args.cmd == "restart":
@@ -5595,6 +5840,8 @@ def main():
         _team_cli(args)
     elif args.cmd == "avatar":
         _avatar_cli(args)
+    elif args.cmd == "office":
+        _office_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "vault":

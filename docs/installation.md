@@ -400,15 +400,22 @@ bad update recoverable. `--no-restart` leaves loading it to you.
 A bare `bento update` never pulls. The same machinery backs Settings → Updates, the
 About panel and the background check, so all four agree about what is waiting.
 
-**Two sources, because they answer for different installs.** `agentos/VERSION` is
-published at a release and is the only thing a pip/wheel copy can compare against.
-The checkout's own git is the only thing that knows about commits BETWEEN releases —
-and that is most of the time. So a report looks like one of:
+**Two sources, because they answer for different installs.** `agentos/VERSION` is the
+only thing a pip/wheel copy can compare against. The checkout's own git is the only
+thing that knows exactly which commits are waiting. So a report looks like one of:
 
 ```
-▲ 0.4.0 is available (you have 0.3.0)              # a release
-▲ 8 changes waiting on origin/master — same version (0.3.0), newer code
-✓ up to date with origin/master (published version 0.3.0)
+Bento Box AI 0.5.0 (d2717b0)                       # the number, and the build running
+▲ 0.5.1 is available (you have 0.5.0)              # new code, new number
+▲ 2 changes waiting on master — newer code, still published as 0.5.0
+✓ up to date with master (published version 0.5.0)
+```
+
+After `--apply` it says what moved, read from disk after the pull:
+
+```
+✓ updated 6e4f152 → 9b1c0de (41 files, from origin/master)
+  version 0.4.0 → 0.5.0 (build 9b1c0de)
 ```
 
 If a push of yours never seems to arrive, the first line of `bento update` is the
@@ -416,9 +423,17 @@ usual answer: it prints the branch this checkout is **on** and the branch update
 **track**. Commits pushed to any other branch will never show up here, and your own
 unpushed commits are reported as `ahead`.
 
-**"Same version, newer code" is normal.** The number in `agentos/VERSION` moves only
-at a release; the code moves at every push. Between releases every update reads
-*still version 0.4.0, but newer code* — that is an update, not a no-op.
+**The version moves with the code.** Every change that ships (`agentos/`,
+`pyproject.toml`, `uv.lock`, `install.sh`, `packaging/`) raises `agentos/VERSION`:
+- a pull request that does not is refused by CI, which prints the command to run
+  (`bento version bump patch`, or `minor`);
+- a push straight to `master` that forgot is bumped by CI itself
+  (`.github/workflows/version.yml`).
+
+"Same version, newer code" can therefore last only the minute between such a push
+and its bump. The build hash beside the number shows the code moved even then.
+`bento version` prints the number and the build; `bento version check origin/master`
+is the check CI runs.
 
 **It will not ask you to stash `uv.lock` or the UI bundle.** Two tracked files are
 rewritten by this machine rather than by you: `uv.lock` (re-resolved by `uv sync` when

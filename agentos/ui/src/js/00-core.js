@@ -117,26 +117,53 @@ function md(src){
   return h.replace(/\x00B(\d+)\x00/g,(m,i)=>blocks[+i]);
 }
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
-/* toast(text) says something happened. toast(text,{label,go,ms}) also offers the one
-   thing to do about it (a link request: "Review"); it stays longer, and is the only
-   part of the stack that takes a tap — the rest of #toasts lets clicks through. */
+/* What KIND of news a toast is, so it can say so with an icon and a colour rather
+   than asking the reader to parse the sentence. `act.kind` decides when a caller
+   knows; the ~400 older calls are read by their first words ("could not…" is a
+   failure, "saved…" a success). A guess only picks an icon — the words are always
+   shown as written, so a wrong guess costs a colour, never the message. */
+var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
+function toastKind(t,act){
+  if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;
+  const s=String(t==null?'':t).trim().toLowerCase();
+  if(/^[✗✕✖]|^(could not|couldn.t|can.t |cannot|failed|error|invalid|refused|not allowed|not connected|not a valid|no such |no valid |no link|the server did not answer|install failed)/.test(s))return 'err';
+  if(/^[!⚠]|^(warning|careful|glass effects turned down)/.test(s))return 'warn';
+  if(/^[✓✔]|^(saved|done|deleted|removed|linked|copied|imported|installed|updated|allowed|granted|stopped|sent|created|applied|revoked|recorded|moved|renamed|promoted|drafted)\b|now works with/.test(s))return 'ok';
+  return 'info';
+}
+/* toast(text) says something happened. toast(text,{label,go,ms,kind}) also offers
+   the one tap that deals with it. Hovering holds it (the bar pauses); a failure
+   stays twice as long as good news, because it is the one that needs reading. */
 function toast(t,act){
   let box=document.getElementById('toasts');
-  if(!box){box=document.createElement('div');box.id='toasts';document.body.appendChild(box)}
-  const d=document.createElement('div');d.className='toast';d.textContent=t;
+  if(!box){box=document.createElement('div');box.id='toasts';box.setAttribute('role','status');
+    box.setAttribute('aria-live','polite');document.body.appendChild(box)}
+  const kind=toastKind(t,act);
+  const d=document.createElement('div');d.className='toast k-'+kind;
+  if(kind==='err')d.setAttribute('role','alert');
+  const ms=(act&&act.ms)||(kind==='err'?7000:3800);
+  d.style.setProperty('--toast-ms',ms+'ms');
+  d.innerHTML=`<i class="toast-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="${TOAST_IC[kind]}"/></svg></i><span class="toast-t"></span>`;
+  // the glyph a caller wrote ("✓ saved") is now the icon; the words stay as written
+  d.querySelector('.toast-t').textContent=String(t==null?'':t).replace(/^\s*[✓✔✗✕✖⚠]\s*/,'');
+  let h=0,left=ms,started=Date.now();
+  const leave=()=>{clearTimeout(h);if(!d.isConnected)return;
+    const done=()=>d.remove();
+    if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
+    else done()};
   if(act&&act.label&&typeof act.go==='function'){
     const b=document.createElement('button');b.className='endbtn toast-act';b.textContent=act.label;
     b.onclick=()=>{d.remove();act.go()};d.classList.add('has-act');d.appendChild(b);
   }
+  const x=document.createElement('button');x.className='toast-x';x.setAttribute('aria-label','Dismiss');x.textContent='✕';
+  x.onclick=leave;d.appendChild(x);
+  const bar=document.createElement('i');bar.className='toast-bar';bar.setAttribute('aria-hidden','true');d.appendChild(bar);
+  d.onmouseenter=()=>{clearTimeout(h);left-=Date.now()-started;d.classList.add('held')};
+  d.onmouseleave=()=>{started=Date.now();h=setTimeout(leave,Math.max(900,left));d.classList.remove('held')};
   box.prepend(d);
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
-  setTimeout(()=>{
-    if(!d.isConnected)return;
-    const done=()=>d.remove();
-    if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
-    else done();
-  },(act&&act.ms)||3500);
+  h=setTimeout(leave,ms);
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 

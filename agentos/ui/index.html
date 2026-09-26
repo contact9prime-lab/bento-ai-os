@@ -22,6 +22,11 @@
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
   --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
   --glass:rgba(17,20,25,.82);
+  /* the accent as a FILL, and the text that sits on it. A theme sets both: a teal
+     accent wants dark ink on it, a violet one wants white (Nova), and a gradient can
+     carry more than two stops. Every primary button, active tab and badge reads these. */
+  --acc-grad:linear-gradient(135deg,var(--acc),var(--acc2));
+  --on-acc:#04211c;
   /* the glass recipe: translucent tint + heavy blur + a hairline of light along
      the top edge. Every floating surface (deck groups, widgets, cards, popovers)
      uses these so they read as one material. */
@@ -220,7 +225,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .wgsize button{width:24px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:800;
   color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast)}
 .wgsize button:hover{background:rgba(255,255,255,.09);color:var(--txt)}
-.wgsize button.on{background:var(--acc);color:#04211c}
+.wgsize button.on{background:var(--acc);color:var(--on-acc)}
 .wgpreview{height:100%;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
 .wgpreview .widget{box-shadow:var(--el-4)}
@@ -290,7 +295,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-sm);padding:2px 8px;border-radius:var(--r-sm);cursor:pointer;user-select:none}
 #mb-brand:hover{background:var(--bg3)}
 #mb-brand:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
-#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #mb-spacer{flex:1}
 #pager{display:flex;gap:4px;align-items:center}
 .pgb{width:22px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:700;color:var(--dim);border:1px solid transparent;display:flex;align-items:center;justify-content:center}
@@ -366,14 +371,14 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #natctl.on{display:flex}
 #natctl button{width:24px;height:24px;border-radius:50%;font-size:12px;line-height:1;
   color:var(--txt);background:rgba(255,255,255,.09);transition:background var(--d-fast) var(--ease-out)}
-#natctl button:hover{background:var(--acc);color:#04211c}
+#natctl button:hover{background:var(--acc);color:var(--on-acc)}
 #natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
 .tbnat.mini{opacity:.45}
 
 /* ---- forwarding chip: the machine is answering as another agent, and says so ---- */
 #fwdchip{display:flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;
   font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
-  color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  color:var(--on-acc);background:var(--acc-grad);
   box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
 #fwdchip[hidden]{display:none}
 #fwdchip:hover{filter:brightness(1.08)}
@@ -387,8 +392,8 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mb-user[hidden]{display:none}
 #mb-user:hover{background:rgba(255,255,255,.16)}
 #mb-user .ini{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
-  border-radius:999px;font-weight:800;color:#04211c;
-  background:linear-gradient(135deg,var(--acc),var(--acc2))}
+  border-radius:999px;font-weight:800;color:var(--on-acc);
+  background:var(--acc-grad)}
 #mb-user .badge{font-size:var(--fs-3xs,9px);font-weight:600;opacity:.7;padding-left:6px;
   margin-left:2px;border-left:1px solid rgba(255,255,255,.2);text-transform:uppercase}
 #fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
@@ -404,7 +409,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   border:1px solid var(--hairline);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.12);z-index:9000}
 #startbtn{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;border-radius:var(--r-lg);
   transition:transform var(--d-base) var(--ease-out)}
-#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:linear-gradient(135deg,var(--acc),var(--acc2));
+#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:var(--acc-grad);
   display:flex;align-items:center;justify-content:center;border:.5px solid rgba(255,255,255,.16);
   box-shadow:0 5px 14px rgba(0,0,0,.42),inset 0 .5px 0 rgba(255,255,255,.32)}
 #startbtn:hover{transform:translateY(-7px) scale(1.12)}
@@ -489,7 +494,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 @keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
 #smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
-#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #smhead b{font-size:var(--fs-base)}
 #smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
 #smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;flex:1;min-height:0;max-height:52vh;overflow-y:auto;align-content:start;grid-auto-rows:minmax(92px,auto)}
@@ -523,7 +528,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 /* ================= boot splash ================= */
 #boot{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity var(--d-slower) var(--ease-out)}
 #boot.off{opacity:0;pointer-events:none}
-#boot .mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;box-shadow:0 0 60px rgba(94,234,212,.3)}
+#boot .mark{width:74px;height:74px;border-radius:var(--r-xl);background:var(--acc-grad);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:var(--fs-3xl);font-weight:900;box-shadow:0 0 60px rgba(94,234,212,.3)}
 #boot h1{font-size:var(--fs-2xl);letter-spacing:.5px}
 #boot .bbar{width:180px;height:3px;border-radius:3px;background:var(--bg4);overflow:hidden}
 #boot .bbar i{display:block;height:100%;width:35%;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2));animation:boot 1s ease-in-out infinite}
@@ -564,7 +569,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .sawsub{font-size:var(--fs-sm);color:var(--dim);margin:0 0 12px;line-height:1.5}
 .teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:8px;cursor:pointer;transition:border-color var(--d-fast) var(--ease-out);background:var(--bg3)}
 .teamcard:hover{border-color:var(--acc)}
-.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:var(--acc-grad)}
 .teamcard .n{font-size:var(--fs-base);font-weight:650;color:var(--txt)}
 .teamcard .meta{font-size:var(--fs-sm);color:var(--dim);margin-top:3px;line-height:1.5}
 .teamcard .meta b{color:var(--txt);font-weight:600}
@@ -572,7 +577,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .badge{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:var(--r-full);font-size:var(--fs-2xs);color:var(--dim2);margin-left:6px;vertical-align:1px}
 
 #welcome{text-align:center;padding-top:7vh}
-#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
+#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:var(--acc-grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
 #welcome p{color:var(--dim);margin-bottom:26px;font-size:var(--fs-base)}
 .chips{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:600px;margin:0 auto}
 .chip{padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg2);color:var(--dim);font-size:var(--fs-sm);transition:border-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);text-align:left}
@@ -718,7 +723,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mic{position:absolute;right:46px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-base);display:flex;align-items:center;justify-content:center}
 #mic:hover{background:var(--bg4);color:var(--txt)}
 #mic.rec{background:var(--err);color:#fff;animation:pulse 1.2s infinite}
-#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
+#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
 #send:disabled{opacity:.35;cursor:default}
 #send.stop{background:var(--err);color:#fff;font-size:var(--fs-sm)}
 
@@ -763,7 +768,7 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 /* the door on a failed turn: what to do about it, next to what went wrong */
 .errmsg{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
-  background:var(--acc);color:#04211c;min-height:30px}
+  background:var(--acc);color:var(--on-acc);min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
 /* ---- attached images: one strip on every agent surface ---- */
 .att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}
@@ -847,7 +852,7 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .row{display:flex;gap:10px}
 .row>*{flex:1}
 .pad input,.pad select,.pad textarea{width:100%}
-.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700}
+.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700}
 .provbox{border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:12px}
 .provbox .ptitle{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:var(--fs-md)}
 .provbox .ptitle input[type=checkbox]{width:auto}
@@ -929,7 +934,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .pbody{flex:1;overflow:auto;padding:14px;min-height:0}
 .pbody.flush{padding:0}
 .pbody input,.pbody select,.pbody textarea{width:100%}
-.pact{padding:8px 14px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
+.pact{padding:8px 14px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 .pact:disabled{opacity:.4}
 .pact.stop{background:var(--err);color:#fff}
 .pghost{padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm);white-space:nowrap}
@@ -1009,8 +1014,8 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-stage{width:min(560px,92vw);max-height:86vh;display:flex;flex-direction:column}
 .wiz-step{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-3);
   padding:var(--sp-6) var(--sp-5)}
-.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));
-  display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;
+.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:var(--acc-grad);
+  display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:var(--fs-3xl);font-weight:900;
   box-shadow:0 0 60px rgba(94,234,212,.28)}
 .wiz-mark-sm{width:46px;height:46px;font-size:var(--fs-xl);border-radius:var(--r-lg);align-self:center;flex:none}
 .wiz-title{font-size:var(--fs-2xl);font-weight:800;letter-spacing:.3px}
@@ -1018,7 +1023,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-q{font-size:var(--fs-md);font-weight:600;margin-top:var(--sp-3)}
 .wiz-input{width:min(320px,80vw);text-align:center;font-size:var(--fs-lg);padding:10px 14px;border-radius:var(--r-md)}
 .wiz-next{margin-top:var(--sp-4);padding:10px 26px;border-radius:var(--r-full);font-size:var(--fs-base);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;
+  background:var(--acc-grad);color:#06211d;
   transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
 .wiz-next:hover{transform:translateY(-1px);box-shadow:var(--el-2)}
 .wiz-back{font-size:var(--fs-sm);color:var(--dim)}
@@ -1038,7 +1043,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-convo{display:flex;flex-direction:column;gap:var(--sp-3);overflow-y:auto;max-height:62vh;padding:4px}
 .wiz-msg{display:flex;gap:10px;align-items:flex-start}
 .wiz-ava{width:34px;height:34px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-weight:800;font-size:var(--fs-base);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-weight:800;font-size:var(--fs-base);background:var(--acc-grad);color:#06211d}
 .wiz-say{background:var(--bg3);border:1px solid var(--line);border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);
   padding:10px 14px;font-size:var(--fs-base);line-height:1.55;min-height:20px;min-width:60px}
 .wiz-chips{display:flex;flex-wrap:wrap;gap:8px;padding-left:44px}
@@ -1065,7 +1070,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   border:1px solid var(--line);background:var(--bg2)}
 .auto-top{display:flex;align-items:center;gap:9px}
 .auto-ic{width:30px;height:30px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-lg);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+  font-size:var(--fs-lg);background:var(--acc-grad);color:var(--on-acc)}
 .auto-nm{font-size:var(--fs-base);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .auto-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
@@ -1142,6 +1147,22 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
    state, not a hover: it must be legible without pointing at it. */
 .item.on{border-color:color-mix(in srgb,var(--acc) 45%,var(--line));
   background:color-mix(in srgb,var(--acc) 8%,transparent)}
+
+/* ---- the Theme Builder (18-themes-personalize.js) ---- */
+.tb .tb-sec{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.tb .tb-sec>summary{cursor:pointer}
+.tb .tb-quick{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}
+.tb .tb-quick label{display:flex;flex-direction:column;gap:4px;margin:0;font-size:var(--fs-sm);color:var(--dim)}
+.tb input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);background:none;border-radius:var(--r-sm);cursor:pointer}
+.tb .tb-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 18px;padding-top:8px}
+.tb .tb-colors label{display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400}
+.tb .tb-colors span{flex:1}.tb .tb-colors code{font-size:10.5px;color:var(--dim2)}
+.tb .tb-slide{display:flex;align-items:center;gap:12px;margin:0;font-size:var(--fs-sm)}
+.tb .tb-slide input{flex:1;max-width:320px}
+.tb .tb-note{margin:0;font-size:var(--fs-xs)}
+body.dev-touch .tb input[type=color],body.dev-touch .tb select,body.dev-touch .tb button,body.dev-touch .tb .tb-sec>summary{min-height:var(--tap)}
+body.dev-touch .tb input[type=color]{min-width:var(--tap)}
+body.dev-touch .tb .seg button{min-height:var(--tap)}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -1384,14 +1405,14 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .dlg{width:340px;max-width:88vw;padding:22px 20px 16px;border-radius:var(--r-lg);text-align:center;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
 .dlg-icn{width:44px;height:44px;margin:0 auto 10px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-2xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-size:var(--fs-2xl);font-weight:800;background:var(--acc-grad);color:#06211d}
 .dlg .dlg-t{font-size:var(--fs-base);font-weight:700;margin-bottom:6px}
 .dlg .dlg-m{font-size:var(--fs-sm);color:var(--dim);line-height:1.45;margin-bottom:14px}
 .dlg-b{display:flex;gap:8px;justify-content:center}
 .dlg-b button{flex:1;max-width:140px;padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-md);font-weight:600;
   background:var(--bg3);border:1px solid var(--line);transition:background var(--d-fast) var(--ease-out),filter var(--d-fast) var(--ease-out)}
 .dlg-b button:hover{filter:brightness(1.15)}
-.dlg-b .dlg-ok{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.dlg-b .dlg-ok{background:var(--acc-grad);color:#06211d;border:none}
 .dlg-b .dlg-ok.danger{background:var(--err);color:#2b0606}
 
 .dlg .dlg-in{width:100%;margin-bottom:14px;text-align:left}
@@ -1418,7 +1439,7 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .procard .pc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .procard .pc-actions button{padding:5px 14px;border-radius:var(--r-md);font-size:var(--fs-sm);font-weight:600;
   background:var(--bg3);border:1px solid var(--line)}
-.procard .pc-actions .pc-go{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.procard .pc-actions .pc-go{background:var(--acc-grad);color:#06211d;border:none}
 
 /* files: semantic hit snippets */
 .fitem .fsnip{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52ch;font-weight:400}
@@ -1429,13 +1450,38 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .palitem.act .pl{color:var(--acc)}
 .palitem.act.sel .pl{color:var(--txt)}
 
-/* toasts: a real stack, newest on top */
+/* toasts: a real stack, newest on top. Each one says what KIND of news it is (an icon in
+   the kind's colour — toastKind in 00-core.js), can be dismissed, and shows its time
+   running out as a bar that pauses while the pointer is on it. The stack itself lets
+   clicks through; only the cards take them. */
 #toasts{position:fixed;right:14px;bottom:calc(var(--tbh) + 12px);z-index:11000;display:flex;flex-direction:column;gap:8px;
   align-items:flex-end;pointer-events:none}
-#toasts .toast{position:static;animation:none}
-#toasts .toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:10px}
+#toasts .toast{position:relative;inset:auto;animation:none;pointer-events:auto;display:flex;align-items:center;gap:10px;
+  max-width:min(420px,calc(100vw - 28px));padding:9px 8px 9px 11px;overflow:hidden}
 #toasts .toast-act{flex:none}
-body.dev-touch #toasts .toast-act{min-height:var(--tap)}
+.toast-ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--acc);color:var(--on-acc)}
+.toast.k-ok .toast-ic{background:var(--ok);color:#052e16}
+.toast.k-warn .toast-ic{background:var(--warn);color:#2a1d00}
+.toast.k-err .toast-ic{background:var(--err);color:#fff}
+.toast.k-err{border-color:var(--err)}
+.toast-t{flex:1;min-width:0;line-height:1.35;overflow-wrap:anywhere}
+.toast-x{flex:none;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:11px;color:var(--dim);opacity:.7}
+.toast-x:hover{opacity:1;background:color-mix(in srgb,var(--txt) 10%,transparent);color:var(--txt)}
+.toast-bar{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--acc);opacity:.55;transform-origin:left center;
+  animation:toastbar var(--toast-ms,3800ms) linear forwards}
+.toast.k-ok .toast-bar{background:var(--ok)}.toast.k-warn .toast-bar{background:var(--warn)}.toast.k-err .toast-bar{background:var(--err)}
+.toast.held .toast-bar{animation-play-state:paused}
+@keyframes toastbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){.toast-bar{display:none}}
+body.dev-touch #toasts .toast-act,body.dev-touch .toast-x{min-height:var(--tap)}
+body.dev-touch .toast-x{min-width:var(--tap)}
+/* notifications: nothing waiting is a state, not an absence */
+.np-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 16px 18px;text-align:center;color:var(--dim)}
+.np-empty b{color:var(--txt);font-size:var(--fs-md)}.np-empty span{font-size:var(--fs-xs);max-width:240px}
+/* control centre tiles carry an icon beside their name */
+.cc-tile .ptitle{justify-content:flex-start}
+.cc-ic{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;flex:none;
+  background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
 
 /* control center popover (tray) */
 #ccpop{position:fixed;top:calc(var(--mbh) + 8px);right:10px;width:380px;max-height:min(72vh,640px);overflow:auto;z-index:10500;
@@ -1623,7 +1669,7 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .cp-inbar{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--hairline);flex:none;min-width:260px}
 .cp-in{flex:1;resize:none;max-height:88px;font-size:var(--fs-md);border-radius:var(--r-md)}
 .cp-send{width:30px;height:30px;flex:none;border-radius:var(--r-full);font-weight:800;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* chat sidebar: embedded-thread sections */
 .convgrp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
@@ -1742,7 +1788,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
   padding:22px 24px;border-radius:var(--r-lg);border:1px dashed var(--line);color:var(--dim)}
 #deck.noresults .deck-none{display:flex}
 .deck-none .dn-ask{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* ---- the widgets face ----
    The same card as a group, with the app's own widget page inside it. Heights
@@ -1764,7 +1810,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
 .deck-empty .row{display:flex;gap:8px;margin-top:4px}
 .deck-empty button{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
   border:1px solid var(--line);color:var(--txt)}
-.deck-empty .de-studio{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.deck-empty .de-studio{background:var(--acc-grad);color:#06211d;border:none}
 .deck-empty button:hover{border-color:var(--acc)}
 body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
 
@@ -1869,7 +1915,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
 .psw i::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:var(--r-full);
   background:var(--txt);opacity:.75;transition:transform var(--d-base) var(--ease-spring),opacity var(--d-fast) var(--ease-out)}
-.psw input:checked + i{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent}
+.psw input:checked + i{background:var(--acc-grad);border-color:transparent}
 .psw input:checked + i::after{transform:translateX(17px);background:#06211d;opacity:1}
 .psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
 .prow.danger .pl b{color:var(--err)}
@@ -2336,7 +2382,8 @@ body.dev-mobile .two-pane .row{flex-wrap:wrap}
 body.dev-mobile .two-pane .row>*{flex:1 1 100%;min-width:0}
 /* toasts: `body.deck-open #toasts` lifts them by the deck's height, and on a
    phone the deck is the screen — the toast came out at y=-18, over the clock */
-body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px}
+body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px;align-items:stretch}
+body.dev-mobile #toasts .toast{max-width:none;min-width:0}
 /* the dock rests on a whole icon at its LEFT edge; `end` snapping kept the
    right edge whole and left the first icon half clipped instead */
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:start}
@@ -2564,7 +2611,7 @@ body.glass-off .win{background:var(--bg)!important}
   border-right:1px solid var(--hairline);overflow-y:auto;background:var(--bg2)}
 .ob-head{padding:0 var(--sp-3) var(--sp-4)}
 .ob-mark{width:44px;height:44px;border-radius:var(--r-lg);margin-bottom:var(--sp-3);
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;
+  background:var(--acc-grad);color:var(--on-acc);
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xl);font-weight:900;
   box-shadow:0 0 40px color-mix(in srgb,var(--acc) 30%,transparent)}
 .ob-head b{display:block;font-size:var(--fs-lg);font-weight:700}
@@ -2711,7 +2758,7 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-offer{display:flex;flex-direction:column;gap:var(--sp-3);max-width:620px}
 .usr-mark{width:40px;height:40px;border-radius:var(--r-lg);display:flex;
   align-items:center;justify-content:center;font-size:var(--fs-lg);
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+  background:var(--acc-grad);color:var(--on-acc)}
 .usr-offer>b{font-size:var(--fs-lg);font-weight:700}
 .usr-offer p{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;margin:0}
 
@@ -2738,7 +2785,7 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-av{flex:none;width:32px;height:32px;border-radius:var(--r-full);
   display:flex;align-items:center;justify-content:center;font-weight:700;
   background:var(--bg4);color:var(--txt);font-size:var(--fs-sm)}
-.usr-row.me .usr-av{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.usr-row.me .usr-av{background:var(--acc-grad);color:var(--on-acc)}
 .usr-who{flex:1 1 180px;min-width:0;display:flex;flex-direction:column}
 .usr-who b{font-size:var(--fs-sm);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .usr-who em{font-style:normal;font-size:var(--fs-xs);color:var(--dim2)}
@@ -2916,7 +2963,7 @@ body.immersive #mb-brand{font-weight:700}
 body.immersive #mb-brand .mark{box-shadow:0 1px 3px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.4)}
 body.immersive #mbmenus button:hover,body.immersive .pgb:hover,body.immersive #tray-ctl:hover,
 body.immersive #tray-voice:hover,body.immersive #tray-bell:hover,body.immersive #tray-power:hover{background:color-mix(in srgb,var(--txt) 12%,transparent)}
-body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
+body.immersive #mbmenus button.on{background:var(--acc);color:var(--on-acc)}
 body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
 body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
 
@@ -2932,6 +2979,19 @@ body.immersive #ccpop{width:400px;padding:0}
 body.immersive #ccpop .pad{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
 body.immersive #ccpop .cc-owned,body.immersive #ccpop .provbox:nth-of-type(1),body.immersive #ccpop .provbox:nth-of-type(2),body.immersive #ccpop > .pad > .row{grid-column:1/-1}
 body.immersive #ccpop .provbox{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+/* Control centre: tiles of one height with an icon chip, the shared note as a quiet
+   banner, and the slider in the accent. Like macOS's, it reads as controls first. */
+body.immersive #ccpop .pad{grid-template-columns:repeat(2,minmax(0,1fr))}
+body.immersive #ccpop .provbox{border-radius:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.07);min-height:92px}
+body.immersive #ccpop .provbox.cc-wide{grid-column:1/-1;min-height:0}
+body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);gap:10px}
+body.immersive #ccpop .cc-ic{width:30px;height:30px;border-radius:10px;background:var(--acc-grad);color:var(--on-acc);
+  box-shadow:0 4px 12px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body.immersive #ccpop .provbox .mut{font-size:var(--fs-xs)}
+body.immersive #ccpop .cc-owned{margin:0;padding:10px 12px;border-radius:14px;font-size:var(--fs-xs);
+  background:color-mix(in srgb,var(--txt) 5%,transparent);border:1px dashed color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive #ccpop input[type=range]{accent-color:var(--acc)}
+body.immersive #ccpop > .pad > .row .endbtn{border-radius:12px;flex:1}
 body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);font-weight:650}
 body.immersive #ccpop .cc-owned{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:var(--fs-xs)}
 body.immersive #ccpop > .pad > .row{flex-wrap:wrap}
@@ -2957,10 +3017,14 @@ body.immersive .win.active{background:linear-gradient(180deg,color-mix(in srgb,v
    is the whole cost of the look — 83ms a frame with it, 16.7ms without, while
    the deck, dock and menu bar blurs together cost nothing measurable. So the
    "reduced" level from Themes → Effects (which the probe reaches first) drops
-   THIS blur and keeps the rest: the window stays tinted, at 94% so nothing
-   beneath reads through unblurred, and the desktop is back at 60fps. */
+   THIS blur and keeps the rest: the window stays tinted, at 98% so nothing
+   beneath reads through unblurred, and the desktop is back at 60fps. (94% until
+   a screenshot of the Theme Builder over Chat: with no blur, 6% of a bold 32px
+   heading still read through a dark window. Measured over Chat's text: 10 grey
+   levels of contrast at 94%, 5 at 98%, 0 with the window forced opaque — so it
+   was the tint and not the stacking.) */
 body.immersive.glass-lite .win.active{backdrop-filter:none;-webkit-backdrop-filter:none;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 94%,transparent),color-mix(in srgb,var(--bg) 94%,transparent))}
+  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 98%,transparent),color-mix(in srgb,var(--bg) 98%,transparent))}
 body.immersive .win.dragging{box-shadow:0 44px 120px rgba(0,0,0,.66),0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
 /* 16-glass's knob still wins: no blur is no blur, and a tint left behind would
    be four windows of text legible through each other */
@@ -2998,7 +3062,7 @@ body.immersive .apptop,body.immersive #topbar,body.immersive .phead{border-botto
    each category. The rail buttons already carry data-t, so the colour is CSS. */
 body.immersive .prefs-side button{padding:6px 10px;gap:11px;border-radius:10px;font-weight:500;font-size:var(--fs-md);color:var(--txt)}
 body.immersive .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 9%,transparent)}
-body.immersive .prefs-side button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:600;
+body.immersive .prefs-side button.on{background:var(--acc-grad);color:var(--on-acc);font-weight:600;
   box-shadow:0 4px 14px color-mix(in srgb,var(--acc) 30%,transparent)}
 body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
   font-size:var(--fs-sm);color:#fff;opacity:1;background:linear-gradient(135deg,#8b93a3,#586170);
@@ -3238,7 +3302,7 @@ body.immersive #omnilist,body.immersive .ocard,body.immersive .dlg,body.immersiv
 body.immersive #startmenu{border-radius:24px}
 body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist{border-radius:14px;padding:6px}
 body.immersive #ctxmenu button,body.immersive #powermenu button{border-radius:8px;padding:7px 12px}
-body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:#04211c}
+body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:var(--on-acc)}
 body.immersive #powermenu button.danger:hover{background:var(--err);color:#fff}
 body.immersive #ctxmenu hr,body.immersive #powermenu hr{border-top-color:color-mix(in srgb,var(--txt) 12%,transparent)}
 body.immersive #smhead .mark{box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
@@ -3250,12 +3314,51 @@ body.immersive .smapp .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgb
 body.immersive #smfoot{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent)}
 body.immersive .np-item{border-radius:12px;background:color-mix(in srgb,var(--txt) 5%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
 body.immersive .palitem{border-radius:10px}
-body.immersive .palitem.sel{background:var(--acc);color:#04211c;outline:none}
-body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:#04211c}
-body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
+body.immersive .palitem.sel{background:var(--acc);color:var(--on-acc);outline:none}
+body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:var(--on-acc)}
+/* Toasts: a small glass card with the kind's colour as a lit icon and a soft wash on its
+   leading edge, rather than a 3px rule. The words stay the brightest thing on it. */
+body.immersive .toast{background:
+    linear-gradient(90deg,color-mix(in srgb,var(--k,var(--acc)) 16%,transparent),transparent 42%),
+    color-mix(in srgb,var(--bg2) 78%,transparent);
   backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
-  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-left:3px solid var(--acc);border-radius:14px;
-  box-shadow:0 18px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-radius:16px;padding:10px 8px 10px 10px;
+  min-width:min(300px,calc(100vw - 28px));
+  font-size:var(--fs-sm);font-weight:500;
+  box-shadow:0 18px 44px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12)}
+body.immersive .toast.k-info{--k:var(--acc)}body.immersive .toast.k-ok{--k:var(--ok)}
+body.immersive .toast.k-warn{--k:var(--warn)}body.immersive .toast.k-err{--k:var(--err)}
+body.immersive .toast.k-err{border-color:color-mix(in srgb,var(--err) 45%,transparent)}
+body.immersive .toast-ic{width:28px;height:28px;border-radius:9px;
+  box-shadow:0 4px 12px color-mix(in srgb,var(--k,var(--acc)) 45%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body.immersive .toast.k-info .toast-ic{background:var(--acc-grad)}
+body.immersive .toast .toast-act{border-radius:10px;background:var(--acc-grad);color:var(--on-acc);border:none;font-weight:600}
+body.immersive .toast-bar{height:2px;left:12px;right:12px;bottom:3px;border-radius:2px;opacity:.7}
+
+/* The notification centre: a header with weight, each notification its own lit card,
+   the dismiss appearing where the pointer is (always there on touch), and an empty
+   state that says so like a finished inbox rather than a missing list. */
+body.immersive #notifpanel{width:370px;padding:8px}
+body.immersive #notifpanel .np-head{font-size:var(--fs-md);font-weight:700;padding:6px 8px 10px;letter-spacing:-.01em}
+body.immersive #notifpanel .np-head button{border-radius:9px;padding:4px 10px;font-weight:600;
+  background:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive #notifpanel .np-head button:hover{background:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive .np-group{border-bottom:none;margin-bottom:4px}
+body.immersive .np-gapp{padding:6px 8px 4px;color:color-mix(in srgb,var(--txt) 50%,transparent)}
+body.immersive .np-item{padding:10px 36px 10px 12px;margin:0 0 6px;border-radius:14px;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);transition:background var(--d-fast) var(--ease-out)}
+body.immersive .np-item:hover{background:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive .np-item.imp{box-shadow:inset 3px 0 0 var(--acc),inset 0 1px 0 rgba(255,255,255,.06)}
+body.immersive .np-item.crit{border-color:color-mix(in srgb,var(--err) 50%,transparent);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--err) 14%,transparent),transparent 60%),color-mix(in srgb,var(--txt) 6%,transparent)}
+body.immersive .np-item .np-sum{font-size:var(--fs-sm);margin:2px 0}
+body.immersive .np-item .np-x{top:8px;right:8px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;opacity:0}
+body.immersive .np-item:hover .np-x,body.immersive .np-item .np-x:focus-visible,body.immersive.dev-touch .np-item .np-x{opacity:.8}
+body.immersive .np-item .np-x:hover{background:color-mix(in srgb,var(--txt) 12%,transparent);color:var(--txt)}
+body.immersive .np-foryou{margin:0 0 8px;border-radius:14px}
+body.immersive .np-empty svg{width:40px;height:40px;padding:9px;border-radius:14px;color:var(--acc);
+  background:color-mix(in srgb,var(--acc) 14%,transparent);box-sizing:border-box}
 body.immersive .dlg{border-radius:20px}
 body.immersive .dlg-b button{border-radius:11px}
 
@@ -3338,9 +3441,9 @@ body.immersive .wiz.ob{background:color-mix(in srgb,var(--bg) 55%,transparent);
   backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6)}
 body.immersive .ob-rail{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 8%,transparent)}
 body.immersive .ob-item{border-radius:12px}
-body.immersive .ob-item.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
-body.immersive .ob-item.on .ob-t{color:#04211c}
-body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:#04211c}
+body.immersive .ob-item.on{background:var(--acc-grad);color:var(--on-acc)}
+body.immersive .ob-item.on .ob-t{color:var(--on-acc)}
+body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:var(--on-acc)}
 
 /* ---- overview & switcher ---- */
 body.immersive #expose{backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4)}
@@ -3486,7 +3589,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .hud-text p{margin:0}
 .hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
 .msg .who img.av-who+img.av-who{margin-left:-14px}
-/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+/* Settings → Agents → Working together: one row per agent; wraps on a phone */
 .team-list{display:flex;flex-direction:column;gap:8px;width:100%}
 .team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .team-row>b{min-width:88px}
@@ -3494,7 +3597,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
 .hud-to{font-weight:500;color:var(--dim)}
-/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+/* Settings → Agents → Working together: who may ask whom. One button per cell, cycling
    ask → allow → block; a real target on a phone, and the grid scrolls sideways
    rather than squeezing a cell below the tap floor. */
 .team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
@@ -3590,7 +3693,7 @@ body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
 .tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
 .tc-th-txt b{display:flex;align-items:center;gap:6px}
 .tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-unread{background:var(--acc);color:var(--on-acc);font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
 .tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
@@ -3623,6 +3726,122 @@ body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);m
 .ave-design .ave-desc{flex:1;min-width:0}
 .ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}
+
+/* ---- Brains, hands and agents (11e-hands.js) ---- */
+.hands-top{margin-bottom:8px}
+.hands-card,.ag-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;display:flex;flex-direction:column;gap:4px}
+.hands-h,.ag-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hands-h .sp,.ag-h .sp{flex:1}
+.hands-sum{font-size:var(--fs-sm)}
+.hands-desc,.hands-used,.ag-soul{font-size:var(--fs-xs)}
+.hands-ed{margin-top:6px;border-top:1px dashed var(--line);padding-top:8px}
+.hands-form{display:flex;flex-direction:column;gap:10px}
+.hands-form>label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.hands-sec{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.hands-groups{display:flex;flex-direction:column;gap:2px}
+.hands-grp summary{cursor:pointer;padding:4px 0}
+.hands-tools{display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 0 6px 12px}
+.hands-folder{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.hands-folder input{flex:1;min-width:0}
+.pc .hands-folder input{width:auto}
+.hands-form input[type=radio]{width:auto;margin:0}
+.ag-rows{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.ag-rows>div{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ag-k{min-width:86px;color:var(--dim);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em}
+.ag-rows select{max-width:170px}
+body.dev-touch .hands-card button,body.dev-touch .ag-card button,body.dev-touch .ag-rows select,
+body.dev-touch .hands-form input,body.dev-touch .hands-form select,body.dev-touch .hands-grp summary,
+body.dev-touch .hands-top button{min-height:var(--tap)}
+/* the map: four columns that scroll sideways on a phone rather than squeeze */
+.agraph{display:flex;flex-direction:column;gap:6px}
+.agraph-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--fs-xs);align-items:center}
+.agraph-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.agraph-scroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0}
+.agraph-canvas{position:relative}
+.agraph-canvas svg{position:absolute;inset:0;pointer-events:none}
+.agn{position:absolute;display:flex;gap:6px;align-items:center;text-align:left;padding:4px 8px;border-radius:9px;
+  border:1px solid var(--line);background:var(--bg2);color:var(--txt);font:inherit;overflow:hidden}
+.agn-t{display:flex;flex-direction:column;min-width:0}
+.agn-t b,.agn-t small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agn-t small{color:var(--dim);font-size:var(--fs-xs)}
+.agn-agent{cursor:pointer;border-color:color-mix(in srgb,var(--acc) 40%,var(--line))}
+.agn-agent.lead{border-color:var(--acc);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.agn-agent.on{background:color-mix(in srgb,var(--acc) 14%,var(--bg2))}
+.agn-brain{border-left:3px solid var(--acc)}
+.agn-hands{border-left:3px solid color-mix(in srgb,var(--txt) 55%,transparent)}
+.agn-team{border-left:3px solid #60a5fa}.agn-mission{border-left:3px solid #fbbf24}
+.agraph-cols{display:none}
+/* ================= Office: the playground (24d-office.js) =================
+   Two columns on a wide window — the office, and the chat on the right — and one on a
+   narrow one, where the chat is a sheet behind the Chat button. The canvas draws its
+   own room in its own colours (a greenhouse is green on every theme); everything around
+   it is the theme's, from its tokens. */
+.of-body{container-type:inline-size}
+.of-wrap{display:flex;flex:1;min-height:0;position:relative}
+.of-stage{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.of-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hairline);flex:none;min-width:0}
+.of-title{font-weight:800;white-space:nowrap}
+.of-line{color:var(--dim);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.of-bar .endbtn.on{border-color:var(--acc);color:var(--acc)}
+.of-ct{display:none}
+.of-scroll{flex:1;min-height:0;overflow:auto;position:relative;background:#14131f;overscroll-behavior:contain}
+.of-cv{display:block;cursor:pointer;touch-action:pan-y}
+.of-empty{position:absolute;left:50%;top:14px;transform:translateX(-50%);width:min(440px,calc(100% - 24px));
+  display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line);box-shadow:var(--el-3);font-size:var(--fs-sm)}
+.of-empty span{color:var(--dim)}
+.of-empty[hidden]{display:none}   /* display:flex above outranks the attribute */
+.of-log{flex:none;display:flex;flex-direction:column;gap:1px;padding:6px 12px;min-height:30px;overflow:hidden;line-height:1.45;
+  border-top:1px solid var(--hairline);font-size:var(--fs-xs);color:var(--dim)}
+.of-le{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.of-le span{color:var(--dim2);margin-right:8px;font-variant-numeric:tabular-nums}
+.of-le.new{color:var(--txt)}
+.of-chat{width:320px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--hairline);
+  background:color-mix(in srgb,var(--bg2) 55%,transparent)}
+.of-chat .cp-feed,.of-chat .cp-starters,.of-chat .cp-inbar{min-width:0}
+
+/* the designer: a panel over the office's right edge, so the change is seen as it is made */
+.of-design{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--el-4);padding:10px 14px 16px}
+.of-design[hidden]{display:none}
+.of-dh{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.of-x{color:var(--dim);border-radius:var(--r-sm);padding:4px 8px}
+.of-x:hover{color:var(--txt);background:var(--bg3)}
+.of-sec{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);margin:14px 0 6px}
+.of-sec .mut{text-transform:none;letter-spacing:0;font-weight:500;margin-left:6px}
+.of-row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.of-row input{flex:1;min-width:0}
+.of-row select{flex:none;max-width:48%}
+.of-who .of-an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.of-sw{width:14px;height:14px;border-radius:4px;flex:none;border:2px solid #191827}
+.of-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.of-style{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r-md);border:1px solid var(--line);
+  background:var(--bg3);text-align:left;font-size:var(--fs-sm);min-width:0}
+.of-style i{width:26px;height:26px;border-radius:6px;flex:none;border:2px solid #191827}
+.of-style span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.of-style.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.of-chips{display:flex;flex-wrap:wrap;gap:6px}
+.of-chip{font-size:var(--fs-xs);padding:5px 11px;border-radius:var(--r-full);background:var(--bg3);border:1px solid var(--line);color:var(--dim)}
+.of-chip.on{border-color:var(--acc);color:var(--txt);background:color-mix(in srgb,var(--acc) 16%,var(--bg3))}
+
+/* narrow: the chat is a sheet over the lower part of the office, behind the Chat button */
+@container (max-width:760px){
+  .of-ct{display:inline-flex}
+  .of-chat{position:absolute;left:0;right:0;bottom:0;height:62%;width:auto;z-index:4;display:none;
+    border-left:none;border-top:1px solid var(--line);background:var(--bg2);box-shadow:var(--el-4);
+    border-radius:var(--r-lg) var(--r-lg) 0 0}
+  .of-wrap.chat-open .of-chat{display:flex}
+  .of-wrap.chat-open .of-ct{border-color:var(--acc);color:var(--acc)}
+}
+body.dev-mobile .of-ct{display:inline-flex}
+body.dev-mobile .of-chat{position:absolute;left:0;right:0;bottom:0;height:64%;width:auto;z-index:4;display:none;
+  border-left:none;border-top:1px solid var(--line);background:var(--bg2);box-shadow:var(--el-4)}
+body.dev-mobile .of-wrap.chat-open .of-chat{display:flex}
+body.dev-mobile .of-le:nth-child(n+3){display:none}
+/* a fingertip: every control in the designer and the bar at the floor, as real size */
+body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,body.dev-touch .of-x,
+body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn{min-height:var(--tap)}
+body.dev-touch .of-x{min-width:var(--tap)}
 </style>
 </head>
 <body>
@@ -3887,26 +4106,53 @@ function md(src){
   return h.replace(/\x00B(\d+)\x00/g,(m,i)=>blocks[+i]);
 }
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
-/* toast(text) says something happened. toast(text,{label,go,ms}) also offers the one
-   thing to do about it (a link request: "Review"); it stays longer, and is the only
-   part of the stack that takes a tap — the rest of #toasts lets clicks through. */
+/* What KIND of news a toast is, so it can say so with an icon and a colour rather
+   than asking the reader to parse the sentence. `act.kind` decides when a caller
+   knows; the ~400 older calls are read by their first words ("could not…" is a
+   failure, "saved…" a success). A guess only picks an icon — the words are always
+   shown as written, so a wrong guess costs a colour, never the message. */
+var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
+function toastKind(t,act){
+  if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;
+  const s=String(t==null?'':t).trim().toLowerCase();
+  if(/^[✗✕✖]|^(could not|couldn.t|can.t |cannot|failed|error|invalid|refused|not allowed|not connected|not a valid|no such |no valid |no link|the server did not answer|install failed)/.test(s))return 'err';
+  if(/^[!⚠]|^(warning|careful|glass effects turned down)/.test(s))return 'warn';
+  if(/^[✓✔]|^(saved|done|deleted|removed|linked|copied|imported|installed|updated|allowed|granted|stopped|sent|created|applied|revoked|recorded|moved|renamed|promoted|drafted)\b|now works with/.test(s))return 'ok';
+  return 'info';
+}
+/* toast(text) says something happened. toast(text,{label,go,ms,kind}) also offers
+   the one tap that deals with it. Hovering holds it (the bar pauses); a failure
+   stays twice as long as good news, because it is the one that needs reading. */
 function toast(t,act){
   let box=document.getElementById('toasts');
-  if(!box){box=document.createElement('div');box.id='toasts';document.body.appendChild(box)}
-  const d=document.createElement('div');d.className='toast';d.textContent=t;
+  if(!box){box=document.createElement('div');box.id='toasts';box.setAttribute('role','status');
+    box.setAttribute('aria-live','polite');document.body.appendChild(box)}
+  const kind=toastKind(t,act);
+  const d=document.createElement('div');d.className='toast k-'+kind;
+  if(kind==='err')d.setAttribute('role','alert');
+  const ms=(act&&act.ms)||(kind==='err'?7000:3800);
+  d.style.setProperty('--toast-ms',ms+'ms');
+  d.innerHTML=`<i class="toast-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="${TOAST_IC[kind]}"/></svg></i><span class="toast-t"></span>`;
+  // the glyph a caller wrote ("✓ saved") is now the icon; the words stay as written
+  d.querySelector('.toast-t').textContent=String(t==null?'':t).replace(/^\s*[✓✔✗✕✖⚠]\s*/,'');
+  let h=0,left=ms,started=Date.now();
+  const leave=()=>{clearTimeout(h);if(!d.isConnected)return;
+    const done=()=>d.remove();
+    if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
+    else done()};
   if(act&&act.label&&typeof act.go==='function'){
     const b=document.createElement('button');b.className='endbtn toast-act';b.textContent=act.label;
     b.onclick=()=>{d.remove();act.go()};d.classList.add('has-act');d.appendChild(b);
   }
+  const x=document.createElement('button');x.className='toast-x';x.setAttribute('aria-label','Dismiss');x.textContent='✕';
+  x.onclick=leave;d.appendChild(x);
+  const bar=document.createElement('i');bar.className='toast-bar';bar.setAttribute('aria-hidden','true');d.appendChild(bar);
+  d.onmouseenter=()=>{clearTimeout(h);left-=Date.now()-started;d.classList.add('held')};
+  d.onmouseleave=()=>{started=Date.now();h=setTimeout(leave,Math.max(900,left));d.classList.remove('held')};
   box.prepend(d);
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
-  setTimeout(()=>{
-    if(!d.isConnected)return;
-    const done=()=>d.remove();
-    if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
-    else done();
-  },(act&&act.ms)||3500);
+  h=setTimeout(leave,ms);
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
@@ -4430,6 +4676,7 @@ avatarsLoad();
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
 const ICONS={
   chat:['#4AA9FF','#0A5FD9','<path d="M12 4.3c-4.5 0-8.1 2.9-8.1 6.5 0 2 1.1 3.9 2.9 5.1l-.6 3.6 3.6-1.9c.7.1 1.4.2 2.2.2 4.5 0 8.1-2.9 8.1-6.5S16.5 4.3 12 4.3Z"/><path d="M8.6 10.8h.01M12 10.8h.01M15.4 10.8h.01" stroke-width="2.3"/>'],
+  office:['#FBBF24','#EA580C','<path d="M5.5 11.2h13v2.4h-13z"/><path d="M7.2 13.6V19M16.8 13.6V19"/><circle cx="9" cy="6.8" r="2"/><path d="M6.4 11.2c0-1.6 1.2-2.6 2.6-2.6s2.6 1 2.6 2.6"/><path d="M14.2 4.4h5.2a1.2 1.2 0 0 1 1.2 1.2v2.2a1.2 1.2 0 0 1-1.2 1.2h-2.6l-1.8 1.4V9h-.8A1.2 1.2 0 0 1 13 7.8V5.6a1.2 1.2 0 0 1 1.2-1.2Z"/>'],
   teamchat:['#34D399','#047857','<path d="M4 6.6c0-.9.7-1.6 1.6-1.6h8.2c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H9.2L6 16v-2.6h-.4c-.9 0-1.6-.7-1.6-1.6Z"/><path d="M18.2 9.4h.2c.9 0 1.6.7 1.6 1.6v5c0 .9-.7 1.6-1.6 1.6H18V20l-3.2-2.4h-3.4c-.9 0-1.6-.7-1.6-1.6v-.4"/>'],
   taskmgr:['#6B7684','#39414E','<path d="M3.8 12.2h3.6l2.4-5.8 4.2 11.2 2.4-5.4h3.8"/>'],
   terminal:['#4A5160','#1E222B','<path d="M6.5 8.2l4 3.8-4 3.8"/><path d="M12.8 16.4h4.7"/>'],
@@ -4626,7 +4873,7 @@ function glassProbe(force){
   },1400);
 }
 applyGlass();
-/* ================= immersive experience (beta) =================
+/* ================= immersive experience (the default look) =================
    (Numbered 01b: it has to have put `immersive` on <body> before 02-themes
    applies a theme, or the first paint is the standard look and then jumps.)
 
@@ -4644,7 +4891,13 @@ applyGlass();
 /* Monday first, as the server counts them (flows.WEEKDAYS). Shared by the flow
    editor, the scheduler and the Missions catalogue. */
 var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+/* ON by default (2026-09): the immersive look is the desktop now, and the standard
+   one is what somebody switches to. Only an explicit '0' — this browser switched it
+   off — keeps it off; everything it restyles is still scoped to body.immersive, so
+   off stays byte-for-byte the standard desktop. A storage that throws (a private
+   window) gets the default. */
+function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
+var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
@@ -4820,7 +5073,7 @@ function setImmersive(on){
   if(typeof glassProbe==='function')glassProbe(true);       // one more blurred surface — can this machine still draw it?
   if(typeof suiSyncStruts==='function')suiSyncStruts();     // the dock's band changed height
   if(typeof refreshApp==='function'){refreshApp('settings');refreshApp('themes')}
-  if(typeof toast==='function')toast(on?'Immersive experience on (beta) — Settings → Appearance turns it off':'Back to the standard desktop');
+  if(typeof toast==='function')toast(on?'Immersive experience on — Settings → Appearance turns it off':'Back to the standard desktop');
 }
 /* The wallpaper drifts a few pixels against the pointer, so the desktop reads as
    a scene with depth instead of a picture. It is a transform on one composited
@@ -4927,12 +5180,19 @@ function movementCovered(){
   return false;
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
+/* The ONE seam between the OS's events and the scenes that draw them: the Crew stage
+   (01d) and the Office playground (24d). A new scene is one line here, not five more
+   edits in a websocket that knows nothing about scenes. */
+function scenePulse(kind,label,ev){
+  if(typeof crewPulse==='function')crewPulse(kind,label,ev);
+  if(typeof officePulse==='function')officePulse(kind,label,ev);
+}
 function movementPulse(kind,label,ev){
   // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a
   // second call beside each of the websocket's five is deliberate: a new scene must not
   // mean five more edits in a file that knows nothing about scenes, and a sixth event
   // wired to only one of them is exactly the drift that produces a half-live desktop.
-  if(typeof crewPulse==='function')crewPulse(kind,label,ev);
+  scenePulse(kind,label,ev);
   if(!MOVEMENT.on)return;
   const M=MOVEMENT,now=performance.now();
   if(kind==='turn'&&label){M.turns[label]={start:now,end:0};return}
@@ -5538,6 +5798,16 @@ if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewSt
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
 const THEMES={
+  /* Nova — the default look (2026-09): deep ink, an electric indigo→violet accent that
+     the immersive look carries into buttons, tabs and focus as a gradient, white text
+     on the accent (--on-acc), Geist, and softer, larger corners. Every rule it needs
+     is a token, so the immersive layer, the builder and the standard desktop all read
+     the same numbers. */
+  nova:{label:'Nova (modern)',mode:'dark',wall_img:'nova',font:{url:'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap',family:'Geist'},
+    v:{bg:'#09090f',bg2:'#111120',bg3:'#181829',bg4:'#212136',line:'#2a2a44',txt:'#ececf6',dim:'#a3a3c2',dim2:'#6b6b8f',
+       acc:'#7c6cff',acc2:'#c084fc',warn:'#fbbf24',err:'#fb7185',ok:'#34d399',glass:'rgba(17,17,32,.8)',
+       'on-acc':'#ffffff','acc-grad':'linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#d946ef 100%)',
+       'r-sm':'8px','r-md':'12px','r-lg':'16px','r-xl':'22px'}},
   agentos:{label:'AgentOS (teal)',mode:'dark',v:{bg:'#0b0d10',bg2:'#111419',bg3:'#171b22',bg4:'#1e242e',line:'#232a35',txt:'#e6ebf2',dim:'#8a94a6',dim2:'#5c6577',acc:'#5eead4',acc2:'#22d3ee',warn:'#fbbf24',err:'#f87171',ok:'#4ade80',glass:'rgba(17,20,25,.82)'}},
   ubuntu:{label:'Ember (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
   'ubuntu-light':{label:'Ember (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
@@ -5749,7 +6019,8 @@ input,textarea,select{background:#f4f1ff;border:none;box-shadow:inset 0 3px 7px 
 };
 const CUSTOM_THEMES={};   // name -> theme object, loaded from the server
 function allThemes(){const m={};for(const k in THEMES)m[k]={...THEMES[k],id:k};for(const n in CUSTOM_THEMES)m[n]={...CUSTOM_THEMES[n],id:n};return m}
-let CURRENT_THEME=localStorage.getItem('theme')||'agentos';
+// A browser that never chose gets Nova; one that chose keeps its choice.
+let CURRENT_THEME=(()=>{try{return localStorage.getItem('theme')}catch(e){return null}})()||'nova';
 function applyThemeObj(t){
   // crossfade the whole desktop through the theme change instead of hard-cutting
   if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&document.body.dataset.themed){
@@ -5881,7 +6152,7 @@ async function loadThemes(){
   }catch(e){}
   if(allThemes()[CURRENT_THEME])applyTheme(CURRENT_THEME);   // re-apply if it's a custom theme
 }
-applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'agentos');
+applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'nova');
 
 /* ================= fullscreen ================= */
 function toggleFullscreen(){
@@ -6821,6 +7092,7 @@ function copilotStarters(appId){
     mcp:['What tools do I have?','Find and add a calendar server','Which server is failing?'],
     permissions:['What can apps do right now?','Anything risky granted?','Tighten the defaults'],
     tokens:['Where do my tokens go?','Cheaper model for background work?','Usage this week'],
+    office:['Design my office as a space station','Put my specialists in departments','Get the team to huddle on a question'],
     fabric:['Build me a research team','Why did the last run stall?','Add a validator step'],
     snapshots:['Snapshot before I experiment','What changed since yesterday?'],
     mission:['How healthy is the system?','What needs my attention?'],
@@ -7577,6 +7849,8 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
+    render:renderOffice,onClose:officeClose},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
@@ -7627,6 +7901,7 @@ const APPS={
    Sync + cheap by design (globals/DOM only) — it's a hint for the embedded
    agent, which can always call tools for authoritative data. ---- */
 const APP_CTX={
+  office:()=>officeContext(),
   chat:()=>`the full chat window; current conversation ${currentConv||'(none)'}${RUNNING.size?', a turn is running':''}`,
   files:w=>`browsing "${w.path||'workspace root'}"${document.querySelectorAll('.fitem').length?` (${document.querySelectorAll('.fitem').length} entries visible)`:''}`,
   terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
@@ -7677,7 +7952,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -7930,7 +8205,7 @@ function arrangeIcons(byName){
   toast(byName?'icons sorted by name':'icons auto-arranged');
 }
 const BENTO_GROUPS=[
-  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Essentials',['chat','office','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['jobs','tasks','skills','mcp','telegram']],
@@ -8115,7 +8390,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['brief','chat','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
+  ['Essentials',['brief','chat','office','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','tasks','skills','mcp','telegram']],
@@ -9111,7 +9386,7 @@ function arrangeWidgets(){
      4. the wizard's preset gradient, or the stylesheet's mesh.
    The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
    cheap to rasterise on slow GPUs (no blur filters — gradients only). */
-const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement','immersive-crew'];
+const BUILTIN_WALLS=['nova','bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement','immersive-crew'];
 const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
 function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
 function themeWall(){
@@ -9668,7 +9943,7 @@ function handle(ev){
       }
       break;}
     case 'turn_start':{
-      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
+      if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id,ev);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
                           model:ev.model==='claude-code'?'':(ev.model||''),
@@ -9701,7 +9976,7 @@ function handle(ev){
       if(!curThink){curThink=document.createElement('div');curThink.className='think';curBody.parentNode.insertBefore(curThink,curBody);}
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
-      if(typeof movementPulse==='function')movementPulse('tool',ev.name);   // a tick on the dial (Movement scene)
+      if(typeof movementPulse==='function')movementPulse('tool',ev.name,ev);   // a tick on the dial (Movement scene)
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -9879,7 +10154,9 @@ function handle(ev){
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
       fabricLiveRefresh(); break;
-    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
+    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
+      if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
+    case 'office': refreshApp('office'); break;   // the office's look or its seating changed
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
@@ -10713,7 +10990,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
-  if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
+  scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
@@ -10748,9 +11025,11 @@ function agentMsgLive(ev,isCur){
   // another machine or account. Treating "no conversation" as "the open one" put a
   // stranger's question inside whatever chat the person was reading. The stage shows
   // who is being consulted and a toast says by whom; nothing is written into a thread.
+  // the Office walks the asker over to the one it asked, and back after the answer
+  scenePulse('msg',ev.from,ev);
   if(!ev.conversation_id){
     const who=ev.phase==='ask'?ev.to:ev.from;
-    if(typeof crewPulse==='function')crewPulse('say',who,{text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
+    if(typeof crewPulse==='function')crewPulse('say',who,{kind:'talk',text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
     if(ev.phase==='ask'&&typeof toast==='function')toast('↔ '+ev.from+' asked your '+ev.to);
     return;
   }
@@ -10796,7 +11075,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 // (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
-  ['agent','◈','Agent','agent'],
+  ['agent','◈','Agents','agent'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
   ['accounts','✉','Accounts','accounts'],
@@ -10843,7 +11122,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the picker below.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -10853,7 +11132,7 @@ function setTab(body,all){
     // needing a second Save to make a chosen model take effect is the same bug
     // wearing a different hat.
     P.push(pGroup('Answering', [
-      pRow('This machine answers with',
+      pRow('Your lead agent thinks with',
         `<span class="s-modelrow">
            <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
            <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
@@ -10867,13 +11146,105 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    P.push(pGroup('Local',[
+      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
+        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
+    ],{f:'ollama local'}));
+    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
+      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
+      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
+        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
+      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
+    ],{f:key+' '+name});
+    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
+    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
+    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
+    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
+    P.push(pGroup('Custom (OpenAI-compatible)',[
+      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
+      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
+      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
+      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
+    ],{f:'custom openai compatible endpoint lm studio'}));
+    /* Other AI agents installed on this machine are BRAINS too — Claude Code thinks
+       with its own model and can answer a turn or run a mission through the bridge.
+       They lived under "Executors" when that word meant "who runs the turn"; it now
+       means an agent's hands (Settings → Executors), so they are listed here with the
+       rest of the brains. The code still calls them executors (agentos/executors.py):
+       renaming the identifier would cost every install its saved engine for a word
+       nobody sees. */
+    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain: pick it above to have it answer, or give it to one of your agents. AgentOS keeps the desktop and the permissions — an installed agent only reaches the folder you choose.</p>`);
+    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-offers"></div>`);
+    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderExecutors,0);
+    setTimeout(renderOcPlugins,0);
+    P.push(pGroup('Image generation',[
+      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
+        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
+      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
+    ],{f:'image generation wallpaper'}));
+  }
+  if(want('executors')){
+    /* Executors are HANDS (agentos/hands.py): what an agent can reach — which tools,
+       which folders and whether it may write there, which web addresses, which MCP
+       servers. A profile is a CEILING the gate checks before any permission (policy
+       step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
+       11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
+       this page — nothing native, nothing touching the compositor. */
+    P.push(`<h2>Executors</h2><p class="lead">Hands. An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
+    setTimeout(renderHands,0);
+    P.push(pGroup('The machine\u2019s own limit',[
+      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
+        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden. This bounds a SHELL — an executor\u2019s folders bound the file tools, and a shell reaches whatever this jail allows.',f:'sandbox jail bubblewrap shell'}),
+      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
+      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
+    ],{f:'sandbox security jail'}));
+  }
+  if(want('channels')){
+    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
+    setTimeout(renderChannels,0);   // live state, not part of cfg
+  }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(pGroup('GitHub',[
+      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
+        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
+      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
+    ],{f:'github git ship publish'}));
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
+  }
+  if(want('agent')){
+    /* Agents: the lead agent (always here) and the agents it works with. Each gets a
+       BRAIN (AI providers), HANDS (Executors), AUTHORITY (its permissions) and SKILLS,
+       and may talk to colleagues and linked teams — all of it read from ONE answer,
+       agentmap.overview(), which the map below and `bento agents` read too.
+       11e-hands.js draws the list and the map. */
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), hands (<a href="#" onclick="settingsGo('executors');return false">Executors</a>), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(pGroup('Lead agent',[
+      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
+        {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
+      pRow('Hands','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
+        {desc:'The executor it works with: what it can reach. It applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
+      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
+      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
+        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
+    ],{f:'agent identity name workspace lead'}));
+    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
+    setTimeout(renderAgentsList,0);
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
        bill, one provider), and each row pins one agent. Both apply on the spot, like
        the brain above. The badge each agent wears on the Crew stage and in chat is
        the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
-    P.push(pGroup('Team',[
+    P.push(pGroup('Working together',[
       pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
         {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
          f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
@@ -10913,73 +11284,9 @@ function setTab(body,all){
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
-    P.push(pGroup('Local',[
-      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
-        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
-    ],{f:'ollama local'}));
-    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
-      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
-      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
-        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
-      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
-    ],{f:key+' '+name});
-    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
-    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
-    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
-    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
-    P.push(pGroup('Custom (OpenAI-compatible)',[
-      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
-      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
-      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
-      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
-    ],{f:'custom openai compatible endpoint lm studio'}));
-    P.push(pGroup('Image generation',[
-      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
-        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
-      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
-    ],{f:'image generation wallpaper'}));
-  }
-  if(want('executors')){
-    P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
-    P.push(pGroup('Forward everything',[
-      /* Filled from the roster by renderExecutors below, not written out here.
-         This list was hardcoded to aria + claude-code, so every executor added
-         afterwards was invisible in the one panel named after them — and which
-         brains exist is a probe, not part of cfg. */
-      pRow('This machine answers with',
-        `<select id="s-engine" onchange="pickEngine(this.value)"><option value="${esc(cfg.engine||'aria')}">checking…</option></select>`,
-        {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
-         f:'forward everything engine forwarder proxy relay'}),
-    ],{f:'forwarding engine'}));
-    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
-    P.push(`<div id="exec-offers"></div>`);
-    /* OpenClaw's plugins belong here rather than in a pane of their own: OpenClaw
-       is an executor, and this is the screen somebody is already on when they
-       decide to extend it. Inert with an honest sentence when the CLI is absent —
-       11b-openclaw.js. */
-    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
-    setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
-    setTimeout(renderOcPlugins,0);
-  }
-  if(want('channels')){
-    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
-    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
-    setTimeout(renderChannels,0);   // live state, not part of cfg
-  }
-  if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
-    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
-    setTimeout(renderAccounts,0);
-  }
-  if(want('agent')){
-    P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
-    P.push(pGroup('Identity',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
-      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
-      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
-      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
-        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
-    ],{f:'agent identity name workspace'}));
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach, who it may ask and who may ask it — drawn from the same permissions the gate checks. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
     P.push(pGroup('Content from outside',[
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before anything that changes something'],
@@ -10993,22 +11300,6 @@ function setTab(body,all){
         {desc:'Long threads stop fitting the model\'s context window. Either way you are told in the conversation when it happens.',
          f:'history compaction summary context window long thread'}),
     ],{f:'security untrusted injection history'}));
-    P.push(pGroup('Sandbox',[
-      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
-        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
-      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* Deliberately a pointer and not a second editor. Which folders are open
-         and WHO they are open to is one fact; two places to change it is two
-         places to disagree, and the copy nobody demos is the one that drifts.
-         Settings owns whether there is a jail; Users owns who reaches through it. */
-      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
-        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-    ],{f:'sandbox security'}));
-    P.push(pGroup('GitHub',[
-      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
-        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
-      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
-    ],{f:'github git ship publish'}));
     /* Sharing the agent belongs on the page that answers "who is my agent" —
        11c-agentshare.js renders it, agentbundle.py decides everything. */
     P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
@@ -11066,11 +11357,12 @@ function setTab(body,all){
        Applied the moment it is flipped, like the theme select above — Save is
        for the machine's settings, and this one lives in this browser. */
     P.push(pGroup('Immersive experience',[
-      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+      pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
         {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
              +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
              +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
              +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'On by default; switch it off here for the plain desktop. '
              +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
@@ -11261,7 +11553,7 @@ async function paintVersion(check){
     const n=d.behind||0;
     const head=bumped
       ? `<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
-      : `<b>${esc(d.current)}</b> <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
+      : `<b>${esc(d.current)}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
         +` <span class="mut">on ${esc(d.tracks||'')}</span>`;
     el.innerHTML=head
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
@@ -11274,7 +11566,7 @@ async function paintVersion(check){
     const where=d.mismatch
       ? `up to date with ${esc(d.tracks||'')} — this copy is on ${esc(d.on_branch||'another branch')}`
       : (d.latest?`up to date with ${esc(d.tracks||'')}`:'not checked yet');
-    el.innerHTML=`<b>${esc(d.current||'?')}</b> `
+    el.innerHTML=`<b>${esc(d.current||'?')}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} `
       +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn;
   }
 }
@@ -11884,7 +12176,7 @@ function openLinkedTeams(){
   SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="ai"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="agent"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
@@ -13155,6 +13447,203 @@ async function acctTest(id){
     if(typeof refreshApp==='function')refreshApp('jobs');
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
 }
+/* ================= brains, hands and agents (Settings) =================
+   Executors → the hands editor (agentos/hands.py over /api/hands).
+   Agents    → the lead agent's hands, every other agent's card, and the map
+               (agentos/agentmap.py over /api/agents and /api/agents/graph).
+   One computation on the server feeds all of it, so the card, the map and
+   `bento agents` cannot disagree about who reaches what.
+   Faces — TUI: `bento hands`, `bento agents [map|hands]`. SUI: this page, nothing
+   native. Phone: every control keeps the --tap floor; the map scrolls sideways
+   rather than squeezing four columns into 390px. */
+var HANDS={data:null,edit:null};
+var AGENTS={data:null,focus:''};
+
+function settingsGo(tab){
+  SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  const b=document.querySelector(`.prefs-side button[data-t="${tab}"]`);
+  if(b)b.click();
+}
+
+/* ---------------- Executors: the hands editor ---------------- */
+async function renderHands(){
+  const box=document.getElementById('hands-list');if(!box)return;
+  try{HANDS.data=await fetch('/api/hands').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load executors</p>';return}
+  const d=HANDS.data;
+  box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
+    +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
+      <div class="hands-h"><b>${esc(p.name)}</b>${p.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span>
+        <button class="endbtn" onclick="handsEdit('${esc(p.name)}')">Edit</button>
+        <button class="endbtn" onclick="handsEdit('${esc(p.name)}',true)">Duplicate</button>
+        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${esc(p.name)}')">Delete</button>`}</div>
+      <div class="hands-sum">${esc(p.summary)}</div>
+      ${p.description?`<div class="mut hands-desc">${esc(p.description)}</div>`:''}
+      <div class="mut hands-used">${(p.used_by||[]).length?'Used by '+p.used_by.map(n=>esc(n)).join(', '):'No agent uses it yet'}</div>
+      ${HANDS.edit&&HANDS.edit.from===p.name?'<div class="hands-ed" id="hands-ed"></div>':''}
+    </div>`).join('')
+    +(HANDS.edit&&HANDS.edit.from===''?'<div class="hands-card"><div class="hands-ed" id="hands-ed"></div></div>':'');
+  if(HANDS.edit)handsPaintEditor();
+}
+function handsEdit(name,dup){
+  const d=HANDS.data||{profiles:[]};
+  const p=d.profiles.find(x=>x.name===name);
+  const base=p?JSON.parse(JSON.stringify(p.spec)):{tools:[],folders:[{path:'@workspace',mode:'ro'}],web:'none',mcp:[]};
+  HANDS.edit={from:dup?'':(name||''),name:dup?(name+'-copy'):(name||''),exists:!!p&&!dup,
+    description:p&&!dup?(p.description||''):'',spec:base};
+  renderHands();
+}
+function handsPaintEditor(){
+  const el=document.getElementById('hands-ed');if(!el||!HANDS.edit)return;
+  const e=HANDS.edit,s=e.spec,d=HANDS.data;
+  const every=s.tools.includes('*');
+  const shell=every||(d.shell_tools||[]).some(t=>s.tools.includes(t));
+  const groups=Object.entries(d.tools||{}).map(([g,ns])=>{
+    const n=ns.filter(t=>s.tools.includes(t)).length;
+    return `<details class="hands-grp"><summary>${esc(g)} <span class="mut">${n}/${ns.length}</span></summary>
+      <div class="hands-tools">${ns.map(t=>`<label class="tlk-chk"><input type="checkbox" data-tool="${esc(t)}" ${s.tools.includes(t)?'checked':''}><span>${esc(t)}</span></label>`).join('')}</div></details>`}).join('');
+  const webMode=Array.isArray(s.web)?'list':s.web;
+  const mcpMode=s.mcp.includes('*')?'all':(s.mcp.length?'some':'none');
+  el.innerHTML=`<div class="hands-form">
+    <label>Name<input id="he-name" value="${esc(e.name)}" ${e.exists?'disabled':''} autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>What it is for<input id="he-desc" value="${esc(e.description)}" placeholder="e.g. writes reports into the shared folder"></label>
+    <div class="hands-sec"><b>Tools</b>
+      <label class="tlk-chk"><input type="radio" name="he-tm" value="all" ${every?'checked':''}><span>Every tool</span></label>
+      <label class="tlk-chk"><input type="radio" name="he-tm" value="some" ${every?'':'checked'}><span>Only the ones ticked</span></label>
+      ${every?'':`<div class="hands-groups">${groups}</div>`}
+      ${shell?'<p class="mut tlk-why">Includes a shell. A command line reaches whatever the machine’s folder jail allows, not only the folders below — leave the shell tools out to make the folders a real limit.</p>':''}</div>
+    <div class="hands-sec"><b>Folders</b>
+      <div id="he-folders">${s.folders.map((f,i)=>`<div class="hands-folder"><input data-fi="${i}" value="${esc(f.path)}" placeholder="~/projects or /srv/data" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <select data-fm="${i}"><option value="rw" ${f.mode==='rw'?'selected':''}>read-write</option><option value="ro" ${f.mode==='ro'?'selected':''}>read-only</option></select>
+        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders — the file tools reach nothing.</p>'}</div>
+      <div class="tlk-actions"><button class="endbtn" onclick="handsFolder(-1,'')">＋ Folder</button>
+        <button class="endbtn" onclick="handsFolder(-1,'@workspace')">＋ Workspace</button>
+        <button class="endbtn" onclick="handsFolder(-1,'*')">＋ Anywhere the machine allows</button></div></div>
+    <div class="hands-sec"><b>Web</b>
+      <select id="he-web"><option value="any" ${webMode==='any'?'selected':''}>Any address</option><option value="none" ${webMode==='none'?'selected':''}>No web</option><option value="list" ${webMode==='list'?'selected':''}>Only these addresses</option></select>
+      ${webMode==='list'?`<textarea id="he-weblist" rows="3" placeholder="https://api.github.com/*">${esc((s.web||[]).join('\n'))}</textarea>`:''}</div>
+    <div class="hands-sec"><b>MCP servers</b>
+      <select id="he-mcp"><option value="all" ${mcpMode==='all'?'selected':''}>Every server</option><option value="some" ${mcpMode==='some'?'selected':''}>Only these</option><option value="none" ${mcpMode==='none'?'selected':''}>None</option></select>
+      ${mcpMode==='some'?((d.mcp||[]).length?`<div class="hands-tools">${d.mcp.map(m=>`<label class="tlk-chk"><input type="checkbox" data-mcp="${esc(m)}" ${s.mcp.includes(m)?'checked':''}><span>${esc(m)}</span></label>`).join('')}</div>`:'<p class="mut tlk-why">No MCP servers are set up on this machine yet.</p>'):''}</div>
+    <div class="tlk-actions"><button class="pact" onclick="handsSave()">Save</button><button class="endbtn" onclick="HANDS.edit=null;renderHands()">Cancel</button></div>
+  </div>`;
+  el.querySelectorAll('input[name="he-tm"]').forEach(r=>r.onchange=()=>{handsCollect();HANDS.edit.spec.tools=r.value==='all'?['*']:[];handsPaintEditor()});
+  el.querySelector('#he-web').onchange=()=>{handsCollect();const v=el.querySelector('#he-web').value;HANDS.edit.spec.web=v==='list'?[]:v;handsPaintEditor()};
+  el.querySelector('#he-mcp').onchange=()=>{handsCollect();const v=el.querySelector('#he-mcp').value;HANDS.edit.spec.mcp=v==='all'?['*']:[];if(v==='some'&&!(d.mcp||[]).length)HANDS.edit.spec.mcp=[];HANDS.edit._mcpSome=v==='some';handsPaintEditor()};
+  el.querySelectorAll('input[data-tool]').forEach(c=>c.onchange=()=>{handsCollect();handsPaintEditor()});
+  if(HANDS.edit._mcpSome)el.querySelector('#he-mcp').value='some';
+}
+function handsCollect(){
+  const el=document.getElementById('hands-ed');if(!el||!HANDS.edit)return;
+  const e=HANDS.edit,s=e.spec;
+  const nm=el.querySelector('#he-name');if(nm&&!e.exists)e.name=nm.value.trim();
+  e.description=(el.querySelector('#he-desc')||{}).value||'';
+  if(!s.tools.includes('*')){
+    const ticked=[...el.querySelectorAll('input[data-tool]')].filter(c=>c.checked).map(c=>c.dataset.tool);
+    if(el.querySelector('input[data-tool]'))s.tools=ticked;
+  }
+  s.folders=s.folders.map((f,i)=>({path:((el.querySelector(`[data-fi="${i}"]`)||{}).value||f.path).trim(),
+    mode:(el.querySelector(`[data-fm="${i}"]`)||{}).value||f.mode}));
+  const wl=el.querySelector('#he-weblist');
+  if(wl)s.web=wl.value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const mc=[...el.querySelectorAll('input[data-mcp]')];
+  if(mc.length)s.mcp=mc.filter(c=>c.checked).map(c=>c.dataset.mcp);
+}
+function handsFolder(i,add){
+  handsCollect();const f=HANDS.edit.spec.folders;
+  if(i<0)f.push({path:add||'',mode:add==='@workspace'?'ro':'rw'});else f.splice(i,1);
+  handsPaintEditor();
+}
+async function handsSave(){
+  handsCollect();const e=HANDS.edit;
+  if(!e.name){toast('give it a name');return}
+  const spec={...e.spec,folders:e.spec.folders.filter(f=>f.path)};
+  if(Array.isArray(spec.web)&&!spec.web.length)spec.web='none';
+  const r=await teamApi('/api/hands/'+encodeURIComponent(e.name),'PUT',{spec,description:e.description});
+  if(r){toast(e.name+': '+r.profile.summary);HANDS.edit=null;renderHands();if(document.getElementById('agents-list'))renderAgentsList()}
+}
+async function handsDelete(name){
+  if(!await osConfirm('Delete the executor “'+name+'”?','Any agent using it goes back to the default executor.',{danger:true,confirmText:'Delete'}))return;
+  const r=await teamApi('/api/hands/'+encodeURIComponent(name),'DELETE');
+  if(r){toast('deleted'+(r.moved_to_default?' — '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
+}
+
+/* ---------------- Agents: the lead, the others, and their hands ---------------- */
+async function setAgentHands(key,profile){
+  const r=await teamApi('/api/agents/'+encodeURIComponent(key)+'/hands','PUT',{profile});
+  if(r){toast((key==='@agent'?(cfg.agent_name||'Your agent'):key)+' now works with “'+r.profile+'”');renderAgentsList();renderAgentsGraph()}
+}
+async function renderAgentsList(){
+  const box=document.getElementById('agents-list');if(!box)return;
+  try{AGENTS.data=await fetch('/api/agents').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load agents</p>';return}
+  const d=AGENTS.data,profs=d.profiles||[];
+  const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
+  const lead=d.agents.find(a=>a.master);
+  if(lead){
+    const lb=document.getElementById('s-lead-brain');
+    if(lb)lb.textContent=lead.brain.provider_name+' · '+lead.brain.short;
+    const lh=document.getElementById('s-lead-hands');
+    if(lh)lh.innerHTML=opts(lead.hands.name);
+  }
+  const others=d.agents.filter(a=>!a.master);
+  box.innerHTML=`<div class="pgroup"><h3>Your agents</h3>
+    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
+    ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
+      return `<div class="ag-card">
+      <div class="ag-h">${avatarImg(a.key,'av-tool')}<b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
+      ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
+      <div class="ag-rows">
+        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
+        <div><span class="ag-k">Hands</span><select aria-label="Hands for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
+          <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
+        <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
+        ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
+        ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
+        ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
+      </div></div>`}).join('')||'<p class="mut">No other agents yet.</p>'}
+    <div class="tlk-actions"><button class="pact" onclick="agentEdit('')">＋ New agent</button></div></div>`;
+}
+async function agentEdit(name){
+  // the Missions editor's wizard, borrowed: one way to define an agent, not two
+  try{const sa=await fetch('/api/subagents').then(r=>r.json());
+    window.__subagents=Object.fromEntries((sa.subagents||[]).map(s=>[s.name,s]))}catch(e){}
+  if(typeof openSAW!=='function'){toast('the agent editor is not available');return}
+  openSAW(name||null,{onSaved:()=>{renderAgentsList();renderAgentsGraph()},onCancel:()=>{}});
+}
+
+/* ---------------- the map ---------------- */
+var AG_COLS={brain:0,team:0,mission:0,agent:1,hands:2,skill:3};
+var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transparent)',skill:'color-mix(in srgb,var(--txt) 35%,transparent)',
+  talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
+async function renderAgentsGraph(){
+  const box=document.getElementById('agents-graph');if(!box)return;
+  let g;try{g=await fetch('/api/agents/graph').then(r=>r.json())}catch(e){box.textContent='could not load the map';return}
+  box.classList.remove('mut');
+  const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
+  const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
+  const pos={};cols.forEach((c,i)=>c.forEach((n,j)=>pos[n.id]={x:X[i],y:j*(H+GY),col:i}));
+  const height=Math.max(...cols.map(c=>c.length*(H+GY)),H)+10,width=X[3]+W+4;
+  const f=AGENTS.focus;
+  const on=e=>!f||e.from===f||e.to===f;
+  const path=e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';
+    const ay=a.y+H/2,by=b.y+H/2;
+    if(a.col===b.col){ // agent ↔ agent: an arc in the gutter to the left of the agents
+      const x=a.x,bend=Math.min(GUT-8,18+Math.abs(ay-by)/6);
+      return `M${x},${ay} C${x-bend},${ay} ${x-bend},${by} ${x},${by}`}
+    const [l,r]=a.col<b.col?[a,b]:[b,a],[ly,ry]=a.col<b.col?[ay,by]:[by,ay];
+    const x1=l.x+W,x2=r.x,mx=(x1+x2)/2;return `M${x1},${ly} C${mx},${ly} ${mx},${ry} ${x2},${ry}`};
+  box.innerHTML=`<div class="agraph-legend">${[['brain','thinks with'],['hands','works with'],['talk','may ask'],['blocked','may not ask'],['delegate','delegates'],['roster','mission roster'],['link','linked team'],['skill','knows']]
+      .map(([k,l])=>`<span><i style="background:${AG_EDGE[k]}"></i>${l}</span>`).join('')}${f?' <button class="endbtn" onclick="AGENTS.focus=\'\';renderAgentsGraph()">Show everyone</button>':''}</div>
+    <div class="agraph-scroll"><div class="agraph-canvas" style="width:${width}px;height:${height}px">
+    <svg width="${width}" height="${height}" aria-hidden="true">${g.edges.map(e=>`<path d="${path(e)}" fill="none" stroke="${AG_EDGE[e.kind]||'var(--line)'}" stroke-width="${e.kind==='brain'||e.kind==='hands'?2:1.5}" ${e.kind==='blocked'?'stroke-dasharray="4 3"':''} opacity="${on(e)?0.9:0.08}"><title>${esc(e.label)}</title></path>`).join('')}</svg>
+    ${g.nodes.map(n=>{const p=pos[n.id],dim=f&&n.id!==f&&!g.edges.some(e=>on(e)&&(e.from===n.id||e.to===n.id));
+      return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
+        ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
+    </div></div>
+    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Hands</span><span>Skills</span></div>`;
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -14420,7 +14909,7 @@ function flwLinkedHTML(d){
       onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
         <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
-  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Agents → Working together).</p>');
   return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
       <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
       <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
@@ -17325,7 +17814,7 @@ async function renderThemes(body){
     <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, menu bar, dock, icons and widgets. A theme can even carry a <b>full replacement shell</b>: a completely different interface built by AI against the OS API (<code>GET /api/registry</code>). Click one to apply instantly.</p>
     <div class="cat">${cards}</div>
     <div class="row" style="margin-top:14px">
-      <button class="save" style="margin:0" onclick="themeBuilder()">Open Theme Builder</button>
+      <button class="save" style="margin:0" onclick="themeBuilder()">Build a theme</button>
     </div>
     <label style="margin-top:16px">Effects</label>
     <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
@@ -17381,52 +17870,161 @@ async function themeImport(){
 }
 async function themeDel(name){
   await fetch('/api/themes/'+encodeURIComponent(name),{method:'DELETE'});
-  if(CURRENT_THEME===name)applyTheme('agentos');
+  if(CURRENT_THEME===name)applyTheme('nova');
   await loadThemes();refreshApp('themes');
 }
-function themeBuilder(){
+/* ---------------- the Theme Builder: build a look and feel ----------------
+   Everything a theme is, as controls: a palette generated from three colours (then
+   fine-tuned), corners, depth, glass, font, text size and wallpaper. Every control
+   writes a TOKEN (--r-md, --el-3, --glass-blur, --acc-grad, --on-acc, --fs-base…),
+   the same ones the built-in themes and the AI designer (`create_theme`) use, so a
+   built theme reaches every surface the standard and the immersive look draw — no
+   second styling system. The desktop previews live as you move a slider.
+   Faces — GUI/SUI: this. TUI: not applicable — a terminal has no palette, glass or
+   wallpaper, and a theme is remembered per browser; `create_theme` in chat is the
+   words-only way to build one. */
+var TB_FONTS=[['','System (Inter)'],['Geist','Geist'],['Inter','Inter'],['Plus Jakarta Sans','Plus Jakarta Sans'],
+  ['Space Grotesk','Space Grotesk'],['Outfit','Outfit'],['Manrope','Manrope'],['IBM Plex Sans','IBM Plex Sans'],
+  ['DM Sans','DM Sans'],['Nunito','Nunito'],['JetBrains Mono','JetBrains Mono (mono)']];
+var TB_DEPTH={flat:['none','none','none','none'],
+  soft:['0 2px 6px rgba(0,0,0,.18)','0 6px 18px rgba(0,0,0,.22)','0 12px 32px rgba(0,0,0,.28)','0 22px 56px rgba(0,0,0,.34)'],
+  normal:null,
+  deep:['0 4px 12px rgba(0,0,0,.4)','0 12px 32px rgba(0,0,0,.46)','0 24px 64px rgba(0,0,0,.54)','0 40px 110px rgba(0,0,0,.62)']};
+var TB_GLASS={solid:['none','96'],frosted:['blur(30px) saturate(1.7)','58'],clear:['blur(14px) saturate(1.3)','38']};
+function tbHex(v){v=(v||'').trim();if(/^#([0-9a-f]{6})$/i.test(v))return v.toLowerCase();if(/^#([0-9a-f]{3})$/i.test(v))return '#'+v.slice(1).split('').map(c=>c+c).join('').toLowerCase();return '#222222'}
+function tbRgb(h){h=tbHex(h);return [1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255)}
+function tbHsl(hex){const [r,g,b]=tbRgb(hex),mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let h=0,s=0;
+  if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h/=6}return [h,s,l]}
+function tbFromHsl(h,s,l){const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))};
+  return '#'+[f(0),f(8),f(4)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function tbLum(hex){const c=tbRgb(hex).map(x=>x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4));return .2126*c[0]+.7152*c[1]+.0722*c[2]}
+function tbContrast(a,b){const x=tbLum(a),y=tbLum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+/* A whole palette from three choices: the background's tint, light or dark, and the
+   two accents. Surfaces step in lightness from the tint's hue (low saturation, so a
+   tint colours the grey rather than painting the screen), text is chosen for
+   contrast, and the text ON the accent is whichever of white or ink reads better. */
+function tbPalette(tint,mode,acc,acc2){
+  const [h,s0]=tbHsl(tint),s=Math.min(s0,.4),dark=mode!=='light';
+  const L=dark?[.045,.075,.1,.135,.19,.93,.7,.48]:[.975,.995,.95,.91,.86,.13,.38,.55];
+  const S=dark?[s,s,s*.9,s*.85,s*.7,.2,.14,.1]:[s*.5,s*.3,s*.5,s*.5,s*.4,.25,.15,.1];
+  const k=['bg','bg2','bg3','bg4','line','txt','dim','dim2'],v={};
+  k.forEach((n,i)=>v[n]=tbFromHsl(h,S[i],L[i]));
+  const [r,g,b]=tbRgb(v.bg2).map(x=>Math.round(x*255));
+  v.glass=`rgba(${r},${g},${b},${dark?.82:.92})`;
+  v.acc=acc;v.acc2=acc2;
+  v['acc-grad']=`linear-gradient(135deg,${acc} 0%,${acc2} 100%)`;
+  v['on-acc']=tbContrast(acc,'#ffffff')>=tbContrast(acc,'#0b0b12')?'#ffffff':'#0b0b12';
+  return v;
+}
+function themeBuilder(from){
   const w=WM.wins.get('themes');if(!w)return;
   const body=w.el.querySelector('.wbody');
-  const base=allThemes()[CURRENT_THEME]||THEMES.agentos;
-  const WB={name:'My Theme',mode:base.mode||'dark',v:{...(base.v||base.vars||{})},css:base.css||'',font:base.font?{...base.font}:null};
-  const hex=v=>{v=(v||'').trim();if(/^#([0-9a-f]{6})$/i.test(v))return v;if(/^#([0-9a-f]{3})$/i.test(v))return '#'+v.slice(1).split('').map(c=>c+c).join('');return '#222222'};
-  const COLORS=[['bg','Background'],['bg2','Surface'],['bg3','Surface 2'],['bg4','Raised'],['line','Border'],['txt','Text'],['dim','Muted'],['dim2','Faint'],['acc','Accent'],['acc2','Accent 2'],['warn','Warning'],['err','Error'],['ok','Success']];
-  body.innerHTML=`<div class="pad">
-    <div class="apptop" style="border:none;padding:0 0 10px;gap:8px">
-      <button class="endbtn" onclick="refreshApp('themes')">← Back</button>
-      <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1">
-      <select id="tb-mode" style="flex:0 0 90px"><option value="dark"${WB.mode==='dark'?' selected':''}>dark</option><option value="light"${WB.mode==='light'?' selected':''}>light</option></select>
+  const all=allThemes(),baseId=from||CURRENT_THEME,base=all[baseId]||THEMES.nova;
+  const v0={...(base.v||base.vars||{})};
+  const WB=window._WB={name:base.custom?(base.label||base.name||baseId):'My Theme',mode:base.mode||'dark',v:v0,css:base.css||'',
+    font:base.font?{...base.font}:null,wall_img:base.wall_img||'',from:baseId};
+  const cs=getComputedStyle(document.documentElement),tok=k=>(WB.v[k]||cs.getPropertyValue('--'+k)||'').trim();
+  const rmd=parseInt(tok('r-md'))||10;
+  const depth=WB.v['el-3']==='none'?'flat':(WB.v['el-3']||'').includes('.54')?'deep':(WB.v['el-3']||'').includes('.28')?'soft':'normal';
+  const glass=(WB.v['glass-blur']||'').startsWith('none')?'solid':(WB.v['glass-blur']||'').includes('14px')?'clear':'frosted';
+  const fsb=parseInt(tok('fs-base'))||14;
+  const COLORS=[['bg','Background'],['bg2','Surface'],['bg3','Surface 2'],['bg4','Raised'],['line','Border'],['txt','Text'],['dim','Muted'],['dim2','Faint'],['acc','Accent'],['acc2','Accent 2'],['on-acc','Text on accent'],['warn','Warning'],['err','Error'],['ok','Success']];
+  body.innerHTML=`<div class="pad tb">
+    <div class="apptop" style="border:none;padding:0 0 10px;gap:8px;flex-wrap:wrap">
+      <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">← Back</button>
+      <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1;min-width:140px">
+      <select id="tb-from" aria-label="Start from">${Object.entries(all).map(([k,t])=>`<option value="${esc(k)}" ${k===baseId?'selected':''}>start from ${esc(t.label||t.name||k)}</option>`).join('')}</select>
     </div>
-    <p class="mut" style="margin-bottom:10px">Pick colors — the whole desktop updates live as you edit. </p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
-      ${COLORS.map(([k,lab])=>`<label style="display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400">
-        <input type="color" data-k="${k}" value="${hex(WB.v[k])}" style="width:36px;height:26px;padding:0;border:1px solid var(--line);background:none;border-radius:6px;cursor:pointer">
-        <span style="flex:1">${lab}</span><code style="font-size:10.5px;color:var(--dim2)" id="tb-h-${k}">${esc(WB.v[k]||'')}</code></label>`).join('')}
-    </div>
-    <label>Glass / overlay (rgba)</label><input id="tb-glass" value="${esc(WB.v.glass||'rgba(20,20,25,.85)')}">
-    <label>Web font URL (optional)</label><input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…">
-    <label>Font family (optional)</label><input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="e.g. Space Grotesk">
-    <label>Advanced CSS (optional — restyle .win, #taskbar, .dimg, .widget, #desktop)</label>
-    <textarea id="tb-css" rows="4" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea>
-    <div class="row" style="margin-top:12px">
+    <p class="mut" style="margin:0 0 12px">Build the whole look and feel — the desktop changes live as you edit. Nothing is saved until <b>Save &amp; apply</b>.</p>
+    <div class="tb-sec"><b>Colours</b>
+      <div class="tb-quick">
+        <label>Mode<select id="tb-mode"><option value="dark"${WB.mode==='dark'?' selected':''}>Dark</option><option value="light"${WB.mode==='light'?' selected':''}>Light</option></select></label>
+        <label>Background tint<input type="color" id="tb-tint" value="${tbHex(tok('bg3'))}"></label>
+        <label>Accent<input type="color" id="tb-acc" value="${tbHex(tok('acc'))}"></label>
+        <label>Accent 2<input type="color" id="tb-acc2" value="${tbHex(tok('acc2'))}"></label>
+        <button class="pact" onclick="tbGenerate()">Generate palette</button>
+      </div>
+      <div id="tb-contrast" class="mut tb-note"></div>
+      <details class="tb-fine"><summary>Fine-tune every colour</summary>
+        <div class="tb-colors">${COLORS.map(([k,lab])=>`<label><input type="color" data-k="${k}" value="${tbHex(tok(k))}"><span>${lab}</span><code id="tb-h-${k}">${esc(tok(k))}</code></label>`).join('')}</div>
+      </details></div>
+    <div class="tb-sec"><b>Shape</b>
+      <label class="tb-slide">Corners <input type="range" id="tb-r" min="0" max="24" step="1" value="${rmd}"><output id="tb-r-o">${rmd}px</output></label></div>
+    <div class="tb-sec"><b>Depth</b>
+      <div class="seg" id="tb-depth">${['flat','soft','normal','deep'].map(d=>`<button class="${d===depth?'on':''}" data-d="${d}">${d[0].toUpperCase()+d.slice(1)}</button>`).join('')}</div></div>
+    <div class="tb-sec"><b>Glass</b>
+      <div class="seg" id="tb-glass">${[['solid','Solid'],['frosted','Frosted'],['clear','Clear']].map(([g,l])=>`<button class="${g===glass?'on':''}" data-g="${g}">${l}</button>`).join('')}</div>
+      <p class="mut tb-note">Frosted and clear blur what is behind a window — the most expensive thing a desktop draws. Effects (on the Themes page) still turns it down on a machine that cannot keep up.</p></div>
+    <div class="tb-sec"><b>Type</b>
+      <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
+      <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
+        <input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…" style="flex:2;min-width:200px">
+        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px"></div>
+      <label class="tb-slide">Text size <input type="range" id="tb-fs" min="12" max="17" step="1" value="${fsb}"><output id="tb-fs-o">${fsb}px</output></label></div>
+    <div class="tb-sec"><b>Wallpaper</b>
+      <select id="tb-wall"><option value="">Keep whatever is set</option><option value="__gen" ${WB.css.includes('/*tb:wall*/')?'selected':''}>Made from these colours</option>
+        ${(typeof BUILTIN_WALLS!=='undefined'?BUILTIN_WALLS:[]).filter(x=>!x.startsWith('immersive-')).map(x=>`<option value="${esc(x)}" ${WB.wall_img===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+    <details class="tb-sec"><summary><b>Advanced CSS</b></summary>
+      <p class="mut tb-note">Restyle anything else: .win, #taskbar, #menubar, .aicon, .widget, #desktop.</p>
+      <textarea id="tb-css" rows="5" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea></details>
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
       <button class="save" style="margin:0" onclick="tbSave()">Save &amp; apply</button>
+      <button class="endbtn" onclick="tbSave(true)">Export</button>
       <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">Cancel</button>
     </div>
   </div>`;
-  const preview=()=>applyThemeObj(WB);
-  body.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{WB.v[inp.dataset.k]=inp.value;const h=$('#tb-h-'+inp.dataset.k);if(h)h.textContent=inp.value;preview()});
-  $('#tb-glass').oninput=e=>{WB.v.glass=e.target.value;preview()};
-  $('#tb-mode').onchange=e=>{WB.mode=e.target.value;preview()};
-  $('#tb-css').oninput=e=>{WB.css=e.target.value;preview()};
-  $('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value};
-  $('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
-  window._WB=WB;preview();
+  const q=s=>body.querySelector(s);
+  // _applyThemeObj, not applyThemeObj: a live preview must not start a crossfade per
+  // slider step — each one snapshots the screen and paints it over the next frame, so
+  // dragging "Corners" left the previous screen showing through every window
+  const preview=()=>{_applyThemeObj(WB);tbCheck()};
+  body.querySelectorAll('.tb-colors input[type=color]').forEach(inp=>inp.oninput=()=>{WB.v[inp.dataset.k]=inp.value;
+    if(inp.dataset.k==='acc'||inp.dataset.k==='acc2')WB.v['acc-grad']=`linear-gradient(135deg,${WB.v.acc||tok('acc')} 0%,${WB.v.acc2||tok('acc2')} 100%)`;
+    const h=q('#tb-h-'+inp.dataset.k);if(h)h.textContent=inp.value;preview()});
+  q('#tb-from').onchange=e=>themeBuilder(e.target.value);
+  q('#tb-mode').onchange=e=>{WB.mode=e.target.value;tbGenerate()};
+  ['#tb-tint','#tb-acc','#tb-acc2'].forEach(id=>q(id).oninput=()=>tbGenerate());
+  q('#tb-r').oninput=e=>{const r=+e.target.value;Object.assign(WB.v,{'r-sm':Math.round(r*.6)+'px','r-md':r+'px','r-lg':Math.round(r*1.4)+'px','r-xl':Math.round(r*1.9)+'px'});q('#tb-r-o').textContent=r+'px';preview()};
+  q('#tb-depth').onclick=e=>{const b=e.target.closest('button');if(!b)return;q('#tb-depth').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const d=TB_DEPTH[b.dataset.d];['el-2','el-3','el-4','el-5'].forEach((k,i)=>{if(d)WB.v[k]=d[i];else delete WB.v[k]});preview()};
+  q('#tb-glass').onclick=e=>{const b=e.target.closest('button');if(!b)return;q('#tb-glass').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const [blur,pct]=TB_GLASS[b.dataset.g];WB.v['glass-blur']=blur;WB.v['glass-tint']=`color-mix(in srgb,var(--bg2) ${pct}%,transparent)`;preview()};
+  q('#tb-font').onchange=e=>{const f=e.target.value;q('#tb-fcustom').style.display=f==='__custom'?'flex':'none';
+    if(f==='__custom')return;WB.font=f?{family:f,url:'https://fonts.googleapis.com/css2?family='+encodeURIComponent(f).replace(/%20/g,'+')+':wght@400;500;600;700&display=swap'}:null;preview()};
+  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;preview()};
+  q('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
+  q('#tb-fs').oninput=e=>{const n=+e.target.value;Object.assign(WB.v,{'fs-xs':(n-3)+'px','fs-sm':(n-2)+'px','fs-md':(n-1)+'px','fs-base':n+'px','fs-lg':(n+2)+'px'});q('#tb-fs-o').textContent=n+'px';preview()};
+  q('#tb-wall').onchange=e=>{const x=e.target.value;WB.css=WB.css.replace(/\/\*tb:wall\*\/[^\n]*\n?/g,'');WB.wall_img='';
+    if(x==='__gen')WB.css='/*tb:wall*/body,#desktop{background:radial-gradient(1100px 700px at 18% -10%,color-mix(in srgb,var(--acc) 45%,transparent),transparent 60%),radial-gradient(900px 650px at 95% 105%,color-mix(in srgb,var(--acc2) 38%,transparent),transparent 60%),var(--bg);background-attachment:fixed}\n'+WB.css;
+    else if(x)WB.wall_img=x;
+    const tc=q('#tb-css');if(tc)tc.value=WB.css;preview();if(typeof loadWallpaper==='function')loadWallpaper()};
+  q('#tb-css').oninput=e=>{WB.css=e.target.value;preview()};
+  preview();
 }
-async function tbSave(){
+function tbGenerate(){
+  const WB=window._WB,q=s=>document.querySelector(s);if(!WB)return;
+  Object.assign(WB.v,tbPalette(q('#tb-tint').value,q('#tb-mode').value,q('#tb-acc').value,q('#tb-acc2').value));
+  WB.mode=q('#tb-mode').value;
+  document.querySelectorAll('.tb-colors input[type=color]').forEach(i=>{const v=WB.v[i.dataset.k];if(v&&/^#/.test(v)){i.value=tbHex(v);const h=document.getElementById('tb-h-'+i.dataset.k);if(h)h.textContent=v}});
+  _applyThemeObj(WB);tbCheck();
+}
+/* Said, not assumed: whether the text can actually be read. WCAG asks 4.5:1 for body
+   text; a palette under it is saved if somebody insists, but never silently. */
+function tbCheck(){
+  const WB=window._WB,el=document.getElementById('tb-contrast');if(!WB||!el)return;
+  const cs=getComputedStyle(document.documentElement),g=k=>tbHex((WB.v[k]||cs.getPropertyValue('--'+k)||'').trim());
+  const a=tbContrast(g('txt'),g('bg2')),b=tbContrast(g('on-acc'),g('acc')),c=tbContrast(g('dim'),g('bg2'));
+  const mark=x=>x>=4.5?'✓':x>=3?'— low':'✗ too low';
+  el.innerHTML=`Text on surfaces ${a.toFixed(1)}:1 ${mark(a)} · muted text ${c.toFixed(1)}:1 ${mark(c)} · text on the accent ${b.toFixed(1)}:1 ${mark(b)}`;
+}
+async function tbSave(exportOnly){
   const WB=window._WB;if(!WB)return;
-  WB.name=$('#tb-name').value.trim()||'My Theme';WB.custom=true;
+  WB.name=(document.getElementById('tb-name')||{}).value?.trim()||'My Theme';
   if(WB.font&&!WB.font.url)WB.font=null;
-  await themeSave(WB,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
+  const out={name:WB.name,mode:WB.mode,v:WB.v,css:WB.css,font:WB.font||undefined,wall_img:WB.wall_img||undefined};
+  if(exportOnly){const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=WB.name.replace(/\s+/g,'-')+'.theme.json';a.click();return}
+  await themeSave(out,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
 }
 
 /* ================= personalize app + wallpaper gallery ================= */
@@ -18516,7 +19114,7 @@ async function renderControl(body){
     .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
     ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
-    <div class="provbox"><div class="ptitle">Sound</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('volume',16)}</span>Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
         <input type="range" id="c-vol" min="0" max="100" value="${a.volume??50}" style="flex:1">
@@ -18524,17 +19122,17 @@ async function renderControl(body){
       </div>
       <div id="c-sinks"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Brightness</div><div id="c-bright"><p class="mut" style="margin-top:6px">…</p></div></div>
-    <div class="provbox"><div class="ptitle">Network</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('sun',16)}</span>Brightness</div><div id="c-bright"><p class="mut" style="margin-top:6px">…</p></div></div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('wifi',16)}</span>Network</div>
       <p class="mut" style="margin-top:6px" id="c-net">${n.online?n.connections.map(c=>`${c.type==='wifi'?'Wi-Fi':'wired'} · ${esc(c.name)}`).join(', '):'offline'}</p>
       <div class="row" style="margin-top:8px" id="c-radios"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Power</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('battery',16)}</span>Power</div>
       <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery — mains powered'}</p>
       ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
       <div class="row" style="margin-top:8px" id="c-profile"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Notifications</div><div class="row" style="margin-top:8px" id="c-dnd"></div></div>
+    <div class="provbox cc-tile cc-wide"><div class="ptitle"><span class="cc-ic">${uiIcon('bell',16)}</span>Notifications</div><div class="row" style="margin-top:8px" id="c-dnd"></div></div>
     <div class="row" style="margin-top:4px">
       <button class="endbtn" onclick="openApp('syssettings')">⚙ System Settings</button>
       ${cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('')">Open ${esc(PLATFORM.platform||'host')} Settings ↗</button>`:''}
@@ -18570,7 +19168,8 @@ async function renderControl(body){
             onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
-  }else br.innerHTML=ccNote('brightness.set');
+  // the shared reason is said once at the top; the tile says so rather than going blank
+  }else br.innerHTML=ccNote('brightness.set')||'<p class="mut" style="margin-top:6px">Not available here — see above</p>';
 
   // radios: wifi + bluetooth quick toggles
   const radios=$('#c-radios');let rhtml='';
@@ -19548,7 +20147,7 @@ async function renderNotifList(){
       ${n.body?`<div class="np-body">${esc(n.body)}</div>`:''}
       <button class="np-x" onclick="dismissNotif(${n.id})">✕</button>
     </div>`).join('')}</div>`).join('')
-    ||'<p class="mut" style="padding:10px">nothing here — you\'re all caught up</p>');
+    ||`<div class="np-empty">${svgBell(22)}<b>You\u2019re all caught up</b><span>Notifications from your apps, missions and linked teams land here.</span></div>`);
   const dnd=$('#np-dnd');
   dnd.innerHTML=svgBell(13)+(d.dnd?'<span class="np-slash"></span>':'');
   dnd.title=d.dnd?'Do not disturb is on':'Do not disturb';
@@ -20329,6 +20928,872 @@ function teamChatEvent(ev){
     toast(ev.sender+' · '+ev.link+': '+String(ev.text||'').slice(0,80),{label:'Open',go:()=>openTeamChat(ev.link),ms:9000});
     if(document.querySelector('.tc'))refreshApp('teamchat');
   }
+}
+/* ================= Office: the playground where the crew is seen at work =================
+   A comic-strip office drawn from THIS machine's agents: your agent in the corner office
+   behind the mission board, each specialist at a desk in its department, a meeting room
+   where huddles gather, a lounge. The chat is the column on the right (the window's own
+   agent panel, moved into the layout), so you ask on the right and watch it happen on
+   the left.
+
+   What moves, and why only that:
+
+   - **Every movement is an event.** A paper flies to a desk because a mission handed that
+     specialist work (`node_add`) or your agent delegated to it (`delegate`); the monitor
+     lights and the hands type because its run started (`status`); a burst names each tool
+     it calls (`step`); one agent walks across the floor to another because it really asked
+     it something (`agent_msg`), and walks back after the answer; a huddle gathers round the
+     meeting table because one started (`turn_start.huddle` / `agent_say`). Idle agents sit
+     at their desks, breathing and blinking. They do NOT wander for the look: an office
+     where everybody strolls about is an office that says work is happening when none is,
+     which is the dead-control lie in a friendlier drawing. The pet wanders; it is decor,
+     and it is visibly not an agent.
+   - **The cast is the real one.** The rooms and who sits in them come from /api/office
+     (agentos/office.py), and every face is the server's own character sheet — the same
+     person as in Chat, Logs and the Crew stage. This file paints rooms and furniture and
+     nobody: there is no second painter (tests/test_avatars.py).
+   - **One seam for events.** scenePulse() in 01c forwards to the Crew stage and here, so
+     a new scene is not five more edits in the websocket.
+   - **The words are there too.** The canvas is a picture; the log under it says the same
+     things in sentences (aria-live), and it is what a screen reader reads.
+
+   Cost: one canvas, the rooms pre-rendered once into an offscreen layer and blitted; at
+   most 30 frames a second while something moves and 6 while everybody sits; no frame at
+   all while the window is asleep (minimised, another desktop, covered, tab hidden); one
+   still frame per event under reduced motion. No filter, no blur, no canvas shadow.
+
+   Faces — GUI: this window. SUI: identical, a page; nothing touches the compositor.
+   TUI: `bento office` prints the plan (rooms and who sits where) and edits it with the
+   same closed set; the play itself cannot exist in a terminal and the verb says so.
+   Phone: the chat becomes a sheet behind a Chat button, every control at the tap floor.
+   `var`, not `let`: the bundle is one script. */
+var OFFICE={w:null,cv:null,ctx:null,raf:0,last:0,t:0,view:null,brains:{},L:null,bg:null,
+  people:{},papers:[],bursts:[],pops:[],runs:{},convWho:{},missions:{},huddle:null,
+  pet:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
+var OF_K=3;               // world units per sprite pixel: a 16x26 character is 48x78 units
+var OF_INK='#191827';     // the comic line: one ink for every outline
+var OF_SPEED=170;         // walking, world units a second
+var OF_SAY_MS=5200;       // a speech balloon's life
+var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
+var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
+/* A tool's comic word. The real tool name is always printed under it, so the joke never
+   hides what actually ran. */
+var OF_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_file:'SCRIBBLE!',
+  run_command:'RUN!',remember:'NOTED!',recall:'HMM…',brief_item:'BRIEF!',mail_search:'MAIL?',
+  mail_read:'MAIL!',calendar_events:'DATES!',save_report:'REPORT!',notify:'PING!',delegate:'HERE!',
+  ask_agent:'Q?',huddle:'HUDDLE!',finish:'DONE!',search_files:'SEEK!',take_screenshot:'SNAP!'};
+
+function renderOffice(el,w){
+  // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
+  // everybody where they are — rebuilding the canvas would teleport a walker home.
+  if(OFFICE.w===w&&el.querySelector('.of-wrap')){officeLoad();return}
+  OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
+  OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
+  // the window's ✦ would open a second copy of the chat that is already on the right
+  const cb=w.el.querySelector('.cp-btn');if(cb)cb.style.display='none';
+  el.classList.add('of-body');
+  el.innerHTML=`<div class="of-wrap">
+    <div class="of-stage">
+      <div class="of-bar"><b class="of-title">Office</b><span class="of-line" id="of-line">opening…</span>
+        <span style="flex:1"></span>
+        <button class="endbtn of-dz" data-ic="palette" title="Change how the office looks and who sits where">✎ Design</button>
+        <button class="endbtn of-ct" title="Talk to your agent">Chat</button></div>
+      <div class="of-scroll"><canvas class="of-cv" aria-hidden="true"></canvas>
+        <div class="of-empty" hidden></div></div>
+      <div class="of-log" role="log" aria-live="polite" aria-label="What the office is doing"></div>
+      <div class="of-design" hidden></div>
+    </div>
+    <div class="of-chat"></div>
+  </div>`;
+  OFFICE.cv=el.querySelector('.of-cv');OFFICE.ctx=OFFICE.cv.getContext('2d');
+  el.querySelector('.of-dz').onclick=()=>officeDesign(!OFFICE.design);
+  el.querySelector('.of-ct').onclick=()=>el.querySelector('.of-wrap').classList.toggle('chat-open');
+  OFFICE.cv.addEventListener('click',officeTap);
+  const chat=el.querySelector('.of-chat');
+  if(typeof initCopilot==='function')initCopilot(w,chat);
+  const sc=el.querySelector('.of-scroll');
+  if(typeof ResizeObserver!=='undefined'){w._ofro=new ResizeObserver(()=>officeLayout());w._ofro.observe(sc)}
+  // ms:0 — nothing to poll; this only restarts the loop the moment the window is seen again
+  winTick(w,officeKick,0,{key:'office'});
+  officeLog('the office is open');
+  officeLoad();
+}
+function officeClose(w){
+  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+  try{w._ofro&&w._ofro.disconnect()}catch(e){}
+  OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;
+  return true;
+}
+async function officeLoad(){
+  try{
+    const [v,sa]=await Promise.all([fetch('/api/office').then(r=>r.json()),
+      fetch('/api/subagents').then(r=>r.json()).catch(()=>({}))]);
+    OFFICE.view=v;OFFICE.brains={};
+    (sa.subagents||sa.agents||[]).forEach(s=>{if(s&&s.name)OFFICE.brains[s.name]=(s.brain&&s.brain.provider_name)||''});
+    OFFICE.brains['@agent']=(sa.agent_brain&&sa.agent_brain.provider_name)||'';
+    if(typeof avatarsLoad==='function'&&(v.agents||[]).some(n=>!AVATARS.by[n]))await avatarsLoad();
+    OFFICE.loaded=true;
+    officeLayout();
+    if(OFFICE.design)officeDesignPaint();
+  }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office'}
+}
+/* The roster moved (a specialist made or deleted, a face changed): reload the plan. */
+function officeReload(){if(OFFICE.w)officeLoad()}
+function officeContext(){
+  const v=OFFICE.view;if(!v)return 'the Office playground (loading)';
+  const rooms=v.rooms.filter(r=>r.kind==='dept'||r.kind==='floor').map(r=>`${r.name}: ${r.members.join(', ')||'empty'}`);
+  const busy=Object.values(OFFICE.people).filter(p=>p.busy).map(p=>p.label);
+  return `the Office playground, "${v.office.name}" in the ${v.style.label} style — ${rooms.join('; ')||'no departments'}.`
+    +(busy.length?` Working right now: ${busy.join(', ')}.`:' Nobody is working right now.')
+    +' To change how it looks or who sits where, use set_office.';
+}
+
+/* ---------------- layout: rooms into rows, desks into rooms ---------------- */
+function officeLayout(){
+  const O=OFFICE,v=O.view;if(!O.cv||!v)return;
+  const sc=O.cv.parentElement,cw=Math.max(280,sc.clientWidth);
+  const phone=cw<640;
+  O.s=phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
+  const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
+  // each room's natural width: a desk slot per member, and never narrower than a room
+  const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
+    :Math.max(250,Math.max(1,r.members.length)*OF_DESK_W+40);
+  const rows=[];let row=[],used=0;
+  v.rooms.forEach(r=>{
+    const wn=Math.min(avail,want(r));
+    if(row.length&&used+OF_GAP+wn>avail){rows.push(row);row=[];used=0}
+    row.push({r,wn});used+=(row.length>1?OF_GAP:0)+wn;
+  });
+  if(row.length)rows.push(row);
+  const plan=rows.map(rw=>{
+    const sum=rw.reduce((a,b)=>a+b.wn,0)+OF_GAP*(rw.length-1), extra=(avail-sum)/sum;
+    // desks that do not fit one line wrap to a second, and the whole row grows with them
+    const lay=rw.map(o=>{const w=o.wn*(1+Math.max(0,extra));
+      const per=Math.max(1,Math.floor((w-30)/OF_DESK_W));
+      const lines=(o.r.kind==='dept'||o.r.kind==='floor')?Math.max(1,Math.ceil(o.r.members.length/per)):1;
+      return {o,w,per,lines}});
+    return {lay,h:OF_ROOM_H+(Math.max(...lay.map(l=>l.lines))-1)*112};
+  });
+  // a short office on a tall window: the rooms get more floor rather than leaving a
+  // dark band under them (capped, so one row of rooms does not become a ballroom)
+  const natural=OF_M*2+plan.reduce((a,r)=>a+r.h+OF_HALL,0)-OF_HALL*.5, room=sc.clientHeight/O.s;
+  const grow=phone?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
+  const rooms=[];let y=OF_M;
+  plan.forEach((row,ri)=>{
+    const h=row.h+grow;let x=x0;
+    row.lay.forEach(l=>{rooms.push({...l.o.r,x,y,w:l.w,h,row:ri,per:l.per,door:x+l.w/2,grow});x+=l.w+OF_GAP});
+    y+=h+OF_HALL;
+  });
+  const H=y+OF_M-OF_HALL+OF_HALL*.5;
+  O.L={W,H,rooms,rowsY:rows.map((_,i)=>{const r=rooms.find(q=>q.row===i);return r.y+r.h+OF_HALL/2}),spineX:OF_M+OF_SPINE/2};
+  // the canvas is as tall as the office: a phone scrolls it rather than shrinking people to ants
+  O.cw=cw;O.ch=Math.ceil(H*O.s);O.dpr=Math.min(2,devicePixelRatio||1);
+  O.cv.style.width=cw+'px';O.cv.style.height=O.ch+'px';
+  O.cv.width=Math.round(cw*O.dpr);O.cv.height=Math.round(O.ch*O.dpr);
+  officeSeat();
+  officeBg();
+  officeEmpty();
+  officeLine();
+  officeKick();
+}
+/* Everybody gets a home: a chair at a desk. A person already on the floor keeps
+   walking; one whose department changed walks to the new desk rather than jumping. */
+function officeSeat(){
+  const O=OFFICE,keep=O.people,seen={};
+  O.L.rooms.forEach(r=>{
+    if(r.kind==='lead'){
+      const hx=r.x+r.w*.36, hy=r.y+OF_WALL+84+(r.grow||0)*.4;
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,hx,hy,true);
+    }
+    if(r.kind!=='dept'&&r.kind!=='floor')return;
+    const slot=Math.min(OF_DESK_W+30,(r.w-20)/Math.min(r.per,Math.max(1,r.members.length)));
+    r.members.forEach((m,i)=>{
+      const col=i%r.per,line=Math.floor(i/r.per),n=Math.min(r.per,r.members.length-line*r.per);
+      const x=r.x+r.w/2+(col-(n-1)/2)*slot, y=r.y+OF_WALL+78+line*112+(r.grow||0)*.4;
+      seen[m]=officePerson(keep[m],m,m,r,x,y,false);
+    });
+  });
+  O.people=seen;
+  if(!O.pet||O.pet.kind!==O.view.office.pet)O.pet=O.view.office.pet!=='none'?officePetNew():null;
+}
+function officePerson(p,key,label,room,x,y,lead){
+  const home={x,y};
+  if(!p)return {key,label,room,home,x,y,mode:'seat',path:[],busy:0,say:null,lead,then:null,phase:Math.random()*6.28};
+  p.room=room;p.home=home;p.label=label;p.lead=lead;
+  if(p.mode==='seat'){p.x=x;p.y=y}
+  else if(!p.path.length&&!p.visit)officeWalk(p,home,'seat');
+  return p;
+}
+function officeRoomOf(kind){return OFFICE.L&&OFFICE.L.rooms.find(r=>r.kind===kind)}
+
+/* ---------------- walking ---------------- */
+/* A route along the floor plan: out of this room's door into the hallway below it,
+   along the spine on the left if the other room is on another row, and in through
+   that room's door. Nobody walks through a wall. */
+function officeRoute(p,to){
+  const L=OFFICE.L,from=p.mode==='seat'?{x:p.home.x,y:p.home.y+50}:{x:p.x,y:p.y};
+  const ra=officeRoomAt(from),rb=officeRoomAt(to);
+  const pts=[];
+  if(p.mode==='seat')pts.push({x:p.home.x+40,y:p.home.y+56});   // stand up, step round the desk
+  if(ra&&rb&&ra!==rb){
+    const ya=L.rowsY[ra.row],yb=L.rowsY[rb.row];
+    pts.push({x:ra.door,y:ra.y+ra.h-14},{x:ra.door,y:ya});
+    if(ra.row!==rb.row)pts.push({x:L.spineX,y:ya},{x:L.spineX,y:yb});
+    pts.push({x:rb.door,y:yb},{x:rb.door,y:rb.y+rb.h-14});
+  }
+  pts.push(to);
+  return pts;
+}
+function officeRoomAt(pt){return OFFICE.L.rooms.find(r=>pt.x>=r.x-2&&pt.x<=r.x+r.w+2&&pt.y>=r.y&&pt.y<=r.y+r.h+4)}
+function officeWalk(p,to,mode,then){
+  if(!p||!OFFICE.L)return;
+  const route=officeRoute(p,mode==='seat'?{x:p.home.x+40,y:p.home.y+56}:to);
+  if(mode==='seat')route.push({x:p.home.x,y:p.home.y,sit:1});
+  p.path=route;p.mode='walk';p.then={mode,fn:then||null};
+  if(OFFICE.static){const last=route[route.length-1];p.x=last.x;p.y=last.y;officeArrive(p)}
+  officeKick();
+}
+function officeArrive(p){
+  p.path=[];const t=p.then||{};p.then=null;
+  p.mode=t.mode||'stand';
+  if(p.mode==='seat'){p.x=p.home.x;p.y=p.home.y}
+  if(t.fn)t.fn();
+}
+function officeHome(p){if(p&&(p.mode!=='seat'||p.path.length)){p.visit=null;officeWalk(p,p.home,'seat')}}
+
+/* ---------------- what happened: the one seam's other end ---------------- */
+function officeLog(text){
+  const O=OFFICE;O.log.unshift({text:String(text).slice(0,160),at:Date.now()});O.log.length=Math.min(O.log.length,4);
+  const el=O.w&&O.w.el.querySelector('.of-log');if(!el)return;
+  el.innerHTML=O.log.map((e,i)=>`<div class="of-le${i?'':' new'}"><span>${new Date(e.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>${esc(e.text)}</div>`).join('');
+}
+function officeMatch(label){
+  if(!label)return null;
+  const k=String(label).toLowerCase().replace(/[^a-z0-9@]/g,'');
+  if(k==='@agent'||k==='agent')return OFFICE.people['@agent']||null;
+  for(const n in OFFICE.people){const q=n.toLowerCase().replace(/[^a-z0-9@]/g,'');if(q&&q===k)return OFFICE.people[n]}
+  return null;
+}
+function officeSay(p,text,kind,ms){
+  if(!p)return;
+  p.say={text:String(text||'').replace(/\s+/g,' ').trim().slice(0,140),kind:kind||'say',at:performance.now(),ms:ms||OF_SAY_MS};
+  officeKick();
+}
+function officeWork(p,on){if(!p)return;p.busy=on?performance.now():0;officeLine();officeKick()}
+function officePop(p,text){if(!p)return;OFFICE.pops.push({p,text,at:performance.now()});officeKick()}
+function officeBurst(p,tool){
+  if(!p)return;const now=performance.now();
+  // the same step can arrive twice (the chat stream and the run's own telemetry)
+  if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
+  OFFICE.bursts.push({p,tool,word:OF_WORDS[tool]||String(tool).replace(/_/g,' ').toUpperCase().slice(0,12)+'!',
+    at:now,rot:(Math.random()-.5)*.3});
+  if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
+  p.busy=now;officeKick();
+}
+/* A paper from somewhere to somebody: the moment a piece of work changes hands. */
+function officePaper(from,to,onArrive){
+  if(!to)return onArrive&&onArrive();
+  OFFICE.papers.push({from,to,at:performance.now(),ms:OFFICE.static?1:950,fn:onArrive});
+  officeKick();
+}
+function officeBoardPoint(){
+  const r=officeRoomOf('lead');if(!r)return {x:OF_M,y:OF_M};
+  return OFFICE.view.office.decor.includes('whiteboard')?{x:r.x+r.w*.78,y:r.y+OF_WALL+10}:{x:r.door,y:r.y+r.h};
+}
+function officeHead(p){return p.mode==='seat'?{x:p.x,y:p.y-50}:{x:p.x,y:p.y-80}}
+function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentName():'your agent'):k}
+
+function officePulse(kind,label,ev){
+  const O=OFFICE;if(!O.w||!O.L)return;
+  ev=ev||{};
+  if(kind==='turn'){
+    const who=ev.speaker?officeMatch(ev.speaker):O.people['@agent'];
+    if(label)O.convWho[label]=who?who.key:'@agent';
+    if(ev.huddle&&ev.huddle.length)officeHuddle(ev.huddle,label);
+    else if(who){officeWork(who,true);officePop(who,'!')}
+    return;
+  }
+  if(kind==='turnend'){
+    const who=O.people[O.convWho[label]||'@agent'];
+    if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
+    if(who)officeWork(who,false);
+    delete O.convWho[label];return;
+  }
+  if(kind==='tool'){
+    const who=O.people[(ev.conversation_id&&O.convWho[ev.conversation_id])||'@agent']||O.people['@agent'];
+    if(label==='delegate'){
+      const to=officeMatch((ev.args||{}).subagent);
+      if(to){officePaper(officeHead(who),to,()=>{officeWork(to,true);officePop(to,'!');
+        officeSay(to,'on it: '+((ev.args||{}).task||''),'think',3600)});
+        officeLog(`${officeName(who.key)} handed ${to.label} some work`)}
+    }
+    officeBurst(who,label);return;
+  }
+  if(kind==='say'){
+    if(ev.kind==='talk')return;              // agents asking each other arrive as 'msg'
+    const p=officeMatch(label);if(!p)return;
+    if(!O.huddle||O.huddle.until<performance.now())officeHuddle([label],ev.conversation_id||'');
+    officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+1500);
+    O.huddle.until=performance.now()+25000;
+    officeLog(`${p.label} (huddle): ${String(ev.text||'').slice(0,90)}`);
+    return;
+  }
+  if(kind==='msg')return officeMsg(ev);
+  if(kind==='flow')return officeFabric(ev);
+  if(kind==='done'){
+    if(label&&O.missions[label]){delete O.missions[label];officeKick()}
+    return;
+  }
+}
+/* One agent asking another (fabric.message). The asker walks to the other's desk and
+   asks there; the answer is said at that desk, and then the asker walks back. From a
+   mission's master or another team there is nobody here to walk, so the question
+   arrives on paper instead. */
+function officeMsg(ev){
+  const O=OFFICE,from=officeMatch(ev.from),to=officeMatch(ev.to);
+  if(ev.phase==='ask'){
+    if(!to)return;
+    officeWork(to,true);
+    if(from&&from!==to){
+      const visit={to:to.key,asked:false,reply:null};
+      from.visit=visit;
+      officeWalk(from,{x:to.home.x+34,y:to.home.y+62},'stand',()=>{
+        if(from.visit!==visit)return;
+        officeSay(from,'@'+to.label+' '+(ev.text||''),'say');
+        visit.asked=true;
+        // the answer came back while it was still walking over: it is heard now, after
+        // the question, never before it
+        if(visit.reply){const r=visit.reply;setTimeout(()=>officeReply(from,to,r),OFFICE.static?0:1800)}
+        else officeSay(to,'…','think',60000);
+      });
+    }else{
+      officePaper(officeBoardPoint(),to,()=>{officeSay(to,(ev.from||'someone')+' asks: '+(ev.text||''),'say')});
+    }
+    officeLog(`${ev.from} asked ${ev.to}: ${String(ev.text||'').slice(0,90)}`);
+    return;
+  }
+  // the reply: said by the one who was asked, at its own desk
+  const who=officeMatch(ev.from),asker=officeMatch(ev.to);
+  officeLog(`${ev.from} answered ${ev.to}: ${String(ev.text||'').slice(0,90)}`);
+  if(asker&&asker.visit&&asker.visit.to===(who&&who.key)&&!asker.visit.asked){asker.visit.reply=ev.text;return}
+  officeReply(asker,who,ev.text);
+}
+/* The answer, at the answerer's desk; the asker thanks it and walks back. */
+function officeReply(asker,who,text){
+  if(who){officeSay(who,text,'say',OF_SAY_MS+2000);officeWork(who,true)}
+  if(asker&&asker.visit){
+    const a=asker,v=a.visit;
+    setTimeout(()=>{if(a.visit===v){officeSay(a,'thanks!','say',1800);officeHome(a)}},OFFICE.static?0:OF_SAY_MS);
+  }
+}
+/* A run of a mission, or of one specialist. The run id → who map is how a bare `step`
+   (which names a tool and no agent) lands on the right desk. */
+function officeFabric(ev){
+  const O=OFFICE,e=ev.event;
+  if(e==='flow_start'){O.missions[ev.flow]=performance.now();officeLog(`mission ${ev.flow} started`);officeKick();return}
+  if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};return}
+  if(e==='node_add'){
+    const to=officeMatch(ev.agent);
+    if(to){officePaper(officeBoardPoint(),to,()=>{officeWork(to,true);officePop(to,'!');
+      officeSay(to,'on it: '+(ev.task||''),'think',3600)});
+      officeLog(`${to.label} got work: ${String(ev.task||'').slice(0,90)}`)}
+    else if(ev.agent&&String(ev.agent).includes('@'))officeLog(`work went to ${ev.agent} on a linked team`);
+    return;
+  }
+  if(e==='status'&&ev.ref){
+    const p=officeMatch(ev.ref);if(!p)return;
+    if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);return}
+    delete O.runs[ev.run_id];
+    const ok=ev.status==='ok'||ev.status==='done';
+    officeWork(p,false);
+    officeSay(p,ok?'done ✓':'hit a snag ✗','say',3200);
+    if(ev.parent_run)officePaper(officeHead(p),{x:officeBoardPoint().x,y:officeBoardPoint().y+20,board:1});
+    return;
+  }
+  if(e==='step'&&ev.status==='start'){const p=O.people[O.runs[ev.run_id]];if(p)officeBurst(p,ev.tool);return}
+  if(e==='approval'){
+    const p=officeMatch(ev.ref)||O.people[O.runs[ev.run_id]];if(!p)return;
+    if(ev.state==='asked'){officeSay(p,'? needs you — '+(ev.tool||''),'shout',120000);p.hand=1;
+      officeLog(`${p.label} is waiting for you to allow ${ev.tool||'a step'}`)}
+    else{p.hand=0;officeSay(p,ev.state==='allowed'?'thanks!':'ok, not that','say',2000)}
+  }
+}
+/* ---------------- huddles: the meeting room ---------------- */
+function officeHuddle(names,cid){
+  const O=OFFICE;
+  O.huddle={cid:cid||'',who:[],until:performance.now()+25000};
+  (names||[]).forEach(n=>{const p=officeMatch(n);if(p)officeHuddleJoin(p)});
+  officeLog(`huddle: ${(names||[]).join(', ')}`);
+}
+function officeHuddleJoin(p){
+  const O=OFFICE,h=O.huddle;if(!h||h.who.includes(p))return;
+  h.who.push(p);officeWork(p,true);
+  const r=officeRoomOf('meeting')||officeRoomOf('lounge')||officeRoomOf('lead');
+  const i=h.who.length-1, cx=r.x+r.w/2, ty=r.y+OF_WALL+92+(r.grow||0)*.45;
+  // three behind the table (feet at its far edge), three in front, then the two ends
+  const spots=[[-58,-30],[0,-34],[58,-30],[-58,62],[0,66],[58,62],[-126,20],[126,20]];
+  const s=spots[i%spots.length];
+  p.visit={huddle:1};
+  officeWalk(p,{x:cx+s[0],y:ty+s[1]},'stand');
+}
+function officeHuddleEnd(){
+  const O=OFFICE,h=O.huddle;if(!h)return;O.huddle=null;
+  h.who.forEach(p=>{officeWork(p,false);officeHome(p)});
+}
+
+/* ---------------- the loop ---------------- */
+function officeKick(){
+  const O=OFFICE;if(!O.w||!O.ctx)return;
+  if(O.static||!winAwake(O.w)){if(winAwake(O.w))officeDraw();return}
+  if(!O.raf){O.last=performance.now();O.raf=requestAnimationFrame(officeFrame)}
+}
+function officeMoving(){
+  const O=OFFICE;
+  return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say)
+    ||(O.pet&&O.pet.walking);
+}
+function officeFrame(now){
+  const O=OFFICE;O.raf=0;
+  if(!O.w||!O.ctx||!winAwake(O.w))return;       // asleep: the next wake re-kicks
+  const busy=officeMoving(), dt=(now-O.last)/1000;
+  if(dt<(busy?1/30:1/6)){O.raf=requestAnimationFrame(officeFrame);return}
+  O.last=now;officeStep(Math.min(.1,dt));officeDraw();
+  O.raf=requestAnimationFrame(officeFrame);
+}
+function officeStep(dt){
+  const O=OFFICE,now=performance.now();O.t+=dt;
+  Object.values(O.people).forEach(p=>{
+    if(p.mode==='walk'&&p.path.length){
+      let d=OF_SPEED*dt;
+      while(d>0&&p.path.length){
+        const q=p.path[0],dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy);
+        if(l<=d){p.x=q.x;p.y=q.y;d-=l;p.path.shift()}else{p.x+=dx/l*d;p.y+=dy/l*d;d=0}
+      }
+      if(!p.path.length)officeArrive(p);
+    }
+    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    if(p.say&&now-p.say.at>p.say.ms)p.say=null;
+  });
+  O.papers=O.papers.filter(pp=>{if(now-pp.at>=pp.ms){if(pp.fn)pp.fn();return false}return true});
+  O.bursts=O.bursts.filter(b=>now-b.at<1500);
+  O.pops=O.pops.filter(b=>now-b.at<1100);
+  if(O.huddle&&O.huddle.until<now&&!O.huddle.cid)officeHuddleEnd();
+  if(O.pet)officePetStep(dt);
+  officeLine();
+}
+function officeLine(){
+  const el=OFFICE.w&&OFFICE.w.el.querySelector('#of-line');if(!el||!OFFICE.view)return;
+  const ps=Object.values(OFFICE.people), n=ps.length-1, busy=ps.filter(p=>p.busy).length;
+  const talk=ps.filter(p=>p.visit).length;
+  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${talk?' · '+talk+' talking':''} · ${n} ${n===1?'specialist':'specialists'}`;
+  if(el.textContent!==txt)el.textContent=txt;
+  const t=OFFICE.w.el.querySelector('.of-title');if(t)t.textContent=OFFICE.view.style.label;
+}
+
+/* ---------------- drawing: the room layer (once per layout) ---------------- */
+function ofRR(ctx,x,y,w,h,r){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h)}
+function ofInk(ctx,lw){ctx.strokeStyle=OF_INK;ctx.lineWidth=lw||2.6;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke()}
+function ofLum(h){const v=[1,3,5].map(i=>parseInt(String(h).slice(i,i+2),16)||0);return v[0]*.299+v[1]*.587+v[2]*.114}
+function ofHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+function ofMix(a,b,t){const p=x=>[1,3,5].map(i=>parseInt(x.slice(i,i+2),16));const A=p(a),B=p(b);
+  return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')}
+function ofFont(ctx,size,weight,italic){ctx.font=`${italic?'italic ':''}${weight||700} ${size}px ${OFFICE.font||'sans-serif'}`}
+function officeBg(){
+  const O=OFFICE;if(!O.L||!O.cv)return;
+  const c=O.bg||(O.bg=document.createElement('canvas'));
+  c.width=O.cv.width;c.height=O.cv.height;
+  const ctx=c.getContext('2d'),st=O.view.style,L=O.L;
+  ctx.setTransform(O.dpr*O.s,0,0,O.dpr*O.s,0,0);
+  // the building: hallways and the spine, a flat tone under everything
+  ctx.fillStyle=ofMix(st.wall,'#000000',.55);ctx.fillRect(0,0,L.W,L.H);
+  ctx.fillStyle=ofMix(st.floor[1],'#000000',.18);
+  L.rowsY.forEach(y=>ctx.fillRect(OF_M,y-OF_HALL/2+3,L.W-OF_M*2,OF_HALL-6));
+  ctx.fillRect(OF_M,OF_M,OF_SPINE-6,L.H-OF_M*2);
+  ofDots(ctx,OF_M,OF_M,OF_SPINE-6,L.H-OF_M*2,'#000000',.12,9);
+  L.rooms.forEach((r,i)=>officeRoomBg(ctx,r,i));
+  ctx.setTransform(1,0,0,1,0,0);
+}
+/* Halftone: the comic printer's dot, used for every shadow. */
+function ofDots(ctx,x,y,w,h,color,alpha,step){
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  ctx.globalAlpha=alpha;ctx.fillStyle=color;
+  for(let j=0,yy=y;yy<y+h+step;yy+=step,j++)for(let xx=x+(j%2?step/2:0);xx<x+w+step;xx+=step){
+    ctx.beginPath();ctx.arc(xx,yy,step*.22,0,6.283);ctx.fill()}
+  ctx.restore();
+}
+function officeFloor(ctx,r,st,idx){
+  const x=r.x,y=r.y+OF_WALL,w=r.w,h=r.h-OF_WALL,a=st.floor[0],b=st.floor[1];
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  ctx.fillStyle=a;ctx.fillRect(x,y,w,h);
+  ctx.fillStyle=b;ctx.strokeStyle=b;ctx.lineWidth=2;
+  const p=st.pattern;
+  if(p==='dots'){ofDots(ctx,x,y,w,h,b,1,14)}
+  else if(p==='planks'){for(let yy=y+22,k=0;yy<y+h;yy+=22,k++){ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+w,yy);ctx.stroke();
+      for(let xx=x+(k%2?40:95);xx<x+w;xx+=130){ctx.beginPath();ctx.moveTo(xx,yy-22);ctx.lineTo(xx,yy);ctx.stroke()}}}
+  else if(p==='tiles'){for(let yy=y,j=0;yy<y+h;yy+=36,j++)for(let xx=x+(j%2)*36;xx<x+w;xx+=72)ctx.fillRect(xx,yy,36,36)}
+  else if(p==='rug'){ofRR(ctx,x+18,y+22,w-36,h-40,18);ctx.fill();ctx.lineWidth=3;ctx.strokeStyle=ofMix(st.accent,a,.45);
+    ofRR(ctx,x+28,y+32,w-56,h-60,12);ctx.stroke()}
+  else if(p==='grid'){ctx.lineWidth=2;for(let yy=y;yy<y+h;yy+=48)for(let xx=x;xx<x+w;xx+=48){ctx.strokeRect(xx+3,yy+3,42,42);
+      [[8,8],[40,8],[8,40],[40,40]].forEach(q=>{ctx.beginPath();ctx.arc(xx+q[0],yy+q[1],1.8,0,6.283);ctx.fill()})}}
+  else if(p==='stone'){for(let k=0;k<Math.floor(w*h/1500);k++){const u=ofHash(r.name+k),v=ofHash(k+r.name+'y');
+      ctx.beginPath();ctx.ellipse(x+u*w,y+v*h,10+u*9,6+v*5,u*3,0,6.283);ctx.fill()}}
+  // the wall's shadow on the floor, in dots
+  ofDots(ctx,x,y,w,16,'#000000',.22,7);
+  ctx.restore();
+}
+function officeRoomBg(ctx,r,idx){
+  const O=OFFICE,st=O.view.style,col=O.view.colors[r.color]||st.accent,decor=O.view.office.decor;
+  officeFloor(ctx,r,st,idx);
+  // the wall band, lit from above
+  ctx.fillStyle=st.wall;ctx.fillRect(r.x,r.y,r.w,OF_WALL);
+  ctx.fillStyle=ofMix(st.wall,'#ffffff',.18);ctx.fillRect(r.x,r.y,r.w,6);
+  // the sign first in the reading order — a plaque in the department's colour, inside the
+  // wall band — and the windows share out whatever wall is left beside it
+  ofFont(ctx,12.5,800);const label=r.name.toUpperCase();
+  const tw=Math.min(r.w*.6,ctx.measureText(label).width+22);
+  const board=r.kind==='lead'&&decor.includes('whiteboard'), poster=decor.includes('posters')&&r.w>260&&r.kind!=='lead';
+  const wx0=r.x+tw+26, wx1=r.x+r.w-(board?r.w*.4:poster?54:12);
+  const nwin=Math.max(0,Math.min(3,Math.floor((wx1-wx0)/120)));
+  for(let i=0;i<nwin;i++)officeWindow(ctx,wx0+(i+.5)*(wx1-wx0)/nwin-26,r.y+10,52,26,st);
+  if(poster){
+    const px=r.x+r.w-44;ctx.fillStyle=col;ofRR(ctx,px,r.y+8,30,30,3);ctx.fill();ofInk(ctx,2);
+    ofFont(ctx,10,900,true);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(['POW!','ZAP!','SHIP','WOW!'][Math.floor(ofHash(r.name)*4)],px+15,r.y+23);
+  }
+  // furniture that never moves
+  if(decor.includes('plants')){officePlant(ctx,r.x+r.w-22,r.y+r.h-14,col);if(r.w>300)officePlant(ctx,r.x+22,r.y+r.h-14,col)}
+  if(r.kind==='meeting')officeTable(ctx,r);
+  if(r.kind==='lounge')officeLounge(ctx,r,decor,st);
+  // below the mission board, never behind it
+  if(r.kind==='lead'&&decor.includes('bookshelf'))officeShelf(ctx,r.x+r.w-40,r.y+OF_WALL+130+(r.grow||0)*.4);
+  // the room's outline, broken for the door
+  const dw=46;
+  ctx.beginPath();ctx.moveTo(r.door-dw/2,r.y+r.h);ctx.lineTo(r.x+6,r.y+r.h);ctx.arcTo(r.x,r.y+r.h,r.x,r.y,6);
+  ctx.arcTo(r.x,r.y,r.x+r.w,r.y,6);ctx.arcTo(r.x+r.w,r.y,r.x+r.w,r.y+r.h,6);ctx.arcTo(r.x+r.w,r.y+r.h,r.x,r.y+r.h,6);
+  ctx.lineTo(r.door+dw/2,r.y+r.h);ofInk(ctx,3.4);
+  ctx.beginPath();ctx.moveTo(r.x,r.y+OF_WALL);ctx.lineTo(r.x+r.w,r.y+OF_WALL);ofInk(ctx,2.2);
+  ctx.fillStyle=ofMix(col,'#000000',.2);ofRR(ctx,r.door-dw/2+6,r.y+r.h-3,dw-12,8,3);ctx.fill();
+  ctx.fillStyle=col;ofRR(ctx,r.x+10,r.y+11,tw,24,5);ctx.fill();ofInk(ctx,2.4);
+  ofFont(ctx,12.5,800);ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.save();ctx.beginPath();ctx.rect(r.x+10,r.y+8,tw-8,32);ctx.clip();
+  ctx.fillText(label,r.x+21,r.y+23.5);ctx.restore();
+  if((r.kind==='floor'||r.kind==='dept')&&!r.members.length){
+    ofFont(ctx,12,600);ctx.fillStyle=ofMix(st.floor[0],OF_INK,.6);ctx.textAlign='center';
+    ctx.fillText(O.view.agents.length?'nobody here yet — move someone in with Design':'no specialists yet',r.x+r.w/2,r.y+OF_WALL+80);
+  }
+}
+function officeWindow(ctx,x,y,w,h,st){
+  const night=st.pattern==='grid'||ofLum(st.wall)<70;
+  ctx.fillStyle=st.pattern==='grid'?'#070b18':night?'#1e1b4b':'#bfe8ff';
+  if(st.pattern==='grid'){ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,h/2+3,h/2,0,0,6.283);ctx.fill();ofInk(ctx,2.4);
+    ctx.fillStyle='#fff';[[.3,.4],[.6,.25],[.7,.7],[.45,.65]].forEach(q=>ctx.fillRect(x+w/2-h/2+q[0]*h,y+q[1]*h,1.6,1.6));return}
+  ofRR(ctx,x,y,w,h,3);ctx.fill();
+  if(!night){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+16,y+15,5,0,6.283);ctx.arc(x+22,y+13,6,0,6.283);ctx.arc(x+28,y+16,4.5,0,6.283);ctx.fill()}
+  else{ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(x+w-13,y+9,4,0,6.283);ctx.fill()}
+  ofRR(ctx,x,y,w,h,3);ofInk(ctx,2.2);ctx.beginPath();ctx.moveTo(x+w/2,y);ctx.lineTo(x+w/2,y+h);ofInk(ctx,1.6);
+}
+function officePlant(ctx,x,y,col){
+  ctx.fillStyle='#16a34a';[[-7,-18,8],[6,-20,8],[0,-28,9],[-2,-14,7]].forEach(q=>{ctx.beginPath();ctx.ellipse(x+q[0],y+q[1],q[2]*.62,q[2],q[0]*.05,0,6.283);ctx.fill();ofInk(ctx,1.6)});
+  ctx.fillStyle=ofMix(col,'#7c2d12',.55);ofRR(ctx,x-8,y-12,16,14,2);ctx.fill();ofInk(ctx,2);
+}
+function officeShelf(ctx,x,y){
+  ctx.fillStyle='#8b5a2b';ofRR(ctx,x-18,y-40,36,64,3);ctx.fill();ofInk(ctx,2.2);
+  const books=['#ef4444','#3b82f6','#f59e0b','#10b981','#a855f7','#f43f5e'];
+  for(let s=0;s<3;s++){for(let b=0;b<4;b++){ctx.fillStyle=books[(s*4+b)%books.length];ctx.fillRect(x-14+b*7,y-36+s*21,5,16)}
+    ctx.beginPath();ctx.moveTo(x-18,y-19+s*21);ctx.lineTo(x+18,y-19+s*21);ofInk(ctx,1.6)}
+}
+function officeTable(ctx,r){
+  const cx=r.x+r.w/2,cy=r.y+OF_WALL+92+(r.grow||0)*.45;
+  ctx.fillStyle='#00000026';ctx.beginPath();ctx.ellipse(cx,cy+10,112,34,0,0,6.283);ctx.fill();
+  ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.ellipse(cx,cy,108,30,0,0,6.283);ctx.fill();ofInk(ctx,3);
+  ctx.fillStyle='#fde68a';ofRR(ctx,cx-14,cy-6,28,12,2);ctx.fill();ofInk(ctx,1.6);   // the notes nobody reads
+}
+function officeLounge(ctx,r,decor,st){
+  const x=r.x,y=r.y+OF_WALL+(r.grow||0)*.4;
+  // the sofa
+  ctx.fillStyle=ofMix(st.accent,'#1e293b',.35);ofRR(ctx,x+24,y+40,120,44,10);ctx.fill();ofInk(ctx,2.6);
+  ctx.fillStyle=ofMix(st.accent,'#ffffff',.15);ofRR(ctx,x+32,y+58,48,22,6);ctx.fill();ofInk(ctx,1.8);ofRR(ctx,x+88,y+58,48,22,6);ctx.fill();ofInk(ctx,1.8);
+  if(decor.includes('coffee')){ctx.fillStyle='#334155';ofRR(ctx,x+r.w-58,y+18,34,46,4);ctx.fill();ofInk(ctx,2.4);
+    ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(x+r.w-41,y+30,4,0,6.283);ctx.fill();
+    ctx.fillStyle='#fff';ofRR(ctx,x+r.w-47,y+46,12,12,2);ctx.fill();ofInk(ctx,1.4)}
+  if(decor.includes('arcade')){const ax=x+r.w-100;ctx.fillStyle='#7c3aed';ofRR(ctx,ax,y+10,32,62,4);ctx.fill();ofInk(ctx,2.4);
+    ctx.fillStyle='#22d3ee';ofRR(ctx,ax+5,y+18,22,16,2);ctx.fill();ofInk(ctx,1.4)}
+  if(decor.includes('bookshelf'))officeShelf(ctx,x+r.w/2+30,y+60);
+}
+
+/* ---------------- drawing: every frame ---------------- */
+function officeSheet(key){
+  const a=(typeof AVATARS!=='undefined')&&AVATARS.by[key],v=a?a.v:0;
+  let e=OFFICE.sheets[key];
+  if(!e||e.v!==v){const img=new Image();img.decoding='async';img.onload=officeKick;
+    img.src=avatarSrc(key,{sheet:1});e=OFFICE.sheets[key]={img,v}}
+  return e.img.complete&&e.img.naturalWidth?e.img:null;
+}
+function officeDraw(){
+  const O=OFFICE,ctx=O.ctx;if(!ctx||!O.L)return;
+  const k=O.dpr*O.s;
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,O.cv.width,O.cv.height);
+  if(O.bg)ctx.drawImage(O.bg,0,0);
+  ctx.setTransform(k,0,0,k,0,0);
+  officeBoard(ctx);
+  // desks in depth order, each with its owner if the owner is sitting at it
+  const ps=Object.values(O.people).sort((a,b)=>a.home.y-b.home.y);
+  ps.forEach(p=>officeDesk(ctx,p));
+  // everybody on their feet, back to front
+  Object.values(O.people).filter(p=>p.mode!=='seat').sort((a,b)=>a.y-b.y).forEach(p=>officeSprite(ctx,p,p.x,p.y,false));
+  if(O.pet)officePetDraw(ctx);
+  O.papers.forEach(pp=>officePaperDraw(ctx,pp));
+  O.bursts.forEach(b=>officeBurstDraw(ctx,b));
+  O.pops.forEach(b=>officePopDraw(ctx,b));
+  // newest words on top, and every balloon placed clear of the ones already drawn — two
+  // agents talking at once must read as two balloons, not one smudge
+  const placed=[];
+  Object.values(O.people).filter(p=>p.say).sort((a,b)=>b.say.at-a.say.at).forEach(p=>officeBubble(ctx,p,placed));
+}
+/* The mission board in the corner office: what is running, in marker. */
+function officeBoard(ctx){
+  const O=OFFICE,r=officeRoomOf('lead');if(!r||!O.view.office.decor.includes('whiteboard'))return;
+  const x=r.x+r.w*.62,y=r.y+6,w=r.w*.34,h=72;
+  ctx.fillStyle='#ffffff';ofRR(ctx,x,y,w,h,4);ctx.fill();ofInk(ctx,2.6);
+  ofFont(ctx,10,900);ctx.fillStyle='#ef4444';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('MISSIONS',x+8,y+7);
+  const names=Object.keys(O.missions).slice(0,3);
+  ofFont(ctx,10.5,700);ctx.fillStyle='#1d4ed8';
+  if(!names.length){ctx.fillStyle='#94a3b8';ctx.fillText('nothing running',x+8,y+26)}
+  names.forEach((n,i)=>{const t=n.length>18?n.slice(0,17)+'…':n;ctx.fillText('▸ '+t,x+8,y+24+i*15)});
+}
+function officeDesk(ctx,p){
+  const O=OFFICE,x=p.home.x,y=p.home.y,col=O.view.colors[p.room.color]||O.view.style.accent,st=O.view.style;
+  const deskTop={pop:'#ffffff',loft:'#a0673a',tower:'#f1f5f9',cozy:'#d9a36a',space:'#9aa6b8',garden:'#ead9ad',night:'#6b5a80'}[O.view.office.style]||'#fff';
+  const W=p.lead?128:104, now=performance.now(), lit=!!p.busy;
+  // the chair back, then its owner, then the desk in front of them
+  ctx.fillStyle=ofMix(col,'#1e293b',.45);ofRR(ctx,x-22,y-40,44,46,10);ctx.fill();ofInk(ctx,2.2);
+  if(p.mode==='seat')officeSprite(ctx,p,x,y+30,true);
+  ctx.fillStyle=deskTop;ofRR(ctx,x-W/2,y-4,W,24,4);ctx.fill();ofInk(ctx,2.6);
+  ctx.fillStyle=ofMix(deskTop,'#000000',.18);ofRR(ctx,x-W/2+4,y+20,W-8,30,3);ctx.fill();ofInk(ctx,2.6);
+  ofDots(ctx,x-W/2+5,y+36,W-10,13,'#000000',.18,6);
+  // the monitor beside them: dark until there is work, then lit in the department's colour
+  const mx=x-W/2+6,my=y-30;
+  ctx.fillStyle='#334155';ctx.fillRect(mx+14,my+22,6,10);
+  ctx.fillStyle=lit?ofMix(col,'#ffffff',.25):'#1f2937';ofRR(ctx,mx,my,34,24,3);ctx.fill();ofInk(ctx,2.2);
+  if(lit){ctx.fillStyle='#ffffffcc';for(let i=0;i<3;i++){const wl=8+((Math.sin(O.t*6+i*2+p.phase)+1)*8);ctx.fillRect(mx+5,my+5+i*6,wl,2.4)}}
+  if(p.lead){ctx.fillStyle=lit?ofMix(col,'#ffffff',.25):'#1f2937';ofRR(ctx,x+W/2-40,my,34,24,3);ctx.fill();ofInk(ctx,2.2)}
+  // a mug, so the desk is somebody's
+  ctx.fillStyle=col;ofRR(ctx,x+W/2-(p.lead?52:20),y+2,10,11,2);ctx.fill();ofInk(ctx,1.6);
+  // the nameplate on the desk front
+  ofFont(ctx,11.5,800);const nm=p.label.length>14?p.label.slice(0,13)+'…':p.label;
+  const tw=Math.min(W-10,ctx.measureText(nm).width+16);
+  ctx.fillStyle=lit?col:'#ffffff';ofRR(ctx,x-tw/2,y+26,tw,18,4);ctx.fill();ofInk(ctx,1.8);
+  ctx.fillStyle=lit?'#ffffff':OF_INK;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(nm,x,y+35.5);
+  // working: what it answers on, in a tag above the monitor (the Crew stage's rule)
+  const brain=O.brains[p.key];
+  // hidden while a burst is up: the tool that just ran is the news, the brain is not
+  if(lit&&brain&&p.mode==='seat'&&!p.say&&!O.bursts.some(b=>b.p===p)){ofFont(ctx,9.5,800);const bw=ctx.measureText(brain).width+18;
+    ctx.fillStyle=OF_INK;ofRR(ctx,x-bw/2,y-78,bw,15,7);ctx.fill();
+    ctx.fillStyle=`rgba(244,63,94,${.55+.45*Math.sin(now/180)})`;ctx.fillRect(x-bw/2+6,y-73,4,4);
+    ctx.fillStyle='#fff';ctx.textAlign='left';ctx.fillText(brain,x-bw/2+13,y-70)}
+}
+/* A character from the server's sheet: stand, blink, one arm up, the other. Whole
+   device pixels per sprite pixel, smoothing off — or it is not pixel art. */
+function officeSprite(ctx,p,x,feet,seated){
+  const O=OFFICE,img=officeSheet(p.key);
+  const u=Math.max(2,Math.round(OF_K*O.s*O.dpr*(p.lead?1.1:1)));
+  const t=O.t,still=O.static,ph=p.phase;
+  const walking=p.mode==='walk'&&!still;
+  const blink=!still&&((t*.29+ph)%1)<.05;
+  const frame=still?0:walking?(Math.floor(t*7)%2?3:2):p.hand?2:(p.busy&&seated)?(Math.floor(t*5+ph)%2?3:2):blink?1:0;
+  const bob=walking?Math.floor(t*7)%2:(!still&&Math.sin(t*1.5+ph)>.4?1:0);
+  const k=O.dpr*O.s, dx=Math.round(x*k)-8*u, dy=Math.round(feet*k)-26*u-bob*u;
+  if(!seated){ctx.fillStyle='#00000033';ctx.beginPath();ctx.ellipse(x,feet+1,15,4,0,0,6.283);ctx.fill()}
+  if(!img)return;
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(img,frame*16,0,16,26,dx,dy,16*u,26*u);ctx.restore();
+  if(!seated){ofFont(ctx,10,800);ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.fillText(p.label.length>14?p.label.slice(0,13)+'…':p.label,x,feet+5)}
+}
+/* A comic balloon: white, inked, a tail to the speaker's head. Thoughts are clouds. */
+function officeBubble(ctx,p,placed){
+  const O=OFFICE,s=p.say,now=performance.now(),age=(now-s.at)/s.ms;
+  const a=age>.85?Math.max(0,(1-age)/.15):1, h0=officeHead(p);
+  ofFont(ctx,11.5,700);
+  const maxW=O.L.W<700?150:200, lines=[];let cur='';
+  s.text.split(' ').forEach(wd=>{const t=cur?cur+' '+wd:wd;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=wd}else cur=t});
+  if(cur)lines.push(cur);
+  if(lines.length>3){lines.length=3;lines[2]=lines[2].replace(/\s*\S*$/,'')+'…'}
+  const bw=Math.min(maxW,Math.max(...lines.map(l=>ctx.measureText(l).width)))+20, bh=lines.length*14+12;
+  let bx=Math.max(4,Math.min(O.L.W-bw-4,h0.x-bw/2+ (p.key.length%2?14:-14))), by=h0.y-bh-18;
+  const hit=q=>placed&&placed.find(o=>bx<o.x+o.w+4&&bx+bw+4>o.x&&by<o.y+o.h+4&&by+bh+4>o.y);
+  for(let n=0,o;n<6&&(o=hit());n++){
+    // try beside it first (a tail can reach sideways), then above it
+    const right=o.x+o.w+6, left=o.x-bw-6;
+    if(right+bw<O.L.W-4&&Math.abs(right-h0.x)<bw+60&&!placed.some(z=>z!==o&&right<z.x+z.w&&right+bw>z.x&&by<z.y+z.h&&by+bh>z.y))bx=right;
+    else if(left>4&&Math.abs(left+bw-h0.x)<bw+60)bx=left;
+    else by=o.y-bh-6;
+  }
+  if(by<4)by=4;
+  if(placed)placed.push({x:bx,y:by,w:bw,h:bh});
+  ctx.globalAlpha=a;
+  const shout=s.kind==='shout';
+  ctx.fillStyle=shout?'#fff7d6':'#ffffff';
+  if(s.kind==='think'){
+    ofRR(ctx,bx,by,bw,bh,bh/2);ctx.fill();ofInk(ctx,2.2);
+    [[0,10,5],[-8,16,3]].forEach(q=>{ctx.beginPath();ctx.arc(h0.x+q[0],by+bh+q[1]-4,q[2],0,6.283);ctx.fillStyle='#fff';ctx.fill();ofInk(ctx,1.8)});
+  }else{
+    ofRR(ctx,bx,by,bw,bh,10);ctx.fill();
+    // the tail: drawn over the outline so the balloon and its tail are one shape
+    const tx=Math.max(bx+12,Math.min(bx+bw-12,h0.x));
+    ctx.beginPath();ctx.moveTo(tx-7,by+bh-1);ctx.lineTo(h0.x,h0.y-4);ctx.lineTo(tx+7,by+bh-1);ctx.closePath();ctx.fill();
+    ofRR(ctx,bx,by,bw,bh,10);ofInk(ctx,shout?3:2.2);
+    ctx.beginPath();ctx.moveTo(tx-7,by+bh);ctx.lineTo(h0.x,h0.y-4);ctx.lineTo(tx+7,by+bh);ofInk(ctx,2.2);
+    ctx.fillStyle=shout?'#fff7d6':'#ffffff';ctx.fillRect(tx-5.5,by+bh-3,11,3);
+  }
+  ctx.fillStyle=OF_INK;ctx.textAlign='left';ctx.textBaseline='top';ofFont(ctx,11.5,shout?800:700);
+  lines.forEach((l,i)=>ctx.fillText(l,bx+10,by+7+i*14));
+  ctx.globalAlpha=1;
+}
+/* A tool call: a jagged burst with the comic word, and the real tool name under it. */
+function officeBurstDraw(ctx,b){
+  const now=performance.now(),q=(now-b.at)/1500,p=b.p,h0=officeHead(p);
+  const grow=OFFICE.static?1:Math.min(1,q*6), a=q>.7?(1-q)/.3:1, x=h0.x+34, y=h0.y-6-q*16;
+  ctx.save();ctx.globalAlpha=Math.max(0,a);ctx.translate(x,y);ctx.rotate(b.rot);ctx.scale(grow,grow);
+  ctx.beginPath();for(let i=0;i<18;i++){const r=i%2?15:25,an=i/18*6.283;ctx.lineTo(Math.cos(an)*r*1.5,Math.sin(an)*r)}
+  ctx.closePath();ctx.fillStyle='#ffe14d';ctx.fill();ofInk(ctx,2.4);
+  ofFont(ctx,12,900,true);ctx.fillStyle='#e11d48';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(b.word,0,0);
+  ctx.restore();
+  if(b.word.replace('!','').toLowerCase()!==String(b.tool).replace(/_/g,' ')){
+    ctx.globalAlpha=Math.max(0,a);ofFont(ctx,9,700);ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.fillText(String(b.tool),x,y+30);ctx.globalAlpha=1}
+}
+function officePopDraw(ctx,b){
+  const q=(performance.now()-b.at)/1100,h0=officeHead(b.p),s=OFFICE.static?1:Math.min(1,q*5)*(1+.15*Math.sin(q*12));
+  ctx.save();ctx.globalAlpha=q>.75?(1-q)*4:1;ctx.translate(h0.x-26,h0.y-10);ctx.scale(s,s);
+  ofFont(ctx,26,900,true);ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=5;ctx.strokeStyle=OF_INK;
+  ctx.strokeText(b.text,0,0);ctx.fillStyle='#ffd23f';ctx.fillText(b.text,0,0);ctx.restore();
+}
+function officePaperDraw(ctx,pp){
+  const q=Math.min(1,(performance.now()-pp.at)/pp.ms),e=1-Math.pow(1-q,2);
+  const to=pp.to.key?officeHead(pp.to):pp.to, x=pp.from.x+(to.x-pp.from.x)*e, y=pp.from.y+(to.y-pp.from.y)*e-Math.sin(q*Math.PI)*60;
+  ctx.save();ctx.translate(x,y);ctx.rotate(q*6);
+  ctx.fillStyle='#ffffff';ctx.fillRect(-9,-12,18,24);ctx.strokeStyle=OF_INK;ctx.lineWidth=2;ctx.strokeRect(-9,-12,18,24);
+  ctx.fillStyle='#94a3b8';for(let i=0;i<4;i++)ctx.fillRect(-6,-8+i*5,12-(i%2)*4,1.6);
+  ctx.restore();
+}
+/* ---------------- the pet: decor that is visibly not an agent ---------------- */
+function officePetNew(){
+  const r=officeRoomOf('lounge')||officeRoomOf('floor')||OFFICE.L.rooms[OFFICE.L.rooms.length-1];
+  return {kind:OFFICE.view.office.pet,room:r,x:r.x+r.w*.6,y:r.y+r.h-40,tx:0,ty:0,wait:2,walking:false,dir:1};
+}
+function officePetStep(dt){
+  const p=OFFICE.pet,r=p.room;if(!r||OFFICE.static)return;
+  if(!OFFICE.L.rooms.includes(r)){OFFICE.pet=officePetNew();return}
+  if(p.walking){const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy);
+    if(l<2){p.walking=false;p.wait=3+Math.random()*6}else{p.x+=dx/l*40*dt;p.y+=dy/l*40*dt;p.dir=dx<0?-1:1}}
+  else if((p.wait-=dt)<=0){p.tx=r.x+30+Math.random()*(r.w-60);p.ty=r.y+OF_WALL+60+Math.random()*(r.h-OF_WALL-80);p.walking=true}
+}
+function officePetDraw(ctx){
+  const p=OFFICE.pet,x=p.x,y=p.y,b=p.walking?Math.abs(Math.sin(OFFICE.t*10))*2:0;
+  ctx.save();ctx.translate(x,y-b);ctx.scale(p.dir,1);
+  ctx.fillStyle='#00000030';ctx.beginPath();ctx.ellipse(0,b+1,14,3.5,0,0,6.283);ctx.fill();
+  if(p.kind==='robot'){ctx.fillStyle='#cbd5e1';ofRR(ctx,-11,-20,22,18,4);ctx.fill();ofInk(ctx,2);ctx.fillStyle='#22d3ee';ctx.fillRect(-6,-15,4,4);ctx.fillRect(3,-15,4,4);
+    ctx.beginPath();ctx.moveTo(0,-20);ctx.lineTo(0,-27);ofInk(ctx,2);ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(0,-28,2.5,0,6.283);ctx.fill();ctx.restore();return}
+  const fur=p.kind==='cat'?'#f59e0b':'#a16207';
+  ctx.fillStyle=fur;ctx.beginPath();ctx.ellipse(-2,-8,12,7,0,0,6.283);ctx.fill();ofInk(ctx,2);
+  ctx.beginPath();ctx.arc(10,-14,6.5,0,6.283);ctx.fill();ofInk(ctx,2);
+  if(p.kind==='cat'){ctx.beginPath();ctx.moveTo(6,-18);ctx.lineTo(7,-24);ctx.lineTo(11,-19);ctx.moveTo(11,-19);ctx.lineTo(14,-23);ctx.lineTo(15,-17);ctx.fill();ofInk(ctx,1.6);
+    ctx.beginPath();ctx.moveTo(-13,-9);ctx.quadraticCurveTo(-22,-16,-18,-24);ofInk(ctx,2.4)}
+  else{ctx.beginPath();ctx.ellipse(6,-13,2.5,5,.4,0,6.283);ctx.fill();ofInk(ctx,1.6);ctx.beginPath();ctx.moveTo(-13,-10);ctx.lineTo(-19,-15);ofInk(ctx,2.4)}
+  ctx.fillStyle=OF_INK;ctx.fillRect(11,-15,1.8,1.8);
+  ctx.restore();
+}
+
+/* ---------------- a tap: who is this, and ask them ---------------- */
+function officeTap(e){
+  const O=OFFICE;if(!O.L)return;
+  const r=O.cv.getBoundingClientRect(),x=(e.clientX-r.left)/O.s,y=(e.clientY-r.top)/O.s;
+  const hit=Object.values(O.people).find(p=>{const h=officeHead(p);return Math.abs(x-h.x)<34&&y>h.y-34&&y<h.y+60});
+  if(!hit)return;
+  const i=O.w.el.querySelector('.of-chat .cp-in');
+  if(hit.key!=='@agent'&&i){i.value='@'+hit.key+' ';i.focus();
+    O.w.el.querySelector('.of-wrap').classList.add('chat-open')}
+  officeSay(hit,hit.busy?'busy — ask away':(hit.key==='@agent'?'what shall we do?':'yes?'),'say',2200);
+}
+function officeEmpty(){
+  const el=OFFICE.w&&OFFICE.w.el.querySelector('.of-empty');if(!el)return;
+  const none=!OFFICE.view.agents.length;
+  el.hidden=!none;
+  if(none)el.innerHTML=`<b>Your office has one person in it: ${esc(officeName('@agent'))}.</b>
+    <span>Specialists take a desk here as soon as they exist. Ask for one in the chat — “make me a researcher and an analyst, put them in a Research department”.</span>`;
+}
+
+/* ---------------- Design: how the office looks, and who sits where ---------------- */
+function officeDesign(open){
+  const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-design');if(!el)return;
+  O.design=open;el.hidden=!open;
+  O.w.el.querySelector('.of-dz').classList.toggle('on',open);
+  if(open)officeDesignPaint();
+}
+function officeDesignPaint(){
+  const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-design'),v=O.view;if(!el||!v)return;
+  const of=v.office,depts=of.departments;
+  const where={};depts.forEach(d=>d.members.forEach(m=>where[m]=d.name));
+  const opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
+  el.innerHTML=`<div class="of-dh"><b>Design your office</b><button class="of-x" aria-label="Close">✕</button></div>
+    <div class="of-sec">Describe it</div>
+    <div class="of-row"><input class="of-ask" placeholder="a cosy space station with a research wing"><button class="endbtn primary of-askb">Ask ${esc(officeName('@agent'))}</button></div>
+    <div class="of-sec">Style</div>
+    <div class="of-styles">${Object.entries(v.styles).map(([k,s])=>`<button class="of-style${k===of.style?' on':''}" data-st="${k}" title="${esc(s.blurb)}">
+      <i style="background:linear-gradient(135deg,${s.wall} 0 38%,${s.floor[0]} 38% 72%,${s.accent} 72%)"></i><span>${esc(s.label)}</span></button>`).join('')}</div>
+    <div class="of-sec">Name on the door</div>
+    <div class="of-row"><input class="of-name" maxlength="24" value="${esc(of.name)}"></div>
+    <div class="of-sec">Departments <span class="mut">${depts.length} of ${v.max_departments}</span></div>
+    ${depts.map((d,i)=>`<div class="of-row of-dept" data-i="${i}"><i class="of-sw" style="background:${v.colors[d.color]}"></i>
+      <input class="of-dn" maxlength="24" value="${esc(d.name)}" aria-label="Department name">
+      <select class="of-dc" aria-label="Colour">${Object.keys(v.colors).map(c=>opt(c,c,c===d.color)).join('')}</select>
+      <button class="endbtn of-drm" aria-label="Remove ${esc(d.name)}">✕</button></div>`).join('')}
+    ${depts.length<v.max_departments?`<div class="of-row"><input class="of-newd" maxlength="24" placeholder="New department, e.g. Research"><button class="endbtn of-addd">Add</button></div>`:''}
+    <div class="of-sec">Who sits where</div>
+    ${v.agents.length?v.agents.map(a=>`<div class="of-row of-who">${typeof avatarImg==='function'?avatarImg(a,'av-who'):''}<span class="of-an">${esc(a)}</span>
+      <select class="of-mv" data-a="${esc(a)}" aria-label="Department for ${esc(a)}">${opt('','Open floor',!where[a])}${depts.map(d=>opt(d.name,d.name,where[a]===d.name)).join('')}</select></div>`).join('')
+      :'<div class="mut of-row">No specialists yet — ask for one in the chat and they take a desk.</div>'}
+    <div class="of-sec">Shared rooms</div>
+    <div class="of-chips">${[['meeting','Meeting room — huddles gather here'],['lounge','Lounge']].map(([k,l])=>`<button class="of-chip${of[k]?' on':''}" data-flag="${k}" aria-pressed="${!!of[k]}">${esc(l)}</button>`).join('')}</div>
+    <div class="of-sec">Decor</div>
+    <div class="of-chips">${v.decor.map(d=>`<button class="of-chip${of.decor.includes(d)?' on':''}" data-dec="${d}" aria-pressed="${of.decor.includes(d)}">${esc(d)}${d==='whiteboard'?' (mission board)':''}</button>`).join('')}</div>
+    <div class="of-sec">Office pet</div>
+    <div class="of-chips">${v.pets.map(p=>`<button class="of-chip${of.pet===p?' on':''}" data-pet="${p}">${esc(p)}</button>`).join('')}</div>`;
+  const q=s=>el.querySelector(s),qa=s=>el.querySelectorAll(s);
+  q('.of-x').onclick=()=>officeDesign(false);
+  const ask=()=>{const t=q('.of-ask').value.trim();if(!t)return;
+    const i=O.w.el.querySelector('.of-chat .cp-in');if(!i)return;
+    i.value='Redesign my office: '+t;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
+    O.w.el.querySelector('.of-wrap').classList.add('chat-open');q('.of-ask').value=''};
+  q('.of-askb').onclick=ask;q('.of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
+  qa('.of-style').forEach(b=>b.onclick=()=>officeSave({style:b.dataset.st}));
+  q('.of-name').onchange=e=>officeSave({name:e.target.value});
+  const deptsNow=()=>[...qa('.of-dept')].map(r=>{const d=depts[+r.dataset.i];
+    return {name:r.querySelector('.of-dn').value,color:r.querySelector('.of-dc').value,members:d.members}});
+  qa('.of-dn,.of-dc').forEach(x=>x.onchange=()=>officeSave({departments:deptsNow()}));
+  qa('.of-drm').forEach(b=>b.onclick=()=>{const i=+b.closest('.of-dept').dataset.i;
+    officeSave({departments:deptsNow().filter((_,j)=>j!==i)})});
+  const add=()=>{const n=q('.of-newd').value.trim();if(n)officeSave({departments:[...deptsNow(),{name:n,members:[]}]})};
+  if(q('.of-addd')){q('.of-addd').onclick=add;q('.of-newd').onkeydown=e=>{if(e.key==='Enter')add()}}
+  qa('.of-mv').forEach(s=>s.onchange=async()=>{
+    const r=await fetch('/api/office/place',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agent:s.dataset.a,department:s.value})});
+    const d=await r.json();if(!r.ok)return toast(d.error||'could not move them');
+    officeLog(`${s.dataset.a} moved to ${s.value||'the open floor'}`);OFFICE.view=d;officeLayout();officeDesignPaint()});
+  qa('[data-flag]').forEach(b=>b.onclick=()=>officeSave({[b.dataset.flag]:!of[b.dataset.flag]}));
+  qa('[data-dec]').forEach(b=>b.onclick=()=>{const d=b.dataset.dec;
+    officeSave({decor:of.decor.includes(d)?of.decor.filter(x=>x!==d):[...of.decor,d]})});
+  qa('[data-pet]').forEach(b=>b.onclick=()=>officeSave({pet:b.dataset.pet}));
+}
+async function officeSave(patch){
+  try{
+    const r=await fetch('/api/office',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
+    const d=await r.json();
+    if(!r.ok)return toast(d.error||'could not change the office');
+    if(d.dropped&&d.dropped.length)toast('not placed — nobody here is called '+d.dropped.join(', '));
+    OFFICE.view=d;officeLayout();officeDesignPaint();
+  }catch(e){toast('could not change the office')}
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -21615,7 +23080,7 @@ async function renderTerminal(body,w){
 function renderAbout(body){
   body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
     <div style="text-align:center;padding-top:26px">
-      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
+      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:var(--acc-grad);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:30px;font-weight:900">▲</div>
       <div style="font-size:20px;font-weight:800">Bento Box AI</div>
       <div id="ab-ver" class="ab-ver">…</div>
       <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>

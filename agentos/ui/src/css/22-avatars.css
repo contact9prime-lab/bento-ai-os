@@ -74,7 +74,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .hud-text p{margin:0}
 .hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
 .msg .who img.av-who+img.av-who{margin-left:-14px}
-/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+/* Settings → Agents → Working together: one row per agent; wraps on a phone */
 .team-list{display:flex;flex-direction:column;gap:8px;width:100%}
 .team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .team-row>b{min-width:88px}
@@ -82,7 +82,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
 .hud-to{font-weight:500;color:var(--dim)}
-/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+/* Settings → Agents → Working together: who may ask whom. One button per cell, cycling
    ask → allow → block; a real target on a phone, and the grid scrolls sideways
    rather than squeezing a cell below the tap floor. */
 .team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
@@ -178,7 +178,7 @@ body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
 .tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
 .tc-th-txt b{display:flex;align-items:center;gap:6px}
 .tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-unread{background:var(--acc);color:var(--on-acc);font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
 .tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
@@ -211,3 +211,48 @@ body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);m
 .ave-design .ave-desc{flex:1;min-width:0}
 .ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}
+
+/* ---- Brains, hands and agents (11e-hands.js) ---- */
+.hands-top{margin-bottom:8px}
+.hands-card,.ag-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;display:flex;flex-direction:column;gap:4px}
+.hands-h,.ag-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hands-h .sp,.ag-h .sp{flex:1}
+.hands-sum{font-size:var(--fs-sm)}
+.hands-desc,.hands-used,.ag-soul{font-size:var(--fs-xs)}
+.hands-ed{margin-top:6px;border-top:1px dashed var(--line);padding-top:8px}
+.hands-form{display:flex;flex-direction:column;gap:10px}
+.hands-form>label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.hands-sec{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.hands-groups{display:flex;flex-direction:column;gap:2px}
+.hands-grp summary{cursor:pointer;padding:4px 0}
+.hands-tools{display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 0 6px 12px}
+.hands-folder{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.hands-folder input{flex:1;min-width:0}
+.pc .hands-folder input{width:auto}
+.hands-form input[type=radio]{width:auto;margin:0}
+.ag-rows{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.ag-rows>div{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ag-k{min-width:86px;color:var(--dim);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em}
+.ag-rows select{max-width:170px}
+body.dev-touch .hands-card button,body.dev-touch .ag-card button,body.dev-touch .ag-rows select,
+body.dev-touch .hands-form input,body.dev-touch .hands-form select,body.dev-touch .hands-grp summary,
+body.dev-touch .hands-top button{min-height:var(--tap)}
+/* the map: four columns that scroll sideways on a phone rather than squeeze */
+.agraph{display:flex;flex-direction:column;gap:6px}
+.agraph-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--fs-xs);align-items:center}
+.agraph-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.agraph-scroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0}
+.agraph-canvas{position:relative}
+.agraph-canvas svg{position:absolute;inset:0;pointer-events:none}
+.agn{position:absolute;display:flex;gap:6px;align-items:center;text-align:left;padding:4px 8px;border-radius:9px;
+  border:1px solid var(--line);background:var(--bg2);color:var(--txt);font:inherit;overflow:hidden}
+.agn-t{display:flex;flex-direction:column;min-width:0}
+.agn-t b,.agn-t small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agn-t small{color:var(--dim);font-size:var(--fs-xs)}
+.agn-agent{cursor:pointer;border-color:color-mix(in srgb,var(--acc) 40%,var(--line))}
+.agn-agent.lead{border-color:var(--acc);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.agn-agent.on{background:color-mix(in srgb,var(--acc) 14%,var(--bg2))}
+.agn-brain{border-left:3px solid var(--acc)}
+.agn-hands{border-left:3px solid color-mix(in srgb,var(--txt) 55%,transparent)}
+.agn-team{border-left:3px solid #60a5fa}.agn-mission{border-left:3px solid #fbbf24}
+.agraph-cols{display:none}

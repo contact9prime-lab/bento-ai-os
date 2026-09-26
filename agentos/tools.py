@@ -3101,6 +3101,55 @@ class Toolbox(usersmod.Scoped):
             return "[error] action must be focus | close | float | tile | move_to_workspace"
         return f"{action}: {win.get('title') or wid}" if ok else f"[error] {msg}"
 
+    async def set_office(self, style: str = "", name: str = "", agent: str = "", department: str = "",
+                         color: str = "", departments=None, remove_department: str = "",
+                         meeting=None, lounge=None, decor=None, pet: str = "") -> str:
+        """Look at or redesign the Office playground — the agent's half of its editor
+        (the parity law). Every value is from office.py's closed set, and a refusal
+        names the choices. With no changes it describes the office and the options,
+        which is how the model learns what "space" or "arcade" are without guessing.
+        Asked to design an office from a description, the agent IS the designer: it
+        picks the fields that fit and sets them in one call, as with set_avatar."""
+        from . import config as cfgmod
+        from . import office as of
+        try:
+            if agent:
+                of.place(self.cfg, self.store, agent, department, color)
+            patch = {k: v for k, v in (("style", style), ("name", name), ("pet", pet)) if v}
+            if meeting is not None:
+                patch["meeting"] = meeting
+            if lounge is not None:
+                patch["lounge"] = lounge
+            if decor is not None:
+                patch["decor"] = decor
+            if departments is not None:
+                patch["departments"] = departments
+            if remove_department:
+                cur = of.current(self.cfg)["departments"]
+                left = [d for d in cur if d["name"].lower() != remove_department.strip().lower()]
+                if len(left) == len(cur):
+                    return (f"[error] there is no department called '{remove_department}' — the office has: "
+                            f"{', '.join(d['name'] for d in cur) or 'none yet'}")
+                patch["departments"] = left
+            dropped = []
+            if patch:
+                _, dropped = of.save(self.cfg, self.store, patch)
+            elif not agent:
+                v = of.view(self.cfg, self.store)
+                return (f"{of.describe(v)} You can set style ({', '.join(of.STYLES)}), name, "
+                        f"departments (up to {of.MAX_DEPTS}, each a name, a colour — "
+                        f"{', '.join(of.COLORS)} — and members from: {', '.join(v['agents']) or 'no specialists yet'}), "
+                        f"move one agent with agent+department, remove_department, meeting and lounge "
+                        f"(yes/no), decor ({', '.join(of.DECOR)}) and pet ({', '.join(of.PETS)}).")
+        except ValueError as e:
+            return f"[error] {e}"
+        cfgmod.save_config(self.cfg)
+        if self.broadcast:
+            asyncio.create_task(self.broadcast({"type": "office"}))
+        v = of.view(self.cfg, self.store)
+        return ("Done — " + of.describe(v)
+                + (f" (not placed, nobody here is called: {', '.join(dropped)})" if dropped else ""))
+
     async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
                          shirt: str = "", pants: str = "", glasses=None, blush=None,
                          outfit: str = "", reroll: bool = False) -> str:
@@ -3851,7 +3900,10 @@ TOOL_SCHEMAS = [
                        "theme ('make it warmer', 'bigger radius', 'now add a font'), reuse the SAME name from "
                        "earlier in the conversation — only start a new name for a genuinely new theme. `vars` is "
                        "a JSON object of CSS variables (bg, bg2, bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, "
-                       "err, ok, glass). `css` is extra CSS to restyle chrome: windows (.win, .ttl), the top menu "
+                       "err, ok, glass; and the look-and-feel tokens the Theme Builder writes: acc-grad (the "
+                       "accent as a fill, any CSS gradient), on-acc (text on that fill), r-sm/r-md/r-lg/r-xl "
+                       "(corner radii), el-2..el-5 (shadows), glass-tint/glass-blur (the glass recipe), "
+                       "fs-base (text size)). `css` is extra CSS to restyle chrome: windows (.win, .ttl), the top menu "
                        "bar (#menubar), the dock (#taskbar), app icons (.aicon), widgets (.widget), the desktop "
                        "(#desktop). Optional web font (font_url + font_family, e.g. a Google Fonts URL). For a "
                        "TOTAL redesign pass shell_html: complete HTML+CSS+JS that replaces the stock desktop with "
@@ -4532,6 +4584,35 @@ DESKTOP_TOOL_SCHEMAS = [
             "glasses": {"type": "boolean"}, "blush": {"type": "boolean"},
             "reroll": {"type": "boolean", "description": "A new random look, keeping the shirt colour."}},
             "required": ["who"]},
+    },
+    {
+        "name": "set_office",
+        "description": "Look at or redesign the Office playground — the comic-strip office where "
+                       "the user watches you and every specialist at work: your corner office, a desk "
+                       "per specialist in departments, a meeting room for huddles, a lounge. Call with "
+                       "nothing to hear how it looks now and every option. Changes pick from a fixed "
+                       "set: style (pop, loft, tower, cozy, space, garden, night), the office's name, "
+                       "departments (each a name, a colour and its specialists), agent+department to "
+                       "move one specialist, remove_department, meeting/lounge on or off, decor and a "
+                       "pet. Asked to design an office from a description (\"make it a cosy space "
+                       "station with a research wing\"), YOU are the designer: set it in one call.",
+        "parameters": {"type": "object", "properties": {
+            "style": {"type": "string", "enum": ["pop", "loft", "tower", "cozy", "space", "garden", "night"]},
+            "name": {"type": "string", "description": "The office's name, shown on the door."},
+            "agent": {"type": "string", "description": "A specialist to move (with department)."},
+            "department": {"type": "string", "description": "Where `agent` goes; created if new. Empty = the open floor."},
+            "color": {"type": "string", "enum": ["teal", "violet", "amber", "rose", "sky", "lime", "orange", "slate"]},
+            "departments": {"type": "array", "description": "Replace every department at once.",
+                            "items": {"type": "object", "properties": {
+                                "name": {"type": "string"},
+                                "color": {"type": "string"},
+                                "members": {"type": "array", "items": {"type": "string"}}}}},
+            "remove_department": {"type": "string"},
+            "meeting": {"type": "boolean", "description": "A meeting room, where huddles gather."},
+            "lounge": {"type": "boolean"},
+            "decor": {"type": "array", "items": {"type": "string",
+                      "enum": ["plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters"]}},
+            "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]}}},
     },
     {
         "name": "list_themes",

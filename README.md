@@ -378,11 +378,13 @@ Glass is the most expensive thing a desktop can draw, and the cost compounds wit
 open. **Themes → Effects** measures your machine and turns it down only if it has to — five windows
 in Liquid Glass went from 6.5fps to 27 (reduced) or 60 (off).
 
-**Immersive experience (beta)** — one switch in Settings → Appearance lays a ground-up look over
-whichever theme is on: a home scene with a greeting and the prompt bar, the app wall behind the
+**Immersive experience** — on by default, over the modern **Nova** theme, and one switch in
+Settings → Appearance turns it off. It lays a ground-up look over whichever theme is on: a home scene with a greeting and the prompt bar, the app wall behind the
 dock, glass on the window you are working in, an icon set and a control kit across every app, a
 Spotlight-style launcher, Chat as a modern client, and a wallpaper that follows the day. It costs
-one blurred surface, and the Effects knob still turns it down. [More →](docs/desktop.md#immersive-experience-beta)
+one blurred surface, and the Effects knob still turns it down. **Themes → Build a theme** makes
+your own: a palette from three colours (with its contrast said out loud), corners, depth, glass,
+type and wallpaper, previewed live. [More →](docs/desktop.md#immersive-experience)
 
 ### It reaches you where you already are
 

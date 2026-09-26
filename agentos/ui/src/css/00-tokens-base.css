@@ -5,6 +5,11 @@
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
   --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
   --glass:rgba(17,20,25,.82);
+  /* the accent as a FILL, and the text that sits on it. A theme sets both: a teal
+     accent wants dark ink on it, a violet one wants white (Nova), and a gradient can
+     carry more than two stops. Every primary button, active tab and badge reads these. */
+  --acc-grad:linear-gradient(135deg,var(--acc),var(--acc2));
+  --on-acc:#04211c;
   /* the glass recipe: translucent tint + heavy blur + a hairline of light along
      the top edge. Every floating surface (deck groups, widgets, cards, popovers)
      uses these so they read as one material. */

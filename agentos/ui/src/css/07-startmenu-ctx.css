@@ -13,7 +13,7 @@
 @keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
 #smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
-#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #smhead b{font-size:var(--fs-base)}
 #smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
 #smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;flex:1;min-height:0;max-height:52vh;overflow-y:auto;align-content:start;grid-auto-rows:minmax(92px,auto)}

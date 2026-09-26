@@ -36,6 +36,8 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
+    render:renderOffice,onClose:officeClose},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
@@ -86,6 +88,7 @@ const APPS={
    Sync + cheap by design (globals/DOM only) — it's a hint for the embedded
    agent, which can always call tools for authoritative data. ---- */
 const APP_CTX={
+  office:()=>officeContext(),
   chat:()=>`the full chat window; current conversation ${currentConv||'(none)'}${RUNNING.size?', a turn is running':''}`,
   files:w=>`browsing "${w.path||'workspace root'}"${document.querySelectorAll('.fitem').length?` (${document.querySelectorAll('.fitem').length} entries visible)`:''}`,
   terminal:()=>'a live shell on this machine (the user may have a command or error on screen)',
@@ -136,7 +139,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}

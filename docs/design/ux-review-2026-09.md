@@ -122,7 +122,7 @@ rectangles for windows, grey glyphs in Settings. So a second pass, on a differen
 "what is broken" but "would a 16-to-40-year-old who lives in macOS *want* this on their screen".
 
 The answer is an opt-in look — **Settings → Appearance → Immersive experience (beta)** — laid over
-whichever theme is on. What it is and what it costs is in [`docs/desktop.md`](../desktop.md#immersive-experience-beta);
+whichever theme is on. What it is and what it costs is in [`docs/desktop.md`](../desktop.md#immersive-experience);
 the rules that keep it honest are in `CLAUDE.md` and `tests/test_immersive.py`. This section is the
 proof: every image below is a real browser at 1440×900 or 390×844, and the judge was not only me.
 

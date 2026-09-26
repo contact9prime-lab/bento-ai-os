@@ -5,7 +5,7 @@
   border:1px solid var(--hairline);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.12);z-index:9000}
 #startbtn{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;border-radius:var(--r-lg);
   transition:transform var(--d-base) var(--ease-out)}
-#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:linear-gradient(135deg,var(--acc),var(--acc2));
+#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:var(--acc-grad);
   display:flex;align-items:center;justify-content:center;border:.5px solid rgba(255,255,255,.16);
   box-shadow:0 5px 14px rgba(0,0,0,.42),inset 0 .5px 0 rgba(255,255,255,.32)}
 #startbtn:hover{transform:translateY(-7px) scale(1.12)}

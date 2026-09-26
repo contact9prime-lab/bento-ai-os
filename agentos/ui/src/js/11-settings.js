@@ -35,7 +35,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 // (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
-  ['agent','◈','Agent','agent'],
+  ['agent','◈','Agents','agent'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
   ['accounts','✉','Accounts','accounts'],
@@ -82,7 +82,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the picker below.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -92,7 +92,7 @@ function setTab(body,all){
     // needing a second Save to make a chosen model take effect is the same bug
     // wearing a different hat.
     P.push(pGroup('Answering', [
-      pRow('This machine answers with',
+      pRow('Your lead agent thinks with',
         `<span class="s-modelrow">
            <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
            <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
@@ -106,13 +106,105 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    P.push(pGroup('Local',[
+      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
+        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
+    ],{f:'ollama local'}));
+    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
+      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
+      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
+        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
+      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
+    ],{f:key+' '+name});
+    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
+    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
+    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
+    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
+    P.push(pGroup('Custom (OpenAI-compatible)',[
+      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
+      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
+      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
+      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
+    ],{f:'custom openai compatible endpoint lm studio'}));
+    /* Other AI agents installed on this machine are BRAINS too — Claude Code thinks
+       with its own model and can answer a turn or run a mission through the bridge.
+       They lived under "Executors" when that word meant "who runs the turn"; it now
+       means an agent's hands (Settings → Executors), so they are listed here with the
+       rest of the brains. The code still calls them executors (agentos/executors.py):
+       renaming the identifier would cost every install its saved engine for a word
+       nobody sees. */
+    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain: pick it above to have it answer, or give it to one of your agents. AgentOS keeps the desktop and the permissions — an installed agent only reaches the folder you choose.</p>`);
+    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-offers"></div>`);
+    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderExecutors,0);
+    setTimeout(renderOcPlugins,0);
+    P.push(pGroup('Image generation',[
+      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
+        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
+      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
+    ],{f:'image generation wallpaper'}));
+  }
+  if(want('executors')){
+    /* Executors are HANDS (agentos/hands.py): what an agent can reach — which tools,
+       which folders and whether it may write there, which web addresses, which MCP
+       servers. A profile is a CEILING the gate checks before any permission (policy
+       step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
+       11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
+       this page — nothing native, nothing touching the compositor. */
+    P.push(`<h2>Executors</h2><p class="lead">Hands. An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
+    setTimeout(renderHands,0);
+    P.push(pGroup('The machine\u2019s own limit',[
+      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
+        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden. This bounds a SHELL — an executor\u2019s folders bound the file tools, and a shell reaches whatever this jail allows.',f:'sandbox jail bubblewrap shell'}),
+      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
+      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
+    ],{f:'sandbox security jail'}));
+  }
+  if(want('channels')){
+    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
+    setTimeout(renderChannels,0);   // live state, not part of cfg
+  }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(pGroup('GitHub',[
+      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
+        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
+      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
+    ],{f:'github git ship publish'}));
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
+  }
+  if(want('agent')){
+    /* Agents: the lead agent (always here) and the agents it works with. Each gets a
+       BRAIN (AI providers), HANDS (Executors), AUTHORITY (its permissions) and SKILLS,
+       and may talk to colleagues and linked teams — all of it read from ONE answer,
+       agentmap.overview(), which the map below and `bento agents` read too.
+       11e-hands.js draws the list and the map. */
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), hands (<a href="#" onclick="settingsGo('executors');return false">Executors</a>), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(pGroup('Lead agent',[
+      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
+        {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
+      pRow('Hands','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
+        {desc:'The executor it works with: what it can reach. It applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
+      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
+      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
+        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
+    ],{f:'agent identity name workspace lead'}));
+    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
+    setTimeout(renderAgentsList,0);
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
        bill, one provider), and each row pins one agent. Both apply on the spot, like
        the brain above. The badge each agent wears on the Crew stage and in chat is
        the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
-    P.push(pGroup('Team',[
+    P.push(pGroup('Working together',[
       pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
         {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
          f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
@@ -152,73 +244,9 @@ function setTab(body,all){
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
-    P.push(pGroup('Local',[
-      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
-        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
-    ],{f:'ollama local'}));
-    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
-      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
-      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
-        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
-      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
-    ],{f:key+' '+name});
-    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
-    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
-    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
-    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
-    P.push(pGroup('Custom (OpenAI-compatible)',[
-      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
-      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
-      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
-      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
-    ],{f:'custom openai compatible endpoint lm studio'}));
-    P.push(pGroup('Image generation',[
-      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
-        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
-      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
-    ],{f:'image generation wallpaper'}));
-  }
-  if(want('executors')){
-    P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
-    P.push(pGroup('Forward everything',[
-      /* Filled from the roster by renderExecutors below, not written out here.
-         This list was hardcoded to aria + claude-code, so every executor added
-         afterwards was invisible in the one panel named after them — and which
-         brains exist is a probe, not part of cfg. */
-      pRow('This machine answers with',
-        `<select id="s-engine" onchange="pickEngine(this.value)"><option value="${esc(cfg.engine||'aria')}">checking…</option></select>`,
-        {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
-         f:'forward everything engine forwarder proxy relay'}),
-    ],{f:'forwarding engine'}));
-    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
-    P.push(`<div id="exec-offers"></div>`);
-    /* OpenClaw's plugins belong here rather than in a pane of their own: OpenClaw
-       is an executor, and this is the screen somebody is already on when they
-       decide to extend it. Inert with an honest sentence when the CLI is absent —
-       11b-openclaw.js. */
-    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
-    setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
-    setTimeout(renderOcPlugins,0);
-  }
-  if(want('channels')){
-    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
-    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
-    setTimeout(renderChannels,0);   // live state, not part of cfg
-  }
-  if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
-    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
-    setTimeout(renderAccounts,0);
-  }
-  if(want('agent')){
-    P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
-    P.push(pGroup('Identity',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
-      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
-      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
-      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
-        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
-    ],{f:'agent identity name workspace'}));
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach, who it may ask and who may ask it — drawn from the same permissions the gate checks. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
     P.push(pGroup('Content from outside',[
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before anything that changes something'],
@@ -232,22 +260,6 @@ function setTab(body,all){
         {desc:'Long threads stop fitting the model\'s context window. Either way you are told in the conversation when it happens.',
          f:'history compaction summary context window long thread'}),
     ],{f:'security untrusted injection history'}));
-    P.push(pGroup('Sandbox',[
-      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
-        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
-      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* Deliberately a pointer and not a second editor. Which folders are open
-         and WHO they are open to is one fact; two places to change it is two
-         places to disagree, and the copy nobody demos is the one that drifts.
-         Settings owns whether there is a jail; Users owns who reaches through it. */
-      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
-        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-    ],{f:'sandbox security'}));
-    P.push(pGroup('GitHub',[
-      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
-        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
-      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
-    ],{f:'github git ship publish'}));
     /* Sharing the agent belongs on the page that answers "who is my agent" —
        11c-agentshare.js renders it, agentbundle.py decides everything. */
     P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
@@ -305,11 +317,12 @@ function setTab(body,all){
        Applied the moment it is flipped, like the theme select above — Save is
        for the machine's settings, and this one lives in this browser. */
     P.push(pGroup('Immersive experience',[
-      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+      pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
         {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
              +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
              +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
              +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'On by default; switch it off here for the plain desktop. '
              +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
@@ -500,7 +513,7 @@ async function paintVersion(check){
     const n=d.behind||0;
     const head=bumped
       ? `<b>${esc(d.current)}</b> → <b style="color:var(--acc)">${esc(d.latest)}</b> available`
-      : `<b>${esc(d.current)}</b> <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
+      : `<b>${esc(d.current)}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} <b style="color:var(--acc)">· ${n} change${n===1?'':'s'} waiting</b>`
         +` <span class="mut">on ${esc(d.tracks||'')}</span>`;
     el.innerHTML=head
       +(d.can_apply?` <button class="pact" style="margin-left:10px" onclick="updateNow(this)">Update now</button>`
@@ -513,7 +526,7 @@ async function paintVersion(check){
     const where=d.mismatch
       ? `up to date with ${esc(d.tracks||'')} — this copy is on ${esc(d.on_branch||'another branch')}`
       : (d.latest?`up to date with ${esc(d.tracks||'')}`:'not checked yet');
-    el.innerHTML=`<b>${esc(d.current||'?')}</b> `
+    el.innerHTML=`<b>${esc(d.current||'?')}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} `
       +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn;
   }
 }
@@ -1123,7 +1136,7 @@ function openLinkedTeams(){
   SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="ai"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="agent"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }

@@ -201,9 +201,11 @@ allow, and hard-blocked destructive commands stay blocked regardless. Manage the
 
 ## Updates
 
-`agentos/VERSION` is the one place a version is written — the package reads it, the
-update checker compares against the same file published on `master`, and a test fails if
-`pyproject.toml` disagrees. A release is one edit.
+`agentos/VERSION` is the one place a version is written. The package reads it, and the
+update checker compares against the same file published on `master`. A test fails if
+`pyproject.toml` disagrees. `bento version bump [patch|minor|major]` moves both,
+together with the changelog heading. CI refuses a change that ships without a bump, and
+bumps a direct push that forgot (see [installation](installation.md)).
 
 ```jsonc
 "updates": {

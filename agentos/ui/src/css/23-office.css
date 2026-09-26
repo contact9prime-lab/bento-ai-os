@@ -1,0 +1,71 @@
+/* ================= Office: the playground (24d-office.js) =================
+   Two columns on a wide window — the office, and the chat on the right — and one on a
+   narrow one, where the chat is a sheet behind the Chat button. The canvas draws its
+   own room in its own colours (a greenhouse is green on every theme); everything around
+   it is the theme's, from its tokens. */
+.of-body{container-type:inline-size}
+.of-wrap{display:flex;flex:1;min-height:0;position:relative}
+.of-stage{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.of-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hairline);flex:none;min-width:0}
+.of-title{font-weight:800;white-space:nowrap}
+.of-line{color:var(--dim);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.of-bar .endbtn.on{border-color:var(--acc);color:var(--acc)}
+.of-ct{display:none}
+.of-scroll{flex:1;min-height:0;overflow:auto;position:relative;background:#14131f;overscroll-behavior:contain}
+.of-cv{display:block;cursor:pointer;touch-action:pan-y}
+.of-empty{position:absolute;left:50%;top:14px;transform:translateX(-50%);width:min(440px,calc(100% - 24px));
+  display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line);box-shadow:var(--el-3);font-size:var(--fs-sm)}
+.of-empty span{color:var(--dim)}
+.of-empty[hidden]{display:none}   /* display:flex above outranks the attribute */
+.of-log{flex:none;display:flex;flex-direction:column;gap:1px;padding:6px 12px;min-height:30px;overflow:hidden;line-height:1.45;
+  border-top:1px solid var(--hairline);font-size:var(--fs-xs);color:var(--dim)}
+.of-le{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.of-le span{color:var(--dim2);margin-right:8px;font-variant-numeric:tabular-nums}
+.of-le.new{color:var(--txt)}
+.of-chat{width:320px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--hairline);
+  background:color-mix(in srgb,var(--bg2) 55%,transparent)}
+.of-chat .cp-feed,.of-chat .cp-starters,.of-chat .cp-inbar{min-width:0}
+
+/* the designer: a panel over the office's right edge, so the change is seen as it is made */
+.of-design{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--el-4);padding:10px 14px 16px}
+.of-design[hidden]{display:none}
+.of-dh{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.of-x{color:var(--dim);border-radius:var(--r-sm);padding:4px 8px}
+.of-x:hover{color:var(--txt);background:var(--bg3)}
+.of-sec{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);margin:14px 0 6px}
+.of-sec .mut{text-transform:none;letter-spacing:0;font-weight:500;margin-left:6px}
+.of-row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.of-row input{flex:1;min-width:0}
+.of-row select{flex:none;max-width:48%}
+.of-who .of-an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.of-sw{width:14px;height:14px;border-radius:4px;flex:none;border:2px solid #191827}
+.of-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.of-style{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r-md);border:1px solid var(--line);
+  background:var(--bg3);text-align:left;font-size:var(--fs-sm);min-width:0}
+.of-style i{width:26px;height:26px;border-radius:6px;flex:none;border:2px solid #191827}
+.of-style span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.of-style.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.of-chips{display:flex;flex-wrap:wrap;gap:6px}
+.of-chip{font-size:var(--fs-xs);padding:5px 11px;border-radius:var(--r-full);background:var(--bg3);border:1px solid var(--line);color:var(--dim)}
+.of-chip.on{border-color:var(--acc);color:var(--txt);background:color-mix(in srgb,var(--acc) 16%,var(--bg3))}
+
+/* narrow: the chat is a sheet over the lower part of the office, behind the Chat button */
+@container (max-width:760px){
+  .of-ct{display:inline-flex}
+  .of-chat{position:absolute;left:0;right:0;bottom:0;height:62%;width:auto;z-index:4;display:none;
+    border-left:none;border-top:1px solid var(--line);background:var(--bg2);box-shadow:var(--el-4);
+    border-radius:var(--r-lg) var(--r-lg) 0 0}
+  .of-wrap.chat-open .of-chat{display:flex}
+  .of-wrap.chat-open .of-ct{border-color:var(--acc);color:var(--acc)}
+}
+body.dev-mobile .of-ct{display:inline-flex}
+body.dev-mobile .of-chat{position:absolute;left:0;right:0;bottom:0;height:64%;width:auto;z-index:4;display:none;
+  border-left:none;border-top:1px solid var(--line);background:var(--bg2);box-shadow:var(--el-4)}
+body.dev-mobile .of-wrap.chat-open .of-chat{display:flex}
+body.dev-mobile .of-le:nth-child(n+3){display:none}
+/* a fingertip: every control in the designer and the bar at the floor, as real size */
+body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,body.dev-touch .of-x,
+body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn{min-height:var(--tap)}
+body.dev-touch .of-x{min-width:var(--tap)}

@@ -136,7 +136,7 @@ function arrangeIcons(byName){
   toast(byName?'icons sorted by name':'icons auto-arranged');
 }
 const BENTO_GROUPS=[
-  ['Essentials',['chat','apps','browser','files','terminal']],
+  ['Essentials',['chat','office','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
   ['Intelligence',['models','memory','kg','soul','profile']],
   ['Automation',['jobs','tasks','skills','mcp','telegram']],

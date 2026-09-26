@@ -804,6 +804,40 @@ empty choice ("whatever it is set to"). AgentOS does not fetch or invent a
 catalogue for it; what the run actually woke up on comes back from the run
 itself (`engine_info`) and that is what the chip shows.
 
+## An agent is a brain, hands, permissions and skills — and Settings has one place for each
+
+`docs/agents.md`. The model, as it was asked for: **AI providers** are the BRAINS (cloud
+providers with keys, local models, and the agents installed here — Claude Code, Hermes,
+OpenClaw, which moved there from the old Executors page); **Executors** are HANDS — an
+executor profile (`agentos/hands.py`, table `executor_profiles`) says which tools, which
+folders (ro/rw), which web addresses and which MCP servers an agent can REACH; **Agents** is
+the lead agent (always there, named by the person) and the specialists, each given a brain,
+hands, permissions and skills, plus Working together (the team settings) and the map. The code
+still says `executors.py` for the brains — the identifier rename would cost every install its
+saved engine for a word nobody sees, the Missions/`flows` argument again.
+
+Five things will bite whoever touches this next (`tests/test_hands.py`):
+
+- **Hands are a CEILING, checked first.** `PDP._decide` step 2a (rule `reach`) runs before the
+  channel/taint ceilings and before grants, so no grant reaches past it — a read-only agent
+  granted fs.write everywhere still cannot write. It is a capability limit, not a permission;
+  keep permissions in grants. `reach_of` caches per (user, principal) on `hands.generation()`.
+- **Folders are matched on the real path** (`policy._fs_real`), the standing-permission rule.
+  And a SHELL reaches whatever the machine's folder jail allows, not only the profile's
+  folders — the editor, `bento hands show` and the docs say so beside any shell tool. Never
+  imply the folder list bounds a command line.
+- **`default` is today's behaviour** (every tool, `*` folders rw, any web, every MCP), so the
+  feature changes nothing until somebody narrows an agent. Built-ins can be edited, not
+  deleted; deleting a profile moves its agents to default rather than leaving a stale name.
+  `save_subagent` touches `profile` only when the key is given — the wizard, recipes and forks
+  save without it and must not silently widen an agent back to default.
+- **The map is ONE computation.** `agentmap.overview()` → `graph()`/`text()` feeds the cards,
+  the map, `/api/agents*` and `bento agents`; do not compute "who reaches what" a second way
+  in the page.
+- **The bundle is one script, so names collide silently.** A Settings helper called
+  `agentHands` replaced the copilot's "visible hands" glow of the same name with no error;
+  `test_no_two_files_declare_the_same_function` now fails on any duplicate top-level function.
+
 ## The three surfaces are stitched: bar → chat → Studio / Missions
 
 The prompt bar asks, the chat answers, and what the answer BUILT lives in
@@ -1118,7 +1152,9 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 
 `body.immersive` (`01b-immersive.js` owns the switch, `20-immersive.css` is every rule, Settings →
 Appearance is the only door) lays materials, depth and motion over whichever theme is on. Full
-reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things that have to stay true:
+reasoning in `docs/desktop.md` → "Immersive experience". It is ON by default (2026-09): only an explicit
+`localStorage.immersive === '0'` keeps it off, and every rule stays scoped to the body class so off is
+still byte-for-byte the standard desktop. Four things that have to stay true:
 
 - **Every rule is scoped to the body class**, and every colour is mixed from the theme's tokens
   (`--txt`, `--bg2`, `--acc`), never written as a white or a black. That is what lets one file hold
@@ -1127,7 +1163,7 @@ reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things th
 - **It adds exactly one blurred surface — the active window — and that is the whole cost.** Measured
   with five windows open in software-rendered Chromium: 16.7ms a frame without it, 83ms with it,
   while the deck, dock and menu-bar blurs together cost nothing measurable. So `glass-lite`
-  (the probe's first step down) drops THAT blur and keeps everything else, at a 94% tint so nothing
+  (the probe's first step down) drops THAT blur and keeps everything else, at a 98% tint so nothing
   beneath reads through unblurred — 16.7ms again. `glass-off` still wins outright.
 - **The active tint floor is 88%.** At 76% the text of the window underneath read through the
   blur in a stacked screenshot — the 16-glass failure ("four windows of text legible through each
@@ -1178,6 +1214,25 @@ Claude Code reading the screenshots from the workspace); its first two fixes —
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
 
+**Themes are tokens, and the default is Nova.** A browser that never chose gets `nova` (deep ink,
+an indigo→violet accent, Geist, its own `nova.svg`). The accent as a FILL is `--acc-grad` and the
+text on it is `--on-acc` (`00-tokens-base.css`): `#04211c` was written into two dozen rules for a
+teal accent and read badly on violet, and `test_theme_builder.py` refuses it coming back. The Theme
+Builder (`18-themes-personalize.js`) writes only tokens the desktop already reads (radii, `el-*`,
+glass recipe, `fs-*`, accent), `create_theme` is told the same names, and it says the palette's
+contrast out loud. Its live preview calls `_applyThemeObj`, never `applyThemeObj`: the latter starts a
+view-transition crossfade, and one per slider step painted the previous screen over every window.
+The unblurred active-window tint (`glass-lite`) is 98%, measured: over Chat's text, 10 grey levels
+of contrast showed through at 94%, 5 at 98%, 0 opaque.
+
+**A toast states its kind, and the kind is read from the sentence.** `toastKind()` (`00-core.js`)
+sorts every toast into ok / warn / err / info from how it starts ("saved…", "could not…", "✓", "✗")
+unless the caller passes `{kind}` — hundreds of call sites got an icon without an edit, so do not
+"fix" it by threading a kind through each one. An error stays 7s against 3.8s, hover holds it, and
+at most five are kept. `#toasts .toast` must keep `inset:auto`: the base `.toast` in
+`12-overlays.css` is `position:fixed; right:14px`, and once the stack made it `relative` that
+`right` shifted every card 14px left (off a 390px screen). `tests/test_panels.py` pins it.
+
 ## Characters: one painter, one recipe, every surface
 
 `agentos/avatars.py` is the only place a character exists. You, your agent (`@agent`) and every
@@ -1225,13 +1280,41 @@ things keep it true:
   full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
   five skins before believing it.
 
+## The Office: the crew at work, and nothing moves that did not happen
+
+`agentos/office.py` (the plan: style, departments, who sits where, shared rooms, decor, pet) +
+`24d-office.js` (the comic canvas) + `bento office` + the agent's `set_office`. Full story in
+`docs/office.md`; `tests/test_office.py` pins what follows.
+
+- **Every movement is an event.** A paper flies on `node_add`/`delegate`, a monitor lights on a
+  run's `status`, a burst names each `step`, an agent WALKS to a colleague on `agent_msg` ask and
+  back after the reply, a huddle gathers on `turn_start.huddle`/`agent_say`. Idle agents sit.
+  They must not wander for the look — an office that strolls about says work is happening when
+  none is. Only the pet wanders, and it is visibly not an agent.
+- **One seam.** `scenePulse()` in `01c-movement.js` feeds the Crew stage and the Office; nothing
+  else calls `officePulse`. `tool_start`/`turn_start` pass their event on, because the Office
+  attributes a tool to the conversation's speaker (`convWho`) and a bare `step` to its run
+  (`runs[run_id]`).
+- **An answer can arrive before the asker has walked over** — a fast model answers in a second,
+  a walk takes three. The reply waits on `visit.reply` until the question has been said at the
+  desk; heard in the other order it is a conversation that makes no sense.
+- **The plan is office.py's closed set and the cast is the real one**: an unknown member is
+  dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
+  USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
+  and the window's ✦ is hidden — a second copy of the same thread would be two chats.
+- **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
+  (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
+  re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
+  dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
+
 ## The team: each agent on its own provider, and huddles
 
 Full story in `docs/team.md`. Two features, four rules.
 
 - **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
   The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
-  Settings → AI providers → Team and `bento team` all read it. A pin is used only when
+  Settings → Agents → Working together and `bento team` all read it. A pin is used only when
   `team.own_brains` is on, the provider is enabled, and it has the key it needs. Otherwise the
   agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
   pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default
@@ -1544,6 +1627,22 @@ Four things that have to stay true:
 
 Say what it is up to date WITH. A checkout sitting on another branch is the
 commonest reason a push looks like it did nothing, and every surface now names it.
+
+**And the NUMBER moves with the code too** (`agentos/versioning.py`). Reported as "`bento
+update` still shows the old version": VERSION had not moved since 0.4.0 while forty commits
+landed. Now a change that ships (`versioning.SHIPPED`) must raise it:
+`.github/workflows/version.yml` refuses a PR that does not (`bento version check
+origin/<base>`), and bumps the patch on a direct push that forgot. `bento version bump` is
+the one writer, moving VERSION, pyproject.toml and the top changelog heading together.
+Three things to keep:
+- **The check runs on a bare `python3`.** `versioning` and `__main__`'s top level are stdlib
+  only (`test_versioning` runs it with `-I -S`); a version gate that needs `uv sync` is one a
+  dependency outage turns red.
+- **Docs and tests never demand a bump.** A rule that fires on a typo in a guide gets
+  bypassed, not followed.
+- **The build is shown beside the number, and it is the RUNNING one.** `server._running_build`
+  is pinned at startup, because the checkout can move under a server that has not restarted
+  yet; `bento update` prints "version A → B (build X)", read from disk after the pull.
 
 **The verify gate refuses REGRESSIONS, not a fragile machine.** `apply()` runs the
 suite on the new code, and if anything fails, runs those same tests on the OLD

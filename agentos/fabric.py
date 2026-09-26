@@ -87,7 +87,7 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         conf = (cfg.get("providers") or {}).get(pid)
         label = names.get(pid, pid)
         if not own_ok:
-            note = "every agent uses this machine's brain (AI providers → Team)"
+            note = "every agent uses this machine's brain (Agents → Working together)"
         elif conf is None:
             note = f"'{pid}' is not a provider on this machine"
         elif not conf.get("enabled"):

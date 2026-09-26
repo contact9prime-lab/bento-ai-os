@@ -117,7 +117,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .wgsize button{width:24px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:800;
   color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast)}
 .wgsize button:hover{background:rgba(255,255,255,.09);color:var(--txt)}
-.wgsize button.on{background:var(--acc);color:#04211c}
+.wgsize button.on{background:var(--acc);color:var(--on-acc)}
 .wgpreview{height:100%;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
 .wgpreview .widget{box-shadow:var(--el-4)}
