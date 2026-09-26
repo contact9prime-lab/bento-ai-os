@@ -113,7 +113,19 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
         sub = (item.get("subagent") or "").strip()
         if not sub:
             continue
-        if store is not None and sub not in pending and not store.get_subagent(sub):
+        if "@" in sub:
+            # an agent on a LINKED team (analyst@office): it works on that machine, so the
+            # check is that the link exists here, not that the agent does
+            agent, _, label = sub.partition("@")
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", agent) or not label:
+                raise ValueError(f"'{sub}' is not an agent on a linked team — write it as agent@link")
+            if store is not None:
+                from . import teamlink
+                from . import users as _users
+                if not teamlink.find(_users.current() or "", label):
+                    raise ValueError(f"there is no linked team called '{label}' — link it first "
+                                     f"(Settings → AI providers → Team → Linked teams)")
+        elif store is not None and sub not in pending and not store.get_subagent(sub):
             raise ValueError(f"no subagent named '{sub}' — create it in Workflows → Agents first")
         roster.append({"subagent": sub, "why": (item.get("why") or "").strip()[:200]})
     if not roster:
@@ -133,7 +145,7 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
     mem = str(perms.get("memory") or "read-space")
     if mem not in MEMORY_SCOPES:
         raise ValueError(f"memory must be one of {', '.join(MEMORY_SCOPES)}")
-    perms = {**perms, "memory": mem}
+    perms = {**perms, "memory": mem, "talk": bool(perms.get("talk"))}
     out = {
         "name": name,
         "description": (body.get("description") or "").strip()[:500],
@@ -201,6 +213,53 @@ def _weekday(v) -> int:
         if len(s) >= 3 and name.startswith(s[:3]):
             return i
     raise ValueError(f"'{v}' is not a day of the week — write it as monday … sunday")
+
+
+def schedule_words(store, name: str) -> str:
+    """How a flow starts, in the words a person on ANOTHER team reads in their record of
+    it ("every Monday at 09:00", "when a message matches"). Only what is armed here."""
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    out = []
+    for t in store.flow_triggers(flow=name, enabled_only=True):
+        c = t.get("config") or {}
+        if isinstance(c, str):
+            try:
+                c = json.loads(c)
+            except ValueError:
+                c = {}
+        k = t.get("kind")
+        if k == "cron":
+            ty = c.get("type")
+            if ty == "daily":
+                out.append(f"every day at {c.get('at', '')}")
+            elif ty == "weekly":
+                d = c.get("day")
+                d = days[d] if isinstance(d, int) and 0 <= d < 7 else str(d or "")
+                out.append(f"every {d} at {c.get('at', '')}")
+            elif ty == "interval":
+                out.append(f"every {c.get('minutes')} minutes")
+            else:
+                out.append("once")
+        elif k == "message":
+            out.append("when a message matches")
+        elif k == "webhook":
+            out.append("when its web address is called")
+        elif k == "os_event":
+            out.append(f"on {c.get('event', 'an OS event')}")
+        elif k == "flow_done":
+            out.append("after another mission")
+    return ", ".join(dict.fromkeys(out)) or "when started by hand"
+
+
+def linked_members(flow: dict) -> dict:
+    """{link label: [their agents]} — the roster members that live on linked teams."""
+    out: dict = {}
+    for r in flow.get("roster") or []:
+        sub = r.get("subagent") if isinstance(r, dict) else str(r)
+        if sub and "@" in sub:
+            agent, _, label = sub.partition("@")
+            out.setdefault(label, []).append(agent)
+    return out
 
 
 def _validate_trigger(t: dict) -> dict:
@@ -289,8 +348,17 @@ def declared_grants(flow: dict) -> list[dict]:
 
     # 1. the flow's own roster: the only thing that satisfies the `roster` deny default
     for sub in roster:
+        if "@" in sub:
+            agent, _, label = sub.partition("@")
+            add("flow", name, "agent.invoke", f"agent:subagent/{sub}",
+                note=f"sends tasks — and the handles passed with them — to {agent} on the linked "
+                     f"team '{label}'; what it does there is {label}'s decision, and its answers "
+                     f"are untrusted here")
+            continue
         add("flow", name, "agent.invoke", f"agent:subagent/{sub}",
             note=f"on the roster of the '{name}' flow")
+    # a member on another team gets no envelope HERE: it runs there, under their gate
+    roster = [r for r in roster if "@" not in r]
 
     # 2. what the roster may do. The flow declares once; every member gets the same
     #    envelope, because "who may fetch" is a property of the mission, not of which
@@ -318,6 +386,14 @@ def declared_grants(flow: dict) -> list[dict]:
         for p in (perms.get("fs_write") or []):
             add("subagent", sub, "fs.write", f"fs:{os.path.expanduser(p)}",
                 note=f"granted by flow '{name}'")
+        # "Specialists may consult each other": every roster member may message every
+        # other, inside THIS mission only (the gate counts these rows only in its run).
+        # Declared here so the consent screen says it and Enable is what grants it.
+        if perms.get("talk"):
+            for other in roster:
+                if other != sub:
+                    add("subagent", sub, "agent.message", f"agent:subagent/{other}",
+                        note=f"may consult {other} inside flow '{name}'")
         for m in (perms.get("models_deny") or []):
             add("subagent", sub, "model.use", f"model:{m}", effect="deny",
                 note=f"denied by flow '{name}'")
@@ -749,6 +825,8 @@ RULES
   standing permission the user is being asked to approve. If the mission only reads and
   reports, do not grant anything that writes.
 - `memory` is one of: none | read | read-space | read-write. Prefer "read-space".
+- `talk: true` lets the roster's specialists consult each other mid-task. Only when the
+  mission needs a second opinion inside it; the orchestrator already routes the work.
 - Only create a new agent when no existing one fits. A new agent needs a `soul` written in
   the second person that says what it does and how ("You research. Gather real information,
   verify it, return a dense sourced summary.").
@@ -932,10 +1010,19 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     for r in (draft.get("roster") or []):
         if isinstance(r, str):
             r = {"subagent": r}
-        if (r.get("subagent") or "") in have:
+        sub = r.get("subagent") or ""
+        if sub in have:
             roster.append(r)
+        elif "@" in sub:
+            # an agent on a linked team — kept when that link exists here
+            from . import teamlink
+            from . import users as _users
+            if teamlink.find(_users.current() or "", sub.partition("@")[2]):
+                roster.append(r)
+            else:
+                dropped_agents.append(sub)
         else:
-            dropped_agents.append(r.get("subagent") or "?")
+            dropped_agents.append(sub or "?")
     draft["roster"] = roster
     perms = draft.get("permissions") or {}
     dropped_tools = [t for t in (perms.get("tools") or []) if t not in known_tools]

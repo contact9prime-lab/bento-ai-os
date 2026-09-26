@@ -11,6 +11,18 @@ is not.
 - **TUI** —
 - **SUI** —
 
+## Before
+
+<!-- What it looked like / measured before. A screenshot, a recording, pasted
+     terminal output, or the number. Checked by the `PR evidence` job; a change
+     with genuinely nothing observable needs the `no-visual-change` label from a
+     maintainer, which you cannot add yourself. -->
+
+## After
+
+<!-- The same view, the same window size, the same theme, the same data. A
+     reviewer should be diffing your change, not your screenshots. -->
+
 ## Checks
 
 - [ ] `pytest` passes (or the only failure is `test_safe_folders` on a Mac, which

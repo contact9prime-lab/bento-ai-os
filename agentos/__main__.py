@@ -3149,6 +3149,636 @@ def _account_cli(args, aid: str):
     sys.exit(2)
 
 
+def _avatar_cli(args):
+    """`bento avatar` — the crew's characters in a terminal, and the same editor.
+
+    The TUI face of the character feature. The drawing is the SAME pixel grid the
+    desktop's PNGs are cut from, printed two rows per line with half blocks, so the
+    person on an SSH session is the same person as on the desktop and the phone.
+    Without colour (a pipe, NO_COLOR) it prints each character in words instead.
+    Reads and writes the rows directly, so it works with the server down; an open
+    desktop shows an edit made here the next time it loads the crew.
+    """
+    import os as _os
+    from . import avatars as av
+    cfg, store = _open_store(getattr(args, "user", ""))
+    colour = sys.stdout.isatty() and not _os.environ.get("NO_COLOR")
+    people = av.ensure(store, cfg)
+
+    def resolve(name: str) -> str:
+        low = (name or "").strip().lower().lstrip("@")
+        if low in ("me", "you"):
+            return av.ME
+        if low in ("agent", "") or low == (cfg.get("agent_name") or "").lower():
+            return av.AGENT
+        return name
+
+    if args.action == "list":
+        if not colour:
+            for p in people:
+                print(f"  {p['label']:<16} {p['about']}")
+            return
+        # faces side by side, six to a row, names under them
+        for i in range(0, len(people), 6):
+            row = people[i:i + 6]
+            faces = [av.terminal(p["recipe"], crop="face") for p in row]
+            for ln in range(len(faces[0])):
+                print("  " + "  ".join(f[ln] if f[ln].strip() else " " * 14 for f in faces))
+            print("  " + "  ".join(p["label"][:14].center(14) for p in row))
+            print()
+        print("  bento avatar show NAME · set NAME hair=pink style=bun glasses=yes · reroll NAME\n"
+              "  bento avatar design NAME \"a calm lead with a grey bun, in a violet blazer\"")
+        return
+
+    key = resolve(args.name)
+    if not av.is_known(store, cfg, key):
+        print(f"nobody called '{args.name}' has a character here — "
+              f"one of: {', '.join(p['label'] for p in people)}")
+        sys.exit(2)
+    label = next(p["label"] for p in people if p["key"] == key)
+    try:
+        if args.action == "reroll":
+            av.reroll(store, cfg, key)
+        elif args.action == "design":
+            # The same designer as the editor's box: the machine's model picks from the
+            # closed set; with none answering, the palette's words in the description.
+            from . import providers
+            from .teamlink import plain
+            desc = plain(" ".join(args.changes), 300, newlines=False)
+            if len(desc) < 3:
+                print('  bento avatar design NAME "a calm lead with a grey bun and glasses, in a violet blazer"')
+                sys.exit(2)
+            patch, dropped, note, how, model = {}, [], "", "words", cfg.get("default_model", "")
+            if model:
+                system, prompt = av.design_prompt(desc, label)
+                try:
+                    import asyncio as _aio
+                    raw = _aio.run(_aio.wait_for(providers.complete(cfg, model, prompt, system=system), 25))
+                    patch, dropped, note = av.read_design(raw)
+                    how = "model" if patch else how
+                except Exception:
+                    pass
+            if not patch:
+                patch = av.from_words(desc)
+            if not patch:
+                print("  that did not name anything a character can have — try a hair colour or style,\n"
+                      "  glasses, a colour to wear, or blazer / hoodie")
+                sys.exit(2)
+            av.update(store, cfg, key, patch)
+            print(f"  designed by {model}" + (f" — {note}" if note else "") if how == "model" else
+                  "  no model answered, so this matched the words you used")
+            if dropped:
+                print(f"  left out (not an option): {', '.join(dropped)}")
+        elif args.action == "set":
+            patch = {}
+            for kv in args.changes:
+                if "=" not in kv:
+                    print(f"'{kv}' — write changes as field=value, e.g. hair=pink")
+                    sys.exit(2)
+                k, v = kv.split("=", 1)
+                patch[k.strip()] = v.strip()
+            av.update(store, cfg, key, patch)
+    except ValueError as e:
+        print(e)
+        sys.exit(2)
+    rec = av.recipe_for(store, key)
+    if colour:
+        for ln in av.terminal(rec):
+            print("  " + ln)
+    print(f"  {label}: {av.describe(rec)}")
+    if args.action == "show":
+        pal = av.palette()
+        print(f"  set with: skin={'|'.join(x['name'] for x in pal['skin'])}\n"
+              f"            hair={'|'.join(x['name'].replace(' ', '-') for x in pal['hair'])}\n"
+              f"            style={'|'.join(pal['style'])}  shirt={'|'.join(x['name'] for x in pal['shirt'])}\n"
+              f"            pants={'|'.join(x['name'] for x in pal['pants'])}  outfit={'|'.join(pal['outfit'])}\n"
+              f"            glasses=yes|no  blush=yes|no")
+
+
+def _team_cli(args):
+    """`bento team` — who answers on which AI provider, in a terminal.
+
+    The TUI face of Settings → AI providers → Team. `list` prints each agent with
+    the brain it answers on RIGHT NOW (fabric.agent_brain — the same answer the Crew
+    stage's tag and the chat's chip show) and why, if that is not its pin. `set`
+    pins one agent through the same door the page and the agent's tool use
+    (fabric.set_agent_model). `own on|off` is the team switch. Works with the server
+    down: the roster is read from the database, and the switch is written to the
+    machine's config — and, when a server is running, sent to it too, so it applies
+    now rather than at the next start.
+    """
+    import json as _json
+    import urllib.request
+    from . import avatars as av
+    from . import config as cfgmod
+    from . import fabric as fabricmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    act = args.action
+    if act == "limits":
+        pairs = [x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x]
+        if pairs:
+            patch = {}
+            for kv in pairs:
+                if "=" not in kv:
+                    print(f"'{kv}' — write limits as name=value, e.g. hops=3")
+                    sys.exit(2)
+                k, v = kv.split("=", 1)
+                patch[k.strip()] = v.strip()
+            mcfg = cfgmod.load_config()
+            try:
+                got = fabricmod.set_limits(mcfg, patch)
+            except ValueError as e:
+                print(e)
+                sys.exit(2)
+            cfgmod.save_config(mcfg)
+            cfg.setdefault("team", {})["limits"] = mcfg["team"]["limits"]
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                    data=_json.dumps({"team": {"limits": patch}}).encode(),
+                    headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=5).read()
+            except Exception:
+                fabricmod.audit_team(store, "team.write", "team:limits",
+                                     "limits: " + ", ".join(f"{k}={v}" for k, v in got.items())
+                                     + " (bento team)")
+        lim = fabricmod.team_limits(cfg)
+        for k, (d, lo, hi, what) in fabricmod.LIMITS.items():
+            print(f"  {k:<14} {lim[k]:>3}   {what} ({lo}–{hi}, default {d})")
+        print("\n  bento team limits hops=3 budget=12 clarify=2")
+        return
+    if act == "talk":
+        want = (args.name or "").strip().lower()
+        if want not in ("off", "matrix", "swarm"):
+            from .policy import team_talk
+            print(f"  agents message each other: {team_talk(cfg)}\n"
+                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first)")
+            return
+        mcfg = cfgmod.load_config()
+        mcfg.setdefault("team", {})["talk"] = want
+        cfgmod.save_config(mcfg)
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                data=_json.dumps({"team": {"talk": want}}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).read()
+            live = " — the running server has it too"
+        except Exception:
+            # no server to record it, so the ledger line is written here (the
+            # server writes its own when it takes the change)
+            fabricmod.audit_team(store, "team.write", "team:talk",
+                                 f"agents message each other: {want} (bento team)")
+            live = " — saved; no server answered, so it applies when one starts"
+        print(f"  agents message each other: {want}{live}")
+        return
+    if act in ("allow", "block", "ask"):
+        try:
+            c = fabricmod.set_cell(store, args.name, args.model,
+                                   {"allow": "allow", "block": "deny", "ask": "ask"}[act])
+        except KeyError as e:
+            print(f"no agent called '{e.args[0]}'")
+            sys.exit(2)
+        except ValueError as e:
+            print(e)
+            sys.exit(2)
+        print(f"  {c['from']} → {c['to']}: {act}")
+        return
+    if act == "matrix":
+        m = fabricmod.matrix(store, cfg)
+        names = m["agents"]
+        if len(names) < 2:
+            print("  two or more specialists are needed before any of them can message another")
+            return
+        blank = "swarm" if m["talk"] == "swarm" else "ask"
+        w = max(len(n) for n in names) + 2
+        print(f"  agents message each other: {m['talk']}   (rows ask, columns answer)\n")
+        print(" " * (w + 2) + "".join(f"{n[:9]:<10}" for n in names))
+        for a in names:
+            row = "".join(f"{('·' if a == b else {'allow': 'allow', 'deny': 'block'}.get(m['cells'].get(f'{a}>{b}', ''), blank)):<10}"
+                          for b in names)
+            print(f"  {a:<{w}}{row}")
+        print("\n  bento team allow|block|ask ASKER ANSWERER · bento team talk matrix|swarm|off")
+        return
+    if act == "own":
+        want = (args.name or "").strip().lower()
+        if want not in ("on", "off"):
+            on = (cfg.get("team") or {}).get("own_brains", True)
+            print(f"  agents answer on their own providers: {'on' if on else 'off'}"
+                  f"\n  bento team own on|off")
+            return
+        mcfg = cfgmod.load_config()
+        mcfg.setdefault("team", {})["own_brains"] = want == "on"
+        cfgmod.save_config(mcfg)
+        cfg.setdefault("team", {})["own_brains"] = want == "on"
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{mcfg.get('port', 8321)}/api/config", method="PUT",
+                data=_json.dumps({"team": {"own_brains": want == "on"}}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).read()
+            live = " — the running server has it too"
+        except Exception:
+            fabricmod.audit_team(store, "team.write", "team:own_brains",
+                                 f"agents answer on their own providers: {want == 'on'} (bento team)")
+            live = " — saved; no server answered, so it applies when one starts"
+        print(f"  agents answer on their own providers: {want}{live}")
+    elif act == "set":
+        try:
+            b = fabricmod.set_agent_model(store, cfg, args.name, args.model or "")
+        except KeyError:
+            print(f"no agent called '{args.name}' — have: "
+                  f"{', '.join(x['name'] for x in store.list_subagents()) or '(none)'}")
+            sys.exit(2)
+        except ValueError as e:
+            print(e)
+            sys.exit(2)
+        print(f"  {args.name} now answers on {b['provider_name']} · {b['short']}"
+              + (f"  ({b['note']})" if b["note"] else ""))
+        return
+    subs = store.list_subagents()
+    if not subs:
+        print("  no specialists yet — ask your agent for one, or: bento flow add")
+        return
+    # each name in its character's shirt colour, as on the stage (bento avatar draws them)
+    people = {p["key"]: p for p in av.ensure(store, cfg)} if colour else {}
+    me = fabricmod.agent_brain(cfg, None)
+    print(f"  your agent: {me['provider_name']} · {me['short']}\n")
+    for sa in subs:
+        b = fabricmod.agent_brain(cfg, sa)
+        name = f"{sa['name']:<14}"
+        if sa["name"] in people:
+            r, g, bl = av._hsl(people[sa["name"]]["recipe"]["hue"], .6, .62)
+            name = f"\x1b[1;38;2;{r};{g};{bl}m{name}\x1b[0m"
+        print(f"  {name} {b['provider_name'] or '—':<14} {b['short']}"
+              + (f"   ({b['note']})" if b["note"] else ""))
+    from .policy import team_talk
+    print(f"\n  agents message each other: {team_talk(cfg)}  (bento team matrix)")
+    print("\n  bento team set NAME provider/model · bento team own on|off\n"
+          "  talk it through: in chat, \"@researcher @validator should we…\"")
+
+
+def _link_cli(args):
+    """`bento link` — linked teams from a terminal: this machine's identity, the door,
+    invites, joining, and what each link may do. The same functions the Settings
+    section calls (teamlink, fabric.set_link_access), so a headless Pi links exactly as
+    a desktop does. Joining is done from HERE (the handshake is this machine's own TLS
+    client); the running server picks the new link up from links.json on its next
+    connection, without a restart."""
+    import asyncio as _aio
+    import json as _json
+    import urllib.request
+    from . import config as cfgmod
+    from . import fabric as fabricmod
+    from . import teamlink
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    owner = usersmod.current() or ""
+    act, a1, a2 = args.action, args.arg1, args.arg2
+    ident = teamlink.ensure_pki()
+    port = teamlink.team_port(cfg)
+
+    def server(path, method, body):
+        req = urllib.request.Request(f"http://127.0.0.1:{cfg.get('port', 8321)}{path}", method=method,
+                                     data=_json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        return _json.loads(urllib.request.urlopen(req, timeout=10).read() or b"{}")
+
+    if act == "listen":
+        if a1 not in ("on", "off"):
+            print(f"  accepting linked teams: {'on' if (cfg.get('team') or {}).get('listen') else 'off'} "
+                  f"(port {port}, mutual TLS)\n  bento link listen on|off")
+            return
+        try:
+            got = server("/api/team/listen", "PUT", {"on": a1 == "on"})
+            print(f"  accepting linked teams: {a1} — port {got.get('port')}" if not got.get("error")
+                  else f"  {got['error']}")
+        except Exception:
+            mcfg = cfgmod.load_config()
+            mcfg.setdefault("team", {})["listen"] = a1 == "on"
+            cfgmod.save_config(mcfg)
+            fabricmod.audit_team(store, "team.write", "team:listen", f"accept linked teams: {a1} (bento link)")
+            print(f"  saved: {a1}; no server answered, so the door opens when it starts")
+        return
+    if act == "request":
+        # The device flow from a terminal: ask, show the six digits, and wait here for
+        # the other side's answer — no string to carry between machines.
+        if a1 == "account":
+            names = {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+            if not names or not owner:
+                print("  an account link is between two accounts on this machine — use --user")
+                sys.exit(2)
+            to = next((uid for uid, n in names.items() if uid == (a2 or "").lower() or n == (a2 or "").lower()), "")
+            try:
+                r = teamlink.request_account(owner, to, names)
+            except ValueError as e:
+                print(f"  {e}")
+                sys.exit(2)
+            fabricmod.audit_team(store, "link.request", f"link:{r['to_name']}",
+                                 f"asked {r['to_name']} to link teams (bento link)")
+            print(f"  asked {r['to_name']}. They approve in Settings → Team, or:\n"
+                  f"    bento link approve {r['id']} --user {r['to_name']}")
+            return
+        if not a1:
+            print("  bento link request ADDRESS   — the other machine, e.g. office.local or 192.168.1.20\n"
+                  "  bento link request account NAME — another account on this machine")
+            sys.exit(2)
+
+        async def go():
+            p = await teamlink.request_link(a1, owner, cfg=cfg, label=a2 or "",
+                                            my_port=port if (cfg.get("team") or {}).get("listen") else 0)
+            fabricmod.audit_team(store, "link.request", f"link:{p['name']}",
+                                 f"asked {p['name']} at {p['host']}:{p['port']} to link (code {p['sas']}; bento link)")
+            print(f"  asked {p['name']} ({p['host']}:{p['port']}).\n\n"
+                  f"      {p['sas']}\n\n"
+                  f"  Approve it there (Settings → Team, or bento link requests) and check it shows\n"
+                  f"  these same six digits. Different digits: deny it — something is in between.\n"
+                  f"  Waiting up to ten minutes… (Ctrl-C withdraws)")
+            try:
+                return p, await teamlink.wait_link(p)
+            except (KeyboardInterrupt, _aio.CancelledError):
+                await teamlink.cancel_link(p)
+                raise
+        try:
+            p, got = _aio.run(go())
+        except (ValueError, ConnectionError) as e:
+            print(f"  {e}")
+            sys.exit(2)
+        except KeyboardInterrupt:
+            print("\n  withdrawn")
+            sys.exit(1)
+        if got["state"] != "approved":
+            print(f"  {p['name']}: " + {"denied": "said no", "expired": "nobody answered in ten minutes",
+                                         "withdrawn": "withdrawn"}.get(got["state"], got.get("error") or got["state"]))
+            sys.exit(1)
+        lk = got["link"]
+        fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
+                             f"{p['name']} approved (bento link); certificate {lk['peer_host_fp'][:16]}…")
+        print(f"  ✓ linked with {lk['label']}. Nothing is allowed yet:\n"
+              f"    bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+        return
+    if act in ("say", "chat"):
+        # People on a linked team, from a terminal. Straight to the other side — over
+        # the link's own mTLS for a machine, into their home for an account — so it
+        # works with this machine's server down. (Sent from here, it reaches an account
+        # the next time they open the thread: there is no socket here to wake theirs.)
+        from . import teamchat
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            names = ", ".join(x["label"] for x in teamlink.links(owner)) or "none yet — bento link request ADDRESS"
+            print(f"  no linked team called '{a1}' — linked: {names}")
+            sys.exit(2)
+        me = teamchat.identity(cfg, store, owner)
+
+        def show(msgs):
+            for m in msgs[-30:]:
+                who = "you" if m.get("dir") == "out" else m.get("sender", "?")
+                mark = "" if m.get("dir") != "out" else {1: " ✓", -1: " (refused)"}.get(m.get("delivered"), " (kept)")
+                print(f"  {time.strftime('%d %b %H:%M', time.localtime(m.get('ts') or 0))}  {who}: {m.get('text')}{mark}")
+
+        async def pull():
+            if lk.get("kind") == "machine" and lk.get("url"):
+                got = await teamlink.call(lk, {"op": "chat_pull"}, timeout=20)
+                for m in (got or {}).get("messages") or []:
+                    teamchat.receive(store, owner, lk, m)
+        if act == "chat":
+            _aio.run(pull())
+            msgs = store.team_msgs(lk["id"])
+            store.team_msg_read(lk["id"])
+            print(f"  {lk['label']}" + (f" — {lk.get('peer_identity', {}).get('agent_name')}'s team"
+                                        if (lk.get('peer_identity') or {}).get('agent_name') else ""))
+            show(msgs) if msgs else print("  no messages yet — bento link say " + lk["label"] + " 'hello'")
+            return
+        text = " ".join(x for x in [a2] + list(getattr(args, "rest", []) or []) if x)
+        try:
+            m = teamchat.new_message(text, me)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        store.team_msg_add(lk["id"], m, "out")
+        wire = {k: m[k] for k in ("id", "text", "ts", "sender", "look")}
+        if lk.get("kind") == "account":
+            peer = lk.get("peer") or ""
+            theirs = next((x for x in teamlink.links(peer) if x.get("kind") == "account"
+                           and x.get("pair_id") == lk.get("pair_id")), None)
+            _, why = teamchat.receive(usersmod.store_for(peer), peer, theirs, wire) if theirs else (None, "the link is gone")
+            store.team_msg_delivered([m["id"]], -1 if why else 1)
+            print(f"  {lk['label']} refused it: {why}" if why else f"  sent to {lk['label']} ✓")
+            return
+        if not lk.get("url"):
+            print(f"  kept — this machine cannot reach {lk['label']}; it goes the next time they talk to you")
+            return
+        got = _aio.run(teamlink.call(lk, {"op": "chat", "identity": me, "message": wire}, timeout=20))
+        if got.get("ok"):
+            store.team_msg_delivered([m["id"]])
+            for x in got.get("messages") or []:
+                teamchat.receive(store, owner, lk, x)
+            print(f"  sent to {lk['label']} ✓")
+        elif got.get("refused"):
+            store.team_msg_delivered([m["id"]], -1)
+            print(f"  {lk['label']} refused it: {got.get('error')}")
+        else:
+            print(f"  kept — {got.get('error')}; the server sends it again when it can")
+        return
+    if act == "requests":
+        who = {"multi": usersmod.enabled(), "admin": usersmod.is_admin(owner or ""),
+               "name": (usersmod.get(owner) or {}).get("name", "") if owner else ""}
+        rs = teamlink.requests(owner, who)
+        if not rs["incoming"] and not rs["outgoing"]:
+            print("  no link requests waiting")
+            return
+        for r in rs["incoming"]:
+            if r["kind"] == "machine":
+                print(f"  {r['id']}  {r['name']} ({r.get('addr', '')}) asks to link — code {r['sas']}\n"
+                      f"            check the asking machine shows the same, then: bento link approve {r['id']}")
+            else:
+                print(f"  {r['id']}  {r['name']} (an account here) asks to link — bento link approve {r['id']}")
+        for r in rs["outgoing"]:
+            print(f"  {r['id']}  you asked {r.get('to_name')} — waiting")
+        return
+    if act in ("approve", "deny"):
+        names = {u["id"]: u.get("name", "") for u in usersmod.list_users()} if usersmod.enabled() else {}
+        who = {"multi": usersmod.enabled(), "admin": usersmod.is_admin(owner or ""),
+               "name": (usersmod.get(owner) or {}).get("name", "") if owner else ""}
+        try:
+            if act == "deny":
+                r = teamlink.deny(a1 or "", owner, who)
+                fabricmod.audit_team(store, "link.deny", f"link:{r.get('name')}",
+                                     f"refused a link request from {r.get('name')} (bento link)")
+                print(f"  refused {r.get('name')}")
+                return
+            got = teamlink.approve(a1 or "", owner, label=a2 or "", names=names, who=who)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        if got.get("pending"):
+            r = got["pending"]
+            fabricmod.audit_team(store, "link.approve", f"link:{r.get('name')}",
+                                 f"approved {r.get('name')}'s link request (code {r.get('sas')}; bento link)")
+            print(f"  approved — {r.get('name')} is linked the moment it hears back (it asks every "
+                  f"two seconds while it waits).")
+        else:
+            print(f"  ✓ linked with {got['mine']['label']}")
+        return
+    if act == "invite":
+        kind = "account" if a1 == "account" else "machine"
+        inv = teamlink.invite(owner, kind, label=a2 or "", cfg=cfg)
+        fabricmod.audit_team(store, "link.invite", f"link:{kind}", f"a one-time {kind} invite (bento link)")
+        if kind == "account":
+            print(f"  code: {inv['code']}\n  the other account redeems it: bento link redeem CODE --user THEM "
+                  f"(or Settings → Team). Works once, for ten minutes.")
+        else:
+            print(f"  {inv['invite']}\n\n  On the other machine: bento link join '<that line>'\n"
+                  f"  It works once, for ten minutes, and the joiner checks this machine's certificate\n"
+                  f"  ({ident['host_fp'][:16]}…) before sending anything."
+                  + ("" if (cfg.get("team") or {}).get("listen") else
+                     "\n  ⚠ this machine is not accepting linked teams — bento link listen on"))
+        return
+    if act == "join":
+        try:
+            lk = _aio.run(teamlink.join(a1 or "", owner, label=a2 or "", cfg=cfg,
+                                        my_port=port if (cfg.get("team") or {}).get("listen") else 0))
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
+                             f"joined {lk.get('peer_name')} (bento link); certificate {lk['peer_host_fp'][:16]}…")
+        print(f"  linked with {lk['label']} ({lk['url']}). Nothing is allowed yet:\n"
+              f"  bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+        return
+    if act == "redeem":
+        if not usersmod.enabled() or not owner:
+            print("  an account link is between two accounts on this machine — use --user")
+            sys.exit(2)
+        names = {u["id"]: u.get("name", "") for u in usersmod.list_users()}
+        try:
+            got = teamlink.redeem_account(a1 or "", owner, names)
+        except ValueError as e:
+            print(f"  {e}")
+            sys.exit(2)
+        print(f"  linked with {got['mine']['label']}")
+        return
+    if act == "remove":
+        lk = teamlink.find(owner, a1 or "")
+        if not lk or not teamlink.remove(owner, a1):
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        n = fabricmod.forget_link_grants(store, lk["label"])
+        fabricmod.audit_team(store, "link.revoke", f"link:{lk['label']}",
+                             f"link ended (bento link); {n} permission(s) revoked")
+        print(f"  removed {lk['label']}; {n} permission(s) that named it revoked")
+        return
+    if act in ("allow", "disallow", "mine"):
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        cur = fabricmod.link_access(store, lk["label"])
+        if act == "mine":
+            got = fabricmod.set_link_access(store, lk["label"], mine_may_ask=(a2 or "on") == "on")
+        else:
+            want = set(cur["theirs_may_ask"])
+            (want.add if act == "allow" else want.discard)(a2 or "")
+            got = fabricmod.set_link_access(store, lk["label"], theirs_may_ask=sorted(want))
+        print(f"  {lk['label']}: their agents may ask {', '.join(got['theirs_may_ask']) or 'nobody'}; "
+              f"mine ask theirs {'freely' if got['mine_may_ask'] else 'after asking me'}")
+        return
+    if act in ("missions", "stop", "resume"):
+        # That team's missions that use MY agents, recorded here when they saved them (or
+        # on their first question) — and the switch that stops one (fabric.stop_mission).
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if act in ("stop", "resume"):
+            if not any(m["mission"] == a2 for m in fabricmod.linked_missions(store, lk["label"])):
+                print(f"  {lk['label']} has no mission called '{a2 or '(name)'}' recorded here — "
+                      f"bento link missions {lk['label']}")
+                sys.exit(2)
+            fabricmod.stop_mission(store, lk["label"], a2, stop=act == "stop")
+            print(f"  {lk['label']}'s mission '{a2}' "
+                  + ("is stopped: its questions are refused here" if act == "stop"
+                     else "may ask your agents again (within what the link allows)"))
+            return
+        ms = fabricmod.linked_missions(store, lk["label"])
+        print(f"  {lk['label']}'s missions that use your agents:")
+        for m in ms:
+            last = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["last_used"])) if m.get("last_used") else "never"
+            state_ = "STOPPED" if m["stopped"] else ("on" if m.get("enabled", True) else "off on their side")
+            print(f"    {m['mission']:<20} {state_:<18} {', '.join(m['agents']) or '-'}\n"
+                  f"      {m.get('schedule') or ''}{' · ' if m.get('schedule') else ''}asked {m['runs']} time(s), last {last}"
+                  + (f"\n      {m['text'][:120]}" if m.get("text") else ""))
+        if not ms:
+            print("    none recorded — a mission there that names one of your agents shows up here")
+        return
+    if act in ("let", "unlet", "standing"):
+        # Standing permissions: what that team may have one of YOUR agents do without a
+        # person saying yes each time (policy.STANDING_ACTIONS; the same rows Settings and
+        # the approval card's "Always" write, and Permissions revokes).
+        from .policy import STANDING_ACTIONS, STANDING_TOOLS, taint_mode
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if act == "let":
+            rest = list(getattr(args, "rest", []) or [])
+            if not a2 or len(rest) < 2:
+                print(f"  bento link let {lk['label']} AGENT ACTION SCOPE [--days N]\n"
+                      f"    ACTION: {', '.join(STANDING_ACTIONS)}\n"
+                      f"    SCOPE:  a folder by full path (~/shared) · a tool ({', '.join(STANDING_TOOLS)}) · "
+                      f"memory:user · kg:<space> · media:image")
+                sys.exit(2)
+            try:
+                got = fabricmod.add_standing(store, lk["label"], a2, rest[0], rest[1],
+                                             days=getattr(args, "days", None))
+            except ValueError as e:
+                print(f"  refused: {e}")
+                sys.exit(2)
+            print(f"  {lk['label']} may now have {got['agent']} {got['action']} {got['scope']} "
+                  f"without asking" + (f" for {args.days:g} day(s)" if getattr(args, "days", None) else "")
+                  + f"  (id {got['id']} · bento link unlet {lk['label']} {got['id']})")
+        elif act == "unlet":
+            if not any(x["id"] == a2 for x in fabricmod.standing(store, lk["label"])):
+                print(f"  no standing permission {a2 or '(id)'} on {lk['label']} — bento link standing {lk['label']}")
+                sys.exit(2)
+            store.revoke_grant(a2)
+            print(f"  revoked {a2}: {lk['label']} asks a person again for that")
+            return
+        rows = fabricmod.standing(store, lk["label"])
+        mode = taint_mode(cfg)
+        print(f"  what {lk['label']} may have your agents do without asking:")
+        for x in rows:
+            exp = time.strftime(" until %Y-%m-%d", time.localtime(x["expires_at"])) if x.get("expires_at") else ""
+            print(f"    {x['id']}  {x['agent']:<12} {x['action']:<13} {x['scope']}{exp}")
+        if not rows:
+            print("    nothing — every change their questions ask for needs a person here")
+        if mode != "ask":
+            print("  (not in use: 'Content from outside' is "
+                  + ("strict, so nothing another team asks may change anything)" if mode == "strict"
+                     else "off, so these are not needed)"))
+        return
+    # list
+    print(f"  this machine: {teamlink.machine_name(cfg)}  certificate {ident['host_fp'][:16]}…  "
+          f"accepting links: {'on, port ' + str(port) if (cfg.get('team') or {}).get('listen') else 'off'}")
+    ls = teamlink.links(owner)
+    if not ls:
+        print("\n  no linked teams — bento link request ADDRESS (they approve) · "
+              "bento link requests (to approve one here)")
+        return
+    for lk in ls:
+        acc = fabricmod.link_access(store, lk["label"])
+        print(f"\n  {lk['label']:<14} {lk['kind']:<8} {lk.get('url') or ''}\n"
+              f"    their agents may ask: {', '.join(acc['theirs_may_ask']) or 'nobody'}\n"
+              f"    mine ask theirs: {'freely' if acc['mine_may_ask'] else 'after asking me'}   "
+              f"(as NAME@{lk['label']})")
+        for x in fabricmod.standing(store, lk["label"]):
+            print(f"    without asking: {x['agent']} {x['action']} {x['scope']}")
+        for m in fabricmod.linked_missions(store, lk["label"]):
+            print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
+                  + (" (stopped)" if m["stopped"] else ""))
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -4744,6 +5374,40 @@ def main():
                          choices=["show", "done", "later", "reopen", "decide"])
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
+    p_av.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "reroll", "design"])
+    p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
+    p_av.add_argument("changes", nargs="*", help="set: field=value, e.g. hair=pink style=bun glasses=yes · "
+                                                   "design: a description in words")
+    p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
+    p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
+    p_link.add_argument("action", nargs="?", default="list",
+                        choices=["list", "request", "requests", "approve", "deny", "say", "chat",
+                                 "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
+                                 "let", "unlet", "standing", "missions", "stop", "resume"])
+    p_link.add_argument("arg1", nargs="?", default="",
+                        help="request: the other machine's address, or 'account' · say/chat: the link · "
+                             "approve/deny: the "
+                             "request's id · listen: on|off · invite: machine|account · join: the invite · "
+                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
+                             "resume: the link")
+    p_link.add_argument("arg2", nargs="?", default="",
+                        help="say: the message · request account: the account · invite/join/request: a label · "
+                             "allow/disallow/let: one of your agents · mine: on|off · unlet: the id · "
+                             "stop/resume: their mission")
+    p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    p_link.add_argument("--days", type=float, default=None,
+                        help="let: the standing permission ends after this many days")
+    p_link.add_argument("--user", default="", help="whose links, on a machine with users")
+    p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
+    p_team.add_argument("action", nargs="?", default="list",
+                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits"])
+    p_team.add_argument("name", nargs="?", default="",
+                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker")
+    p_team.add_argument("model", nargs="?", default="",
+                        help="set: provider/model ('' = this machine's brain) · allow/block/ask: the one asked")
+    p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
+    p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
@@ -4925,6 +5589,12 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "link":
+        _link_cli(args)
+    elif args.cmd == "team":
+        _team_cli(args)
+    elif args.cmd == "avatar":
+        _avatar_cli(args)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
     elif args.cmd == "vault":

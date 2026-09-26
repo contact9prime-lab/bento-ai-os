@@ -91,6 +91,9 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 #toasts{position:fixed;right:14px;bottom:calc(var(--tbh) + 12px);z-index:11000;display:flex;flex-direction:column;gap:8px;
   align-items:flex-end;pointer-events:none}
 #toasts .toast{position:static;animation:none}
+#toasts .toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:10px}
+#toasts .toast-act{flex:none}
+body.dev-touch #toasts .toast-act{min-height:var(--tap)}
 
 /* control center popover (tray) */
 #ccpop{position:fixed;top:calc(var(--mbh) + 8px);right:10px;width:380px;max-height:min(72vh,640px);overflow:auto;z-index:10500;

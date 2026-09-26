@@ -235,7 +235,10 @@ class TelegramBridge(usersmod.Scoped):
                 pass
 
             async def approver(name, args, reason, offer=None) -> bool:
-                if self.cfg.get("autonomy") == "full":
+                # full autonomy answers for you — except a step that must be a
+                # person's (policy.needs_person): you are right here, so you are asked
+                from .policy import needs_person
+                if self.cfg.get("autonomy") == "full" and not needs_person():
                     return True
                 return await self.ask_approval(chat_id, name, args, reason, offer=offer)
 
@@ -310,7 +313,8 @@ class TelegramBridge(usersmod.Scoped):
         return await self.ask_approval(chat_id, name, args, reason)
 
     async def ask_approval(self, chat_id: int, name: str, args: dict, reason: str,
-                           offer: dict | None = None, timeout: float = 300) -> bool:
+                           offer: dict | None = None, timeout: float = 300,
+                           unanswered=None) -> bool:
         """Send an inline keyboard and wait for the user's tap.
 
         Three buttons rather than two when the decision carries a grant offer: an
@@ -338,8 +342,18 @@ class TelegramBridge(usersmod.Scoped):
         try:
             val = await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
+            # Nobody tapped. Same rule as the desktop's broker: silence is not a
+            # refusal, so the question is filed where it will be seen rather than
+            # disappearing with the message nobody opened.
+            note = ""
+            if unanswered:
+                try:
+                    await unanswered()
+                    note = " It is on your Brief."
+                except Exception:
+                    pass
             await self.send("⌛ Approval timed out — action not taken. The run continues "
-                            "without it.", chat_id)
+                            "without it." + note, chat_id)
             return False
         finally:
             self._pending.pop(aid, None)

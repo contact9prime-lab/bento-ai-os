@@ -121,6 +121,14 @@ and agents it would use and, when the request's own words match a first-party MC
 server in the catalogue, offers it as a part with a Connect button. Offered, never
 granted: the draft's permissions never gain a server you did not add yourself.
 
+A roster can also name an agent on a **linked team**, such as `analyst@office`. That is
+another machine or another account you have linked with. Its task crosses the link as a
+question and is done there, under that team's permissions. The answer lands on the board
+marked untrusted. A scheduled mission can therefore hand part of its work to another
+machine every Monday. For that agent to *change* something there (write the report into a
+shared folder), its person approves each time or gives your team a standing permission.
+See [team.md](team.md#a-mission-with-an-agent-on-a-linked-team).
+
 ## How a mission delivers
 
 Not as a message. Every recipe ends with the same instruction: put each

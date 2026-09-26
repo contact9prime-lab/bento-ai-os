@@ -36,6 +36,7 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},

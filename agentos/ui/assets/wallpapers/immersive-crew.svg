@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Crew: the room the figures stand in, drawn by 01d-crew.js on top.
+       A warm wall falling to a darker floor, one key light from the upper left
+       and a long soft pool where the crew stands, so the figures have something
+       to be lit by. Gradients only, no filters — the same rule the rest of this
+       look keeps, because a filter over a full-screen layer is re-run on every
+       frame the wallpaper parallax moves it. -->
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#1d1e25"/><stop offset="0.52" stop-color="#14151a"/>
+      <stop offset="0.72" stop-color="#0e0f13"/><stop offset="1" stop-color="#08090c"/>
+    </linearGradient>
+    <!-- the floor: everything below the crew line reads a shade cooler -->
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0b0e" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050608" stop-opacity="0.75"/>
+    </linearGradient>
+    <radialGradient id="key" cx="0.22" cy="0.12" r="0.75">
+      <stop offset="0" stop-color="#e8c578" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#e8c578" stop-opacity="0"/>
+    </radialGradient>
+    <!-- the pool the crew stands in: wide, shallow, centred on the stage line -->
+    <radialGradient id="pool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e8c578" stop-opacity="0.11"/>
+      <stop offset="0.6" stop-color="#e8c578" stop-opacity="0.035"/>
+      <stop offset="1" stop-color="#e8c578" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.46" r="0.78">
+      <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.44"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#room)"/>
+  <rect y="620" width="1600" height="380" fill="url(#floor)"/>
+  <rect width="1600" height="1000" fill="url(#key)"/>
+  <!-- the skirting line: where the wall meets the floor, at the crew's heels -->
+  <rect y="758" width="1600" height="1" fill="#e8c578" opacity="0.05"/>
+  <ellipse cx="800" cy="770" rx="760" ry="150" fill="url(#pool)"/>
+  <rect width="1600" height="1000" fill="url(#vig)"/>
+</svg>

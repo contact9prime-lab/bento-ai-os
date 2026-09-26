@@ -1061,6 +1061,14 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   choice (per-user uid / containers) in the design doc, and the docs say so rather than
   overclaiming.
 
+- **A decision that must be a PERSON's is never answered by autonomy.** The taint ceiling's
+  `ask` and the ALWAYS_ASK actions set `policy.needs_person()` (a contextvar the agent loop
+  sets around the approver call). Every approver that answers on autonomy — the headless and
+  flow approvers in `fabric.py`, the scheduler, the app-turn route — refuses it; Telegram and
+  WhatsApp ASK the person instead of answering for them. Before, "held for you, full autonomy
+  too" was true only with a screen: a linked team's question drove a full-capped specialist
+  to write a file. `tests/test_team_security.py` scans every approver for the check — a new
+  one that returns on `"full"` without it fails the suite.
 - **The ledger is tamper-evident and can be fail-closed.** Every `audit` row carries the
   acting `uid`, a `seq` and a `row_hash` chaining it to the previous row; `audit_verify()`
   finds the first edit or deletion. `security.audit_fail_closed` refuses an ALLOW whose
@@ -1169,6 +1177,276 @@ The ground-up pass added four more things that are easy to undo by accident:
 Claude Code reading the screenshots from the workspace); its first two fixes — a lit top edge and a
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
+
+## Characters: one painter, one recipe, every surface
+
+`agentos/avatars.py` is the only place a character exists. You, your agent (`@agent`) and every
+specialist have a stored recipe (skin, hair, style, trousers, glasses, blush, shirt hue) in the
+`avatars` table, and the server paints it: PNGs for the desktop (`/api/avatar.png`, a frame, the
+face or the four-frame sheet), half blocks for `bento avatar`. Chat, the approval card, Logs, the
+Missions roster, the home line, Settings and the Crew stage all show those — through ONE door on
+the page, `avatarImg()` in `00e-avatars.js`. Full story in `docs/desktop.md` → Characters. Four
+things keep it true:
+
+- **There is no second painter.** The Crew scene drew its own people for four passes and was
+  deleted down to a blitter over the server's sheet, because two painters are two definitions of a
+  face and the stage and the chat would drift apart on the first edit. `tests/test_immersive.py`
+  refuses a painter coming back into `01d-crew.js`; `tests/test_avatars.py` refuses a surface
+  building its own `/api/avatar.png` URL.
+- **Persisted, not re-derived; per person, not per space.** Generated from a hash on first sight
+  and then STORED, so an edit sticks and adding a colleague recolours nobody. Shirt hues are handed
+  out at generation so no two live agents share one, and `@agent` is always teal. The rows are in
+  the user's own database and nothing reads `space_id` — switching project never changes who your
+  colleagues look like.
+- **A closed set, validated in one place.** The editor, `set_avatar` (its own action,
+  `avatar.write`) and the CLI can only choose from the palettes, and a refusal names the choices so
+  the model can correct itself. Only characters get faces (`avatarKeyOf`): a flow, an app or the
+  system is not a person.
+- **Your agent is the lead, in a blazer, and each install draws its own.** `outfit` (shirt /
+  blazer / hoodie) is part of the closed set; `@agent` is generated in the blazer, migrated into
+  it ONCE when its stored recipe has no outfit key, and a reroll keeps the outfit (never a
+  demotion). `@agent` and `@me` are generated with a per-install salt, and an untouched default
+  is re-drawn once (`_is_untouched_default`): unsalted, the hash of `@agent` was the same person
+  on every machine — two linked teams showed identical twins as their leads.
+- **Designing one with AI is the closed set again, not a second painter.** `avatars.design_prompt`
+  shows the model every palette value and asks for JSON; `read_design` validates each field ALONE
+  (an invented one is dropped and NAMED in `dropped`, never painted); `from_words` matches the
+  palette's own words when no model answers, and the route's `how`/`said` says which happened —
+  "designed by AI" when it was a word match would be a lie. One designer for the editor's box
+  (`POST /api/avatars/{key}/design`, applied at once, `previous` for Undo) and `bento avatar
+  design`; in chat the agent IS the designer, through `set_avatar`.
+- **Another team's face is a recipe, painted here.** It travels as `identity` on every link
+  answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
+  is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
+  surface builds its own face URL.
+- **The painter's rules were each learned from a screenshot**: two eyes and nothing in the middle
+  of the face; the eye ink chosen against the SKIN (the outline shade vanished on deep skin); a
+  lip-coloured mouth (darker skin under a nose read as a goatee); glasses as rim + pale lens (a
+  full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
+  five skins before believing it.
+
+## The team: each agent on its own provider, and huddles
+
+Full story in `docs/team.md`. Two features, four rules.
+
+- **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
+  The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
+  Settings → AI providers → Team and `bento team` all read it. A pin is used only when
+  `team.own_brains` is on, the provider is enabled, and it has the key it needs. Otherwise the
+  agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
+  pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default
+  model would be the dead-control lie in a new shape.
+- **A pinned specialist answers on its own provider even under an executor.** With Claude Code
+  as the machine's brain, `run_subagent` skips the bridge for an agent whose brain is `own`, so
+  it runs in this OS's loop on its pinned provider. That is what "agents on different
+  providers work together" means. Unpinned agents still ride the executor.
+- **A huddle is the control plane moderating ordinary runs, never agents calling agents.**
+  `ControlPlane.huddle` loops `run_subagent` with the transcript in each task. The two-deep tree
+  (`BUILTIN_DENY` on `agent.invoke` for subagents) stays intact, and every turn is a run with
+  its own model, budget and ledger rows. Bounded by `HUDDLE_MAX_AGENTS`/`ROUNDS`/`WORDS`, and a
+  round of passes ends it.
+- **`agent.huddle` is its own action.** It is asked for below full autonomy, and its card names
+  who is in the room and what each runs on. It is refused to every non-user principal
+  (`_NO_HUDDLE`), flows included, because a flow's consent block has no line for it yet.
+  `set_agent_brain` is `agent.write`, risky: moving an agent moves the bill. The transcript is
+  ONE format (`fabric.huddle_text`, one `@name (model): text` line per turn), read by the model,
+  stored as the message and parsed by `10b-huddle.js` on reload — the page's regex is pinned to
+  it in `tests/test_team.py`.
+
+**Agents messaging each other is the matrix, and swarm is the matrix opened — never a
+second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =
+the one asked); each matrix cell is a `grants` row (`fabric.set_cell`, source `matrix`), so
+Permissions and "Allow & remember" read and write the same cells. Five things hold:
+
+- **An empty cell asks at EVERY autonomy level**, and a run with nobody watching refuses it
+  (`headless_approver` excludes `ask_agent`). Autonomy is what an agent may DO; who may recruit
+  whom is only the matrix's question. `team.talk == "swarm"` is the one thing that opens an
+  empty cell (`rule="swarm"`), and an explicit block still wins over it.
+- **The gate decides `agent.message` in full at 2e, because WHICH grants count depends on
+  where.** Talk `off` refuses everywhere. Inside a flow run only that flow's own definition
+  rows count (`permissions.talk` writes the roster's pairs), so a desk cell never widens a
+  mission and swarm never reaches into one; at the desk, definition rows do NOT count, so
+  enabling a mission is never consent for its specialists to message each other outside it.
+- **Asking back the direct asker is a clarification, not a loop.** It is handed UP
+  (`_clarify`, keyed on the asked one's run): the asker's `ask_agent` returns "X asks you back"
+  and the asker — which holds its whole context — asks again. Never start a fresh run of the
+  asker to answer; that copy knows nothing. Anyone else already in the chain is a real cycle.
+  The limits (`hops`, `budget`, `clarify`, huddle size) are `team.limits`, clamped to
+  `fabric.LIMITS` ceilings — every one multiplies model calls.
+- **The conversation's shape is the agent's, never the model's.** `agent.chain`/`root_run`
+  are set by `run_subagent` and injected into `ask_agent` after the model's args, like
+  `brief_item`'s run. `ControlPlane.message` refuses a loop back into the chain,
+  `MESSAGE_MAX_HOPS`, and `MESSAGE_BUDGET` per root task. `tests/test_agent_messages.py`
+  forges `_chain` and checks the loop is still seen.
+- **Taint crosses the hop both ways**: the asker's taint goes with the question, and a
+  tainted colleague's answer comes back prefixed `TAINTED_REPLY` (the same string in
+  agent.py and fabric.py; a test pins that). The agent loop strips it and marks its own turn.
+- **Every permission CHANGE is an audit row**, not only every decision: `Store._audit_grant`
+  runs inside `add_grant`/`update_grant`/`set_grant_surfaces`/`revoke_grant`/
+  `revoke_grants_for`/`delete_app`, attributed to the person or to the system by source.
+  `fabric.audit_team` records the talk mode, the own-providers switch and model pins. And an
+  approval card settled anywhere is closed everywhere (`approval_resolved`); before, a phone
+  kept a live card that could no longer do anything.
+
+## Linked teams: another team is reached by a handshake, never a password
+
+`agentos/teamlink.py` links this team to another: another Bento (**machine**, mutual TLS)
+or another account on this one (**account**, a code redeemed while signed in). Either way
+the result is `ask_agent("analyst@office")`, the same matrix, and the answering side's
+own gate. Full story in `docs/team.md` → Linked teams.
+
+**The way in is a REQUEST, the OAuth device flow; the invite string is the headless
+fallback.** One side types an address and presses Ask (`request_link`); the other gets
+an Approve / Deny card on every screen; the asker polls (`wait_link`, every 2s, ten
+minutes). Three things keep that safe, each pinned by `tests/test_teamlink_request.py`:
+
+- **The six digits are computed, never sent** (`sas(fp_a, fp_b)` over the two
+  certificates each side SAW). A machine in the middle must show each side its own
+  certificate, so the screens disagree — the test stands a real relay in the middle. A
+  code sent over the wire would be one the middle could rewrite.
+- **Both halves or neither.** Approve only marks the request; the asked side writes its
+  link when the asker COLLECTS the answer (`Listener._poll`). Writing it at Approve left
+  a half-link when the asker had gone away, and its retry was refused "already linked".
+- **A request puts a card on somebody's screen**, so asking is metered per address
+  (`REQUEST_LIMIT`), one card per machine (asking again replaces it), `MAX_PENDING`
+  overall, and the host certificate must chain to the CA it came with (`_chains`).
+  Between accounts there are no digits — the cookie already says who both are — and only
+  the account asked can approve (`_take_request`).
+
+Six things are load-bearing underneath:
+
+- **Each install is its own CA, and a link pins TWO things.** The peer's certificate must
+  chain to the CA exchanged at pairing AND match the host fingerprint recorded then
+  (`_by_fp`). The joiner checks the inviter's certificate against the invite's
+  `#fingerprint` BEFORE sending the code, so a machine in the middle never sees it. The
+  code is single-use, ten minutes, stored hashed, and wrong codes are counted per address
+  (`GUESS_LIMIT`), the webhook ceiling's argument.
+- **The contexts are the STDLIB class, never whatever is on `ssl.SSLContext`.** `bento`
+  injects truststore there so provider calls read the OS store; a link verifying against
+  the OS store trusts the wrong thing, and truststore's check crashes on a joiner that has
+  no certificate yet. `_SSLContext` walks the MRO, and `_set` writes through
+  `_ssl._SSLContext` because ssl.py's own setters recurse once the global is replaced.
+  Found by the full suite, not by the teamlink tests alone; `test_teamlink.py` pins it.
+- **A link grants nothing.** Their agents are `team:<link>/<agent>`: `_default` refuses
+  it everything (`team-default`) and never ASKS — nobody is at the other end of a network
+  call to wait for. `BUILTIN_DENY["team"]` refuses self-modification, delegation, huddles
+  and definitions outright. Swarm opens only local empty cells (`"@" not in to`).
+- **The link's owner is entered before anything is read.** `_team_on_ask` does
+  `users.as_user(lk["owner"])`, and an account link answers under `users.as_user(peer)` in
+  process: the webhook rule, because a listener has no cookie either.
+- **Every answer from another team is untrusted, and so is every question.** A reply is
+  prefixed `TAINTED_REPLY` whatever the other side said about itself; the answering run
+  is tainted with `{"tool": "linked team"}`. The chain crosses as `researcher@home`, so
+  clarify-back, hops, budget and loop detection hold across the wire.
+- **A linked question belongs to no conversation here.** `agentMsgLive` pulses the stage
+  and toasts when `conversation_id` is empty; the websocket's "no id = the open one"
+  rule had put a stranger's question inside whatever chat the person was reading.
+
+**The security review's rules** (each pinned by `tests/test_team_security.py`; full table of
+ceilings in `docs/team.md`):
+
+- **Text from elsewhere passes `teamlink.plain` where it ARRIVES** — messages, names, questions,
+  answers, refusals: no C0/C1 controls (terminal escapes write clipboards and retitle windows),
+  no bidi overrides. Once, on the way in, never at each place it is shown. The chat TUI also
+  escapes Rich markup (`tui_app._esc`) on every line carrying someone else's words.
+- **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
+  allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
+  an agent that exists and one that does not (it was an enumeration oracle).
+- **A link reaches no resource on the far side** — ten wire ops, none of which reads, writes
+  or runs anything; an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
+  one honest limit: what an allowed agent can READ, a question can ask it to repeat.
+- **A linked team's refusal is theirs**: `_message_linked` prefixes `TAINTED_REPLY` on refusals
+  too. Their `error` wording reached the agent unmarked — an injection channel around the taint.
+- **A machine's request reaches only who it is for** (`teamlink.may_answer`): the account named
+  in `ada@office.local`, or the admins when nobody was named; the toast goes only to them. Shown
+  to everyone, the first tap won a link meant for somebody else.
+- **Conversations are keyed by the link's ID, never its label** — labels are reused after a remove.
+- **Ceilings on everything a remote or a person can repeat**: `PEER_CALLS` per linked machine,
+  `MAX_OPEN` connections and a `FIRST_LINE` deadline in the listener, `_team_dial_ok` on how often
+  a person can make this server dial out (request/join — otherwise a network probe), and
+  `teamchat.MAX_UNREAD` as back-pressure because messages are never pruned. A claimed port is
+  range-checked (`_port`); renaming yourself is audited.
+
+Ending a link revokes every cell that named it (`forget_link_grants`, both halves of an
+account link). Every step is an audit row: `link.request`, `link.approve`/`link.deny`,
+`link.invite`, `link.write` (linked), `grant.write`/`grant.revoke` (the cells),
+`link.revoke` (ended). The server broadcast `team_links` for a long time with nothing
+listening; `09-websocket.js` now repaints on it, and `team_link_request` is a toast with
+Review (`toast(text, {label, go})` — the one toast that takes a tap).
+The listener is admin-only because it opens a port, and it is off until switched on.
+
+**A standing permission is the one "remember" a tainted step may offer, and only for a
+link.** A linked team's question taints the answering run, so a write needs a person — the
+link owner's own screens get the card (`control.linked_approvals`), and with none open it is
+refused AT ONCE rather than holding their mission. A web page is anyone; a link is an
+authenticated party, so the taint card may offer `PDP._standing_offer` and
+`add_standing`/Settings/`bento link let` write the same row: `team:<link>/*`, `team.act`,
+resource `agent|action|scope`. Five things keep it narrow (`tests/test_team_standing.py`):
+
+- **It lifts ONLY the taint ceiling, and only when every taint entry came from that one
+  link** (`_link_only_taint`) — a page the agent also read brings the card back. It is
+  checked AFTER the deny rows, so an explicit deny wins, and `strict` still refuses.
+- **fs scopes are matched against `policy._fs_real`**, never the text: a glob is not a path,
+  and `fs:/shared/*` matches `fs:/shared/../../.bashrc` as a string. A hidden segment
+  (`_hidden`) is never covered, whatever folder was allowed.
+- **`STANDING_TOOLS` is an ALLOW-list** (`save_report`, `notify`). `tool.use` also names a
+  shell, git push and outbound messages, and a deny-list is right only until the next tool.
+  Homes, system folders and `/tmp` are refused as scopes (`standing_refusal`).
+- **`standing_refusal` is re-checked at match time**, so a row written straight into grants
+  by some other door still cannot cover what the save would have refused.
+- **`forget_link_grants` revokes them with the cells**, because they are `team:<label>/*` rows.
+
+**A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
+(`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
+sentence naming the other team and NO envelope for that member (it runs under their gate);
+`delegate` routes it through `delegate_linked` → `ControlPlane.message`, and the handle lands
+`tainted=1`. There is no way to reach further across the link than a question: the other
+side's cell, standing permissions and person still decide.
+
+**The side that does the work keeps its own record of the mission.** `announce_mission` (on
+save/enable/disable/delete — `server._announce_linked`, and the `create_flow`/`enable_flow`
+tools) sends op `mission`; the receiver writes `team:<link>/<mission>-master team.mission
+agent:subagent/<agent>` rows (`record_mission`, details in `source_ref` JSON), and a question
+carrying `mission` meta records it on first use when the announcement never arrived. Four
+things keep it honest (`tests/test_team_missions.py`):
+
+- **The record authorises NOTHING.** Nothing is allowed BY `team.mission`; making the record an
+  `agent.message` allow would have outlived an unticked cell. Only cell-allowed agents are
+  recorded, and `not_allowed` goes back so the editor says so at save time.
+- **Stop is a deny row** (`stop_mission`: `agent.message` on `agent:subagent/*` for that
+  principal), so the gate refuses with no special case and Permissions can remove it. A re-save
+  or a first-use record never touches it. The refusal says "stopped your mission" in words.
+- **Use is read from the ledger** (`linked_missions`: audit rows for that principal), never a
+  counter kept beside it that could disagree.
+- **`mission_sender` is the one spelling** of `<mission>-master`, cut exactly as
+  `answer_linked` cuts a sender — the record, the stop and the ledger must name one principal.
+  The name is the other machine's CLAIM; stopping a mission is for an honest partner, and the
+  docs say that unticking the agent is what stops a machine.
+
+## People on linked teams: messages, and no agent reads them
+
+`agentos/teamchat.py` + the `team_messages` table + Team Chat (`24c-teamchat.js`) + `bento link
+say/chat`. A link connects people as well as agents; each side writes over the link's own
+mTLS (machines) or into the other home in-process (accounts), live over each person's socket.
+Full story in `docs/team.md`. Four rules:
+
+- **No agent reads a message.** No tool, no prompt, and `test_teamchat.py` fails if a module
+  other than memory/teamchat/server/__main__ names the table. Somebody else's words are the
+  untrusted content the taint rules exist for; never reaching a model is the simplest honest
+  answer. Do not add "summarise my messages" without making it a gated, tainting read.
+- **Not a PDP decision per message, on purpose.** A message runs and spends nothing, and a row
+  per "hi" in the hash-chained, never-pruned ledger is a footprint bug. The door is the link
+  (audited) and `chat_muted` (audited as `link.chat`); the ceiling is in memory
+  (`teamchat.overflowing`), the webhook argument.
+- **Kept first, delivered second, never twice.** The id is shared by both sides (`INSERT OR
+  IGNORE`); what cannot be handed over now rides the next exchange — the answer to their next
+  message, `chat_pull`, the 30s sweep (which pulls only while a socket is connected, and makes
+  no connection at all with no machine links). A refusal marks the row `delivered=-1` so the
+  sweep stops knocking. Rows key on the link's ID; 500 unread from one link and the sender is
+  told to wait (`MAX_UNREAD`) — the only honest ceiling on a table that is never pruned.
+- **A person is who the server knows.** On a machine with accounts the sender is the account's
+  name; `team.my_name` exists only where there are no accounts (`PUT /api/team/me` refuses
+  otherwise) — a name somebody can type is not an identity.
 
 ## Window chrome: the rules that keep a stack readable
 

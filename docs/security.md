@@ -87,10 +87,34 @@ So AgentOS does not try to detect the attack. It bounds the blast radius:
   tainted turn's *risky* steps are held for you — **at `full` autonomy too**, because full
   autonomy is trust placed in your instructions, not a stranger's. Safe steps are never
   escalated, so reading and researching stay as fast as they were.
+- **"Held for you" means a person, everywhere, and never autonomy on nobody's behalf.** Until
+  2026-09 that was true in a chat with a screen and false in every run with nobody watching.
+  A specialist the agent delegated to, a scheduled job, an app's turn and a linked team's
+  question all answered "ask" with autonomy: at `full`, *yes*. Telegram and WhatsApp, at
+  `full`, answered for you instead of asking you in the chat you were in. It was found by
+  sending a linked team's question to a specialist capped at full autonomy: the specialist
+  wrote a file. Now the agent loop marks the two kinds of decision that must be a person's
+  (`policy.needs_person`: after untrusted content, and the actions confirmed every time). An
+  approver that can reach you asks you. One that cannot (a schedule, a data plane) refuses,
+  and the agent is told why. `tests/test_team_security.py` holds it, including a scan that
+  fails if any approver answers on autonomy without checking the mark.
 - The ceiling is checked **before grants**, exactly like the read-only channel ceiling.
   "Allow `fetch_url` everywhere" is consent for the agent to fetch pages; it is not consent
   for a fetched page to spend the grant on something else. For the same reason the approval
   card offers no "allow & remember" — remembering it would hand the next page the same key.
+- **One exception, and it is narrow: a linked team.** A web page is anyone. A linked team is
+  a party you authenticated (mutual TLS pinned to one certificate, or a signed account), so
+  its questions may be given a *standing permission*: one team, one of your agents, one
+  action, one folder or tool, written by you (on the card, "Always let home have analyst do
+  this", or in Settings / `bento link let`). It lifts this ceiling for that step only when
+  **everything** untrusted in the run came from that one team. A page the agent also read
+  brings the card back. It is matched against the path the write really lands on (`..`,
+  symlinks and `~` resolved), and never covers a hidden file. `tool.use` is an allow-list
+  (`save_report`, `notify`), and a shell, a home folder, a system folder, anything confirmed
+  every time and anything that changes this OS can never be standing. It sits after the
+  deny rows, so an explicit deny still wins, and `strict` still refuses.
+  `tests/test_team_standing.py` holds each of these; the full story is in
+  [team.md](team.md#standing-permissions-saying-yes-ahead-of-time).
 - Taint survives a turn boundary: a conversation whose history contains fenced content starts
   its next turn tainted. "Fetch this page" … "ok, go ahead" is the obvious way around a
   per-turn rule.

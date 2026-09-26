@@ -55,6 +55,34 @@ CREATE TABLE IF NOT EXISTS brief_items (
     updated_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_brief_day ON brief_items(day, state);
+-- Every agent's character (avatars.py): your agent, you, and each specialist. One row
+-- per person, generated the first time they are seen and then KEPT, so an edit sticks
+-- and a specialist's colour does not move when a colleague is added. No space_id on
+-- purpose: who your colleagues look like does not change with the project you are in.
+CREATE TABLE IF NOT EXISTS avatars (
+    key TEXT PRIMARY KEY,        -- '@agent', '@me', or a specialist's name
+    recipe TEXT DEFAULT '{}',    -- JSON: skin, hair, style, pants, glasses, blush, hue
+    updated_at REAL
+);
+-- People on linked teams writing to each other (teamchat.py). This person's words and
+-- theirs, in THIS person's database only. No agent reads them (no tool, no prompt), and
+-- prune() never touches them: they are the person's own, like a mailbox. The id is the
+-- SAME on both sides, so a retried delivery is one row, not two. No space_id: a person
+-- is not a project.
+CREATE TABLE IF NOT EXISTS team_messages (
+    id TEXT PRIMARY KEY,
+    link TEXT,                   -- the link's ID here (never its label: a label is reused
+                                 -- when a link is removed and another made, and the old
+                                 -- conversation must not appear to be with the new party)
+    dir TEXT,                    -- 'in' | 'out'
+    sender TEXT,                 -- the name the sender goes by
+    look TEXT DEFAULT '{}',      -- the sender's character recipe (avatars.clean'd)
+    text TEXT,
+    ts REAL,
+    delivered INTEGER DEFAULT 0, -- out: the other side has it
+    read INTEGER DEFAULT 0       -- in: this person has seen it
+);
+CREATE INDEX IF NOT EXISTS idx_team_messages ON team_messages(link, ts);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT,
@@ -1715,12 +1743,17 @@ class Store:
         self.db.execute("DELETE FROM user_apps WHERE id=?", (aid,))
         self.db.execute("DELETE FROM app_data WHERE app_id=?", (aid,))
         self.db.execute("DELETE FROM app_versions WHERE app_id=?", (aid,))
+        live = [dict(r) for r in self.db.execute(
+            "SELECT * FROM grants WHERE principal_kind='app' AND principal_id=? "
+            "AND revoked_at IS NULL", (aid,)).fetchall()]
         cur = self.db.execute(
             "UPDATE grants SET revoked_at=? WHERE principal_kind='app' AND principal_id=? "
             "AND revoked_at IS NULL", (time.time(), aid))
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            for g in live:
+                self._audit_grant("revoke", g, detail="the app was deleted")
 
     # -- themes ---------------------------------------------------------------
 
@@ -1917,6 +1950,35 @@ class Store:
 
     # -- grants (the permission framework's single source of truth) ----------
 
+    # A permission CHANGE is itself a permission event, so it goes in the same
+    # hash-chained ledger as the decisions it will govern — written here, where every
+    # door (Permissions, the team matrix, "Allow & remember", a flow's reconcile, a
+    # peer key, a plugin) has to pass, so no door can forget to. `logs` keeps its
+    # free-text line as before; this is the record `audit_verify` protects.
+    _PERSON_SOURCES = ("user", "matrix", "approval", "remember", "legacy", "")
+
+    def _audit_grant(self, verb: str, g: dict, detail: str = ""):
+        try:
+            from . import users as _users
+            uid = _users.current() or ""
+        except Exception:
+            uid = ""
+        src = str(g.get("source") or "")
+        who = ("user", "") if src in self._PERSON_SOURCES else ("system", src)
+        self.audit_add(
+            uid=uid, principal_kind=who[0], principal_id=who[1], surface="",
+            action=f"grant.{verb}",
+            resource=f"{g.get('principal_kind', '')}:{g.get('principal_id', '')} "
+                     f"{g.get('action', '')} {g.get('resource', '')}".strip(),
+            effect=str(g.get("effect") or ""), rule=str(g.get("id") or ""),
+            reason=str(g.get("note") or "")[:300], outcome="ok",
+            detail=detail or f"source={src or 'user'}"
+                             + (f" ref={g.get('source_ref')}" if g.get("source_ref") else ""))
+
+    def _grant_row(self, gid: str) -> dict:
+        row = self.db.execute("SELECT * FROM grants WHERE id=?", (gid,)).fetchone()
+        return dict(row) if row else {}
+
     def add_grant(self, principal_kind: str, principal_id: str, action: str, resource: str,
                   effect: str = "allow", source: str = "user", note: str = "",
                   expires_at: float | None = None, surfaces: str = "*",
@@ -1948,6 +2010,7 @@ class Store:
              source, note[:300], surfaces, expires_at, time.time(), source_ref or ""))
         self.db.commit()
         self.grants_version += 1
+        self._audit_grant("write", self._grant_row(gid))
         return gid
 
     def set_grant_surfaces(self, gid: str, surfaces: str) -> bool:
@@ -1958,6 +2021,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("change", self._grant_row(gid), detail=f"surfaces now {surfaces}")
         return bool(cur.rowcount)
 
     def grants_live(self) -> list[dict]:
@@ -1989,6 +2053,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("change", self._grant_row(gid), detail=f"effect now {effect}")
         return bool(cur.rowcount)
 
     def revoke_grant(self, gid: str) -> bool:
@@ -1997,6 +2062,7 @@ class Store:
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            self._audit_grant("revoke", self._grant_row(gid))
         return bool(cur.rowcount)
 
     def revoke_grants_for(self, principal_kind: str, principal_id: str, source: str = "") -> int:
@@ -2007,10 +2073,17 @@ class Store:
         if source:
             q += " AND source=?"
             params.append(source)
+        # the rows about to go, so each revocation is its own ledger line
+        live = [dict(r) for r in self.db.execute(
+            "SELECT * FROM grants WHERE principal_kind=? AND principal_id=? AND revoked_at IS NULL"
+            + (" AND source=?" if source else ""),
+            [principal_kind, principal_id] + ([source] if source else [])).fetchall()]
         cur = self.db.execute(q, params)
         self.db.commit()
         if cur.rowcount:
             self.grants_version += 1
+            for g in live:
+                self._audit_grant("revoke", g)
         return cur.rowcount
 
     # -- MCP registry: first-class records of discovered/installed MCP servers ----
@@ -2301,6 +2374,86 @@ class Store:
                 d["options"] = []
             out.append(d)
         return out
+
+    # ---- characters (avatars.py owns what a recipe means; this only keeps them) ----
+    def avatar_get(self, key: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM avatars WHERE key=?", (key,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["recipe"] = json.loads(d.get("recipe") or "{}")
+        except Exception:
+            d["recipe"] = {}
+        return d
+
+    def avatar_put(self, key: str, recipe: dict) -> None:
+        self.db.execute("INSERT INTO avatars(key, recipe, updated_at) VALUES (?,?,?) "
+                        "ON CONFLICT(key) DO UPDATE SET recipe=excluded.recipe, "
+                        "updated_at=excluded.updated_at",
+                        (key, json.dumps(recipe, sort_keys=True), time.time()))
+        self.db.commit()
+
+    def avatar_all(self) -> list[dict]:
+        return [self.avatar_get(r["key"]) for r in
+                self.db.execute("SELECT key FROM avatars ORDER BY key").fetchall()]
+
+    # ---- people on linked teams (teamchat.py decides; this only keeps the rows) ----
+    def team_msg_add(self, link: str, m: dict, direction: str, delivered: bool = False) -> bool:
+        """One message; False when that id is already here (a retried delivery)."""
+        cur = self.db.execute(
+            "INSERT OR IGNORE INTO team_messages(id, link, dir, sender, look, text, ts, delivered, read) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (m["id"], link, direction, m.get("sender", ""), json.dumps(m.get("look") or {}, sort_keys=True),
+             m.get("text", ""), float(m.get("ts") or time.time()), int(bool(delivered)),
+             int(direction == "out")))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def _team_row(self, r) -> dict:
+        d = dict(r)
+        try:
+            d["look"] = json.loads(d.get("look") or "{}")
+        except Exception:
+            d["look"] = {}
+        return d
+
+    def team_msgs(self, link: str, limit: int = 200) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM team_messages WHERE link=? ORDER BY ts DESC LIMIT ?",
+                               (link, int(limit))).fetchall()
+        return [self._team_row(r) for r in reversed(rows)]
+
+    def team_threads(self) -> dict:
+        """Per link: the last message and how many are unread."""
+        out = {}
+        for r in self.db.execute(
+                "SELECT link, MAX(ts) AS ts, SUM(CASE WHEN dir='in' AND read=0 THEN 1 ELSE 0 END) AS unread "
+                "FROM team_messages GROUP BY link").fetchall():
+            last = self.db.execute("SELECT * FROM team_messages WHERE link=? ORDER BY ts DESC LIMIT 1",
+                                   (r["link"],)).fetchone()
+            out[r["link"]] = {"unread": int(r["unread"] or 0), "last": self._team_row(last) if last else None}
+        return out
+
+    def team_msg_read(self, link: str) -> int:
+        n = self.db.execute("UPDATE team_messages SET read=1 WHERE link=? AND dir='in' AND read=0",
+                            (link,)).rowcount
+        self.db.commit()
+        return n
+
+    def team_unread(self, link: str) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM team_messages WHERE link=? AND dir='in' AND read=0",
+                               (link,)).fetchone()[0]
+
+    def team_msg_pending(self, link: str) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM team_messages WHERE link=? AND dir='out' AND delivered=0 "
+                               "ORDER BY ts", (link,)).fetchall()
+        return [self._team_row(r) for r in rows]
+
+    def team_msg_delivered(self, ids: list[str], state: int = 1) -> None:
+        """1 = the other side has it; -1 = the other side refused it (stop retrying)."""
+        for i in ids:
+            self.db.execute("UPDATE team_messages SET delivered=? WHERE id=?", (int(state), i))
+        self.db.commit()
 
     def brief_get(self, bid: str) -> dict | None:
         rows = self.brief_items(limit=100000)

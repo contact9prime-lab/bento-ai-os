@@ -149,6 +149,35 @@ stopped on a headless box could be seen in the logs and never released.
 | POST | `/api/wallpaper/generate` | generate a wallpaper from a prompt |
 | POST | `/api/wallpaper/system` | adopt the host wallpaper |
 | GET | `/api/wallpapers`, `/{id}`, POST `/{id}/set`, DELETE `/{id}` | wallpaper gallery |
+| GET | `/api/avatars` | every character (you, your agent, each specialist) with its recipe, version and description, plus the palette the editor offers; generates any that are new |
+| GET | `/api/avatar.png?key=&frame=&crop=face&sheet=1&scale=` | a character as a PNG: one frame, the face, or the four-frame sheet; `recipe=<json>` in place of `key` paints a character from ANOTHER team (held to the closed set) |
+| POST | `/api/avatars/{key}/design` | `{"description"}` — design a character from words: the machine's model picks from the closed set (invented values are left out and listed in `dropped`); with no model answering, the palette's words are matched and `how` says `words`. Applied at once; `previous` is what Undo PUTs back |
+| PUT | `/api/avatars/{key}` | change part of a character (`skin`, `hair`, `style`, `shirt`, `outfit`, `pants`, `glasses`, `blush`) — the closed set only; 400 names the choices |
+| POST | `/api/avatars/{key}/reroll` | a new look in the same shirt colour |
+| GET/PUT | `/api/team/matrix` | who may ask whom — PUT one cell `{"from","to","effect": "allow\|deny\|ask"}` ([the team](team.md)) |
+| GET | `/api/team/limits` | the team's limits (hops, budget, clarify, huddle size and rounds) with their ranges; set them through `PUT /api/config` `{"team":{"limits":{…}}}` — 400 names the range |
+| GET | `/api/team/links` | this machine's name and certificate fingerprint, whether it accepts linked teams, each link with what it may ask, its standing permissions and their missions recorded here, requests waiting (`incoming`, `outgoing`) and the accounts you could ask (`others`) ([linked teams](team.md#linked-teams-your-agents-and-somebody-elses)) |
+| PUT | `/api/team/listen` | `{"on": true}` opens the mTLS listener (admin only; port = server port + 1 or `team.link_port`) |
+| POST | `/api/team/links/request` | ask to link: `{"address": "office.local"}` or `"ada@office.local"` to address a person there (another machine; 10 attempts per person per 10 minutes; returns the six digits to compare, and the server waits for the answer in the background) or `{"account": "bob"}` (another account here) |
+| POST | `/api/team/links/requests/{id}/approve` · `/deny` | answer a request waiting here; a machine's lands in the approver's account |
+| DELETE | `/api/team/links/requests/{id}` | withdraw a request you sent |
+| POST | `/api/team/links/invite` | the headless alternative to a request: `{"kind": "machine"\|"account"}` — a one-time code, ten minutes; a machine invite also carries this host's certificate fingerprint |
+| POST | `/api/team/links/join` | `{"invite", "label"}` — pair with the machine that invited you (the fingerprint is checked before the code is sent) |
+| POST | `/api/team/links/redeem` | `{"code"}` — link with another account on this machine, as the signed-in person |
+| GET | `/api/team/chat` | Team Chat: one thread per linked team (their identity, unread count, last message) and who you appear as |
+| GET | `/api/team/chat/{label}` | one conversation (marks it read; asks a linked machine for anything waiting first, six seconds at most — `?pull=0` skips that) |
+| POST | `/api/team/chat/{label}` | `{"text"}` — write to that team's people; `delivered` false with a `note` when it is kept for later or refused |
+| PUT | `/api/team/chat/{label}` | `{"muted": true}` — refuse that team's messages (they are told so); audited |
+| PUT | `/api/team/me` | `{"name"}` — the name you go by in messages, on a machine without accounts |
+| DELETE | `/api/team/links/{label}` | end a link and revoke every cell that named it (both sides for an account link) |
+| GET | `/api/team/links/{label}/roster` | ask the other side who is on its team |
+| PUT | `/api/team/links/{label}/access` | `{"theirs_may_ask": [agents], "mine_may_ask": bool}` — the link's cells |
+| GET | `/api/team/links/{label}/standing` | what that team may have your agents change without a person, the actions and tools that can be standing, and `applies`/`note` (not in use under strict or off) ([standing permissions](team.md#standing-permissions-saying-yes-ahead-of-time)) |
+| POST | `/api/team/links/{label}/standing` | `{"agent", "action": "fs.write", "scope": "~/shared", "days": 30}` — one agent, one action, one folder or tool; a 400 with the sentence for what can never be standing (a shell, a home, a hidden folder) |
+| DELETE | `/api/team/links/{label}/standing/{id}` | revoke one |
+| GET | `/api/team/links/{label}/missions` | that team's missions that use your agents, as recorded here: agents, what it is for, when it runs, how many times it asked and when it last did (from the ledger), and whether you stopped it ([the other side's record](team.md#the-other-side-keeps-its-own-record-and-can-stop-it)) |
+| POST | `/api/team/links/{label}/missions/{mission}/stop` · `/allow` | stop one of their missions asking your agents (a deny row), or allow it again; audited |
+| PUT | `/api/subagents/{name}/brain` | pin one agent to a model (`{"model": "provider/model"}`, `""` = the machine's brain) — [the team](team.md) |
 
 ### Integrations
 | Method | Path | Purpose |
@@ -204,6 +233,6 @@ itself. Risk level determines whether they need approval (see [Safety](agent.md#
 `create_app`, `pin_widget`, `configure_agentos`, `add_mcp_server`, `manage_models`, `use_skill`,
 `save_skill`, `delete_skill`, `schedule_task`, `launch_native_app`, `system_control`,
 `telegram_send`, `whatsapp_send`, `read_source`, `develop_agentos`, `restart_agentos`, `snapshot_os`, `generate_wallpaper`,
-`set_wallpaper`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
+`set_wallpaper`, `set_avatar`, `huddle`, `ask_agent` (specialists only), `set_agent_brain`, `list_openclaw_plugins`, `install_openclaw_plugin`, `enable_openclaw_plugin`, `port_openclaw_plugin`, `verify_openclaw_port`, `openclaw_report` — plus every connected MCP tool as `mcp_<server>_<tool>`.
 
 Get the live list (including MCP tools) from `GET /api/tools`.

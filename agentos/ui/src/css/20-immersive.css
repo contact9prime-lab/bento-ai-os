@@ -59,7 +59,12 @@ body.immersive #wall.has::before{content:'';position:absolute;inset:-4%;opacity:
 
 /* the Movement scene's canvas lives inside #wall so the parallax carries it;
    it never takes a pointer, and the grain sits under it, the scrim over it */
-body.immersive #movement{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+body.immersive #movement,body.immersive #crew{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+/* The crew stands on the lower third, so the plate is darkened from the middle
+   down rather than from the top: the figures need to read against it, and the
+   greeting in the upper third must not. */
+body.immersive.imm-crew #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
+body.immersive.imm-crew #wall.has::before{opacity:.03}
 body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
 body.immersive.imm-movement #wall.has::before{opacity:.035}
 
@@ -446,6 +451,9 @@ body.immersive .msg{margin-bottom:22px}
 body.immersive .msg .who{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:var(--fs-xs);font-weight:600;color:var(--dim);margin-bottom:8px}
 body.immersive .msg.assistant .who::before{content:'';width:22px;height:22px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 50%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+/* the glowing dot stood in for a face; with a character there, the character is the face */
+body.immersive .msg.assistant .who:has(img.av)::before{display:none}
+body.immersive .msg .who img.av-who{margin-right:0}
 body.immersive .msg.user .who{justify-content:flex-end}
 body.immersive .msg.assistant .body{font-size:var(--fs-base);line-height:1.65}
 body.immersive .tool{border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);

@@ -19,7 +19,14 @@ from textual.screen import ModalScreen
 from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, Label,
                              ListItem, ListView, RichLog, Select, Static, TabbedContent, TabPane)
 
+from rich.markup import escape as _rich_escape
+
 from . import config as cfgmod
+
+
+def _esc(v) -> str:
+    """Words somebody else wrote, made into text for a log that reads Rich markup."""
+    return _rich_escape(str(v if v is not None else ""))
 
 
 def _base(port):
@@ -586,6 +593,34 @@ class AgentTUI(App):
                             log.write(f"[red]✗ {ev.get('name','')}{took} — {(ev.get('output') or '')[:120]}[/]")
                         elif took:
                             log.write(f"[grey58]✓ {ev.get('name','')}{took}[/]")
+                    # Every line below can carry words somebody ELSE wrote — an agent
+                    # quoting a page, a linked team's question or answer, a person's
+                    # message — and this log reads Rich markup: "[link=…]" would be a
+                    # clickable link and "[red]" a forged error. `_esc` makes it text.
+                    elif t == "agent_say":
+                        # A huddle: agents talking to each other, each on its own
+                        # brain. One line per turn, the speaker and the provider it
+                        # answered on first — the terminal form of the chat's card.
+                        log.write(f"[b]@{_esc(ev.get('speaker', '?'))}[/] [grey58]({_esc(ev.get('provider') or ev.get('model', ''))})[/]  "
+                                  f"{_esc(ev.get('text', ''))}")
+                    elif t == "agent_msg":
+                        # one specialist asking another (the matrix, or swarm), then
+                        # the answer — the same two lines the chat card shows
+                        if ev.get("phase") == "ask":
+                            log.write(f"[b]@{_esc(ev.get('from', '?'))}[/] [grey58]→ @{_esc(ev.get('to', '?'))}[/]  {_esc(ev.get('text', ''))}")
+                        else:
+                            log.write(f"[b]@{_esc(ev.get('from', '?'))}[/] [grey58]({_esc(ev.get('provider') or ev.get('model', ''))})[/]  "
+                                      f"{_esc(ev.get('text', ''))}")
+                    elif t == "team_message" and ev.get("dir") == "in":
+                        # a person on a linked team wrote; answering is `bento link say`
+                        log.write(f"[cyan]✉ {_esc(ev.get('sender', '?'))} · {_esc(ev.get('link', ''))}:[/] {_esc(ev.get('text', ''))}  "
+                                  f"[grey58]bento link say {_esc(ev.get('link', ''))} …[/]")
+                    elif t == "team_link_request":
+                        # somebody asks to link; answering is a verb, not a keypress here,
+                        # so the line says which one (the digits are the check)
+                        log.write(f"[yellow]↔ {_esc(ev.get('name', '?'))} asks to link"
+                                  f"{' — code ' + _esc(ev['sas']) if ev.get('sas') else ''}.[/] "
+                                  f"[grey58]bento link requests · bento link approve {_esc(ev.get('id', ''))}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))

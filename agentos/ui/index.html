@@ -1433,6 +1433,9 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 #toasts{position:fixed;right:14px;bottom:calc(var(--tbh) + 12px);z-index:11000;display:flex;flex-direction:column;gap:8px;
   align-items:flex-end;pointer-events:none}
 #toasts .toast{position:static;animation:none}
+#toasts .toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:10px}
+#toasts .toast-act{flex:none}
+body.dev-touch #toasts .toast-act{min-height:var(--tap)}
 
 /* control center popover (tray) */
 #ccpop{position:fixed;top:calc(var(--mbh) + 8px);right:10px;width:380px;max-height:min(72vh,640px);overflow:auto;z-index:10500;
@@ -2895,7 +2898,12 @@ body.immersive #wall.has::before{content:'';position:absolute;inset:-4%;opacity:
 
 /* the Movement scene's canvas lives inside #wall so the parallax carries it;
    it never takes a pointer, and the grain sits under it, the scrim over it */
-body.immersive #movement{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+body.immersive #movement,body.immersive #crew{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+/* The crew stands on the lower third, so the plate is darkened from the middle
+   down rather than from the top: the figures need to read against it, and the
+   greeting in the upper third must not. */
+body.immersive.imm-crew #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
+body.immersive.imm-crew #wall.has::before{opacity:.03}
 body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
 body.immersive.imm-movement #wall.has::before{opacity:.035}
 
@@ -3282,6 +3290,9 @@ body.immersive .msg{margin-bottom:22px}
 body.immersive .msg .who{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:var(--fs-xs);font-weight:600;color:var(--dim);margin-bottom:8px}
 body.immersive .msg.assistant .who::before{content:'';width:22px;height:22px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 50%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
+/* the glowing dot stood in for a face; with a character there, the character is the face */
+body.immersive .msg.assistant .who:has(img.av)::before{display:none}
+body.immersive .msg .who img.av-who{margin-right:0}
 body.immersive .msg.user .who{justify-content:flex-end}
 body.immersive .msg.assistant .body{font-size:var(--fs-base);line-height:1.65}
 body.immersive .tool{border-radius:14px;background:color-mix(in srgb,var(--bg2) 62%,transparent);border-color:color-mix(in srgb,var(--txt) 8%,transparent);
@@ -3399,6 +3410,219 @@ body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bot
 .br-nav .endbtn{min-height:var(--tap,40px);min-width:var(--tap,40px);font-size:var(--fs-lg)}
 /* the home scene's line is a door */
 body.immersive .hm-now.br-open{pointer-events:auto;cursor:pointer;color:var(--txt);font-weight:600}
+/* ================= Characters (00e-avatars.js) =================
+   Every face on the desktop is the server's PNG of one stored recipe, and it is
+   pixel art: never smoothed, whatever size it is shown at. These rules are NOT
+   scoped to the immersive look — the characters are part of the OS, in the
+   standard desktop too — and Settings → Appearance turns the faces off. */
+img.av{image-rendering:pixelated;image-rendering:crisp-edges;display:inline-block;flex:none;
+  vertical-align:middle;border-radius:8px;background:color-mix(in srgb,var(--txt) 7%,transparent)}
+.msg .who img.av-who{width:26px;height:26px;margin-right:8px;vertical-align:-8px;border-radius:8px}
+.tool .head img.av-tool{width:20px;height:20px;margin-right:6px;border-radius:6px;vertical-align:-5px}
+img.av-log{width:22px;height:22px;margin-right:7px;border-radius:6px;vertical-align:-6px}
+.approval .atitle img.av-ap{width:26px;height:26px;margin-right:8px;border-radius:8px;vertical-align:-8px}
+.teamcard img.av-card,img.av-card{width:44px;height:44px;flex:0 0 44px;border-radius:12px}
+.hm-now img.av-home{width:22px;height:22px;margin-right:8px;border-radius:6px;vertical-align:-6px}
+img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
+.av-set-btn{display:inline-flex;align-items:center}
+
+/* A whole figure, animated by stepping through its four-frame sheet: stand,
+   blink, one arm up, the other. Steps, not a tween — it is pixel art, and a
+   tween would slide a frame half-way into the next. No timer anywhere, so a
+   removed figure costs nothing; reduced motion holds the first frame. */
+.av-sprite{width:calc(var(--u) * 16);height:calc(var(--u) * 26);background-repeat:no-repeat;
+  background-size:calc(var(--u) * 64) calc(var(--u) * 26);image-rendering:pixelated;
+  animation:av-life 4.8s step-end infinite}
+@keyframes av-life{
+  0%{background-position:0 0}
+  40%{background-position:calc(var(--u) * -16) 0}
+  43%{background-position:0 0}
+  62%{background-position:calc(var(--u) * -32) 0}
+  70%{background-position:calc(var(--u) * -48) 0}
+  78%{background-position:calc(var(--u) * -32) 0}
+  86%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){.av-sprite{animation:none;background-position:0 0}}
+
+/* ---- the editor: the dialog kit, with a stage and the closed set of choices ---- */
+.dlg.ave{width:min(580px,94vw)}
+.ave-body{display:flex;gap:18px;align-items:center;margin:12px 0 6px}
+.ave-stage{flex:none;padding:16px 22px 12px;border-radius:14px;
+  background:radial-gradient(ellipse at 50% 92%,color-mix(in srgb,var(--acc) 16%,transparent),transparent 62%),
+             color-mix(in srgb,var(--txt) 6%,transparent)}
+.ave-rows{flex:1;display:flex;flex-direction:column;gap:9px;min-width:0}
+.ave-row{display:flex;align-items:center;gap:10px}
+.ave-row>span{flex:0 0 66px;font-size:var(--fs-xs);color:var(--dim)}
+.ave-row>div{display:flex;flex-wrap:wrap;gap:6px}
+.ave-sw{width:26px;height:26px;padding:0;border-radius:50%;cursor:pointer;background:var(--c);
+  border:2px solid color-mix(in srgb,var(--txt) 14%,transparent)}
+.ave-sw.on{border-color:var(--txt);box-shadow:inset 0 0 0 2px var(--bg2)}
+.ave-chip{padding:4px 11px;border-radius:999px;cursor:pointer;font-size:var(--fs-xs);color:var(--txt);
+  background:transparent;border:1px solid var(--line)}
+.ave-chip.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.ave-about{font-size:var(--fs-xs);margin-bottom:6px}
+.ave-reroll{margin-right:auto}
+/* a fingertip is 9mm: on a touch screen every choice is a real target, and the
+   stage moves above the choices so the rows get the whole width */
+body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:var(--tap)}
+@media (max-width:560px){.ave-body{flex-direction:column;align-items:stretch}.ave-stage{align-self:center}}
+
+/* ---- huddles (10b-huddle.js) and the provider chip ----
+   A huddle is a card inside the reply: one row per turn, the speaker's face, name
+   and the brain it answered on, then what it said. The chip names the PROVIDER
+   first, because "which company answered" is the question; the model follows. */
+.brainchip{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:500;letter-spacing:0;text-transform:none;vertical-align:1px;
+  color:var(--dim);border:1px solid var(--line);background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.brainchip b{color:var(--txt);font-weight:600}
+.huddle{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.hud-head{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);color:var(--dim);margin-bottom:6px}
+.hud-head span{margin-left:4px}
+.hud-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hud-row:first-of-type{border-top:0}
+.hud-row img.av-who{width:30px;height:30px;flex:0 0 30px;border-radius:9px;margin:0}
+.hud-say{min-width:0;flex:1}
+.hud-who{font-size:var(--fs-xs);font-weight:600;margin-bottom:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hud-text p{margin:0}
+.hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
+.msg .who img.av-who+img.av-who{margin-left:-14px}
+/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+.team-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.team-row>b{min-width:88px}
+.team-row select{flex:0 1 300px;min-width:0}
+.team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
+body.dev-touch .team-row select{min-height:var(--tap)}
+.hud-to{font-weight:500;color:var(--dim)}
+/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+   ask → allow → block; a real target on a phone, and the grid scrolls sideways
+   rather than squeezing a cell below the tap floor. */
+.team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.team-matrix table{border-collapse:separate;border-spacing:4px}
+.team-matrix th{font-size:var(--fs-xs);font-weight:500;color:var(--dim);text-align:center;padding:0 2px}
+.team-matrix th.tm-row{text-align:left;white-space:nowrap}
+.team-matrix th img.av{width:26px;height:26px;border-radius:7px;display:block;margin:0 auto 2px}
+.team-matrix th.tm-row img.av{display:inline-block;vertical-align:middle;margin:0 6px 0 0}
+.tm-cell{min-width:44px;height:34px;border-radius:9px;border:1px solid var(--line);cursor:pointer;
+  background:transparent;color:var(--dim);font-size:var(--fs-xs);font-weight:600}
+.tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
+.tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
+.tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
+.tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
+.team-limits{display:flex;flex-direction:column;gap:6px;width:100%}
+.tl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tl-row small{font-size:var(--fs-xs)}
+.tl-row input{width:80px}
+body.dev-touch .tl-row input{min-height:var(--tap)}
+.flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
+/* a roster member on a linked team (13-fabric.js flwLinkedHTML) */
+.flw-linked{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.flw-linked input{flex:1 1 140px;min-width:0}.flw-linked select{flex:0 1 140px;min-width:0}
+.flw-linked-why{font-size:var(--fs-xs);margin:4px 0}
+body.dev-touch .flw-linked input,body.dev-touch .flw-linked select,body.dev-touch .flw-linked button{min-height:var(--tap)}
+/* Linked teams */
+.team-links{display:flex;flex-direction:column;gap:8px;width:100%}
+.tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tlk-actions input{flex:1 1 220px;min-width:0}
+.pc .tlk-actions input,.pc .tlk-actions select{flex:1 1 220px;width:auto;min-width:0}
+.tlk-ask{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.tlk-waiting{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.tlk-req{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  padding:10px 12px;border:1px solid color-mix(in srgb,var(--acc) 55%,var(--line));border-radius:10px;
+  background:color-mix(in srgb,var(--acc) 7%,var(--bg2))}
+.tlk-req.out{border-color:var(--line);background:var(--bg2)}
+.tlk-req>div:first-child{flex:1 1 260px;min-width:0}
+.tlk-req p{margin:0 0 4px}.tlk-req small{display:block}
+.tlk-req-act{display:flex;gap:6px;flex:none}
+/* the six digits are the whole check, so they read like a number on a card reader */
+.tlk-sas{font-family:var(--mono,monospace);font-size:1.35em;font-weight:700;letter-spacing:.08em;
+  padding:1px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--line);white-space:nowrap}
+.tlk-sas-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 4px}
+.tlk-more{margin-top:10px}.tlk-more summary{cursor:pointer;color:var(--txt2,var(--txt));padding:6px 0;list-style:none}
+.tlk-more summary::-webkit-details-marker{display:none}
+.tlk-more summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-more[open] summary::before{content:'▾'}
+.tlk-more[open]{display:flex;flex-direction:column;gap:8px}
+body.dev-touch .tlk-req-act button,body.dev-touch .tlk-more summary{min-height:var(--tap)}
+body.dev-touch .tlk-more summary{display:flex;align-items:center}
+.tlk-invite{padding:8px 10px;border:1px dashed var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-inv-row{display:flex;gap:6px}.tlk-inv-row input{flex:1;min-width:0;font-family:var(--mono,monospace);font-size:var(--fs-xs)}
+.tlk-card{padding:8px 10px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tlk-sub{font-size:var(--fs-sm);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tlk-chk{display:inline-flex;gap:6px;align-items:center}
+/* Settings stacks stretch every input to the row (.prow.stack .pc input); a checkbox
+   stretched to 330px sits nowhere near the words it answers. */
+.pc .tlk-chk input[type=checkbox]{width:auto;flex:none;margin:0}
+/* On touch the LABEL is the target — tapping it toggles the box — so it takes the
+   --tap floor as real size and the box keeps its own. */
+body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
+.tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
+body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+/* their missions that use your agents (tlMissionsHTML) */
+.tlk-miss{display:flex;flex-direction:column;gap:6px}
+.tlk-miss-h{font-size:var(--fs-sm);color:var(--txt2,var(--txt))}
+.tlk-miss-row{display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:var(--fs-sm)}
+.tlk-miss-row.stopped{border-style:dashed;opacity:.8}
+.tlk-miss-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tlk-miss-main .tlk-why{flex-basis:100%;margin:0;font-size:var(--fs-xs);overflow-wrap:anywhere}
+body.dev-touch .tlk-miss-row button{min-height:var(--tap)}
+/* standing permissions — the same disclosure shape as "Use an invite code instead" */
+.tlk-stand summary{cursor:pointer;font-size:var(--fs-sm);color:var(--txt2,var(--txt));padding:4px 0;list-style:none}
+.tlk-stand summary::-webkit-details-marker{display:none}
+.tlk-stand summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-stand[open] summary::before{content:'▾'}
+.tlk-stand[open]{display:flex;flex-direction:column;gap:6px}
+.tlk-stand .tlk-why{margin:0;font-size:var(--fs-xs)}
+.tlk-stand-row{display:flex;gap:8px;align-items:center;font-size:var(--fs-sm)}
+.tlk-stand-row>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.pc .tlk-stand-add select{flex:0 1 150px}.pc .tlk-stand-add input[data-sa=days]{flex:0 1 150px}
+body.dev-touch .tlk-stand summary{min-height:var(--tap);display:flex;align-items:center}
+body.dev-touch .tlk-stand-row button,body.dev-touch .tlk-stand-add select,
+body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
+
+/* ---- Team Chat (24c-teamchat.js) ---- */
+.tc{display:grid;grid-template-columns:230px 1fr;height:100%;min-height:0}
+.tc-list{border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column;padding:6px;gap:2px}
+.tc-th{display:flex;gap:8px;align-items:center;text-align:left;padding:8px;border-radius:10px;min-height:var(--tap,40px)}
+.tc-th.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.tc-th:hover{background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.tc-th-txt b{display:flex;align-items:center;gap:6px}
+.tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.tc-head .av{width:34px;height:34px}
+.tc-head-txt{display:flex;flex-direction:column;flex:1;min-width:0}
+.tc-mute{font-size:var(--fs-xs)}
+.tc-feed{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.tc-msg{display:flex;gap:8px;align-items:flex-start;max-width:78%}
+.tc-msg.mine{align-self:flex-end;flex-direction:row-reverse}
+.tc-msg .av{width:28px;height:28px;flex:none}
+.tc-bub{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:6px 10px;min-width:0}
+.tc-msg.mine .tc-bub{background:color-mix(in srgb,var(--acc) 16%,var(--bg3));border-color:color-mix(in srgb,var(--acc) 35%,var(--line))}
+.tc-meta{font-size:var(--fs-xs);display:flex;gap:6px;align-items:baseline}
+.tc-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.tc-tick{color:var(--acc);font-size:11px}.tc-tick.wait{color:var(--txt3,var(--txt2))}.tc-tick.bad{color:var(--err)}
+.tc-compose{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);align-items:flex-end}
+.tc-compose textarea{flex:1;resize:none;min-height:40px}
+.tc-note{padding:0 14px 8px;margin:0;font-size:var(--fs-xs)}
+.tc-empty{max-width:440px}
+/* a phone shows one pane at a time: the list, or the thread with a back button */
+.tc.phone{grid-template-columns:1fr}
+.tc.phone .tc-main{display:none}.tc.phone.in-thread .tc-list{display:none}.tc.phone.in-thread .tc-main{display:flex}
+.tc.phone .tc-msg{max-width:92%}
+body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);min-width:var(--tap)}
+.tlk-req>.av{width:44px;height:44px;flex:none}
+.tlk-head .av{width:26px;height:26px}
+
+/* Design with AI, at the top of the character editor */
+.ave-design{display:flex;gap:8px;margin:4px 0 2px}
+.ave-design .ave-desc{flex:1;min-width:0}
+.ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}
 </style>
 </head>
 <body>
@@ -3663,10 +3887,17 @@ function md(src){
   return h.replace(/\x00B(\d+)\x00/g,(m,i)=>blocks[+i]);
 }
 function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
-function toast(t){
+/* toast(text) says something happened. toast(text,{label,go,ms}) also offers the one
+   thing to do about it (a link request: "Review"); it stays longer, and is the only
+   part of the stack that takes a tap — the rest of #toasts lets clicks through. */
+function toast(t,act){
   let box=document.getElementById('toasts');
   if(!box){box=document.createElement('div');box.id='toasts';document.body.appendChild(box)}
   const d=document.createElement('div');d.className='toast';d.textContent=t;
+  if(act&&act.label&&typeof act.go==='function'){
+    const b=document.createElement('button');b.className='endbtn toast-act';b.textContent=act.label;
+    b.onclick=()=>{d.remove();act.go()};d.classList.add('has-act');d.appendChild(b);
+  }
   box.prepend(d);
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
@@ -3675,7 +3906,7 @@ function toast(t){
     const done=()=>d.remove();
     if(typeof Motion!=='undefined')Motion.run(d,[{transform:'none',opacity:1},{transform:'translateX(40px)',opacity:0}],{duration:180,easing:'cubic-bezier(.4,0,.7,.2)'}).finished.then(done);
     else done();
-  },3500);
+  },(act&&act.ms)||3500);
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
@@ -4009,11 +4240,197 @@ function uiIcon(name,px,cls){
   px=px||16;
   return `<svg class="ic${cls?' '+cls:''}" width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 }
+/* ================= Characters: one face per agent, everywhere =================
+   Every agent on this machine — your agent, you, and each specialist — has a small
+   pixel-art character, and this file is how the DESKTOP shows it. It does not draw
+   anybody: the server does (agentos/avatars.py), once, from one stored recipe, and
+   every surface here asks it for the same PNG. That is the whole point — the
+   specialist on the Crew stage, beside its message in Chat, on its line in Logs, on
+   its card in Missions and on an approval card is the same person, because there is
+   only one painter and one recipe, and a second painter here would be a second
+   definition of a face waiting to drift.
+
+   What lives here: the list (`/api/avatars`, loaded once and again on the
+   `avatars` / `fabric_defs` events), `avatarImg()` which every surface calls, the
+   repaint that swaps every face on screen in place after an edit, and the editor.
+   An edit is saved on every click, so the whole desktop — chat, logs, the stage —
+   changes while you watch; there is no Save button to forget.
+
+   Faces — GUI/SUI: this. TUI: `bento avatar` prints the same characters as
+   half-block pixels from the same grid. The characters are per person (your own
+   database) and never per space: switching project does not change who your
+   colleagues look like.
+
+   Loaded before 01d (the Crew scene reads AVATARS). `var`, not `let`. */
+var AVATARS={list:[],by:{},pal:null,loaded:false,pending:null,
+  off:(()=>{try{return localStorage.getItem('avatars.off')==='1'}catch(e){return false}})()};
+
+function avatarsLoad(){
+  if(AVATARS.pending)return AVATARS.pending;
+  AVATARS.pending=fetch('/api/avatars').then(r=>r.json()).then(d=>{
+    AVATARS.list=d.avatars||[];AVATARS.pal=d.palette||null;
+    AVATARS.by=Object.fromEntries(AVATARS.list.map(a=>[a.key,a]));
+    AVATARS.loaded=true;
+  }).catch(()=>{}).finally(()=>{AVATARS.pending=null});
+  return AVATARS.pending;
+}
+/* Whose face a principal gets. Only CHARACTERS get one: your agent (the `user`
+   principal is your agent acting for you), you, and specialists. A flow, an app or
+   the system is not a person, and giving one a face would be claiming it was. */
+function avatarKeyOf(principal){
+  const p=String(principal||'');
+  if(p==='user'||p==='@agent')return '@agent';
+  if(p==='@me')return '@me';
+  if(p.startsWith('subagent:'))return p.slice(9);
+  return '';
+}
+function avatarSrc(key,o){
+  o=o||{};
+  const a=AVATARS.by[key],v=a?a.v:0;
+  return '/api/avatar.png?key='+encodeURIComponent(key)
+    +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
+    +(o.frame?'&frame='+o.frame:'')+'&v='+v;
+}
+/* A face from ANOTHER team — a linked machine's agent, a person who sent a message.
+   Their recipe travelled with the link; the server paints it (and holds it to the
+   closed set). Still this file, so there is still one door that builds the URL. */
+function avatarRecipeSrc(rec,o){
+  o=o||{};
+  return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))+(o.crop===''?'':'&crop='+(o.crop||'face'));
+}
+function avatarRecipeImg(rec,cls,alt){
+  if(AVATARS.off||!rec)return '';
+  return `<img class="av ${cls||''}" src="${avatarRecipeSrc(rec)}" alt="${esc(alt||'')}" title="${esc(alt||'')}" loading="lazy" draggable="false">`;
+}
+/* The one way a face goes on screen. `data-av` is what the repaint looks for; the
+   alt text is the character in words, which is also what a screen reader hears. */
+function avatarImg(key,cls,o){
+  if(!key||AVATARS.off)return '';
+  const a=AVATARS.by[key];
+  const label=a?a.label:key, about=a?a.about:'';
+  return `<img class="av ${cls||''}" data-av="${esc(key)}" src="${avatarSrc(key,o)}" alt="${esc(about||label)}" title="${esc(label)}${about?' — '+esc(about):''}" draggable="false">`;
+}
+/* A chat header: the face, then the label. The live relabel (engine_info) goes
+   through here too, or it would wipe the face it did not know was there. */
+function chatWho(key,label){return avatarImg(key,'av-who')+label}
+/* After an edit, every face already on screen changes in place — chat history,
+   log rows, cards — rather than on the next render. */
+function avatarsRepaint(){
+  document.querySelectorAll('img.av[data-av]').forEach(img=>{
+    const k=img.dataset.av,a=AVATARS.by[k];if(!a)return;
+    const u=new URL(img.src,location.href);
+    if(u.searchParams.get('v')!==String(a.v)){u.searchParams.set('v',a.v);img.src=u.pathname+u.search}
+    img.alt=a.about||a.label;img.title=a.label+(a.about?' — '+a.about:'');
+  });
+  document.querySelectorAll('.av-sprite[data-av]').forEach(el=>{
+    const a=AVATARS.by[el.dataset.av];if(a)el.style.backgroundImage=`url("${avatarSrc(el.dataset.av,{sheet:1})}")`;
+  });
+  if(typeof crewAvatarsChanged==='function')crewAvatarsChanged();
+}
+function avatarsChanged(){return avatarsLoad().then(avatarsRepaint)}
+function setAvatarsOff(off){
+  AVATARS.off=!!off;try{localStorage.setItem('avatars.off',off?'1':'0')}catch(e){}
+  if(typeof refreshApp==='function'){refreshApp('chat');refreshApp('logs');refreshApp('settings')}
+}
+/* A full, animated figure: the four-frame sheet as a background, stepped by CSS —
+   stand, blink, wave one arm, then the other. No timer, so nothing to stop when it
+   is removed, and reduced motion holds it on the first frame (21-avatars.css). */
+function avatarSprite(key,px){
+  const u=Math.max(2,Math.round((px||104)/26));
+  return `<div class="av-sprite" data-av="${esc(key)}" style="--u:${u}px;background-image:url('${avatarSrc(key,{sheet:1})}')" role="img" aria-label="${esc((AVATARS.by[key]||{}).about||key)}"></div>`;
+}
+
+/* ---- the editor ----
+   One dialog, the dialog kit every other prompt uses. Each choice is saved the
+   moment it is clicked and the whole desktop repaints, so the thing you are
+   editing changes in Chat, in Logs and on the stage behind the dialog while you
+   pick. The options are the server's own closed set (`palette`), so nothing can be
+   offered here that the server would then refuse. */
+async function avatarEdit(key){
+  await avatarsLoad();
+  const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
+  const P=AVATARS.pal;
+  const scr=document.createElement('div');scr.className='dlg-scrim';
+  const sw=(field,items,cur,rgbOf)=>items.map(it=>{
+    const val=field==='hue'?it.hue:it.i;const on=val===cur;
+    return `<button class="ave-sw${on?' on':''}" data-f="${field}" data-v="${val}" title="${esc(it.name)}" aria-label="${esc(it.name)}" aria-pressed="${on}" style="--c:rgb(${rgbOf(it).join(',')})"></button>`}).join('');
+  const draw=()=>{
+    const r=AVATARS.by[key].recipe;
+    scr.querySelector('.ave-stage').innerHTML=avatarSprite(key,208);
+    scr.querySelector('.ave-about').textContent=AVATARS.by[key].about;
+    scr.querySelector('.ave-rows').innerHTML=`
+      <div class="ave-row"><span>Skin</span><div>${sw('skin',P.skin,r.skin,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Hair</span><div>${sw('hair',P.hair,r.hair,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Style</span><div class="ave-chips">${P.style.map(s=>`<button class="ave-chip${s===r.style?' on':''}" data-f="style" data-v="${s}" aria-pressed="${s===r.style}">${s}</button>`).join('')}</div></div>
+      <div class="ave-row"><span>Colour</span><div>${sw('hue',P.shirt,r.hue,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Wears</span><div class="ave-chips">${(P.outfit||[]).map(o=>`<button class="ave-chip${o===r.outfit?' on':''}" data-f="outfit" data-v="${o}" aria-pressed="${o===r.outfit}">${o}${o==='blazer'?' · the lead':''}</button>`).join('')}</div></div>
+      <div class="ave-row"><span>Trousers</span><div>${sw('pants',P.pants,r.pants,x=>x.rgb)}</div></div>
+      <div class="ave-row"><span>Extras</span><div class="ave-chips">
+        <button class="ave-chip${r.glasses?' on':''}" data-f="glasses" data-v="${!r.glasses}" aria-pressed="${!!r.glasses}">glasses</button>
+        <button class="ave-chip${r.blush?' on':''}" data-f="blush" data-v="${!r.blush}" aria-pressed="${!!r.blush}">blush</button></div></div>`;
+    scr.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{
+      const f=b.dataset.f;let v=b.dataset.v;
+      v=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
+      const res=await fetch('/api/avatars/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({[f]:v})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+      if(res.error){if(typeof toast==='function')toast(res.error);return}
+      await avatarsChanged();draw();
+    });
+  };
+  scr.innerHTML=`<div class="dlg ave" role="dialog" aria-modal="true" aria-label="Character of ${esc(a.label)}">
+      <div class="dlg-t">${esc(a.key==='@me'?'Your character':a.label)}</div>
+      <div class="dlg-m">${a.key==='@me'?'You, as the crew sees you — beside your messages.'
+        :a.key==='@agent'?'Your agent — in the middle of the stage, and beside every reply.'
+        :'This specialist, everywhere it appears: the stage, chat, logs and Missions.'}</div>
+      <form class="ave-design"><input class="ave-desc" maxlength="300" autocomplete="off"
+          placeholder="Describe them — e.g. a calm lead with a grey bun and glasses, in a violet blazer"
+          aria-label="Describe the character"><button class="pact" type="submit">Design</button></form>
+      <div class="ave-said mut" aria-live="polite"></div>
+      <div class="ave-body"><div class="ave-stage"></div><div class="ave-rows"></div></div>
+      <div class="ave-about mut"></div>
+      <div class="dlg-b"><button class="ave-reroll" title="A new look, keeping the shirt colour">Surprise me</button><button class="dlg-ok">Done</button></div></div>`;
+  document.body.appendChild(scr);
+  draw();
+  const close=()=>scr.remove();
+  scr.querySelector('.dlg-ok').onclick=close;
+  scr.onclick=e=>{if(e.target===scr)close()};
+  scr.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  /* Design with AI: the machine's model picks from the same closed set the swatches
+     offer, so what comes back is always something this editor could have clicked. It
+     applies at once like every other choice here, and Undo puts the look back. */
+  scr.querySelector('.ave-design').onsubmit=async e=>{
+    e.preventDefault();
+    const inp=scr.querySelector('.ave-desc'),said=scr.querySelector('.ave-said'),btn=scr.querySelector('.ave-design button');
+    const description=inp.value.trim();if(!description){inp.focus();return}
+    btn.disabled=true;said.textContent='Designing…';
+    const r=await fetch('/api/avatars/'+encodeURIComponent(key)+'/design',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({description})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    btn.disabled=false;
+    if(r.error){said.textContent=r.error;return}
+    await avatarsChanged();draw();
+    const by=r.how==='model'?'Designed by '+(r.model||'your model')+(r.note?' — '+r.note:'.'):r.said;
+    said.innerHTML=esc(by)+(r.dropped&&r.dropped.length?' <span>Left out (not an option): '+esc(r.dropped.join(', '))+'.</span>':'')
+      +' <button class="endbtn ave-undo" type="button">Undo</button>';
+    said.querySelector('.ave-undo').onclick=async()=>{
+      const p=r.previous||{};
+      await fetch('/api/avatars/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({skin:p.skin,hair:p.hair,style:p.style,pants:p.pants,glasses:!!p.glasses,blush:!!p.blush,hue:p.hue,outfit:p.outfit})});
+      await avatarsChanged();draw();said.textContent='Put back as it was.';
+    };
+  };
+  scr.querySelector('.ave-reroll').onclick=async()=>{
+    await fetch('/api/avatars/'+encodeURIComponent(key)+'/reroll',{method:'POST'});
+    await avatarsChanged();draw();
+  };
+  scr.querySelector('.dlg-ok').focus();
+}
+avatarsLoad();
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
 const ICONS={
   chat:['#4AA9FF','#0A5FD9','<path d="M12 4.3c-4.5 0-8.1 2.9-8.1 6.5 0 2 1.1 3.9 2.9 5.1l-.6 3.6 3.6-1.9c.7.1 1.4.2 2.2.2 4.5 0 8.1-2.9 8.1-6.5S16.5 4.3 12 4.3Z"/><path d="M8.6 10.8h.01M12 10.8h.01M15.4 10.8h.01" stroke-width="2.3"/>'],
+  teamchat:['#34D399','#047857','<path d="M4 6.6c0-.9.7-1.6 1.6-1.6h8.2c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H9.2L6 16v-2.6h-.4c-.9 0-1.6-.7-1.6-1.6Z"/><path d="M18.2 9.4h.2c.9 0 1.6.7 1.6 1.6v5c0 .9-.7 1.6-1.6 1.6H18V20l-3.2-2.4h-3.4c-.9 0-1.6-.7-1.6-1.6v-.4"/>'],
   taskmgr:['#6B7684','#39414E','<path d="M3.8 12.2h3.6l2.4-5.8 4.2 11.2 2.4-5.4h3.8"/>'],
   terminal:['#4A5160','#1E222B','<path d="M6.5 8.2l4 3.8-4 3.8"/><path d="M12.8 16.4h4.7"/>'],
   browser:['#38BDF8','#0369A1','<circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6"/><path d="M12 4.2c2.3 2.2 3.6 4.9 3.6 7.8s-1.3 5.6-3.6 7.8c-2.3-2.2-3.6-4.9-3.6-7.8S9.7 6.4 12 4.2Z"/>'],
@@ -4232,19 +4649,27 @@ function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
   document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
+  document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
-  // the second scene: the machine as a watch movement (01c-movement.js)
-  // 01c loads after this file: at first paint MOVEMENT is still undefined and
-  // 01c starts itself; from then on the switch is handled here
-  if(typeof MOVEMENT==='undefined')return;
-  if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop();
+  // the drawn scenes: the watch movement (01c) and the crew (01d). Both load
+  // AFTER this file, so at first paint each is still undefined and starts itself;
+  // from then on the switch is handled here. Each is tested separately — one
+  // early `return` on the first undefined would leave the other permanently
+  // unreachable on a first paint, which is the bundle-order trap in a new shape.
+  if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
+  if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
 }
-/* Which scene: 'aurora' (a sky that follows the day) or 'movement' (a watch
-   movement that shows what is running). Per browser, like the look itself. */
+/* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
+   that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
+   like the look itself. An unknown name falls back to aurora rather than throwing —
+   this value comes out of localStorage, which outlives any release that renames a
+   scene, and a desktop that fails to paint because of a stale string is not a
+   trade worth making. */
+var IMMERSIVE_SCENES=['aurora','movement','crew'];
 function setImmersiveScene(scene){
-  scene=scene==='movement'?'movement':'aurora';
+  scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
   IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
   applyImmersive();
   if(typeof loadWallpaper==='function')loadWallpaper();
@@ -4272,7 +4697,7 @@ function immersiveBrainText(){
    scene's minute tick re-checks the band and reloads only when it changes —
    a wallpaper that swaps under an open window every minute would be a bug. */
 function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
-function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':immersiveWallBand()}
+function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':IMMERSIVE.scene==='crew'?'immersive-crew':immersiveWallBand()}
 /* ---- the home scene ----
    With no window open the desktop is a place, not a tile board: a greeting by
    the hour (and by name on a machine with accounts), the date, the prompt bar
@@ -4338,7 +4763,11 @@ function homeRender(){
   const brain=immersiveBrainText();
   const line=h.querySelector('.hm-now');
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
-  line.textContent=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  // the agent's face on its own line: the one on the stage and beside every reply.
+  // Rewritten only when the words change, so the image is not refetched every minute.
+  const said=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  const html=(typeof avatarImg==='function'?avatarImg('@agent','av-home'):'')+esc(said);
+  if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
   line.classList.toggle('br-open',!n&&!!br);
   line.onclick=(!n&&br)?()=>openApp('brief'):null;
   h.hidden=false;
@@ -4499,6 +4928,11 @@ function movementCovered(){
 }
 /* an impulse from the OS: a turn began or ended, a tool ran, a flow moved */
 function movementPulse(kind,label,ev){
+  // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a
+  // second call beside each of the websocket's five is deliberate: a new scene must not
+  // mean five more edits in a file that knows nothing about scenes, and a sixth event
+  // wired to only one of them is exactly the drift that produces a half-live desktop.
+  if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(!MOVEMENT.on)return;
   const M=MOVEMENT,now=performance.now();
   if(kind==='turn'&&label){M.turns[label]={start:now,end:0};return}
@@ -4634,6 +5068,472 @@ function movementDraw(dt){
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();
+/* ================= Crew: the roster, drawn, and it is the real one =================
+   The third scene of the immersive look (Settings → Appearance → Immersive →
+   Scene). A shallow stage across the lower third: the agent in the middle, and
+   beside it ONE FIGURE PER SUBAGENT THIS MACHINE ACTUALLY HAS. They rest, they
+   look up when a turn starts, and the one that is working steps forward to the
+   work line with the tool it just called named above its head.
+
+   Why this shape, and not an office floor with sprites:
+
+   - **Every figure is a real principal.** The roster is /api/subagents, the same
+     list the Team app shows. Nothing invented, nobody added for the look. With
+     no subagents you get the agent alone and one line saying so — which is the
+     honest answer, and a door to building one. A cast of colleagues who do not
+     exist would be the dead control this project's honesty rules forbid,
+     wearing a friendlier face.
+   - **Every movement is an event.** A figure steps forward because a
+     `fabric_event` named it, raises its arms because a `tool_start` fired, and
+     sits down on `flow_done`. If an animation here does not tell you something
+     a text label would not have told you faster, it should not be drawn.
+   - **They are the SAME people as everywhere else.** Each figure is the
+     character the server drew for that principal (agentos/avatars.py) — the
+     face beside its messages in Chat, on its lines in Logs and on its card in
+     Missions — fetched once as a four-frame sheet and blitted. This file paints
+     nobody. It used to (four passes of its own painter, which is where the
+     rules below were learned), and a second painter was a second definition of
+     a face: the researcher on the stage and the researcher in Chat would have
+     been two people the first time either was changed. Nothing is licensed and
+     nothing ships: the sheet is generated on this machine from a stored recipe.
+   - **The rules the four drawing passes left** — two eyes and nothing on the
+     face that masks it, a working light ABOVE the head, a colour per
+     specialist that no two share, hands and feet, a shadow at the feet, and
+     nobody ever completely still — now live in the server's painter and its
+     tests (`tests/test_avatars.py`); the ones about MOVEMENT stay here.
+   - **The stage is where the roster changes, too.** A specialist created while
+     the scene is on walks in from the edge and says hello; one that finishes a
+     piece of work says so in a bubble; in a huddle, the one talking lights up
+     with the start of what it said over its head. All three are events, not
+     decoration: `fabric_defs`, `flow_done` and `agent_say`.
+   - **Every figure says what it runs on.** Under each name is the provider it
+     ANSWERS on (fabric.agent_brain via /api/subagents), and while it works the
+     light above its head becomes a tag naming it — so three busy agents on three
+     providers read as exactly that.
+
+   Cost, and where it stops: the same budget as the Movement scene, because it
+   is the same loop. One viewport canvas, at most 20 frames a second and 12 when
+   idle, one drawImage per figure from a sheet fetched once, and at most nine figures. Not drawn at all
+   when the tab is hidden, under a full-screen or maximised window, or under a
+   phone sheet; one still frame under prefers-reduced-motion. No filter, no blur,
+   no canvas shadow. The roster is fetched once a minute while the scene is on,
+   and never for the sake of an animation.
+
+   Faces — GUI/SUI: this canvas, inside #wall so the parallax carries it.
+   TUI: not applicable, a terminal has no wallpaper; the scene row says so.
+   `var`, not `let`: the bundle is one script. */
+var CREW={on:false,cv:null,ctx:null,raf:0,last:0,t:0,W:0,H:0,dpr:1,font:'',static:false,
+  cast:[],rosterAt:0,busy:{},tool:null,turns:0,drawn:0,drawMs:0,greeted:0,
+  arrive:{},said:{},known:null};
+var CREW_SHEETS={};                   // key → {img,v}: one sheet per character, from the server
+var CREW_WALK_MS=2600;                // a new specialist's walk in from the edge
+var CREW_SAY_MS=3800;                 // how long a bubble stays up
+var CREW_MAX=8;                       // figures beside the agent; a stage, not a census
+var CREW_WORK_MS=9000;                // how long a figure stays forward after its last event
+var CREW_TOOL_MS=6000;                // how long the tool it called stays named above it
+
+function crewReduced(){return matchMedia('(prefers-reduced-motion: reduce)').matches}
+function crewStart(){
+  if(CREW.on)return;
+  const wall=document.getElementById('wall');if(!wall)return;
+  let cv=document.getElementById('crew');
+  if(!cv){cv=document.createElement('canvas');cv.id='crew';cv.setAttribute('aria-hidden','true');wall.appendChild(cv)}
+  CREW.cv=cv;CREW.ctx=cv.getContext('2d');CREW.on=true;CREW.static=crewReduced();
+  // read once: getComputedStyle per label per frame was the expensive thing in 01c
+  try{CREW.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){CREW.font='sans-serif'}
+  crewResize();
+  addEventListener('resize',crewResize);
+  document.addEventListener('visibilitychange',crewKick);
+  crewRoster();
+  CREW.last=performance.now();
+  crewKick();
+}
+function crewStop(){
+  if(!CREW.on)return;
+  CREW.on=false;cancelAnimationFrame(CREW.raf);CREW.raf=0;
+  removeEventListener('resize',crewResize);
+  document.removeEventListener('visibilitychange',crewKick);
+  if(CREW.cv)CREW.cv.remove();CREW.cv=null;CREW.ctx=null;
+  CREW_SHEETS={};CREW.known=null;CREW.arrive={};CREW.said={};
+}
+function crewResize(){
+  const cv=CREW.cv;if(!cv)return;
+  const dpr=Math.min(2,devicePixelRatio||1);
+  CREW.W=innerWidth;CREW.H=innerHeight;CREW.dpr=dpr;
+  cv.width=Math.round(innerWidth*dpr);cv.height=Math.round(innerHeight*dpr);
+  crewKick();
+}
+function crewKick(){
+  if(!CREW.on)return;
+  if(CREW.static){crewDraw(0);return}
+  if(!CREW.raf)CREW.raf=requestAnimationFrame(crewFrame);
+}
+/* nobody can see it — the same test the dial uses, for the same reason */
+function crewCovered(){
+  if(document.hidden)return true;
+  const b=document.body.classList;
+  if(b.contains('has-fullwin'))return true;
+  if(typeof WM!=='undefined'&&[...WM.wins.values()].some(w=>w.max&&!w.min))return true;
+  if(b.contains('dev-mobile')&&b.contains('has-win'))return true;
+  return false;
+}
+/* The roster IS the cast. Enabled subagents, by name, capped at CREW_MAX — and
+   the agent itself is added at draw time, so a machine with no specialists still
+   has somebody on stage. Once a minute while the scene is on, never per frame. */
+async function crewRoster(force){
+  if(!CREW.on)return;
+  if(!force&&performance.now()-CREW.rosterAt<60000&&CREW.cast.length)return;
+  CREW.rosterAt=performance.now();
+  try{
+    const d=await (await fetch('/api/subagents')).json();
+    // Everybody keeps their place: people already on stage in the order they
+    // stood, newcomers after them. Sorted afresh, a new name early in the
+    // alphabet slid the whole row sideways the moment it arrived.
+    const was=CREW.cast.map(c=>c.name);
+    const pos=n=>{const i=was.indexOf(n);return i<0?1e9:i};
+    CREW.agentBrain=(d.agent_brain&&d.agent_brain.provider_name)||'';
+    CREW.cast=(d.subagents||d.agents||[])
+      .filter(s=>s&&(s.name||s.id)&&s.enabled!==false)
+      // `brain` is what the agent ANSWERS on (fabric.agent_brain), not what it is
+      // pinned to — a switched-off provider sends it to the machine's brain
+      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}))
+      .sort((a,b)=>pos(a.name)-pos(b.name))
+      .slice(0,CREW_MAX);
+    // somebody new has no character yet until /api/avatars has generated one
+    if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
+    // Arrivals. The first roster is who was already here — nobody walks in on a
+    // page load, or every reload would be a parade. After that, a name the stage
+    // has not seen walks in from the nearer edge and says hello.
+    const now=performance.now();
+    if(CREW.known)CREW.cast.forEach(c=>{if(!CREW.known.has(c.name)){CREW.arrive[c.name]=now;crewSay(c.name,'hello!')}});
+    CREW.known=new Set(CREW.cast.map(c=>c.name));
+    crewKick();
+  }catch(e){}
+}
+/* The roster or somebody's look changed: a new sheet for anybody whose version
+   moved, and a fresh roster so a specialist made a moment ago walks on now
+   rather than within the minute. Called by 00e's repaint. */
+function crewAvatarsChanged(){
+  if(!CREW.on)return;
+  for(const k in CREW_SHEETS){const a=AVATARS.by[k];if(!a||a.v!==CREW_SHEETS[k].v)delete CREW_SHEETS[k]}
+  crewRoster(true);
+}
+/* A bubble above a figure. Short, and only for things that happened. */
+/* `turn` marks a huddle line: a conversation has one speaker at a time, so a new
+   turn clears the last one's words instead of stacking a crowd of bubbles. */
+function crewSay(name,text,turn){
+  if(turn)for(const k in CREW.said)if(CREW.said[k].turn)delete CREW.said[k];
+  CREW.said[name]={text:String(text).slice(0,40),at:performance.now(),turn:!!turn};crewKick()}
+/* An impulse from the OS, forwarded by movementPulse so the websocket keeps one
+   seam. `flow` carries a name that may be a flow, an agent or an event — we
+   light whichever cast member it matches, and nobody if it matches none, rather
+   than lighting a random figure to make the scene look busy. */
+function crewPulse(kind,label,ev){
+  if(!CREW.on)return;
+  const now=performance.now();
+  if(kind==='turn'){CREW.turns++;crewKick();return}
+  // a turn of a huddle: the one talking lights up, with its words over its head
+  if(kind==='say'){const w=crewMatch(label);
+    // a question to a colleague says who it is for, so the stage reads as a conversation
+    if(w){CREW.busy[w]=now;crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+    crewKick();return}
+  if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
+  if(kind==='tool'&&label){
+    CREW.tool={name:String(label).replace(/_/g,' ').slice(0,24),at:now,who:crewWhoIsUp()};
+    crewKick();return;
+  }
+  const who=crewMatch(label)||crewMatch(ev&&ev.agent);
+  if(kind==='flow'){if(who)CREW.busy[who]=now;crewKick();return}
+  if(kind==='done'){if(who){delete CREW.busy[who];crewSay(who,'done \u2713')}crewKick();return}
+}
+/* Name → a cast member, loosely: the event's spelling and the roster's rarely
+   match on case or separators. Returns null when nothing matches. */
+function crewMatch(label){
+  if(!label)return null;
+  const k=String(label).toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!k)return null;
+  const hit=CREW.cast.find(c=>{const n=c.name.toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))});
+  return hit?hit.name:null;
+}
+/* Who a bare tool call belongs to: the specialist that moved most recently, or
+   the agent when none has. A tool call carries no principal in the stream, so
+   this is a guess and it is made in ONE place rather than in the drawing. */
+function crewWhoIsUp(){
+  let best=null,at=0;
+  for(const k in CREW.busy)if(CREW.busy[k]>at){at=CREW.busy[k];best=k}
+  return best;
+}
+function crewFrame(now){
+  CREW.raf=0;
+  if(!CREW.on)return;
+  const dt=Math.min(.25,(now-CREW.last)/1000);
+  const busy=(typeof RUNNING!=='undefined'&&RUNNING.size)||Object.keys(CREW.busy).length;
+  if(dt<(busy?0.048:0.083)){CREW.raf=requestAnimationFrame(crewFrame);return}
+  CREW.last=now;
+  crewStep(dt);
+  if(!crewCovered()){const t0=performance.now();crewDraw(dt);CREW.drawMs=CREW.drawMs*.9+(performance.now()-t0)*.1}
+  if(performance.now()-CREW.rosterAt>60000)crewRoster();
+  CREW.raf=requestAnimationFrame(crewFrame);
+}
+function crewStep(dt){
+  CREW.t+=dt;
+  const now=performance.now();
+  for(const k in CREW.busy)if(CREW.busy[k]<now-CREW_WORK_MS)delete CREW.busy[k];
+  if(CREW.tool&&CREW.tool.at<now-CREW_TOOL_MS)CREW.tool=null;
+  for(const k in CREW.said)if(CREW.said[k].at<now-CREW_SAY_MS)delete CREW.said[k];
+  for(const k in CREW.arrive)if(CREW.arrive[k]<now-CREW_WALK_MS)delete CREW.arrive[k];
+}
+/* ---- drawing ---- */
+/* The palette for everything that is NOT a person: the labels, the tool name,
+   the ground shadow. The people are the server's; what the theme owns here is
+   the room around them. Each specialist's colour is its shirt hue — handed out
+   when the character was generated, distinct across the roster — so the name
+   under a figure and the tool above it are tinted like the person they belong
+   to. Brass and ruby are this look's two accents, shared with the dial. */
+function crewInk(){
+  const light=document.documentElement.dataset.theme==='light';
+  // The crew's plate is a dark room in BOTH themes (immersive-crew.svg), as the
+  // dial's is, so the labels are light-on-dark either way; the light theme
+  // only sits them a little deeper so they do not read washed out beside it.
+  // Working is MORE COLOUR, not more white — lightness alone took every name
+  // towards beige, the opposite of the colour-per-specialist it is there for.
+  return {light,
+    satLit: light ? 68 : 66,  lumLit: light ? 60 : 70,   // working
+    satDim: light ? 56 : 52,  lumDim: light ? 52 : 60,   // standing by
+    brass: light ? '150,116,52' : '232,197,120',
+    ruby:  light ? '212,60,96'   : '236,80,120'};
+}
+function crewSkin(ink, h, lit){
+  const sa = lit ? ink.satLit : ink.satDim, l = lit ? ink.lumLit : ink.lumDim;
+  return {hue: h,
+          line:  `hsl(${h} ${sa + 8}% ${l + 16}%)`,
+          shade: `hsl(${h} 26% 7%)`};
+}
+/* A character's colour: its shirt hue, from its stored recipe. Until the list
+   has loaded, a stable fallback from the name, so the first frame is not grey. */
+var CREW_AGENT_HUE=172;               // the server's AGENT_HUE: the desktop's teal
+function crewHueOf(key){
+  const a=(typeof AVATARS!=='undefined')&&AVATARS.by[key];
+  if(a&&a.recipe&&typeof a.recipe.hue==='number')return a.recipe.hue;
+  return key==='@agent'?CREW_AGENT_HUE:Math.floor(crewHash(key)*360);
+}
+/* The sheet: four frames side by side (stand, blink, one arm up, the other),
+   16x26 each, fetched once per character and version. A sheet that has not
+   arrived yet draws nothing that frame — never a placeholder person. */
+var CREW_SPR_W=16, CREW_SPR_H=26;
+function crewSheet(key){
+  const a=(typeof AVATARS!=='undefined')&&AVATARS.by[key], v=a?a.v:0;
+  let e=CREW_SHEETS[key];
+  if(!e||e.v!==v){
+    const img=new Image();img.decoding='async';
+    img.onload=crewKick;
+    img.src=avatarSrc(key,{sheet:1});
+    e=CREW_SHEETS[key]={img,v};
+  }
+  return e.img.complete&&e.img.naturalWidth?e.img:null;
+}
+/* `ink` is an "r,g,b" triple (the scene's own brass and ruby); `css` overrides it
+   with a ready colour, which is how a name is tinted like the figure it belongs
+   to without every caller having to build a string. */
+function crewText(ctx,txt,x,y,size,ink,alpha,weight,align,css){
+  ctx.font=`${weight||500} ${size}px ${CREW.font||'sans-serif'}`;
+  ctx.textAlign=align||'center';ctx.textBaseline='middle';
+  if(css){ctx.globalAlpha=alpha;ctx.fillStyle=css;ctx.fillText(txt,x,y);ctx.globalAlpha=1}
+  else{ctx.fillStyle=`rgba(${ink},${alpha})`;ctx.fillText(txt,x,y)}
+}
+/* A name cut to the room its own slot has. Six specialists on a phone leaves
+   about 48px a head, where "validator" and "researcher" ran into each other and
+   read as one word — the label stopped naming anybody. Derived from the step and
+   the font size rather than a fixed cap, so it only bites where it must. */
+function crewFit(name,step,scale){
+  const px=Math.max(9,scale*.115);
+  const n=Math.max(5,Math.floor((step*.92)/(px*.58)));
+  return name.length>n?name.slice(0,n-1)+'\u2026':name.slice(0,18);
+}
+/* A stable number from a name, so a specialist's build and stance never change
+   between reloads. Cheap 32-bit string hash; nothing depends on its quality. */
+function crewHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+/* One figure: its shadow, its sprite, its status light, its name.
+
+   `p` is 0 at the resting spot and 1 stepped forward. Motion is in whole
+   sprite pixels, the way pixel art moves: an idle figure breathes by one pixel
+   on its own slow phase and blinks now and then; a working one hops two pixels
+   and waves, one arm and then the other. Under reduced motion it stands still
+   in its first frame. A figure WALKING (a new arrival) swings its arms, one
+   then the other, and bobs a pixel a step. Nothing here is a canvas shadow — the ground contact is a
+   flat ellipse, because a shadow is a blur and this layer moves under the
+   parallax on every pointer move. */
+function crewFigure(ctx,x,ground,scale,ink,key,hue,p,lift,label,sub,lit,walking){
+  const C=CREW, s=scale, t=C.t, tone=crewHash(key), ph=tone*6.283, still=C.static, dpr=C.dpr;
+  // whole device pixels per sprite pixel: an integer, or it is not pixel art
+  const u=Math.max(2,Math.round(s*dpr/25));
+  const blinking=!still&&((t*.31+tone*3)%1)<.045;
+  const frame=still?0:walking?(Math.floor(t*6)%2?3:2):lit?(Math.floor(t*3.2+ph)%2?3:2):blinking?1:0;
+  const breath=still?0:(Math.sin(t*1.6+ph)>.35?1:0);
+  const hop=lit&&!still?Math.round(Math.abs(Math.sin(t*3.2+ph))*2):0;
+  const bob=walking&&!still?Math.floor(t*6)%2:lit?hop:breath;   // in sprite pixels
+  const y=ground-p*s*.24;
+  const feet=Math.round(y*dpr), cxd=Math.round(x*dpr);
+  const dx=cxd-8*u, dy=feet-25*u-bob*u;
+  // The ground contact, so nobody floats. It follows the STEP — a figure that
+  // walks up the stage takes its shadow with it, or it hangs over a mark on the
+  // front line like a puppet — and stays down through the HOP, which is the
+  // only thing that tells a jump from a float.
+  if(ctx.ellipse){
+    ctx.beginPath();ctx.ellipse(x,y+1,6*u/dpr,1.4*u/dpr,0,0,Math.PI*2);
+    ctx.globalAlpha=.34;ctx.fillStyle=crewSkin(ink,hue,lit).shade;ctx.fill();ctx.globalAlpha=1;
+  }
+  const sheet=crewSheet(key);
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
+  ctx.globalAlpha=lit?1:.9;
+  if(sheet)ctx.drawImage(sheet,frame*CREW_SPR_W,0,CREW_SPR_W,CREW_SPR_H,dx,dy,CREW_SPR_W*u,CREW_SPR_H*u);
+  // working: a status light above the head, pulsing, square like the rest of
+  // the figure. Off the face on purpose — one mark in the middle of a face is
+  // what made the very first cut of this scene read as frightening.
+  const pulse=still?1:.6+.4*Math.sin(t*4+ph), q=Math.max(2,Math.round(u*1.4));
+  if(lit&&!sub){
+    ctx.globalAlpha=.55+.45*pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
+    ctx.fillRect(cxd-Math.round(q/2),dy-q-u,q,q);
+  }
+  ctx.restore();
+  const col=crewSkin(ink,hue,lit).line;
+  // Working, with a known brain: the light becomes a tag above the head that says
+  // WHAT it is working on — "● Anthropic" — so a row of three busy agents on three
+  // providers reads as that at a glance. The dot is the same pulsing ruby light.
+  if(lit&&sub)crewTag(ctx,sub,x,dy/dpr-u/dpr,Math.max(9,s*.11),col,.55+.45*pulse,ink);
+  // the name, tinted like its owner, and under it the brain it answers on
+  crewText(ctx,label,x,ground+s*.24,Math.max(9,s*.115),null,lit?.95:.6,600,'center',col);
+  if(sub)crewText(ctx,sub,x,ground+s*.37,Math.max(8,s*.095),null,lit?.7:.34,500,'center',col);
+  return (dy+7*u)/dpr;                                 // the head's centre, for the halo
+}
+/* The working tag: a pill above the head with the pulsing light and the provider. */
+function crewTag(ctx,text,x,top,size,col,pulse,ink){
+  ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  const h=Math.round(size*1.6), dot=Math.round(size*.5);
+  const w=Math.ceil(ctx.measureText(text).width)+dot+size*1.3;
+  const bx=Math.round(x-w/2), by=Math.round(top-h-3);
+  ctx.globalAlpha=.82;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(16,18,26)';
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,w,h,h/2);else ctx.rect(bx,by,w,h);ctx.fill();
+  ctx.globalAlpha=pulse;ctx.fillStyle=`rgb(${ink.ruby})`;
+  ctx.fillRect(bx+Math.round(size*.55),by+Math.round((h-dot)/2),dot,dot);
+  ctx.globalAlpha=1;
+  crewText(ctx,text,bx+size*.55+dot+(w-size*1.1-dot)/2,by+h/2,size,null,.95,600,'center',col);
+}
+function crewBubble(ctx,text,x,y,size,col,alpha,ink,maxW){
+  ctx.font=`600 ${size}px ${CREW.font||'sans-serif'}`;
+  // no wider than the figure's own slot: two neighbours talking must not overlap
+  if(maxW&&ctx.measureText(text).width+size*1.1>maxW){
+    while(text.length>4&&ctx.measureText(text+'\u2026').width+size*1.1>maxW)text=text.slice(0,-1);
+    text=text.trimEnd()+'\u2026';
+  }
+  const w=Math.ceil(ctx.measureText(text).width)+size*1.1, h=Math.round(size*1.8);
+  const bx=Math.round(x-w/2), by=Math.round(y-h);
+  ctx.globalAlpha=.9*alpha;ctx.fillStyle=ink.light?'rgb(252,248,240)':'rgb(20,22,30)';
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(bx,by,w,h,h/2);else ctx.rect(bx,by,w,h);
+  ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=1;ctx.stroke();
+  ctx.fillRect(Math.round(x)-1,by+h,2,3);
+  ctx.globalAlpha=1;
+  crewText(ctx,text,x,by+h/2,size,null,alpha,600,'center',col);
+}
+function crewDraw(dt){
+  const C=CREW,ctx=C.ctx;if(!ctx)return;
+  const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
+  ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0;
+  const who=(typeof agentName==='function')?agentName():'Aria';
+  const portrait=H>W;
+  // the stage: a shallow line across the lower third, with the work line above it
+  const ground=portrait?H*.80:H*.76;
+  const n=C.cast.length;
+  // The stage has a MINIMUM width, which matters only in the case it was written for:
+  // one figure alone. Sized purely by the cast, a machine with no specialists drew its
+  // agent at a third of the size of a machine with three — so the emptiest desktop,
+  // the one that most needs to look like something, looked the most like nothing.
+  const span=Math.min(W*.86,Math.max(420,(n+1)*Math.min(150,W/(n+2))));
+  const scale=Math.max(52,Math.min(portrait?84:104,span/Math.max(3.2,n+1.2)*0.82));
+  // the floor: ONE hairline, at their feet. The first cut drew a second line where a
+  // working figure stands, and at rest that line crossed every figure's shins — a mark
+  // that reads as a mistake rather than as a place. Stepping forward is legible from
+  // the figure moving and brightening; it does not need to be ruled.
+  ctx.beginPath();ctx.moveTo(W/2-span/2,ground+.5);ctx.lineTo(W/2+span/2,ground+.5);
+  ctx.strokeStyle=`rgba(${ink.brass},.16)`;ctx.lineWidth=1;ctx.stroke();
+  // places: the agent centre, the cast spread either side of it
+  const slots=[];
+  const step=n?span/(n+1):0;
+  for(let i=0;i<n;i++){
+    // fill outward from the middle so adding a specialist does not reshuffle the row
+    const half=Math.ceil((i+1)/2),side=i%2?1:-1;
+    slots.push({c:C.cast[i],x:W/2+side*half*step*0.92});
+  }
+  // Colours are the characters' own: each shirt hue was handed out when the
+  // character was generated, distinct across the roster and teal for the agent
+  // (avatars.py). Deciding them here as well — which this scene once did, per
+  // row — would be a second answer to "what colour is the researcher?".
+  const AGENT_HUE=crewHueOf('@agent');
+  const hueOf=C.cast.map(c=>crewHueOf(c.name));
+  // the agent — larger, centre, awake while any turn runs
+  const aLift=running?.5+.5*Math.sin(C.t*Math.PI*1.1):0;
+  const aBreath=running?0:.5+.5*Math.sin(C.t*Math.PI*.55);
+  const headY=crewFigure(ctx,W/2,ground,scale*1.22,ink,'@agent',AGENT_HUE,running?.55:0,
+    running?aLift*.5:0,who,C.agentBrain||'',running);
+  const heads={'@agent':{x:W/2,y:headY,sc:scale*1.22,hue:AGENT_HUE}};
+  if(running){ // a quiet ring round the agent's head — a ring, never a shadow
+    ctx.beginPath();ctx.arc(W/2,headY,scale*1.22*.24+aBreath*2,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${ink.ruby},.22)`;ctx.lineWidth=1.5;ctx.stroke();
+  }
+  // the cast. A new arrival walks from the nearer edge to its place, eased
+  // out so it slows as it arrives; it is drawn at its place from then on.
+  slots.forEach((s,i)=>{
+    const name=s.c.name, lit=!!C.busy[name];
+    const since=lit?(now-C.busy[name])/CREW_WORK_MS:1;
+    const p=lit?Math.min(1,(1-since)*3):0;               // step forward, then ease back
+    const lift=lit?.5+.5*Math.sin(C.t*Math.PI*1.6+crewHash(name)*6):0;
+    let x=s.x, walking=false;
+    if(C.arrive[name]&&!C.static){
+      const q=Math.min(1,(now-C.arrive[name])/CREW_WALK_MS), from=s.x<W/2?-scale*.4:W+scale*.4;
+      x=from+(s.x-from)*(1-Math.pow(1-q,3));walking=q<1;
+    }
+    const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
+      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
+    heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
+  });
+  // What somebody SAID: a hello on arrival, "done" when its work finished.
+  // A flat rounded box and a two-pixel tail, above the head and clear of the
+  // working light; it fades out over its last second.
+  for(const k in C.said){
+    const h=heads[k];if(!h)continue;
+    const age=(now-C.said[k].at)/CREW_SAY_MS, a=age>.75?(1-age)*4:1;
+    const up=C.busy[k]||(k==='@agent'&&C.turns)?.62:.42;   // clear of the working tag
+    crewBubble(ctx,C.said[k].text,h.x,h.y-h.sc*up,Math.max(9.5,scale*.12),crewSkin(ink,h.hue,true).line,a,ink,
+      Math.max(90,(step||scale*2)*1.1));
+  }
+  // the tool that just ran, above whoever ran it — the one label that carries news.
+  // Tinted like that figure, so with three working at once the name and the person
+  // it belongs to are one glance rather than two.
+  if(C.tool){
+    const age=(now-C.tool.at)/CREW_TOOL_MS,fade=Math.max(0,1-age);
+    const owner=C.tool.who?heads[C.tool.who]:null;
+    const sc=owner?scale:scale*1.22;
+    const skin=crewSkin(ink,owner?owner.hue:AGENT_HUE,true);
+    // clear of the status light, which sits at ~0.87 of a figure's height
+    const tx=owner?owner.x:W/2, ty=ground-sc*1.46;
+    crewText(ctx,C.tool.name,tx,ty,Math.max(9.5,scale*.125),null,.9*fade,600,'center',skin.line);
+    ctx.beginPath();ctx.moveTo(tx,ty+scale*.085);ctx.lineTo(tx,ty+scale*.14);
+    ctx.globalAlpha=.55*fade;ctx.strokeStyle=skin.line;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
+  }
+  // the standing line. With nobody on the roster it says so and says what to do
+  // about it — an empty stage that explains itself, not an empty stage.
+  const nb=Object.keys(C.busy).length;
+  const line=n===0?'No specialists yet — ask for one and they take a place here'
+    :nb?`${nb} of ${n} working`
+    :running?`${who} is working · ${n} ${n===1?'specialist':'specialists'} standing by`
+    :`${n} ${n===1?'specialist':'specialists'} standing by`;
+  crewText(ctx,line,W/2,ground+scale*(portrait?.62:.58),10,ink.brass,n===0?.42:.26,500);
+  C.drawn++;
+}
+// first paint: 01b ran before this file existed, so the scene starts itself
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -6677,6 +7577,7 @@ const APPS={
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
+  teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
@@ -7214,7 +8115,7 @@ function tickClock(){
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['brief','chat','apps','hostscreen','remotedesk','browser','files','terminal']],
+  ['Essentials',['brief','chat','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
   ['Automation',['jobs','automations','tasks','skills','mcp','telegram']],
@@ -8210,7 +9111,7 @@ function arrangeWidgets(){
      4. the wizard's preset gradient, or the stylesheet's mesh.
    The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
    cheap to rasterise on slow GPUs (no blur filters — gradients only). */
-const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement'];
+const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement','immersive-crew'];
 const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
 function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
 function themeWall(){
@@ -8611,13 +9512,20 @@ function buildApprovalBox(ev,cur){
   const detail=ev.name==='run_command'?(ev.args.command||'')
               :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
-  box.innerHTML=`<div class="atitle">Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?'Allow &amp; remember':'Always allow'}</button></div>`;
+  // the face of whoever is asking: your agent, or the specialist that wants this
+  // a linked team's standing offer (team.act) is about one of YOUR agents: resource "agent|action|scope"
+  const askKey=!ev.offer||ev.offer.principal_kind==='user'?'@agent'
+    :ev.offer.principal_kind==='subagent'?ev.offer.principal_id
+    :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
+  // an offer may name itself ("Always let home have analyst do this") — the words say
+  // exactly what the button writes, which "Allow & remember" does not for another team
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelector('.always').onclick=async()=>{
     if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
       resolveApproval(ev.id,true,true);
-      toast('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource);
+      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
     }else{
       const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
       await addPolicy('allow',pat);
@@ -8756,15 +9664,20 @@ function handle(ev){
       if(_cur){
         CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
         const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
-        if(who)who.innerHTML=engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model);
+        if(who)who.innerHTML=curWho();
       }
       break;}
     case 'turn_start':{
       if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
       if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
-                          model:ev.model==='claude-code'?'':(ev.model||'')};
-      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);}
+                          model:ev.model==='claude-code'?'':(ev.model||''),
+                          // `@researcher …` is the researcher answering, in its own face
+                          speaker:ev.speaker||'',
+                          // `@a @b …` is a huddle: the room answers, each in turn
+                          huddle:ev.huddle||null};
+      if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
+        if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
       updateSpin();
       if(_sk&&_sk.start)_sk.start(ev);
@@ -8814,7 +9727,7 @@ function handle(ev){
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
       // data-t0 is what makes a four-minute call look different from a four-second
       // one: actPaintTimers ages every open call once a second, wherever it is drawn
-      card.innerHTML=`<div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'tool_end':{
@@ -8966,7 +9879,45 @@ function handle(ev){
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
       fabricLiveRefresh(); break;
-    case 'fabric_defs': refreshApp('fabric'); break;
+    case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged(); break;
+    // a character changed (the editor, the agent's set_avatar, a reroll): every face
+    // already on screen changes in place, and the Crew stage re-reads its sheets
+    case 'approval_resolved':{
+      // answered somewhere else (or nobody answered): this screen's copy says so and
+      // stops offering buttons — a floating one leaves after a moment
+      // one page can draw the same card twice (Chat and a floating copy), so all of them
+      document.querySelectorAll('[id="ap-'+ev.id+'"]').forEach(box=>{
+        if(!box.classList.contains('resolved')){box.classList.add('resolved');
+          box.querySelector('.atitle').textContent=ev.how==='timeout'?'⌛ Nobody answered':ev.approved?'✓ Allowed':'✕ Denied';}
+        box.querySelectorAll('.btns button').forEach(b=>b.disabled=true);
+        if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
+      });
+      break;}
+    case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
+      if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
+      break;
+    case 'team_link_request':   // somebody asks to link (a machine, or an account here)
+      toast((ev.kind==='account'?ev.name+' asks to link teams with you':ev.name+' asks to link its team with yours'+(ev.sas?' · code '+ev.sas:'')),
+        {label:'Review',go:()=>openLinkedTeams(),ms:15000});
+      if(typeof paintTeamLinks==='function')paintTeamLinks();
+      break;
+    case 'team_message':   // a person on a linked team wrote (or one of ours, from another screen)
+      if(typeof teamChatEvent==='function')teamChatEvent(ev);
+      break;
+    case 'team_message_delivered':   // queued mail collected by the other side
+      (ev.ids||[]).forEach(id=>{const t=document.querySelector(`.tc-msg[data-id="${CSS.escape(id)}"] .tc-tick`);
+        if(t){t.className='tc-tick';t.textContent='✓';t.title='delivered'}});
+      break;
+    case 'team_links':   // a link made, ended, or an answer to a request of ours
+      if(ev.outcome&&ev.name)toast(ev.outcome==='approved'?'✓ '+ev.name+' approved — linked'
+        :ev.outcome==='denied'?ev.name+' said no to linking':ev.outcome==='expired'?'Nobody at '+ev.name+' answered in ten minutes'
+        :ev.name+': '+ev.outcome);
+      if(typeof paintTeamLinks==='function')paintTeamLinks();
+      break;
+    case 'agent_say':   // one turn of a huddle (10b-huddle.js)
+      if(typeof huddleLive==='function')huddleLive(ev,_cur);
+      break;
+    case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst
       // version of this feature is one where they find out by the thing being broken.
@@ -9046,12 +9997,21 @@ function permPrincipalLabel(kind,id){
   // for your permission it reads as though YOU are the one being restricted.
   if(kind==='user')return agentName();
   if(kind==='subagent')return 'agent "'+id+'"';
+  if(kind==='team')return 'the linked team "'+String(id||'').replace(/\/\*$/,'')+'"';
   return kind+(id?' "'+id+'"':'');
 }
 function flushText(){
   if(curText.trim()&&curBody){const d=document.createElement('div');d.className='body';d.innerHTML=md(curText);
     curBody.parentNode.insertBefore(d,curBody);}
   curText=''; if(curBody)curBody.innerHTML='';
+}
+/* Who is answering the turn in progress: a specialist addressed by name, in
+   its own face, or the agent labelled with whatever engine is running it. */
+function curWho(){
+  if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
+  const sp=CUR_ENGINE.speaker;
+  return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
+    :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }
 function startAssistant(){
   if(!feed)return;
@@ -9060,7 +10020,7 @@ function startAssistant(){
   const m=document.createElement('div');m.className='msg assistant';
   // Labelled for whoever is answering THIS turn — engine_info relabels it the
   // moment a forwarded run says which model it woke up on.
-  m.innerHTML='<div class="who">'+engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model)+'</div>';
+  m.innerHTML='<div class="who">'+curWho()+'</div>';
   curBody=document.createElement('div');curBody.className='body';
   m.appendChild(curBody);feed.appendChild(m);curThink=null;
 }
@@ -9229,7 +10189,7 @@ function rmAttach(i){if(CHAT_ATT){CHAT_ATT.imgs.splice(i,1);CHAT_ATT.render()}}
 function userBubble(text,imgs){
   $('#welcome')?.remove();
   const m=document.createElement('div');m.className='msg user';
-  m.innerHTML='<div class="who">you</div><div class="bubble"></div>';
+  m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';
   m.querySelector('.bubble').textContent=text;
   bubbleImgs(m.querySelector('.bubble'),imgs);
   feed.appendChild(m);
@@ -9337,22 +10297,32 @@ async function openConv(cid){
   feed.innerHTML='';
   d.messages.forEach(msg=>{
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.innerHTML='<div class="who">you</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{m.innerHTML='<div class="who">'+msgWho(msg.meta)+'</div>';
+    if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
+    else{const sp=msg.meta&&msg.meta.speaker;
+      // a specialist's reply is stored with a first line naming it and its model;
+      // with its face in the header that line would say the same thing twice
+      let body=msg.content||'', spModel='';
+      if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
+      const hud=msg.meta&&msg.meta.huddle;
+      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      if(hud){m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(body),hud,true));feed.appendChild(m);return}
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
           // a reopened conversation reads the same way a live one did
           const argStr=actDetail(s.name,s.args)
             ||(s.name==='run_command'?(s.args.command||''):JSON.stringify(s.args));
-          card.innerHTML=`<div class="head"><span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
+          // a delegation is a PERSON being handed the work: their face is on the card
+          card.innerHTML=`<div class="head">${s.name==='delegate'?avatarImg((s.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(s.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat ${s.ok?'ok':'fail'}">${s.ok?'done':'failed'}</span></div><div class="out"></div>`;
           card.querySelector('.out').textContent=s.output||'';
           card.querySelector('.head').onclick=()=>card.classList.toggle('open');
-          m.appendChild(card);}
+          m.appendChild(card);
+          // the agents' conversation, as it looked live: each turn in its own face
+          if(s.name==='huddle'&&s.ok)m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(s.output||'')));}
         else if(s.type==='steer'){   // something you said mid-run, taken into it
           const d=document.createElement('div');d.className='steer';
           d.textContent='took in: '+(s.text||'');d.title=s.reason||'';m.appendChild(d);}
       });
-      const b=document.createElement('div');b.className='body';b.innerHTML=md(msg.content||'');m.appendChild(b);}
+      const b=document.createElement('div');b.className='body';b.innerHTML=md(body);m.appendChild(b);}
     feed.appendChild(m);
   });
   // a turn is live in this conversation: replay its buffered stream and keep streaming
@@ -9684,6 +10654,111 @@ function handoffEmit(ev,cid,sink,inChat){
   if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
     curBody.parentNode.insertBefore(handoffChip(h),curBody);
 }
+/* ================= Huddles: agents talking to each other =================
+   A huddle is two to four specialists talking a question through, in turns, each on
+   its OWN brain (agentos/fabric.py → huddle). The control plane moderates; agents
+   never call each other. It reaches the page two ways, and both draw the same card:
+
+   - live, as `agent_say` events — one per turn, the moment it lands — from the
+     agent's `huddle` tool or from a message that starts with two names
+     ("@researcher @validator should we…");
+   - on reload, from the stored text, which is one line per turn
+     (`@name (model): text`, fabric.huddle_text). One format for the model, the
+     ledger and the page, so there is no second store to fall out of step.
+
+   Every turn is that agent's own face, its name and the provider it answered on —
+   the badge is the run's own `model`, never the agent's pin, because a switched-off
+   provider sends a pinned agent to the machine's brain and the badge must say so.
+
+   Faces — GUI/SUI: this. TUI: the huddle is plain text in a terminal chat and in
+   `bento flow runs` (each turn is a run). `var`/function declarations only. */
+
+/* A model id → the name of what answered it: "anthropic/claude-sonnet-5" →
+   "Anthropic". Read from the brains catalogue the chat header already loaded, so
+   this page has no second table of provider names. */
+function brainName(model){
+  const m=String(model||''), pid=m.includes('/')?m.split('/')[0]:m;
+  const e=(typeof BRAINS!=='undefined'&&BRAINS.executors||[]).find(x=>x.id===pid);
+  if(pid==='custom')return 'Custom server';   // as fabric.agent_brain names it
+  return e?String(e.name||pid).split(' — ')[0]:(pid||'default');
+}
+function brainChip(model,provider){
+  const m=String(model||''), short=m.includes('/')?m.split('/').slice(1).join('/'):m;
+  const name=provider||brainName(m);
+  return `<span class="brainchip" title="${esc(m||'the machine’s brain')}"><b>${esc(name)}</b>${short&&short!=='default'?' · '+esc(short):''}</span>`;
+}
+function huddleParse(text){
+  const lines=String(text||'').split('\n'), out=[];
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]})});
+  return out;
+}
+function huddleRow(e){
+  return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
+    <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
+    <div class="hud-text">${md(e.text||'')}</div></div></div>`;
+}
+/* `bare`: the message header above already names the room (a huddle started from
+   the chat box), so the card does not say it a second time. */
+function huddleCard(entries,agents,bare,kind){
+  const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
+  return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
+    <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
+}
+/* The label over a huddle started from the chat box: the faces in the room. */
+function huddleWho(names){
+  return (names||[]).map(n=>avatarImg(n,'av-who')).join('')+'huddle · '+esc((names||[]).join(', '));
+}
+/* One turn, live. It goes into the assistant message in progress — the tool card
+   of the agent's `huddle` call, or the message a "@a @b …" turn opened — and the
+   Crew stage hears it too, so the one talking says so over its head. */
+function huddleLive(ev,isCur,kind){
+  kind=kind||'huddle';
+  if(typeof crewPulse==='function')crewPulse('say',ev.speaker,ev);
+  // the activity pill: a huddle has no tool calls to report, so say who just spoke
+  if(typeof actMove==='function'&&ev.conversation_id)
+    actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
+  if(!isCur||!feed)return;
+  if(!curBody)startAssistant();
+  if(!curBody)return;
+  const msg=curBody.parentNode;
+  // the huddle already open directly above the reply keeps growing; anything said
+  // in between (text, another tool) means this is a new one
+  let card=curBody.previousElementSibling;
+  if(!card||!card.classList.contains('huddle')||(card.dataset.kind||'huddle')!==kind){
+    if(typeof flushText==='function')flushText();
+    const holder=document.createElement('div');
+    holder.innerHTML=huddleCard([],[],kind==='huddle'&&!!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE.huddle),kind);
+    card=holder.firstElementChild;card.querySelector('.mut')?.remove();
+    msg.insertBefore(card,curBody);
+  }
+  card.insertAdjacentHTML('beforeend',huddleRow(ev));
+  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
+  if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
+  if(typeof scrollDown==='function')scrollDown();
+}
+
+/* One specialist asking another mid-task (`ask_agent`, fabric.message): the
+   question in the asker's face, then the answer in the answerer's, with the brain
+   it answered on. Same card and same stage as a huddle, because it IS agents
+   talking — the difference is who started it (an agent, not you) and what let it
+   (the matrix, or swarm). Live only: each answer is its own run, and a reloaded
+   conversation finds it in Observability rather than a second store here. */
+function agentMsgLive(ev,isCur){
+  // A question from a LINKED team belongs to no conversation here: it was asked on
+  // another machine or account. Treating "no conversation" as "the open one" put a
+  // stranger's question inside whatever chat the person was reading. The stage shows
+  // who is being consulted and a toast says by whom; nothing is written into a thread.
+  if(!ev.conversation_id){
+    const who=ev.phase==='ask'?ev.to:ev.from;
+    if(typeof crewPulse==='function')crewPulse('say',who,{text:ev.phase==='ask'?(ev.from+' asks: '+(ev.text||'')):(ev.text||'')});
+    if(ev.phase==='ask'&&typeof toast==='function')toast('↔ '+ev.from+' asked your '+ev.to);
+    return;
+  }
+  const e=ev.phase==='ask'
+    ?{speaker:ev.from,to:ev.to,text:ev.text,conversation_id:ev.conversation_id}
+    :{speaker:ev.from,text:ev.text,model:ev.model,provider:ev.provider,conversation_id:ev.conversation_id};
+  huddleLive(e,isCur,'talk');
+}
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -9792,6 +10867,52 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    /* The team: each specialist may answer on its OWN provider — a researcher on a
+       local model, a validator on Claude, a writer on GPT — and they can hand work to
+       each other and talk it through in a huddle. One switch turns that off (one
+       bill, one provider), and each row pins one agent. Both apply on the spot, like
+       the brain above. The badge each agent wears on the Crew stage and in chat is
+       the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
+    P.push(pGroup('Team',[
+      pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
+        {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
+         f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
+      pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
+        {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
+         f:'team agent model pin provider per agent'}),
+      /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
+         permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
+         every cell you have not blocked is open, so they recruit each other freely,
+         still inside the loop, hop and budget limits. Off: no agent can message
+         another. It applies on the spot; `bento team talk` is the terminal's switch. */
+      pRow('Agents message each other',pSelect('s-team-talk',[
+          ['matrix','Ask me (the matrix below)'],
+          ['swarm','Swarm — they ask each other freely'],
+          ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
+        {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
+         f:'team agents message talk each other swarm matrix permission ask'}),
+      /* The limits: how far a question travels, how many one task may send, how often a
+         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
+         ceiling no setting passes, because every one multiplies model calls. */
+      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
+        {stack:true,desc:'Per task, so several swarms at once each get their own. Changes apply to the next question.',
+         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
+      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
+         f:'team matrix who may ask whom agents grid permission'}),
+      /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
+         Ask → Approve with six digits on both screens (the OAuth device flow); an invite
+         code is folded away for headless machines. A link grants nothing: what their
+         agents may ask yours is chosen per agent, and never opened by swarm. `bento
+         link` is the terminal's face; SUI is this page, nothing touches the compositor. */
+      pRow('Linked teams','<div id="s-team-links" class="team-links mut">loading…</div>',
+        {stack:true,desc:'Your agents and another team\u2019s: on another machine over mutual TLS, or another account on this one. Ask to link, they approve, and both screens show the same six digits. Linking lets nothing through by itself — choose which of your agents theirs may ask. Every answer from a linked team is treated as untrusted.',
+         f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
+    ],{f:'team agents providers huddle'}));
+    setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamLinks,0);
+    setTimeout(paintTeamMatrix,0);
+    setTimeout(paintTeamLimits,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -9923,6 +11044,23 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* The characters are not part of the immersive look: a face beside a message
+       helps in the standard desktop too, so they have their own group, and their
+       own switch for somebody who would rather read text. The faces shown here are
+       the editor's doors; each specialist's is on its card in Missions → Agents.
+       Terminal: `bento avatar` (list / show / set / reroll) — same recipes. */
+    P.push(pGroup('Characters',[
+      pRow('You and your agent',
+        `<button class="endbtn av-set-btn" onclick="avatarEdit('@me')" title="Change how you look">${avatarImg('@me','av-set')}You</button>`
+        +`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Your agent</button>`,
+        {desc:'You, your agent and every specialist each have one pixel-art character, the same everywhere: Chat, Logs, '
+             +'approvals, Missions and the Crew stage. Click a face to change it. Your agent can change them too '
+             +'("give the researcher glasses"), and so can bento avatar in a terminal. They are yours, not a space\'s.',
+         f:'characters avatars faces pixel art people specialists agent me chat logs crew look'}),
+      pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
+        {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
+         f:'characters avatars faces off plain text chat logs'}),
+    ],{f:'characters avatars faces'}));
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -9937,14 +11075,21 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it'],['crew','Crew — your specialists, drawn, at work']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
              +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
              +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
              +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
-             +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
-         f:'scene movement watch automatic aurora wallpaper live'}),
+             +'when this tab is hidden, holds still under reduced motion, and uses no blur. '
+             +'Crew draws the specialists you actually have — the same characters as in Chat and Logs (Characters, above) — '
+             +'with your agent in the middle. They breathe, sway and blink while '
+             +'they wait; one steps forward and brightens when its specialist starts working, with the tool it just called '
+             +'named above its head. With no specialists yet you get your agent alone and a line saying so: a crowd of '
+             +'colleagues who do not exist would be a better-looking lie, not a better desktop. Nothing is downloaded — the '
+             +'figures are drawn, and their colour comes from the theme — and it costs what the dial costs.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated'}),
+
     ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
@@ -10016,6 +11161,18 @@ function setTab(body,all){
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
   const im=main.querySelector('#s-imm');
   if(im)im.onchange=()=>setImmersive(im.checked);
+  const avs=main.querySelector('#s-av-on');
+  if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tt=main.querySelector('#s-team-talk');
+  if(tt)tt.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
+    cfg.team={...(cfg.team||{}),talk:tt.value};paintTeamMatrix();
+    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents may ask each other freely',off:'agents no longer message each other'}[tt.value])};
+  const tw=main.querySelector('#s-team-own');
+  if(tw)tw.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
+    cfg.team={...(cfg.team||{}),own_brains:tw.checked};paintTeamBrains();
+    toast(tw.checked?'agents answer on their own providers':'every agent uses this machine\u2019s brain')};
   const sc=main.querySelector('#s-imm-scene');
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
@@ -10641,6 +11798,268 @@ async function chanSave(id){
     if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
     if(j.ok)renderChannels();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+
+/* One row per specialist: its face, the brain it answers on RIGHT NOW (the chip),
+   and a picker of every model this machine can reach. The chip is the server's
+   answer (fabric.agent_brain), so a pin on a switched-off provider reads as what it
+   is — pinned, and on the machine's brain until the provider is on. */
+async function paintTeamBrains(){
+  const box=document.getElementById('s-team-list');if(!box)return;
+  let sa={},mods={};
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  const list=(sa.subagents||[]);
+  if(!list.length){box.textContent='No specialists yet — ask for one, or create one in Missions → Build → Agents.';return}
+  const models=(mods.models||[]).map(m=>m.id);
+  box.classList.remove('mut');
+  box.innerHTML=list.map(s=>{
+    const b=s.brain||{}, pin=s.model||'';
+    const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
+    return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
+      <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
+  }).join('');
+  box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
+    const r=await fetch('/api/subagents/'+encodeURIComponent(sel.dataset.agent)+'/brain',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
+}
+
+/* The matrix: rows ask, columns answer. Each cell is a grant row (fabric.matrix);
+   a tap cycles ask → allow → block and writes it through PUT /api/team/matrix. In
+   swarm mode an unset cell reads "swarm" (open) — only a block closes it. */
+async function paintTeamMatrix(){
+  const box=document.getElementById('s-team-matrix');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
+  const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
+  if(names.length<2){box.textContent='Two or more specialists are needed before any of them can message another.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off — no agent can message another. Choose "Ask me" or "Swarm" above to use the matrix.';return}
+  box.classList.remove('mut');
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell not blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
+  });
+}
+
+/* One number per limit, with its range from the server (fabric.LIMITS). Saved on
+   change; a value out of range is refused with the sentence that says the range. */
+async function paintTeamLimits(){
+  const box=document.getElementById('s-team-limits');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/limits')).json()}catch(e){}
+  const L=d.limits||{},R=d.ranges||{};
+  const label={hops:'Hops a question may travel',budget:'Questions per task',clarify:'Times a colleague may ask back',
+    huddle_agents:'Agents in a huddle',huddle_rounds:'Rounds in a huddle'};
+  box.classList.remove('mut');
+  box.innerHTML=Object.keys(R).map(k=>`<label class="tl-row"><span>${esc(label[k]||k)}<small class="mut"> · ${esc(R[k].what)} (${R[k].min}–${R[k].max}, default ${R[k].default})</small></span>
+    <input type="number" data-lim="${esc(k)}" min="${R[k].min}" max="${R[k].max}" value="${L[k]}"></label>`).join('');
+  box.querySelectorAll('input[data-lim]').forEach(inp=>inp.onchange=async()=>{
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({team:{limits:{[inp.dataset.lim]:+inp.value}}})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r&&r.error){toast(r.error);paintTeamLimits();return}
+    toast((label[inp.dataset.lim]||inp.dataset.lim)+': '+inp.value);
+  });
+}
+
+/* Linked teams. The way in is a REQUEST, the OAuth device flow: type the other
+   machine's address (or pick an account here) and press Ask; its person gets an
+   Approve / Deny card; both screens show the same six digits, computed on each side
+   from the certificates that side saw — so the digits are how a person knows nobody
+   is in the middle. The invite string is kept, folded away, for a machine with no
+   screen to approve on. Everything is a call to /api/team/links*. */
+var TEAM_INVITE=null;
+function openLinkedTeams(){
+  SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
+  openApp('settings');
+  setTimeout(()=>{
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="ai"]')?.click();
+    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
+  },250);
+}
+function tlkReqHTML(r){
+  const who=esc(r.name||'?'), id=r.identity||{};
+  const face=avatarRecipeImg(id.agent,'av-set',(id.agent_name||r.name)+'’s agent');
+  const team=id.agent_name?` <span class="mut">— ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
+  if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
+      <small class="mut">You are both on this machine, so there is nothing to compare — it is them.</small></div>
+    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+  return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
+      <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
+      <small class="mut">Different digits mean something is between you — deny it. Approving lets nothing through yet: you choose which of your agents theirs may ask.</small></div>
+    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+}
+function tlkOutHTML(r){
+  const who=esc(r.name||r.to_name||'?');
+  const st=r.state||'pending';
+  const line=st==='pending'
+    ?(r.kind==='account'||!r.sas?`Waiting for <b>${esc(r.to_name||r.name)}</b> to approve.`
+      :`Waiting for <b>${who}</b> to approve.</p><p class="tlk-sas-row">Make sure it shows <span class="tlk-sas">${esc(r.sas)}</span>`)
+    :st==='approved'?`✓ <b>${who}</b> approved — linked.`
+    :st==='denied'?`<b>${who}</b> said no.`
+    :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
+    :`<b>${who}</b>: ${esc(r.error||st)}`;
+  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" onclick="teamLinkWithdraw('${esc(r.id)}')">Withdraw</button></div>`:''}</div>`;
+}
+async function paintTeamLinks(){
+  const box=document.getElementById('s-team-links');if(!box)return;
+  let d={},sa={};
+  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json())])}catch(e){}
+  const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
+  const keep=box.querySelector('#tlk-addr')?.value||'', open=box.querySelector('.tlk-more')?.open;
+  box.classList.remove('mut');
+  const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b> — give it to the other side privately; it works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(TEAM_INVITE.invite||TEAM_INVITE.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      ${TEAM_INVITE.fingerprint?`<small class="mut">This machine's certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}… — the joiner checks it before sending anything.</small>`:''}</div>`:'';
+  const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
+      <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
+        <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you; you cannot reach them'):'')}</span>
+        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
+        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
+        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      ${tlMissionsHTML(l)}
+      ${tlStandHTML(l,mine,d)}
+      <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
+  const others=d.others||[];
+  box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
+    <div class="tlk-ask">
+      <div class="tlk-actions"><input id="tlk-addr" placeholder="Another Bento: office.local or 192.168.1.20" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="pact" onclick="teamLinkRequest()">Ask to link</button></div>
+      ${d.accounts&&others.length?`<div class="tlk-actions"><select id="tlk-acct">${others.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>
+        <button class="endbtn" onclick="teamLinkRequestAccount()">Ask this account to link</button></div>`:''}
+      ${(d.outgoing||[]).map(tlkOutHTML).join('')}
+    </div>
+    <div class="tlk-me">This machine: <b>${esc(me.name||'')}</b> <small class="mut">certificate ${esc((me.fingerprint||'').slice(0,16))}…</small></div>
+    ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link — opens port ${esc(me.port)} on this machine, mutual TLS only</span></label>`
+      :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines cannot ask to link with this one until an admin turns that on. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
+    ${d.can_listen&&!d.listening?'<p class="mut tlk-why">Asking another machine works now. For THEM to ask YOU, turn this on.</p>':''}
+    ${links||'<p class="mut">No linked teams yet.</p>'}
+    <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
+      <p class="mut tlk-why">For a machine nobody can approve on — a headless box set up over SSH. Make the code on one side, paste it on the other.</p>
+      <div class="tlk-actions">
+        <button class="endbtn" onclick="teamLinkInvite('machine')" ${d.listening?'':'disabled'}>Invite a machine</button>
+        <input id="tlk-join" placeholder="bento://link/… (an invite from the other machine)"><button class="endbtn" onclick="teamLinkJoin()">Join</button>
+        ${d.accounts?`<button class="endbtn" onclick="teamLinkInvite('account')">Invite an account here</button>
+          <input id="tlk-code" placeholder="code from another account"><button class="endbtn" onclick="teamLinkRedeem()">Redeem</button>`:''}
+      </div>${d.listening?'':'<p class="mut tlk-why">Invite a machine needs other machines allowed to reach this one (above).</p>'}${inv}
+    </details>`;
+  const a=box.querySelector('#tlk-addr');if(a){a.value=keep;a.onkeydown=e=>{if(e.key==='Enter')teamLinkRequest()}}
+  const ls=box.querySelector('#tlk-listen');
+  if(ls)ls.onchange=async()=>{const r=await teamApi('/api/team/listen','PUT',{on:ls.checked});if(r)toast(r.listening?'other machines can ask to link (port '+r.port+')':'other machines can no longer ask to link');paintTeamLinks()};
+  box.querySelectorAll('input[data-link]').forEach(cb=>cb.onchange=async()=>{
+    const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
+    await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
+  box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
+  box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+}
+/* Standing permissions: what a linked team may have one of YOUR agents change without a
+   person here saying yes. A question from another team is untrusted, so by default it can
+   make an agent read and answer, never write — this is that yes given ahead of time, for
+   one agent, one action, one folder or tool. The same rows the approval card's "Always
+   let …" writes and Permissions revokes; the server refuses what can never be standing
+   (a shell, a home, a hidden folder) with a sentence, which is shown as it comes.
+   Faces: TUI is `bento link let/standing/unlet` (no pointer needed); SUI is this page,
+   nothing native — and the card that offers it goes only to the link owner's screens. */
+var TL_STAND_OPEN={};
+var TL_ACT_WORDS={'fs.write':'write files in','memory.write':'remember things','kg.write':'add to the knowledge graph',
+  'media.generate':'generate images','media.write':'save assets','tool.use':'use the tool'};
+function tlScope(s){return String(s||'').replace(/^(fs|tool):/,'').replace(/\/?\*$/,'')}
+function tlStandHTML(l,mine,d){
+  const rows=l.standing||[], lab=esc(l.label);
+  return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
+    <p class="mut tlk-why">A question from ${lab} can make your agents read and answer, never change anything — a person here is asked first, and when nobody is watching the answer is no. Allow one thing here ahead of time: that agent, that action, inside that folder. If the agent also read a web page or a mail on the way, you are asked again.</p>
+    ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
+    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
+      <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
+      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
+  </details>`;
+}
+/* Their missions that use YOUR agents — recorded here when they save one (or on its first
+   question), so the side that does the work can see what the other side decided and stop
+   it. Stop is a deny row the gate enforces (fabric.stop_mission); the record stays. The
+   name is their machine's claim: to stop a MACHINE, untick the agent above. */
+function tlMissionsHTML(l){
+  const ms=l.missions||[], lab=esc(l.label);
+  if(!ms.length)return '';
+  const when=t=>t?new Date(t*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'never';
+  return `<div class="tlk-miss"><div class="tlk-miss-h">Their missions that use your agents</div>
+    ${ms.map(m=>`<div class="tlk-miss-row${m.stopped?' stopped':''}">
+      <div class="tlk-miss-main"><b>${esc(m.mission)}</b>
+        <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
+        ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
+        <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' — '+esc(m.text):''}</div></div>
+      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+  </div>`;
+}
+async function tlMissionStop(label,mission,stop){
+  if(stop&&!await osConfirm('Stop '+label+'’s mission “'+mission+'”?',
+     'Its questions to your agents are refused here from now on, and they are told so. The record stays; Allow again undoes it.',{confirmText:'Stop'}))return;
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/missions/'+encodeURIComponent(mission)+'/'+(stop?'stop':'allow'),'POST',{});
+  if(r){toast(stop?'stopped — '+label+'’s mission is refused here':'allowed again');paintTeamLinks()}
+}
+async function tlStandAdd(label,btn){
+  const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';
+  if(!v('scope').trim()){toast('say which folder or tool — never everything');return}
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing','POST',
+    {agent:v('agent'),action:v('action'),scope:v('scope').trim(),days:v('days')?Number(v('days')):null});
+  if(r){TL_STAND_OPEN[label]=true;toast(label+' may now have '+r.agent+' '+(TL_ACT_WORDS[r.action]||r.action)+' '+tlScope(r.scope)+' without asking');paintTeamLinks()}
+}
+async function tlStandRemove(label,id){
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing/'+encodeURIComponent(id),'DELETE')){
+    TL_STAND_OPEN[label]=true;toast('removed — '+label+' asks a person again for that');paintTeamLinks()}
+}
+async function teamApi(url,method,body){
+  const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  if(r&&r.error){toast(r.error);return null}
+  return r;
+}
+async function teamLinkRequest(){
+  const a=document.getElementById('tlk-addr'),v=(a&&a.value||'').trim();
+  if(!v){toast('type the other machine’s name or address');a&&a.focus();return}
+  toast('asking '+v+'…');
+  const r=await teamApi('/api/team/links/request','POST',{address:v});
+  if(r){if(a)a.value='';toast('asked '+r.request.name+' — check it shows '+r.request.sas);paintTeamLinks()}
+}
+async function teamLinkRequestAccount(){
+  const v=(document.getElementById('tlk-acct')||{}).value||'';
+  const r=await teamApi('/api/team/links/request','POST',{account:v});
+  if(r){toast('asked '+r.request.to_name+' — they approve from their account');paintTeamLinks()}
+}
+async function teamLinkAnswer(id,verb){
+  const r=await teamApi('/api/team/links/requests/'+encodeURIComponent(id)+'/'+verb,'POST',{});
+  if(r)toast(verb==='deny'?'refused':(r.note||('linked with '+((r.link||{}).label||''))));
+  paintTeamLinks();
+}
+async function teamLinkWithdraw(id){if(await teamApi('/api/team/links/requests/'+encodeURIComponent(id),'DELETE'))paintTeamLinks()}
+async function teamLinkInvite(kind){const r=await teamApi('/api/team/links/invite','POST',{kind});if(r){TEAM_INVITE=r;paintTeamLinks()}}
+async function teamLinkJoin(){const v=(document.getElementById('tlk-join')||{}).value||'';const r=await teamApi('/api/team/links/join','POST',{invite:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRedeem(){const v=(document.getElementById('tlk-code')||{}).value||'';const r=await teamApi('/api/team/links/redeem','POST',{code:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRemove(label){if(!await osConfirm('Remove the link with '+label+'?','Their agents lose every permission here, and yours theirs.',{danger:true,confirmText:'Remove'}))return;
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label),'DELETE')){toast('link removed');paintTeamLinks()}}
+async function teamLinkCheck(label,btn){
+  const el=document.getElementById('tlk-r-'+label);if(el)el.textContent='asking…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(label)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  // they show only the agents they let your team ask — a link grants nothing, not even names
+  if(el)el.textContent=!r.ok?(r.error||'not reachable')
+    :(r.agents||[]).length?'Reachable. Your agents may ask: '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+' — as name@'+label+'.'
+    :'Reachable. They have not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 /* ================= WhatsApp: the two things a form cannot say =================
    The generic channel card in 11-settings draws WhatsApp's four fields fine. What
@@ -12026,15 +13445,18 @@ function fabTabs(){
 }
 function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
-  const sa=await fetch('/api/subagents').then(r=>r.json());
+  // the roster asks /api/avatars too: that is what gives a specialist made a moment
+  // ago its face, the same one it will wear on the stage and beside its messages
+  const [sa]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),avatarsLoad()]);
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
   const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
-      <div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>
+      ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
-        <div class="meta"><b>${esc((s.model||'').split('/').pop()||'inherits OS model')}</b> · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
+        <div class="meta">${s.brain?brainChip(s.brain.model,s.brain.provider_name):esc(s.model||'inherits OS model')}${s.brain&&s.brain.note?` <span class="mut" title="pinned to ${esc(s.brain.pinned)}">· ${esc(s.brain.note)}</span>`:''} · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
+      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
@@ -12736,7 +14158,19 @@ async function enableFlow(name,on){
   const g=r.report.grants;
   toast(on?`“${name}” is live · ${g.added} permission${g.added===1?'':'s'} granted`
           :`“${name}” is off · ${g.revoked} permission${g.revoked===1?'':'s'} taken back`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
+}
+/* A mission naming an agent on a linked team is recorded on THAT team too (the server
+   tells it on save / enable / delete). What they answered is said here, once: recorded,
+   refused an agent their side has not let you ask, stopped by them, or unreachable (it
+   will be recorded on the mission's first question instead). */
+function flwLinkedToast(linked){
+  const parts=Object.entries(linked||{}).map(([lab,v])=>!v.ok?lab+': '+(v.error||'not reached')+' — recorded there on its first question'
+    :v.stopped?lab+' has STOPPED this mission on their side'
+    :(v.not_allowed||[]).length?lab+' has not let your team ask '+v.not_allowed.join(', ')
+    :'recorded on '+lab+'’s side — they can see and stop it');
+  if(parts.length)setTimeout(()=>toast(parts.join(' · ')),1600);
 }
 async function discardFlow(name){
   if(!await osConfirm('Discard the draft “'+name+'”?',
@@ -12925,13 +14359,15 @@ async function delFlow(name){
 /* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
 var FLW=null;
 async function openFLW(name,draft){
-  const [subs,tools,skills,models]=await Promise.all([
+  const [subs,tools,skills,models,links]=await Promise.all([
     fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]})),
+    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]}))]);
   const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
   FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
+    links:(links.links||[]).map(l=>l.label),
     models:models.models||[],q:'',draft:(draft||null),
     d:ex?JSON.parse(JSON.stringify(ex))
        :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
@@ -12973,6 +14409,36 @@ function flwRoster(nm,on){
   if(on&&!r.some(x=>x.subagent===nm))r.push({subagent:nm,why:''});
   if(!on)FLW.d.roster=r.filter(x=>x.subagent!==nm);
   flwPreview();
+}
+/* An agent on a LINKED team (analyst@office) can be on a mission's roster. The task
+   crosses the link as a question; what it does there is that team's decision — their
+   gate, their standing permissions — and its answer lands here untrusted. Who you may
+   ask is theirs to say, so "Who?" asks them live rather than guessing a name. */
+function flwLinkedHTML(d){
+  const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
+  const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
+      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
+        <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
+      <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
+    <div class="mut flw-linked-why" id="flw-lwho"></div>`;
+}
+function flwAddLinked(name){
+  const a=(name||(document.getElementById('flw-la')||{}).value||'').trim(), l=(document.getElementById('flw-ll')||{}).value||'';
+  if(!a||!l){toast('name one of their agents — Who? asks them');return}
+  flwCollect();flwRoster(a+'@'+l,true);drawFLW();
+}
+async function flwLinkedWho(){
+  const l=(document.getElementById('flw-ll')||{}).value||'', box=document.getElementById('flw-lwho');if(!box)return;
+  box.textContent='asking '+l+'…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(!document.body.contains(box))return;
+  box.innerHTML=!r.ok?esc(r.error||'not reachable')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
   const s=FLW.d.sinks||[];
@@ -13023,6 +14489,7 @@ function flwCollect(){
   d.permissions.fs_read=lines(g('#flw-fsr'));
   d.permissions.fs_write=lines(g('#flw-fsw'));
   d.permissions.memory=g('#flw-mem')||'read-space';
+  {const t=document.querySelector('#flw-talk');if(t)d.permissions.talk=!!t.checked;}
   (d.triggers||[]).forEach((t,i)=>{
     document.querySelectorAll(`[data-trig="${i}"]`).forEach(el=>{
       flwTrigSet(i,el.getAttribute('data-key'),el.type==='number'?+el.value:el.value);
@@ -13046,7 +14513,8 @@ function drawFLW(){
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
       onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
-  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'));
+  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
+    +flwLinkedHTML(d);
   const q=(FLW.q||'').toLowerCase();
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);
@@ -13150,6 +14618,9 @@ function drawFLW(){
       <div style="flex:1"><label>Files it may read</label><textarea id="flw-fsr" rows="2" placeholder="~/Documents/launch/*">${esc((p.fs_read||[]).join('\n'))}</textarea></div>
       <div style="flex:1"><label>Files it may write</label><textarea id="flw-fsw" rows="2">${esc((p.fs_write||[]).join('\n'))}</textarea></div>
     </div>
+    <label class="flw-talk"><input type="checkbox" id="flw-talk" ${p.talk?'checked':''} onchange="flwPreview()">
+      Specialists may consult each other — on this mission, the agents on its roster may ask one
+      another mid-task (within the team's limits). Off: they only work through the orchestrator.</label>
     <label>Skills it may load</label><div style="max-height:110px;overflow:auto">${skl}</div>
 
     <div class="sawgrp">What starts it</div>
@@ -13227,6 +14698,8 @@ function flwDiff(before,after){
   add('net',(before.permissions||{}).net,(after.permissions||{}).net);
   add('files read',(before.permissions||{}).fs_read,(after.permissions||{}).fs_read);
   add('files written',(before.permissions||{}).fs_write,(after.permissions||{}).fs_write);
+  if(!!(before.permissions||{}).talk!==!!(after.permissions||{}).talk)
+    out.push(((after.permissions||{}).talk?'+ ':'− ')+'specialists consult each other');
   if(((before.permissions||{}).memory)!==((after.permissions||{}).memory))
     out.push('memory: '+((before.permissions||{}).memory||'?')+' → '+((after.permissions||{}).memory||'?'));
   add('sinks',(before.sinks||[]).map(x=>x.kind),(after.sinks||[]).map(x=>x.kind));
@@ -13275,6 +14748,7 @@ async function flwSave(){
   FLW=null;drawFLW();
   toast((made.length?`created ${made.join(', ')} · `:'')
     +`flow saved · ${g.added} permissions granted, ${g.revoked} revoked · ${t.added+t.updated} triggers`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
 }
 
@@ -15703,7 +17177,7 @@ async function loadLogs(w){
     return `<tr class="lk-${esc(l.kind)}" style="cursor:${keys.length?'pointer':'default'}" onclick="logExpand(this)">
       <td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
       <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span></td>
-      <td>${esc(l.message)}
+      <td>${avatarImg(avatarKeyOf(m.principal),'av-log')}${esc(l.message)}
         ${m.principal?`<span class="badge" style="margin-left:6px">${esc(m.principal)}</span>`:''}
         ${mtxt?`<div class="tools-mini" style="white-space:normal;word-break:break-word">${esc(mtxt.slice(0,220))}${mtxt.length>220?' …':''}</div>
         <pre class="log-full" style="display:none;font-size:11px;background:var(--card,#171b22);border:1px solid var(--line,#232a35);border-radius:8px;padding:8px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(JSON.stringify(m,null,2))}</pre>`:''}</td></tr>`;
@@ -18717,6 +20191,144 @@ async function briefOpenMail(uid){
     const text=j.output||j.result||j.error||'';
     if(typeof osAlert==='function')osAlert('Mail',text.slice(0,4000));else alert(text.slice(0,4000));
   }catch(e){toast('could not reach the server')}
+}
+/* ================= Team Chat: people on linked teams =================
+   A link lets agents reach agents; this is the people behind them. One thread per
+   linked team — another Bento (over the same mutual-TLS link) or another account
+   here — with each person's own face beside their words, painted from the look that
+   travelled with the message, and the other team's agent (its name and face) at the
+   top, which is how a team is recognised.
+
+   Honest about delivery: a message this machine cannot hand over now says "kept" and
+   goes with the next exchange; one the other side refused says who refused and why.
+   No agent reads any of it — there is no tool for it, on purpose.
+
+   TUI: `bento link say LABEL TEXT` / `bento link chat LABEL`, and the chat TUI prints
+   an arriving message. SUI: a page like any other window; nothing native. */
+var TEAMCHAT={cur:'',threads:[],me:null,thread:null,busy:false};
+
+function openTeamChat(label){
+  if(label)TEAMCHAT.cur=label;
+  openApp('teamchat');
+  if(label)setTimeout(()=>refreshApp('teamchat'),60);
+}
+function tcTime(ts){
+  const d=new Date((ts||0)*1000),now=new Date();
+  return d.toDateString()===now.toDateString()?d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    :d.toLocaleDateString([], {day:'numeric',month:'short'})+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+function tcWho(t){
+  const id=t.identity||{};
+  return {face:avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent')+' — '+t.label+'’s agent'),
+          name:t.label, sub:id.person?(id.person+(id.agent_name?' · '+id.agent_name+'’s team':'')):(id.agent_name?id.agent_name+'’s team':'')};
+}
+async function renderTeamChat(body){
+  const phone=document.body.classList.contains('dev-mobile');
+  let d={};
+  try{d=await fetch('/api/team/chat').then(r=>r.json())}catch(e){}
+  TEAMCHAT.threads=d.threads||[];TEAMCHAT.me=d.me||null;
+  if(!TEAMCHAT.threads.length){
+    body.innerHTML=`<div class="pad tc-empty"><p><b>Nobody to write to yet.</b></p>
+      <p class="mut">Team Chat is for the people on your linked teams — another Bento, or another account on this machine. Link one first; it takes an address and one tap on the other side.</p>
+      <button class="pact" onclick="openLinkedTeams()">Link a team</button></div>`;
+    return;
+  }
+  if(!TEAMCHAT.cur||!TEAMCHAT.threads.some(t=>t.label===TEAMCHAT.cur))
+    TEAMCHAT.cur=phone?'':TEAMCHAT.threads[0].label;
+  const list=TEAMCHAT.threads.map(t=>{const w=tcWho(t),l=t.last;
+    return `<button class="tc-th${t.label===TEAMCHAT.cur?' on':''}" data-l="${esc(t.label)}">
+      ${w.face}<span class="tc-th-txt"><b>${esc(w.name)}</b>${t.unread?`<span class="tc-unread">${t.unread}</span>`:''}
+      <small class="mut">${l?esc((l.dir==='out'?'you: ':'')+l.text.slice(0,60)):esc(w.sub||'no messages yet')}</small></span></button>`}).join('');
+  body.innerHTML=`<div class="tc${phone?' phone':''}${phone&&TEAMCHAT.cur?' in-thread':''}">
+    <div class="tc-list">${list}
+      <div class="tc-me mut">You appear as ${avatarImg('@me','av-tool')}<b>${esc((d.me||{}).person||'')}</b>
+        ${d.multiuser?'':`<button class="endbtn" onclick="tcRename()">Change</button>`}</div></div>
+    <div class="tc-main" id="tc-main"></div></div>`;
+  body.querySelectorAll('.tc-th').forEach(b=>b.onclick=()=>{TEAMCHAT.cur=b.dataset.l;renderTeamChat(body)});
+  if(TEAMCHAT.cur)tcThread(body.querySelector('#tc-main'));
+}
+function tcMsgHTML(m,t){
+  const mine=m.dir==='out';
+  const face=mine?avatarImg('@me','av-tool'):avatarRecipeImg(m.look,'av-tool',m.sender);
+  const tick=!mine?'':m.delivered===1?'<span class="tc-tick" title="delivered">✓</span>'
+    :m.delivered===-1?'<span class="tc-tick bad" title="refused">refused</span>'
+    :'<span class="tc-tick wait" title="not delivered yet">kept</span>';
+  return `<div class="tc-msg${mine?' mine':''}" data-id="${esc(m.id)}">${face}
+    <div class="tc-bub"><div class="tc-meta"><b>${esc(mine?'you':m.sender)}</b> <span class="mut">${tcTime(m.ts)}</span> ${tick}</div>
+    <div class="tc-text">${esc(m.text)}</div></div></div>`;
+}
+async function tcThread(main){
+  if(!main)return;
+  const label=TEAMCHAT.cur;
+  const t=TEAMCHAT.threads.find(x=>x.label===label)||{label,identity:{}};
+  const w=tcWho(t);
+  main.innerHTML=`<div class="tc-head">${document.body.classList.contains('dev-mobile')?'<button class="endbtn tc-back" onclick="TEAMCHAT.cur=\'\';refreshApp(\'teamchat\')">‹</button>':''}
+      ${w.face}<div class="tc-head-txt"><b>${esc(w.name)}</b><small class="mut">${esc(w.sub)}</small></div>
+      <label class="tlk-chk tc-mute"><input type="checkbox" ${t.muted?'':'checked'} onchange="tcMute('${esc(label)}',!this.checked)"><span>Take messages</span></label></div>
+    <div class="tc-feed" id="tc-feed"><p class="mut pad">Reading…</p></div>
+    <div class="tc-compose"><textarea id="tc-in" rows="2" placeholder="Write to ${esc(label)}…" maxlength="4000"></textarea>
+      <button class="pact" id="tc-send">Send</button></div>
+    <p class="mut tc-note" id="tc-note"></p>`;
+  const inp=main.querySelector('#tc-in'),send=main.querySelector('#tc-send');
+  send.onclick=()=>tcSend(label);
+  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!document.body.classList.contains('dev-mobile')){e.preventDefault();tcSend(label)}};
+  let d={};
+  try{d=await fetch('/api/team/chat/'+encodeURIComponent(label)).then(r=>r.json())}catch(e){}
+  if(TEAMCHAT.cur!==label)return;
+  TEAMCHAT.thread=d;
+  const feed=main.querySelector('#tc-feed');
+  if(!feed)return;
+  feed.innerHTML=(d.messages||[]).length?d.messages.map(m=>tcMsgHTML(m,t)).join('')
+    :`<p class="mut pad">No messages yet. Say hello — it reaches ${esc(w.sub||label)}.</p>`;
+  feed.scrollTop=feed.scrollHeight;
+  const note=main.querySelector('#tc-note');
+  if(note)note.textContent=d.error||(d.reachable===false?'This machine cannot reach '+label+' directly: what you write is kept and goes the next time '+label+' talks to this machine.':'');
+  const th=TEAMCHAT.threads.find(x=>x.label===label);if(th)th.unread=0;
+  document.querySelector('.tc-th.on .tc-unread')?.remove();
+}
+async function tcSend(label){
+  const inp=document.getElementById('tc-in');if(!inp||TEAMCHAT.busy)return;
+  const text=inp.value.trim();if(!text)return;
+  TEAMCHAT.busy=true;
+  const r=await fetch('/api/team/chat/'+encodeURIComponent(label),{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({text})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  TEAMCHAT.busy=false;
+  if(r.error){toast(r.error);return}
+  inp.value='';inp.focus();
+  const note=document.getElementById('tc-note');if(note)note.textContent=r.note||'';
+  const el=document.querySelector(`.tc-msg[data-id="${CSS.escape(r.message.id)}"] .tc-tick`);
+  if(el&&r.delivered){el.className='tc-tick';el.textContent='✓';el.title='delivered'}
+}
+async function tcMute(label,muted){
+  const r=await fetch('/api/team/chat/'+encodeURIComponent(label),{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({muted})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  toast(r.error||(muted?'messages from '+label+' are refused — they are told so':'messages from '+label+' are welcome'));
+  const t=TEAMCHAT.threads.find(x=>x.label===label);if(t)t.muted=muted;
+}
+async function tcRename(){
+  const cur=(TEAMCHAT.me||{}).person||'';
+  const v=await osPrompt('The name you go by in messages',{message:'Shown beside what you write, on the other team’s screen.',value:cur,confirmText:'Save'});
+  if(v==null)return;
+  const r=await fetch('/api/team/me',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:v})}).then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(r.error)toast(r.error);refreshApp('teamchat');
+}
+/* A message arrived (or one of ours went out from another screen). Into the open
+   thread when it is that one; otherwise the list's count and a toast with Open. */
+function teamChatEvent(ev){
+  const open=document.querySelector('.tc-feed')&&TEAMCHAT.cur===ev.link;
+  if(open){
+    const feed=document.getElementById('tc-feed');
+    if(!feed.querySelector(`.tc-msg[data-id="${CSS.escape(ev.id)}"]`)){
+      feed.querySelector('p.mut.pad')?.remove();
+      feed.insertAdjacentHTML('beforeend',tcMsgHTML(ev,{}));feed.scrollTop=feed.scrollHeight;
+    }
+    if(ev.dir==='in')fetch('/api/team/chat/'+encodeURIComponent(ev.link)+'?pull=0').catch(()=>{});   // mark read
+    return;
+  }
+  if(ev.dir==='in'){
+    toast(ev.sender+' · '+ev.link+': '+String(ev.text||'').slice(0,80),{label:'Open',go:()=>openTeamChat(ev.link),ms:9000});
+    if(document.querySelector('.tc'))refreshApp('teamchat');
+  }
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

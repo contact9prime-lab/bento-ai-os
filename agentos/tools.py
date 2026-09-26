@@ -951,6 +951,66 @@ class Toolbox(usersmod.Scoped):
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"
 
+    async def huddle(self, agents: list, topic: str, rounds: int = 2,
+                     conversation_id: str = "") -> str:
+        """Let two to four specialists talk a question through, each on its own brain.
+
+        The control plane moderates (fabric.huddle) — agents never call each other —
+        and every turn is broadcast as it lands, so the chat draws it as that agent's
+        own bubble and the Crew stage puts the words over its head."""
+        if not self.fabric:
+            return "[error] fabric not available"
+
+        async def say(e):
+            if self.broadcast:
+                await self.broadcast({"type": "agent_say", "conversation_id": conversation_id,
+                                      **e})
+        try:
+            res = await self.fabric.huddle(list(agents or []), topic or "", rounds,
+                                           conversation_id=conversation_id, say=say)
+        except ValueError as e:
+            return f"[error] {e}"
+        return res["text"]
+
+    async def ask_agent(self, agent: str, question: str, _from: str = "", _chain=None,
+                        _root: str = "", _run_id: str = "", _conv: str = "", _space: str = "",
+                        _taint=None) -> str:
+        """A specialist asks another specialist a question and waits for the answer.
+
+        Everything with an underscore is the agent loop's, never the model's (see
+        agent.py): who is asking, the chain so far, the task and the taint. The gate
+        already decided whether this pair may talk (agent.message — the matrix, or
+        swarm); fabric.message decides whether the conversation may grow."""
+        if not self.fabric:
+            return "[error] fabric not available"
+        if not _from:
+            return ("[error] ask_agent is for specialists — use delegate for one agent's "
+                    "work, or huddle to have several talk it through")
+
+        async def say(e):
+            if self.broadcast:
+                await self.broadcast({"type": "agent_msg", "conversation_id": _conv, **e})
+        return await self.fabric.message(_from, agent, question, list(_chain or [_from]),
+                                         root=_root, conversation_id=_conv, space_id=_space,
+                                         taint=list(_taint or []), say=say, parent_run=_run_id)
+
+    async def set_agent_brain(self, agent: str, model: str = "") -> str:
+        """Point one agent at a model on any provider here ('' = the machine's brain)."""
+        from . import fabric as fabricmod
+        try:
+            b = fabricmod.set_agent_model(self.store, self.cfg, agent, model)
+        except KeyError:
+            names = ", ".join(x["name"] for x in self.store.list_subagents()) or "(none)"
+            return f"[error] no agent called '{agent}' — have: {names}"
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "fabric_defs"})
+        where = f"{b['provider_name']} · {b['short']}"
+        return (f"{agent} now answers on {where}." if b["own"] or not model else
+                f"{agent} is pinned to {model}, but for now answers on {where}: {b['note']}.")
+
     async def forget(self, memory_id: str) -> str:
         mems = {m["id"] for m in self.store.search_memories("", limit=10**6)}
         if memory_id not in mems:
@@ -2076,6 +2136,12 @@ class Toolbox(usersmod.Scoped):
                                  for g in would[:8]) + (" …" if len(would) > 8 else ""))
         lines.append("Tell the user to open Workflows → Flows to read it and press Enable — "
                      "you cannot enable it yourself, and a test run works before then.")
+        if flowsmod.linked_members(flow) and getattr(self, "fabric", None):
+            with contextlib.suppress(Exception):
+                for k, v in (await self.fabric.announce_mission(flow)).items():
+                    lines.append(f"linked team {k}: " + ("recorded on their side"
+                                 + (f"; they have not let your team ask {', '.join(v['not_allowed'])}"
+                                    if v.get("not_allowed") else "") if v.get("ok") else str(v.get("error"))))
         return "\n".join(lines)
 
     async def search_docs(self, query: str, limit: int = 6) -> str:
@@ -2152,9 +2218,16 @@ class Toolbox(usersmod.Scoped):
                 await self.broadcast({"type": "fabric_defs"})
                 await self.broadcast({"type": "grants"})
         g = report["grants"]
+        linked = ""
+        if flowsmod.linked_members(flow) and getattr(self, "fabric", None):
+            # the linked team records this mission on its side (fabric.record_mission)
+            with contextlib.suppress(Exception):
+                told = await self.fabric.announce_mission(flow)
+                linked = "; " + ", ".join(f"{k}: {'recorded' if v.get('ok') else v.get('error')}"
+                                          for k, v in told.items())
         return (f"flow '{name}' is now {'live' if enabled else 'off'} — "
                 f"{g['added']} permission(s) granted, {g['revoked']} taken back, "
-                f"triggers {'armed' if enabled else 'disarmed'}")
+                f"triggers {'armed' if enabled else 'disarmed'}{linked}")
 
     # --- OpenClaw plugins ------------------------------------------------
     # The same shape as flows, for the same reason: the model may put a candidate
@@ -2402,6 +2475,10 @@ class Toolbox(usersmod.Scoped):
             # definition and may create specialists, which is a change to the OS.
             return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
                              f"needs. It stays disabled until you enable it.")
+        if name == "set_agent_brain":
+            dest = args.get("model") or "this machine's brain"
+            return "risky", (f"Moves '{args.get('agent', '?')}' onto {dest} — that provider "
+                             f"is billed for its work from now on.")
         if name == "create_subagent":
             # Grants nothing on its own (invoking it is what asks), but it writes a
             # definition other conversations can then use — a change to the OS.
@@ -3024,6 +3101,54 @@ class Toolbox(usersmod.Scoped):
             return "[error] action must be focus | close | float | tile | move_to_workspace"
         return f"{action}: {win.get('title') or wid}" if ok else f"[error] {msg}"
 
+    async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
+                         shirt: str = "", pants: str = "", glasses=None, blush=None,
+                         outfit: str = "", reroll: bool = False) -> str:
+        """Look at, restyle or reroll somebody's character — the agent's half of the
+        character editor (the parity law: what the UI can do is also a gated tool).
+
+        It can only choose from the same closed set the editor offers (avatars.py
+        validates), and a refusal names the choices, so the model can correct itself.
+        With no changes it describes the character and the options — which is how the
+        model finds out what "curly" or "mint" are without guessing.
+        """
+        from . import avatars as av
+        w = (who or "").strip()
+        low = w.lower().lstrip("@")
+        agent_name = (self.cfg.get("agent_name") or "").lower()
+        key = (av.ME if low in ("me", "you", "user", "myself") else
+               av.AGENT if low in ("agent", "yourself", "self", "") or (agent_name and low == agent_name)
+               else w)
+        if not av.is_known(self.store, self.cfg, key):
+            names = ", ".join(p["label"] for p in av.principals(self.store, self.cfg))
+            return f"[error] nobody called '{who}' has a character here — choose one of: {names}"
+        patch = {k: v for k, v in (("skin", skin), ("hair", hair), ("style", style),
+                                   ("shirt", shirt), ("pants", pants), ("outfit", outfit)) if v}
+        if glasses is not None:
+            patch["glasses"] = glasses
+        if blush is not None:
+            patch["blush"] = blush
+        try:
+            if reroll:
+                rec = av.reroll(self.store, self.cfg, key)
+            elif patch:
+                rec = av.update(self.store, self.cfg, key, patch)
+            else:
+                av.ensure(self.store, self.cfg)
+                pal = av.palette()
+                return (f"{w or 'your agent'} looks like: {av.describe(av.recipe_for(self.store, key))}. "
+                        f"You can set skin ({', '.join(x['name'] for x in pal['skin'])}), "
+                        f"hair ({', '.join(x['name'] for x in pal['hair'])}), "
+                        f"style ({', '.join(pal['style'])}), shirt ({', '.join(x['name'] for x in pal['shirt'])}), "
+                        f"pants ({', '.join(x['name'] for x in pal['pants'])}), outfit ({', '.join(pal['outfit'])} — "
+                        f"the blazer marks the lead, which is you by default), glasses and blush (yes/no), "
+                        f"or reroll for a new look in the same shirt colour.")
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            asyncio.create_task(self.broadcast({"type": "avatars", "key": key}))
+        return f"Done — {w or 'your agent'} now: {av.describe(rec)}."
+
     async def list_themes(self) -> str:
         """The theme ids control_desktop(action='apply_theme') accepts."""
         custom = [t["name"] for t in self.store.list_themes()]
@@ -3342,7 +3467,9 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = {"_flow", "_run_id"} if name == "brief_item" else set()
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else
+                    {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
+                    if name == "ask_agent" else set())
             return await fn(**{k: v for k, v in args.items() if not k.startswith("_") or k in keep})
         except TypeError as e:
             return f"[error] bad arguments for {name}: {e}"
@@ -3609,6 +3736,56 @@ TOOL_SCHEMAS = [
                 "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
             },
             "required": ["subagent", "task"],
+        },
+    },
+    {
+        "name": "huddle",
+        "description": "Have two to four specialist agents TALK A QUESTION THROUGH with each other, "
+                       "in turns, each answering on its own model (so agents on different AI "
+                       "providers can disagree and build on each other). Use it for a second "
+                       "opinion, a review, a plan worth arguing about. Returns the transcript, "
+                       "one line per turn — summarise it for the user. If no agent fits, "
+                       "create_subagent first. Costs one run per agent per round.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agents": {"type": "array", "items": {"type": "string"},
+                           "description": "2-4 agent names, e.g. ['researcher','validator']."},
+                "topic": {"type": "string", "description": "The question, self-contained — they see nothing else."},
+                "rounds": {"type": "integer", "description": "1-3 (default 2)."},
+            },
+            "required": ["agents", "topic"],
+        },
+    },
+    {
+        "name": "ask_agent",
+        "description": "Ask another agent on your team a question and wait for its answer — "
+                       "a colleague with different expertise, tools or model (e.g. the "
+                       "researcher asking the validator to check a figure). It answers as "
+                       "itself. Whether you may ask that agent is the person's decision; a "
+                       "refusal means answer from what you have. Keep it to one clear question.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agent": {"type": "string", "description": "Who to ask, e.g. 'validator'."},
+                "question": {"type": "string", "description": "Self-contained — they see nothing else."},
+            },
+            "required": ["agent", "question"],
+        },
+    },
+    {
+        "name": "set_agent_brain",
+        "description": "Choose which AI model one specialist agent answers on — any provider this "
+                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5', "
+                       "'openai/gpt-4o', 'ollama/qwen3.5:9b'), or '' for this machine's brain. "
+                       "It changes who is billed for that agent's work.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agent": {"type": "string"},
+                "model": {"type": "string"},
+            },
+            "required": ["agent"],
         },
     },
     {
@@ -4037,7 +4214,7 @@ TOOL_SCHEMAS = [
                 "name": {"type": "string", "description": "short-kebab-name, unique"},
                 "mission": {"type": "string", "description": "What the orchestrator is told, in the second person. Specific enough to act on; it picks the agents and the order itself, so do NOT write steps."},
                 "roster": {"type": "array", "items": {"type": "object"}, "description": "[{\"subagent\":\"researcher\",\"why\":\"what it is for here\"}] — the ONLY agents it may call. Must not be empty."},
-                "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\"}. Grant the fewest that let the mission succeed."},
+                "permissions": {"type": "object", "description": "What the roster may do: {\"tools\":[…],\"skills\":[…],\"net\":[…],\"fs_read\":[…],\"fs_write\":[…],\"memory\":\"none|read|read-space|read-write\",\"talk\":false}. talk:true lets its specialists consult each other. Grant the fewest that let the mission succeed."},
                 "description": {"type": "string"},
                 "triggers": {"type": "array", "items": {"type": "object"}, "description": "[{\"kind\":\"cron\",\"config\":{\"type\":\"daily\",\"at\":\"08:00\"}}] · message/webhook/os_event also. Only if the user asked for one."},
                 "sinks": {"type": "array", "items": {"type": "object"}, "description": "Where the answer goes: [{\"kind\":\"origin\"}] (default, answers where it was triggered), telegram, gui, notify, report."},
@@ -4335,6 +4512,26 @@ DESKTOP_TOOL_SCHEMAS = [
                        "enum": ["focus", "close", "float", "tile", "move_to_workspace"]},
             "workspace": {"type": "string", "description": "For move_to_workspace: the target workspace name/number."}},
             "required": ["window_id", "action"]},
+    },
+    {
+        "name": "set_avatar",
+        "description": "Look at or restyle a character — every agent on this machine (you, the "
+                       "user, and each specialist) has a small pixel-art character shown in the Crew "
+                       "scene, beside messages in Chat and Logs, and on Missions cards. Call with just "
+                       "`who` to hear how they look now and every option. Changes pick from a fixed "
+                       "set: skin, hair colour, hair style, shirt colour, outfit (shirt, blazer — the lead's, "
+                       "yours by default — or hoodie), pants, glasses, blush — or reroll for a new look in "
+                       "the same colour and outfit. Asked to design someone from a description "
+                       "(\"make yourself look like a calm librarian\"), YOU are the designer: pick "
+                       "the fields that fit and set them in one call.",
+        "parameters": {"type": "object", "properties": {
+            "who": {"type": "string", "description": "'me' for the user, 'yourself' for you, or a specialist's name."},
+            "skin": {"type": "string"}, "hair": {"type": "string"}, "style": {"type": "string"},
+            "shirt": {"type": "string"}, "pants": {"type": "string"},
+            "outfit": {"type": "string", "enum": ["shirt", "blazer", "hoodie"]},
+            "glasses": {"type": "boolean"}, "blush": {"type": "boolean"},
+            "reroll": {"type": "boolean", "description": "A new random look, keeping the shirt colour."}},
+            "required": ["who"]},
     },
     {
         "name": "list_themes",

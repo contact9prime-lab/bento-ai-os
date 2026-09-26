@@ -99,6 +99,62 @@ It refuses rather than guessing. A `bento job add` that silently landed in the w
 person's database would be discovered weeks later by whoever did not get their briefing.
 The same username and password is the sign-in from a phone — see [Users](users.md).
 
+## Characters in a terminal
+
+The pixel-art characters the desktop shows beside messages are drawn here too, in
+half blocks from the same pixel grid — so the researcher on an SSH session is the
+same person as on the desktop and the phone:
+
+```bash
+bento avatar                                   # everybody's face, side by side
+bento avatar show writer                       # one, full height
+bento avatar set me hair=blue style=bob        # the same choices as the editor
+bento avatar reroll researcher                 # a new look, same shirt colour
+bento avatar design agent "a calm lead with a grey bun, in a violet blazer"   # the machine's model designs it
+```
+
+It reads and writes the rows directly, so it works with the server down. Without
+colour (a pipe, `NO_COLOR`) it describes each character in words instead.
+
+## The team from a terminal
+
+```bash
+bento team                                     # each agent and the provider it answers on
+bento team set validator anthropic/claude-sonnet-5
+bento team own off                             # every agent on this machine's brain
+bento team matrix                              # who may ask whom
+bento team allow researcher validator          # one cell (also: block, ask)
+bento team talk swarm                          # matrix | swarm | off
+bento team limits hops=3 budget=20             # the limits, within their ranges
+```
+
+Linked teams — another Bento, or another account here — have their own verb:
+
+```bash
+bento link                                     # this machine's certificate and every link
+bento link request office.local                # ask; shows six digits and waits for the answer
+bento link request ada@office.local            # …addressed to Ada's account there
+bento link requests                            # requests waiting here, with their digits
+bento link approve 7a89ed8e                    # …check the digits match, then say yes (or deny)
+bento link request account bob                 # another account here: Bob approves as himself
+bento link listen on                           # let other machines ask (mTLS, port 8322)
+bento link allow office analyst                # their agents may ask your analyst
+bento link mine office on                      # yours may ask theirs without asking you
+bento link let office analyst fs.write ~/shared/reports --days 30
+                                               # their questions may have analyst write there, unasked
+bento link standing office                     # what they may have your agents change · unlet ID
+bento link missions office                     # their missions that use your agents, as recorded here
+bento link stop office weekly-report           # refuse that mission's questions here · resume undoes it
+bento link say office "Is the Q3 deck ready?"   # write to the people on that team
+bento link chat office                         # the conversation (pulls anything waiting)
+bento link remove office                       # ends it, and revokes its cells
+bento link invite machine                      # headless: a one-time bento://link/… line
+bento link join 'bento://link/…' office        # …redeemed on the other machine
+```
+
+In the TUI's chat, `@researcher @validator should we…` starts a huddle, and each turn prints as
+one line with the speaker and its provider. See [the team](team.md).
+
 ## Notes
 
 - Chat streams incrementally and shows model heartbeats ("waiting for the model — 20s…")

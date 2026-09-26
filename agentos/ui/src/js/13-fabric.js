@@ -20,15 +20,18 @@ function fabTabs(){
 }
 function fabSetTab(i){fabTab=FAB_TABS[i]||'flows';refreshApp('jobs')}
 async function renderFabAgents(body){
-  const sa=await fetch('/api/subagents').then(r=>r.json());
+  // the roster asks /api/avatars too: that is what gives a specialist made a moment
+  // ago its face, the same one it will wear on the stage and beside its messages
+  const [sa]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),avatarsLoad()]);
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
   const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
-      <div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>
+      ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
-        <div class="meta"><b>${esc((s.model||'').split('/').pop()||'inherits OS model')}</b> · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
+        <div class="meta">${s.brain?brainChip(s.brain.model,s.brain.provider_name):esc(s.model||'inherits OS model')}${s.brain&&s.brain.note?` <span class="mut" title="pinned to ${esc(s.brain.pinned)}">· ${esc(s.brain.note)}</span>`:''} · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
+      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
@@ -730,7 +733,19 @@ async function enableFlow(name,on){
   const g=r.report.grants;
   toast(on?`“${name}” is live · ${g.added} permission${g.added===1?'':'s'} granted`
           :`“${name}” is off · ${g.revoked} permission${g.revoked===1?'':'s'} taken back`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
+}
+/* A mission naming an agent on a linked team is recorded on THAT team too (the server
+   tells it on save / enable / delete). What they answered is said here, once: recorded,
+   refused an agent their side has not let you ask, stopped by them, or unreachable (it
+   will be recorded on the mission's first question instead). */
+function flwLinkedToast(linked){
+  const parts=Object.entries(linked||{}).map(([lab,v])=>!v.ok?lab+': '+(v.error||'not reached')+' — recorded there on its first question'
+    :v.stopped?lab+' has STOPPED this mission on their side'
+    :(v.not_allowed||[]).length?lab+' has not let your team ask '+v.not_allowed.join(', ')
+    :'recorded on '+lab+'’s side — they can see and stop it');
+  if(parts.length)setTimeout(()=>toast(parts.join(' · ')),1600);
 }
 async function discardFlow(name){
   if(!await osConfirm('Discard the draft “'+name+'”?',
@@ -919,13 +934,15 @@ async function delFlow(name){
 /* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
 var FLW=null;
 async function openFLW(name,draft){
-  const [subs,tools,skills,models]=await Promise.all([
+  const [subs,tools,skills,models,links]=await Promise.all([
     fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]})),
+    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]}))]);
   const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
   FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
+    links:(links.links||[]).map(l=>l.label),
     models:models.models||[],q:'',draft:(draft||null),
     d:ex?JSON.parse(JSON.stringify(ex))
        :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
@@ -967,6 +984,36 @@ function flwRoster(nm,on){
   if(on&&!r.some(x=>x.subagent===nm))r.push({subagent:nm,why:''});
   if(!on)FLW.d.roster=r.filter(x=>x.subagent!==nm);
   flwPreview();
+}
+/* An agent on a LINKED team (analyst@office) can be on a mission's roster. The task
+   crosses the link as a question; what it does there is that team's decision — their
+   gate, their standing permissions — and its answer lands here untrusted. Who you may
+   ask is theirs to say, so "Who?" asks them live rather than guessing a name. */
+function flwLinkedHTML(d){
+  const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
+  const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
+      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
+        <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
+      <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
+    <div class="mut flw-linked-why" id="flw-lwho"></div>`;
+}
+function flwAddLinked(name){
+  const a=(name||(document.getElementById('flw-la')||{}).value||'').trim(), l=(document.getElementById('flw-ll')||{}).value||'';
+  if(!a||!l){toast('name one of their agents — Who? asks them');return}
+  flwCollect();flwRoster(a+'@'+l,true);drawFLW();
+}
+async function flwLinkedWho(){
+  const l=(document.getElementById('flw-ll')||{}).value||'', box=document.getElementById('flw-lwho');if(!box)return;
+  box.textContent='asking '+l+'…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  if(!document.body.contains(box))return;
+  box.innerHTML=!r.ok?esc(r.error||'not reachable')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
   const s=FLW.d.sinks||[];
@@ -1017,6 +1064,7 @@ function flwCollect(){
   d.permissions.fs_read=lines(g('#flw-fsr'));
   d.permissions.fs_write=lines(g('#flw-fsw'));
   d.permissions.memory=g('#flw-mem')||'read-space';
+  {const t=document.querySelector('#flw-talk');if(t)d.permissions.talk=!!t.checked;}
   (d.triggers||[]).forEach((t,i)=>{
     document.querySelectorAll(`[data-trig="${i}"]`).forEach(el=>{
       flwTrigSet(i,el.getAttribute('data-key'),el.type==='number'?+el.value:el.value);
@@ -1040,7 +1088,8 @@ function drawFLW(){
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
       onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
-  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'));
+  }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
+    +flwLinkedHTML(d);
   const q=(FLW.q||'').toLowerCase();
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);
@@ -1144,6 +1193,9 @@ function drawFLW(){
       <div style="flex:1"><label>Files it may read</label><textarea id="flw-fsr" rows="2" placeholder="~/Documents/launch/*">${esc((p.fs_read||[]).join('\n'))}</textarea></div>
       <div style="flex:1"><label>Files it may write</label><textarea id="flw-fsw" rows="2">${esc((p.fs_write||[]).join('\n'))}</textarea></div>
     </div>
+    <label class="flw-talk"><input type="checkbox" id="flw-talk" ${p.talk?'checked':''} onchange="flwPreview()">
+      Specialists may consult each other — on this mission, the agents on its roster may ask one
+      another mid-task (within the team's limits). Off: they only work through the orchestrator.</label>
     <label>Skills it may load</label><div style="max-height:110px;overflow:auto">${skl}</div>
 
     <div class="sawgrp">What starts it</div>
@@ -1221,6 +1273,8 @@ function flwDiff(before,after){
   add('net',(before.permissions||{}).net,(after.permissions||{}).net);
   add('files read',(before.permissions||{}).fs_read,(after.permissions||{}).fs_read);
   add('files written',(before.permissions||{}).fs_write,(after.permissions||{}).fs_write);
+  if(!!(before.permissions||{}).talk!==!!(after.permissions||{}).talk)
+    out.push(((after.permissions||{}).talk?'+ ':'− ')+'specialists consult each other');
   if(((before.permissions||{}).memory)!==((after.permissions||{}).memory))
     out.push('memory: '+((before.permissions||{}).memory||'?')+' → '+((after.permissions||{}).memory||'?'));
   add('sinks',(before.sinks||[]).map(x=>x.kind),(after.sinks||[]).map(x=>x.kind));
@@ -1269,6 +1323,7 @@ async function flwSave(){
   FLW=null;drawFLW();
   toast((made.length?`created ${made.join(', ')} · `:'')
     +`flow saved · ${g.added} permissions granted, ${g.revoked} revoked · ${t.added+t.updated} triggers`);
+  flwLinkedToast(r.linked);
   refreshApp('fabric');
 }
 

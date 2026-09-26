@@ -1,0 +1,213 @@
+/* ================= Characters (00e-avatars.js) =================
+   Every face on the desktop is the server's PNG of one stored recipe, and it is
+   pixel art: never smoothed, whatever size it is shown at. These rules are NOT
+   scoped to the immersive look — the characters are part of the OS, in the
+   standard desktop too — and Settings → Appearance turns the faces off. */
+img.av{image-rendering:pixelated;image-rendering:crisp-edges;display:inline-block;flex:none;
+  vertical-align:middle;border-radius:8px;background:color-mix(in srgb,var(--txt) 7%,transparent)}
+.msg .who img.av-who{width:26px;height:26px;margin-right:8px;vertical-align:-8px;border-radius:8px}
+.tool .head img.av-tool{width:20px;height:20px;margin-right:6px;border-radius:6px;vertical-align:-5px}
+img.av-log{width:22px;height:22px;margin-right:7px;border-radius:6px;vertical-align:-6px}
+.approval .atitle img.av-ap{width:26px;height:26px;margin-right:8px;border-radius:8px;vertical-align:-8px}
+.teamcard img.av-card,img.av-card{width:44px;height:44px;flex:0 0 44px;border-radius:12px}
+.hm-now img.av-home{width:22px;height:22px;margin-right:8px;border-radius:6px;vertical-align:-6px}
+img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
+.av-set-btn{display:inline-flex;align-items:center}
+
+/* A whole figure, animated by stepping through its four-frame sheet: stand,
+   blink, one arm up, the other. Steps, not a tween — it is pixel art, and a
+   tween would slide a frame half-way into the next. No timer anywhere, so a
+   removed figure costs nothing; reduced motion holds the first frame. */
+.av-sprite{width:calc(var(--u) * 16);height:calc(var(--u) * 26);background-repeat:no-repeat;
+  background-size:calc(var(--u) * 64) calc(var(--u) * 26);image-rendering:pixelated;
+  animation:av-life 4.8s step-end infinite}
+@keyframes av-life{
+  0%{background-position:0 0}
+  40%{background-position:calc(var(--u) * -16) 0}
+  43%{background-position:0 0}
+  62%{background-position:calc(var(--u) * -32) 0}
+  70%{background-position:calc(var(--u) * -48) 0}
+  78%{background-position:calc(var(--u) * -32) 0}
+  86%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){.av-sprite{animation:none;background-position:0 0}}
+
+/* ---- the editor: the dialog kit, with a stage and the closed set of choices ---- */
+.dlg.ave{width:min(580px,94vw)}
+.ave-body{display:flex;gap:18px;align-items:center;margin:12px 0 6px}
+.ave-stage{flex:none;padding:16px 22px 12px;border-radius:14px;
+  background:radial-gradient(ellipse at 50% 92%,color-mix(in srgb,var(--acc) 16%,transparent),transparent 62%),
+             color-mix(in srgb,var(--txt) 6%,transparent)}
+.ave-rows{flex:1;display:flex;flex-direction:column;gap:9px;min-width:0}
+.ave-row{display:flex;align-items:center;gap:10px}
+.ave-row>span{flex:0 0 66px;font-size:var(--fs-xs);color:var(--dim)}
+.ave-row>div{display:flex;flex-wrap:wrap;gap:6px}
+.ave-sw{width:26px;height:26px;padding:0;border-radius:50%;cursor:pointer;background:var(--c);
+  border:2px solid color-mix(in srgb,var(--txt) 14%,transparent)}
+.ave-sw.on{border-color:var(--txt);box-shadow:inset 0 0 0 2px var(--bg2)}
+.ave-chip{padding:4px 11px;border-radius:999px;cursor:pointer;font-size:var(--fs-xs);color:var(--txt);
+  background:transparent;border:1px solid var(--line)}
+.ave-chip.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.ave-about{font-size:var(--fs-xs);margin-bottom:6px}
+.ave-reroll{margin-right:auto}
+/* a fingertip is 9mm: on a touch screen every choice is a real target, and the
+   stage moves above the choices so the rows get the whole width */
+body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:var(--tap)}
+@media (max-width:560px){.ave-body{flex-direction:column;align-items:stretch}.ave-stage{align-self:center}}
+
+/* ---- huddles (10b-huddle.js) and the provider chip ----
+   A huddle is a card inside the reply: one row per turn, the speaker's face, name
+   and the brain it answered on, then what it said. The chip names the PROVIDER
+   first, because "which company answered" is the question; the model follows. */
+.brainchip{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;
+  font-size:var(--fs-xs);font-weight:500;letter-spacing:0;text-transform:none;vertical-align:1px;
+  color:var(--dim);border:1px solid var(--line);background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.brainchip b{color:var(--txt);font-weight:600}
+.huddle{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.hud-head{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);color:var(--dim);margin-bottom:6px}
+.hud-head span{margin-left:4px}
+.hud-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.hud-row:first-of-type{border-top:0}
+.hud-row img.av-who{width:30px;height:30px;flex:0 0 30px;border-radius:9px;margin:0}
+.hud-say{min-width:0;flex:1}
+.hud-who{font-size:var(--fs-xs);font-weight:600;margin-bottom:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hud-text p{margin:0}
+.hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
+.msg .who img.av-who+img.av-who{margin-left:-14px}
+/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+.team-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.team-row>b{min-width:88px}
+.team-row select{flex:0 1 300px;min-width:0}
+.team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
+body.dev-touch .team-row select{min-height:var(--tap)}
+.hud-to{font-weight:500;color:var(--dim)}
+/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+   ask → allow → block; a real target on a phone, and the grid scrolls sideways
+   rather than squeezing a cell below the tap floor. */
+.team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.team-matrix table{border-collapse:separate;border-spacing:4px}
+.team-matrix th{font-size:var(--fs-xs);font-weight:500;color:var(--dim);text-align:center;padding:0 2px}
+.team-matrix th.tm-row{text-align:left;white-space:nowrap}
+.team-matrix th img.av{width:26px;height:26px;border-radius:7px;display:block;margin:0 auto 2px}
+.team-matrix th.tm-row img.av{display:inline-block;vertical-align:middle;margin:0 6px 0 0}
+.tm-cell{min-width:44px;height:34px;border-radius:9px;border:1px solid var(--line);cursor:pointer;
+  background:transparent;color:var(--dim);font-size:var(--fs-xs);font-weight:600}
+.tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
+.tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
+.tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
+.tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
+.team-limits{display:flex;flex-direction:column;gap:6px;width:100%}
+.tl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tl-row small{font-size:var(--fs-xs)}
+.tl-row input{width:80px}
+body.dev-touch .tl-row input{min-height:var(--tap)}
+.flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
+/* a roster member on a linked team (13-fabric.js flwLinkedHTML) */
+.flw-linked{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.flw-linked input{flex:1 1 140px;min-width:0}.flw-linked select{flex:0 1 140px;min-width:0}
+.flw-linked-why{font-size:var(--fs-xs);margin:4px 0}
+body.dev-touch .flw-linked input,body.dev-touch .flw-linked select,body.dev-touch .flw-linked button{min-height:var(--tap)}
+/* Linked teams */
+.team-links{display:flex;flex-direction:column;gap:8px;width:100%}
+.tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tlk-actions input{flex:1 1 220px;min-width:0}
+.pc .tlk-actions input,.pc .tlk-actions select{flex:1 1 220px;width:auto;min-width:0}
+.tlk-ask{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.tlk-waiting{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.tlk-req{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  padding:10px 12px;border:1px solid color-mix(in srgb,var(--acc) 55%,var(--line));border-radius:10px;
+  background:color-mix(in srgb,var(--acc) 7%,var(--bg2))}
+.tlk-req.out{border-color:var(--line);background:var(--bg2)}
+.tlk-req>div:first-child{flex:1 1 260px;min-width:0}
+.tlk-req p{margin:0 0 4px}.tlk-req small{display:block}
+.tlk-req-act{display:flex;gap:6px;flex:none}
+/* the six digits are the whole check, so they read like a number on a card reader */
+.tlk-sas{font-family:var(--mono,monospace);font-size:1.35em;font-weight:700;letter-spacing:.08em;
+  padding:1px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--line);white-space:nowrap}
+.tlk-sas-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 4px}
+.tlk-more{margin-top:10px}.tlk-more summary{cursor:pointer;color:var(--txt2,var(--txt));padding:6px 0;list-style:none}
+.tlk-more summary::-webkit-details-marker{display:none}
+.tlk-more summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-more[open] summary::before{content:'▾'}
+.tlk-more[open]{display:flex;flex-direction:column;gap:8px}
+body.dev-touch .tlk-req-act button,body.dev-touch .tlk-more summary{min-height:var(--tap)}
+body.dev-touch .tlk-more summary{display:flex;align-items:center}
+.tlk-invite{padding:8px 10px;border:1px dashed var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-inv-row{display:flex;gap:6px}.tlk-inv-row input{flex:1;min-width:0;font-family:var(--mono,monospace);font-size:var(--fs-xs)}
+.tlk-card{padding:8px 10px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.tlk-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tlk-sub{font-size:var(--fs-sm);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tlk-chk{display:inline-flex;gap:6px;align-items:center}
+/* Settings stacks stretch every input to the row (.prow.stack .pc input); a checkbox
+   stretched to 330px sits nowhere near the words it answers. */
+.pc .tlk-chk input[type=checkbox]{width:auto;flex:none;margin:0}
+/* On touch the LABEL is the target — tapping it toggles the box — so it takes the
+   --tap floor as real size and the box keeps its own. */
+body.dev-touch .tlk-chk{min-height:var(--tap);padding-right:6px;margin:0}
+.tlk-chk.tlk-sub{flex-wrap:nowrap}.tlk-chk>span{min-width:0}
+body.dev-touch .tlk-actions button{min-height:var(--tap);min-width:var(--tap)}
+/* their missions that use your agents (tlMissionsHTML) */
+.tlk-miss{display:flex;flex-direction:column;gap:6px}
+.tlk-miss-h{font-size:var(--fs-sm);color:var(--txt2,var(--txt))}
+.tlk-miss-row{display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:var(--fs-sm)}
+.tlk-miss-row.stopped{border-style:dashed;opacity:.8}
+.tlk-miss-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tlk-miss-main .tlk-why{flex-basis:100%;margin:0;font-size:var(--fs-xs);overflow-wrap:anywhere}
+body.dev-touch .tlk-miss-row button{min-height:var(--tap)}
+/* standing permissions — the same disclosure shape as "Use an invite code instead" */
+.tlk-stand summary{cursor:pointer;font-size:var(--fs-sm);color:var(--txt2,var(--txt));padding:4px 0;list-style:none}
+.tlk-stand summary::-webkit-details-marker{display:none}
+.tlk-stand summary::before{content:'▸';display:inline-block;width:1.2em}.tlk-stand[open] summary::before{content:'▾'}
+.tlk-stand[open]{display:flex;flex-direction:column;gap:6px}
+.tlk-stand .tlk-why{margin:0;font-size:var(--fs-xs)}
+.tlk-stand-row{display:flex;gap:8px;align-items:center;font-size:var(--fs-sm)}
+.tlk-stand-row>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.pc .tlk-stand-add select{flex:0 1 150px}.pc .tlk-stand-add input[data-sa=days]{flex:0 1 150px}
+body.dev-touch .tlk-stand summary{min-height:var(--tap);display:flex;align-items:center}
+body.dev-touch .tlk-stand-row button,body.dev-touch .tlk-stand-add select,
+body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
+
+/* ---- Team Chat (24c-teamchat.js) ---- */
+.tc{display:grid;grid-template-columns:230px 1fr;height:100%;min-height:0}
+.tc-list{border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column;padding:6px;gap:2px}
+.tc-th{display:flex;gap:8px;align-items:center;text-align:left;padding:8px;border-radius:10px;min-height:var(--tap,40px)}
+.tc-th.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.tc-th:hover{background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.tc-th-txt b{display:flex;align-items:center;gap:6px}
+.tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.tc-head .av{width:34px;height:34px}
+.tc-head-txt{display:flex;flex-direction:column;flex:1;min-width:0}
+.tc-mute{font-size:var(--fs-xs)}
+.tc-feed{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.tc-msg{display:flex;gap:8px;align-items:flex-start;max-width:78%}
+.tc-msg.mine{align-self:flex-end;flex-direction:row-reverse}
+.tc-msg .av{width:28px;height:28px;flex:none}
+.tc-bub{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:6px 10px;min-width:0}
+.tc-msg.mine .tc-bub{background:color-mix(in srgb,var(--acc) 16%,var(--bg3));border-color:color-mix(in srgb,var(--acc) 35%,var(--line))}
+.tc-meta{font-size:var(--fs-xs);display:flex;gap:6px;align-items:baseline}
+.tc-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.tc-tick{color:var(--acc);font-size:11px}.tc-tick.wait{color:var(--txt3,var(--txt2))}.tc-tick.bad{color:var(--err)}
+.tc-compose{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);align-items:flex-end}
+.tc-compose textarea{flex:1;resize:none;min-height:40px}
+.tc-note{padding:0 14px 8px;margin:0;font-size:var(--fs-xs)}
+.tc-empty{max-width:440px}
+/* a phone shows one pane at a time: the list, or the thread with a back button */
+.tc.phone{grid-template-columns:1fr}
+.tc.phone .tc-main{display:none}.tc.phone.in-thread .tc-list{display:none}.tc.phone.in-thread .tc-main{display:flex}
+.tc.phone .tc-msg{max-width:92%}
+body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);min-width:var(--tap)}
+.tlk-req>.av{width:44px;height:44px;flex:none}
+.tlk-head .av{width:26px;height:26px}
+
+/* Design with AI, at the top of the character editor */
+.ave-design{display:flex;gap:8px;margin:4px 0 2px}
+.ave-design .ave-desc{flex:1;min-width:0}
+.ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}

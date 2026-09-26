@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -12,9 +12,10 @@ resolution-markers = [
 
 [[package]]
 name = "agentos"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "dbus-fast" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -34,6 +35,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=41" },
     { name = "dbus-fast", specifier = ">=2.24" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },

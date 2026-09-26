@@ -106,6 +106,52 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    /* The team: each specialist may answer on its OWN provider — a researcher on a
+       local model, a validator on Claude, a writer on GPT — and they can hand work to
+       each other and talk it through in a huddle. One switch turns that off (one
+       bill, one provider), and each row pins one agent. Both apply on the spot, like
+       the brain above. The badge each agent wears on the Crew stage and in chat is
+       the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
+    P.push(pGroup('Team',[
+      pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
+        {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
+         f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
+      pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
+        {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
+         f:'team agent model pin provider per agent'}),
+      /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
+         permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
+         every cell you have not blocked is open, so they recruit each other freely,
+         still inside the loop, hop and budget limits. Off: no agent can message
+         another. It applies on the spot; `bento team talk` is the terminal's switch. */
+      pRow('Agents message each other',pSelect('s-team-talk',[
+          ['matrix','Ask me (the matrix below)'],
+          ['swarm','Swarm — they ask each other freely'],
+          ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
+        {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
+         f:'team agents message talk each other swarm matrix permission ask'}),
+      /* The limits: how far a question travels, how many one task may send, how often a
+         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
+         ceiling no setting passes, because every one multiplies model calls. */
+      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
+        {stack:true,desc:'Per task, so several swarms at once each get their own. Changes apply to the next question.',
+         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
+      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
+         f:'team matrix who may ask whom agents grid permission'}),
+      /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
+         Ask → Approve with six digits on both screens (the OAuth device flow); an invite
+         code is folded away for headless machines. A link grants nothing: what their
+         agents may ask yours is chosen per agent, and never opened by swarm. `bento
+         link` is the terminal's face; SUI is this page, nothing touches the compositor. */
+      pRow('Linked teams','<div id="s-team-links" class="team-links mut">loading…</div>',
+        {stack:true,desc:'Your agents and another team\u2019s: on another machine over mutual TLS, or another account on this one. Ask to link, they approve, and both screens show the same six digits. Linking lets nothing through by itself — choose which of your agents theirs may ask. Every answer from a linked team is treated as untrusted.',
+         f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
+    ],{f:'team agents providers huddle'}));
+    setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamLinks,0);
+    setTimeout(paintTeamMatrix,0);
+    setTimeout(paintTeamLimits,0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
@@ -237,6 +283,23 @@ function setTab(body,all){
         {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
+    /* The characters are not part of the immersive look: a face beside a message
+       helps in the standard desktop too, so they have their own group, and their
+       own switch for somebody who would rather read text. The faces shown here are
+       the editor's doors; each specialist's is on its card in Missions → Agents.
+       Terminal: `bento avatar` (list / show / set / reroll) — same recipes. */
+    P.push(pGroup('Characters',[
+      pRow('You and your agent',
+        `<button class="endbtn av-set-btn" onclick="avatarEdit('@me')" title="Change how you look">${avatarImg('@me','av-set')}You</button>`
+        +`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Your agent</button>`,
+        {desc:'You, your agent and every specialist each have one pixel-art character, the same everywhere: Chat, Logs, '
+             +'approvals, Missions and the Crew stage. Click a face to change it. Your agent can change them too '
+             +'("give the researcher glasses"), and so can bento avatar in a terminal. They are yours, not a space\'s.',
+         f:'characters avatars faces pixel art people specialists agent me chat logs crew look'}),
+      pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
+        {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
+         f:'characters avatars faces off plain text chat logs'}),
+    ],{f:'characters avatars faces'}));
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -251,14 +314,21 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it'],['crew','Crew — your specialists, drawn, at work']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
              +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
              +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
              +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
-             +'when this tab is hidden, holds still under reduced motion, and uses no blur.',
-         f:'scene movement watch automatic aurora wallpaper live'}),
+             +'when this tab is hidden, holds still under reduced motion, and uses no blur. '
+             +'Crew draws the specialists you actually have — the same characters as in Chat and Logs (Characters, above) — '
+             +'with your agent in the middle. They breathe, sway and blink while '
+             +'they wait; one steps forward and brightens when its specialist starts working, with the tool it just called '
+             +'named above its head. With no specialists yet you get your agent alone and a line saying so: a crowd of '
+             +'colleagues who do not exist would be a better-looking lie, not a better desktop. Nothing is downloaded — the '
+             +'figures are drawn, and their colour comes from the theme — and it costs what the dial costs.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated'}),
+
     ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
@@ -330,6 +400,18 @@ function setTab(body,all){
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
   const im=main.querySelector('#s-imm');
   if(im)im.onchange=()=>setImmersive(im.checked);
+  const avs=main.querySelector('#s-av-on');
+  if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const tt=main.querySelector('#s-team-talk');
+  if(tt)tt.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
+    cfg.team={...(cfg.team||{}),talk:tt.value};paintTeamMatrix();
+    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents may ask each other freely',off:'agents no longer message each other'}[tt.value])};
+  const tw=main.querySelector('#s-team-own');
+  if(tw)tw.onchange=async()=>{
+    await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});
+    cfg.team={...(cfg.team||{}),own_brains:tw.checked};paintTeamBrains();
+    toast(tw.checked?'agents answer on their own providers':'every agent uses this machine\u2019s brain')};
   const sc=main.querySelector('#s-imm-scene');
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
@@ -955,4 +1037,266 @@ async function chanSave(id){
     if(msg){msg.textContent=j.ok?'saved':(j.error||'could not save');msg.className=j.ok?'ok':'warn'}
     if(j.ok)renderChannels();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
+}
+
+/* One row per specialist: its face, the brain it answers on RIGHT NOW (the chip),
+   and a picker of every model this machine can reach. The chip is the server's
+   answer (fabric.agent_brain), so a pin on a switched-off provider reads as what it
+   is — pinned, and on the machine's brain until the provider is on. */
+async function paintTeamBrains(){
+  const box=document.getElementById('s-team-list');if(!box)return;
+  let sa={},mods={};
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  const list=(sa.subagents||[]);
+  if(!list.length){box.textContent='No specialists yet — ask for one, or create one in Missions → Build → Agents.';return}
+  const models=(mods.models||[]).map(m=>m.id);
+  box.classList.remove('mut');
+  box.innerHTML=list.map(s=>{
+    const b=s.brain||{}, pin=s.model||'';
+    const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
+    return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
+      <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
+  }).join('');
+  box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
+    const r=await fetch('/api/subagents/'+encodeURIComponent(sel.dataset.agent)+'/brain',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
+  });
+}
+
+/* The matrix: rows ask, columns answer. Each cell is a grant row (fabric.matrix);
+   a tap cycles ask → allow → block and writes it through PUT /api/team/matrix. In
+   swarm mode an unset cell reads "swarm" (open) — only a block closes it. */
+async function paintTeamMatrix(){
+  const box=document.getElementById('s-team-matrix');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
+  const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
+  if(names.length<2){box.textContent='Two or more specialists are needed before any of them can message another.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off — no agent can message another. Choose "Ask me" or "Swarm" above to use the matrix.';return}
+  box.classList.remove('mut');
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell not blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
+  });
+}
+
+/* One number per limit, with its range from the server (fabric.LIMITS). Saved on
+   change; a value out of range is refused with the sentence that says the range. */
+async function paintTeamLimits(){
+  const box=document.getElementById('s-team-limits');if(!box)return;
+  let d={};try{d=await (await fetch('/api/team/limits')).json()}catch(e){}
+  const L=d.limits||{},R=d.ranges||{};
+  const label={hops:'Hops a question may travel',budget:'Questions per task',clarify:'Times a colleague may ask back',
+    huddle_agents:'Agents in a huddle',huddle_rounds:'Rounds in a huddle'};
+  box.classList.remove('mut');
+  box.innerHTML=Object.keys(R).map(k=>`<label class="tl-row"><span>${esc(label[k]||k)}<small class="mut"> · ${esc(R[k].what)} (${R[k].min}–${R[k].max}, default ${R[k].default})</small></span>
+    <input type="number" data-lim="${esc(k)}" min="${R[k].min}" max="${R[k].max}" value="${L[k]}"></label>`).join('');
+  box.querySelectorAll('input[data-lim]').forEach(inp=>inp.onchange=async()=>{
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({team:{limits:{[inp.dataset.lim]:+inp.value}}})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r&&r.error){toast(r.error);paintTeamLimits();return}
+    toast((label[inp.dataset.lim]||inp.dataset.lim)+': '+inp.value);
+  });
+}
+
+/* Linked teams. The way in is a REQUEST, the OAuth device flow: type the other
+   machine's address (or pick an account here) and press Ask; its person gets an
+   Approve / Deny card; both screens show the same six digits, computed on each side
+   from the certificates that side saw — so the digits are how a person knows nobody
+   is in the middle. The invite string is kept, folded away, for a machine with no
+   screen to approve on. Everything is a call to /api/team/links*. */
+var TEAM_INVITE=null;
+function openLinkedTeams(){
+  SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
+  openApp('settings');
+  setTimeout(()=>{
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="ai"]')?.click();
+    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
+  },250);
+}
+function tlkReqHTML(r){
+  const who=esc(r.name||'?'), id=r.identity||{};
+  const face=avatarRecipeImg(id.agent,'av-set',(id.agent_name||r.name)+'’s agent');
+  const team=id.agent_name?` <span class="mut">— ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
+  if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
+      <small class="mut">You are both on this machine, so there is nothing to compare — it is them.</small></div>
+    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+  return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
+      <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
+      <small class="mut">Different digits mean something is between you — deny it. Approving lets nothing through yet: you choose which of your agents theirs may ask.</small></div>
+    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+}
+function tlkOutHTML(r){
+  const who=esc(r.name||r.to_name||'?');
+  const st=r.state||'pending';
+  const line=st==='pending'
+    ?(r.kind==='account'||!r.sas?`Waiting for <b>${esc(r.to_name||r.name)}</b> to approve.`
+      :`Waiting for <b>${who}</b> to approve.</p><p class="tlk-sas-row">Make sure it shows <span class="tlk-sas">${esc(r.sas)}</span>`)
+    :st==='approved'?`✓ <b>${who}</b> approved — linked.`
+    :st==='denied'?`<b>${who}</b> said no.`
+    :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
+    :`<b>${who}</b>: ${esc(r.error||st)}`;
+  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" onclick="teamLinkWithdraw('${esc(r.id)}')">Withdraw</button></div>`:''}</div>`;
+}
+async function paintTeamLinks(){
+  const box=document.getElementById('s-team-links');if(!box)return;
+  let d={},sa={};
+  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json())])}catch(e){}
+  const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
+  const keep=box.querySelector('#tlk-addr')?.value||'', open=box.querySelector('.tlk-more')?.open;
+  box.classList.remove('mut');
+  const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b> — give it to the other side privately; it works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(TEAM_INVITE.invite||TEAM_INVITE.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      ${TEAM_INVITE.fingerprint?`<small class="mut">This machine's certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}… — the joiner checks it before sending anything.</small>`:''}</div>`:'';
+  const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
+      <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
+        <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you; you cannot reach them'):'')}</span>
+        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
+        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
+        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      ${tlMissionsHTML(l)}
+      ${tlStandHTML(l,mine,d)}
+      <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
+  const others=d.others||[];
+  box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
+    <div class="tlk-ask">
+      <div class="tlk-actions"><input id="tlk-addr" placeholder="Another Bento: office.local or 192.168.1.20" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="pact" onclick="teamLinkRequest()">Ask to link</button></div>
+      ${d.accounts&&others.length?`<div class="tlk-actions"><select id="tlk-acct">${others.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>
+        <button class="endbtn" onclick="teamLinkRequestAccount()">Ask this account to link</button></div>`:''}
+      ${(d.outgoing||[]).map(tlkOutHTML).join('')}
+    </div>
+    <div class="tlk-me">This machine: <b>${esc(me.name||'')}</b> <small class="mut">certificate ${esc((me.fingerprint||'').slice(0,16))}…</small></div>
+    ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link — opens port ${esc(me.port)} on this machine, mutual TLS only</span></label>`
+      :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines cannot ask to link with this one until an admin turns that on. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
+    ${d.can_listen&&!d.listening?'<p class="mut tlk-why">Asking another machine works now. For THEM to ask YOU, turn this on.</p>':''}
+    ${links||'<p class="mut">No linked teams yet.</p>'}
+    <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
+      <p class="mut tlk-why">For a machine nobody can approve on — a headless box set up over SSH. Make the code on one side, paste it on the other.</p>
+      <div class="tlk-actions">
+        <button class="endbtn" onclick="teamLinkInvite('machine')" ${d.listening?'':'disabled'}>Invite a machine</button>
+        <input id="tlk-join" placeholder="bento://link/… (an invite from the other machine)"><button class="endbtn" onclick="teamLinkJoin()">Join</button>
+        ${d.accounts?`<button class="endbtn" onclick="teamLinkInvite('account')">Invite an account here</button>
+          <input id="tlk-code" placeholder="code from another account"><button class="endbtn" onclick="teamLinkRedeem()">Redeem</button>`:''}
+      </div>${d.listening?'':'<p class="mut tlk-why">Invite a machine needs other machines allowed to reach this one (above).</p>'}${inv}
+    </details>`;
+  const a=box.querySelector('#tlk-addr');if(a){a.value=keep;a.onkeydown=e=>{if(e.key==='Enter')teamLinkRequest()}}
+  const ls=box.querySelector('#tlk-listen');
+  if(ls)ls.onchange=async()=>{const r=await teamApi('/api/team/listen','PUT',{on:ls.checked});if(r)toast(r.listening?'other machines can ask to link (port '+r.port+')':'other machines can no longer ask to link');paintTeamLinks()};
+  box.querySelectorAll('input[data-link]').forEach(cb=>cb.onchange=async()=>{
+    const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
+    await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
+  box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
+  box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+}
+/* Standing permissions: what a linked team may have one of YOUR agents change without a
+   person here saying yes. A question from another team is untrusted, so by default it can
+   make an agent read and answer, never write — this is that yes given ahead of time, for
+   one agent, one action, one folder or tool. The same rows the approval card's "Always
+   let …" writes and Permissions revokes; the server refuses what can never be standing
+   (a shell, a home, a hidden folder) with a sentence, which is shown as it comes.
+   Faces: TUI is `bento link let/standing/unlet` (no pointer needed); SUI is this page,
+   nothing native — and the card that offers it goes only to the link owner's screens. */
+var TL_STAND_OPEN={};
+var TL_ACT_WORDS={'fs.write':'write files in','memory.write':'remember things','kg.write':'add to the knowledge graph',
+  'media.generate':'generate images','media.write':'save assets','tool.use':'use the tool'};
+function tlScope(s){return String(s||'').replace(/^(fs|tool):/,'').replace(/\/?\*$/,'')}
+function tlStandHTML(l,mine,d){
+  const rows=l.standing||[], lab=esc(l.label);
+  return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
+    <p class="mut tlk-why">A question from ${lab} can make your agents read and answer, never change anything — a person here is asked first, and when nobody is watching the answer is no. Allow one thing here ahead of time: that agent, that action, inside that folder. If the agent also read a web page or a mail on the way, you are asked again.</p>
+    ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
+    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
+      <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
+      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
+  </details>`;
+}
+/* Their missions that use YOUR agents — recorded here when they save one (or on its first
+   question), so the side that does the work can see what the other side decided and stop
+   it. Stop is a deny row the gate enforces (fabric.stop_mission); the record stays. The
+   name is their machine's claim: to stop a MACHINE, untick the agent above. */
+function tlMissionsHTML(l){
+  const ms=l.missions||[], lab=esc(l.label);
+  if(!ms.length)return '';
+  const when=t=>t?new Date(t*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'never';
+  return `<div class="tlk-miss"><div class="tlk-miss-h">Their missions that use your agents</div>
+    ${ms.map(m=>`<div class="tlk-miss-row${m.stopped?' stopped':''}">
+      <div class="tlk-miss-main"><b>${esc(m.mission)}</b>
+        <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
+        ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
+        <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' — '+esc(m.text):''}</div></div>
+      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+  </div>`;
+}
+async function tlMissionStop(label,mission,stop){
+  if(stop&&!await osConfirm('Stop '+label+'’s mission “'+mission+'”?',
+     'Its questions to your agents are refused here from now on, and they are told so. The record stays; Allow again undoes it.',{confirmText:'Stop'}))return;
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/missions/'+encodeURIComponent(mission)+'/'+(stop?'stop':'allow'),'POST',{});
+  if(r){toast(stop?'stopped — '+label+'’s mission is refused here':'allowed again');paintTeamLinks()}
+}
+async function tlStandAdd(label,btn){
+  const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';
+  if(!v('scope').trim()){toast('say which folder or tool — never everything');return}
+  const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing','POST',
+    {agent:v('agent'),action:v('action'),scope:v('scope').trim(),days:v('days')?Number(v('days')):null});
+  if(r){TL_STAND_OPEN[label]=true;toast(label+' may now have '+r.agent+' '+(TL_ACT_WORDS[r.action]||r.action)+' '+tlScope(r.scope)+' without asking');paintTeamLinks()}
+}
+async function tlStandRemove(label,id){
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing/'+encodeURIComponent(id),'DELETE')){
+    TL_STAND_OPEN[label]=true;toast('removed — '+label+' asks a person again for that');paintTeamLinks()}
+}
+async function teamApi(url,method,body){
+  const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  if(r&&r.error){toast(r.error);return null}
+  return r;
+}
+async function teamLinkRequest(){
+  const a=document.getElementById('tlk-addr'),v=(a&&a.value||'').trim();
+  if(!v){toast('type the other machine’s name or address');a&&a.focus();return}
+  toast('asking '+v+'…');
+  const r=await teamApi('/api/team/links/request','POST',{address:v});
+  if(r){if(a)a.value='';toast('asked '+r.request.name+' — check it shows '+r.request.sas);paintTeamLinks()}
+}
+async function teamLinkRequestAccount(){
+  const v=(document.getElementById('tlk-acct')||{}).value||'';
+  const r=await teamApi('/api/team/links/request','POST',{account:v});
+  if(r){toast('asked '+r.request.to_name+' — they approve from their account');paintTeamLinks()}
+}
+async function teamLinkAnswer(id,verb){
+  const r=await teamApi('/api/team/links/requests/'+encodeURIComponent(id)+'/'+verb,'POST',{});
+  if(r)toast(verb==='deny'?'refused':(r.note||('linked with '+((r.link||{}).label||''))));
+  paintTeamLinks();
+}
+async function teamLinkWithdraw(id){if(await teamApi('/api/team/links/requests/'+encodeURIComponent(id),'DELETE'))paintTeamLinks()}
+async function teamLinkInvite(kind){const r=await teamApi('/api/team/links/invite','POST',{kind});if(r){TEAM_INVITE=r;paintTeamLinks()}}
+async function teamLinkJoin(){const v=(document.getElementById('tlk-join')||{}).value||'';const r=await teamApi('/api/team/links/join','POST',{invite:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRedeem(){const v=(document.getElementById('tlk-code')||{}).value||'';const r=await teamApi('/api/team/links/redeem','POST',{code:v.trim()});if(r){toast('linked with '+r.link.label);paintTeamLinks()}}
+async function teamLinkRemove(label){if(!await osConfirm('Remove the link with '+label+'?','Their agents lose every permission here, and yours theirs.',{danger:true,confirmText:'Remove'}))return;
+  if(await teamApi('/api/team/links/'+encodeURIComponent(label),'DELETE')){toast('link removed');paintTeamLinks()}}
+async function teamLinkCheck(label,btn){
+  const el=document.getElementById('tlk-r-'+label);if(el)el.textContent='asking…';
+  const r=await fetch('/api/team/links/'+encodeURIComponent(label)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
+  // they show only the agents they let your team ask — a link grants nothing, not even names
+  if(el)el.textContent=!r.ok?(r.error||'not reachable')
+    :(r.agents||[]).length?'Reachable. Your agents may ask: '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+' — as name@'+label+'.'
+    :'Reachable. They have not let your team ask any of their agents yet — that is their choice, on their side.';
 }
