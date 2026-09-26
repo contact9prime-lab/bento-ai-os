@@ -98,7 +98,31 @@ async def run_tui():
         from . import desktop
         desktop._start_server_thread(port)
 
+    # A machine with accounts refuses every call and socket without a signed cookie,
+    # loopback included (server._authed). Ask who this is first — the fallback REPL
+    # is a door like the full TUI, and an empty one reads as broken.
+    from .remote import COOKIE
+    token = ""
     async with httpx.AsyncClient(timeout=8) as http:
+        try:
+            who = (await http.get(base + "/api/users/who")).json()
+        except Exception:
+            who = {}
+        while who.get("any") and not token:
+            import getpass
+            try:
+                uname = input("  name: ").strip()
+                pw = getpass.getpass("  password: ")
+            except (EOFError, KeyboardInterrupt):
+                return
+            r = await http.post(base + "/api/users/login", json={"name": uname, "password": pw})
+            token = r.cookies.get(COOKIE) or "" if r.status_code == 200 else ""
+            if not token:
+                print(f"{C['err']}{(r.json() if r.content else {}).get('error', 'that did not work')}{C['r']}")
+    jar = {COOKIE: token} if token else {}
+    hdrs = {"Cookie": f"{COOKIE}={token}"} if token else None
+
+    async with httpx.AsyncClient(timeout=8, cookies=jar) as http:
         async def get(path):
             try:
                 return (await http.get(base + path)).json()
@@ -106,13 +130,15 @@ async def run_tui():
                 return {}
         sysinfo = await get("/api/system")
         models = (await get("/api/models"))
-        model = cfg.get("default_model", "") or (models.get("models", [{}])[0] or {}).get("id", "")
-        name = cfg.get("agent_name", "Aria")
+        mine = await get("/api/config")        # THIS person's agent, not the machine's
+        model = (mine.get("default_model") or cfg.get("default_model", "")
+                 or (models.get("models", [{}])[0] or {}).get("id", ""))
+        name = mine.get("agent_name") or cfg.get("agent_name", "Aria")
         _banner(sysinfo, model, name)
 
         cid = None
         try:
-            async with websockets.connect(ws_url, max_size=None) as ws:
+            async with websockets.connect(ws_url, max_size=None, additional_headers=hdrs) as ws:
                 pending = {}
                 _tool_t0: dict[str, float] = {}   # call_id -> when, for step durations
 

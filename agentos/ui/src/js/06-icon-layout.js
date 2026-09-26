@@ -234,7 +234,12 @@ $('#smq').addEventListener('keydown',e=>{
   if(e.key==='Escape')toggleStart(false);
   else if(e.key==='Enter'){const b=$('#smapps .smapp');if(b)b.click()}
 });
-let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','store','browser','files','terminal','taskmgr'];
+let DOCK=JSON.parse(localStorage.getItem('dock')||'null')||['brief','chat','office','store','browser','files','terminal','taskmgr'];
+// the Office joined the dock after people had saved theirs: added ONCE beside Chat, and
+// never again — somebody who removes it has decided
+try{if(!localStorage.getItem('dock-office')){localStorage.setItem('dock-office','1');
+  if(!DOCK.includes('office')){const i=DOCK.indexOf('chat');DOCK.splice(i<0?DOCK.length:i+1,0,'office');
+    if(localStorage.getItem('dock'))localStorage.setItem('dock',JSON.stringify(DOCK))}}}catch(e){}
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
   DOCK.forEach(id=>{

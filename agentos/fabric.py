@@ -276,6 +276,27 @@ def link_access(store, label: str) -> dict:
     return {"theirs_may_ask": sorted(theirs), "mine_may_ask": mine}
 
 
+def office_for_link(store, cfg: dict, label: str) -> dict:
+    """What a linked team sees when it VISITS this office (wire op `office`): the look,
+    the lead — whose face already travels on every answer — and ONLY the agents this
+    link's cells let it ask, the roster rule. Each is busy or free, never what the work
+    is: a run's brief is work content, and a visit is not a question anybody answered.
+    The lead's state is not shared at all (`working: None`): whether a turn is running
+    here is about the person, not the team."""
+    from . import avatars, office as officemod, playground
+    allowed = set(link_access(store, label)["theirs_may_ask"])
+    cur = officemod.current(cfg)
+    rows = []
+    for r in playground.rollcall(store, cfg, lead_busy=False):
+        if r["key"] != avatars.AGENT and r["key"] not in allowed:
+            continue
+        rows.append({"room": r["room"], "color": r["color"], "key": r["key"], "label": r["label"],
+                     "working": None if r["key"] == avatars.AGENT else bool(r["working"]),
+                     "recipe": avatars.recipe_for(store, r["key"])})
+    return {"ok": True, "office": {"style": cur["style"], "name": cur["name"], "pet": cur["pet"]},
+            "rows": rows}
+
+
 def set_link_access(store, label: str, theirs_may_ask: list | None = None,
                     mine_may_ask: bool | None = None) -> dict:
     """Write a link's cells. Only the rows this function owns (source 'matrix') are
@@ -1276,6 +1297,8 @@ class ControlPlane(usersmod.Scoped):
             return {"ok": True, "agents": [
                 {"name": sa["name"], "provider": agent_brain(self.cfg, sa)["provider_name"]}
                 for sa in self.store.list_subagents() if sa["name"] in allowed]}
+        if req.get("op") == "office":
+            return office_for_link(self.store, self.cfg, lk["label"])
         if req.get("op") == "mission":
             # one of THEIR missions names one of my agents: recorded here, where the work
             # is done, so the person here can see it, audit it and stop it

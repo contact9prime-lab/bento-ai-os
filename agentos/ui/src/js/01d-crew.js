@@ -54,7 +54,9 @@
    `var`, not `let`: the bundle is one script. */
 var CREW={on:false,cv:null,ctx:null,raf:0,last:0,t:0,W:0,H:0,dpr:1,font:'',static:false,
   cast:[],rosterAt:0,busy:{},tool:null,turns:0,drawn:0,drawMs:0,greeted:0,
-  arrive:{},said:{},known:null};
+  arrive:{},said:{},known:null,guests:[],guestsAt:0};
+var CREW_GUESTS=4;                    // visitors from linked teams, at the stage's right edge
+var CREW_GUEST_MS=300000;             // their roster is a call to another machine: every 5 min
 var CREW_SHEETS={};                   // key → {img,v}: one sheet per character, from the server
 var CREW_WALK_MS=2600;                // a new specialist's walk in from the edge
 var CREW_SAY_MS=3800;                 // how long a bubble stays up
@@ -138,6 +140,24 @@ async function crewRoster(force){
     if(CREW.known)CREW.cast.forEach(c=>{if(!CREW.known.has(c.name)){CREW.arrive[c.name]=now;crewSay(c.name,'hello!')}});
     CREW.known=new Set(CREW.cast.map(c=>c.name));
     crewKick();
+  }catch(e){}
+  crewGuests();
+}
+/* Linked teams' people, standing at the edge of the stage as visitors: only the ones
+   their link lets you ask (the server's /api/team/visitors, which says nothing more
+   than a visit to their office would). The canvas cannot be tapped — it sits under
+   the desktop — so the door to them is the home screen's row and the Office's Visit. */
+async function crewGuests(){
+  if(!CREW.on||performance.now()-CREW.guestsAt<CREW_GUEST_MS&&CREW.guestsAt)return;
+  CREW.guestsAt=performance.now();
+  try{
+    const d=await (await fetch('/api/team/visitors')).json();
+    const out=[];
+    for(const t of (d.teams||[]))if(t.ok)for(const p of (t.people||[])){
+      if(p.key==='@agent'&&(t.people||[]).length>1)continue;   // their lead only when alone
+      out.push({key:'v:'+t.label+'/'+p.key,name:p.label,label:t.label,rec:p.recipe,working:!!p.working});
+    }
+    CREW.guests=out.slice(0,CREW_GUESTS);crewKick();
   }catch(e){}
 }
 /* The roster or somebody's look changed: a new sheet for anybody whose version
@@ -243,6 +263,7 @@ function crewSkin(ink, h, lit){
    has loaded, a stable fallback from the name, so the first frame is not grey. */
 var CREW_AGENT_HUE=172;               // the server's AGENT_HUE: the desktop's teal
 function crewHueOf(key){
+  const g=CREW.guests.find(x=>x.key===key);if(g)return g.rec.hue;
   const a=(typeof AVATARS!=='undefined')&&AVATARS.by[key];
   if(a&&a.recipe&&typeof a.recipe.hue==='number')return a.recipe.hue;
   return key==='@agent'?CREW_AGENT_HUE:Math.floor(crewHash(key)*360);
@@ -257,7 +278,9 @@ function crewSheet(key){
   if(!e||e.v!==v){
     const img=new Image();img.decoding='async';
     img.onload=crewKick;
-    img.src=avatarSrc(key,{sheet:1});
+    // a visitor from a linked team: painted from the look that travelled with the visit
+    const g=CREW.guests.find(x=>x.key===key);
+    img.src=g?avatarRecipeSrc(g.rec,{sheet:1}):avatarSrc(key,{sheet:1});
     e=CREW_SHEETS[key]={img,v};
   }
   return e.img.complete&&e.img.naturalWidth?e.img:null;
@@ -427,6 +450,13 @@ function crewDraw(dt){
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
       crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
+  });
+  // Visitors from linked teams: smaller, at the right edge past the floor, each named
+  // with the team they are from. Busy is theirs to say (their office answered it).
+  C.guests.forEach((g,i)=>{
+    const gx=Math.min(W-scale*.45,W/2+span/2+scale*(.55+i*.8));
+    crewFigure(ctx,gx,ground,scale*.78,ink,g.key,g.rec.hue,g.working?.35:0,0,
+      crewFit(g.name,scale*.8,scale*.78),'@'+g.label,g.working,false);
   });
   // What somebody SAID: a hello on arrival, "done" when its work finished.
   // A flat rounded box and a two-pixel tail, above the head and clear of the

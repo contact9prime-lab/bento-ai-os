@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.1 — 2026-09-26
+
+**After an update, everything works — for everybody on the machine.**
+- **A page never talks to a server older than itself.** A pull puts the new desktop on disk
+  at once, but the running server is still the old code. It now keeps serving the page it
+  started with and says *an update is installed but not running yet*, with **Restart now**.
+  This is what made the Office say "could not load", left Executors and the agents map on
+  "loading…" and hid "＋ New agent" after an update. Any pane that still cannot load now
+  says why, and Agents keeps its New agent button.
+- **Every account is brought up to date**, not only the one that signs in first:
+  `bento update` runs `bento migrate` in a fresh process over the machine's home and every
+  account's, one line per home, and the server does the same at start.
+
+**The Office, everywhere you are.**
+- On the **home screen** (your crew's faces, one tap) and in the **dock**.
+- **Settings → Appearance → Office**: the style, the name, the pet, and **Describe it**.
+  "A cosy greenhouse called The Nursery, with a dog" is designed by your agent, with Undo, and
+  when no brain answers the words are matched and it says so. The same box is in setup and
+  in the Office's Design, and it works when your brain is Claude Code.
+- **Snap** sends the office right now, as a picture, to Telegram or WhatsApp.
+- **WhatsApp gets pictures too**: `/office`, and a comic strip after a turn in which agents
+  talked, on the Cloud API and on a linked device alike.
+- **Visit a linked team's office**: their style, their lead and the agents your link may ask,
+  and nobody else. **Ask** beside one opens Chat with the question addressed. Linked teams
+  also stand at the edge of the Crew scene and have a chip on the home screen.
+
+**The terminal can do all of it.**
+- **The TUI asks who you are** on a machine with accounts (it used to show empty tabs and
+  "no model"), shows your own agent, and signs out with Ctrl+O. It has an **Office** tab
+  (`o`) with Snap and Describe it, and **Start over** in Config.
+- `bento office design / snap / picture / visit`, `bento setup --again` (walk setup again,
+  nothing deleted) and `bento reset` (factory reset, with a typed confirmation and the server
+  stopped).
+- The desktop's Factory reset now says when it was refused instead of reloading as if it had
+  worked.
+
 ## 0.6.0 — 2026-09-26
 
 **The playground everywhere.** The Office's comic look now appears wherever your agents

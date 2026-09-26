@@ -91,3 +91,21 @@ connect();
     const oi=$('#omni-in');if(oi)setTimeout(()=>oi.focus(),60);
   },wait);
 })();
+/* An update that landed on disk but is not running yet. The server keeps serving the
+   page that matches its own code (server.index), so nothing is half-new — and this
+   says why the new things are not here yet, with the one button that fixes it. A
+   remote browser is told to restart it from the machine: restarting replaces the
+   code that enforces every permission, so it is loopback-only like installing. */
+async function updateWaitingCheck(){
+  try{
+    const d=await (await fetch('/api/update')).json();
+    if(!d.pending_restart)return;
+    toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
+      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+        const r=await fetch('/api/update/restart',{method:'POST'});
+        const j=await r.json().catch(()=>({}));
+        toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});
+      }});
+  }catch(e){}
+}
+setTimeout(updateWaitingCheck,2500);

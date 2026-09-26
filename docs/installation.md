@@ -397,6 +397,22 @@ wrong branch, and says which. It runs the test suite before keeping the new code
 **rolls back** if it fails — `--no-tests` skips that gate, which is also what makes a
 bad update recoverable. `--no-restart` leaves loading it to you.
 
+**Every home is brought up to date, not only yours.** After the dependencies sync, the
+update runs `bento migrate` in a fresh process: it opens the machine's database and every
+account's (each person has their own, in their own home), adds whatever the new code
+needs, seeds the built-in executors and gives everybody without a character one. It
+prints one line per home, and a home that fails does not stop the others. The server does
+the same when it starts, so a machine updated by hand with `git pull` and a restart is
+brought up too.
+
+**Until the server restarts, the page matches the server.** A pull puts the new desktop
+page on disk at once, but the running server is still the old code, and a new page
+talking to an old server calls routes that do not exist yet (this is how "the Office
+could not load" was reported after an update). So the server keeps serving the page it
+started with while a newer build waits, and the desktop shows *An update is installed but
+not running yet* with a **Restart now** button. The button works only from the machine
+itself; from elsewhere, `bento service restart`.
+
 A bare `bento update` never pulls. The same machinery backs Settings → Updates, the
 About panel and the background check, so all four agree about what is waiting.
 

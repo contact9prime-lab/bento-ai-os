@@ -346,6 +346,12 @@ A verb that reads data refuses rather than guessing when the machine has account
 and none was named: a `bento job add` that silently landed in the wrong person's
 database would be discovered weeks later by whoever did not get their briefing.
 
+The TUI (`bento tui`) is a door like the desktop. On a machine with accounts it asks
+for a name and password before anything else, carries the signed cookie on every call
+and on the chat socket, and signs out with Ctrl+O. Before this, it sent no cookie. The
+server refuses any caller without one once there are accounts (loopback included, for
+the reason above), so every tab came back empty and the title read "no model".
+
 ## Things that were nearly bugs
 
 - **The PDP's caches are keyed on the user as well as the name.** A version

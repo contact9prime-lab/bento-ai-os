@@ -140,6 +140,11 @@ def test_icons_are_drawn_here_and_glyphs_stay_in_the_standard_look():
     assert "var UI_ICONS={" in ICONS and "function uiIcon(" in ICONS
     for line in ICONS.splitlines():
         assert not line.startswith(("let ", "const ")), line
+    # uiIcon puts the value inside <path d="…">: markup there is a console error on
+    # every page load and an icon that never draws
+    body = ICONS.split("var UI_ICONS={", 1)[1].split("\n};", 1)[0]
+    for name, d in re.findall(r"(\w+):'([^']*)'", body):
+        assert d.startswith("M") and "<" not in d, f"UI_ICONS.{name} is not path data"
     # the rail carries both forms; the base stylesheet hides the svg
     assert "<i>${ic}</i>${uiIcon(ico,14)}" in SETTINGS
     assert ".prefs-side .psi svg{display:none}" in (UI / "src" / "css" / "14-omnibar.css").read_text()

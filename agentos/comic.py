@@ -238,8 +238,9 @@ def _style(cfg: dict) -> dict:
     return office.STYLES[office.current(cfg)["style"]]
 
 
-def _person(store, key: str, frame: int = 0) -> tuple[int, int, bytes]:
-    rec = avatars.recipe_for(store, key)
+def _person(store, key: str, frame: int = 0, rec: dict | None = None) -> tuple[int, int, bytes]:
+    # `rec`: a linked team's person, whose look travelled with the visit (cleaned)
+    rec = rec or avatars.recipe_for(store, key)
     return avatars.W, avatars.H, bytes(avatars.paint(rec, frame))
 
 
@@ -379,9 +380,10 @@ def rollcall_image(store, cfg: dict, rows: list[dict], title: str = "") -> bytes
         notes = []
         for j, p in enumerate(shown):
             cx = px + 4 + slot * j + slot // 2
-            w, h, spx = _person(store, p["key"], 2 if p["working"] else 0)
+            w, h, spx = _person(store, p["key"], 2 if p["working"] else 0, p.get("recipe"))
             cv.blit(w, h, spx, cx - 16, feet - h * 2, 2)
-            _label(cv, cx, feet + 2, _name(p["key"]) if p["key"] != avatars.AGENT else p["label"], px, px + PW,
+            _label(cv, cx, feet + 2, p["label"] if p["key"] == avatars.AGENT or p.get("recipe") else _name(p["key"]),
+                   px, px + PW,
                    room=slot - 2 if len(shown) > 1 else 0)
             if p["working"]:
                 cv.round(cx - 17, feet - h * 2 - 13, 35, 11, _rgb(st["accent"]))

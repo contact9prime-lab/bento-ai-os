@@ -216,3 +216,146 @@ def test_one_vocabulary_of_comic_words():
     assert "OF_WORDS" not in of and "comicWord(tool)" in of, "the Office reads the shared words"
     css = (ROOT / "agentos/ui/src/css/23b-playstrip.css").read_text()
     assert "prefers-reduced-motion" in css
+
+
+# ---- the phone: WhatsApp carries the same pictures, and Snap ----
+
+def _wa_cloud(cfg):
+    cfg["channels"] = {"whatsapp": {"enabled": True, "phone_number_id": "123", "access_token": "tok",
+                                    "verify_token": "v", "owner_wa_id": "4477"}}
+    return cfg
+
+
+def test_whatsapp_sends_the_picture_on_both_transports(tmp_path, monkeypatch):
+    import httpx
+    from agentos import whatsapp as wamod
+    cfg, store = _world(tmp_path)
+    _wa_cloud(cfg)
+    wa = wamod.WhatsAppBridge(cfg, store, toolbox=None, broadcast=None)
+    seen = []
+
+    def handler(req):
+        seen.append((req.url.path, req.headers.get("content-type", "").split(";")[0], req.content))
+        if req.url.path.endswith("/media"):
+            return httpx.Response(200, json={"id": "media-9"})
+        return httpx.Response(200, json={"messages": [{"id": "m"}]})
+    real = httpx.AsyncClient
+    monkeypatch.setattr(wamod.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(wa, "window_open", lambda wa_id: True)
+    png = comic.rollcall_image(store, cfg, playground.rollcall(store, cfg), "Orbit HQ")
+    assert asyncio.run(wa.send_photo(png, "Orbit HQ right now")) == "sent via WhatsApp"
+    # Cloud API: the bytes are uploaded first (no public URL here), then sent by media id
+    assert seen[0][0] == "/v21.0/123/media" and seen[0][1] == "multipart/form-data"
+    assert b'"id":"media-9"' in seen[1][2].replace(b" ", b"") and b'"type":"image"' in seen[1][2].replace(b" ", b"")
+    # the same refusals as text: outside the 24-hour window an image is not a template either
+    monkeypatch.setattr(wa, "window_open", lambda wa_id: False)
+    assert "24 hours" in asyncio.run(wa.send_photo(png, "x"))
+    # the linked device: one frame over stdio, addressed to the learned jid
+    from agentos import wa_baileys
+    link = wa_baileys.BaileysTransport.__new__(wa_baileys.BaileysTransport)
+    frames = []
+
+    async def write(obj):
+        frames.append(obj)
+        return True
+    link.state, link.error, link.store, link._jids, link._write = "ready", "", store, {"4477": "99@lid"}, write
+    assert asyncio.run(link.send_photo(png, "cap", "4477")) == "sent via WhatsApp"
+    assert frames[0]["type"] == "image" and frames[0]["to"] == "99@lid" and frames[0]["caption"] == "cap"
+    import base64
+    assert base64.b64decode(frames[0]["data"])[:8] == b"\x89PNG\r\n\x1a\n"
+    js = (ROOT / "agentos/wa_bridge/bridge.js").read_text()
+    assert "cmd.type === 'image'" in js and "Buffer.from(String(cmd.data" in js
+
+
+def test_whatsapp_office_and_strips_match_telegram():
+    src = (ROOT / "agentos/whatsapp.py").read_text()
+    assert 'low.startswith("/office")' in src and "async def send_talk(" in src
+    assert "_pg.listen(cid)" in src and "_pg.close(cid, tap)" in src, "the tap is closed in finally"
+    assert 'get("comics") is False' in src, "switched off the same way as Telegram"
+
+
+def test_snap_goes_where_it_can_and_says_where_it_cannot(tmp_path):
+    cfg, store = _world(tmp_path)
+
+    class Phone:
+        def __init__(self, answer):
+            self.answer, self.got = answer, []
+
+        async def send_photo(self, png, caption="", *_):
+            self.got.append(caption)
+            return self.answer
+    tg, wa = Phone("sent via Telegram"), Phone("sent via WhatsApp")
+    out = asyncio.run(playground.snap(cfg, store, tg, wa))
+    assert out["sent"] == [] and any("Telegram is not set up" in n for n in out["notes"])
+    assert any("WhatsApp is not set up" in n for n in out["notes"]), "nothing went: every reason is said"
+    cfg["telegram"] = {"bot_token": "t", "owner_chat_id": 42}
+    out = asyncio.run(playground.snap(cfg, store, tg, wa))
+    assert out == {"sent": ["Telegram"], "notes": []}, "an unset channel is not nagged about when one worked"
+    assert tg.got[0].startswith("Orbit HQ right now") and "researcher" in tg.got[0]
+    out = asyncio.run(playground.snap(cfg, store, tg, wa, "whatsapp"))
+    assert out["sent"] == [] and "WhatsApp is not set up" in out["notes"][0], "asked by name: said"
+    _wa_cloud(cfg)
+    out = asyncio.run(playground.snap(cfg, store, Phone("[error] telegram photo failed: 403"), wa))
+    assert out["sent"] == ["WhatsApp"] and out["notes"] == ["telegram photo failed: 403"]
+    # a linked device is held by the running server: the terminal says so, never tries
+    cfg["channels"]["whatsapp"]["mode"] = "baileys"
+    from agentos import whatsapp as wamod
+    real = wamod.configured
+    try:
+        wamod.configured = lambda c: True
+        out = asyncio.run(playground.snap(cfg, store, tg, None, "whatsapp"))
+    finally:
+        wamod.configured = real
+    assert "held by the running server" in out["notes"][0]
+
+
+def test_words_choose_from_the_closed_set_and_the_noun_wins():
+    from agentos import office
+    assert office.from_words("a cosy greenhouse called The Nursery, with a dog") == \
+        {"style": "garden", "pet": "dog", "name": "The Nursery"}, "the noun follows its adjectives"
+    assert office.from_words("a cosy space station")["style"] == "space"
+    assert office.from_words("somewhere nice") == {}, "nothing named: nothing invented"
+
+
+def test_the_office_can_be_designed_from_words_and_undone(monkeypatch):
+    from fastapi.testclient import TestClient
+    from agentos import executors, server as servermod
+
+    async def silent(cfg, system, prompt, timeout=120):
+        return "", ""
+    monkeypatch.setattr(executors, "ask_once", silent)
+    with TestClient(servermod.app) as cl:
+        before = cl.get("/api/office").json()["office"]
+        r = cl.post("/api/office/design", json={"description": "a space station called Orbit with a dog"})
+        d = r.json()
+        assert r.status_code == 200 and d["how"] == "words" and "matched the words" in d["said"]
+        assert (d["office"]["style"], d["office"]["name"], d["office"]["pet"]) == ("space", "Orbit", "dog")
+        assert cl.put("/api/office", json=d["previous"]).status_code == 200
+        after = cl.get("/api/office").json()["office"]
+        assert (after["style"], after["name"], after["pet"]) == (before["style"], before["name"], before["pet"])
+        assert cl.post("/api/office/design", json={"description": "zz"}).status_code == 400
+
+        async def brain(cfg, system, prompt, timeout=120):
+            return '{"style": "night", "name": "Late Shift", "pet": "unicorn"}', "Claude Code"
+        monkeypatch.setattr(executors, "ask_once", brain)
+        d = cl.post("/api/office/design", json={"description": "somewhere for the night owls"}).json()
+        assert d["how"] == "brain" and d["who"] == "Claude Code" and d["office"]["style"] == "night"
+        assert d["office"]["pet"] != "unicorn" and any("pet" in x for x in d["dropped"]), "invented: dropped and named"
+        cl.put("/api/office", json=d["previous"])
+        r = cl.post("/api/office/snap", json={"to": "pigeon"})
+        assert r.status_code == 400
+
+
+def test_the_playground_has_a_door_on_every_face():
+    home = (ROOT / "agentos/ui/src/js/01b-immersive.js").read_text()
+    assert ".hm-play" in home and "avatarImg(p.key,'av-play')" in home
+    assert "openApp('office')" in (ROOT / "agentos/ui/src/shell.html").read_text()
+    dock = (ROOT / "agentos/ui/src/js/06-icon-layout.js").read_text()
+    assert "'chat','office'" in dock and "dock-office" in dock, "added once, never forced back"
+    of = (JS / "24d-office.js").read_text()
+    assert "function officeDescribe(" in of and "/api/office/design" in of and "function officeSnap(" in of
+    assert "Redesign my office:" not in of, "the design goes through the server, not a chat an executor answers"
+    assert "officeSettingsPaint()" in (JS / "11-settings.js").read_text(), "Appearance has the Office"
+    assert "officeDescribe(" in (JS / "14b-onboarding.js").read_text(), "and setup asks for it"
+    cli = (ROOT / "agentos/__main__.py").read_text()
+    assert '"design", "snap", "picture"' in cli and "_pg.snap(" in cli

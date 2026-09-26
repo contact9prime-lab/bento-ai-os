@@ -265,6 +265,17 @@ in-process, and it is answered **in the other person's own directory, under thei
 gate**, exactly as if it had come over the network. (A code redeemed while signed in,
 `bento link invite account` / `redeem`, still works too.)
 
+### Visiting a linked team's office
+
+The Office's **⇄ Visit** button, the home screen's team chips and the Crew scene show a
+linked team's people. It is one more request on the link (`office`), answered on their
+side with their office's look, their lead, and **only the agents your link may ask**, each
+busy or free. What they are working on is never sent, and neither is whether their lead
+is busy. Everything that arrives is held to this machine's own choices (style, pet,
+colours, the character palette) and drawn by this machine's painter. **Ask** beside a person opens
+Chat with `@researcher ask analyst@office: ` typed for you, so the question goes the way
+every question to a linked team goes. Details and pictures are in [the Office](office.md#visiting-a-linked-teams-office).
+
 ### Talking to the people on a linked team
 
 A link connects the **people** as well as the agents. **Team Chat** (in the dock, or **Message**
@@ -346,10 +357,10 @@ belongs to no conversation here.
 ### What a link lets either machine do on the other
 
 A link is **between equals**. Neither machine is the other's master, and the link reaches no
-file, command, tool or model on the far side. The wire carries ten requests: pair,
-request, poll, cancel, hello, roster, ask, mission, chat and pull. None of them reads, writes
-or runs anything by itself. (`mission` only *records* one of your missions on their side;
-see below.)
+file, command, tool or model on the far side. The wire carries eleven requests: pair,
+request, poll, cancel, hello, roster, ask, mission, chat, pull and office. None of them reads,
+writes or runs anything by itself. (`mission` only *records* one of your missions on their
+side; see below. `office` is a visit: see "Visiting a linked team's office".)
 
 - **Your agents can only *ask a question* of the agents they let you ask.** Their agent
   answers with *its* tools, under *their* permissions, on *their* model and their bill, and

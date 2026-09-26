@@ -156,3 +156,48 @@ def rollcall_text(rows: list[dict]) -> str:
     lines.append(f"{busy} of {len(rows)} at work" if busy
                  else "No specialist has work open." if unknown else "Everybody is free.")
     return "\n".join(lines)
+
+
+async def snap(cfg: dict, store, telegram, whatsapp, to: str = "", lead_busy: bool | None = False) -> dict:
+    """The office right now, as the roll-call picture, sent to the person's phone:
+    Telegram, WhatsApp or both (`to` "" = every channel that is set up). The Office's
+    Snap button and `bento office snap` both call this, so they cannot disagree about
+    what was sent or why something was not.
+
+    Returns {sent: [channel…], notes: [sentence…]}. A channel that is set up and
+    refused is always a note; one that is not set up is a note when it was asked for
+    by name, or when nothing went anywhere (then the notes are the whole answer).
+    `whatsapp=None` means the caller cannot reach it (a linked device is held by the
+    running server) and the caller says so."""
+    from . import comic, office
+    from . import whatsapp as wamod
+    rows = rollcall(store, cfg, lead_busy=lead_busy)
+    name = office.current(cfg)["name"]
+    png = comic.rollcall_image(store, cfg, rows, name)
+    caption = f"{name} right now\n" + rollcall_text(rows)
+    sent, notes, unset = [], [], []
+    t = cfg.get("telegram") or {}
+    if to in ("", "telegram"):
+        if t.get("bot_token") and t.get("owner_chat_id"):
+            r = await telegram.send_photo(png, caption)
+            (notes if r.startswith("[error]") else sent).append(r if r.startswith("[error]") else "Telegram")
+        else:
+            unset.append("Telegram is not set up — Settings → Channels → Telegram" if not t.get("bot_token")
+                         else "Telegram has no owner yet — message the bot from your phone once")
+    if to in ("", "whatsapp"):
+        if wamod.configured(cfg) and wamod.conf(cfg).get("owner_wa_id") and whatsapp is not None:
+            r = await whatsapp.send_photo(png, caption)
+            (notes if r.startswith("[error]") else sent).append(r if r.startswith("[error]") else "WhatsApp")
+        elif whatsapp is None and wamod.configured(cfg):
+            unset.append("the linked WhatsApp is held by the running server — press Snap in the "
+                         "Office, or send /office from your phone")
+        else:
+            unset.append("WhatsApp is not set up — Settings → Channels → WhatsApp"
+                         if not wamod.configured(cfg) else
+                         "WhatsApp has no owner yet — message it from your phone once")
+    notes = [n.removeprefix("[error] ") for n in notes]
+    if not sent or to:
+        notes += unset
+    if sent:
+        store.log("office", f"snap sent to {', '.join(sent)}")
+    return {"sent": sent, "notes": notes}

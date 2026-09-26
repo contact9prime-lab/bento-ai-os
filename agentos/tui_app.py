@@ -29,6 +29,12 @@ def _esc(v) -> str:
     return _rich_escape(str(v if v is not None else ""))
 
 
+def cfgmod_cookie() -> str:
+    """The session cookie's name — remote.COOKIE, the one the server reads."""
+    from .remote import COOKIE
+    return COOKIE
+
+
 def _base(port):
     return f"http://127.0.0.1:{port}"
 
@@ -50,6 +56,74 @@ class ApprovalScreen(ModalScreen):
 
     def on_button_pressed(self, e: Button.Pressed):
         self.dismiss(e.button.id == "ap-allow")
+
+
+class SignInScreen(ModalScreen):
+    """A machine with accounts: the TUI is one more door, and it asks who you are.
+
+    The server refuses every call and socket without a signed cookie once there are
+    accounts — loopback included, because "whoever is at the keyboard" stops being
+    an identity the moment there are two (server._authed). Before this screen the
+    TUI sent no cookie at all, so every tab was silently empty and the title read
+    "no model". The token is held in memory for this session only."""
+    def __init__(self, error: str = ""):
+        super().__init__()
+        self._error = error
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ap-box"):
+            yield Label("Sign in to AgentOS", id="ap-title")
+            yield Static("This machine has accounts: each person has their own agent, memory and "
+                         "settings. Sign in as you.", id="ap-reason")
+            yield Input(placeholder="name", id="si-name")
+            yield Input(placeholder="password", password=True, id="si-pw")
+            yield Static(self._error, id="si-error")
+            with Horizontal(id="ap-btns"):
+                yield Button("Sign in", variant="primary", id="si-go")
+                yield Button("Quit", id="si-quit")
+
+    def on_mount(self):
+        self.query_one("#si-name", Input).focus()
+
+    def _go(self):
+        self.dismiss((self.query_one("#si-name", Input).value.strip(),
+                      self.query_one("#si-pw", Input).value))
+
+    def on_input_submitted(self, e: Input.Submitted):
+        if e.input.id == "si-name":
+            self.query_one("#si-pw", Input).focus()
+        else:
+            self._go()
+
+    def on_button_pressed(self, e: Button.Pressed):
+        if e.button.id == "si-go":
+            self._go()
+        else:
+            self.dismiss(None)
+
+
+class TypedConfirmScreen(ModalScreen):
+    """A destructive step, confirmed by typing a phrase — `bento reset`'s rule, not
+    a y/n a stray Enter can answer."""
+    def __init__(self, title: str, detail: str, phrase: str):
+        super().__init__()
+        self._title, self._detail, self._phrase = title, detail, phrase
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ap-box"):
+            yield Label(self._title, id="ap-title")
+            yield Static(self._detail, id="ap-reason")
+            yield Input(placeholder=f'type "{self._phrase}"', id="tc-in")
+            with Horizontal(id="ap-btns"):
+                yield Button("Go ahead", variant="error", id="tc-go")
+                yield Button("Cancel", id="tc-no")
+
+    def on_input_submitted(self, e: Input.Submitted):
+        self.dismiss(e.value.strip().lower() == self._phrase)
+
+    def on_button_pressed(self, e: Button.Pressed):
+        self.dismiss(e.button.id == "tc-go" and
+                     self.query_one("#tc-in", Input).value.strip().lower() == self._phrase)
 
 
 class AgentTUI(App):
@@ -77,6 +151,13 @@ class AgentTUI(App):
     #docbody-wrap { border: round $primary; }
     #docbody { padding: 0 2; }
     #team-box { border: round $primary; padding: 1 2; }
+    #si-error { color: $error; }
+    #office-box { border: round $primary; padding: 1 2; }
+    #office-row { height: auto; margin-top: 1; }
+    #office-row Button { margin-right: 1; }
+    #office-design { width: 1fr; }
+    #cfg-reset-row { height: auto; margin-top: 1; }
+    #cfg-reset-row Button { margin-right: 1; }
     """
     BINDINGS = [
         Binding("ctrl+c,ctrl+q", "quit", "Quit"),
@@ -91,6 +172,10 @@ class AgentTUI(App):
         Binding("9", "tab('team')", "Team"),
         Binding("0", "tab('spaces')", "Spaces"),
         Binding("a", "tab('audit')", "Audit"),
+        Binding("o", "tab('office')", "Office"),
+        # shown only on a machine with accounts (check_action): with none, there is
+        # nobody to sign out AS, and a key that does nothing is a dead control
+        Binding("ctrl+o", "sign_out", "Sign out"),
     ]
 
     def __init__(self, port: int, cfg: dict):
@@ -101,6 +186,9 @@ class AgentTUI(App):
         self.agent_name = cfg.get("agent_name", "Aria")
         self.cid = None
         self.title = "AgentOS"
+        self.token = ""            # the signed session cookie, on a machine with accounts
+        self.accounts = False
+        self.who = ""
 
     # ---- layout ----
     def compose(self) -> ComposeResult:
@@ -138,6 +226,18 @@ class AgentTUI(App):
             with TabPane("▣ Spaces", id="spaces"):
                 with VerticalScroll(id="spaces-box"):
                     yield Static("", id="spaces-body")
+            # The Office in a terminal: the plan and the roll call in words — who is at
+            # work and on what, read from the same rows as the phone's picture — plus
+            # Snap (that picture to Telegram/WhatsApp) and Describe it. The animation
+            # is the desktop's; this says so rather than drawing a poor copy.
+            with TabPane("◍ Office", id="office"):
+                with VerticalScroll(id="office-box"):
+                    yield Static("", id="office-body")
+                    with Horizontal(id="office-row"):
+                        yield Button("Snap to my phone", id="office-snap")
+                        yield Input(placeholder="Describe it — a cosy greenhouse called The Nursery, with a cat",
+                                    id="office-design")
+                    yield Static("", id="office-status")
             with TabPane("⚖ Audit", id="audit"):
                 with VerticalScroll(id="audit-box"):
                     yield Static("", id="audit-body")
@@ -172,6 +272,13 @@ class AgentTUI(App):
                     yield Input(placeholder="models (e.g. anthropic/claude-sonnet-4.5)", id="cfg-or-models")
                     yield Button("Save", variant="primary", id="cfg-save")
                     yield Static("", id="cfg-status")
+                    yield Static("── Start over ──", classes="section")
+                    yield Static("[grey58]Walk me through it: every setup step again, nothing deleted. "
+                                 "Factory reset: wipes everything on this machine (and every account) — "
+                                 "only from the machine itself, only an admin.[/]")
+                    with Horizontal(id="cfg-reset-row"):
+                        yield Button("Walk me through it", id="cfg-again")
+                        yield Button("Factory reset…", variant="error", id="cfg-reset")
         yield Footer()
 
     # ---- lifecycle ----
@@ -179,8 +286,71 @@ class AgentTUI(App):
         self.sub_title = f"{self.agent_name} · {self.model or 'no model'}"
         self.query_one("#systable", DataTable).add_columns("PID", "Process", "CPU%", "MEM%")
         self.query_one("#taskstable", DataTable).add_columns("Prompt", "Schedule", "Next / last")
+        self.begin()
+
+    @work(group="signin")
+    async def begin(self, error: str = ""):
+        """Who is this? On a machine with accounts, nothing loads until somebody signs
+        in — the tabs would all be refused, and an empty TUI reads as a broken one."""
+        who = await self.api_get("/api/users/who")
+        self.accounts = bool(who.get("any"))
+        self.refresh_bindings()
+        if self.accounts and not self.token:
+            got = await self.push_screen_wait(SignInScreen(error))
+            if not got:
+                self.exit()
+                return
+            name, pw = got
+            try:
+                async with httpx.AsyncClient(timeout=10) as c:
+                    r = await c.post(_base(self.port) + "/api/users/login",
+                                     json={"name": name, "password": pw})
+                tok = r.cookies.get(cfgmod_cookie()) if r.status_code == 200 else ""
+                err = "" if tok else (r.json().get("error") if r.content else f"HTTP {r.status_code}")
+            except Exception as e:
+                tok, err = "", f"could not reach the server: {e}"
+            if not tok:
+                self.begin(err or "that did not work")
+                return
+            self.token, self.who = tok, name
+        await self.load_identity()
         self.query_one("#chatlog", RichLog).write(
-            f"[b cyan]{self.agent_name}[/]  ready. Type below. Use number keys to switch tabs, Ctrl-Q to quit.\n")
+            f"[b cyan]{self.agent_name}[/]  ready{' — signed in as ' + _esc(self.who) if self.who else ''}. "
+            f"Type below. Number keys switch tabs, o is the Office"
+            f"{', Ctrl-O signs out' if self.accounts else ''}, Ctrl-Q quits.\n")
+        self.refresh_all()
+
+    async def load_identity(self):
+        """The name and brain of the agent THIS person talks to — theirs, not the
+        machine's (a user's config lives in their own home)."""
+        d = await self.api_get("/api/config")
+        self.agent_name = d.get("agent_name") or self.agent_name
+        self.model = d.get("default_model") or ""
+        eng = d.get("engine") or "aria"
+        brain = self.model or ("no model" if eng == "aria" else eng)
+        if eng != "aria":
+            brain = eng + (f" · {self.model}" if self.model else "")
+        self.sub_title = f"{self.agent_name} · {brain}" + (f"  —  {self.who}" if self.who else "")
+        try:
+            self.query_one("#cfg-name", Input).value = self.agent_name
+            self.query_one("#chatinput", Input).placeholder = f"Ask {self.agent_name}…  (Enter to send)"
+        except Exception:
+            pass
+
+    def check_action(self, action: str, parameters) -> bool | None:
+        if action == "sign_out":
+            return self.accounts and bool(self.token)
+        return True
+
+    @work(group="signin")
+    async def action_sign_out(self):
+        await self.api("POST", "/api/users/logout")
+        self.token, self.who, self.cid = "", "", None
+        self.query_one("#chatlog", RichLog).clear()
+        self.notify("signed out")
+        self.begin()
+
+    def refresh_all(self):
         self.refresh_system()
         self.refresh_models()
         self.refresh_apps()
@@ -190,12 +360,16 @@ class AgentTUI(App):
         self.refresh_team()
         self.refresh_spaces()
         self.refresh_audit()
+        self.refresh_office()
         self.load_cfg_form()
-        self.set_interval(2.0, self.refresh_system)
-        self.set_interval(6.0, self.refresh_logs)
-        self.set_interval(8.0, self.refresh_team)
-        self.set_interval(10.0, self.refresh_spaces)
-        self.set_interval(10.0, self.refresh_audit)
+        if not getattr(self, "_ticking", False):
+            self._ticking = True
+            self.set_interval(2.0, self.refresh_system)
+            self.set_interval(6.0, self.refresh_logs)
+            self.set_interval(8.0, self.refresh_team)
+            self.set_interval(10.0, self.refresh_spaces)
+            self.set_interval(10.0, self.refresh_audit)
+            self.set_interval(8.0, self.refresh_office)
 
     @work(group="cfgload")
     async def load_cfg_form(self):
@@ -211,18 +385,24 @@ class AgentTUI(App):
         except Exception:
             pass
 
+    def _cookies(self) -> dict:
+        return {cfgmod_cookie(): self.token} if self.token else {}
+
     async def api_get(self, path):
         try:
-            async with httpx.AsyncClient(timeout=6) as c:
+            async with httpx.AsyncClient(timeout=6, cookies=self._cookies()) as c:
                 return (await c.get(_base(self.port) + path)).json()
         except Exception:
             return {}
 
-    async def api(self, method, path, body=None):
+    async def api(self, method, path, body=None, timeout=10):
         try:
-            async with httpx.AsyncClient(timeout=10) as c:
+            async with httpx.AsyncClient(timeout=timeout, cookies=self._cookies()) as c:
                 r = await c.request(method, _base(self.port) + path, json=body)
-                return r.json() if r.content else {}
+                out = r.json() if r.content else {}
+                if r.status_code >= 400 and isinstance(out, dict) and not out.get("error"):
+                    out["error"] = out.get("detail") or f"HTTP {r.status_code}"
+                return out
         except Exception as e:
             return {"error": str(e)}
 
@@ -506,6 +686,11 @@ class AgentTUI(App):
 
     # ---- input / chat ----
     def on_input_submitted(self, e: Input.Submitted):
+        if e.input.id == "office-design":
+            if e.value.strip():
+                self.office_design(e.value.strip())
+                e.input.value = ""
+            return
         if e.input.id == "appfilter":
             self._render_apps(e.value.strip())
         elif e.input.id == "chatinput":
@@ -518,6 +703,84 @@ class AgentTUI(App):
     def on_button_pressed(self, e: Button.Pressed):
         if e.button.id == "cfg-save":
             self.save_config()
+        elif e.button.id == "office-snap":
+            self.office_snap()
+        elif e.button.id == "cfg-again":
+            self.setup_again()
+        elif e.button.id == "cfg-reset":
+            self.factory_reset()
+
+    # ---- the office ----
+    @work(exclusive=True, group="office")
+    async def refresh_office(self):
+        d = await self.api_get("/api/office/rollcall")
+        if not d:
+            return
+        # linked teams, as a visit shows them (only whom the link may ask; cached
+        # server-side, so this is not a call to another machine every 8 seconds)
+        vis = (await self.api_get("/api/team/visitors")).get("teams") or []
+        linked = ""
+        if vis:
+            linked = "\n\n[b]Linked teams[/b]  [grey58]bento office visit LINK[/]\n" + "\n".join(
+                f"  {_esc(t['label'])}: " + (", ".join(
+                    f"{_esc(p['label'])} ({'busy' if p['working'] else 'free' if p['working'] is False else 'lead'})"
+                    for p in t.get("people") or []) if t.get("ok") else f"[grey58]{_esc(t.get('error', ''))}[/]")
+                for t in vis)
+        body = (f"{_esc(d.get('plan', ''))}\n\n[b]Right now[/b]\n"
+                + "\n".join("  " + _esc(ln) for ln in (d.get("text") or "").splitlines())
+                + linked
+                + "\n\n[grey58]The desktop's Office animates this — agents walk over to ask each "
+                  "other, huddles gather in the meeting room. Here it is the plan and the roll call.[/]")
+        try:
+            self.query_one("#office-body", Static).update(body)
+        except Exception:
+            pass
+
+    @work(group="office-act")
+    async def office_snap(self):
+        st = self.query_one("#office-status", Static)
+        st.update("[grey58]sending…[/]")
+        r = await self.api("POST", "/api/office/snap", {}, timeout=90)
+        st.update(f"[green]✓ sent to {' and '.join(r['sent'])}[/]" if r.get("ok")
+                  else f"[red]{_esc(r.get('error', 'could not send it'))}[/]")
+
+    @work(group="office-act")
+    async def office_design(self, text: str):
+        st = self.query_one("#office-status", Static)
+        st.update("[grey58]designing…[/]")
+        r = await self.api("POST", "/api/office/design", {"description": text}, timeout=180)
+        if r.get("error"):
+            st.update(f"[red]{_esc(r['error'])}[/]")
+            return
+        how = f"designed by {r.get('who') or 'your agent'}" if r.get("how") == "brain" else r.get("said", "")
+        dropped = f" · not used: {', '.join(r['dropped'])}" if r.get("dropped") else ""
+        st.update(f"[green]✓[/] {_esc(how)}{_esc(dropped)} — [grey58]bento office shows it; the desktop's "
+                  f"Office has Undo[/]")
+        self.refresh_office()
+
+    # ---- start over ----
+    @work(group="reset")
+    async def setup_again(self):
+        r = await self.api("POST", "/api/onboarding/restart")
+        self.query_one("#cfg-status", Static).update(
+            f"[red]{_esc(r['error'])}[/]" if r.get("error") else
+            "[green]✓ every step is offered again[/] — nothing was deleted. Quit and run "
+            "[b cyan]bento setup[/b cyan], or open the desktop: the wizard is waiting.")
+
+    @work(group="reset")
+    async def factory_reset(self):
+        ok = await self.push_screen_wait(TypedConfirmScreen(
+            "Factory reset", "Wipes EVERYTHING on this machine: memory, knowledge, conversations, "
+            "apps, specialists, flows, the soul and every setting — and every account and its "
+            "home. It cannot be undone.", "reset everything"))
+        if not ok:
+            self.notify("nothing was reset")
+            return
+        r = await self.api("POST", "/api/setup/reset", {"confirm": True}, timeout=60)
+        if r.get("error"):
+            self.query_one("#cfg-status", Static).update(f"[red]nothing was reset — {_esc(r['error'])}[/]")
+            return
+        self.exit(message="Reset. Run `bento setup` (or open the desktop) to start again.")
 
     @work(group="cfg")
     async def save_config(self):
@@ -552,7 +815,8 @@ class AgentTUI(App):
         log = self.query_one("#chatlog", RichLog)
         ws_url = f"ws://127.0.0.1:{self.port}/ws"
         try:
-            async with websockets.connect(ws_url, max_size=None) as ws:
+            hdrs = {"Cookie": f"{cfgmod_cookie()}={self.token}"} if self.token else None
+            async with websockets.connect(ws_url, max_size=None, additional_headers=hdrs) as ws:
                 await ws.send(json.dumps({"type": "chat", "text": text, "surface": "tui",
                                           "conversation_id": self.cid, "model": self.model}))
                 log.write(f"[b cyan]{self.agent_name}[/]  ")

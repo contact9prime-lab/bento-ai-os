@@ -14,6 +14,27 @@ model when one is available.
 Same cause. Pick a tool-capable model. You can also use the **Store → Apps** tab, whose curated
 apps install instantly without a model.
 
+### After an update: "could not load", or a pane stuck on "loading…"
+
+The page on disk is newer than the server answering it: the update landed, but the
+server has not restarted into it. The desktop says *An update is installed but not
+running yet* with **Restart now**; press it, or run `bento service restart`. A pane that
+cannot load names this cause in a sentence ("this AgentOS server is running older code
+than this page") rather than waiting forever, and Settings → Agents keeps its
+**＋ New agent** button even then.
+
+### The TUI is empty and says "no model"
+
+The machine has accounts, so the server wants to know who you are. Update and the TUI asks
+you to sign in; see [the TUI](tui.md#signing-in).
+
+### I want to start again from the beginning
+
+To walk setup again without losing anything: Settings → System → *Walk me through it*,
+or `bento setup --again`. To wipe everything and start from nothing: Settings → System →
+Danger zone → *Factory reset*, or `bento reset` with the server stopped. See
+[the TUI](tui.md#starting-over).
+
 ### Risky actions don't run
 
 At **Paranoid**/**Balanced** autonomy, actions that change the system wait for your approval. Approve

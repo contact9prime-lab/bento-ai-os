@@ -816,7 +816,10 @@ var OB_WIRE={
         <div class="ob-swatches">${Object.entries(v.styles).map(([k,st])=>`
           <button class="ob-sw${k===style?' on':''}" data-style="${esc(k)}" title="${esc(st.blurb)}">
             <i style="background:linear-gradient(135deg,${st.wall} 0 45%,${st.floor[0]} 45%)"></i>${esc(st.label)}</button>`).join('')}</div>
-        <label class="ob-crew-name">Name on the door <input id="ob-crew-name" maxlength="24" value="${esc(name)}"></label></div>
+        <label class="ob-crew-name">Name on the door <input id="ob-crew-name" maxlength="24" value="${esc(name)}"></label>
+        <label class="ob-crew-name">Or describe it <span class="ob-crew-ask"><input id="ob-crew-ask" maxlength="300"
+          placeholder="a cosy greenhouse called The Nursery, with a cat"><button class="wiz-back" id="ob-crew-askb">Design it</button></span></label>
+        <div class="mut" id="ob-crew-said" aria-live="polite"></div></div>
       <img class="ob-crew-prev" id="ob-crew-prev" alt="A preview of your office with your crew in it" src="${preview()}">
       <div class="job-go"><button class="wiz-next" id="ob-crew-go">Create my office</button>
         <button class="wiz-back" id="ob-crew-open">Open the Office</button></div>`;
@@ -831,6 +834,12 @@ var OB_WIRE={
       b.querySelector('img').outerHTML=avatarImg(b.dataset.key,'ob-face-img');refresh();
     });
     $('#ob-crew-open').onclick=()=>{obClose();openApp('office')};
+    // the same designer as the Office's "Describe it" and Settings → Appearance; it saves,
+    // so the step is done by it as well as by the button below
+    const describe=async()=>{const d=await officeDescribe($('#ob-crew-ask'),$('#ob-crew-said'),$('#ob-crew-askb'));
+      if(!d)return;style=d.office.style;name=d.office.name;$('#ob-crew-name').value=name;
+      box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x.dataset.style===style));refresh();obRefresh(true)};
+    $('#ob-crew-askb').onclick=describe;$('#ob-crew-ask').onkeydown=e=>{if(e.key==='Enter')describe()};
     $('#ob-crew-go').onclick=async()=>{
       const btn=$('#ob-crew-go');btn.disabled=true;
       try{

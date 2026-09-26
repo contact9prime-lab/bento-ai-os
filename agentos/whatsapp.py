@@ -61,6 +61,7 @@ from . import users as usersmod
 
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
+CAPTION = 1024           # an image caption's limit on both transports
 WINDOW_SECS = 24 * 3600   # Meta's customer-service window
 
 # Reply-button titles. Twenty characters, hard limit — see the module docstring.
@@ -224,15 +225,14 @@ class WhatsAppBridge(usersmod.Scoped):
             raise RuntimeError(err.get("message") or f"HTTP {r.status_code}")
         return data
 
-    async def send(self, text: str, wa_id: str | None = None) -> str:
-        """Deliver a message, or say in one sentence why WhatsApp would not carry it.
+    def _refusal(self, c: dict, wa_id: str) -> str:
+        """Why WhatsApp would not carry a message to `wa_id` right now, in one
+        sentence — or '' when it would. One answer for text and pictures alike.
 
         The 24-hour refusal is spelled out rather than passed through as Meta's own
         error, because it is not a failure of this machine and it has a specific fix:
         the user says anything, and the window reopens for a day.
         """
-        c = self._c()
-        wa_id = wa_id or c.get("owner_wa_id") or ""
         if c.get("mode") == "baileys":
             if not self.link:
                 return ("[error] the WhatsApp Web bridge is not running — pair it in "
@@ -240,7 +240,7 @@ class WhatsAppBridge(usersmod.Scoped):
             if not wa_id:
                 return ("[error] Not paired yet — message this WhatsApp from your "
                         "phone once, and that chat becomes the owner")
-            return await self.link.send(text, wa_id)
+            return ""
         if not configured(self.cfg):
             return ("[error] WhatsApp is not set up — add the phone number id, access "
                     "token and verify token in Settings → Channels → WhatsApp")
@@ -252,6 +252,17 @@ class WhatsAppBridge(usersmod.Scoped):
                     "your last message to it. Send anything to the number and it will "
                     "reopen for a day. (Scheduled jobs should deliver to Telegram or "
                     "Reports if you want them to reach a silent chat.)")
+        return ""
+
+    async def send(self, text: str, wa_id: str | None = None) -> str:
+        """Deliver a message, or say in one sentence why WhatsApp would not carry it."""
+        c = self._c()
+        wa_id = wa_id or c.get("owner_wa_id") or ""
+        no = self._refusal(c, wa_id)
+        if no:
+            return no
+        if c.get("mode") == "baileys":
+            return await self.link.send(text, wa_id)
         text = text or "(empty)"
         try:
             for i in range(0, len(text), CHUNK):
@@ -262,6 +273,62 @@ class WhatsAppBridge(usersmod.Scoped):
             return f"[error] whatsapp send failed: {e}"
         self.store.log("whatsapp", f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
+
+    async def send_photo(self, png: bytes, caption: str = "", wa_id: str | None = None) -> str:
+        """A picture with its caption — the Office's roll call, a comic strip. The same
+        refusals as text (the 24-hour window included: an image is not a template).
+        On the Cloud API the bytes are uploaded to Meta first and sent by media id,
+        which is the only way that API takes an image that is not at a public URL."""
+        c = self._c()
+        wa_id = wa_id or c.get("owner_wa_id") or ""
+        no = self._refusal(c, wa_id)
+        if no:
+            return no
+        caption = (caption or "")[:CAPTION]
+        if c.get("mode") == "baileys":
+            return await self.link.send_photo(png, caption, wa_id)
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(
+                    f"{GRAPH}/{c['phone_number_id']}/media",
+                    data={"messaging_product": "whatsapp", "type": "image/png"},
+                    files={"file": ("office.png", png, "image/png")},
+                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+            up = r.json() if r.content else {}
+            if r.status_code >= 400 or not up.get("id"):
+                raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
+            await self._api(f"{c['phone_number_id']}/messages", {
+                "messaging_product": "whatsapp", "to": wa_id, "type": "image",
+                "image": {"id": up["id"], "caption": caption}})
+        except Exception as e:
+            return f"[error] whatsapp picture failed: {e}"
+        self.store.log("whatsapp", f"→ sent a picture: {caption[:120]}")
+        return "sent via WhatsApp"
+
+    async def send_talk(self, lines: list, wa_id: str) -> None:
+        """Agents talked during this chat's turn: the exchange as a comic strip, as
+        the Telegram bridge sends it (and switched off the same way, whatsapp.comics =
+        false). Never fatal — the reply has already been sent."""
+        if not lines or self._c().get("comics") is False:
+            return
+        try:
+            from . import comic, playground
+            from .telegram import office_name
+            first = lines[0]
+            title = f"{office_name(self.cfg)} · {first['speaker']}" + (
+                f" asks {first['to']}" if first.get("to") and first.get("kind") == "ask" else " talks")
+            png = comic.strip(self.store, self.cfg, lines, title)
+            await self.send_photo(png, playground.caption(lines, CAPTION), wa_id)
+        except Exception as e:
+            self.store.log("whatsapp", f"could not draw the comic strip: {e}")
+
+    async def send_office(self, wa_id: str) -> str:
+        """/office: who is at work right now, as a picture — Telegram's /office."""
+        from . import comic, knowledge, playground
+        from .telegram import office_name
+        rows = playground.rollcall(self.store, self.cfg, lead_busy=knowledge.active_turns() > 0)
+        png = comic.rollcall_image(self.store, self.cfg, rows, office_name(self.cfg))
+        return await self.send_photo(png, playground.rollcall_text(rows), wa_id)
 
     # -- inbound -------------------------------------------------------------
 
@@ -385,6 +452,11 @@ class WhatsAppBridge(usersmod.Scoped):
             self.store.clear_messages(self._conversation(chat))
             await self.send("🧹 Session cleared — starting fresh.", wa_id)
             return
+        if low.startswith("/office"):
+            out = await self.send_office(wa_id)
+            if out.startswith("[error]"):
+                await self.send(out, wa_id)
+            return
         if low.startswith("/status"):
             await self.send(f"▲ online · model {self.cfg.get('default_model') or '(none)'} "
                             f"· autonomy {self.cfg.get('autonomy')}", wa_id)
@@ -429,11 +501,21 @@ class WhatsAppBridge(usersmod.Scoped):
         return cid
 
     async def _turn(self, chat: dict, wa_id: str, text: str):
+        cid = self._conversation(chat)
+        # agents talking inside this turn come back as a comic strip after the reply,
+        # as on Telegram (playground.listen; closed in `finally`)
+        from . import playground as _pg
+        tap = _pg.listen(cid)
+        try:
+            await self._turn_in(chat, wa_id, text, cid)
+            await self.send_talk(list(tap), wa_id)
+        finally:
+            _pg.close(cid, tap)
+
+    async def _turn_in(self, chat: dict, wa_id: str, text: str, cid: str):
         from . import history as _history
         from . import knowledge as _k
         from . import usage as _usage
-
-        cid = self._conversation(chat)
         # The same rebuild as the desktop and Telegram: a thread answered from the
         # phone must see what the thread saw at the desk, tool traces included. A
         # bespoke window here is how one conversation ends up with two memories of
