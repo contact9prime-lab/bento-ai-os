@@ -174,3 +174,108 @@ def test_the_agent_editor_names_its_steps_and_saves_from_any_of_them():
     css = (Path(__file__).parent.parent / "agentos/ui/src/css/09-chat-team-docs.css").read_text()
     assert ".saw-box{" in css and "@media (max-width:640px)" in css[css.index(".saw-box{"):]
     assert "min-height:var(--tap" in css[css.index(".saw-tabs"):css.index(".saw-foot")]
+
+
+# ---------------------------------------------------------------------------
+# "Does it also build the persona, the image and the skills?" — it does now, and all
+# three are shown and editable before anything is written
+# ---------------------------------------------------------------------------
+
+import json as _json                                                # noqa: E402
+import types                                                       # noqa: E402
+
+from agentos import __main__ as climod                             # noqa: E402
+from agentos import avatars as avmod                               # noqa: E402
+
+FULL_AGENT = _json.dumps({
+    "name": "invoice-clerk", "soul": "You read invoices and file them. Never pay anything.",
+    "tools": ["list_dir"], "skills": ["writing"],
+    "look": {"hair": "auburn", "style": "bob", "glasses": True, "outfit": "blazer",
+             "shirt": "green", "wings": "yes", "note": "a careful clerk"},
+    "new_skills": [
+        {"name": "Invoice Filing", "description": "how to file one",
+         "content": "## Filing\n1. Read the sender and amount.\n2. Name it by date."},
+        {"name": "house-style", "description": "clashes", "content": "the model's own version of it"},
+        {"name": "x", "content": "too short"}]})
+
+
+@pytest.fixture()
+def full_brain(monkeypatch):
+    async def fake_forward(engine, text, cfg, cwd, *a, **k):
+        return FULL_AGENT, None
+    monkeypatch.setattr(execmod, "resolve_engine", lambda cfg: "claude-code")
+    monkeypatch.setattr(execmod, "forward", fake_forward)
+
+
+def test_a_draft_brings_a_persona_a_look_and_skills(store, full_brain):
+    store.save_skill("house-style", "ours", "the person's own house style")
+    d = asyncio.run(flowsmod.compose_subagent({}, store, "file my invoices", TOOLS))
+    assert d["soul"].startswith("You read invoices")
+    # the look is the closed set: an invented field is dropped and NAMED, and the
+    # blazer is the lead's — a specialist never takes it
+    assert d["look"]["glasses"] is True and d["look"]["style"] == "bob"
+    assert "outfit" not in d["look"] and "wings" not in str(d["look"])
+    assert any("blazer" in w for w in d["warnings"])
+    assert d["look_note"] == "a careful clerk"
+    # a new skill is PROPOSED (never written); one that exists is attached, not replaced
+    assert [s["name"] for s in d["new_skills"]] == ["invoice-filing"]
+    assert "house-style" in d["skills"]
+    assert store.get_skill("invoice-filing") is None, "drafting writes nothing"
+    assert store.get_skill("house-style")["content"] == "the person's own house style"
+    assert any("unusable" in w for w in d["warnings"])
+
+
+def test_saving_creates_the_kept_skills_and_the_look_and_never_overwrites(store):
+    store.save_skill("house-style", "ours", "the person's own house style")
+    rep = flowsmod.save_specialist(store, {}, {
+        "name": "invoice-clerk", "soul": "You file.", "tools": ["list_dir"], "skills": [],
+        "new_skills": [{"name": "invoice-filing", "description": "d", "content": "## edited by the person"},
+                       {"name": "house-style", "description": "d", "content": "a model's rewrite"}],
+        "look": {"hair": 5, "style": "bun", "glasses": True}})
+    assert rep["skills_created"] == ["invoice-filing"] and rep["skills_kept"] == ["house-style"]
+    assert store.get_skill("invoice-filing")["content"] == "## edited by the person"
+    assert store.get_skill("house-style")["content"] == "the person's own house style"
+    assert set(store.get_subagent("invoice-clerk")["skills"]) == {"invoice-filing", "house-style"}
+    rec = avmod.recipe_for(store, "invoice-clerk")
+    assert rec["style"] == "bun" and rec["glasses"] is True and not rep["look_error"]
+
+
+def test_a_look_is_previewed_without_writing_anything():
+    with TestClient(servermod.app) as c:
+        store = servermod.state["store"]
+        before = store.avatar_get("not-saved-yet")
+        r = c.post("/api/avatars/preview", json={"description": "grey bun and a violet hoodie",
+                                                 "name": "not-saved-yet"})
+        assert r.status_code == 200, r.text
+        b = r.json()
+        assert b["patch"]["style"] == "bun" and b["recipe"]["outfit"] == "hoodie"
+        assert "grey" in b["about"] and store.avatar_get("not-saved-yet") == before
+        assert c.post("/api/avatars/preview", json={"description": "zz"}).status_code == 400
+
+
+def test_the_editor_shows_and_edits_all_three():
+    js = (SRC / "13-fabric.js").read_text()
+    draw = js[js.index("function drawSAW"):js.index("function sawRefreshList")]
+    assert "id=\"sw-soul\"" in draw and "saw-drafted" in draw, "the drafted persona is shown, editable"
+    assert "sawLook()" in draw and "Give it this look when I save" in draw
+    assert "Create this skill" in draw and "SAW.newSkills[${i}].content=this.value" in draw
+    face = js[js.index("function sawFace"):js.index("function drawSAW")]
+    assert "avatarRecipeImg(SAW.lookRec" in face, "the drafted face, through the one door"
+    look = js[js.index("async function sawLook"):js.index("function drawSAW")]
+    assert "/api/avatars/preview" in look, "a look for an unsaved agent writes nothing"
+    save = js[js.index("async function sawSave"):js.index("function testSubagent")]
+    assert "k.on&&" in save and "new_skills" in save and "SAW.useLook" in save
+    assert "kept your existing" in save, "a skill not replaced is said"
+
+
+def test_a_terminal_can_draft_one_and_nothing_is_saved_without_a_yes(store, full_brain, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: False))
+    args = types.SimpleNamespace(name="file", model="my", more=["invoices"], yes=False, user="")
+    assert climod._team_draft(args, {}, store, False) == 0
+    out = capsys.readouterr().out
+    assert "Persona" in out and "You read invoices" in out and "Look" in out
+    assert "New skill invoice-filing" in out and "## Filing" in out, "the skill's whole text is shown"
+    assert "not saved" in out and store.get_subagent("invoice-clerk") is None
+    args.yes = True
+    assert climod._team_draft(args, {}, store, False) == 0
+    assert store.get_subagent("invoice-clerk") and store.get_skill("invoice-filing")

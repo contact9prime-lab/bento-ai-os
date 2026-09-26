@@ -22,6 +22,14 @@ the agent's face and name, three named steps you can jump between, a full-width 
 box first, trust as three plain choices, and Save on every step. On a phone it fills the
 screen. A refused save is said, and the editor keeps what you typed.
 
+**Draft it now drafts the whole agent: persona, look and skills.** Describe the agent in a
+sentence. The brain writes its persona (shown large, and editable), picks a face that fits the
+job (shown before you save, with a box to redesign it), ticks the installed skills it should
+follow, and proposes up to two new skills when the job needs know-how nothing installed covers.
+Each proposed skill shows its full text, which you can edit, and is created only if ticked when
+you save. A skill you already have is never replaced. From a terminal:
+`bento team draft "someone who files the invoices that arrive"`.
+
 **An approval you can always reach.** When a card waits somewhere hidden (the prompt bar's
 answer, another chat), a copy floats top right. The toast has *Review*, and the "waiting for
 you to approve …" line opens the card. A hand-over to a specialist used to wait five minutes on

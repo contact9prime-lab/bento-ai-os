@@ -65,6 +65,10 @@ async function openSAW(name,opts){
   // subagents and come back to re-pick them is how a good idea becomes a chore.
   SAW={step:1,exists:!!ex,tools:tools.tools||[],skills:skills.skills||[],models:models.models||[],q:'',
     onSaved:(opts||{}).onSaved||null,onCancel:(opts||{}).onCancel||null,
+    // what "Draft it" brought besides the definition, all of it shown and editable
+    // before Save: a look (a patch of the closed set + the whole face to preview) and
+    // skills it proposes to CREATE (each ticked, each editable, none written until Save)
+    look:null,lookRec:null,lookAbout:'',lookNote:'',useLook:true,newSkills:[],drafted:false,
     d:ex?{...ex,tools:[...(ex.tools||[])],skills:[...(ex.skills||[])]}
         :{name:(opts||{}).name||'',soul:(opts||{}).soul||'',model:'',
           tools:[...((opts||{}).tools||[])],skills:[],autonomy_cap:'balanced',
@@ -88,6 +92,12 @@ async function sawAi(){
   }catch(e){if(st)st.innerHTML='<span style="color:var(--err,#f87171)">'+esc(e.message||String(e))+'</span>';return}
   const dr=r.draft||{};
   const was={tools:[...(SAW.d.tools||[])],soul:SAW.d.soul||''};
+  if(dr.look&&Object.keys(dr.look).length){
+    SAW.look=dr.look;SAW.lookRec=dr.look_recipe||null;SAW.lookAbout=dr.look_about||'';
+    SAW.lookNote=dr.look_note||'';SAW.useLook=true}
+  const newSk=(dr.new_skills||[]).map(x=>({name:x.name,description:x.description||'',content:x.content||'',on:true}));
+  if(newSk.length||!SAW.exists)SAW.newSkills=newSk;
+  SAW.drafted=true;
   SAW.d=Object.assign(SAW.d,{
     name:SAW.exists?SAW.d.name:(dr.name||SAW.d.name),
     soul:dr.soul||SAW.d.soul,tools:dr.tools||[],skills:dr.skills||[],
@@ -99,6 +109,8 @@ async function sawAi(){
   const gone=was.tools.filter(t=>!(SAW.d.tools||[]).includes(t));
   if(s2)s2.innerHTML=esc(
     (was.soul!==(SAW.d.soul||'')?'persona rewritten. ':'')
+    +(SAW.look?'a look drafted. ':'')
+    +(SAW.newSkills.length?SAW.newSkills.length+' new skill'+(SAW.newSkills.length>1?'s':'')+' proposed (step 2). ':'')
     +(added.length?'+'+added.join(', ')+' ':'')+(gone.length?'−'+gone.join(', ')+' ':'')
     +((dr.warnings||[]).join(' · ')))
     +' <span class="mut">not saved yet</span>';
@@ -115,8 +127,27 @@ var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
   ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
   ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
 function sawFace(d){
+  // the drafted look first — it is what Save will give it — then the face it already has
+  if(SAW.lookRec&&SAW.useLook&&typeof avatarRecipeImg==='function')
+    return avatarRecipeImg(SAW.lookRec,'saw-face',SAW.lookAbout)||'';
   const img=d.name&&typeof avatarImg==='function'&&SAW.exists?avatarImg(d.name,'saw-face'):'';
   return img||`<div class="saw-face saw-tile" aria-hidden="true">${esc((d.name||'?')[0].toUpperCase())}</div>`;
+}
+/* Design (or redesign) the look before the agent exists: /api/avatars/preview writes
+   nothing, and the patch is saved with the agent. The one designer, the closed set. */
+async function sawLook(){
+  const inp=$('#sw-look'),st=$('#sw-look-status');
+  const desc=(inp&&inp.value||'').trim();if(!desc)return toast('say how it looks — a few words');
+  sawCollect();
+  if(st)st.textContent='designing…';
+  let r;
+  try{r=await apiJSON('/api/avatars/preview',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({description:desc,name:SAW.d.name||'',base:SAW.lookRec||undefined})})}
+  catch(e){const s2=$('#sw-look-status');if(s2)s2.textContent=e.message||String(e);return}
+  if(!SAW)return;
+  SAW.look={...(SAW.look||{}),...r.patch};SAW.lookRec=r.recipe;SAW.lookAbout=r.about;
+  SAW.lookNote=r.note||r.said||'';SAW.useLook=true;
+  drawSAW();
 }
 function drawSAW(){
   let ov=$('#saw-ov');
@@ -143,8 +174,19 @@ function drawSAW(){
       <label for="sw-name">Name</label>
       <div class="saw-at"><span>@</span><input id="sw-name" value="${esc(d.name)}" placeholder="researcher" autocomplete="off" ${SAW.exists?'disabled':''}></div>
       <div class="sub saw-hint">${SAW.exists?'The name is how it is addressed and granted, so it cannot change.':'Lower-case, one word. In chat you address it as <code>@name</code>.'}</div>
-      <label for="sw-soul">Persona — who is it, and how does it work?</label>
-      <textarea id="sw-soul" rows="5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <label for="sw-soul">Persona — its soul: who it is, and how it works</label>
+      <textarea id="sw-soul" class="${SAW.drafted?'saw-drafted':''}" rows="${SAW.drafted?8:5}" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <div class="sub saw-hint">${SAW.drafted?'Drafted from your description — read it, and change anything. This is what it is told every time it works.':'Written as “You …”. It is what the agent is told every time it works.'}</div>
+      <label for="sw-look">Look</label>
+      <div class="saw-look">
+        ${sawFace(d)}
+        <div class="grow">
+          <div class="saw-look-about">${SAW.lookRec?esc(SAW.lookAbout)+(SAW.lookNote?` <span class="mut">— ${esc(SAW.lookNote)}</span>`:''):SAW.exists?'Its current look.':'A face is made for it when it is saved — or describe one.'}</div>
+          <div class="saw-look-go"><input id="sw-look" placeholder="grey bun, glasses, a green hoodie" autocomplete="off">
+            <button onclick="sawLook()">✦ ${SAW.lookRec?'Redesign':'Design'}</button></div>
+          ${SAW.lookRec?`<label class="saw-use"><input type="checkbox" ${SAW.useLook?'checked':''} onchange="SAW.useLook=this.checked;sawCollect();drawSAW()"> Give it this look when I save</label>`:''}
+          <span id="sw-look-status" class="sub" aria-live="polite"></span>
+        </div></div>
       <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
       <div class="sub saw-hint">A pinned model is used when Settings → Agents → Working together lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
@@ -158,6 +200,14 @@ function drawSAW(){
       <input id="sw-q" class="saw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}">
       <div id="sw-list" class="saw-list"></div>
       <div id="sw-count" class="sawsub saw-count"></div>
+      ${SAW.newSkills.length?`<div class="sawgrp">New skills it would bring</div>
+      <div class="sawsub">Drafted for this job. Read and edit them; each ticked one is created when you save, and a skill that already exists is never replaced.</div>
+      ${SAW.newSkills.map((k,i)=>`<div class="saw-newsk ${k.on?'on':''}">
+        <label class="saw-use"><input type="checkbox" ${k.on?'checked':''} onchange="SAW.newSkills[${i}].on=this.checked;this.closest('.saw-newsk').classList.toggle('on',this.checked)"> Create this skill</label>
+        <label for="sw-nk-n${i}">Name</label><input id="sw-nk-n${i}" value="${esc(k.name)}" oninput="SAW.newSkills[${i}].name=this.value">
+        <label for="sw-nk-d${i}">What it is for</label><input id="sw-nk-d${i}" value="${esc(k.description)}" oninput="SAW.newSkills[${i}].description=this.value">
+        <label for="sw-nk-c${i}">What it says</label><textarea id="sw-nk-c${i}" rows="7" oninput="SAW.newSkills[${i}].content=this.value">${esc(k.content)}</textarea>
+      </div>`).join('')}`:''}
       <div class="sawgrp">Skills it should follow</div>
       <div class="saw-skills">${skl}</div>
       <p class="mut saw-hint">Memory and skills (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) are always included. What it may actually DO with a tool is still decided in Permissions.</p>`;
@@ -175,7 +225,7 @@ function drawSAW(){
       <div class="saw-sum">
         ${sawFace(d)}
         <div class="grow"><div class="n">@${esc(d.name||'name')}</div>
-          <div class="d">${esc(d.model||'this machine\'s brain')} · ${d.tools.length?d.tools.length+' tools':'the safe read-only set'}${d.skills.length?' · '+d.skills.length+' skills':''}</div>
+          <div class="d">${esc(d.model||'this machine\'s brain')} · ${d.tools.length?d.tools.length+' tools':'the safe read-only set'}${d.skills.length?' · '+d.skills.length+' skills':''}${SAW.newSkills.filter(k=>k.on).length?' · '+SAW.newSkills.filter(k=>k.on).length+' new skill'+(SAW.newSkills.filter(k=>k.on).length>1?'s':''):''}</div>
           <div class="persona">${esc((d.soul||'').slice(0,180))||'<span class="mut">no persona yet</span>'}</div>
           <div class="d">In chat: <code>@${esc(d.name||'name')} your task</code></div></div></div>`;
   }
@@ -244,8 +294,16 @@ async function sawSave(){
   const d=SAW.d;if(!d.name){toast('give it a name first');const i=$('#sw-name');if(i)i.focus();return}
   const cb=SAW.onSaved;
   // a refusal is said, and the editor stays open with everything typed in it
-  try{await apiJSON('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})}
+  const newSk=SAW.newSkills.filter(k=>k.on&&k.name.trim()&&k.content.trim())
+    .map(k=>({name:k.name.trim(),description:k.description,content:k.content}));
+  const body={...d,...(newSk.length?{new_skills:newSk}:{}),...(SAW.look&&SAW.useLook?{look:SAW.look}:{})};
+  let rep;
+  try{rep=await apiJSON('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
   catch(e){toast('could not save @'+d.name+': '+(e.message||e),{kind:'err'});return}
+  // what came with it, said — and what did not
+  if(rep&&(rep.skills_created||[]).length)toast('new skill'+(rep.skills_created.length>1?'s':'')+' created: '+rep.skills_created.join(', '));
+  if(rep&&(rep.skills_kept||[]).length)toast('kept your existing '+rep.skills_kept.join(', ')+' — not replaced',{kind:'info'});
+  if(rep&&rep.look_error)toast(rep.look_error,{kind:'warn'});
   SAW=null;drawSAW();
   if(cb){cb(d.name);return}          // an editor borrowed the wizard; it owns what happens next
   toast('saved — address it in chat with @'+d.name,{label:'Try it',go:()=>testSubagent(d.name)});refreshApp('fabric');

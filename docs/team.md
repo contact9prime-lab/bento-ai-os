@@ -24,6 +24,8 @@ does the reading, and the expensive one gets the judgement calls.
   billed.
 - **From a terminal**, `bento team` lists everyone, `bento team set writer openai/gpt-4o` pins
   one, and `bento team own on|off` is the switch below. It works with the server down.
+  `bento team draft "…"` drafts a new specialist, with its persona, look and skills, and asks
+  before saving it (see [agents.md](agents.md#making-an-agent)).
 
 ![Settings → Agents → Working together: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
 

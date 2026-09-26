@@ -874,6 +874,15 @@ Five things will bite whoever touches this next (`tests/test_hands.py`):
 - **The map is ONE computation.** `agentmap.overview()` → `graph()`/`text()` feeds the cards,
   the map, `/api/agents*` and `bento agents`; do not compute "who reaches what" a second way
   in the page.
+- **"Draft it" drafts the whole agent, and ALL of it is shown before Save.**
+  `compose_subagent` returns the persona, the tools, installed skills, a `look` (through
+  `avatars.read_design`: the closed set, the blazer refused, an invented field dropped and
+  named) and at most two `new_skills` PROPOSALS. A proposal is never written by drafting:
+  the editor shows its full text, editable, with a tick. `flows.save_specialist` (the
+  editor's Save and `bento team draft`) creates only the ticked ones and never through a
+  name that exists, because `save_skill` updates by name and would replace a skill somebody
+  relies on; a collision is attached and said. A look for an agent that does not exist yet
+  is `/api/avatars/preview`, which writes nothing; the patch is saved with the agent.
 - **The bundle is one script, so names collide silently.** A Settings helper called
   `agentHands` replaced the copilot's "visible hands" glow of the same name with no error;
   `test_no_two_files_declare_the_same_function` now fails on any duplicate top-level function.

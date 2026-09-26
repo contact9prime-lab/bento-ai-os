@@ -8454,6 +8454,42 @@ async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: i
                     headers={"Cache-Control": "private, max-age=86400"})
 
 
+@app.post("/api/avatars/preview")
+async def api_avatar_preview(body: dict):
+    """Design a look for an agent that does not exist YET (the agent editor, before
+    Save): the same designer as below — the machine's brain over the closed set, or the
+    words matched — but nothing is written. The editor keeps the patch and saves it with
+    the agent. `base` is the look being changed, so a redesign starts from it."""
+    from . import teamlink
+    from . import executors as _execmod
+    b = body or {}
+    desc = teamlink.plain(b.get("description"), 300, newlines=False)
+    if len(desc) < 3:
+        return JSONResponse({"error": "describe the look first — a few words is enough"}, status_code=400)
+    name = teamlink.plain(b.get("name"), 48, newlines=False) or "?"
+    system, prompt = avatarsmod.design_prompt(desc, f"a specialist called {name}")
+    raw, model = await _execmod.ask_once(state["cfg"], system, prompt, timeout=60)
+    patch, dropped, note, how = {}, [], "", "words"
+    if raw:
+        with contextlib.suppress(Exception):
+            patch, dropped, note = avatarsmod.read_design(raw)
+            if patch:
+                how = "model"
+    if not patch:
+        patch = avatarsmod.from_words(desc)
+    if not patch:
+        return JSONResponse({"error": "that did not name anything a character can have — try a hair "
+                                      "colour or style, glasses, a colour to wear, or hoodie"},
+                            status_code=400)
+    if patch.get("outfit") == "blazer":
+        patch.pop("outfit")              # the lead's; a specialist never takes it
+    base = b.get("base") if isinstance(b.get("base"), dict) else avatarsmod.recipe_for(state["store"], name)
+    rec = avatarsmod.clean({**avatarsmod.clean(base), **patch})
+    return {"patch": patch, "recipe": rec, "about": avatarsmod.describe(rec), "how": how,
+            "note": note, "dropped": dropped,
+            "said": "" if how == "model" else "No model answered, so this matched the words you used."}
+
+
 @app.post("/api/avatars/{key}/design")
 async def api_avatar_design(key: str, body: dict):
     """Design a character from a description. The machine's model picks from the closed
@@ -9385,6 +9421,17 @@ async def api_subagent_brain(name: str, body: dict):
 async def api_save_subagent(body: dict):
     if not (body.get("name") or "").strip():
         return JSONResponse({"error": "name required"}, status_code=400)
+    if body.get("new_skills") or body.get("look"):
+        # a drafted agent: the skills the person kept and the face it was given, saved
+        # with it by the one function `bento team add` uses too
+        try:
+            rep = flowsmod.save_specialist(state["store"], state["cfg"], body)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        await state["broadcast"]({"type": "fabric_defs"})
+        if rep["look"]:
+            await state["broadcast"]({"type": "avatars", "key": body["name"].strip()})
+        return rep
     sid = state["store"].save_subagent(body)
     await state["broadcast"]({"type": "fabric_defs"})
     return {"id": sid}
@@ -9626,6 +9673,11 @@ async def api_compose_subagent(body: dict):
                                         current=current, model=(body or {}).get("model", ""))
     if d.get("error"):
         return JSONResponse(d, status_code=502)
+    # the face the draft would wear, whole: the one it has (or would be generated as)
+    # with the drafted choices laid over it — shown in the editor before anything is saved
+    rec = avatarsmod.clean({**avatarsmod.recipe_for(state["store"], d.get("name") or "?"),
+                            **(d.get("look") or {})})
+    d["look_recipe"], d["look_about"] = rec, avatarsmod.describe(rec)
     return {"draft": d}
 
 

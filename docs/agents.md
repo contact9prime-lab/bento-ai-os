@@ -73,28 +73,50 @@ says why.
 
 ## Making an agent
 
-![The agent editor after "Draft it": its face and name at the top, the three steps as
-named tabs, the description box at full width, then the drafted name, persona and brain,
-and Save beside Next](screenshots/agent-editor-drafted.png)
+![The agent editor after "Draft it": the drafted face in the header, the persona drafted in
+full and editable, and the Look row with its description, a Redesign box and "Give it this look
+when I save"](screenshots/agent-editor-drafted.png)
 
 **＋ New agent** (in Settings → Agents, or Missions → Build → Agents) opens one editor. It
 has three steps you can jump between: **Who it is**, **What it can use** and **Limits &
 trust**.
 
-- **Describe it** comes first. Say what you need in a sentence and press **Draft it**.
-  The machine's brain fills in all three steps: name, persona, tools, skills and limits.
-  Nothing is saved until you press **Save**. On an existing agent the box reads **Ask for a
-  change** ("let it read files too").
-- **Save** is on every step once the agent has a name, because a drafted agent is often
-  ready as it arrives. A refused save is said in a toast, and the editor stays open with
-  everything you typed.
-- **Limits & trust** is three plain choices: *Asks first*, *Careful* and *Trusted*. None of
-  them goes above this machine's own autonomy level.
+Say what you need in a sentence and press **Draft it**. The machine's brain drafts the whole
+agent, and nothing is written until you press **Save**:
 
-![The same editor on a 390px phone: full screen, the steps shortened to Who, Tools and
-Limits, trust as three cards, and Cancel, Back and Save at the bottom](screenshots/agent-editor-phone.png)
+- **Its persona (soul)**, in full, in the box under the name. This is what the agent is told
+  every time it works, so it is shown large and you can change any of it.
+- **Its look.** A face that fits the job, from the same options as the character editor. It
+  appears in the header and in the **Look** row. Describe another one and press **✦ Redesign**,
+  or untick *Give it this look when I save* to keep the face it would get anyway. The blazer
+  stays your lead's.
+- **Its tools, and the skills it should follow.** Skills already installed are ticked for it.
+- **New skills it would bring**, when the job needs know-how nothing installed covers (a
+  checklist, a house style, the steps of a procedure). At most two, on the **What it can use**
+  step. Each shows its name, what it is for and its full text, and you can edit all three.
+  Each ticked one is created when you save. A skill with that name that already exists is
+  never replaced: it is attached instead, and a toast says so.
+
+![Step 2 after a draft: "New skills it would bring" with one skill, invoice-filing, ticked, its
+name, purpose and full text editable, above the installed skills](screenshots/agent-editor-new-skill.png)
+
+On an existing agent the box reads **Ask for a change** ("let it read files too"). It changes
+the look only when you ask about the look.
+
+**Save** is on every step once the agent has a name, because a drafted agent is often ready as
+it arrives. A refused save is said in a toast, and the editor stays open with everything you
+typed. **Limits & trust** is three plain choices: *Asks first*, *Careful* and *Trusted*. None
+of them goes above this machine's own autonomy level.
+
+![The same editor on a 390px phone: full screen, the steps shortened to Who, Tools and Limits,
+and the drafted skill's card with its full text](screenshots/agent-editor-phone.png)
 
 On a phone the editor fills the screen, and every control is at least a fingertip tall.
+
+From a terminal, `bento team draft "someone who files the invoices that arrive"` drafts the
+same agent. It prints the look, the whole persona, the tools, the skills and the full text of
+any new skill, then asks before saving (`--yes` saves without asking). It saves the same way
+the editor does.
 
 ## Executors: the hands
 
