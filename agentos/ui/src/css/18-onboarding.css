@@ -16,7 +16,7 @@
   border-right:1px solid var(--hairline);overflow-y:auto;background:var(--bg2)}
 .ob-head{padding:0 var(--sp-3) var(--sp-4)}
 .ob-mark{width:44px;height:44px;border-radius:var(--r-lg);margin-bottom:var(--sp-3);
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;
+  background:var(--acc-grad);color:var(--on-acc);
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xl);font-weight:900;
   box-shadow:0 0 40px color-mix(in srgb,var(--acc) 30%,transparent)}
 .ob-head b{display:block;font-size:var(--fs-lg);font-weight:700}

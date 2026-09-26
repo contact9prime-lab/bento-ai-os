@@ -14,7 +14,7 @@ Gemini, OpenRouter, a local Ollama model, or a custom OpenAI-compatible server. 
 free local model, a validator on Claude and a writer on GPT is a normal setup: the cheap agent
 does the reading, and the expensive one gets the judgement calls.
 
-- **Settings → AI providers → Team** lists every agent with a model picker. A change applies
+- **Settings → Agents → Working together** lists every agent with a model picker. A change applies
   immediately.
 - **Missions → Build → Agents** shows each agent's provider on its card, and so does the Crew
   stage. Under each figure is the provider it answers on, and while it works the light above its
@@ -25,7 +25,7 @@ does the reading, and the expensive one gets the judgement calls.
 - **From a terminal**, `bento team` lists everyone, `bento team set writer openai/gpt-4o` pins
   one, and `bento team own on|off` is the switch below. It works with the server down.
 
-![Settings → AI providers → Team: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
+![Settings → Agents → Working together: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
 
 **The badge always shows what is actually answering, not what the agent was pinned to.** Those
 can differ. If an agent is pinned to a provider that is switched off, or has no key yet, the pin
@@ -92,7 +92,7 @@ its own model and with its own permissions, and the answer comes back to the one
 ![A researcher on OpenRouter asks the validator on OpenAI, and uses the answer](screenshots/team-message-chat.png)
 
 **Who may ask whom is a permission matrix.** Every pair of agents is a cell: rows ask, columns
-answer. You set it in **Settings → AI providers → Team → Who may ask whom** (tap a cell to cycle
+answer. You set it in **Settings → Agents → Working together → Who may ask whom** (tap a cell to cycle
 *ask → allow → block*), with `bento team allow|block|ask ASKER ANSWERER`, or by answering the
 card the first time a pair talks:
 
@@ -123,7 +123,7 @@ holds, every message is still a run and a ledger row, and a cell you blocked sta
   many times a colleague may ask back is a limit (default 2, 0 turns it off).
 - **A real cycle is refused.** In A → B → C, if C asks A, A is not C's asker; it is waiting on B.
   AgentOS records who is in the conversation, and the model cannot edit that record.
-- **Limits are settings.** Settings → AI providers → Team → Limits, or `bento team limits
+- **Limits are settings.** Settings → Agents → Working together → Limits, or `bento team limits
   hops=3 budget=20`:
 
 | Limit | Default | Range | What it bounds |
@@ -190,7 +190,7 @@ It works like signing a TV into a streaming account, or pairing a phone over Blu
 (the OAuth *device flow*). Nothing is copied from one screen to the other.
 
 1. **Home** types the other machine's name or address and presses **Ask to link**
-   (Settings → AI providers → Team → Linked teams, or `bento link request office.local`).
+   (Settings → Agents → Working together → Linked teams, or `bento link request office.local`).
    Home shows six digits: *Waiting for office to approve. Make sure it shows 506 883.*
 2. **Office** gets a card on every screen that is open (a toast with **Review**, the
    Settings card, a line in the TUI): *home asks to link its team with yours. Check that
@@ -386,7 +386,7 @@ places:
 - **On the card.** When their question needs a person, the card's third button reads
   **Always let home have analyst do this**. For a file, it covers the file's *folder*, because
   a weekly report gets a new name every week.
-- **In Settings → AI providers → Team → the link → Without asking me.** Pick the agent, the
+- **In Settings → Agents → Working together → Linked teams → the link → Without asking me.** Pick the agent, the
   action and the folder or tool, and optionally a number of days. From a terminal:
   `bento link let home analyst fs.write ~/shared/reports --days 30`. List them with
   `bento link standing home`; remove one with `bento link unlet home <id>`.

@@ -1,11 +1,11 @@
-"""The immersive experience (beta): a look laid over the theme, switched in Settings.
+"""The immersive experience: the default look, laid over the theme, switched in Settings.
 
 What this pins is the shape of the thing, because every rule below is one that a
 later edit could drop without anything else noticing:
 
   * It is one body class. Every rule in 20-immersive.css is scoped to it, so
     switching it off leaves the standard desktop byte-for-byte as it was. A rule
-    that escapes the prefix restyles everybody, and the beta stops being opt-in.
+    that escapes the prefix restyles everybody, and switching it off stops meaning off.
   * It adds exactly one blurred surface — the ACTIVE window — and the inactive
     ones stay opaque. That is the 16-glass convention: cost stays flat however
     many windows are open. And `body.glass-off` still wins over it, because a
@@ -89,7 +89,8 @@ def test_module_state_uses_var_not_let():
 
 def test_switch_lives_in_settings_appearance_and_applies_on_the_spot():
     look = SETTINGS.split("if(want('look'))")[1].split("if(want('system'))")[0]
-    assert "pSwitch('s-imm'" in look and "Immersive experience (beta)" in look
+    assert "pSwitch('s-imm'" in look and "pRow('Immersive experience'" in look
+    assert "On by default" in look, "the switch says it is the default now"
     assert "setImmersive(im.checked)" in SETTINGS
     # the honesty rule: the switch says what the terminal face does not have
     assert "TUI" in look and "no wallpaper or glass" in look

@@ -22,6 +22,11 @@
   --line:#232a35; --txt:#e6ebf2; --dim:#8a94a6; --dim2:#5c6577;
   --acc:#5eead4; --acc2:#22d3ee; --warn:#fbbf24; --err:#f87171; --ok:#4ade80;
   --glass:rgba(17,20,25,.82);
+  /* the accent as a FILL, and the text that sits on it. A theme sets both: a teal
+     accent wants dark ink on it, a violet one wants white (Nova), and a gradient can
+     carry more than two stops. Every primary button, active tab and badge reads these. */
+  --acc-grad:linear-gradient(135deg,var(--acc),var(--acc2));
+  --on-acc:#04211c;
   /* the glass recipe: translucent tint + heavy blur + a hairline of light along
      the top edge. Every floating surface (deck groups, widgets, cards, popovers)
      uses these so they read as one material. */
@@ -220,7 +225,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .wgsize button{width:24px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:800;
   color:var(--dim);transition:background var(--d-fast) var(--ease-out),color var(--d-fast)}
 .wgsize button:hover{background:rgba(255,255,255,.09);color:var(--txt)}
-.wgsize button.on{background:var(--acc);color:#04211c}
+.wgsize button.on{background:var(--acc);color:var(--on-acc)}
 .wgpreview{height:100%;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(120% 120% at 50% 0%,rgba(94,234,212,.07),transparent 60%),var(--bg)}
 .wgpreview .widget{box-shadow:var(--el-4)}
@@ -290,7 +295,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-sm);padding:2px 8px;border-radius:var(--r-sm);cursor:pointer;user-select:none}
 #mb-brand:hover{background:var(--bg3)}
 #mb-brand:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
-#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #mb-spacer{flex:1}
 #pager{display:flex;gap:4px;align-items:center}
 .pgb{width:22px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:700;color:var(--dim);border:1px solid transparent;display:flex;align-items:center;justify-content:center}
@@ -366,14 +371,14 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #natctl.on{display:flex}
 #natctl button{width:24px;height:24px;border-radius:50%;font-size:12px;line-height:1;
   color:var(--txt);background:rgba(255,255,255,.09);transition:background var(--d-fast) var(--ease-out)}
-#natctl button:hover{background:var(--acc);color:#04211c}
+#natctl button:hover{background:var(--acc);color:var(--on-acc)}
 #natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
 .tbnat.mini{opacity:.45}
 
 /* ---- forwarding chip: the machine is answering as another agent, and says so ---- */
 #fwdchip{display:flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;
   font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
-  color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  color:var(--on-acc);background:var(--acc-grad);
   box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
 #fwdchip[hidden]{display:none}
 #fwdchip:hover{filter:brightness(1.08)}
@@ -387,8 +392,8 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mb-user[hidden]{display:none}
 #mb-user:hover{background:rgba(255,255,255,.16)}
 #mb-user .ini{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
-  border-radius:999px;font-weight:800;color:#04211c;
-  background:linear-gradient(135deg,var(--acc),var(--acc2))}
+  border-radius:999px;font-weight:800;color:var(--on-acc);
+  background:var(--acc-grad)}
 #mb-user .badge{font-size:var(--fs-3xs,9px);font-weight:600;opacity:.7;padding-left:6px;
   margin-left:2px;border-left:1px solid rgba(255,255,255,.2);text-transform:uppercase}
 #fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;
@@ -404,7 +409,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
   border:1px solid var(--hairline);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 .5px 0 rgba(255,255,255,.12);z-index:9000}
 #startbtn{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;border-radius:var(--r-lg);
   transition:transform var(--d-base) var(--ease-out)}
-#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:linear-gradient(135deg,var(--acc),var(--acc2));
+#startbtn .mark{width:46px;height:46px;border-radius:24.5%;background:var(--acc-grad);
   display:flex;align-items:center;justify-content:center;border:.5px solid rgba(255,255,255,.16);
   box-shadow:0 5px 14px rgba(0,0,0,.42),inset 0 .5px 0 rgba(255,255,255,.32)}
 #startbtn:hover{transform:translateY(-7px) scale(1.12)}
@@ -489,7 +494,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 @keyframes smpop{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
 #smhead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
-#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#smhead .mark{width:30px;height:30px;border-radius:var(--r-md);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #smhead b{font-size:var(--fs-base)}
 #smhead small{display:block;color:var(--dim2);font-size:var(--fs-xs);font-weight:400}
 #smapps{padding:6px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:2px;flex:1;min-height:0;max-height:52vh;overflow-y:auto;align-content:start;grid-auto-rows:minmax(92px,auto)}
@@ -523,7 +528,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 /* ================= boot splash ================= */
 #boot{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity var(--d-slower) var(--ease-out)}
 #boot.off{opacity:0;pointer-events:none}
-#boot .mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;box-shadow:0 0 60px rgba(94,234,212,.3)}
+#boot .mark{width:74px;height:74px;border-radius:var(--r-xl);background:var(--acc-grad);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:var(--fs-3xl);font-weight:900;box-shadow:0 0 60px rgba(94,234,212,.3)}
 #boot h1{font-size:var(--fs-2xl);letter-spacing:.5px}
 #boot .bbar{width:180px;height:3px;border-radius:3px;background:var(--bg4);overflow:hidden}
 #boot .bbar i{display:block;height:100%;width:35%;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2));animation:boot 1s ease-in-out infinite}
@@ -564,7 +569,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .sawsub{font-size:var(--fs-sm);color:var(--dim);margin:0 0 12px;line-height:1.5}
 .teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:8px;cursor:pointer;transition:border-color var(--d-fast) var(--ease-out);background:var(--bg3)}
 .teamcard:hover{border-color:var(--acc)}
-.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:var(--acc-grad)}
 .teamcard .n{font-size:var(--fs-base);font-weight:650;color:var(--txt)}
 .teamcard .meta{font-size:var(--fs-sm);color:var(--dim);margin-top:3px;line-height:1.5}
 .teamcard .meta b{color:var(--txt);font-weight:600}
@@ -572,7 +577,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .badge{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:var(--r-full);font-size:var(--fs-2xs);color:var(--dim2);margin-left:6px;vertical-align:1px}
 
 #welcome{text-align:center;padding-top:7vh}
-#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
+#welcome h1{font-size:var(--fs-3xl);font-weight:800;background:var(--acc-grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
 #welcome p{color:var(--dim);margin-bottom:26px;font-size:var(--fs-base)}
 .chips{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:600px;margin:0 auto}
 .chip{padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg2);color:var(--dim);font-size:var(--fs-sm);transition:border-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);text-align:left}
@@ -718,7 +723,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #mic{position:absolute;right:46px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-base);display:flex;align-items:center;justify-content:center}
 #mic:hover{background:var(--bg4);color:var(--txt)}
 #mic.rec{background:var(--err);color:#fff;animation:pulse 1.2s infinite}
-#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
+#send{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:900;font-size:var(--fs-base);display:flex;align-items:center;justify-content:center;transition:opacity var(--d-base) var(--ease-out),background var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
 #send:disabled{opacity:.35;cursor:default}
 #send.stop{background:var(--err);color:#fff;font-size:var(--fs-sm)}
 
@@ -763,7 +768,7 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 /* the door on a failed turn: what to do about it, next to what went wrong */
 .errmsg{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .errmsg .err-door{flex:none;padding:5px 12px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;
-  background:var(--acc);color:#04211c;min-height:30px}
+  background:var(--acc);color:var(--on-acc);min-height:30px}
 .errmsg .err-door:hover{filter:brightness(1.08)}
 /* ---- attached images: one strip on every agent surface ---- */
 .att-strip{display:none;gap:8px;padding:0 0 8px;flex-wrap:wrap}
@@ -847,7 +852,7 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .row{display:flex;gap:10px}
 .row>*{flex:1}
 .pad input,.pad select,.pad textarea{width:100%}
-.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700}
+.save{margin-top:18px;width:100%;padding:10px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700}
 .provbox{border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:12px}
 .provbox .ptitle{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:var(--fs-md)}
 .provbox .ptitle input[type=checkbox]{width:auto}
@@ -929,7 +934,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .pbody{flex:1;overflow:auto;padding:14px;min-height:0}
 .pbody.flush{padding:0}
 .pbody input,.pbody select,.pbody textarea{width:100%}
-.pact{padding:8px 14px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
+.pact{padding:8px 14px;border-radius:var(--r-md);background:var(--acc-grad);color:var(--on-acc);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 .pact:disabled{opacity:.4}
 .pact.stop{background:var(--err);color:#fff}
 .pghost{padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm);white-space:nowrap}
@@ -1009,8 +1014,8 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-stage{width:min(560px,92vw);max-height:86vh;display:flex;flex-direction:column}
 .wiz-step{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-3);
   padding:var(--sp-6) var(--sp-5)}
-.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:linear-gradient(135deg,var(--acc),var(--acc2));
-  display:flex;align-items:center;justify-content:center;color:#04211c;font-size:var(--fs-3xl);font-weight:900;
+.wiz-mark{width:74px;height:74px;border-radius:var(--r-xl);background:var(--acc-grad);
+  display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:var(--fs-3xl);font-weight:900;
   box-shadow:0 0 60px rgba(94,234,212,.28)}
 .wiz-mark-sm{width:46px;height:46px;font-size:var(--fs-xl);border-radius:var(--r-lg);align-self:center;flex:none}
 .wiz-title{font-size:var(--fs-2xl);font-weight:800;letter-spacing:.3px}
@@ -1018,7 +1023,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-q{font-size:var(--fs-md);font-weight:600;margin-top:var(--sp-3)}
 .wiz-input{width:min(320px,80vw);text-align:center;font-size:var(--fs-lg);padding:10px 14px;border-radius:var(--r-md)}
 .wiz-next{margin-top:var(--sp-4);padding:10px 26px;border-radius:var(--r-full);font-size:var(--fs-base);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;
+  background:var(--acc-grad);color:#06211d;
   transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
 .wiz-next:hover{transform:translateY(-1px);box-shadow:var(--el-2)}
 .wiz-back{font-size:var(--fs-sm);color:var(--dim)}
@@ -1038,7 +1043,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .wiz-convo{display:flex;flex-direction:column;gap:var(--sp-3);overflow-y:auto;max-height:62vh;padding:4px}
 .wiz-msg{display:flex;gap:10px;align-items:flex-start}
 .wiz-ava{width:34px;height:34px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-weight:800;font-size:var(--fs-base);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-weight:800;font-size:var(--fs-base);background:var(--acc-grad);color:#06211d}
 .wiz-say{background:var(--bg3);border:1px solid var(--line);border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);
   padding:10px 14px;font-size:var(--fs-base);line-height:1.55;min-height:20px;min-width:60px}
 .wiz-chips{display:flex;flex-wrap:wrap;gap:8px;padding-left:44px}
@@ -1065,7 +1070,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
   border:1px solid var(--line);background:var(--bg2)}
 .auto-top{display:flex;align-items:center;gap:9px}
 .auto-ic{width:30px;height:30px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-lg);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+  font-size:var(--fs-lg);background:var(--acc-grad);color:var(--on-acc)}
 .auto-nm{font-size:var(--fs-base);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .auto-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px;
   font-size:var(--fs-sm);color:var(--dim);line-height:1.45}
@@ -1142,6 +1147,22 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
    state, not a hover: it must be legible without pointing at it. */
 .item.on{border-color:color-mix(in srgb,var(--acc) 45%,var(--line));
   background:color-mix(in srgb,var(--acc) 8%,transparent)}
+
+/* ---- the Theme Builder (18-themes-personalize.js) ---- */
+.tb .tb-sec{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.tb .tb-sec>summary{cursor:pointer}
+.tb .tb-quick{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}
+.tb .tb-quick label{display:flex;flex-direction:column;gap:4px;margin:0;font-size:var(--fs-sm);color:var(--dim)}
+.tb input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);background:none;border-radius:var(--r-sm);cursor:pointer}
+.tb .tb-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 18px;padding-top:8px}
+.tb .tb-colors label{display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400}
+.tb .tb-colors span{flex:1}.tb .tb-colors code{font-size:10.5px;color:var(--dim2)}
+.tb .tb-slide{display:flex;align-items:center;gap:12px;margin:0;font-size:var(--fs-sm)}
+.tb .tb-slide input{flex:1;max-width:320px}
+.tb .tb-note{margin:0;font-size:var(--fs-xs)}
+body.dev-touch .tb input[type=color],body.dev-touch .tb select,body.dev-touch .tb button,body.dev-touch .tb .tb-sec>summary{min-height:var(--tap)}
+body.dev-touch .tb input[type=color]{min-width:var(--tap)}
+body.dev-touch .tb .seg button{min-height:var(--tap)}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -1384,14 +1405,14 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .dlg{width:340px;max-width:88vw;padding:22px 20px 16px;border-radius:var(--r-lg);text-align:center;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
 .dlg-icn{width:44px;height:44px;margin:0 auto 10px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-2xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-size:var(--fs-2xl);font-weight:800;background:var(--acc-grad);color:#06211d}
 .dlg .dlg-t{font-size:var(--fs-base);font-weight:700;margin-bottom:6px}
 .dlg .dlg-m{font-size:var(--fs-sm);color:var(--dim);line-height:1.45;margin-bottom:14px}
 .dlg-b{display:flex;gap:8px;justify-content:center}
 .dlg-b button{flex:1;max-width:140px;padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-md);font-weight:600;
   background:var(--bg3);border:1px solid var(--line);transition:background var(--d-fast) var(--ease-out),filter var(--d-fast) var(--ease-out)}
 .dlg-b button:hover{filter:brightness(1.15)}
-.dlg-b .dlg-ok{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.dlg-b .dlg-ok{background:var(--acc-grad);color:#06211d;border:none}
 .dlg-b .dlg-ok.danger{background:var(--err);color:#2b0606}
 
 .dlg .dlg-in{width:100%;margin-bottom:14px;text-align:left}
@@ -1418,7 +1439,7 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .procard .pc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .procard .pc-actions button{padding:5px 14px;border-radius:var(--r-md);font-size:var(--fs-sm);font-weight:600;
   background:var(--bg3);border:1px solid var(--line)}
-.procard .pc-actions .pc-go{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.procard .pc-actions .pc-go{background:var(--acc-grad);color:#06211d;border:none}
 
 /* files: semantic hit snippets */
 .fitem .fsnip{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52ch;font-weight:400}
@@ -1623,7 +1644,7 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .cp-inbar{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--hairline);flex:none;min-width:260px}
 .cp-in{flex:1;resize:none;max-height:88px;font-size:var(--fs-md);border-radius:var(--r-md)}
 .cp-send{width:30px;height:30px;flex:none;border-radius:var(--r-full);font-weight:800;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* chat sidebar: embedded-thread sections */
 .convgrp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
@@ -1742,7 +1763,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
   padding:22px 24px;border-radius:var(--r-lg);border:1px dashed var(--line);color:var(--dim)}
 #deck.noresults .deck-none{display:flex}
 .deck-none .dn-ask{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* ---- the widgets face ----
    The same card as a group, with the app's own widget page inside it. Heights
@@ -1764,7 +1785,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
 .deck-empty .row{display:flex;gap:8px;margin-top:4px}
 .deck-empty button{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
   border:1px solid var(--line);color:var(--txt)}
-.deck-empty .de-studio{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.deck-empty .de-studio{background:var(--acc-grad);color:#06211d;border:none}
 .deck-empty button:hover{border-color:var(--acc)}
 body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
 
@@ -1869,7 +1890,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
 .psw i::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:var(--r-full);
   background:var(--txt);opacity:.75;transition:transform var(--d-base) var(--ease-spring),opacity var(--d-fast) var(--ease-out)}
-.psw input:checked + i{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent}
+.psw input:checked + i{background:var(--acc-grad);border-color:transparent}
 .psw input:checked + i::after{transform:translateX(17px);background:#06211d;opacity:1}
 .psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
 .prow.danger .pl b{color:var(--err)}
@@ -2564,7 +2585,7 @@ body.glass-off .win{background:var(--bg)!important}
   border-right:1px solid var(--hairline);overflow-y:auto;background:var(--bg2)}
 .ob-head{padding:0 var(--sp-3) var(--sp-4)}
 .ob-mark{width:44px;height:44px;border-radius:var(--r-lg);margin-bottom:var(--sp-3);
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;
+  background:var(--acc-grad);color:var(--on-acc);
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xl);font-weight:900;
   box-shadow:0 0 40px color-mix(in srgb,var(--acc) 30%,transparent)}
 .ob-head b{display:block;font-size:var(--fs-lg);font-weight:700}
@@ -2711,7 +2732,7 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-offer{display:flex;flex-direction:column;gap:var(--sp-3);max-width:620px}
 .usr-mark{width:40px;height:40px;border-radius:var(--r-lg);display:flex;
   align-items:center;justify-content:center;font-size:var(--fs-lg);
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+  background:var(--acc-grad);color:var(--on-acc)}
 .usr-offer>b{font-size:var(--fs-lg);font-weight:700}
 .usr-offer p{font-size:var(--fs-sm);color:var(--dim);line-height:1.6;margin:0}
 
@@ -2738,7 +2759,7 @@ body.glass-off .win{background:var(--bg)!important}
 .usr-av{flex:none;width:32px;height:32px;border-radius:var(--r-full);
   display:flex;align-items:center;justify-content:center;font-weight:700;
   background:var(--bg4);color:var(--txt);font-size:var(--fs-sm)}
-.usr-row.me .usr-av{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
+.usr-row.me .usr-av{background:var(--acc-grad);color:var(--on-acc)}
 .usr-who{flex:1 1 180px;min-width:0;display:flex;flex-direction:column}
 .usr-who b{font-size:var(--fs-sm);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .usr-who em{font-style:normal;font-size:var(--fs-xs);color:var(--dim2)}
@@ -2916,7 +2937,7 @@ body.immersive #mb-brand{font-weight:700}
 body.immersive #mb-brand .mark{box-shadow:0 1px 3px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.4)}
 body.immersive #mbmenus button:hover,body.immersive .pgb:hover,body.immersive #tray-ctl:hover,
 body.immersive #tray-voice:hover,body.immersive #tray-bell:hover,body.immersive #tray-power:hover{background:color-mix(in srgb,var(--txt) 12%,transparent)}
-body.immersive #mbmenus button.on{background:var(--acc);color:#04211c}
+body.immersive #mbmenus button.on{background:var(--acc);color:var(--on-acc)}
 body.immersive #mbmenus button,body.immersive .pgb,body.immersive #tray-ctl,body.immersive #tray-voice,
 body.immersive #tray-bell,body.immersive #tray-power,body.immersive #mb-brand{border-radius:7px}
 
@@ -2957,10 +2978,14 @@ body.immersive .win.active{background:linear-gradient(180deg,color-mix(in srgb,v
    is the whole cost of the look — 83ms a frame with it, 16.7ms without, while
    the deck, dock and menu bar blurs together cost nothing measurable. So the
    "reduced" level from Themes → Effects (which the probe reaches first) drops
-   THIS blur and keeps the rest: the window stays tinted, at 94% so nothing
-   beneath reads through unblurred, and the desktop is back at 60fps. */
+   THIS blur and keeps the rest: the window stays tinted, at 98% so nothing
+   beneath reads through unblurred, and the desktop is back at 60fps. (94% until
+   a screenshot of the Theme Builder over Chat: with no blur, 6% of a bold 32px
+   heading still read through a dark window. Measured over Chat's text: 10 grey
+   levels of contrast at 94%, 5 at 98%, 0 with the window forced opaque — so it
+   was the tint and not the stacking.) */
 body.immersive.glass-lite .win.active{backdrop-filter:none;-webkit-backdrop-filter:none;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 94%,transparent),color-mix(in srgb,var(--bg) 94%,transparent))}
+  background:linear-gradient(180deg,color-mix(in srgb,var(--bg3) 98%,transparent),color-mix(in srgb,var(--bg) 98%,transparent))}
 body.immersive .win.dragging{box-shadow:0 44px 120px rgba(0,0,0,.66),0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
 /* 16-glass's knob still wins: no blur is no blur, and a tint left behind would
    be four windows of text legible through each other */
@@ -2998,7 +3023,7 @@ body.immersive .apptop,body.immersive #topbar,body.immersive .phead{border-botto
    each category. The rail buttons already carry data-t, so the colour is CSS. */
 body.immersive .prefs-side button{padding:6px 10px;gap:11px;border-radius:10px;font-weight:500;font-size:var(--fs-md);color:var(--txt)}
 body.immersive .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 9%,transparent)}
-body.immersive .prefs-side button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;font-weight:600;
+body.immersive .prefs-side button.on{background:var(--acc-grad);color:var(--on-acc);font-weight:600;
   box-shadow:0 4px 14px color-mix(in srgb,var(--acc) 30%,transparent)}
 body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
   font-size:var(--fs-sm);color:#fff;opacity:1;background:linear-gradient(135deg,#8b93a3,#586170);
@@ -3238,7 +3263,7 @@ body.immersive #omnilist,body.immersive .ocard,body.immersive .dlg,body.immersiv
 body.immersive #startmenu{border-radius:24px}
 body.immersive #powermenu,body.immersive #notifpanel,body.immersive #ctxmenu,body.immersive #ccpop,body.immersive #omnilist{border-radius:14px;padding:6px}
 body.immersive #ctxmenu button,body.immersive #powermenu button{border-radius:8px;padding:7px 12px}
-body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:#04211c}
+body.immersive #ctxmenu button:hover,body.immersive #powermenu button:hover{background:var(--acc);color:var(--on-acc)}
 body.immersive #powermenu button.danger:hover{background:var(--err);color:#fff}
 body.immersive #ctxmenu hr,body.immersive #powermenu hr{border-top-color:color-mix(in srgb,var(--txt) 12%,transparent)}
 body.immersive #smhead .mark{box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.4)}
@@ -3250,8 +3275,8 @@ body.immersive .smapp .aicon{box-shadow:0 10px 22px rgba(0,0,0,.5),0 2px 4px rgb
 body.immersive #smfoot{border-top-color:color-mix(in srgb,var(--txt) 8%,transparent)}
 body.immersive .np-item{border-radius:12px;background:color-mix(in srgb,var(--txt) 5%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
 body.immersive .palitem{border-radius:10px}
-body.immersive .palitem.sel{background:var(--acc);color:#04211c;outline:none}
-body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:#04211c}
+body.immersive .palitem.sel{background:var(--acc);color:var(--on-acc);outline:none}
+body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:var(--on-acc)}
 body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
   backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
   border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-left:3px solid var(--acc);border-radius:14px;
@@ -3338,9 +3363,9 @@ body.immersive .wiz.ob{background:color-mix(in srgb,var(--bg) 55%,transparent);
   backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6)}
 body.immersive .ob-rail{background:color-mix(in srgb,var(--bg2) 45%,transparent);border-right-color:color-mix(in srgb,var(--txt) 8%,transparent)}
 body.immersive .ob-item{border-radius:12px}
-body.immersive .ob-item.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c}
-body.immersive .ob-item.on .ob-t{color:#04211c}
-body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:#04211c}
+body.immersive .ob-item.on{background:var(--acc-grad);color:var(--on-acc)}
+body.immersive .ob-item.on .ob-t{color:var(--on-acc)}
+body.immersive .ob-item.on .ob-tick{border-color:rgba(0,0,0,.3);color:var(--on-acc)}
 
 /* ---- overview & switcher ---- */
 body.immersive #expose{backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4)}
@@ -3486,7 +3511,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .hud-text p{margin:0}
 .hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
 .msg .who img.av-who+img.av-who{margin-left:-14px}
-/* Settings → AI providers → Team: one row per agent; wraps on a phone */
+/* Settings → Agents → Working together: one row per agent; wraps on a phone */
 .team-list{display:flex;flex-direction:column;gap:8px;width:100%}
 .team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .team-row>b{min-width:88px}
@@ -3494,7 +3519,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
 .hud-to{font-weight:500;color:var(--dim)}
-/* Settings → AI providers → Team: who may ask whom. One button per cell, cycling
+/* Settings → Agents → Working together: who may ask whom. One button per cell, cycling
    ask → allow → block; a real target on a phone, and the grid scrolls sideways
    rather than squeezing a cell below the tap floor. */
 .team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
@@ -3590,7 +3615,7 @@ body.dev-touch .tlk-stand-add input{min-height:var(--tap)}
 .tc-th-txt{display:flex;flex-direction:column;min-width:0;flex:1}
 .tc-th-txt b{display:flex;align-items:center;gap:6px}
 .tc-th-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tc-unread{background:var(--acc);color:#04211c;font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
+.tc-unread{background:var(--acc);color:var(--on-acc);font-size:11px;font-weight:700;border-radius:9px;padding:0 6px;line-height:17px}
 .tc-me{margin-top:auto;padding:8px;font-size:var(--fs-xs);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tc-main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .tc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
@@ -3623,6 +3648,51 @@ body.dev-touch .tc-compose .pact,body.dev-touch .tc-back{min-height:var(--tap);m
 .ave-design .ave-desc{flex:1;min-width:0}
 .ave-said{font-size:var(--fs-xs);min-height:1.2em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 body.dev-touch .ave-design .pact,body.dev-touch .ave-undo{min-height:var(--tap)}
+
+/* ---- Brains, hands and agents (11e-hands.js) ---- */
+.hands-top{margin-bottom:8px}
+.hands-card,.ag-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;display:flex;flex-direction:column;gap:4px}
+.hands-h,.ag-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hands-h .sp,.ag-h .sp{flex:1}
+.hands-sum{font-size:var(--fs-sm)}
+.hands-desc,.hands-used,.ag-soul{font-size:var(--fs-xs)}
+.hands-ed{margin-top:6px;border-top:1px dashed var(--line);padding-top:8px}
+.hands-form{display:flex;flex-direction:column;gap:10px}
+.hands-form>label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.hands-sec{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.hands-groups{display:flex;flex-direction:column;gap:2px}
+.hands-grp summary{cursor:pointer;padding:4px 0}
+.hands-tools{display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 0 6px 12px}
+.hands-folder{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.hands-folder input{flex:1;min-width:0}
+.pc .hands-folder input{width:auto}
+.hands-form input[type=radio]{width:auto;margin:0}
+.ag-rows{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.ag-rows>div{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ag-k{min-width:86px;color:var(--dim);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em}
+.ag-rows select{max-width:170px}
+body.dev-touch .hands-card button,body.dev-touch .ag-card button,body.dev-touch .ag-rows select,
+body.dev-touch .hands-form input,body.dev-touch .hands-form select,body.dev-touch .hands-grp summary,
+body.dev-touch .hands-top button{min-height:var(--tap)}
+/* the map: four columns that scroll sideways on a phone rather than squeeze */
+.agraph{display:flex;flex-direction:column;gap:6px}
+.agraph-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--fs-xs);align-items:center}
+.agraph-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.agraph-scroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0}
+.agraph-canvas{position:relative}
+.agraph-canvas svg{position:absolute;inset:0;pointer-events:none}
+.agn{position:absolute;display:flex;gap:6px;align-items:center;text-align:left;padding:4px 8px;border-radius:9px;
+  border:1px solid var(--line);background:var(--bg2);color:var(--txt);font:inherit;overflow:hidden}
+.agn-t{display:flex;flex-direction:column;min-width:0}
+.agn-t b,.agn-t small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agn-t small{color:var(--dim);font-size:var(--fs-xs)}
+.agn-agent{cursor:pointer;border-color:color-mix(in srgb,var(--acc) 40%,var(--line))}
+.agn-agent.lead{border-color:var(--acc);box-shadow:0 0 0 1px color-mix(in srgb,var(--acc) 40%,transparent)}
+.agn-agent.on{background:color-mix(in srgb,var(--acc) 14%,var(--bg2))}
+.agn-brain{border-left:3px solid var(--acc)}
+.agn-hands{border-left:3px solid color-mix(in srgb,var(--txt) 55%,transparent)}
+.agn-team{border-left:3px solid #60a5fa}.agn-mission{border-left:3px solid #fbbf24}
+.agraph-cols{display:none}
 </style>
 </head>
 <body>
@@ -4626,7 +4696,7 @@ function glassProbe(force){
   },1400);
 }
 applyGlass();
-/* ================= immersive experience (beta) =================
+/* ================= immersive experience (the default look) =================
    (Numbered 01b: it has to have put `immersive` on <body> before 02-themes
    applies a theme, or the first paint is the standard look and then jumps.)
 
@@ -4644,7 +4714,13 @@ applyGlass();
 /* Monday first, as the server counts them (flows.WEEKDAYS). Shared by the flow
    editor, the scheduler and the Missions catalogue. */
 var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-var IMMERSIVE={on:localStorage.getItem('immersive')==='1',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+/* ON by default (2026-09): the immersive look is the desktop now, and the standard
+   one is what somebody switches to. Only an explicit '0' — this browser switched it
+   off — keeps it off; everything it restyles is still scoped to body.immersive, so
+   off stays byte-for-byte the standard desktop. A storage that throws (a private
+   window) gets the default. */
+function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
+var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
@@ -4820,7 +4896,7 @@ function setImmersive(on){
   if(typeof glassProbe==='function')glassProbe(true);       // one more blurred surface — can this machine still draw it?
   if(typeof suiSyncStruts==='function')suiSyncStruts();     // the dock's band changed height
   if(typeof refreshApp==='function'){refreshApp('settings');refreshApp('themes')}
-  if(typeof toast==='function')toast(on?'Immersive experience on (beta) — Settings → Appearance turns it off':'Back to the standard desktop');
+  if(typeof toast==='function')toast(on?'Immersive experience on — Settings → Appearance turns it off':'Back to the standard desktop');
 }
 /* The wallpaper drifts a few pixels against the pointer, so the desktop reads as
    a scene with depth instead of a picture. It is a transform on one composited
@@ -5538,6 +5614,16 @@ if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewSt
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
 const THEMES={
+  /* Nova — the default look (2026-09): deep ink, an electric indigo→violet accent that
+     the immersive look carries into buttons, tabs and focus as a gradient, white text
+     on the accent (--on-acc), Geist, and softer, larger corners. Every rule it needs
+     is a token, so the immersive layer, the builder and the standard desktop all read
+     the same numbers. */
+  nova:{label:'Nova (modern)',mode:'dark',wall_img:'nova',font:{url:'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap',family:'Geist'},
+    v:{bg:'#09090f',bg2:'#111120',bg3:'#181829',bg4:'#212136',line:'#2a2a44',txt:'#ececf6',dim:'#a3a3c2',dim2:'#6b6b8f',
+       acc:'#7c6cff',acc2:'#c084fc',warn:'#fbbf24',err:'#fb7185',ok:'#34d399',glass:'rgba(17,17,32,.8)',
+       'on-acc':'#ffffff','acc-grad':'linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#d946ef 100%)',
+       'r-sm':'8px','r-md':'12px','r-lg':'16px','r-xl':'22px'}},
   agentos:{label:'AgentOS (teal)',mode:'dark',v:{bg:'#0b0d10',bg2:'#111419',bg3:'#171b22',bg4:'#1e242e',line:'#232a35',txt:'#e6ebf2',dim:'#8a94a6',dim2:'#5c6577',acc:'#5eead4',acc2:'#22d3ee',warn:'#fbbf24',err:'#f87171',ok:'#4ade80',glass:'rgba(17,20,25,.82)'}},
   ubuntu:{label:'Ember (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
   'ubuntu-light':{label:'Ember (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
@@ -5749,7 +5835,8 @@ input,textarea,select{background:#f4f1ff;border:none;box-shadow:inset 0 3px 7px 
 };
 const CUSTOM_THEMES={};   // name -> theme object, loaded from the server
 function allThemes(){const m={};for(const k in THEMES)m[k]={...THEMES[k],id:k};for(const n in CUSTOM_THEMES)m[n]={...CUSTOM_THEMES[n],id:n};return m}
-let CURRENT_THEME=localStorage.getItem('theme')||'agentos';
+// A browser that never chose gets Nova; one that chose keeps its choice.
+let CURRENT_THEME=(()=>{try{return localStorage.getItem('theme')}catch(e){return null}})()||'nova';
 function applyThemeObj(t){
   // crossfade the whole desktop through the theme change instead of hard-cutting
   if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&document.body.dataset.themed){
@@ -5881,7 +5968,7 @@ async function loadThemes(){
   }catch(e){}
   if(allThemes()[CURRENT_THEME])applyTheme(CURRENT_THEME);   // re-apply if it's a custom theme
 }
-applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'agentos');
+applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'nova');
 
 /* ================= fullscreen ================= */
 function toggleFullscreen(){
@@ -9111,7 +9198,7 @@ function arrangeWidgets(){
      4. the wizard's preset gradient, or the stylesheet's mesh.
    The built-ins are SVG: a few KB each, sharp from a phone to a 4K panel, and
    cheap to rasterise on slow GPUs (no blur filters — gradients only). */
-const BUILTIN_WALLS=['bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement','immersive-crew'];
+const BUILTIN_WALLS=['nova','bento','clay','liquid','minimal','spatial','immersive','immersive-dawn','immersive-night','immersive-movement','immersive-crew'];
 const builtinWallURL=id=>'/assets/wallpapers/'+encodeURIComponent(id)+'.svg';
 function pickedWall(){return localStorage.getItem('wallpaper.builtin')||''}
 function themeWall(){
@@ -10796,7 +10883,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 // (00d-icons.js) is what the immersive look shows in its coloured tile
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
-  ['agent','◈','Agent','agent'],
+  ['agent','◈','Agents','agent'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
   ['accounts','✉','Accounts','accounts'],
@@ -10843,7 +10930,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Where the intelligence comes from. Local models need nothing but Ollama; cloud providers need a key. Everything you enable shows up in the picker below.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -10853,7 +10940,7 @@ function setTab(body,all){
     // needing a second Save to make a chosen model take effect is the same bug
     // wearing a different hat.
     P.push(pGroup('Answering', [
-      pRow('This machine answers with',
+      pRow('Your lead agent thinks with',
         `<span class="s-modelrow">
            <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
            <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
@@ -10867,13 +10954,105 @@ function setTab(body,all){
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    P.push(pGroup('Local',[
+      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
+        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
+    ],{f:'ollama local'}));
+    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
+      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
+      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
+        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
+      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
+    ],{f:key+' '+name});
+    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
+    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
+    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
+    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
+    P.push(pGroup('Custom (OpenAI-compatible)',[
+      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
+      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
+      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
+      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
+    ],{f:'custom openai compatible endpoint lm studio'}));
+    /* Other AI agents installed on this machine are BRAINS too — Claude Code thinks
+       with its own model and can answer a turn or run a mission through the bridge.
+       They lived under "Executors" when that word meant "who runs the turn"; it now
+       means an agent's hands (Settings → Executors), so they are listed here with the
+       rest of the brains. The code still calls them executors (agentos/executors.py):
+       renaming the identifier would cost every install its saved engine for a word
+       nobody sees. */
+    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain: pick it above to have it answer, or give it to one of your agents. AgentOS keeps the desktop and the permissions — an installed agent only reaches the folder you choose.</p>`);
+    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-offers"></div>`);
+    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderExecutors,0);
+    setTimeout(renderOcPlugins,0);
+    P.push(pGroup('Image generation',[
+      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
+        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
+      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
+    ],{f:'image generation wallpaper'}));
+  }
+  if(want('executors')){
+    /* Executors are HANDS (agentos/hands.py): what an agent can reach — which tools,
+       which folders and whether it may write there, which web addresses, which MCP
+       servers. A profile is a CEILING the gate checks before any permission (policy
+       step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
+       11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
+       this page — nothing native, nothing touching the compositor. */
+    P.push(`<h2>Executors</h2><p class="lead">Hands. An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
+    setTimeout(renderHands,0);
+    P.push(pGroup('The machine\u2019s own limit',[
+      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
+        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden. This bounds a SHELL — an executor\u2019s folders bound the file tools, and a shell reaches whatever this jail allows.',f:'sandbox jail bubblewrap shell'}),
+      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
+      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
+        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
+    ],{f:'sandbox security jail'}));
+  }
+  if(want('channels')){
+    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
+    setTimeout(renderChannels,0);   // live state, not part of cfg
+  }
+  if(want('accounts')){
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(pGroup('GitHub',[
+      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
+        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
+      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
+    ],{f:'github git ship publish'}));
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
+  }
+  if(want('agent')){
+    /* Agents: the lead agent (always here) and the agents it works with. Each gets a
+       BRAIN (AI providers), HANDS (Executors), AUTHORITY (its permissions) and SKILLS,
+       and may talk to colleagues and linked teams — all of it read from ONE answer,
+       agentmap.overview(), which the map below and `bento agents` read too.
+       11e-hands.js draws the list and the map. */
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), hands (<a href="#" onclick="settingsGo('executors');return false">Executors</a>), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(pGroup('Lead agent',[
+      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
+        {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
+      pRow('Hands','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
+        {desc:'The executor it works with: what it can reach. It applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
+      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
+      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
+        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
+    ],{f:'agent identity name workspace lead'}));
+    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
+    setTimeout(renderAgentsList,0);
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
        bill, one provider), and each row pins one agent. Both apply on the spot, like
        the brain above. The badge each agent wears on the Crew stage and in chat is
        the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
-    P.push(pGroup('Team',[
+    P.push(pGroup('Working together',[
       pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
         {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
          f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
@@ -10913,73 +11092,9 @@ function setTab(body,all){
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
-    P.push(pGroup('Local',[
-      pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
-        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
-    ],{f:'ollama local'}));
-    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
-      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
-      pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
-        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
-      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
-    ],{f:key+' '+name});
-    P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
-    P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
-    P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
-    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
-    P.push(pGroup('Custom (OpenAI-compatible)',[
-      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
-      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
-      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
-      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
-    ],{f:'custom openai compatible endpoint lm studio'}));
-    P.push(pGroup('Image generation',[
-      pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
-        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
-      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
-    ],{f:'image generation wallpaper'}));
-  }
-  if(want('executors')){
-    P.push(`<h2>Executors</h2><p class="lead">Other agents already installed on this machine that AgentOS can hand a task to. AgentOS keeps the desktop — an executor only gets files, shell and research inside the folder you choose. Pick one as the engine in Chat to delegate a turn to it.</p>`);
-    P.push(pGroup('Forward everything',[
-      /* Filled from the roster by renderExecutors below, not written out here.
-         This list was hardcoded to aria + claude-code, so every executor added
-         afterwards was invisible in the one panel named after them — and which
-         brains exist is a probe, not part of cfg. */
-      pRow('This machine answers with',
-        `<select id="s-engine" onchange="pickEngine(this.value)"><option value="${esc(cfg.engine||'aria')}">checking…</option></select>`,
-        {desc:'Forwarding turns this machine into a front end: every turn a person starts is answered by that agent instead — chat, the prompt bar, copilot panels, Telegram, the API and scheduled turns. Apps and App Studio keep using the built-in agent, because they depend on its tools.',
-         f:'forward everything engine forwarder proxy relay'}),
-    ],{f:'forwarding engine'}));
-    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code delegate"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
-    P.push(`<div id="exec-offers"></div>`);
-    /* OpenClaw's plugins belong here rather than in a pane of their own: OpenClaw
-       is an executor, and this is the screen somebody is already on when they
-       decide to extend it. Inert with an honest sentence when the CLI is absent —
-       11b-openclaw.js. */
-    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
-    setTimeout(renderExecutors,0);   // availability is a probe, not part of cfg
-    setTimeout(renderOcPlugins,0);
-  }
-  if(want('channels')){
-    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
-    P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
-    setTimeout(renderChannels,0);   // live state, not part of cfg
-  }
-  if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
-    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
-    setTimeout(renderAccounts,0);
-  }
-  if(want('agent')){
-    P.push(`<h2>Agent</h2><p class="lead">Who your agent is and how far it may go on its own.</p>`);
-    P.push(pGroup('Identity',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
-      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
-      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
-      pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
-        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
-    ],{f:'agent identity name workspace'}));
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach, who it may ask and who may ask it — drawn from the same permissions the gate checks. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
     P.push(pGroup('Content from outside',[
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before anything that changes something'],
@@ -10993,22 +11108,6 @@ function setTab(body,all){
         {desc:'Long threads stop fitting the model\'s context window. Either way you are told in the conversation when it happens.',
          f:'history compaction summary context window long thread'}),
     ],{f:'security untrusted injection history'}));
-    P.push(pGroup('Sandbox',[
-      pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
-        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden.',f:'sandbox jail bubblewrap'}),
-      pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
-      /* Deliberately a pointer and not a second editor. Which folders are open
-         and WHO they are open to is one fact; two places to change it is two
-         places to disagree, and the copy nobody demos is the one that drifts.
-         Settings owns whether there is a jail; Users owns who reaches through it. */
-      pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
-        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
-    ],{f:'sandbox security'}));
-    P.push(pGroup('GitHub',[
-      pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
-        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
-      pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
-    ],{f:'github git ship publish'}));
     /* Sharing the agent belongs on the page that answers "who is my agent" —
        11c-agentshare.js renders it, agentbundle.py decides everything. */
     P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
@@ -11066,11 +11165,12 @@ function setTab(body,all){
        Applied the moment it is flipped, like the theme select above — Save is
        for the machine's settings, and this one lives in this browser. */
     P.push(pGroup('Immersive experience',[
-      pRow('Immersive experience (beta)',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+      pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
         {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
              +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
              +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
              +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
+             +'On by default; switch it off here for the plain desktop. '
              +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
@@ -11884,7 +11984,7 @@ function openLinkedTeams(){
   SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="ai"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="agent"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
@@ -13155,6 +13255,203 @@ async function acctTest(id){
     if(typeof refreshApp==='function')refreshApp('jobs');
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
 }
+/* ================= brains, hands and agents (Settings) =================
+   Executors → the hands editor (agentos/hands.py over /api/hands).
+   Agents    → the lead agent's hands, every other agent's card, and the map
+               (agentos/agentmap.py over /api/agents and /api/agents/graph).
+   One computation on the server feeds all of it, so the card, the map and
+   `bento agents` cannot disagree about who reaches what.
+   Faces — TUI: `bento hands`, `bento agents [map|hands]`. SUI: this page, nothing
+   native. Phone: every control keeps the --tap floor; the map scrolls sideways
+   rather than squeezing four columns into 390px. */
+var HANDS={data:null,edit:null};
+var AGENTS={data:null,focus:''};
+
+function settingsGo(tab){
+  SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  const b=document.querySelector(`.prefs-side button[data-t="${tab}"]`);
+  if(b)b.click();
+}
+
+/* ---------------- Executors: the hands editor ---------------- */
+async function renderHands(){
+  const box=document.getElementById('hands-list');if(!box)return;
+  try{HANDS.data=await fetch('/api/hands').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load executors</p>';return}
+  const d=HANDS.data;
+  box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
+    +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
+      <div class="hands-h"><b>${esc(p.name)}</b>${p.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span>
+        <button class="endbtn" onclick="handsEdit('${esc(p.name)}')">Edit</button>
+        <button class="endbtn" onclick="handsEdit('${esc(p.name)}',true)">Duplicate</button>
+        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${esc(p.name)}')">Delete</button>`}</div>
+      <div class="hands-sum">${esc(p.summary)}</div>
+      ${p.description?`<div class="mut hands-desc">${esc(p.description)}</div>`:''}
+      <div class="mut hands-used">${(p.used_by||[]).length?'Used by '+p.used_by.map(n=>esc(n)).join(', '):'No agent uses it yet'}</div>
+      ${HANDS.edit&&HANDS.edit.from===p.name?'<div class="hands-ed" id="hands-ed"></div>':''}
+    </div>`).join('')
+    +(HANDS.edit&&HANDS.edit.from===''?'<div class="hands-card"><div class="hands-ed" id="hands-ed"></div></div>':'');
+  if(HANDS.edit)handsPaintEditor();
+}
+function handsEdit(name,dup){
+  const d=HANDS.data||{profiles:[]};
+  const p=d.profiles.find(x=>x.name===name);
+  const base=p?JSON.parse(JSON.stringify(p.spec)):{tools:[],folders:[{path:'@workspace',mode:'ro'}],web:'none',mcp:[]};
+  HANDS.edit={from:dup?'':(name||''),name:dup?(name+'-copy'):(name||''),exists:!!p&&!dup,
+    description:p&&!dup?(p.description||''):'',spec:base};
+  renderHands();
+}
+function handsPaintEditor(){
+  const el=document.getElementById('hands-ed');if(!el||!HANDS.edit)return;
+  const e=HANDS.edit,s=e.spec,d=HANDS.data;
+  const every=s.tools.includes('*');
+  const shell=every||(d.shell_tools||[]).some(t=>s.tools.includes(t));
+  const groups=Object.entries(d.tools||{}).map(([g,ns])=>{
+    const n=ns.filter(t=>s.tools.includes(t)).length;
+    return `<details class="hands-grp"><summary>${esc(g)} <span class="mut">${n}/${ns.length}</span></summary>
+      <div class="hands-tools">${ns.map(t=>`<label class="tlk-chk"><input type="checkbox" data-tool="${esc(t)}" ${s.tools.includes(t)?'checked':''}><span>${esc(t)}</span></label>`).join('')}</div></details>`}).join('');
+  const webMode=Array.isArray(s.web)?'list':s.web;
+  const mcpMode=s.mcp.includes('*')?'all':(s.mcp.length?'some':'none');
+  el.innerHTML=`<div class="hands-form">
+    <label>Name<input id="he-name" value="${esc(e.name)}" ${e.exists?'disabled':''} autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>What it is for<input id="he-desc" value="${esc(e.description)}" placeholder="e.g. writes reports into the shared folder"></label>
+    <div class="hands-sec"><b>Tools</b>
+      <label class="tlk-chk"><input type="radio" name="he-tm" value="all" ${every?'checked':''}><span>Every tool</span></label>
+      <label class="tlk-chk"><input type="radio" name="he-tm" value="some" ${every?'':'checked'}><span>Only the ones ticked</span></label>
+      ${every?'':`<div class="hands-groups">${groups}</div>`}
+      ${shell?'<p class="mut tlk-why">Includes a shell. A command line reaches whatever the machine’s folder jail allows, not only the folders below — leave the shell tools out to make the folders a real limit.</p>':''}</div>
+    <div class="hands-sec"><b>Folders</b>
+      <div id="he-folders">${s.folders.map((f,i)=>`<div class="hands-folder"><input data-fi="${i}" value="${esc(f.path)}" placeholder="~/projects or /srv/data" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <select data-fm="${i}"><option value="rw" ${f.mode==='rw'?'selected':''}>read-write</option><option value="ro" ${f.mode==='ro'?'selected':''}>read-only</option></select>
+        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders — the file tools reach nothing.</p>'}</div>
+      <div class="tlk-actions"><button class="endbtn" onclick="handsFolder(-1,'')">＋ Folder</button>
+        <button class="endbtn" onclick="handsFolder(-1,'@workspace')">＋ Workspace</button>
+        <button class="endbtn" onclick="handsFolder(-1,'*')">＋ Anywhere the machine allows</button></div></div>
+    <div class="hands-sec"><b>Web</b>
+      <select id="he-web"><option value="any" ${webMode==='any'?'selected':''}>Any address</option><option value="none" ${webMode==='none'?'selected':''}>No web</option><option value="list" ${webMode==='list'?'selected':''}>Only these addresses</option></select>
+      ${webMode==='list'?`<textarea id="he-weblist" rows="3" placeholder="https://api.github.com/*">${esc((s.web||[]).join('\n'))}</textarea>`:''}</div>
+    <div class="hands-sec"><b>MCP servers</b>
+      <select id="he-mcp"><option value="all" ${mcpMode==='all'?'selected':''}>Every server</option><option value="some" ${mcpMode==='some'?'selected':''}>Only these</option><option value="none" ${mcpMode==='none'?'selected':''}>None</option></select>
+      ${mcpMode==='some'?((d.mcp||[]).length?`<div class="hands-tools">${d.mcp.map(m=>`<label class="tlk-chk"><input type="checkbox" data-mcp="${esc(m)}" ${s.mcp.includes(m)?'checked':''}><span>${esc(m)}</span></label>`).join('')}</div>`:'<p class="mut tlk-why">No MCP servers are set up on this machine yet.</p>'):''}</div>
+    <div class="tlk-actions"><button class="pact" onclick="handsSave()">Save</button><button class="endbtn" onclick="HANDS.edit=null;renderHands()">Cancel</button></div>
+  </div>`;
+  el.querySelectorAll('input[name="he-tm"]').forEach(r=>r.onchange=()=>{handsCollect();HANDS.edit.spec.tools=r.value==='all'?['*']:[];handsPaintEditor()});
+  el.querySelector('#he-web').onchange=()=>{handsCollect();const v=el.querySelector('#he-web').value;HANDS.edit.spec.web=v==='list'?[]:v;handsPaintEditor()};
+  el.querySelector('#he-mcp').onchange=()=>{handsCollect();const v=el.querySelector('#he-mcp').value;HANDS.edit.spec.mcp=v==='all'?['*']:[];if(v==='some'&&!(d.mcp||[]).length)HANDS.edit.spec.mcp=[];HANDS.edit._mcpSome=v==='some';handsPaintEditor()};
+  el.querySelectorAll('input[data-tool]').forEach(c=>c.onchange=()=>{handsCollect();handsPaintEditor()});
+  if(HANDS.edit._mcpSome)el.querySelector('#he-mcp').value='some';
+}
+function handsCollect(){
+  const el=document.getElementById('hands-ed');if(!el||!HANDS.edit)return;
+  const e=HANDS.edit,s=e.spec;
+  const nm=el.querySelector('#he-name');if(nm&&!e.exists)e.name=nm.value.trim();
+  e.description=(el.querySelector('#he-desc')||{}).value||'';
+  if(!s.tools.includes('*')){
+    const ticked=[...el.querySelectorAll('input[data-tool]')].filter(c=>c.checked).map(c=>c.dataset.tool);
+    if(el.querySelector('input[data-tool]'))s.tools=ticked;
+  }
+  s.folders=s.folders.map((f,i)=>({path:((el.querySelector(`[data-fi="${i}"]`)||{}).value||f.path).trim(),
+    mode:(el.querySelector(`[data-fm="${i}"]`)||{}).value||f.mode}));
+  const wl=el.querySelector('#he-weblist');
+  if(wl)s.web=wl.value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const mc=[...el.querySelectorAll('input[data-mcp]')];
+  if(mc.length)s.mcp=mc.filter(c=>c.checked).map(c=>c.dataset.mcp);
+}
+function handsFolder(i,add){
+  handsCollect();const f=HANDS.edit.spec.folders;
+  if(i<0)f.push({path:add||'',mode:add==='@workspace'?'ro':'rw'});else f.splice(i,1);
+  handsPaintEditor();
+}
+async function handsSave(){
+  handsCollect();const e=HANDS.edit;
+  if(!e.name){toast('give it a name');return}
+  const spec={...e.spec,folders:e.spec.folders.filter(f=>f.path)};
+  if(Array.isArray(spec.web)&&!spec.web.length)spec.web='none';
+  const r=await teamApi('/api/hands/'+encodeURIComponent(e.name),'PUT',{spec,description:e.description});
+  if(r){toast(e.name+': '+r.profile.summary);HANDS.edit=null;renderHands();if(document.getElementById('agents-list'))renderAgentsList()}
+}
+async function handsDelete(name){
+  if(!await osConfirm('Delete the executor “'+name+'”?','Any agent using it goes back to the default executor.',{danger:true,confirmText:'Delete'}))return;
+  const r=await teamApi('/api/hands/'+encodeURIComponent(name),'DELETE');
+  if(r){toast('deleted'+(r.moved_to_default?' — '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
+}
+
+/* ---------------- Agents: the lead, the others, and their hands ---------------- */
+async function setAgentHands(key,profile){
+  const r=await teamApi('/api/agents/'+encodeURIComponent(key)+'/hands','PUT',{profile});
+  if(r){toast((key==='@agent'?(cfg.agent_name||'Your agent'):key)+' now works with “'+r.profile+'”');renderAgentsList();renderAgentsGraph()}
+}
+async function renderAgentsList(){
+  const box=document.getElementById('agents-list');if(!box)return;
+  try{AGENTS.data=await fetch('/api/agents').then(r=>r.json())}catch(e){box.innerHTML='<p class="mut">could not load agents</p>';return}
+  const d=AGENTS.data,profs=d.profiles||[];
+  const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
+  const lead=d.agents.find(a=>a.master);
+  if(lead){
+    const lb=document.getElementById('s-lead-brain');
+    if(lb)lb.textContent=lead.brain.provider_name+' · '+lead.brain.short;
+    const lh=document.getElementById('s-lead-hands');
+    if(lh)lh.innerHTML=opts(lead.hands.name);
+  }
+  const others=d.agents.filter(a=>!a.master);
+  box.innerHTML=`<div class="pgroup"><h3>Your agents</h3>
+    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
+    ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
+      return `<div class="ag-card">
+      <div class="ag-h">${avatarImg(a.key,'av-tool')}<b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
+      ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
+      <div class="ag-rows">
+        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
+        <div><span class="ag-k">Hands</span><select aria-label="Hands for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
+          <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
+        <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
+        ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
+        ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
+        ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
+      </div></div>`}).join('')||'<p class="mut">No other agents yet.</p>'}
+    <div class="tlk-actions"><button class="pact" onclick="agentEdit('')">＋ New agent</button></div></div>`;
+}
+async function agentEdit(name){
+  // the Missions editor's wizard, borrowed: one way to define an agent, not two
+  try{const sa=await fetch('/api/subagents').then(r=>r.json());
+    window.__subagents=Object.fromEntries((sa.subagents||[]).map(s=>[s.name,s]))}catch(e){}
+  if(typeof openSAW!=='function'){toast('the agent editor is not available');return}
+  openSAW(name||null,{onSaved:()=>{renderAgentsList();renderAgentsGraph()},onCancel:()=>{}});
+}
+
+/* ---------------- the map ---------------- */
+var AG_COLS={brain:0,team:0,mission:0,agent:1,hands:2,skill:3};
+var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transparent)',skill:'color-mix(in srgb,var(--txt) 35%,transparent)',
+  talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
+async function renderAgentsGraph(){
+  const box=document.getElementById('agents-graph');if(!box)return;
+  let g;try{g=await fetch('/api/agents/graph').then(r=>r.json())}catch(e){box.textContent='could not load the map';return}
+  box.classList.remove('mut');
+  const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
+  const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
+  const pos={};cols.forEach((c,i)=>c.forEach((n,j)=>pos[n.id]={x:X[i],y:j*(H+GY),col:i}));
+  const height=Math.max(...cols.map(c=>c.length*(H+GY)),H)+10,width=X[3]+W+4;
+  const f=AGENTS.focus;
+  const on=e=>!f||e.from===f||e.to===f;
+  const path=e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';
+    const ay=a.y+H/2,by=b.y+H/2;
+    if(a.col===b.col){ // agent ↔ agent: an arc in the gutter to the left of the agents
+      const x=a.x,bend=Math.min(GUT-8,18+Math.abs(ay-by)/6);
+      return `M${x},${ay} C${x-bend},${ay} ${x-bend},${by} ${x},${by}`}
+    const [l,r]=a.col<b.col?[a,b]:[b,a],[ly,ry]=a.col<b.col?[ay,by]:[by,ay];
+    const x1=l.x+W,x2=r.x,mx=(x1+x2)/2;return `M${x1},${ly} C${mx},${ly} ${mx},${ry} ${x2},${ry}`};
+  box.innerHTML=`<div class="agraph-legend">${[['brain','thinks with'],['hands','works with'],['talk','may ask'],['blocked','may not ask'],['delegate','delegates'],['roster','mission roster'],['link','linked team'],['skill','knows']]
+      .map(([k,l])=>`<span><i style="background:${AG_EDGE[k]}"></i>${l}</span>`).join('')}${f?' <button class="endbtn" onclick="AGENTS.focus=\'\';renderAgentsGraph()">Show everyone</button>':''}</div>
+    <div class="agraph-scroll"><div class="agraph-canvas" style="width:${width}px;height:${height}px">
+    <svg width="${width}" height="${height}" aria-hidden="true">${g.edges.map(e=>`<path d="${path(e)}" fill="none" stroke="${AG_EDGE[e.kind]||'var(--line)'}" stroke-width="${e.kind==='brain'||e.kind==='hands'?2:1.5}" ${e.kind==='blocked'?'stroke-dasharray="4 3"':''} opacity="${on(e)?0.9:0.08}"><title>${esc(e.label)}</title></path>`).join('')}</svg>
+    ${g.nodes.map(n=>{const p=pos[n.id],dim=f&&n.id!==f&&!g.edges.some(e=>on(e)&&(e.from===n.id||e.to===n.id));
+      return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
+        ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
+    </div></div>
+    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Hands</span><span>Skills</span></div>`;
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -14420,7 +14717,7 @@ function flwLinkedHTML(d){
       onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
         <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
-  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → AI providers → Team).</p>');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Agents → Working together).</p>');
   return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
       <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
       <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
@@ -17325,7 +17622,7 @@ async function renderThemes(body){
     <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, menu bar, dock, icons and widgets. A theme can even carry a <b>full replacement shell</b>: a completely different interface built by AI against the OS API (<code>GET /api/registry</code>). Click one to apply instantly.</p>
     <div class="cat">${cards}</div>
     <div class="row" style="margin-top:14px">
-      <button class="save" style="margin:0" onclick="themeBuilder()">Open Theme Builder</button>
+      <button class="save" style="margin:0" onclick="themeBuilder()">Build a theme</button>
     </div>
     <label style="margin-top:16px">Effects</label>
     <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
@@ -17381,52 +17678,161 @@ async function themeImport(){
 }
 async function themeDel(name){
   await fetch('/api/themes/'+encodeURIComponent(name),{method:'DELETE'});
-  if(CURRENT_THEME===name)applyTheme('agentos');
+  if(CURRENT_THEME===name)applyTheme('nova');
   await loadThemes();refreshApp('themes');
 }
-function themeBuilder(){
+/* ---------------- the Theme Builder: build a look and feel ----------------
+   Everything a theme is, as controls: a palette generated from three colours (then
+   fine-tuned), corners, depth, glass, font, text size and wallpaper. Every control
+   writes a TOKEN (--r-md, --el-3, --glass-blur, --acc-grad, --on-acc, --fs-base…),
+   the same ones the built-in themes and the AI designer (`create_theme`) use, so a
+   built theme reaches every surface the standard and the immersive look draw — no
+   second styling system. The desktop previews live as you move a slider.
+   Faces — GUI/SUI: this. TUI: not applicable — a terminal has no palette, glass or
+   wallpaper, and a theme is remembered per browser; `create_theme` in chat is the
+   words-only way to build one. */
+var TB_FONTS=[['','System (Inter)'],['Geist','Geist'],['Inter','Inter'],['Plus Jakarta Sans','Plus Jakarta Sans'],
+  ['Space Grotesk','Space Grotesk'],['Outfit','Outfit'],['Manrope','Manrope'],['IBM Plex Sans','IBM Plex Sans'],
+  ['DM Sans','DM Sans'],['Nunito','Nunito'],['JetBrains Mono','JetBrains Mono (mono)']];
+var TB_DEPTH={flat:['none','none','none','none'],
+  soft:['0 2px 6px rgba(0,0,0,.18)','0 6px 18px rgba(0,0,0,.22)','0 12px 32px rgba(0,0,0,.28)','0 22px 56px rgba(0,0,0,.34)'],
+  normal:null,
+  deep:['0 4px 12px rgba(0,0,0,.4)','0 12px 32px rgba(0,0,0,.46)','0 24px 64px rgba(0,0,0,.54)','0 40px 110px rgba(0,0,0,.62)']};
+var TB_GLASS={solid:['none','96'],frosted:['blur(30px) saturate(1.7)','58'],clear:['blur(14px) saturate(1.3)','38']};
+function tbHex(v){v=(v||'').trim();if(/^#([0-9a-f]{6})$/i.test(v))return v.toLowerCase();if(/^#([0-9a-f]{3})$/i.test(v))return '#'+v.slice(1).split('').map(c=>c+c).join('').toLowerCase();return '#222222'}
+function tbRgb(h){h=tbHex(h);return [1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255)}
+function tbHsl(hex){const [r,g,b]=tbRgb(hex),mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let h=0,s=0;
+  if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h/=6}return [h,s,l]}
+function tbFromHsl(h,s,l){const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))};
+  return '#'+[f(0),f(8),f(4)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function tbLum(hex){const c=tbRgb(hex).map(x=>x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4));return .2126*c[0]+.7152*c[1]+.0722*c[2]}
+function tbContrast(a,b){const x=tbLum(a),y=tbLum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+/* A whole palette from three choices: the background's tint, light or dark, and the
+   two accents. Surfaces step in lightness from the tint's hue (low saturation, so a
+   tint colours the grey rather than painting the screen), text is chosen for
+   contrast, and the text ON the accent is whichever of white or ink reads better. */
+function tbPalette(tint,mode,acc,acc2){
+  const [h,s0]=tbHsl(tint),s=Math.min(s0,.4),dark=mode!=='light';
+  const L=dark?[.045,.075,.1,.135,.19,.93,.7,.48]:[.975,.995,.95,.91,.86,.13,.38,.55];
+  const S=dark?[s,s,s*.9,s*.85,s*.7,.2,.14,.1]:[s*.5,s*.3,s*.5,s*.5,s*.4,.25,.15,.1];
+  const k=['bg','bg2','bg3','bg4','line','txt','dim','dim2'],v={};
+  k.forEach((n,i)=>v[n]=tbFromHsl(h,S[i],L[i]));
+  const [r,g,b]=tbRgb(v.bg2).map(x=>Math.round(x*255));
+  v.glass=`rgba(${r},${g},${b},${dark?.82:.92})`;
+  v.acc=acc;v.acc2=acc2;
+  v['acc-grad']=`linear-gradient(135deg,${acc} 0%,${acc2} 100%)`;
+  v['on-acc']=tbContrast(acc,'#ffffff')>=tbContrast(acc,'#0b0b12')?'#ffffff':'#0b0b12';
+  return v;
+}
+function themeBuilder(from){
   const w=WM.wins.get('themes');if(!w)return;
   const body=w.el.querySelector('.wbody');
-  const base=allThemes()[CURRENT_THEME]||THEMES.agentos;
-  const WB={name:'My Theme',mode:base.mode||'dark',v:{...(base.v||base.vars||{})},css:base.css||'',font:base.font?{...base.font}:null};
-  const hex=v=>{v=(v||'').trim();if(/^#([0-9a-f]{6})$/i.test(v))return v;if(/^#([0-9a-f]{3})$/i.test(v))return '#'+v.slice(1).split('').map(c=>c+c).join('');return '#222222'};
-  const COLORS=[['bg','Background'],['bg2','Surface'],['bg3','Surface 2'],['bg4','Raised'],['line','Border'],['txt','Text'],['dim','Muted'],['dim2','Faint'],['acc','Accent'],['acc2','Accent 2'],['warn','Warning'],['err','Error'],['ok','Success']];
-  body.innerHTML=`<div class="pad">
-    <div class="apptop" style="border:none;padding:0 0 10px;gap:8px">
-      <button class="endbtn" onclick="refreshApp('themes')">← Back</button>
-      <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1">
-      <select id="tb-mode" style="flex:0 0 90px"><option value="dark"${WB.mode==='dark'?' selected':''}>dark</option><option value="light"${WB.mode==='light'?' selected':''}>light</option></select>
+  const all=allThemes(),baseId=from||CURRENT_THEME,base=all[baseId]||THEMES.nova;
+  const v0={...(base.v||base.vars||{})};
+  const WB=window._WB={name:base.custom?(base.label||base.name||baseId):'My Theme',mode:base.mode||'dark',v:v0,css:base.css||'',
+    font:base.font?{...base.font}:null,wall_img:base.wall_img||'',from:baseId};
+  const cs=getComputedStyle(document.documentElement),tok=k=>(WB.v[k]||cs.getPropertyValue('--'+k)||'').trim();
+  const rmd=parseInt(tok('r-md'))||10;
+  const depth=WB.v['el-3']==='none'?'flat':(WB.v['el-3']||'').includes('.54')?'deep':(WB.v['el-3']||'').includes('.28')?'soft':'normal';
+  const glass=(WB.v['glass-blur']||'').startsWith('none')?'solid':(WB.v['glass-blur']||'').includes('14px')?'clear':'frosted';
+  const fsb=parseInt(tok('fs-base'))||14;
+  const COLORS=[['bg','Background'],['bg2','Surface'],['bg3','Surface 2'],['bg4','Raised'],['line','Border'],['txt','Text'],['dim','Muted'],['dim2','Faint'],['acc','Accent'],['acc2','Accent 2'],['on-acc','Text on accent'],['warn','Warning'],['err','Error'],['ok','Success']];
+  body.innerHTML=`<div class="pad tb">
+    <div class="apptop" style="border:none;padding:0 0 10px;gap:8px;flex-wrap:wrap">
+      <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">← Back</button>
+      <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1;min-width:140px">
+      <select id="tb-from" aria-label="Start from">${Object.entries(all).map(([k,t])=>`<option value="${esc(k)}" ${k===baseId?'selected':''}>start from ${esc(t.label||t.name||k)}</option>`).join('')}</select>
     </div>
-    <p class="mut" style="margin-bottom:10px">Pick colors — the whole desktop updates live as you edit. </p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
-      ${COLORS.map(([k,lab])=>`<label style="display:flex;align-items:center;gap:10px;margin:0;font-size:12.5px;color:var(--txt);font-weight:400">
-        <input type="color" data-k="${k}" value="${hex(WB.v[k])}" style="width:36px;height:26px;padding:0;border:1px solid var(--line);background:none;border-radius:6px;cursor:pointer">
-        <span style="flex:1">${lab}</span><code style="font-size:10.5px;color:var(--dim2)" id="tb-h-${k}">${esc(WB.v[k]||'')}</code></label>`).join('')}
-    </div>
-    <label>Glass / overlay (rgba)</label><input id="tb-glass" value="${esc(WB.v.glass||'rgba(20,20,25,.85)')}">
-    <label>Web font URL (optional)</label><input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…">
-    <label>Font family (optional)</label><input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="e.g. Space Grotesk">
-    <label>Advanced CSS (optional — restyle .win, #taskbar, .dimg, .widget, #desktop)</label>
-    <textarea id="tb-css" rows="4" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea>
-    <div class="row" style="margin-top:12px">
+    <p class="mut" style="margin:0 0 12px">Build the whole look and feel — the desktop changes live as you edit. Nothing is saved until <b>Save &amp; apply</b>.</p>
+    <div class="tb-sec"><b>Colours</b>
+      <div class="tb-quick">
+        <label>Mode<select id="tb-mode"><option value="dark"${WB.mode==='dark'?' selected':''}>Dark</option><option value="light"${WB.mode==='light'?' selected':''}>Light</option></select></label>
+        <label>Background tint<input type="color" id="tb-tint" value="${tbHex(tok('bg3'))}"></label>
+        <label>Accent<input type="color" id="tb-acc" value="${tbHex(tok('acc'))}"></label>
+        <label>Accent 2<input type="color" id="tb-acc2" value="${tbHex(tok('acc2'))}"></label>
+        <button class="pact" onclick="tbGenerate()">Generate palette</button>
+      </div>
+      <div id="tb-contrast" class="mut tb-note"></div>
+      <details class="tb-fine"><summary>Fine-tune every colour</summary>
+        <div class="tb-colors">${COLORS.map(([k,lab])=>`<label><input type="color" data-k="${k}" value="${tbHex(tok(k))}"><span>${lab}</span><code id="tb-h-${k}">${esc(tok(k))}</code></label>`).join('')}</div>
+      </details></div>
+    <div class="tb-sec"><b>Shape</b>
+      <label class="tb-slide">Corners <input type="range" id="tb-r" min="0" max="24" step="1" value="${rmd}"><output id="tb-r-o">${rmd}px</output></label></div>
+    <div class="tb-sec"><b>Depth</b>
+      <div class="seg" id="tb-depth">${['flat','soft','normal','deep'].map(d=>`<button class="${d===depth?'on':''}" data-d="${d}">${d[0].toUpperCase()+d.slice(1)}</button>`).join('')}</div></div>
+    <div class="tb-sec"><b>Glass</b>
+      <div class="seg" id="tb-glass">${[['solid','Solid'],['frosted','Frosted'],['clear','Clear']].map(([g,l])=>`<button class="${g===glass?'on':''}" data-g="${g}">${l}</button>`).join('')}</div>
+      <p class="mut tb-note">Frosted and clear blur what is behind a window — the most expensive thing a desktop draws. Effects (on the Themes page) still turns it down on a machine that cannot keep up.</p></div>
+    <div class="tb-sec"><b>Type</b>
+      <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
+      <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
+        <input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…" style="flex:2;min-width:200px">
+        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px"></div>
+      <label class="tb-slide">Text size <input type="range" id="tb-fs" min="12" max="17" step="1" value="${fsb}"><output id="tb-fs-o">${fsb}px</output></label></div>
+    <div class="tb-sec"><b>Wallpaper</b>
+      <select id="tb-wall"><option value="">Keep whatever is set</option><option value="__gen" ${WB.css.includes('/*tb:wall*/')?'selected':''}>Made from these colours</option>
+        ${(typeof BUILTIN_WALLS!=='undefined'?BUILTIN_WALLS:[]).filter(x=>!x.startsWith('immersive-')).map(x=>`<option value="${esc(x)}" ${WB.wall_img===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+    <details class="tb-sec"><summary><b>Advanced CSS</b></summary>
+      <p class="mut tb-note">Restyle anything else: .win, #taskbar, #menubar, .aicon, .widget, #desktop.</p>
+      <textarea id="tb-css" rows="5" style="font-family:var(--mono);font-size:12px">${esc(WB.css)}</textarea></details>
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
       <button class="save" style="margin:0" onclick="tbSave()">Save &amp; apply</button>
+      <button class="endbtn" onclick="tbSave(true)">Export</button>
       <button class="endbtn" onclick="applyTheme(CURRENT_THEME);refreshApp('themes')">Cancel</button>
     </div>
   </div>`;
-  const preview=()=>applyThemeObj(WB);
-  body.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{WB.v[inp.dataset.k]=inp.value;const h=$('#tb-h-'+inp.dataset.k);if(h)h.textContent=inp.value;preview()});
-  $('#tb-glass').oninput=e=>{WB.v.glass=e.target.value;preview()};
-  $('#tb-mode').onchange=e=>{WB.mode=e.target.value;preview()};
-  $('#tb-css').oninput=e=>{WB.css=e.target.value;preview()};
-  $('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value};
-  $('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
-  window._WB=WB;preview();
+  const q=s=>body.querySelector(s);
+  // _applyThemeObj, not applyThemeObj: a live preview must not start a crossfade per
+  // slider step — each one snapshots the screen and paints it over the next frame, so
+  // dragging "Corners" left the previous screen showing through every window
+  const preview=()=>{_applyThemeObj(WB);tbCheck()};
+  body.querySelectorAll('.tb-colors input[type=color]').forEach(inp=>inp.oninput=()=>{WB.v[inp.dataset.k]=inp.value;
+    if(inp.dataset.k==='acc'||inp.dataset.k==='acc2')WB.v['acc-grad']=`linear-gradient(135deg,${WB.v.acc||tok('acc')} 0%,${WB.v.acc2||tok('acc2')} 100%)`;
+    const h=q('#tb-h-'+inp.dataset.k);if(h)h.textContent=inp.value;preview()});
+  q('#tb-from').onchange=e=>themeBuilder(e.target.value);
+  q('#tb-mode').onchange=e=>{WB.mode=e.target.value;tbGenerate()};
+  ['#tb-tint','#tb-acc','#tb-acc2'].forEach(id=>q(id).oninput=()=>tbGenerate());
+  q('#tb-r').oninput=e=>{const r=+e.target.value;Object.assign(WB.v,{'r-sm':Math.round(r*.6)+'px','r-md':r+'px','r-lg':Math.round(r*1.4)+'px','r-xl':Math.round(r*1.9)+'px'});q('#tb-r-o').textContent=r+'px';preview()};
+  q('#tb-depth').onclick=e=>{const b=e.target.closest('button');if(!b)return;q('#tb-depth').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const d=TB_DEPTH[b.dataset.d];['el-2','el-3','el-4','el-5'].forEach((k,i)=>{if(d)WB.v[k]=d[i];else delete WB.v[k]});preview()};
+  q('#tb-glass').onclick=e=>{const b=e.target.closest('button');if(!b)return;q('#tb-glass').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const [blur,pct]=TB_GLASS[b.dataset.g];WB.v['glass-blur']=blur;WB.v['glass-tint']=`color-mix(in srgb,var(--bg2) ${pct}%,transparent)`;preview()};
+  q('#tb-font').onchange=e=>{const f=e.target.value;q('#tb-fcustom').style.display=f==='__custom'?'flex':'none';
+    if(f==='__custom')return;WB.font=f?{family:f,url:'https://fonts.googleapis.com/css2?family='+encodeURIComponent(f).replace(/%20/g,'+')+':wght@400;500;600;700&display=swap'}:null;preview()};
+  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;preview()};
+  q('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
+  q('#tb-fs').oninput=e=>{const n=+e.target.value;Object.assign(WB.v,{'fs-xs':(n-3)+'px','fs-sm':(n-2)+'px','fs-md':(n-1)+'px','fs-base':n+'px','fs-lg':(n+2)+'px'});q('#tb-fs-o').textContent=n+'px';preview()};
+  q('#tb-wall').onchange=e=>{const x=e.target.value;WB.css=WB.css.replace(/\/\*tb:wall\*\/[^\n]*\n?/g,'');WB.wall_img='';
+    if(x==='__gen')WB.css='/*tb:wall*/body,#desktop{background:radial-gradient(1100px 700px at 18% -10%,color-mix(in srgb,var(--acc) 45%,transparent),transparent 60%),radial-gradient(900px 650px at 95% 105%,color-mix(in srgb,var(--acc2) 38%,transparent),transparent 60%),var(--bg);background-attachment:fixed}\n'+WB.css;
+    else if(x)WB.wall_img=x;
+    const tc=q('#tb-css');if(tc)tc.value=WB.css;preview();if(typeof loadWallpaper==='function')loadWallpaper()};
+  q('#tb-css').oninput=e=>{WB.css=e.target.value;preview()};
+  preview();
 }
-async function tbSave(){
+function tbGenerate(){
+  const WB=window._WB,q=s=>document.querySelector(s);if(!WB)return;
+  Object.assign(WB.v,tbPalette(q('#tb-tint').value,q('#tb-mode').value,q('#tb-acc').value,q('#tb-acc2').value));
+  WB.mode=q('#tb-mode').value;
+  document.querySelectorAll('.tb-colors input[type=color]').forEach(i=>{const v=WB.v[i.dataset.k];if(v&&/^#/.test(v)){i.value=tbHex(v);const h=document.getElementById('tb-h-'+i.dataset.k);if(h)h.textContent=v}});
+  _applyThemeObj(WB);tbCheck();
+}
+/* Said, not assumed: whether the text can actually be read. WCAG asks 4.5:1 for body
+   text; a palette under it is saved if somebody insists, but never silently. */
+function tbCheck(){
+  const WB=window._WB,el=document.getElementById('tb-contrast');if(!WB||!el)return;
+  const cs=getComputedStyle(document.documentElement),g=k=>tbHex((WB.v[k]||cs.getPropertyValue('--'+k)||'').trim());
+  const a=tbContrast(g('txt'),g('bg2')),b=tbContrast(g('on-acc'),g('acc')),c=tbContrast(g('dim'),g('bg2'));
+  const mark=x=>x>=4.5?'✓':x>=3?'— low':'✗ too low';
+  el.innerHTML=`Text on surfaces ${a.toFixed(1)}:1 ${mark(a)} · muted text ${c.toFixed(1)}:1 ${mark(c)} · text on the accent ${b.toFixed(1)}:1 ${mark(b)}`;
+}
+async function tbSave(exportOnly){
   const WB=window._WB;if(!WB)return;
-  WB.name=$('#tb-name').value.trim()||'My Theme';WB.custom=true;
+  WB.name=(document.getElementById('tb-name')||{}).value?.trim()||'My Theme';
   if(WB.font&&!WB.font.url)WB.font=null;
-  await themeSave(WB,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
+  const out={name:WB.name,mode:WB.mode,v:WB.v,css:WB.css,font:WB.font||undefined,wall_img:WB.wall_img||undefined};
+  if(exportOnly){const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=WB.name.replace(/\s+/g,'-')+'.theme.json';a.click();return}
+  await themeSave(out,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
 }
 
 /* ================= personalize app + wallpaper gallery ================= */
@@ -21615,7 +22021,7 @@ async function renderTerminal(body,w){
 function renderAbout(body){
   body.innerHTML=`<div class="pad" style="max-width:640px;margin:0 auto">
     <div style="text-align:center;padding-top:26px">
-      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#04211c;font-size:30px;font-weight:900">▲</div>
+      <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:var(--acc-grad);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:30px;font-weight:900">▲</div>
       <div style="font-size:20px;font-weight:800">Bento Box AI</div>
       <div id="ab-ver" class="ab-ver">…</div>
       <p class="mut" style="margin:6px 0 16px">Your machine, with a brain.<br>Local or cloud AI — real actions, your approval.</p>

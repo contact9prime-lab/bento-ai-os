@@ -3258,7 +3258,7 @@ def _avatar_cli(args):
 def _team_cli(args):
     """`bento team` — who answers on which AI provider, in a terminal.
 
-    The TUI face of Settings → AI providers → Team. `list` prints each agent with
+    The TUI face of Settings → Agents → Working together. `list` prints each agent with
     the brain it answers on RIGHT NOW (fabric.agent_brain — the same answer the Crew
     stage's tag and the chat's chip show) and why, if that is not its pin. `set`
     pins one agent through the same door the page and the agent's tool use
@@ -3777,6 +3777,104 @@ def _link_cli(args):
         for m in fabricmod.linked_missions(store, lk["label"]):
             print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
                   + (" (stopped)" if m["stopped"] else ""))
+
+
+def _hands_cli(args):
+    """`bento hands` — executor profiles (an agent's hands) from a terminal: the same
+    rows Settings → Executors edits (agentos/hands.py). Works with the server down;
+    every write is an audit row."""
+    from . import hands
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act, name = args.action, (args.name or "").strip()
+    if act == "list":
+        for p in hands.list_profiles(store):
+            print(f"  {p['name']:<14} {'(built in) ' if p['builtin'] else ''}{p['summary']}")
+            if p.get("description"):
+                print(f"  {'':<14} {p['description'][:110]}")
+        print("\n  bento hands show NAME · bento hands set NAME --tools … --folder PATH:rw … "
+              "· bento agents hands AGENT NAME")
+        return 0
+    if not name:
+        print(f"  bento hands {act} NAME")
+        return 2
+    if act == "show":
+        p = hands.get(store, name)
+        if not p:
+            print(f"  no executor called '{name}'")
+            return 2
+        sp = p["spec"]
+        print(f"{p['name']}{'  (built in)' if p['builtin'] else ''}\n  {p['summary']}")
+        print(f"  tools    {', '.join(sp['tools']) or 'none'}")
+        print("  folders  " + (", ".join(f"{f['path']} ({f['mode']})" for f in sp["folders"]) or "none"))
+        print(f"  web      {sp['web'] if isinstance(sp['web'], str) else ', '.join(sp['web'])}")
+        print(f"  mcp      {', '.join(sp['mcp']) or 'none'}")
+        if "*" in sp["tools"] or any(t in sp["tools"] for t in hands.SHELL_TOOLS):
+            print("  note     a shell reaches whatever the machine's folder jail allows, not only "
+                  "these folders")
+        return 0
+    if act == "rm":
+        try:
+            n = hands.delete(store, name)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        print(f"✓ deleted {name}" + (f"; {n} agent(s) moved to default" if n else ""))
+        return 0
+    # set: start from the profile as it is (or from nothing, for a new one), change
+    # only what was given — a flag left out keeps its value
+    cur = hands.get(store, name)
+    spec = dict(cur["spec"]) if cur else {"tools": [], "folders": [], "web": "none", "mcp": []}
+    if args.tools is not None:
+        spec["tools"] = [t.strip() for t in args.tools.split(",") if t.strip()]
+    if args.folder:
+        fl = []
+        for f in args.folder:
+            path, _, mode = f.rpartition(":") if f.rsplit(":", 1)[-1] in ("ro", "rw") else (f, "", "rw")
+            fl.append({"path": path, "mode": mode or "rw"})
+        spec["folders"] = fl
+    if args.web:
+        spec["web"] = args.web[0] if len(args.web) == 1 and args.web[0] in ("any", "none") else args.web
+    if args.mcp is not None:
+        spec["mcp"] = [m.strip() for m in args.mcp.split(",") if m.strip()]
+    try:
+        p = hands.save(store, name, spec, args.description if args.description is not None
+                       else (cur or {}).get("description", ""))
+    except ValueError as e:
+        print(f"✗ {e}")
+        return 2
+    print(f"✓ {p['name']}: {p['summary']}")
+    return 0
+
+
+def _agents_cli(args):
+    """`bento agents` — every agent with its brain, hands, authority, skills and
+    company (agentos/agentmap.py, the map Settings → Agents draws); `hands AGENT
+    PROFILE` gives one its hands."""
+    from . import agentmap, hands
+    from . import config as cfgmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    if args.action == "hands":
+        if not args.agent or not args.profile:
+            print("  bento agents hands AGENT PROFILE   (AGENT: @agent for the lead, or a specialist)")
+            return 2
+        try:
+            got = hands.assign(store, cfg, args.agent, args.profile)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        if args.agent in ("@agent", "master"):
+            cfgmod.save_config(cfg)
+        print(f"✓ {args.agent} now works with the '{got}' executor")
+        return 0
+    ov = agentmap.overview(store, cfg)
+    if args.action == "map":
+        g = agentmap.graph(ov)
+        label = {n["id"]: n["label"] for n in g["nodes"]}
+        for e in g["edges"]:
+            print(f"  {label.get(e['from'], e['from']):<18} ─{e['label']}→  {label.get(e['to'], e['to'])}")
+        return 0
+    print(agentmap.text(ov))
+    return 0
 
 
 def _version_cli(args):
@@ -5120,6 +5218,21 @@ def main():
     # is asking the user to know which OS they are on to control their own agent.
     # Checking is the default and changes nothing; installing is an explicit flag.
     # A bare verb must not rewrite the code that is answering the user's turns.
+    p_hands = verb("hands", help="executor profiles — what each agent's hands reach (tools, folders, web, MCP)")
+    p_hands.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "rm"])
+    p_hands.add_argument("name", nargs="?", default="")
+    p_hands.add_argument("--tools", default=None, help="comma-separated tool names, or *")
+    p_hands.add_argument("--folder", action="append", default=[],
+                         help="PATH[:ro|rw] (repeat); * = anywhere the machine allows, @workspace")
+    p_hands.add_argument("--web", action="append", default=[], help="any | none | URL pattern (repeat)")
+    p_hands.add_argument("--mcp", default=None, help="comma-separated MCP server names, or *")
+    p_hands.add_argument("--description", default=None)
+    p_hands.add_argument("--user", default="", help="whose profiles, on a machine with users")
+    p_agents = verb("agents", help="every agent: its brain, hands, authority, skills and who it works with")
+    p_agents.add_argument("action", nargs="?", default="list", choices=["list", "map", "hands"])
+    p_agents.add_argument("agent", nargs="?", default="")
+    p_agents.add_argument("profile", nargs="?", default="")
+    p_agents.add_argument("--user", default="", help="whose agents, on a machine with users")
     # Hidden (no help=): a release chore, not an everyday verb. `bento help --all`
     # lists it. Terminal-only by nature — there is no GUI for bumping a version,
     # and the GUI/SUI face of the result is the version + build on the update card.
@@ -5607,6 +5720,10 @@ def main():
         raise SystemExit(_update_cli(args))
     elif args.cmd == "version":
         raise SystemExit(_version_cli(args))
+    elif args.cmd == "hands":
+        raise SystemExit(_hands_cli(args))
+    elif args.cmd == "agents":
+        raise SystemExit(_agents_cli(args))
     elif args.cmd == "service":
         raise SystemExit(_service_cli(args))
     elif args.cmd == "restart":

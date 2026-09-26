@@ -5,7 +5,7 @@
 #mb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-sm);padding:2px 8px;border-radius:var(--r-sm);cursor:pointer;user-select:none}
 #mb-brand:hover{background:var(--bg3)}
 #mb-brand:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
-#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center}
+#mb-brand .mark{width:17px;height:17px;border-radius:var(--r-sm);background:var(--acc-grad);display:flex;align-items:center;justify-content:center}
 #mb-spacer{flex:1}
 #pager{display:flex;gap:4px;align-items:center}
 .pgb{width:22px;height:20px;border-radius:var(--r-sm);font-size:var(--fs-2xs);font-weight:700;color:var(--dim);border:1px solid transparent;display:flex;align-items:center;justify-content:center}
@@ -81,14 +81,14 @@
 #natctl.on{display:flex}
 #natctl button{width:24px;height:24px;border-radius:50%;font-size:12px;line-height:1;
   color:var(--txt);background:rgba(255,255,255,.09);transition:background var(--d-fast) var(--ease-out)}
-#natctl button:hover{background:var(--acc);color:#04211c}
+#natctl button:hover{background:var(--acc);color:var(--on-acc)}
 #natctl button[data-do="close"]:hover{background:var(--err);color:#fff}
 .tbnat.mini{opacity:.45}
 
 /* ---- forwarding chip: the machine is answering as another agent, and says so ---- */
 #fwdchip{display:flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;
   font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;white-space:nowrap;
-  color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  color:var(--on-acc);background:var(--acc-grad);
   box-shadow:0 0 10px color-mix(in srgb,var(--acc) 45%,transparent)}
 #fwdchip[hidden]{display:none}
 #fwdchip:hover{filter:brightness(1.08)}
@@ -102,8 +102,8 @@
 #mb-user[hidden]{display:none}
 #mb-user:hover{background:rgba(255,255,255,.16)}
 #mb-user .ini{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
-  border-radius:999px;font-weight:800;color:#04211c;
-  background:linear-gradient(135deg,var(--acc),var(--acc2))}
+  border-radius:999px;font-weight:800;color:var(--on-acc);
+  background:var(--acc-grad)}
 #mb-user .badge{font-size:var(--fs-3xs,9px);font-weight:600;opacity:.7;padding-left:6px;
   margin-left:2px;border-left:1px solid rgba(255,255,255,.2);text-transform:uppercase}
 #fwdchip .fwdmdl{opacity:.72;font-weight:600;padding-left:6px;margin-left:6px;

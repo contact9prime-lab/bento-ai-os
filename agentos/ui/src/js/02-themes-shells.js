@@ -2,6 +2,16 @@
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
 const THEMES={
+  /* Nova — the default look (2026-09): deep ink, an electric indigo→violet accent that
+     the immersive look carries into buttons, tabs and focus as a gradient, white text
+     on the accent (--on-acc), Geist, and softer, larger corners. Every rule it needs
+     is a token, so the immersive layer, the builder and the standard desktop all read
+     the same numbers. */
+  nova:{label:'Nova (modern)',mode:'dark',wall_img:'nova',font:{url:'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap',family:'Geist'},
+    v:{bg:'#09090f',bg2:'#111120',bg3:'#181829',bg4:'#212136',line:'#2a2a44',txt:'#ececf6',dim:'#a3a3c2',dim2:'#6b6b8f',
+       acc:'#7c6cff',acc2:'#c084fc',warn:'#fbbf24',err:'#fb7185',ok:'#34d399',glass:'rgba(17,17,32,.8)',
+       'on-acc':'#ffffff','acc-grad':'linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#d946ef 100%)',
+       'r-sm':'8px','r-md':'12px','r-lg':'16px','r-xl':'22px'}},
   agentos:{label:'AgentOS (teal)',mode:'dark',v:{bg:'#0b0d10',bg2:'#111419',bg3:'#171b22',bg4:'#1e242e',line:'#232a35',txt:'#e6ebf2',dim:'#8a94a6',dim2:'#5c6577',acc:'#5eead4',acc2:'#22d3ee',warn:'#fbbf24',err:'#f87171',ok:'#4ade80',glass:'rgba(17,20,25,.82)'}},
   ubuntu:{label:'Ember (dark)',mode:'dark',v:{bg:'#1c1a1b',bg2:'#242021',bg3:'#2c2727',bg4:'#383231',line:'#3a3433',txt:'#ffffff',dim:'#c7c2bf',dim2:'#8f8987',acc:'#E95420',acc2:'#F29879',warn:'#f9c74f',err:'#f87171',ok:'#26a269',glass:'rgba(36,32,33,.86)'}},
   'ubuntu-light':{label:'Ember (light)',mode:'light',v:{bg:'#faf9f8',bg2:'#f2f0ee',bg3:'#ecebe9',bg4:'#e0ddda',line:'#d3cfcb',txt:'#1d1b19',dim:'#5e5b58',dim2:'#8f8b87',acc:'#E95420',acc2:'#c7451d',warn:'#b98900',err:'#c01c28',ok:'#26a269',glass:'rgba(245,243,241,.92)'}},
@@ -213,7 +223,8 @@ input,textarea,select{background:#f4f1ff;border:none;box-shadow:inset 0 3px 7px 
 };
 const CUSTOM_THEMES={};   // name -> theme object, loaded from the server
 function allThemes(){const m={};for(const k in THEMES)m[k]={...THEMES[k],id:k};for(const n in CUSTOM_THEMES)m[n]={...CUSTOM_THEMES[n],id:n};return m}
-let CURRENT_THEME=localStorage.getItem('theme')||'agentos';
+// A browser that never chose gets Nova; one that chose keeps its choice.
+let CURRENT_THEME=(()=>{try{return localStorage.getItem('theme')}catch(e){return null}})()||'nova';
 function applyThemeObj(t){
   // crossfade the whole desktop through the theme change instead of hard-cutting
   if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&document.body.dataset.themed){
@@ -345,7 +356,7 @@ async function loadThemes(){
   }catch(e){}
   if(allThemes()[CURRENT_THEME])applyTheme(CURRENT_THEME);   // re-apply if it's a custom theme
 }
-applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'agentos');
+applyTheme(THEMES[CURRENT_THEME]?CURRENT_THEME:'nova');
 
 /* ================= fullscreen ================= */
 function toggleFullscreen(){

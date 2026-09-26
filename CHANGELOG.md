@@ -2,6 +2,26 @@
 
 ## 0.5.0 — 2026-09-26
 
+**Every agent is a brain, hands, permissions and skills, and Settings has one place for each.**
+- **AI providers** holds the brains: cloud keys, local models, and the AI agents installed here
+  (Claude Code, Hermes, OpenClaw).
+- **Executors** now means hands. An executor says what an agent can reach: which tools, which
+  folders (read-only or read-write), which web addresses and which MCP servers. It is a ceiling
+  the gate checks before any permission, so no grant reaches past it. `default` is what every
+  agent had before, and `read-only` is built in.
+- **Agents** holds your lead agent and every specialist, with their brain, hands, permissions,
+  skills, missions and who they may ask, plus a map of all of it. Tap an agent on the map to see
+  only its lines. Every change is recorded.
+- From a terminal: `bento agents` (and `bento agents map`) and `bento hands`.
+  (`docs/agents.md`.)
+
+**A modern look, on by default.** The immersive experience is now the default, over a new theme,
+**Nova**: deep ink, an electric indigo-to-violet accent, the Geist typeface, softer corners and its
+own wallpaper. **Themes → Build a theme** builds your own look and feel, previewed live:
+- a palette generated from three colours, with its contrast checked out loud;
+- corners, depth, glass, font and text size;
+- a wallpaper made from your colours.
+
 **A team, not a single agent.** Each specialist can answer on its own AI provider
 (Settings → AI providers → Team, `bento team`). Several can talk in a **huddle**.
 One can ask another mid-task through a permission **matrix** that you fill in, or

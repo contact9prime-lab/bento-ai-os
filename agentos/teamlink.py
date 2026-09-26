@@ -33,7 +33,7 @@ Kept free of FastAPI. The listener is plain asyncio with an SSL context, because
 one thing a web server here would not give us is the peer's certificate, and the
 certificate IS the identity. The wire is one JSON line each way.
 
-Faces: Settings → AI providers → Team → Linked teams (GUI/SUI), ``bento link`` (TUI/CLI).
+Faces: Settings → Agents → Working together → Linked teams (GUI/SUI), ``bento link`` (TUI/CLI).
 """
 from __future__ import annotations
 

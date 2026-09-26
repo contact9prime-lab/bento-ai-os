@@ -119,14 +119,47 @@ real time.
 
 Open **Settings → Appearance** and pick a theme; the entire interface recolors instantly:
 
-- **AgentOS** (teal, default)
+- **Nova** (modern, the default): deep ink, an electric indigo-to-violet accent carried
+  into buttons and highlights as a gradient, white text on the accent, the Geist typeface,
+  softer and larger corners, and its own wallpaper
+- **AgentOS** (teal)
 - **Ember** (dark — warm orange accent)
 - **Ember** (light)
 - **Dracula**
 - **Nord**
 - **Frost** (glass) · **Field** (warm light) · **Shell** (terminal) · **Aura** (voice-first)
 
-Your choice is remembered.
+Your choice is remembered. A browser that never chose gets Nova.
+
+![Nova, the default look: the greeting and the prompt bar over its indigo-violet wallpaper](screenshots/nova-desktop.png)
+
+![Chat in Nova: the violet send button, white text on the accent, the Geist typeface](screenshots/nova-chat.png)
+
+![Nova on a 390px phone: the greeting, the prompt bar and the dock](screenshots/nova-desktop-phone.png)
+
+### Build your own
+
+**Themes → Build a theme** builds the whole look and feel, and the desktop changes live
+while you edit:
+
+- **Colours**: pick light or dark, a background tint and two accents, and **Generate
+  palette** derives every surface, border and text colour from them. Fine-tune any single
+  colour after that, including the text that sits on the accent.
+- **The contrast is said out loud**: "Text on surfaces 15.9:1 ✓ · muted text 9.2:1 ✓ ·
+  text on the accent 7.7:1 ✓". A palette under 4.5:1 is marked, never silently saved.
+- **Shape** (corner roundness), **Depth** (flat / soft / normal / deep shadows), **Glass**
+  (solid / frosted / clear), **Type** (a font, or any web font, and the text size), and
+  **Wallpaper** (keep yours, one of the built-ins, or one made from your colours).
+- **Start from** any theme, **Save & apply**, or **Export** it as a file to share.
+
+![The Theme Builder: a green palette generated from three colours, the contrast line, and the corners, depth and glass controls](screenshots/theme-builder.png)
+
+![The Theme Builder on a 390px phone, every control at the tap floor](screenshots/theme-builder-phone.png)
+
+Every control writes a token the whole desktop already reads (`--r-md`, `--el-3`,
+`--glass-blur`, `--fs-base`, `--acc-grad`, `--on-acc`…). Asking your agent to "design a warm
+sunset theme" uses the same names (the `create_theme` tool). A terminal has no palette or
+glass, so the builder has no terminal face; asking in chat is the words-only way to build one.
 
 ### Design-language themes
 
@@ -174,9 +207,10 @@ transparency and you get four windows of text legible through each other.
 
 Flat themes cost nothing to begin with, so none of this applies to them.
 
-### Immersive experience (beta)
+### Immersive experience
 
-**Settings → Appearance → Immersive experience** is a *look*, not a theme: it lays a design
+**Settings → Appearance → Immersive experience** is on by default (switch it off there for
+the plain desktop; the choice is remembered per browser). It is a *look*, not a theme: it lays a design
 system, a scene and motion over whichever theme is on, so an immersive Dracula is still Dracula.
 It was built ground-up in five phases, each judged in a real browser and by the OS's own agent:
 

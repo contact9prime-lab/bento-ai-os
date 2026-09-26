@@ -8957,6 +8957,87 @@ async def api_team_limits():
                                       for k, (d, lo, hi, w) in fabricmod.LIMITS.items()}}
 
 
+# ---- Brains, hands and agents (agentos/hands.py, agentos/agentmap.py) ----------------
+#
+# An agent gets a BRAIN (AI providers), HANDS (an executor profile: tools, folders, web,
+# MCP), AUTHORITY (its grants) and COMPANY (colleagues, linked teams, missions). These
+# routes are the Settings pages' doors; `bento hands` and `bento agents` are the same
+# functions from a terminal. Every write is an audit row (hands._audit).
+
+@app.get("/api/hands")
+async def api_hands():
+    """The executor profiles, which agents use each, and the catalogue the editor needs."""
+    from . import agentmap, hands
+    store, cfg = state["store"], state["cfg"]
+    ov = agentmap.overview(store, cfg)
+    used: dict = {}
+    for a in ov["agents"]:
+        used.setdefault(a["hands"]["name"].lower(), []).append(a["name"])
+    names = [t["name"] for t in state["toolbox"].schemas() if not t["name"].startswith(("mcp_", "ocp_"))]
+    grouped = {g: [n for n in ns if n in names] for g, ns in hands.GROUPS.items()}
+    placed = {n for ns in grouped.values() for n in ns}
+    grouped["Other"] = sorted(n for n in names if n not in placed)
+    return {"profiles": [{**p, "used_by": used.get(p["name"].lower(), [])} for p in hands.list_profiles(store)],
+            "tools": {g: ns for g, ns in grouped.items() if ns},
+            "shell_tools": list(hands.SHELL_TOOLS),
+            "mcp": sorted((cfg.get("mcp_servers") or {}).keys()),
+            "workspace": cfg.get("workspace", ""),
+            "sandbox": bool((cfg.get("sandbox") or {}).get("enabled"))}
+
+
+@app.put("/api/hands/{name}")
+async def api_hands_save(name: str, body: dict):
+    """Create or change a profile: `{"spec": {tools, folders, web, mcp}, "description"}`."""
+    from . import hands
+    try:
+        p = hands.save(state["store"], name, (body or {}).get("spec") or {},
+                       (body or {}).get("description") or "")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "profile": p}
+
+
+@app.delete("/api/hands/{name}")
+async def api_hands_delete(name: str):
+    from . import hands
+    try:
+        moved = hands.delete(state["store"], name)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "moved_to_default": moved}
+
+
+@app.get("/api/agents")
+async def api_agents():
+    """Every agent with its brain, hands, authority, skills and company — one answer
+    for Settings → Agents, the map and `bento agents`."""
+    from . import agentmap
+    return agentmap.overview(state["store"], state["cfg"])
+
+
+@app.get("/api/agents/graph")
+async def api_agents_graph():
+    from . import agentmap
+    ov = agentmap.overview(state["store"], state["cfg"])
+    return {**agentmap.graph(ov), "talk": ov["talk"]}
+
+
+@app.put("/api/agents/{key}/hands")
+async def api_agent_hands(key: str, body: dict):
+    """Give an agent hands: `{"profile": "read-only"}`. `@agent` is the lead agent."""
+    from . import hands
+    try:
+        got = hands.assign(state["store"], state["cfg"], key, str((body or {}).get("profile") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if key in ("@agent", "master"):
+        cfgmod.save_config(state["cfg"])
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, "profile": got}
+
+
 @app.get("/api/team/matrix")
 async def api_team_matrix():
     """Who may ask whom (fabric.matrix — grants rows, drawn as a grid)."""

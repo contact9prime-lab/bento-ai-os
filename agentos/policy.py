@@ -602,6 +602,7 @@ class PDP(usersmod.Scoped):
         # "researcher" or an app called "notes".
         self._cache: dict = {}    # uid -> (version, grants)
         self._skills: dict = {}   # uid|principal.label -> (expires_at, set(names))
+        self._reach: dict = {}    # (uid, kind, id) -> (hands generation, expires_at, profile)
         self._rate = RateMeter()
         self._q_cache: dict = {}  # uid|principal.label -> row or None
         self._q_version: dict = {}
@@ -869,6 +870,27 @@ class PDP(usersmod.Scoped):
         self._skills[key] = (now + 5, names)
         return names
 
+    def reach_of(self, principal: Principal) -> dict | None:
+        """The executor profile (hands) this principal works with, or None where
+        profiles do not apply. Keyed on the USER as well (two accounts can each have
+        an agent called 'analyst'), and on the hands generation so an edit is seen
+        at once; the short expiry covers a profile changed by another process."""
+        if principal.kind not in ("user", "subagent"):
+            return None
+        from . import hands
+        key = (self._who(), principal.kind, principal.id)
+        now = time.time()
+        hit = self._reach.get(key)
+        if hit and hit[0] == hands.generation() and hit[1] > now:
+            return hit[2]
+        try:
+            name = hands.profile_name(self.store, self.cfg, principal.kind, principal.id)
+            p = hands.get(self.store, name) or hands.get(self.store, hands.DEFAULT)
+        except Exception:
+            p = None          # no profiles table (an old embedding): no extra ceiling
+        self._reach[key] = (hands.generation(), now + 5, p)
+        return p
+
     def _standing(self, principal: Principal, action: str, resource: str, taint) -> dict | None:
         """The standing permission that covers this step, or None (see STANDING_ACTIONS)."""
         link = _link_only_taint(taint)
@@ -996,6 +1018,17 @@ class PDP(usersmod.Scoped):
             if _match(a, action) and _match(r, resource):
                 return Decision("deny", f"{principal.label} may never do this "
                                         "(built-in protection of the OS itself)", rule="builtin-deny")
+        # 2a. the reach ceiling: the agent's HANDS (its executor profile, agentos/hands.py).
+        # A capability limit, not a permission — so it is checked before any grant, and
+        # no grant reaches past it: a read-only agent granted fs.write still cannot write.
+        reach = self.reach_of(principal)
+        if reach:
+            from . import hands
+            why = hands.refusal(reach["spec"], self.cfg, ctx.get("tool", ""), action, resource)
+            if why:
+                who = principal.id or (self.cfg.get("agent_name") or "your agent")
+                return Decision("deny", f"{who}'s hands do not reach this: {why} (executor "
+                                        f"'{reach['name']}' — Settings → Executors)", rule="reach")
         surface = ctx.get("surface", "")
         # 2b. the channel ceiling. A read-only channel refuses rather than asks,
         # and it is checked BEFORE grants on purpose: "read-only over Telegram"
@@ -1052,7 +1085,7 @@ class PDP(usersmod.Scoped):
         if action == "agent.message":
             if team_talk(self.cfg) == "off":
                 return Decision("deny", "agent-to-agent messages are switched off "
-                                        "(Settings → AI providers → Team)", rule="message-off")
+                                        "(Settings → Agents → Working together)", rule="message-off")
             # The matrix is decided here in full, because WHICH grants count depends on
             # where the ask happens. Inside a mission only that mission's own consent
             # counts ("its specialists may consult each other", a definition grant) —
@@ -1141,7 +1174,7 @@ class PDP(usersmod.Scoped):
             to = resource.rsplit("/", 1)[-1]
             return Decision("deny",
                             f"{who or 'an agent'} on the linked team '{link}' may not ask {to} "
-                            f"here — allow it in Settings → AI providers → Team → Linked teams"
+                            f"here — allow it in Settings → Agents → Working together → Linked teams"
                             if action == "agent.message" else
                             f"a linked team's agent may only ask questions — '{action}' is not "
                             f"something a link can grant", rule="team-default")

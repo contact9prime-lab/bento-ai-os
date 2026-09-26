@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Nova: the default look. Deep ink, an electric indigo-to-violet glow across the
+       top, a cool cyan low on the left and a warm magenta ember low on the right, with
+       a faint grid so the depth reads as space rather than fog. Gradients only — no
+       blur filters — so it rasterises in one pass on a Pi and stays sharp at 4K. The
+       vignette keeps the corners dark enough for white chrome to read. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0a1a"/><stop offset="0.5" stop-color="#07070f"/><stop offset="1" stop-color="#050509"/>
+    </linearGradient>
+    <radialGradient id="indigo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.85"/><stop offset="0.45" stop-color="#4f46e5" stop-opacity="0.35"/><stop offset="1" stop-color="#312e81" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c084fc" stop-opacity="0.75"/><stop offset="0.45" stop-color="#9333ea" stop-opacity="0.3"/><stop offset="1" stop-color="#581c87" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.55"/><stop offset="0.5" stop-color="#0891b2" stop-opacity="0.2"/><stop offset="1" stop-color="#155e75" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ember" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f472b6" stop-opacity="0.45"/><stop offset="0.5" stop-color="#db2777" stop-opacity="0.15"/><stop offset="1" stop-color="#831843" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a5b4fc" stop-opacity="0"/><stop offset="0.5" stop-color="#c7d2fe" stop-opacity="0.16"/><stop offset="1" stop-color="#a5b4fc" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vig" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.7"/>
+    </radialGradient>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#c7d2fe" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#base)"/>
+  <ellipse cx="420" cy="120" rx="760" ry="520" fill="url(#indigo)"/>
+  <ellipse cx="1240" cy="260" rx="700" ry="560" fill="url(#violet)"/>
+  <ellipse cx="160" cy="900" rx="620" ry="440" fill="url(#cyan)"/>
+  <ellipse cx="1420" cy="930" rx="560" ry="380" fill="url(#ember)"/>
+  <path d="M-100 560 C 300 420, 700 640, 1100 470 S 1700 380, 1800 430 L1800 470 C 1500 430, 1300 540, 1100 520 S 400 480, -100 610 Z" fill="url(#band)"/>
+  <path d="M-100 690 C 400 600, 800 760, 1200 620 S 1700 560, 1800 590 L1800 610 C 1500 590, 1250 680, 1100 670 S 400 640, -100 720 Z" fill="url(#band)" opacity="0.6"/>
+  <rect width="1600" height="1000" fill="url(#grid)"/>
+  <rect width="1600" height="1000" fill="url(#vig)"/>
+</svg>

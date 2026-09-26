@@ -531,7 +531,11 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "persona",
              # the mailbox and the calendar the agent may read for me. Personal by
              # the strongest version of the test: a mailbox is somebody's, full stop.
-             "mail", "calendar")
+             "mail", "calendar",
+             # which executor profile (hands) MY master agent works with. Personal:
+             # the profiles themselves live in my own database, and choosing one
+             # narrows what my agent reaches, never anybody else's.
+             "agent_profile")
 
 
 def machine_view(cfg: dict) -> dict:

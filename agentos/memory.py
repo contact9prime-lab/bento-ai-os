@@ -216,6 +216,18 @@ CREATE TABLE IF NOT EXISTS subagents (
     created_at REAL,
     updated_at REAL
 );
+-- An executor PROFILE: an agent's hands — which tools it can reach, which folders
+-- (read-only or read-write), which web addresses and which MCP servers. A ceiling on
+-- capability, checked by the gate before grants (agentos/hands.py); what an agent is
+-- ALLOWED to do inside it is still its grants. On screen these are "Executors".
+CREATE TABLE IF NOT EXISTS executor_profiles (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    description TEXT DEFAULT '',
+    spec TEXT DEFAULT '{}',      -- JSON: {tools, folders:[{path,mode}], web, mcp}
+    builtin INTEGER DEFAULT 0,
+    created_at REAL,
+    updated_at REAL
+);
 -- A named, repeatable sequence of desktop steps. Unlike a flow (a mission run by
 -- a master agent in the fabric control plane) an automation drives the DESKTOP:
 -- open these apps, switch to that theme, put the agent on this prompt. It is what
@@ -630,7 +642,9 @@ class Store:
             ("tasks", (("weekday", "INTEGER DEFAULT -1"),)),
             ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
-                           ("skills_locked", "INTEGER DEFAULT 1"))),
+                           ("skills_locked", "INTEGER DEFAULT 1"),
+                           # which executor profile (hands) it works with; '' = default
+                           ("profile", "TEXT DEFAULT ''"))),
             # provenance for a flow the model drafted: which model, what it assumed, what
             # it had to drop, and which agents came with it (so Discard can clean up)
             # `job` is the recipe a flow came out of (agentos/jobs.py), or '' for one
@@ -2175,6 +2189,11 @@ class Store:
                 "max_steps, max_seconds, builtin, memory_scope, skills_locked, updated_at, id, "
                 "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (*vals, sid, now))
+        if "profile" in d:
+            # Only when given: every older caller (the wizard, the recipes, a fork)
+            # saves without it, and must not silently move an agent back to default.
+            self.db.execute("UPDATE subagents SET profile=? WHERE id=?",
+                            (str(d.get("profile") or ""), sid))
         self.db.commit()
         return sid
 

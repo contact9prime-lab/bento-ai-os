@@ -42,14 +42,14 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .dlg{width:340px;max-width:88vw;padding:22px 20px 16px;border-radius:var(--r-lg);text-align:center;
   background:var(--glass);backdrop-filter:blur(26px) saturate(1.5);border:1px solid var(--hairline-strong);box-shadow:var(--el-5)}
 .dlg-icn{width:44px;height:44px;margin:0 auto 10px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-2xl);font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  font-size:var(--fs-2xl);font-weight:800;background:var(--acc-grad);color:#06211d}
 .dlg .dlg-t{font-size:var(--fs-base);font-weight:700;margin-bottom:6px}
 .dlg .dlg-m{font-size:var(--fs-sm);color:var(--dim);line-height:1.45;margin-bottom:14px}
 .dlg-b{display:flex;gap:8px;justify-content:center}
 .dlg-b button{flex:1;max-width:140px;padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-md);font-weight:600;
   background:var(--bg3);border:1px solid var(--line);transition:background var(--d-fast) var(--ease-out),filter var(--d-fast) var(--ease-out)}
 .dlg-b button:hover{filter:brightness(1.15)}
-.dlg-b .dlg-ok{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.dlg-b .dlg-ok{background:var(--acc-grad);color:#06211d;border:none}
 .dlg-b .dlg-ok.danger{background:var(--err);color:#2b0606}
 
 .dlg .dlg-in{width:100%;margin-bottom:14px;text-align:left}
@@ -76,7 +76,7 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .procard .pc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .procard .pc-actions button{padding:5px 14px;border-radius:var(--r-md);font-size:var(--fs-sm);font-weight:600;
   background:var(--bg3);border:1px solid var(--line)}
-.procard .pc-actions .pc-go{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.procard .pc-actions .pc-go{background:var(--acc-grad);color:#06211d;border:none}
 
 /* files: semantic hit snippets */
 .fitem .fsnip{font-size:var(--fs-2xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52ch;font-weight:400}

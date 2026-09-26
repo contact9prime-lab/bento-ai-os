@@ -804,6 +804,40 @@ empty choice ("whatever it is set to"). AgentOS does not fetch or invent a
 catalogue for it; what the run actually woke up on comes back from the run
 itself (`engine_info`) and that is what the chip shows.
 
+## An agent is a brain, hands, permissions and skills — and Settings has one place for each
+
+`docs/agents.md`. The model, as it was asked for: **AI providers** are the BRAINS (cloud
+providers with keys, local models, and the agents installed here — Claude Code, Hermes,
+OpenClaw, which moved there from the old Executors page); **Executors** are HANDS — an
+executor profile (`agentos/hands.py`, table `executor_profiles`) says which tools, which
+folders (ro/rw), which web addresses and which MCP servers an agent can REACH; **Agents** is
+the lead agent (always there, named by the person) and the specialists, each given a brain,
+hands, permissions and skills, plus Working together (the team settings) and the map. The code
+still says `executors.py` for the brains — the identifier rename would cost every install its
+saved engine for a word nobody sees, the Missions/`flows` argument again.
+
+Five things will bite whoever touches this next (`tests/test_hands.py`):
+
+- **Hands are a CEILING, checked first.** `PDP._decide` step 2a (rule `reach`) runs before the
+  channel/taint ceilings and before grants, so no grant reaches past it — a read-only agent
+  granted fs.write everywhere still cannot write. It is a capability limit, not a permission;
+  keep permissions in grants. `reach_of` caches per (user, principal) on `hands.generation()`.
+- **Folders are matched on the real path** (`policy._fs_real`), the standing-permission rule.
+  And a SHELL reaches whatever the machine's folder jail allows, not only the profile's
+  folders — the editor, `bento hands show` and the docs say so beside any shell tool. Never
+  imply the folder list bounds a command line.
+- **`default` is today's behaviour** (every tool, `*` folders rw, any web, every MCP), so the
+  feature changes nothing until somebody narrows an agent. Built-ins can be edited, not
+  deleted; deleting a profile moves its agents to default rather than leaving a stale name.
+  `save_subagent` touches `profile` only when the key is given — the wizard, recipes and forks
+  save without it and must not silently widen an agent back to default.
+- **The map is ONE computation.** `agentmap.overview()` → `graph()`/`text()` feeds the cards,
+  the map, `/api/agents*` and `bento agents`; do not compute "who reaches what" a second way
+  in the page.
+- **The bundle is one script, so names collide silently.** A Settings helper called
+  `agentHands` replaced the copilot's "visible hands" glow of the same name with no error;
+  `test_no_two_files_declare_the_same_function` now fails on any duplicate top-level function.
+
 ## The three surfaces are stitched: bar → chat → Studio / Missions
 
 The prompt bar asks, the chat answers, and what the answer BUILT lives in
@@ -1118,7 +1152,9 @@ The bundle is one concatenated `<script>`, in filename order. Two rules follow:
 
 `body.immersive` (`01b-immersive.js` owns the switch, `20-immersive.css` is every rule, Settings →
 Appearance is the only door) lays materials, depth and motion over whichever theme is on. Full
-reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things that have to stay true:
+reasoning in `docs/desktop.md` → "Immersive experience". It is ON by default (2026-09): only an explicit
+`localStorage.immersive === '0'` keeps it off, and every rule stays scoped to the body class so off is
+still byte-for-byte the standard desktop. Four things that have to stay true:
 
 - **Every rule is scoped to the body class**, and every colour is mixed from the theme's tokens
   (`--txt`, `--bg2`, `--acc`), never written as a white or a black. That is what lets one file hold
@@ -1127,7 +1163,7 @@ reasoning in `docs/desktop.md` → "Immersive experience (beta)". Four things th
 - **It adds exactly one blurred surface — the active window — and that is the whole cost.** Measured
   with five windows open in software-rendered Chromium: 16.7ms a frame without it, 83ms with it,
   while the deck, dock and menu-bar blurs together cost nothing measurable. So `glass-lite`
-  (the probe's first step down) drops THAT blur and keeps everything else, at a 94% tint so nothing
+  (the probe's first step down) drops THAT blur and keeps everything else, at a 98% tint so nothing
   beneath reads through unblurred — 16.7ms again. `glass-off` still wins outright.
 - **The active tint floor is 88%.** At 76% the text of the window underneath read through the
   blur in a stacked screenshot — the 16-glass failure ("four windows of text legible through each
@@ -1177,6 +1213,17 @@ The ground-up pass added four more things that are easy to undo by accident:
 Claude Code reading the screenshots from the workspace); its first two fixes — a lit top edge and a
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
+
+**Themes are tokens, and the default is Nova.** A browser that never chose gets `nova` (deep ink,
+an indigo→violet accent, Geist, its own `nova.svg`). The accent as a FILL is `--acc-grad` and the
+text on it is `--on-acc` (`00-tokens-base.css`): `#04211c` was written into two dozen rules for a
+teal accent and read badly on violet, and `test_theme_builder.py` refuses it coming back. The Theme
+Builder (`18-themes-personalize.js`) writes only tokens the desktop already reads (radii, `el-*`,
+glass recipe, `fs-*`, accent), `create_theme` is told the same names, and it says the palette's
+contrast out loud. Its live preview calls `_applyThemeObj`, never `applyThemeObj`: the latter starts a
+view-transition crossfade, and one per slider step painted the previous screen over every window.
+The unblurred active-window tint (`glass-lite`) is 98%, measured: over Chat's text, 10 grey levels
+of contrast showed through at 94%, 5 at 98%, 0 opaque.
 
 ## Characters: one painter, one recipe, every surface
 
@@ -1231,7 +1278,7 @@ Full story in `docs/team.md`. Two features, four rules.
 
 - **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
   The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
-  Settings → AI providers → Team and `bento team` all read it. A pin is used only when
+  Settings → Agents → Working together and `bento team` all read it. A pin is used only when
   `team.own_brains` is on, the provider is enabled, and it has the key it needs. Otherwise the
   agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
   pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default

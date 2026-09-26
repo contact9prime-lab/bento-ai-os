@@ -124,7 +124,7 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
                 from . import users as _users
                 if not teamlink.find(_users.current() or "", label):
                     raise ValueError(f"there is no linked team called '{label}' — link it first "
-                                     f"(Settings → AI providers → Team → Linked teams)")
+                                     f"(Settings → Agents → Working together → Linked teams)")
         elif store is not None and sub not in pending and not store.get_subagent(sub):
             raise ValueError(f"no subagent named '{sub}' — create it in Workflows → Agents first")
         roster.append({"subagent": sub, "why": (item.get("why") or "").strip()[:200]})

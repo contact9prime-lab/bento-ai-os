@@ -126,7 +126,7 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
 .cp-inbar{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--hairline);flex:none;min-width:260px}
 .cp-in{flex:1;resize:none;max-height:88px;font-size:var(--fs-md);border-radius:var(--r-md)}
 .cp-send{width:30px;height:30px;flex:none;border-radius:var(--r-full);font-weight:800;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* chat sidebar: embedded-thread sections */
 .convgrp{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
@@ -245,7 +245,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
   padding:22px 24px;border-radius:var(--r-lg);border:1px dashed var(--line);color:var(--dim)}
 #deck.noresults .deck-none{display:flex}
 .deck-none .dn-ask{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
-  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d}
+  background:var(--acc-grad);color:#06211d}
 
 /* ---- the widgets face ----
    The same card as a group, with the app's own widget page inside it. Heights
@@ -267,7 +267,7 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
 .deck-empty .row{display:flex;gap:8px;margin-top:4px}
 .deck-empty button{padding:7px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:700;
   border:1px solid var(--line);color:var(--txt)}
-.deck-empty .de-studio{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#06211d;border:none}
+.deck-empty .de-studio{background:var(--acc-grad);color:#06211d;border:none}
 .deck-empty button:hover{border-color:var(--acc)}
 body.deck-full .deck-wgroup .deck-wframe{width:100%;height:168px}
 
@@ -372,7 +372,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
   transition:background var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
 .psw i::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:var(--r-full);
   background:var(--txt);opacity:.75;transition:transform var(--d-base) var(--ease-spring),opacity var(--d-fast) var(--ease-out)}
-.psw input:checked + i{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent}
+.psw input:checked + i{background:var(--acc-grad);border-color:transparent}
 .psw input:checked + i::after{transform:translateX(17px);background:#06211d;opacity:1}
 .psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
 .prow.danger .pl b{color:var(--err)}
