@@ -162,3 +162,19 @@
 
 /* Missions: Mine | Build (the flows editor folded in) */
 .job-tabs{margin-bottom:12px}
+
+/* ✦ Describe your own — a mission from a sentence, on the Run tab */
+.job-ai{margin:8px 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg2)}
+.job-ai label{display:block;font-weight:600;font-size:var(--fs-sm);margin-bottom:6px;color:var(--txt)}
+.job-ai-row{display:flex;gap:8px;align-items:flex-start}
+.job-ai-row textarea{flex:1;min-width:0;resize:vertical;font-size:var(--fs-sm)}
+.job-ai-row .pact{flex:none;margin:0}
+.job-ai-out:empty{display:none}
+.job-ai-out{margin-top:10px}
+.job-ai-card{border:1px solid var(--acc);border-radius:var(--r-md);padding:10px 12px;background:color-mix(in srgb,var(--acc) 6%,var(--bg2))}
+.job-ai-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.job-ai-card ul{margin:6px 0 0 18px;padding:0;font-size:var(--fs-sm)}
+.job-ai-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.job-ai-out .err{color:var(--err,#f87171)}
+body.dev-mobile .job-ai-row{flex-direction:column;align-items:stretch}
+body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--tap)}

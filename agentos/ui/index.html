@@ -561,12 +561,75 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .sawrow.on{border-color:var(--acc);background:var(--bg4)}
 .sawrow input{width:auto;margin-top:2px;flex:0 0 auto;accent-color:var(--acc)}
 .sawrow .n{font-size:var(--fs-md);font-weight:600;color:var(--txt);letter-spacing:.1px}
-.sawrow .d{font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
+.sawrow .d{font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45;font-weight:400}
 .sawgrp{font-size:var(--fs-xs);font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:12px 2px 4px}
 .sawchip{padding:5px 12px;border:1px solid var(--line);border-radius:var(--r-full);background:var(--bg3);color:var(--dim);font-size:var(--fs-sm);flex:0 0 auto}
 .sawchip:hover{border-color:var(--acc);color:var(--txt)}
 .sawh{font-size:var(--fs-lg);font-weight:700;margin:0 0 2px}
 .sawsub{font-size:var(--fs-sm);color:var(--dim);margin:0 0 12px;line-height:1.5}
+/* the agent editor (13-fabric.js drawSAW): face + name, named steps, full-width fields */
+.saw-ov{position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+.saw-box{width:640px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg,16px);box-shadow:0 30px 80px rgba(0,0,0,.45);overflow:hidden}
+.saw-head{display:flex;align-items:center;gap:14px;padding:20px 22px 12px}
+.saw-head .sawsub{margin:0}
+.saw-face{width:52px;height:52px;flex:0 0 52px;border-radius:14px;image-rendering:pixelated;background:var(--bg3)}
+.saw-tile{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--on-acc,#fff);background:var(--acc-grad,var(--acc))}
+.saw-x{min-width:var(--tap,36px);min-height:var(--tap,36px);border-radius:var(--r-full);background:transparent;border:1px solid transparent;color:var(--dim)}
+.saw-x:hover{border-color:var(--line);color:var(--txt)}
+.saw-tabs{display:flex;gap:6px;padding:0 22px 12px;border-bottom:1px solid var(--line);overflow-x:auto;scroll-snap-type:x mandatory}
+.saw-tabs button{flex:1 0 auto;scroll-snap-align:start;display:flex;align-items:center;gap:8px;min-height:var(--tap,36px);padding:6px 12px;border-radius:var(--r-full);border:1px solid var(--line);background:var(--bg3);color:var(--dim);font-size:var(--fs-sm);font-weight:600}
+.saw-tabs button b{display:inline-flex;width:20px;height:20px;border-radius:50%;align-items:center;justify-content:center;background:var(--bg4,var(--line));color:var(--txt);font-size:11px}
+.saw-tabs button.on{border-color:var(--acc);color:var(--txt);background:color-mix(in srgb,var(--acc) 14%,var(--bg3))}
+.saw-tabs button.on b,.saw-tabs button.done b{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
+.saw-body{padding:16px 22px;overflow:auto;flex:1 1 auto}
+.saw-body label:not(.sawrow):not(.saw-cap){display:block;margin:12px 0 5px;font-size:var(--fs-sm);font-weight:650;color:var(--txt)}
+.saw-body input:not([type=checkbox]):not([type=radio]),.saw-body textarea,.saw-body select{width:100%;box-sizing:border-box;font-size:var(--fs-md,14px)}
+.saw-body textarea{line-height:1.5;resize:vertical}
+.saw-hint{margin-top:5px;font-size:var(--fs-xs,12px);color:var(--dim2)}
+.saw-ai{padding:14px;border:1px solid color-mix(in srgb,var(--acc) 45%,var(--line));border-radius:var(--r-md,12px);background:color-mix(in srgb,var(--acc) 7%,var(--bg3))}
+.saw-ai label{margin-top:0;font-size:var(--fs-md,14px)}
+.saw-ai .sub{margin-bottom:8px;font-size:var(--fs-sm);color:var(--dim)}
+.saw-ai label{color:var(--acc)}
+.saw-ai-go{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.saw-ai-go .save{margin:0;min-height:var(--tap,36px);padding:0 18px;flex:0 0 auto}
+.saw-or{display:flex;align-items:center;gap:10px;margin:16px 0 2px;color:var(--dim2);font-size:var(--fs-xs,12px)}
+.saw-or::before,.saw-or::after{content:"";flex:1;height:1px;background:var(--line)}
+.saw-at{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--r-md,10px);background:var(--bg3);padding-left:12px}
+.saw-at span{color:var(--dim)}
+.saw-body .saw-at input{border:0;background:transparent;box-shadow:none}
+.saw-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.saw-chips .sawchip{min-height:var(--tap,32px)}
+.saw-list{max-height:260px;overflow:auto;margin:8px 0 2px}
+.saw-skills{max-height:170px;overflow:auto}
+.saw-count{margin:6px 0 10px}
+.saw-caps{display:grid;gap:8px}
+.saw-cap{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--bg3);cursor:pointer;margin:0!important}
+.saw-cap.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--bg3))}
+.saw-cap input{width:auto!important;margin-top:3px;accent-color:var(--acc)}
+.saw-cap .n{font-weight:650;color:var(--txt)}
+.saw-cap .d{font-size:var(--fs-sm);color:var(--dim);font-weight:400;margin-top:2px}
+.saw-lims{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.saw-sum{display:flex;gap:12px;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--bg3)}
+.saw-sum .n{font-weight:700;color:var(--txt)}
+.saw-sum .d{font-size:var(--fs-sm);color:var(--dim);margin-top:3px}
+.saw-sum .persona{font-size:var(--fs-sm);color:var(--dim2);font-style:italic;margin-top:4px}
+.saw-foot{display:flex;align-items:center;gap:8px;padding:12px 22px 16px;border-top:1px solid var(--line)}
+.saw-foot button{min-height:var(--tap,36px);padding:0 16px}
+.saw-sp{flex:1}
+.saw-tabs .s{display:none}
+.saw-box .saw-foot button.save{margin:0;flex:0 0 auto;min-width:110px}
+.saw-foot .save:disabled{opacity:.45}
+@media (max-width:640px){
+  .saw-ov{align-items:stretch}
+  .saw-box{width:100vw;max-width:100vw;max-height:100dvh;height:100dvh;border-radius:0;border:0}
+  .saw-head{padding:calc(14px + env(safe-area-inset-top)) 16px 10px}
+  .saw-tabs{padding:0 16px 10px}.saw-tabs button{flex:1 1 0;justify-content:center}
+  .saw-tabs .l{display:none}.saw-tabs .s{display:inline}
+  .saw-foot>button:first-child{padding:0 8px}
+  .saw-body{padding:12px 16px}
+  .saw-foot{padding:10px 16px calc(12px + env(safe-area-inset-bottom))}
+  .saw-lims{grid-template-columns:1fr}
+}
 .teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:8px;cursor:pointer;transition:border-color var(--d-fast) var(--ease-out);background:var(--bg3)}
 .teamcard:hover{border-color:var(--acc)}
 .teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:var(--acc-grad)}
@@ -675,6 +738,16 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .working .wsub{font-size:var(--fs-xs);color:var(--dim2);opacity:.75;font-variant-numeric:tabular-nums}
 
 .approval{border:1px solid var(--warn);border-radius:var(--r-lg);background:rgba(251,191,36,.06);padding:13px;margin:0 0 12px}
+/* a card floated because the one placed in a feed is hidden (the prompt bar's card
+   under an open window, a chat you are not looking at) — never off a phone's edge */
+.approval.ap-float{position:fixed;right:18px;top:52px;z-index:9999;max-width:440px;width:calc(100vw - 36px);
+  background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5)}
+/* top-right, clear of the toast stack (bottom-right) that announces it */
+body.dev-mobile .approval.ap-float{right:12px;left:12px;width:auto;max-width:none;top:calc(52px + env(safe-area-inset-top,0px))}
+.approval.ap-flash{animation:apFlash .9s ease-out 2}
+@keyframes apFlash{0%{box-shadow:0 0 0 0 var(--warn)}100%{box-shadow:0 0 0 10px transparent}}
+@media (prefers-reduced-motion:reduce){.approval.ap-flash{animation:none;outline:2px solid var(--warn)}}
+body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
 .approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
@@ -2593,6 +2666,22 @@ body.glass-off .win{background:var(--bg)!important}
 
 /* Missions: Mine | Build (the flows editor folded in) */
 .job-tabs{margin-bottom:12px}
+
+/* ✦ Describe your own — a mission from a sentence, on the Run tab */
+.job-ai{margin:8px 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg2)}
+.job-ai label{display:block;font-weight:600;font-size:var(--fs-sm);margin-bottom:6px;color:var(--txt)}
+.job-ai-row{display:flex;gap:8px;align-items:flex-start}
+.job-ai-row textarea{flex:1;min-width:0;resize:vertical;font-size:var(--fs-sm)}
+.job-ai-row .pact{flex:none;margin:0}
+.job-ai-out:empty{display:none}
+.job-ai-out{margin-top:10px}
+.job-ai-card{border:1px solid var(--acc);border-radius:var(--r-md);padding:10px 12px;background:color-mix(in srgb,var(--acc) 6%,var(--bg2))}
+.job-ai-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.job-ai-card ul{margin:6px 0 0 18px;padding:0;font-size:var(--fs-sm)}
+.job-ai-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.job-ai-out .err{color:var(--err,#f87171)}
+body.dev-mobile .job-ai-row{flex-direction:column;align-items:stretch}
+body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--tap)}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -8535,7 +8624,10 @@ function dockCtxMenu(e,id,a){
   if(a.multi||!open.length)items.push({label:open.length?'New window':'Open',fn:()=>openAppNew(id)});
   if(open.length)items.push({label:'Close '+(open.length>1?'all windows':'window'),fn:()=>open.forEach(closeWin)});
   items.push(null,{label:'Remove from Dock',fn:()=>{
-    DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();toast('removed from dock')}});
+    DOCK=DOCK.filter(x=>x!==id);localStorage.setItem('dock',JSON.stringify(DOCK));buildDock();
+    // say the way back: a removed icon stays removed, and "where did the Office go?" was the report
+    toast('removed '+(a.title||id)+' from the dock — the Launcher still has it; right-click it there → Pin to dock',
+      {label:'Undo',go:()=>pinToDock(id)})}});
   showCtxItems(e,items);
 }
 /* ---- dock magnification: continuous neighbor falloff, macOS-style ---- */
@@ -9885,6 +9977,9 @@ function actSync() {
   actTick();
 }
 function actTick() {
+  // a turn waiting on a person: its "waiting for you to approve …" rows become doors
+  // to the card (approvalReveal, 09-websocket.js) — see the click listener below
+  document.body.classList.toggle('act-approving', Object.values(ACT).some(a => a.phase === 'approve'));
   actPaintTimers();
   if (typeof tickWorking === 'function') tickWorking();
   if (typeof mfPaint === 'function') mfPaint();
@@ -9904,6 +9999,15 @@ function actPaintTimers() {
     el.textContent = 'running · ' + actDur(Date.now() - (+el.dataset.t0 || Date.now()));
   });
 }
+
+/* The waiting rows (Chat's #working, an app panel's .mf-working) say "waiting for you
+   to approve …" — a question, so a tap on one shows the card to answer it, wherever
+   the card was put. */
+document.addEventListener('click', e => {
+  if (!document.body.classList.contains('act-approving')) return;
+  if (e.target.closest && e.target.closest('#working, .mf-working')
+      && typeof approvalReveal === 'function') approvalReveal();
+});
 /* ================= websocket ================= */
 /* Who is answering the turn currently streaming. `var`, not `let`: the bundle is
    one concatenated script and a top-level `let` here would be in the temporal
@@ -9989,6 +10093,38 @@ const CHAT_SINKS=new Map();   // conversation_id -> {start,delta,thinking,toolSt
 function sinkOn(cid,sink){if(cid)CHAT_SINKS.set(cid,sink)}
 function sinkOff(cid){CHAT_SINKS.delete(cid)}
 /* one approval card builder for every surface (Chat inline, floating, sinks) */
+/* Approvals waiting on this person, by id — so a card can be SHOWN again wherever
+   they are looking: the toast's Review, the "waiting for you" line, a floating copy
+   when the placed one is hidden. Copies are fine: approval_resolved closes them all. */
+var APPROVALS={};
+/* On screen, not merely in the document: a card inside the prompt bar's hidden answer
+   card has a box but nobody can see it. `offsetParent` is no test — a floating card is
+   position:fixed and has none. */
+function approvalShown(b){
+  if(!b||b.classList.contains('resolved'))return false;
+  const r=b.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0))return false;
+  if(b.checkVisibility)return b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+  return getComputedStyle(b).visibility!=='hidden';
+}
+function approvalVisible(id){
+  return [...document.querySelectorAll('[id="ap-'+id+'"]')].some(approvalShown);
+}
+function approvalFloat(ev){
+  if([...document.querySelectorAll('[id="ap-'+ev.id+'"].ap-float')].length)return;
+  const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
+  document.body.appendChild(box);
+  box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
+  return box;
+}
+function approvalReveal(id){
+  const ev=id?APPROVALS[id]:APPROVALS[Object.keys(APPROVALS).pop()];
+  if(!ev)return toast('nothing is waiting for you now');
+  const shown=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown);
+  const box=shown||approvalFloat(ev);if(!box)return;
+  box.scrollIntoView({block:'center',behavior:'smooth'});
+  box.classList.remove('ap-flash');void box.offsetWidth;box.classList.add('ap-flash');
+}
 function buildApprovalBox(ev,cur){
   const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
   // Words, not a JSON dump: the thing being approved should be readable at a
@@ -10081,6 +10217,8 @@ function aiBubble(){
       const cid=[...RUNNING][0]||AIB.last||currentConv;
       openApp('chat');if(cid)openConv(cid);
       AIB.seen=0;aiBubble();
+      // "waiting for you to approve …" is a question: tapping it shows the card
+      if(Object.keys(APPROVALS).length)setTimeout(()=>approvalReveal(),300);
     };
   }
   const n=RUNNING.size;
@@ -10155,8 +10293,8 @@ function handle(ev){
     case 'turn_start':{
       if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id,ev);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
-      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
-                          model:ev.model==='claude-code'?'':(ev.model||''),
+      if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
+                          model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
                           speaker:ev.speaker||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
@@ -10268,17 +10406,19 @@ function handle(ev){
     case 'approval_request':{
       // the turn is not slow here, it is waiting on a human — say which
       actMove(_cid,'approve',{name:ev.name||''});
+      APPROVALS[ev.id]=ev;
       const box=buildApprovalBox(ev,_cur);
       if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
       else if(_cur&&feed){
         if(!curBody)startAssistant();
         if(curBody)curBody.parentNode.insertBefore(box,curBody);
-      }else{ // approval from a chat you're not looking at — float it, never deadlock
-        box.style.cssText='position:fixed;right:18px;bottom:70px;z-index:9999;max-width:440px;box-shadow:0 18px 50px rgba(0,0,0,.5)';
-        document.body.appendChild(box);
-        box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
-      }
-      toast('approval needed'); scrollDown(); break;}
+      }else approvalFloat(ev);  // a chat you're not looking at — float it, never deadlock
+      // Placed is not SEEN: a turn from the prompt bar puts its card in the bar's
+      // answer card, which hides the moment a window opens — found as a hand-over
+      // to the toolsmith that waited five minutes on a question nobody could see.
+      requestAnimationFrame(()=>{if(APPROVALS[ev.id]&&!approvalVisible(ev.id))approvalFloat(ev)});
+      toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+      scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
@@ -10372,6 +10512,7 @@ function handle(ev){
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
+      delete APPROVALS[ev.id];
       // answered somewhere else (or nobody answered): this screen's copy says so and
       // stops offering buttons — a floating one leaves after a moment
       // one page can draw the same card twice (Chat and a floating copy), so all of them
@@ -10763,7 +10904,7 @@ async function loadConvs(){
   box.innerHTML='';
   // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
   // their own sections so app-scoped exchanges never drown the real chats
-  const groups=[['Desktop',c=>c.origin==='omni'],
+  const groups=[['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
@@ -11039,9 +11180,12 @@ function paintForwardChip(){
    text — calling that "Aria" is the kind of quiet mislabelling that makes a
    forwarding machine confusing, and the model is shown alongside so the answer
    to "what is this running on" is on screen rather than something you ask. */
+/* the agents a turn can be forwarded to (executors.DRIVEN) — kept in step by
+   tests/test_executors_more.py, since the label is the only place the page names them */
+var EXEC_TITLES={'claude-code':'Claude Code','gemini-cli':'Gemini CLI','codex':'Codex'};
 function engineLabel(engine,model){
-  const mark={'claude-code':'◈'}[engine]||'▲';
-  const name={'claude-code':'Claude Code'}[engine]||agentName();
+  const mark=EXEC_TITLES[engine]?'◈':'▲';
+  const name=EXEC_TITLES[engine]||agentName();
   const m=(model||'').trim();
   return `${mark} ${esc(name)}${m?`<span class="whomdl">${esc(m)}</span>`:''}`;
 }
@@ -11344,7 +11488,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Gemini CLI, Codex, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -12132,7 +12276,7 @@ async function renderExecutors(){
       {desc:'Adds “Claude Code” to the model picker in Chat. Each turn you send there is delegated to it.',f:'enable claude code executor'})}
     ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in — run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal. Delegated runs will use that subscription.</div>`:''}
     ${pRow('Folder',pText('s-exec-ws',c.workspace),
-      {desc:'The only directory it can read or write. Everything else on the machine is out of reach.',f:'executor workspace folder'})}
+      {desc:'The only directory it can read or write. Everything else on the machine is out of reach. The same folder and tools bound Gemini CLI and Codex when one of them is the brain.',f:'executor workspace folder gemini codex'})}
     ${pRow('Let it work on AgentOS itself',pSwitch('s-exec-src',c.allow_source),
       {desc:`Also gives it <code>${esc(ex.source_root||'')}</code> — the source of this OS — so it can fix AgentOS's own tools and windows. It is told that the UI is built from <code>ui/src</code> and that the suite must pass. Off unless you turn it on: the OS rewriting itself is its own decision.`,
        f:'executor agentos source develop self edit'})}
@@ -14190,15 +14334,15 @@ async function renderFabAgents(body){
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
-    ||'<p class="mut">No subagents yet — create your first specialist.</p>';
+    ||'<p class="mut">No specialists yet — press ＋ New agent and describe the first one in a sentence.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
-    <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New subagent</button>
+    <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New agent</button>
     ${cards}
     <p class="mut" style="margin-top:10px">Address any of them directly from Agent Chat (or Telegram / TUI) with
-    <code>@name your task</code> — the run streams into the chat and is tracked in Observability.
+    <code>@name your task</code> — the run streams into the chat and is tracked under Runs.
     Click a card to edit. <i>inherit</i> follows the OS model; pin one to mix (e.g. generation local, validation on Claude).</p></div>`;
 }
-async function delSubagent(id){if(!await osConfirm('Delete this subagent?','',{danger:true,confirmText:'Delete'}))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
+async function delSubagent(id){if(!await osConfirm('Delete this agent?','',{danger:true,confirmText:'Delete'}))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
 
 /* --- subagent wizard: pick from what exists (tools, skills, models), don't type it --- */
 var SAW=null;   // `var`: the flow editor borrows this wizard, so it is reached from more
@@ -14258,75 +14402,97 @@ async function sawAi(){
     +((dr.warnings||[]).join(' · ')))
     +' <span class="mut">not saved yet</span>';
 }
+/* The agent editor. Reported as "the UI for the agent needs to be better": three dots
+   nobody could read as steps, a describe box and fields half as wide as the dialog,
+   "subagent" on every line, and a Save only at the end of a drafted agent's third page.
+   Now: the agent's face and name at the top, the three steps as named tabs you can jump
+   between, describing it FIRST and at full width, trust as three plain choices rather
+   than a select, and Save on every step once it has a name — a drafted agent is often
+   ready as it arrives. One editor for Missions → Build and Settings → Agents. */
+var SAW_STEPS=[['Who it is','Who'],['What it can use','Tools'],['Limits & trust','Limits']];
+var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
+  ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
+  ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
+function sawFace(d){
+  const img=d.name&&typeof avatarImg==='function'&&SAW.exists?avatarImg(d.name,'saw-face'):'';
+  return img||`<div class="saw-face saw-tile" aria-hidden="true">${esc((d.name||'?')[0].toUpperCase())}</div>`;
+}
 function drawSAW(){
   let ov=$('#saw-ov');
   if(!SAW){ov&&ov.remove();return}
-  if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center';
+  if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.className='saw-ov';
     ov.onclick=e=>{if(e.target===ov)sawClose()};document.body.appendChild(ov);}
   const d=SAW.d,st=SAW.step;
-  const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=st?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
   let inner='';
   if(st===1){
-    const opts=['<option value="">inherit from control plane (OS default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
-    inner=`<div class="sawh">${SAW.exists?'Edit':'New'} subagent</div>
-      <div class="sawsub">A specialist team member with its own persona, model, and tools. In chat you'll address it as <code>@name</code>.</div>
-      <div class="provbox" style="margin-bottom:10px">
-        <div class="sub" style="margin-bottom:4px">${SAW.exists
-          ?'Ask for a change and it rewrites the persona and tools below — nothing is saved until you press Save.'
-          :'Describe what you need and it fills the whole thing in.'}</div>
-        <textarea id="sw-ai" rows="2" placeholder="${SAW.exists
+    const opts=['<option value="">this machine\'s brain (the default)</option>']
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+    inner=`<div class="saw-ai">
+        <label for="sw-ai">✦ ${SAW.exists?'Ask for a change':'Describe it'}</label>
+        <div class="sub">${SAW.exists
+          ?'It rewrites the persona and tools below. Nothing is saved until you press Save.'
+          :'Say what you need in a sentence, and it fills in all three steps. You can edit anything after.'}</div>
+        <textarea id="sw-ai" rows="3" placeholder="${SAW.exists
           ?'let it read files too · make it stricter about sources'
           :'someone who watches my disk space and tells me when it is filling up'}">${esc(SAW.ask||'')}</textarea>
-        <div class="row" style="margin-top:6px"><button class="save" style="margin:0;flex:0 0 120px"
-            onclick="sawAi()">✦ ${SAW.exists?'Apply':'Draft it'}</button>
-          <div class="grow"><span id="sw-ai-status" class="sub"></span></div></div>
+        <div class="saw-ai-go"><button class="save" onclick="sawAi()">✦ ${SAW.exists?'Apply':'Draft it'}</button>
+          <span id="sw-ai-status" class="sub" aria-live="polite"></span></div>
       </div>
-      <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''} style="font-size:14px">
-      <label>Persona — who is it, how does it work?</label>
-      <textarea id="sw-soul" rows="4" style="font-size:13px;line-height:1.5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
-      <label>Brain</label><select id="sw-model" style="font-size:13px">${opts}</select>
-      <p class="mut" style="font-size:12px">Pin a model to mix smartness across the team — e.g. this one on Claude while others run local.</p>`;
+      <div class="saw-or"><span>${SAW.exists?'or edit it yourself':'or fill it in yourself'}</span></div>
+      <label for="sw-name">Name</label>
+      <div class="saw-at"><span>@</span><input id="sw-name" value="${esc(d.name)}" placeholder="researcher" autocomplete="off" ${SAW.exists?'disabled':''}></div>
+      <div class="sub saw-hint">${SAW.exists?'The name is how it is addressed and granted, so it cannot change.':'Lower-case, one word. In chat you address it as <code>@name</code>.'}</div>
+      <label for="sw-soul">Persona — who is it, and how does it work?</label>
+      <textarea id="sw-soul" rows="5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
+      <div class="sub saw-hint">A pinned model is used when Settings → Agents → Working together lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
     const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
       +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
     const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.description||'').slice(0,110))}</div></div></label>`).join('')
       ||'<p class="mut">No skills installed yet — add some in the Skills app.</p>';
-    inner=`<div class="sawh">Capabilities</div>
-      <div class="sawsub">Pick from what's already on this OS — tools, connected MCP servers, installed skills. Nothing to type.</div>
-      <div class="row" style="margin:0 0 8px;flex-wrap:wrap;gap:6px">${chips}</div>
-      <input id="sw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}" style="font-size:13.5px;padding:10px 12px">
-      <div id="sw-list" style="max-height:230px;overflow:auto;margin:8px 0 2px"></div>
-      <div id="sw-count" class="sawsub" style="margin:6px 0 10px"></div>
+    inner=`<div class="sawsub">Pick from what is already on this machine — its tools, connected MCP servers and installed skills. Nothing to type.</div>
+      <div class="saw-chips">${chips}</div>
+      <input id="sw-q" class="saw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}">
+      <div id="sw-list" class="saw-list"></div>
+      <div id="sw-count" class="sawsub saw-count"></div>
       <div class="sawgrp">Skills it should follow</div>
-      <div style="max-height:150px;overflow:auto">${skl}</div>
-      <p class="mut" style="margin-top:8px;font-size:12px">Memory and skills access (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) is always included.</p>`;
+      <div class="saw-skills">${skl}</div>
+      <p class="mut saw-hint">Memory and skills (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) are always included. What it may actually DO with a tool is still decided in Permissions.</p>`;
   }else{
-    inner=`<div class="sawh">Limits &amp; trust</div>
-      <div class="sawsub">How independent is it, and how much may one run cost?</div>
-      <label>Autonomy cap (never exceeds the OS level)</label>
-      <select id="sw-cap" style="font-size:13px"><option value="paranoid" ${d.autonomy_cap==='paranoid'?'selected':''}>paranoid — everything needs approval</option>
-        <option value="balanced" ${d.autonomy_cap==='balanced'?'selected':''}>balanced — risky actions auto-denied when unattended</option>
-        <option value="full" ${d.autonomy_cap==='full'?'selected':''}>full — may act freely (careful)</option></select>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1"><label>Max steps</label><input id="sw-steps" type="number" value="${d.max_steps}"></div>
-        <div style="flex:1"><label>Max seconds</label><input id="sw-secs" type="number" value="${d.max_seconds}"></div>
+    const caps=SAW_CAPS.map(([v,t,x])=>`<label class="saw-cap ${d.autonomy_cap===v?'on':''}">
+        <input type="radio" name="sw-cap" value="${v}" ${d.autonomy_cap===v?'checked':''}
+          onchange="document.querySelectorAll('.saw-cap').forEach(e=>e.classList.toggle('on',e.contains(this)))">
+        <div><div class="n">${t}</div><div class="d">${x}</div></div></label>`).join('');
+    inner=`<div class="sawsub">How independent is it, and how much may one run take?</div>
+      <div class="saw-caps" role="radiogroup" aria-label="How much it may do on its own">${caps}</div>
+      <div class="saw-lims">
+        <div><label for="sw-steps">Most steps in one run</label><input id="sw-steps" type="number" min="1" value="${d.max_steps}"></div>
+        <div><label for="sw-secs">Most seconds in one run</label><input id="sw-secs" type="number" min="10" value="${d.max_seconds}"></div>
       </div>
-      <div class="provbox" style="margin-top:14px"><div class="sawgrp" style="margin-top:0">Summary</div>
-        <div class="meta" style="font-size:12.5px;color:var(--dim)"><b style="color:var(--txt)">${esc(d.name||'?')}</b> · ${esc(d.model||'inherits OS model')} · ${d.tools.length||'safe set'} tools${d.skills.length?' · '+d.skills.length+' skills':''} · ≤ ${esc(d.autonomy_cap)}</div>
-        <div class="persona" style="font-size:12px;color:var(--dim2);font-style:italic;margin-top:4px">${esc((d.soul||'').slice(0,160))}</div>
-        <div class="meta" style="font-size:12px;color:var(--dim2);margin-top:6px">In chat: <code>@${esc(d.name||'name')} your task</code></div></div>`;
+      <div class="saw-sum">
+        ${sawFace(d)}
+        <div class="grow"><div class="n">@${esc(d.name||'name')}</div>
+          <div class="d">${esc(d.model||'this machine\'s brain')} · ${d.tools.length?d.tools.length+' tools':'the safe read-only set'}${d.skills.length?' · '+d.skills.length+' skills':''}</div>
+          <div class="persona">${esc((d.soul||'').slice(0,180))||'<span class="mut">no persona yet</span>'}</div>
+          <div class="d">In chat: <code>@${esc(d.name||'name')} your task</code></div></div></div>`;
   }
-  ov.innerHTML=`<div style="width:620px;max-width:94vw;max-height:88vh;overflow:auto;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:24px 26px" onclick="event.stopPropagation()">
-    ${inner}
-    <div class="row" style="margin-top:16px;align-items:center">
-      <div class="grow">${dot(1)}${dot(2)}${dot(3)}</div>
-      <button onclick="sawClose()">Cancel</button>
+  const tabs=SAW_STEPS.map((t,i)=>`<button role="tab" aria-selected="${i+1===st}" class="${i+1===st?'on':''}${i+1<st?' done':''}" onclick="sawGo(${i+1})"><b>${i+1}</b><span class="l">${t[0]}</span><span class="s">${t[1]}</span></button>`).join('');
+  ov.innerHTML=`<div class="saw-box" role="dialog" aria-modal="true" aria-label="${SAW.exists?'Edit':'New'} agent" onclick="event.stopPropagation()">
+    <div class="saw-head">${sawFace(d)}
+      <div class="grow"><div class="sawh">${SAW.exists?'Edit @'+esc(d.name):'New agent'}</div>
+        <div class="sawsub">${SAW.exists?'A specialist on your team.':'A specialist on your team: its own persona, tools and limits.'}</div></div>
+      <button class="saw-x" title="Close" aria-label="Close" onclick="sawClose()">✕</button></div>
+    <div class="saw-tabs" role="tablist">${tabs}</div>
+    <div class="saw-body">${inner}</div>
+    <div class="saw-foot">
+      <button onclick="sawClose()">Cancel</button><span class="saw-sp"></span>
       ${st>1?`<button onclick="sawStep(-1)">← Back</button>`:''}
-      ${st<3?`<button class="save" style="margin:0;flex:0 0 100px" onclick="sawStep(1)">Next →</button>`
-            :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save</button>`}
+      ${st<3?`<button onclick="sawStep(1)">Next →</button>`:''}
+      <button class="save" onclick="sawSave()" ${d.name||st===1?'':'disabled'}>Save</button>
     </div></div>`;
+  if(st===1){const n=$('#sw-name');if(n)n.oninput=()=>{const f=$('#saw-ov .saw-head .saw-tile');if(f)f.textContent=(n.value||'?')[0].toUpperCase()}}
   if(st===2){ // search filters the list in place — the field never loses focus
     const q=$('#sw-q');
     q.oninput=()=>{SAW.q=q.value;sawRefreshList()};
@@ -14358,9 +14524,12 @@ function sawRefreshList(){
 function sawCollect(){
   const d=SAW.d;
   if(SAW.step===1){if($('#sw-name'))d.name=$('#sw-name').value.trim();d.soul=$('#sw-soul').value;d.model=$('#sw-model').value;}
-  if(SAW.step===3){d.autonomy_cap=$('#sw-cap').value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
+  if(SAW.step===3){const c=document.querySelector('input[name="sw-cap"]:checked');if(c)d.autonomy_cap=c.value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
 }
-function sawStep(delta){sawCollect();if(SAW.step===1&&delta>0&&!SAW.d.name)return toast('give it a name');SAW.step=Math.min(3,Math.max(1,SAW.step+delta));drawSAW()}
+function sawStep(delta){sawGo(SAW.step+delta)}
+function sawGo(n){sawCollect();n=Math.min(3,Math.max(1,n));
+  if(SAW.step===1&&n>1&&!SAW.d.name){toast('give it a name first');const i=$('#sw-name');if(i)i.focus();return}
+  SAW.step=n;drawSAW()}
 function sawTool(name,on){const t=SAW.d.tools;if(on&&!t.includes(name))t.push(name);if(!on)SAW.d.tools=t.filter(x=>x!==name);
   const c=$('#sw-count');if(c)sawRefreshCount();}
 function sawRefreshCount(){const d=SAW.d,c=$('#sw-count');
@@ -14371,18 +14540,20 @@ function sawSkill(name,on){const s=SAW.d.skills;if(on&&!s.includes(name))s.push(
 function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];sawRefreshList()}
 async function sawSave(){
   sawCollect();
-  const d=SAW.d;if(!d.name)return toast('name required');
+  const d=SAW.d;if(!d.name){toast('give it a name first');const i=$('#sw-name');if(i)i.focus();return}
   const cb=SAW.onSaved;
-  await fetch('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  // a refusal is said, and the editor stays open with everything typed in it
+  try{await apiJSON('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})}
+  catch(e){toast('could not save @'+d.name+': '+(e.message||e),{kind:'err'});return}
   SAW=null;drawSAW();
   if(cb){cb(d.name);return}          // an editor borrowed the wizard; it owns what happens next
-  toast('subagent saved — address it in chat with @'+d.name);refreshApp('fabric');
+  toast('saved — address it in chat with @'+d.name,{label:'Try it',go:()=>testSubagent(d.name)});refreshApp('fabric');
 }
 function testSubagent(name){
   // test runs live in the chat: open it with the mention prefilled
   openApp('chat');
   setTimeout(()=>{const i=$('#input');if(i){i.value='@'+name+' ';i.focus();i.dispatchEvent(new Event('input'))}},250);
-  toast('type the task after @'+name+' — the run streams right here and lands in Observability');
+  toast('type the task after @'+name+' — the run streams right here and lands under Missions → Build → Runs');
 }
 
 /* The static-DAG "workflow" engine, its tool and its API are gone (2026-09). A flow
@@ -16195,6 +16366,13 @@ async function renderJobs(body,w){
     ${jobSummaryLine(JOBS.summary)}
     ${rows||`<p class="mut">Nothing standing yet. Say who you are, pick a mission, and it starts today — inside exactly the permissions it prints.</p>`}
     <h3 style="margin-top:18px">${rows?'Give it another mission':'Give it a mission'}</h3>
+    <div class="job-ai">
+      <label for="job-ai-in">✦ Describe your own</label>
+      <div class="job-ai-row"><textarea id="job-ai-in" rows="2" maxlength="2000"
+        placeholder="Watch my Downloads folder and tell me on Telegram what lands there"></textarea>
+        <button class="pact" id="job-ai-go">Draft it</button></div>
+      <div class="job-ai-out" aria-live="polite">${JOBS.aiDraft?jobAIDraftHTML(JOBS.aiDraft):''}</div>
+    </div>
     <p class="mut job-whoq">${who?`Missions for a ${esc(who.label.toLowerCase())} first. Not you? Pick again.`:'Who are you? The catalogue opens on your missions from then on.'}</p>
     ${jobPersonaBar()}
     <div class="job-catalogue">${jobCards(JOBS.pick)}</div>
@@ -16206,6 +16384,67 @@ async function renderJobs(body,w){
   };
   jobPickable(body,body._jobAfter);
   jobWirePersona(body,()=>renderJobs(body));
+  const go=body.querySelector('#job-ai-go'),inp=body.querySelector('#job-ai-in');
+  go.onclick=()=>jobDraftAI(body);
+  inp.onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))jobDraftAI(body)};
+  jobAIWire(body);
+}
+/* A mission from a sentence. The same draft as Build → Flows (POST /api/flows/draft,
+   answered by this machine's brain — Claude Code included), shown HERE with what it
+   would be allowed to do, because that list and the save are one computation
+   (flows.declared_grants). It lands switched off: "Turn it on" is the grant, and it is
+   the person's. Build shows it in full, with the editor. */
+async function jobDraftAI(body){
+  const inp=body.querySelector('#job-ai-in'),out=body.querySelector('.job-ai-out'),go=body.querySelector('#job-ai-go');
+  const req=(inp.value||'').trim();if(!req)return toast('say what it should do');
+  go.disabled=true;out.innerHTML='<p class="mut">drafting… (the brain designs it — this can take a minute)</p>';
+  let r;
+  try{r=await apiJSON('/api/flows/draft',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({request:req})})}
+  catch(e){const o=body.querySelector('.job-ai-out'),g=body.querySelector('#job-ai-go');
+    if(g)g.disabled=false;if(o)o.innerHTML='<p class="err">'+esc(e.message||String(e))+'</p>';return}
+  // Kept in state, and the box looked up AGAIN: saving the draft broadcasts
+  // `fabric_defs`, which re-renders this window while the request is still in flight —
+  // the answer was written into the old, detached box and never seen.
+  JOBS.aiDraft=r;
+  const now=body.querySelector('.job-ai-out');
+  if(now)now.innerHTML=jobAIDraftHTML(r);
+  const g2=body.querySelector('#job-ai-go'),i2=body.querySelector('#job-ai-in');
+  if(g2)g2.disabled=false;if(i2)i2.value='';
+  jobAIWire(body);
+}
+function jobAIDraftHTML(r){
+  const f=r.flow,grants=(r.would_grant||[]).filter(g=>g.effect!=='deny');
+  const trig=(f.triggers||[]).map(t=>t.kind==='cron'?'on a schedule':t.kind==='os_event'?(t.config&&t.config.event==='file_change'?'when '+(t.config.path||'a folder')+' changes':'on '+(t.config&&t.config.event||'an event')):t.kind).join(', ');
+  return `<div class="job-ai-card">
+    <div class="job-ai-h"><b>${esc(f.name)}</b> <span class="brainchip">off until you turn it on</span>
+      <span style="flex:1"></span><button class="endbtn" data-x aria-label="Dismiss">✕</button></div>
+    <p>${esc(f.mission||f.description||'')}</p>
+    <p class="mut">${esc(trig?'Starts '+trig+'.':'Starts when you run it.')} Team: ${esc((f.roster||[]).map(x=>x.subagent).join(', ')||'—')}</p>
+    <details${grants.length<=6?' open':''}><summary>It would be allowed to (${grants.length})</summary>
+      <ul>${grants.map(g=>`<li>${esc(jobGrantWords(g))}</li>`).join('')}</ul></details>
+    <div class="job-ai-btns"><button class="pact" data-on>Turn it on</button>
+      <button class="endbtn" data-build>Open in Build</button></div></div>`;
+}
+/* A declared grant in words: "use read_file", "read ~/Downloads". The row's note is the
+   provenance ("granted by flow …") — true, and the same on every line, which told the
+   person nothing about what they were agreeing to. */
+function jobGrantWords(g){
+  const r=String(g.resource||''),tail=r.replace(/^[a-z]+:(subagent\/)?/,'');
+  const who=g.principal_kind==='subagent'?g.principal_id+' may ':'it may ';
+  const verb={'tool.use':'use','fs.read':'read','fs.write':'write to','net.fetch':'fetch from',
+    'agent.invoke':'hand work to','memory.read':'read memory','memory.write':'write memory',
+    'mail.read':'read your mail','calendar.read':'read your calendar','skill.use':'use the skill',
+    'agent.message':'ask','mcp.call':'call the MCP server'}[g.action];
+  if(!verb)return who+g.action+(tail?' '+tail:'');
+  return who+verb+(tail&&!/memory|mail|calendar/.test(verb)?' '+tail:'');
+}
+function jobAIWire(body){
+  const out=body.querySelector('.job-ai-out'),r=JOBS.aiDraft;if(!out||!r)return;
+  const f=r.flow,q=s=>out.querySelector(s);
+  if(q('[data-on]'))q('[data-on]').onclick=async()=>{JOBS.aiDraft=null;await enableFlow(f.name,true);renderJobs(body)};
+  if(q('[data-build]'))q('[data-build]').onclick=()=>{JOBS.aiDraft=null;FLOW_FOCUS=f.name;JOBS.tab='build';renderJobs(body)};
+  if(q('[data-x]'))q('[data-x]').onclick=()=>{JOBS.aiDraft=null;out.innerHTML=''};
 }
 
 async function jobRunNow(name){
@@ -23863,24 +24102,32 @@ function omniRun(i){
 /* palIntentAsync (model-classified fallback) appends into whichever list is live */
 function palRenderList(){omniPaint()}
 
-/* The bar's own thread — "◉ Desktop" in Chat's sidebar.
-   It is CREATED here rather than waited for. The turn you type can sit queued
+/* The bar's threads — "From the prompt bar" in Chat's sidebar.
+   Each is CREATED here rather than waited for. The turn you type can sit queued
    behind another one for half a minute, and while it did there was no
    conversation anywhere: the sidebar showed nothing, "Open in Chat" landed on
    whatever was open before, and the bar looked like it had swallowed the
    question. A thread that exists the moment you press Enter is the difference
    between a prompt bar and a text field that maybe did something. */
-async function omniThread(){
-  if(OMNI.cid)return OMNI.cid;
+/* Which conversation a question from the bar goes to. It used to be ONE thread for
+   ever, titled "◉ Desktop": every question anybody asked the bar landed at the bottom
+   of it, so Chat's list showed "Desktop" and nothing else, and what was asked read as
+   lost. Now a new question starts its own thread, titled with the question; a
+   follow-up asked while the last answer's card is still up continues that thread,
+   because that is a conversation. The thread exists before the send (POST
+   /api/conversations) so the sidebar shows it the moment Enter is pressed. */
+function omniTitle(q){
+  const t=String(q||'').replace(/\s+/g,' ').trim();
+  return t.length>60?t.slice(0,59).replace(/\s+\S*$/,'')+'…':(t||'A question');
+}
+async function omniThread(q){
+  const open=[...document.querySelectorAll('#omnicards .ocard')].some(c=>c.dataset.cid===OMNI.cid);
+  if(OMNI.cid&&open)return OMNI.cid;
+  OMNI.cid=null;
   try{
-    const d=await (await fetch('/api/conversations')).json();
-    const hit=(d.conversations||[]).find(c=>c.origin==='omni');
-    if(hit)OMNI.cid=hit.id;
-  }catch(e){}
-  if(!OMNI.cid)try{
     const r=await fetch('/api/conversations',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({origin:'omni',title:'◉ Desktop',surface:'gui'})});
+      body:JSON.stringify({origin:'omni',title:omniTitle(q),surface:'gui'})});
     const d=await r.json();
     if(d&&d.id){OMNI.cid=d.id;if(typeof loadConvs==='function')loadConvs()}
   }catch(e){}
@@ -23899,7 +24146,9 @@ function omniCard(question){
   const close=()=>{popOut(card,()=>{card.remove();
     if(!wrap.children.length){wrap.classList.remove('raised');if(!OMNI.pop)omniSummon(false)}})};
   card.querySelector('.oc-x').onclick=close;
-  card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
+  // this card's own thread — a later question may already have started another one
+  card.dataset.cid=OMNI.cid||'';
+  card.querySelector('.oc-chat').onclick=()=>{const cid=card.dataset.cid||OMNI.cid;openApp('chat');if(cid)openConv(cid);close()};
   card._close=close;
   return {card,feed:card.querySelector('.oc-feed'),close};
 }
@@ -23919,7 +24168,7 @@ function omniContext(){
   return [
     `You are ${agentName()}, answering from the AgentOS omnibar — the always-present prompt bar on the desktop.`,
     `The user asked in passing; be FAST and BRIEF (1-3 sentences unless asked for more), and prefer acting`,
-    `through tools over explaining. This is the persistent Desktop thread.`,
+    `through tools over explaining. It is its own thread in Chat, titled with what they asked.`,
     open.length?`Open right now: ${open.join(', ')}. Current desktop ${curDesk}/${DESKS}, theme ${CURRENT_THEME}.`:'',
   ].filter(Boolean).join('\n');
 }
@@ -23956,7 +24205,7 @@ async function omniAsk(q){
   const inp=$('#omni-in');inp.value='';
   OMNI.imgs=[];omniShots();
   omniPop(false);
-  await omniThread();
+  await omniThread(q);
   const {card,feed,close}=omniCard(q);
   const stopBtn=card.querySelector('.oc-stopnow');
   stopBtn.onclick=()=>{stopAgent(OMNI.cid);stopBtn.textContent='stopping…';stopBtn.disabled=true};
@@ -23968,8 +24217,8 @@ async function omniAsk(q){
     // linger, then fade — unless the pointer is on it or an approval is pending
     setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
   }});
-  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:'◉ Desktop',images:imgs,
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id},
+  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
+    context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
       // Only one stop on a card that has not started: "Stop" would kill the turn

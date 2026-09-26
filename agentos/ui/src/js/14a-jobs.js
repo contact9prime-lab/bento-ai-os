@@ -344,6 +344,13 @@ async function renderJobs(body,w){
     ${jobSummaryLine(JOBS.summary)}
     ${rows||`<p class="mut">Nothing standing yet. Say who you are, pick a mission, and it starts today — inside exactly the permissions it prints.</p>`}
     <h3 style="margin-top:18px">${rows?'Give it another mission':'Give it a mission'}</h3>
+    <div class="job-ai">
+      <label for="job-ai-in">✦ Describe your own</label>
+      <div class="job-ai-row"><textarea id="job-ai-in" rows="2" maxlength="2000"
+        placeholder="Watch my Downloads folder and tell me on Telegram what lands there"></textarea>
+        <button class="pact" id="job-ai-go">Draft it</button></div>
+      <div class="job-ai-out" aria-live="polite">${JOBS.aiDraft?jobAIDraftHTML(JOBS.aiDraft):''}</div>
+    </div>
     <p class="mut job-whoq">${who?`Missions for a ${esc(who.label.toLowerCase())} first. Not you? Pick again.`:'Who are you? The catalogue opens on your missions from then on.'}</p>
     ${jobPersonaBar()}
     <div class="job-catalogue">${jobCards(JOBS.pick)}</div>
@@ -355,6 +362,67 @@ async function renderJobs(body,w){
   };
   jobPickable(body,body._jobAfter);
   jobWirePersona(body,()=>renderJobs(body));
+  const go=body.querySelector('#job-ai-go'),inp=body.querySelector('#job-ai-in');
+  go.onclick=()=>jobDraftAI(body);
+  inp.onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))jobDraftAI(body)};
+  jobAIWire(body);
+}
+/* A mission from a sentence. The same draft as Build → Flows (POST /api/flows/draft,
+   answered by this machine's brain — Claude Code included), shown HERE with what it
+   would be allowed to do, because that list and the save are one computation
+   (flows.declared_grants). It lands switched off: "Turn it on" is the grant, and it is
+   the person's. Build shows it in full, with the editor. */
+async function jobDraftAI(body){
+  const inp=body.querySelector('#job-ai-in'),out=body.querySelector('.job-ai-out'),go=body.querySelector('#job-ai-go');
+  const req=(inp.value||'').trim();if(!req)return toast('say what it should do');
+  go.disabled=true;out.innerHTML='<p class="mut">drafting… (the brain designs it — this can take a minute)</p>';
+  let r;
+  try{r=await apiJSON('/api/flows/draft',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({request:req})})}
+  catch(e){const o=body.querySelector('.job-ai-out'),g=body.querySelector('#job-ai-go');
+    if(g)g.disabled=false;if(o)o.innerHTML='<p class="err">'+esc(e.message||String(e))+'</p>';return}
+  // Kept in state, and the box looked up AGAIN: saving the draft broadcasts
+  // `fabric_defs`, which re-renders this window while the request is still in flight —
+  // the answer was written into the old, detached box and never seen.
+  JOBS.aiDraft=r;
+  const now=body.querySelector('.job-ai-out');
+  if(now)now.innerHTML=jobAIDraftHTML(r);
+  const g2=body.querySelector('#job-ai-go'),i2=body.querySelector('#job-ai-in');
+  if(g2)g2.disabled=false;if(i2)i2.value='';
+  jobAIWire(body);
+}
+function jobAIDraftHTML(r){
+  const f=r.flow,grants=(r.would_grant||[]).filter(g=>g.effect!=='deny');
+  const trig=(f.triggers||[]).map(t=>t.kind==='cron'?'on a schedule':t.kind==='os_event'?(t.config&&t.config.event==='file_change'?'when '+(t.config.path||'a folder')+' changes':'on '+(t.config&&t.config.event||'an event')):t.kind).join(', ');
+  return `<div class="job-ai-card">
+    <div class="job-ai-h"><b>${esc(f.name)}</b> <span class="brainchip">off until you turn it on</span>
+      <span style="flex:1"></span><button class="endbtn" data-x aria-label="Dismiss">✕</button></div>
+    <p>${esc(f.mission||f.description||'')}</p>
+    <p class="mut">${esc(trig?'Starts '+trig+'.':'Starts when you run it.')} Team: ${esc((f.roster||[]).map(x=>x.subagent).join(', ')||'—')}</p>
+    <details${grants.length<=6?' open':''}><summary>It would be allowed to (${grants.length})</summary>
+      <ul>${grants.map(g=>`<li>${esc(jobGrantWords(g))}</li>`).join('')}</ul></details>
+    <div class="job-ai-btns"><button class="pact" data-on>Turn it on</button>
+      <button class="endbtn" data-build>Open in Build</button></div></div>`;
+}
+/* A declared grant in words: "use read_file", "read ~/Downloads". The row's note is the
+   provenance ("granted by flow …") — true, and the same on every line, which told the
+   person nothing about what they were agreeing to. */
+function jobGrantWords(g){
+  const r=String(g.resource||''),tail=r.replace(/^[a-z]+:(subagent\/)?/,'');
+  const who=g.principal_kind==='subagent'?g.principal_id+' may ':'it may ';
+  const verb={'tool.use':'use','fs.read':'read','fs.write':'write to','net.fetch':'fetch from',
+    'agent.invoke':'hand work to','memory.read':'read memory','memory.write':'write memory',
+    'mail.read':'read your mail','calendar.read':'read your calendar','skill.use':'use the skill',
+    'agent.message':'ask','mcp.call':'call the MCP server'}[g.action];
+  if(!verb)return who+g.action+(tail?' '+tail:'');
+  return who+verb+(tail&&!/memory|mail|calendar/.test(verb)?' '+tail:'');
+}
+function jobAIWire(body){
+  const out=body.querySelector('.job-ai-out'),r=JOBS.aiDraft;if(!out||!r)return;
+  const f=r.flow,q=s=>out.querySelector(s);
+  if(q('[data-on]'))q('[data-on]').onclick=async()=>{JOBS.aiDraft=null;await enableFlow(f.name,true);renderJobs(body)};
+  if(q('[data-build]'))q('[data-build]').onclick=()=>{JOBS.aiDraft=null;FLOW_FOCUS=f.name;JOBS.tab='build';renderJobs(body)};
+  if(q('[data-x]'))q('[data-x]').onclick=()=>{JOBS.aiDraft=null;out.innerHTML=''};
 }
 
 async function jobRunNow(name){

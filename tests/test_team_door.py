@@ -86,7 +86,8 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert said == "The toolsmith built it."
     assert "YOUR TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
     assert "HAND IT OVER" in seen["context"]
-    assert seen["tools"] == ["delegate", "huddle"], "the door offers the team and nothing else"
+    assert seen["tools"] == ["create_flow", "delegate", "huddle", "list_flows"], \
+        "the door offers the team and missions, and nothing else"
     assert handed == [("toolsmith", "build a VCP scanner", "c1")] and "made tools/vcp.py" in seen["out"]
     assert "[denied] no tool called 'run_command'" in seen["bad"]
     argv = seen["argv"]
@@ -98,7 +99,9 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert any("toolsmith" in str(r[1]) for r in rows), rows
 
 
-def test_no_team_no_door(tmp_path):
+def test_standing_work_is_a_mission_even_with_no_team(tmp_path):
+    # "watch my Downloads folder" was answered with a launchd plist and a shell loop that
+    # this OS could not see, stop or show — the door offers missions, team or no team
     c, store, tb = _world(tmp_path)
     store.db.execute("DELETE FROM subagents")
     store.db.commit()
@@ -106,8 +109,28 @@ def test_no_team_no_door(tmp_path):
 
     async def approver(*a, **k):
         return True
-    assert executors.open_team_door(env, c, tb, store, None, approver) == ""
-    assert env.team_mcp == () and "--mcp-config" not in executors.build_command("hi", env)
+    token = executors.open_team_door(env, c, tb, store, None, approver)
+    assert token and "--mcp-config" in executors.build_command("hi", env)
+    _, listed = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+    names = {t["name"] for t in listed["result"]["tools"]}
+    assert {"create_flow", "list_flows"} <= names and "enable_flow" not in names, \
+        "it may draft a mission; switching it on is the person's grant"
+    assert "MISSIONS." in env.context and "NEVER set it up yourself" in env.context
+    assert "file_change" in env.context and "~/Downloads" in env.context
+    assert "YOUR TEAM" not in env.context, "no team is claimed where there is none"
+    mcpbridge.close_session(token)
+    status, _ = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
+    assert status == 401, "a closed door answers nothing"
+
+
+def test_create_flow_points_at_missions_not_a_removed_app():
+    from agentos.tools import TOOL_SCHEMAS
+    cf = next(t for t in TOOL_SCHEMAS if t["name"] == "create_flow")
+    assert "Missions → Build" in cf["description"] and "launchd" in cf["description"]
+    assert "file_change" in cf["parameters"]["properties"]["triggers"]["description"]
+    import pathlib
+    for f in pathlib.Path(ROOT / "agentos").glob("*.py"):
+        assert "Workflows → Flows" not in f.read_text(), f"{f.name} sends people to an app that is gone"
 
 
 def test_the_built_in_lead_knows_its_team(tmp_path):
@@ -127,7 +150,7 @@ def test_the_built_in_lead_knows_its_team(tmp_path):
 
 def test_an_address_wins_over_the_brain():
     src = (ROOT / "agentos/server.py").read_text()
-    assert 'if model == "claude-code" and not (mention or huddle_hit or flow_hit):' in src
+    assert 'if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit):' in src
     assert "execmod.open_team_door(" in src
     assert 'startswith(f"mcp__{execmod.BRIDGE_SERVER}__")' in src, "one card per hand-over"
     for f in ("telegram.py", "whatsapp.py"):
@@ -140,3 +163,24 @@ def test_an_agents_look_is_changed_from_its_card():
     assert "class=\"ag-face\" onclick=\"avatarEdit(" in hands and "avatarDesignAsk(" in hands
     assert "avatarEdit('@agent')" in (JS / "11-settings.js").read_text(), "the lead too"
     assert "function avatarDesignAsk(" in (JS / "00e-avatars.js").read_text()
+
+
+def test_a_downloads_watch_lands_in_missions_switched_off(tmp_path):
+    c, store, tb = _world(tmp_path)
+    env = executors.Envelope(workspace=str(tmp_path))
+
+    async def approver(*a, **k):
+        return True
+    token = executors.open_team_door(env, c, tb, store, None, approver)
+    _, out = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        "name": "create_flow", "arguments": {
+            "name": "downloads-watch", "mission": "Tell the person what just landed in Downloads.",
+            "roster": [{"subagent": "toolsmith", "why": "reads the new file's name and size"}],
+            "triggers": [{"kind": "os_event", "config": {"event": "file_change", "path": "~/Downloads"}}]}}}))
+    text = out["result"]["content"][0]["text"]
+    assert not out["result"]["isError"], text
+    f = store.get_flow("downloads-watch")
+    assert f and not f["enabled"], "it lands switched off: turning it on is the person's grant"
+    trig = store.flow_triggers("downloads-watch")
+    assert trig and trig[0]["config"]["event"] == "file_change" and trig[0]["config"]["path"] == "~/Downloads"
+    mcpbridge.close_session(token)

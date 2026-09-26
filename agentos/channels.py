@@ -169,8 +169,8 @@ CATALOGUE: list[Channel] = [
         what="Other services calling in over HTTP to start a flow — a form submission, "
              "a CI job, a device, a monitor that noticed something.",
         reach="Whoever holds a flow's hook secret. Each trigger has its own; rotating it "
-              "in Workflows → Flows revokes every caller at once.",
-        reach_panel="Workflows → Flows",
+              "in Missions → Build revokes every caller at once.",
+        reach_panel="Missions → Build",
         note="A webhook body is content from outside this machine, so a flow started by "
              "one runs tainted: risky steps are shown to you rather than assumed.",
     ),

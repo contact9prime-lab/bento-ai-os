@@ -35,15 +35,15 @@ async function renderFabAgents(body){
       <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
       <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
-    ||'<p class="mut">No subagents yet — create your first specialist.</p>';
+    ||'<p class="mut">No specialists yet — press ＋ New agent and describe the first one in a sentence.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
-    <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New subagent</button>
+    <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New agent</button>
     ${cards}
     <p class="mut" style="margin-top:10px">Address any of them directly from Agent Chat (or Telegram / TUI) with
-    <code>@name your task</code> — the run streams into the chat and is tracked in Observability.
+    <code>@name your task</code> — the run streams into the chat and is tracked under Runs.
     Click a card to edit. <i>inherit</i> follows the OS model; pin one to mix (e.g. generation local, validation on Claude).</p></div>`;
 }
-async function delSubagent(id){if(!await osConfirm('Delete this subagent?','',{danger:true,confirmText:'Delete'}))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
+async function delSubagent(id){if(!await osConfirm('Delete this agent?','',{danger:true,confirmText:'Delete'}))return;await fetch('/api/subagents/'+id,{method:'DELETE'});refreshApp('fabric');}
 
 /* --- subagent wizard: pick from what exists (tools, skills, models), don't type it --- */
 var SAW=null;   // `var`: the flow editor borrows this wizard, so it is reached from more
@@ -103,75 +103,97 @@ async function sawAi(){
     +((dr.warnings||[]).join(' · ')))
     +' <span class="mut">not saved yet</span>';
 }
+/* The agent editor. Reported as "the UI for the agent needs to be better": three dots
+   nobody could read as steps, a describe box and fields half as wide as the dialog,
+   "subagent" on every line, and a Save only at the end of a drafted agent's third page.
+   Now: the agent's face and name at the top, the three steps as named tabs you can jump
+   between, describing it FIRST and at full width, trust as three plain choices rather
+   than a select, and Save on every step once it has a name — a drafted agent is often
+   ready as it arrives. One editor for Missions → Build and Settings → Agents. */
+var SAW_STEPS=[['Who it is','Who'],['What it can use','Tools'],['Limits & trust','Limits']];
+var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
+  ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
+  ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
+function sawFace(d){
+  const img=d.name&&typeof avatarImg==='function'&&SAW.exists?avatarImg(d.name,'saw-face'):'';
+  return img||`<div class="saw-face saw-tile" aria-hidden="true">${esc((d.name||'?')[0].toUpperCase())}</div>`;
+}
 function drawSAW(){
   let ov=$('#saw-ov');
   if(!SAW){ov&&ov.remove();return}
-  if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center';
+  if(!ov){ov=document.createElement('div');ov.id='saw-ov';ov.className='saw-ov';
     ov.onclick=e=>{if(e.target===ov)sawClose()};document.body.appendChild(ov);}
   const d=SAW.d,st=SAW.step;
-  const dot=n=>`<span style="width:8px;height:8px;border-radius:50%;display:inline-block;margin:0 3px;background:${n<=st?'var(--acc,#5eead4)':'var(--line,#333)'}"></span>`;
   let inner='';
   if(st===1){
-    const opts=['<option value="">inherit from control plane (OS default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
-    inner=`<div class="sawh">${SAW.exists?'Edit':'New'} subagent</div>
-      <div class="sawsub">A specialist team member with its own persona, model, and tools. In chat you'll address it as <code>@name</code>.</div>
-      <div class="provbox" style="margin-bottom:10px">
-        <div class="sub" style="margin-bottom:4px">${SAW.exists
-          ?'Ask for a change and it rewrites the persona and tools below — nothing is saved until you press Save.'
-          :'Describe what you need and it fills the whole thing in.'}</div>
-        <textarea id="sw-ai" rows="2" placeholder="${SAW.exists
+    const opts=['<option value="">this machine\'s brain (the default)</option>']
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+    inner=`<div class="saw-ai">
+        <label for="sw-ai">✦ ${SAW.exists?'Ask for a change':'Describe it'}</label>
+        <div class="sub">${SAW.exists
+          ?'It rewrites the persona and tools below. Nothing is saved until you press Save.'
+          :'Say what you need in a sentence, and it fills in all three steps. You can edit anything after.'}</div>
+        <textarea id="sw-ai" rows="3" placeholder="${SAW.exists
           ?'let it read files too · make it stricter about sources'
           :'someone who watches my disk space and tells me when it is filling up'}">${esc(SAW.ask||'')}</textarea>
-        <div class="row" style="margin-top:6px"><button class="save" style="margin:0;flex:0 0 120px"
-            onclick="sawAi()">✦ ${SAW.exists?'Apply':'Draft it'}</button>
-          <div class="grow"><span id="sw-ai-status" class="sub"></span></div></div>
+        <div class="saw-ai-go"><button class="save" onclick="sawAi()">✦ ${SAW.exists?'Apply':'Draft it'}</button>
+          <span id="sw-ai-status" class="sub" aria-live="polite"></span></div>
       </div>
-      <label>Name</label><input id="sw-name" value="${esc(d.name)}" placeholder="e.g. researcher" ${SAW.exists?'disabled':''} style="font-size:14px">
-      <label>Persona — who is it, how does it work?</label>
-      <textarea id="sw-soul" rows="4" style="font-size:13px;line-height:1.5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
-      <label>Brain</label><select id="sw-model" style="font-size:13px">${opts}</select>
-      <p class="mut" style="font-size:12px">Pin a model to mix smartness across the team — e.g. this one on Claude while others run local.</p>`;
+      <div class="saw-or"><span>${SAW.exists?'or edit it yourself':'or fill it in yourself'}</span></div>
+      <label for="sw-name">Name</label>
+      <div class="saw-at"><span>@</span><input id="sw-name" value="${esc(d.name)}" placeholder="researcher" autocomplete="off" ${SAW.exists?'disabled':''}></div>
+      <div class="sub saw-hint">${SAW.exists?'The name is how it is addressed and granted, so it cannot change.':'Lower-case, one word. In chat you address it as <code>@name</code>.'}</div>
+      <label for="sw-soul">Persona — who is it, and how does it work?</label>
+      <textarea id="sw-soul" rows="5" placeholder="You research. Gather real information, verify it, return a dense sourced summary.">${esc(d.soul||'')}</textarea>
+      <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
+      <div class="sub saw-hint">A pinned model is used when Settings → Agents → Working together lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
     const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
       +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
     const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.description||'').slice(0,110))}</div></div></label>`).join('')
       ||'<p class="mut">No skills installed yet — add some in the Skills app.</p>';
-    inner=`<div class="sawh">Capabilities</div>
-      <div class="sawsub">Pick from what's already on this OS — tools, connected MCP servers, installed skills. Nothing to type.</div>
-      <div class="row" style="margin:0 0 8px;flex-wrap:wrap;gap:6px">${chips}</div>
-      <input id="sw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}" style="font-size:13.5px;padding:10px 12px">
-      <div id="sw-list" style="max-height:230px;overflow:auto;margin:8px 0 2px"></div>
-      <div id="sw-count" class="sawsub" style="margin:6px 0 10px"></div>
+    inner=`<div class="sawsub">Pick from what is already on this machine — its tools, connected MCP servers and installed skills. Nothing to type.</div>
+      <div class="saw-chips">${chips}</div>
+      <input id="sw-q" class="saw-q" placeholder="Search ${SAW.tools.length} tools by name or what they do…" value="${esc(SAW.q)}">
+      <div id="sw-list" class="saw-list"></div>
+      <div id="sw-count" class="sawsub saw-count"></div>
       <div class="sawgrp">Skills it should follow</div>
-      <div style="max-height:150px;overflow:auto">${skl}</div>
-      <p class="mut" style="margin-top:8px;font-size:12px">Memory and skills access (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) is always included.</p>`;
+      <div class="saw-skills">${skl}</div>
+      <p class="mut saw-hint">Memory and skills (<code>use_skill</code>, <code>recall</code>, <code>kg_query</code>, <code>remember</code>) are always included. What it may actually DO with a tool is still decided in Permissions.</p>`;
   }else{
-    inner=`<div class="sawh">Limits &amp; trust</div>
-      <div class="sawsub">How independent is it, and how much may one run cost?</div>
-      <label>Autonomy cap (never exceeds the OS level)</label>
-      <select id="sw-cap" style="font-size:13px"><option value="paranoid" ${d.autonomy_cap==='paranoid'?'selected':''}>paranoid — everything needs approval</option>
-        <option value="balanced" ${d.autonomy_cap==='balanced'?'selected':''}>balanced — risky actions auto-denied when unattended</option>
-        <option value="full" ${d.autonomy_cap==='full'?'selected':''}>full — may act freely (careful)</option></select>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1"><label>Max steps</label><input id="sw-steps" type="number" value="${d.max_steps}"></div>
-        <div style="flex:1"><label>Max seconds</label><input id="sw-secs" type="number" value="${d.max_seconds}"></div>
+    const caps=SAW_CAPS.map(([v,t,x])=>`<label class="saw-cap ${d.autonomy_cap===v?'on':''}">
+        <input type="radio" name="sw-cap" value="${v}" ${d.autonomy_cap===v?'checked':''}
+          onchange="document.querySelectorAll('.saw-cap').forEach(e=>e.classList.toggle('on',e.contains(this)))">
+        <div><div class="n">${t}</div><div class="d">${x}</div></div></label>`).join('');
+    inner=`<div class="sawsub">How independent is it, and how much may one run take?</div>
+      <div class="saw-caps" role="radiogroup" aria-label="How much it may do on its own">${caps}</div>
+      <div class="saw-lims">
+        <div><label for="sw-steps">Most steps in one run</label><input id="sw-steps" type="number" min="1" value="${d.max_steps}"></div>
+        <div><label for="sw-secs">Most seconds in one run</label><input id="sw-secs" type="number" min="10" value="${d.max_seconds}"></div>
       </div>
-      <div class="provbox" style="margin-top:14px"><div class="sawgrp" style="margin-top:0">Summary</div>
-        <div class="meta" style="font-size:12.5px;color:var(--dim)"><b style="color:var(--txt)">${esc(d.name||'?')}</b> · ${esc(d.model||'inherits OS model')} · ${d.tools.length||'safe set'} tools${d.skills.length?' · '+d.skills.length+' skills':''} · ≤ ${esc(d.autonomy_cap)}</div>
-        <div class="persona" style="font-size:12px;color:var(--dim2);font-style:italic;margin-top:4px">${esc((d.soul||'').slice(0,160))}</div>
-        <div class="meta" style="font-size:12px;color:var(--dim2);margin-top:6px">In chat: <code>@${esc(d.name||'name')} your task</code></div></div>`;
+      <div class="saw-sum">
+        ${sawFace(d)}
+        <div class="grow"><div class="n">@${esc(d.name||'name')}</div>
+          <div class="d">${esc(d.model||'this machine\'s brain')} · ${d.tools.length?d.tools.length+' tools':'the safe read-only set'}${d.skills.length?' · '+d.skills.length+' skills':''}</div>
+          <div class="persona">${esc((d.soul||'').slice(0,180))||'<span class="mut">no persona yet</span>'}</div>
+          <div class="d">In chat: <code>@${esc(d.name||'name')} your task</code></div></div></div>`;
   }
-  ov.innerHTML=`<div style="width:620px;max-width:94vw;max-height:88vh;overflow:auto;background:var(--bg2,#111419);border:1px solid var(--line,#232a35);border-radius:16px;padding:24px 26px" onclick="event.stopPropagation()">
-    ${inner}
-    <div class="row" style="margin-top:16px;align-items:center">
-      <div class="grow">${dot(1)}${dot(2)}${dot(3)}</div>
-      <button onclick="sawClose()">Cancel</button>
+  const tabs=SAW_STEPS.map((t,i)=>`<button role="tab" aria-selected="${i+1===st}" class="${i+1===st?'on':''}${i+1<st?' done':''}" onclick="sawGo(${i+1})"><b>${i+1}</b><span class="l">${t[0]}</span><span class="s">${t[1]}</span></button>`).join('');
+  ov.innerHTML=`<div class="saw-box" role="dialog" aria-modal="true" aria-label="${SAW.exists?'Edit':'New'} agent" onclick="event.stopPropagation()">
+    <div class="saw-head">${sawFace(d)}
+      <div class="grow"><div class="sawh">${SAW.exists?'Edit @'+esc(d.name):'New agent'}</div>
+        <div class="sawsub">${SAW.exists?'A specialist on your team.':'A specialist on your team: its own persona, tools and limits.'}</div></div>
+      <button class="saw-x" title="Close" aria-label="Close" onclick="sawClose()">✕</button></div>
+    <div class="saw-tabs" role="tablist">${tabs}</div>
+    <div class="saw-body">${inner}</div>
+    <div class="saw-foot">
+      <button onclick="sawClose()">Cancel</button><span class="saw-sp"></span>
       ${st>1?`<button onclick="sawStep(-1)">← Back</button>`:''}
-      ${st<3?`<button class="save" style="margin:0;flex:0 0 100px" onclick="sawStep(1)">Next →</button>`
-            :`<button class="save" style="margin:0;flex:0 0 130px" onclick="sawSave()">Save</button>`}
+      ${st<3?`<button onclick="sawStep(1)">Next →</button>`:''}
+      <button class="save" onclick="sawSave()" ${d.name||st===1?'':'disabled'}>Save</button>
     </div></div>`;
+  if(st===1){const n=$('#sw-name');if(n)n.oninput=()=>{const f=$('#saw-ov .saw-head .saw-tile');if(f)f.textContent=(n.value||'?')[0].toUpperCase()}}
   if(st===2){ // search filters the list in place — the field never loses focus
     const q=$('#sw-q');
     q.oninput=()=>{SAW.q=q.value;sawRefreshList()};
@@ -203,9 +225,12 @@ function sawRefreshList(){
 function sawCollect(){
   const d=SAW.d;
   if(SAW.step===1){if($('#sw-name'))d.name=$('#sw-name').value.trim();d.soul=$('#sw-soul').value;d.model=$('#sw-model').value;}
-  if(SAW.step===3){d.autonomy_cap=$('#sw-cap').value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
+  if(SAW.step===3){const c=document.querySelector('input[name="sw-cap"]:checked');if(c)d.autonomy_cap=c.value;d.max_steps=+$('#sw-steps').value||12;d.max_seconds=+$('#sw-secs').value||300;}
 }
-function sawStep(delta){sawCollect();if(SAW.step===1&&delta>0&&!SAW.d.name)return toast('give it a name');SAW.step=Math.min(3,Math.max(1,SAW.step+delta));drawSAW()}
+function sawStep(delta){sawGo(SAW.step+delta)}
+function sawGo(n){sawCollect();n=Math.min(3,Math.max(1,n));
+  if(SAW.step===1&&n>1&&!SAW.d.name){toast('give it a name first');const i=$('#sw-name');if(i)i.focus();return}
+  SAW.step=n;drawSAW()}
 function sawTool(name,on){const t=SAW.d.tools;if(on&&!t.includes(name))t.push(name);if(!on)SAW.d.tools=t.filter(x=>x!==name);
   const c=$('#sw-count');if(c)sawRefreshCount();}
 function sawRefreshCount(){const d=SAW.d,c=$('#sw-count');
@@ -216,18 +241,20 @@ function sawSkill(name,on){const s=SAW.d.skills;if(on&&!s.includes(name))s.push(
 function sawPreset(p){SAW.d.tools=[...SAW_PRESETS[p]];sawRefreshList()}
 async function sawSave(){
   sawCollect();
-  const d=SAW.d;if(!d.name)return toast('name required');
+  const d=SAW.d;if(!d.name){toast('give it a name first');const i=$('#sw-name');if(i)i.focus();return}
   const cb=SAW.onSaved;
-  await fetch('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  // a refusal is said, and the editor stays open with everything typed in it
+  try{await apiJSON('/api/subagents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})}
+  catch(e){toast('could not save @'+d.name+': '+(e.message||e),{kind:'err'});return}
   SAW=null;drawSAW();
   if(cb){cb(d.name);return}          // an editor borrowed the wizard; it owns what happens next
-  toast('subagent saved — address it in chat with @'+d.name);refreshApp('fabric');
+  toast('saved — address it in chat with @'+d.name,{label:'Try it',go:()=>testSubagent(d.name)});refreshApp('fabric');
 }
 function testSubagent(name){
   // test runs live in the chat: open it with the mention prefilled
   openApp('chat');
   setTimeout(()=>{const i=$('#input');if(i){i.value='@'+name+' ';i.focus();i.dispatchEvent(new Event('input'))}},250);
-  toast('type the task after @'+name+' — the run streams right here and lands in Observability');
+  toast('type the task after @'+name+' — the run streams right here and lands under Missions → Build → Runs');
 }
 
 /* The static-DAG "workflow" engine, its tool and its API are gone (2026-09). A flow

@@ -490,6 +490,7 @@ bento app                  # 随时以一个无边框桌面窗口打开
 ## 模型与提供商
 
 - **Ollama**（本地）——自动发现；没有任何东西离开你的机器。
+- **Claude Code**、**Gemini CLI** 或 **Codex**——这里已安装的 AI 智能体可以充当大脑，用你自己的账号登录；AgentOS 从不向它传递密钥。
 - **Anthropic**、**OpenAI**、**OpenRouter**，或任何**兼容 OpenAI** 的端点（LM Studio、vLLM、Groq……）。
 - **图像生成**——设置了密钥时使用 Google Gemini 或 OpenAI 的图像模型，否则使用免费的后备方案。
 

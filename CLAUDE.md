@@ -349,6 +349,14 @@ Three things must stay true:
 - **`flows.job` is a column, not a heuristic.** Renaming a job in the editor must not
   orphan it from the list of what this machine is doing for you.
 
+**A mission can be DESCRIBED on the Run tab** ("✦ Describe your own"): `/api/flows/draft` →
+a disabled card with its trigger (the route returns `triggers`, which live in their own table)
+and `would_grant` in plain words (`jobGrantWords`). Saving a draft broadcasts `fabric_defs`, which
+re-renders the tab WHILE the request is in flight. So the draft lives in `JOBS.aiDraft` and the
+output box is looked up again after the await. Writing into the element captured before it was
+how the card vanished. Drafts (`flows.compose`, `compose_subagent`) ask `executors.ask_brain`, the
+MACHINE's brain. Asking only `default_model` said "no model configured" on a Claude Code machine.
+
 Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the same
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
@@ -556,6 +564,24 @@ Three things that will bite whoever touches this next:
   forbids. Say "you install it, I will use it" rather than guessing.
 - **An executor OWNS its models.** See the next section: one picker, and the model
   list belongs to whatever is answering.
+- **Detected is not DRIVEN.** `executors.DRIVEN` (Claude Code, Gemini CLI, Codex) is the
+  list with a command builder (`build_command` dispatches on `Envelope.engine`) and a
+  stream reader (`TRANSLATORS`), each emitting the same turn events. Hermes and OpenClaw
+  are detected only: `forward` refuses them in a sentence and `brains()` marks them
+  unavailable. Before that list existed, choosing Hermes ran CLAUDE CODE under its name,
+  because the builder only knew one CLI. A new executor is a catalogue entry, a builder,
+  a translator, `EXEC_TITLES` in `10-chat.js` and a components offer, and
+  `tests/test_executors_more.py` checks that they agree.
+- **The envelope is one setting, turned into each CLI's own flags.** Folder and tools live
+  under `executors.claude_code` (Settings → Executors) and bound all three; the MODEL is each
+  executor's own key. Gemini CLI: read-only by default, `auto_edit` for Write/Edit, `yolo` for
+  a shell. Codex: `--sandbox read-only|workspace-write`. Only Claude Code has a spend flag,
+  and `describe()` says "no spend ceiling of its own" for the others rather than promising
+  one. Only Claude Code resumes a session (`RESUMES`); the others get
+  `Envelope.transcript`, the conversation so far, in the prompt.
+- **Only an MCP engine gets the team door.** Gemini CLI and Codex are not started with a
+  per-run MCP config, so `open_team_door` gives them `team_hint()`: the same roster, and
+  "tell the person to write `@name`". Nothing invented, and the specialists do not go idle.
 
 ## The run bridge: an executor's model, this OS's hands
 
@@ -865,6 +891,17 @@ sense" when it was missing:
 - **A queued turn says queued.** `miniFeed.queued()` marks the row, and
   `mfPaint` skips it: the activity record belongs to the turn running AHEAD of
   it, so painting it there made a waiting card claim another turn's step.
+- **Each question from the bar is its own thread.** `omniThread(q)` makes a new `origin:'omni'`
+  conversation titled with the question (`omniTitle`), unless the card for `OMNI.cid` is still
+  open. That is a follow-up, so it continues the thread. One "◉ Desktop" thread for every
+  question read as the bar losing them. Each card keeps its own `dataset.cid`, so Open in Chat
+  goes to that card's thread.
+- **Placed is not SEEN, for an approval card.** `APPROVALS` holds what is waiting. After placing a
+  card, `approvalVisible` checks it is on screen (`checkVisibility`, never `offsetParent`, which
+  is null for a fixed card), and `approvalFloat` puts a copy top right when it is not. The
+  toast's Review, the "waiting for you" line and the bubble all call `approvalReveal`.
+  `approval_resolved` closes every copy. Found as a hand-over that waited five minutes inside
+  the prompt bar's hidden answer card.
 - **A turn that MAKES something offers the door to it.** `10a-handoff.js` maps
   the creating tools (`create_app`, `create_flow`, `enable_flow`,
   `save_automation`, `schedule_task`) to the app that owns the result, and the

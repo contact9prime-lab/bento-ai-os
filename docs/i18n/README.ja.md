@@ -493,6 +493,7 @@ bento app                  # いつでもクロームレスのデスクトップ
 ## モデルとプロバイダー
 
 - **Ollama**（ローカル） — 自動発見。何もマシンから出ていきません。
+- **Claude Code**、**Gemini CLI**、**Codex** — ここにインストール済みの AI エージェントを頭脳にできます。あなた自身のアカウントでサインインし、AgentOS がキーを渡すことはありません。
 - **Anthropic**、**OpenAI**、**OpenRouter**、あるいは任意の **OpenAI 互換**エンドポイント（LM Studio、vLLM、Groq、…）。
 - **画像生成** — キーが設定されていれば Google Gemini または OpenAI の画像モデル、そうでなければ無料のフォールバック。
 

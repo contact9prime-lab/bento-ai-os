@@ -569,6 +569,7 @@ Ask in plain language: *"add the github MCP channel", "build me a habit tracker 
 ## Models & providers
 
 - **Ollama** (local) — auto-discovered; nothing leaves your machine.
+- **Claude Code**, **Gemini CLI** or **Codex** — an AI agent already installed here can be the brain, signed in with your own account; AgentOS never passes it a key.
 - **Anthropic**, **OpenAI**, **OpenRouter**, or any **OpenAI-compatible** endpoint (LM Studio, vLLM,
   Groq, …).
 - **Image generation** — Google Gemini or OpenAI image models when a key is set, free fallback

@@ -83,6 +83,38 @@ const CHAT_SINKS=new Map();   // conversation_id -> {start,delta,thinking,toolSt
 function sinkOn(cid,sink){if(cid)CHAT_SINKS.set(cid,sink)}
 function sinkOff(cid){CHAT_SINKS.delete(cid)}
 /* one approval card builder for every surface (Chat inline, floating, sinks) */
+/* Approvals waiting on this person, by id — so a card can be SHOWN again wherever
+   they are looking: the toast's Review, the "waiting for you" line, a floating copy
+   when the placed one is hidden. Copies are fine: approval_resolved closes them all. */
+var APPROVALS={};
+/* On screen, not merely in the document: a card inside the prompt bar's hidden answer
+   card has a box but nobody can see it. `offsetParent` is no test — a floating card is
+   position:fixed and has none. */
+function approvalShown(b){
+  if(!b||b.classList.contains('resolved'))return false;
+  const r=b.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0))return false;
+  if(b.checkVisibility)return b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+  return getComputedStyle(b).visibility!=='hidden';
+}
+function approvalVisible(id){
+  return [...document.querySelectorAll('[id="ap-'+id+'"]')].some(approvalShown);
+}
+function approvalFloat(ev){
+  if([...document.querySelectorAll('[id="ap-'+ev.id+'"].ap-float')].length)return;
+  const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
+  document.body.appendChild(box);
+  box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
+  return box;
+}
+function approvalReveal(id){
+  const ev=id?APPROVALS[id]:APPROVALS[Object.keys(APPROVALS).pop()];
+  if(!ev)return toast('nothing is waiting for you now');
+  const shown=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown);
+  const box=shown||approvalFloat(ev);if(!box)return;
+  box.scrollIntoView({block:'center',behavior:'smooth'});
+  box.classList.remove('ap-flash');void box.offsetWidth;box.classList.add('ap-flash');
+}
 function buildApprovalBox(ev,cur){
   const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
   // Words, not a JSON dump: the thing being approved should be readable at a
@@ -175,6 +207,8 @@ function aiBubble(){
       const cid=[...RUNNING][0]||AIB.last||currentConv;
       openApp('chat');if(cid)openConv(cid);
       AIB.seen=0;aiBubble();
+      // "waiting for you to approve …" is a question: tapping it shows the card
+      if(Object.keys(APPROVALS).length)setTimeout(()=>approvalReveal(),300);
     };
   }
   const n=RUNNING.size;
@@ -249,8 +283,8 @@ function handle(ev){
     case 'turn_start':{
       if(typeof movementPulse==='function')movementPulse('turn',ev.conversation_id,ev);   // an arc begins on the dial (Movement scene)
       // a new turn: until an engine says otherwise, this is the built-in agent
-      if(_cur)CUR_ENGINE={engine:ev.model==='claude-code'?ev.model:'',
-                          model:ev.model==='claude-code'?'':(ev.model||''),
+      if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
+                          model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
                           speaker:ev.speaker||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
@@ -362,17 +396,19 @@ function handle(ev){
     case 'approval_request':{
       // the turn is not slow here, it is waiting on a human — say which
       actMove(_cid,'approve',{name:ev.name||''});
+      APPROVALS[ev.id]=ev;
       const box=buildApprovalBox(ev,_cur);
       if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
       else if(_cur&&feed){
         if(!curBody)startAssistant();
         if(curBody)curBody.parentNode.insertBefore(box,curBody);
-      }else{ // approval from a chat you're not looking at — float it, never deadlock
-        box.style.cssText='position:fixed;right:18px;bottom:70px;z-index:9999;max-width:440px;box-shadow:0 18px 50px rgba(0,0,0,.5)';
-        document.body.appendChild(box);
-        box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
-      }
-      toast('approval needed'); scrollDown(); break;}
+      }else approvalFloat(ev);  // a chat you're not looking at — float it, never deadlock
+      // Placed is not SEEN: a turn from the prompt bar puts its card in the bar's
+      // answer card, which hides the moment a window opens — found as a hand-over
+      // to the toolsmith that waited five minutes on a question nobody could see.
+      requestAnimationFrame(()=>{if(APPROVALS[ev.id]&&!approvalVisible(ev.id))approvalFloat(ev)});
+      toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+      scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
       if(_s){if(_s.text.trim()){_s.html+='<div class="body">'+md(_s.text)+'</div>';_s.text='';}
@@ -466,6 +502,7 @@ function handle(ev){
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
+      delete APPROVALS[ev.id];
       // answered somewhere else (or nobody answered): this screen's copy says so and
       // stops offering buttons — a floating one leaves after a moment
       // one page can draw the same card twice (Chat and a floating copy), so all of them

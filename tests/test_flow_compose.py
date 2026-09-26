@@ -312,7 +312,7 @@ def test_no_model_configured_is_an_honest_sentence(store):
         d = asyncio.run(flowsmod.compose({}, store, "do a thing", TOOLS))
     finally:
         providers.complete = real
-    assert "no model configured" in d["error"]
+    assert "no brain is set up" in d["error"] and "Settings → AI providers" in d["error"]
 
 
 def test_composing_offers_parts_from_the_catalogue_and_never_installs_them(store):

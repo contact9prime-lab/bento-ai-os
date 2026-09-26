@@ -486,6 +486,13 @@ def forward_cmd(engine: str | None):
         if not info.get("available"):
             print(info.get("reason", "Claude Code is not available"))
             return
+    elif want != "aria":
+        info = execmod.probe(want)
+        if not info.get("installed"):
+            print(info.get("why_not") or f"{want} is not installed")
+            if info.get("install_cmd"):
+                print(f"  install it: {info['install_cmd']}  ({info.get('licence', '')})")
+            return
     cfg["engine"] = want
     cfgmod.save_config(cfg)
     if want == "aria":
@@ -2515,7 +2522,7 @@ def _flow_cli(args):
     if act == "list":
         rows = store.list_flows()
         if not rows:
-            print("no flows yet — make one in Workflows → Flows, or with the API")
+            print("no flows yet — make one in Missions → Build, or with the API")
             return
         for f in rows:
             trigs = store.flow_triggers(f["name"])
@@ -2733,7 +2740,7 @@ def _flow_cli(args):
     if act == "hooks":
         hooks = store.flow_triggers(args.name, kind="webhook")
         if not hooks:
-            print(f"'{args.name}' has no webhook trigger — add one in Workflows → Flows")
+            print(f"'{args.name}' has no webhook trigger — add one in Missions → Build")
             return
         for t in hooks:
             url = flowsmod.hook_url(cfg, args.name, t)
@@ -5391,7 +5398,7 @@ def main():
     p_eval.add_argument("--json", action="store_true", help="print the raw report")
 
     p_fwd = verb("forward", help="make this machine answer with another agent (or show what it does now)")
-    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "off"],
+    p_fwd.add_argument("engine", nargs="?", choices=["aria", "claude-code", "gemini-cli", "codex", "off"],
                        help="omit to show the current setting; 'off' is the same as 'aria'")
 
     p_prof = verb("profile", help="footprint profile — lite keeps nothing "
@@ -5404,8 +5411,8 @@ def main():
     # No `choices=`: the executors are a probe of this machine, and a hardcoded
     # list here is how `bento forward` ended up unable to name Hermes or OpenClaw.
     p_brain.add_argument("executor", nargs="?", help="ollama | openai | anthropic | google | "
-                                                    "openrouter | custom | claude-code | hermes | "
-                                                    "openclaw | aria")
+                                                    "openrouter | custom | claude-code | gemini-cli | "
+                                                    "codex | aria")
     p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default")
 
     p_del = verb("delegate", help="hand a task to an executor (Claude Code) and stream it here")

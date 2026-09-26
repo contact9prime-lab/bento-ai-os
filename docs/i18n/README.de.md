@@ -635,6 +635,7 @@ Fragen Sie in natürlicher Sprache: *„füge den github-MCP-Kanal hinzu“, „
 ## Modelle & Provider
 
 - **Ollama** (lokal) — automatisch erkannt; nichts verlässt Ihre Maschine.
+- **Claude Code**, **Gemini CLI** oder **Codex** — ein hier bereits installierter KI-Agent kann das Gehirn sein, angemeldet mit Ihrem eigenen Konto; AgentOS gibt ihm nie einen Schlüssel.
 - **Anthropic**, **OpenAI**, **OpenRouter** oder jeder **OpenAI-kompatible** Endpunkt (LM Studio, vLLM,
   Groq, …).
 - **Bildgenerierung** — Google Gemini oder OpenAI-Bildmodelle, wenn ein Schlüssel gesetzt ist, ansonsten kostenloser

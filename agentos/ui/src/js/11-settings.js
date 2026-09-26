@@ -82,7 +82,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Gemini CLI, Codex, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -870,7 +870,7 @@ async function renderExecutors(){
       {desc:'Adds “Claude Code” to the model picker in Chat. Each turn you send there is delegated to it.',f:'enable claude code executor'})}
     ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in — run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal. Delegated runs will use that subscription.</div>`:''}
     ${pRow('Folder',pText('s-exec-ws',c.workspace),
-      {desc:'The only directory it can read or write. Everything else on the machine is out of reach.',f:'executor workspace folder'})}
+      {desc:'The only directory it can read or write. Everything else on the machine is out of reach. The same folder and tools bound Gemini CLI and Codex when one of them is the brain.',f:'executor workspace folder gemini codex'})}
     ${pRow('Let it work on AgentOS itself',pSwitch('s-exec-src',c.allow_source),
       {desc:`Also gives it <code>${esc(ex.source_root||'')}</code> — the source of this OS — so it can fix AgentOS's own tools and windows. It is told that the UI is built from <code>ui/src</code> and that the suite must pass. Off unless you turn it on: the OS rewriting itself is its own decision.`,
        f:'executor agentos source develop self edit'})}

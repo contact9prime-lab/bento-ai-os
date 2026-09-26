@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.6.3 — 2026-09-26
+
+**Gemini CLI and Codex can be the brain, like Claude Code.** Settings → AI providers offers
+both with their licence (Apache-2.0) and the npm command, installed into your own account.
+Each signs in with its own account (`gemini`, `codex login`) and answers chat, the prompt bar,
+app panels, Telegram, WhatsApp and scheduled turns. Replies are labelled with who answered.
+The folder and tools in Settings → Executors bound them too. Neither has a spend ceiling, and
+the envelope says so. Missions and hand-overs to your specialists still need Claude Code or a
+provider model, and the screens say that before you try. Choosing Hermes or OpenClaw used to
+run Claude Code under their name. They are now listed as detected, not offered as a brain.
+
+**Build a mission by describing it.** Missions → Run has *✦ Describe your own*: say it in a
+sentence, and a draft appears switched off. It shows when it starts, who is on it, and
+everything turning it on would allow, in plain words. *Turn it on* or *Open in Build*.
+Drafting missions and agents now works on whatever brain the machine runs on. On Claude Code
+it used to say "no model configured".
+
+**A better agent editor.** ＋ New agent (Settings → Agents, Missions → Build → Agents) now shows
+the agent's face and name, three named steps you can jump between, a full-width *Describe it*
+box first, trust as three plain choices, and Save on every step. On a phone it fills the
+screen. A refused save is said, and the editor keeps what you typed.
+
+**An approval you can always reach.** When a card waits somewhere hidden (the prompt bar's
+answer, another chat), a copy floats top right. The toast has *Review*, and the "waiting for
+you to approve …" line opens the card. A hand-over to a specialist used to wait five minutes on
+a card nobody could see.
+
+**Questions from the prompt bar are kept.** Each new question starts its own thread in Chat,
+titled with what you asked, under *From the prompt bar*. They used to go into one thread
+called "Desktop".
+
+**Standing work becomes a mission.** "Watch my Downloads folder" in chat makes a mission,
+switched off until you turn it on, even with Claude Code as the brain. Before, it could set up a
+background job this OS could not see or stop.
+
+**Where did the Office go?** Removing an app from the dock now says the Launcher still has it,
+with *Undo*.
+
 ## 0.6.2 — 2026-09-26
 
 **Your lead hands work to the team, whatever its brain.**

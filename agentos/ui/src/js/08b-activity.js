@@ -163,6 +163,9 @@ function actSync() {
   actTick();
 }
 function actTick() {
+  // a turn waiting on a person: its "waiting for you to approve …" rows become doors
+  // to the card (approvalReveal, 09-websocket.js) — see the click listener below
+  document.body.classList.toggle('act-approving', Object.values(ACT).some(a => a.phase === 'approve'));
   actPaintTimers();
   if (typeof tickWorking === 'function') tickWorking();
   if (typeof mfPaint === 'function') mfPaint();
@@ -182,3 +185,12 @@ function actPaintTimers() {
     el.textContent = 'running · ' + actDur(Date.now() - (+el.dataset.t0 || Date.now()));
   });
 }
+
+/* The waiting rows (Chat's #working, an app panel's .mf-working) say "waiting for you
+   to approve …" — a question, so a tap on one shows the card to answer it, wherever
+   the card was put. */
+document.addEventListener('click', e => {
+  if (!document.body.classList.contains('act-approving')) return;
+  if (e.target.closest && e.target.closest('#working, .mf-working')
+      && typeof approvalReveal === 'function') approvalReveal();
+});

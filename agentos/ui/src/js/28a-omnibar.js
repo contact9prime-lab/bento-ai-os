@@ -137,24 +137,32 @@ function omniRun(i){
 /* palIntentAsync (model-classified fallback) appends into whichever list is live */
 function palRenderList(){omniPaint()}
 
-/* The bar's own thread — "◉ Desktop" in Chat's sidebar.
-   It is CREATED here rather than waited for. The turn you type can sit queued
+/* The bar's threads — "From the prompt bar" in Chat's sidebar.
+   Each is CREATED here rather than waited for. The turn you type can sit queued
    behind another one for half a minute, and while it did there was no
    conversation anywhere: the sidebar showed nothing, "Open in Chat" landed on
    whatever was open before, and the bar looked like it had swallowed the
    question. A thread that exists the moment you press Enter is the difference
    between a prompt bar and a text field that maybe did something. */
-async function omniThread(){
-  if(OMNI.cid)return OMNI.cid;
+/* Which conversation a question from the bar goes to. It used to be ONE thread for
+   ever, titled "◉ Desktop": every question anybody asked the bar landed at the bottom
+   of it, so Chat's list showed "Desktop" and nothing else, and what was asked read as
+   lost. Now a new question starts its own thread, titled with the question; a
+   follow-up asked while the last answer's card is still up continues that thread,
+   because that is a conversation. The thread exists before the send (POST
+   /api/conversations) so the sidebar shows it the moment Enter is pressed. */
+function omniTitle(q){
+  const t=String(q||'').replace(/\s+/g,' ').trim();
+  return t.length>60?t.slice(0,59).replace(/\s+\S*$/,'')+'…':(t||'A question');
+}
+async function omniThread(q){
+  const open=[...document.querySelectorAll('#omnicards .ocard')].some(c=>c.dataset.cid===OMNI.cid);
+  if(OMNI.cid&&open)return OMNI.cid;
+  OMNI.cid=null;
   try{
-    const d=await (await fetch('/api/conversations')).json();
-    const hit=(d.conversations||[]).find(c=>c.origin==='omni');
-    if(hit)OMNI.cid=hit.id;
-  }catch(e){}
-  if(!OMNI.cid)try{
     const r=await fetch('/api/conversations',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({origin:'omni',title:'◉ Desktop',surface:'gui'})});
+      body:JSON.stringify({origin:'omni',title:omniTitle(q),surface:'gui'})});
     const d=await r.json();
     if(d&&d.id){OMNI.cid=d.id;if(typeof loadConvs==='function')loadConvs()}
   }catch(e){}
@@ -173,7 +181,9 @@ function omniCard(question){
   const close=()=>{popOut(card,()=>{card.remove();
     if(!wrap.children.length){wrap.classList.remove('raised');if(!OMNI.pop)omniSummon(false)}})};
   card.querySelector('.oc-x').onclick=close;
-  card.querySelector('.oc-chat').onclick=()=>{if(OMNI.cid){openApp('chat');openConv(OMNI.cid)}else openApp('chat');close()};
+  // this card's own thread — a later question may already have started another one
+  card.dataset.cid=OMNI.cid||'';
+  card.querySelector('.oc-chat').onclick=()=>{const cid=card.dataset.cid||OMNI.cid;openApp('chat');if(cid)openConv(cid);close()};
   card._close=close;
   return {card,feed:card.querySelector('.oc-feed'),close};
 }
@@ -193,7 +203,7 @@ function omniContext(){
   return [
     `You are ${agentName()}, answering from the AgentOS omnibar — the always-present prompt bar on the desktop.`,
     `The user asked in passing; be FAST and BRIEF (1-3 sentences unless asked for more), and prefer acting`,
-    `through tools over explaining. This is the persistent Desktop thread.`,
+    `through tools over explaining. It is its own thread in Chat, titled with what they asked.`,
     open.length?`Open right now: ${open.join(', ')}. Current desktop ${curDesk}/${DESKS}, theme ${CURRENT_THEME}.`:'',
   ].filter(Boolean).join('\n');
 }
@@ -230,7 +240,7 @@ async function omniAsk(q){
   const inp=$('#omni-in');inp.value='';
   OMNI.imgs=[];omniShots();
   omniPop(false);
-  await omniThread();
+  await omniThread(q);
   const {card,feed,close}=omniCard(q);
   const stopBtn=card.querySelector('.oc-stopnow');
   stopBtn.onclick=()=>{stopAgent(OMNI.cid);stopBtn.textContent='stopping…';stopBtn.disabled=true};
@@ -242,8 +252,8 @@ async function omniAsk(q){
     // linger, then fade — unless the pointer is on it or an approval is pending
     setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
   }});
-  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:'◉ Desktop',images:imgs,
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id},
+  const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
+    context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
       // Only one stop on a card that has not started: "Stop" would kill the turn

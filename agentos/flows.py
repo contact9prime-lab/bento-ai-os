@@ -951,11 +951,8 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     sends to Telegram" are the same question from two starting points, so they take one path.
     """
     from . import knowledge as _k
-    from . import providers as _p
+    from . import executors as _ex
 
-    model = model or cfg.get("default_model") or ""
-    if not model:
-        return {"error": "no model configured — set one in the Models app first"}
     if current:
         keep = ("name", "description", "mission", "roster", "permissions", "sinks",
                 "autonomy_cap", "max_delegations", "max_steps", "max_seconds")
@@ -980,13 +977,12 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
                            for p in parts) or "  (nothing in the catalogue matches this request)"
     prompt = COMPOSE_PROMPT.format(intent=intent, agents=agents,
                                    tools=tool_lines, skills=skills, parts=part_lines)
-    try:
-        raw = await _p.complete(cfg, model, prompt,
-                                system="You are a systems designer. Answer with JSON only.")
-    except Exception as e:
-        # The model is a capability like any other: when it is missing or misconfigured,
-        # say which one and what went wrong, rather than letting a 500 stand in for it.
-        return {"error": f"{model} could not answer: {e}"}
+    # the MACHINE's brain (executors.ask_brain) — Claude Code when that is what answers
+    # here; a named `model` still wins. When nothing answers, the sentence says why.
+    raw, model, why = await _ex.ask_brain(cfg, "You are a systems designer. Answer with JSON only.",
+                                          prompt, model=model)
+    if why:
+        return {"error": why}
     draft = _k._parse_json(raw)
     if not draft:
         return {"error": f"{model} did not return a usable design — try again, or write it "
@@ -1102,11 +1098,8 @@ async def compose_subagent(cfg: dict, store, request: str, tools: list,
     two different starting points.
     """
     from . import knowledge as _k
-    from . import providers as _p
+    from . import executors as _ex
 
-    model = model or cfg.get("default_model") or ""
-    if not model:
-        return {"error": "no model configured — set one in the Models app first"}
     if current:
         intent = ("REVISE this existing subagent. Keep its name. Change only what the request "
                   "asks for, and return the WHOLE definition:\n"
@@ -1119,13 +1112,11 @@ async def compose_subagent(cfg: dict, store, request: str, tools: list,
     tool_lines = "\n".join(f"  - {t['name']}: {' '.join((t.get('description') or '').split())[:90]}"
                            for t in (tools or [])[:120]) or "  (none)"
     skills = ", ".join(s["name"] for s in store.list_skills()) or "(none installed)"
-    try:
-        raw = await _p.complete(cfg, model,
-                                SUBAGENT_PROMPT.format(intent=intent, tools=tool_lines,
-                                                       skills=skills),
-                                system="You are a systems designer. Answer with JSON only.")
-    except Exception as e:
-        return {"error": f"{model} could not answer: {e}"}
+    raw, model, why = await _ex.ask_brain(
+        cfg, "You are a systems designer. Answer with JSON only.",
+        SUBAGENT_PROMPT.format(intent=intent, tools=tool_lines, skills=skills), model=model)
+    if why:
+        return {"error": why}
     d = _k._parse_json(raw)
     if not d:
         return {"error": f"{model} did not return a usable design — try again, or write it by hand"}
@@ -1155,7 +1146,7 @@ def seed_builtin(store) -> bool:
 
     Seeded WITHOUT triggers on purpose: a fresh install that starts doing things
     unattended at 08:00 because it was installed is a surprise, not a feature. The
-    trigger is one click away in Workflows → Flows, made deliberately.
+    trigger is one click away in Missions → Build, made deliberately.
     """
     if store.list_flows():
         return False
@@ -1178,7 +1169,7 @@ def seed_builtin(store) -> bool:
     })
     try:
         store.log("system", "flows: seeded the built-in 'daily-briefing' flow (no trigger — "
-                            "add one in Workflows → Flows to make it run by itself)")
+                            "add one in Missions → Build to make it run by itself)")
     except Exception:
         pass
     return True

@@ -9583,8 +9583,11 @@ async def api_draft_flow(body: dict):
         return JSONResponse({"error": str(e), "warnings": draft.get("warnings") or []},
                             status_code=422)
     await state["broadcast"]({"type": "fabric_defs"})
-    return {"flow": flow, "report": report,
-            "would_grant": flowsmod.declared_grants({**flow, "enabled": 1})}
+    # the triggers live in their own table: without them here, a drafted "watch my
+    # Downloads" read "starts when you run it" beside a folder trigger it did have
+    trig = state["store"].flow_triggers(flow["name"])
+    return {"flow": {**flow, "triggers": trig}, "report": report,
+            "would_grant": flowsmod.declared_grants({**flow, "enabled": 1, "triggers": trig})}
 
 
 @app.get("/api/flows/runs")
@@ -10759,7 +10762,7 @@ async def _run_chat(cid: str, data: dict):
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
-        if model == "claude-code" and not (mention or huddle_hit or flow_hit):
+        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit):
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
             # indicator, global turn slot, Stop, persistence — because its stream is
@@ -10767,14 +10770,30 @@ async def _run_chat(cid: str, data: dict):
             # the desktop; the executor only gets the envelope configured in
             # Settings → Executors, decided before the run rather than per call.
             from . import executors as execmod
-            avail = execmod.available()
+            # Claude Code, Gemini CLI or Codex — the same turn, each CLI's own flags
+            # and stream (execmod.build_command / TRANSLATORS). One that is detected
+            # but cannot be driven is refused in a sentence, never run as another.
+            ex_title = execmod.EXECUTORS_BY_ID.get(model, {}).get("title", model)
+            if not execmod.drives(model):
+                raise RuntimeError(f"{ex_title} is installed, but AgentOS cannot run a turn on "
+                                   f"it yet — choose another brain in Settings → AI providers")
+            avail = execmod.available() if model == "claude-code" else {
+                "available": execmod.probe(model).get("installed"),
+                "reason": execmod.probe(model).get("why_not")}
             if not avail.get("available"):
-                raise RuntimeError(avail.get("reason") or "Claude Code is not available")
-            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+                raise RuntimeError(avail.get("reason") or f"{ex_title} is not available")
+            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"), model)
             # From the conversation row, not a dict on the server: a restart used to
             # drop every chat's executor session, so a machine that had been running
             # for a week came back with every conversation a stranger.
-            env.session_id = store.exec_session(cid)
+            if model in execmod.RESUMES:
+                env.session_id = store.exec_session(cid)
+            else:
+                # a CLI with no session this OS can resume gets the conversation so far
+                # in its prompt, or every follow-up reaches it as a first message
+                env.transcript = "\n".join(
+                    f"{'Person' if h.get('role') == 'user' else 'You'}: {str(h.get('content') or '')[:1500]}"
+                    for h in history[:-1][-8:] if h.get("role") in ("user", "assistant"))
             # The same per-surface context the built-in agent gets as extra_system.
             # Without it a delegated copilot turn arrived as a bare sentence with
             # no idea which app it was about — the executor is sanitizing it.
@@ -10824,16 +10843,16 @@ async def _run_chat(cid: str, data: dict):
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
                 space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
-            run = execmod.Run()
+            run = execmod.Run(engine=model)
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
-                          "model": "claude-code", "executor": run, "uid": owner}
+                          "model": model, "executor": run, "uid": owner}
             knowledge.turn_started()
             started = True
-            await evsend({"type": "turn_start", "model": "claude-code"})
+            await evsend({"type": "turn_start", "model": model})
             # Named for the step it actually is: launching the CLI takes seconds
             # on its own, and "working…" for that gap is indistinguishable from
             # a run that never started.
-            await evsend({"type": "status", "message": "starting Claude Code"})
+            await evsend({"type": "status", "message": f"starting {ex_title}"})
             collected: list[str] = []
 
             async def _relay(ev: dict):
@@ -10854,7 +10873,7 @@ async def _run_chat(cid: str, data: dict):
                 if team_token:
                     from . import mcpbridge as _bridge
                     _bridge.close_session(team_token)
-            if run.session_id:
+            if run.session_id and model in execmod.RESUMES:
                 # Keep the executor's own session so the next turn in this chat is a
                 # continuation rather than a stranger with no memory of the last one.
                 store.set_exec_session(cid, run.session_id)
@@ -10869,12 +10888,12 @@ async def _run_chat(cid: str, data: dict):
                     await evsend({"type": "status", "message": why})
             header = ""
             result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": "claude-code",
+                      "steps": [{"type": "executor", "name": model,
                                  "cost_usd": run.cost_usd, "turns": run.turns,
                                  "denials": run.denials, "envelope": env.describe()}],
                       # who actually answered, so a reloaded conversation still
                       # attributes it correctly rather than crediting the built-in agent
-                      "engine": "claude-code", "engine_model": run.model,
+                      "engine": model, "engine_model": run.model,
                       "tokens": {"input": 0, "output": 0}}
         elif flow_hit:
             trig, flow = flow_hit
@@ -10886,7 +10905,7 @@ async def _run_chat(cid: str, data: dict):
             started = True
             await evsend({"type": "turn_start", "model": model})
             await evsend({"type": "status",
-                          "message": f"flow '{flow['name']}' started — watch it in Workflows → Flows"})
+                          "message": f"flow '{flow['name']}' started — watch it in Missions → Build"})
             res = await state["fabric"].run_flow(
                 flow, text, origin={"surface": "gui", "ref": trig["id"]},
                 conversation_id=cid, trigger_id=trig["id"], approver=approver,

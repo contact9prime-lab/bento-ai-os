@@ -66,6 +66,26 @@ they are per-machine and instant. `bento apps` in a terminal always lists every 
 - The **dock** next to Start holds quick-launch shortcuts for your favorite apps, each showing a dot
   when running. Right-click a dock icon to remove it.
 
+![Removing the Office from the dock: the toast says the Launcher still has it and how to pin it
+back, with an Undo button](screenshots/dock-removed-undo.png)
+
+Removing an icon only takes it off the dock. The app is still in the Launcher, the prompt bar
+and the deck. The toast says so and offers **Undo**. To put it back later, right-click the app in
+the Launcher → **Pin to dock**.
+
+### Questions from the prompt bar
+
+![Chat's sidebar with a "From the prompt bar" group: each question asked from the bar is its own
+thread, titled with the question](screenshots/chat-bar-threads.png)
+
+Every new question you ask the prompt bar starts its own conversation in Chat, titled with what
+you asked, under **From the prompt bar**. A follow-up asked while the answer's card is still open
+continues that thread. **Open in Chat** on a card opens that card's thread. The thread exists as
+soon as you press Enter, so a question queued behind another turn is already in the list.
+
+Before, every question from the bar went into one thread called "Desktop", so the list showed
+"Desktop" and nothing else.
+
 ### Desktop icons
 There are none, deliberately: the desktop is wallpaper and the apps live in the deck above the
 prompt bar, where they are grouped, searchable and arrangeable. See **Arranging it** above.

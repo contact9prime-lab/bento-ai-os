@@ -14,7 +14,8 @@ The menu bar states the pair at all times, so "what is this machine running on" 
 | **Anthropic · OpenAI · Google · OpenRouter** | the built-in agent, over that API | pinned + whatever the provider lists |
 | **llama.cpp / LM Studio / vLLM** | the built-in agent, via the custom OpenAI-compatible URL | whatever you pinned |
 | **Claude Code** | Anthropic's CLI, on your Claude subscription | `opus`, `sonnet`, `haiku`, or its own default |
-| **Hermes · OpenClaw** | that agent, with its own configuration | its own |
+| **Gemini CLI · Codex** | that agent, signed in with your Google / ChatGPT account | its own |
+| **Hermes · OpenClaw** | detected, but AgentOS cannot drive them yet, so they are not offered as a brain | — |
 
 Picking an agent as the executor makes this machine forward every turn a person starts — chat, the
 prompt bar, copilot panels, Telegram, the API, scheduled turns. Apps and App Studio keep using the

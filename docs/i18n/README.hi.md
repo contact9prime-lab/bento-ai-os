@@ -635,6 +635,7 @@ Telegram से पूरे OS को चला सकता है:
 ## Models और providers
 
 - **Ollama** (local) — auto-discovered; कुछ भी आपकी मशीन से बाहर नहीं जाता।
+- **Claude Code**, **Gemini CLI** या **Codex** — यहाँ पहले से इंस्टॉल कोई AI एजेंट दिमाग़ बन सकता है, आपके अपने खाते से साइन इन; AgentOS उसे कभी कोई key नहीं देता।
 - **Anthropic**, **OpenAI**, **OpenRouter**, या कोई भी **OpenAI-compatible** endpoint (LM Studio, vLLM,
   Groq, …)।
 - **Image generation** — key सेट होने पर Google Gemini या OpenAI image मॉडल, अन्यथा मुफ़्त

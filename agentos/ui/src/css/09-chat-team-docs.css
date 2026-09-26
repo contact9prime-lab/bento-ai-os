@@ -25,12 +25,75 @@
 .sawrow.on{border-color:var(--acc);background:var(--bg4)}
 .sawrow input{width:auto;margin-top:2px;flex:0 0 auto;accent-color:var(--acc)}
 .sawrow .n{font-size:var(--fs-md);font-weight:600;color:var(--txt);letter-spacing:.1px}
-.sawrow .d{font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
+.sawrow .d{font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45;font-weight:400}
 .sawgrp{font-size:var(--fs-xs);font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:12px 2px 4px}
 .sawchip{padding:5px 12px;border:1px solid var(--line);border-radius:var(--r-full);background:var(--bg3);color:var(--dim);font-size:var(--fs-sm);flex:0 0 auto}
 .sawchip:hover{border-color:var(--acc);color:var(--txt)}
 .sawh{font-size:var(--fs-lg);font-weight:700;margin:0 0 2px}
 .sawsub{font-size:var(--fs-sm);color:var(--dim);margin:0 0 12px;line-height:1.5}
+/* the agent editor (13-fabric.js drawSAW): face + name, named steps, full-width fields */
+.saw-ov{position:fixed;inset:0;z-index:9998;background:rgba(5,7,9,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+.saw-box{width:640px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg,16px);box-shadow:0 30px 80px rgba(0,0,0,.45);overflow:hidden}
+.saw-head{display:flex;align-items:center;gap:14px;padding:20px 22px 12px}
+.saw-head .sawsub{margin:0}
+.saw-face{width:52px;height:52px;flex:0 0 52px;border-radius:14px;image-rendering:pixelated;background:var(--bg3)}
+.saw-tile{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--on-acc,#fff);background:var(--acc-grad,var(--acc))}
+.saw-x{min-width:var(--tap,36px);min-height:var(--tap,36px);border-radius:var(--r-full);background:transparent;border:1px solid transparent;color:var(--dim)}
+.saw-x:hover{border-color:var(--line);color:var(--txt)}
+.saw-tabs{display:flex;gap:6px;padding:0 22px 12px;border-bottom:1px solid var(--line);overflow-x:auto;scroll-snap-type:x mandatory}
+.saw-tabs button{flex:1 0 auto;scroll-snap-align:start;display:flex;align-items:center;gap:8px;min-height:var(--tap,36px);padding:6px 12px;border-radius:var(--r-full);border:1px solid var(--line);background:var(--bg3);color:var(--dim);font-size:var(--fs-sm);font-weight:600}
+.saw-tabs button b{display:inline-flex;width:20px;height:20px;border-radius:50%;align-items:center;justify-content:center;background:var(--bg4,var(--line));color:var(--txt);font-size:11px}
+.saw-tabs button.on{border-color:var(--acc);color:var(--txt);background:color-mix(in srgb,var(--acc) 14%,var(--bg3))}
+.saw-tabs button.on b,.saw-tabs button.done b{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
+.saw-body{padding:16px 22px;overflow:auto;flex:1 1 auto}
+.saw-body label:not(.sawrow):not(.saw-cap){display:block;margin:12px 0 5px;font-size:var(--fs-sm);font-weight:650;color:var(--txt)}
+.saw-body input:not([type=checkbox]):not([type=radio]),.saw-body textarea,.saw-body select{width:100%;box-sizing:border-box;font-size:var(--fs-md,14px)}
+.saw-body textarea{line-height:1.5;resize:vertical}
+.saw-hint{margin-top:5px;font-size:var(--fs-xs,12px);color:var(--dim2)}
+.saw-ai{padding:14px;border:1px solid color-mix(in srgb,var(--acc) 45%,var(--line));border-radius:var(--r-md,12px);background:color-mix(in srgb,var(--acc) 7%,var(--bg3))}
+.saw-ai label{margin-top:0;font-size:var(--fs-md,14px)}
+.saw-ai .sub{margin-bottom:8px;font-size:var(--fs-sm);color:var(--dim)}
+.saw-ai label{color:var(--acc)}
+.saw-ai-go{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.saw-ai-go .save{margin:0;min-height:var(--tap,36px);padding:0 18px;flex:0 0 auto}
+.saw-or{display:flex;align-items:center;gap:10px;margin:16px 0 2px;color:var(--dim2);font-size:var(--fs-xs,12px)}
+.saw-or::before,.saw-or::after{content:"";flex:1;height:1px;background:var(--line)}
+.saw-at{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--r-md,10px);background:var(--bg3);padding-left:12px}
+.saw-at span{color:var(--dim)}
+.saw-body .saw-at input{border:0;background:transparent;box-shadow:none}
+.saw-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.saw-chips .sawchip{min-height:var(--tap,32px)}
+.saw-list{max-height:260px;overflow:auto;margin:8px 0 2px}
+.saw-skills{max-height:170px;overflow:auto}
+.saw-count{margin:6px 0 10px}
+.saw-caps{display:grid;gap:8px}
+.saw-cap{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--bg3);cursor:pointer;margin:0!important}
+.saw-cap.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--bg3))}
+.saw-cap input{width:auto!important;margin-top:3px;accent-color:var(--acc)}
+.saw-cap .n{font-weight:650;color:var(--txt)}
+.saw-cap .d{font-size:var(--fs-sm);color:var(--dim);font-weight:400;margin-top:2px}
+.saw-lims{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.saw-sum{display:flex;gap:12px;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--bg3)}
+.saw-sum .n{font-weight:700;color:var(--txt)}
+.saw-sum .d{font-size:var(--fs-sm);color:var(--dim);margin-top:3px}
+.saw-sum .persona{font-size:var(--fs-sm);color:var(--dim2);font-style:italic;margin-top:4px}
+.saw-foot{display:flex;align-items:center;gap:8px;padding:12px 22px 16px;border-top:1px solid var(--line)}
+.saw-foot button{min-height:var(--tap,36px);padding:0 16px}
+.saw-sp{flex:1}
+.saw-tabs .s{display:none}
+.saw-box .saw-foot button.save{margin:0;flex:0 0 auto;min-width:110px}
+.saw-foot .save:disabled{opacity:.45}
+@media (max-width:640px){
+  .saw-ov{align-items:stretch}
+  .saw-box{width:100vw;max-width:100vw;max-height:100dvh;height:100dvh;border-radius:0;border:0}
+  .saw-head{padding:calc(14px + env(safe-area-inset-top)) 16px 10px}
+  .saw-tabs{padding:0 16px 10px}.saw-tabs button{flex:1 1 0;justify-content:center}
+  .saw-tabs .l{display:none}.saw-tabs .s{display:inline}
+  .saw-foot>button:first-child{padding:0 8px}
+  .saw-body{padding:12px 16px}
+  .saw-foot{padding:10px 16px calc(12px + env(safe-area-inset-bottom))}
+  .saw-lims{grid-template-columns:1fr}
+}
 .teamcard{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:8px;cursor:pointer;transition:border-color var(--d-fast) var(--ease-out);background:var(--bg3)}
 .teamcard:hover{border-color:var(--acc)}
 .teamcard .tile{flex:0 0 38px;width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--fs-base);color:var(--bg);background:var(--acc-grad)}
@@ -139,6 +202,16 @@
 .working .wsub{font-size:var(--fs-xs);color:var(--dim2);opacity:.75;font-variant-numeric:tabular-nums}
 
 .approval{border:1px solid var(--warn);border-radius:var(--r-lg);background:rgba(251,191,36,.06);padding:13px;margin:0 0 12px}
+/* a card floated because the one placed in a feed is hidden (the prompt bar's card
+   under an open window, a chat you are not looking at) — never off a phone's edge */
+.approval.ap-float{position:fixed;right:18px;top:52px;z-index:9999;max-width:440px;width:calc(100vw - 36px);
+  background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5)}
+/* top-right, clear of the toast stack (bottom-right) that announces it */
+body.dev-mobile .approval.ap-float{right:12px;left:12px;width:auto;max-width:none;top:calc(52px + env(safe-area-inset-top,0px))}
+.approval.ap-flash{animation:apFlash .9s ease-out 2}
+@keyframes apFlash{0%{box-shadow:0 0 0 0 var(--warn)}100%{box-shadow:0 0 0 10px transparent}}
+@media (prefers-reduced-motion:reduce){.approval.ap-flash{animation:none;outline:2px solid var(--warn)}}
+body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
 .approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
