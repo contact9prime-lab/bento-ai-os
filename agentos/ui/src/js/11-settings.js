@@ -187,6 +187,11 @@ function setTab(body,all){
     P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), an executor (<a href="#" onclick="settingsGo('executors');return false">Executors</a> — what it can reach), permissions and skills — and everything any of them does is in the ledger.</p>`);
     P.push(pGroup('Lead agent',[
       pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      // the character is part of who the agent is, so it is edited HERE as well as in
+      // Appearance — looking for it on the agent's own page and not finding it was the report
+      pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
+        +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
+        {desc:'Its character in Chat, Logs, the Office and the Crew stage. Pick from the palette, or describe it in words.',f:'agent look character avatar face appearance'}),
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',

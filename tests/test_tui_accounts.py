@@ -44,12 +44,18 @@ def server_with_an_account(tmp_path):
     proc = subprocess.Popen([sys.executable, "-m", "agentos", "serve", "--port", str(port), "--no-browser"],
                             env=env, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     import httpx
-    for _ in range(120):
+    up = False
+    for _ in range(240):
         try:
             if httpx.get(f"http://127.0.0.1:{port}/api/users/who", timeout=1).status_code == 200:
+                up = True
                 break
         except Exception:
-            time.sleep(0.25)
+            pass
+        time.sleep(0.25)
+    if not up:
+        proc.terminate()
+        pytest.fail(f"the server under test did not answer on port {port} within a minute")
     try:
         yield port
     finally:
@@ -71,7 +77,7 @@ def test_the_tui_signs_in_shows_your_agent_and_signs_out(server_with_an_account)
             assert isinstance(app.screen, SignInScreen), "accounts: nothing loads before a sign-in"
             app.screen.query_one("#si-name", Input).value = "ada"
             app.screen.query_one("#si-pw", Input).value = "wrong-password-1"
-            await pilot.click("#si-go")
+            app.screen._go()        # submit as Enter does: a click by coordinates can land before layout
             for i in range(150):
                 await pilot.pause(0.1)
                 if isinstance(app.screen, SignInScreen) and "do not match" in str(
@@ -80,7 +86,7 @@ def test_the_tui_signs_in_shows_your_agent_and_signs_out(server_with_an_account)
             assert "do not match" in str(app.screen.query_one("#si-error", Static).render()), (i, type(app.screen))
             app.screen.query_one("#si-name", Input).value = "ada"
             app.screen.query_one("#si-pw", Input).value = "hunter2hunter"
-            await pilot.click("#si-go")
+            app.screen._go()        # submit as Enter does: a click by coordinates can land before layout
             for _ in range(150):
                 await pilot.pause(0.1)
                 if "Nova" in (app.sub_title or ""):

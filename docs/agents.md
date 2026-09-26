@@ -81,8 +81,14 @@ relative path taken from the workspace, and `..` and symlinks resolved. A folder
 
 ![Settings → Agents: each specialist with its brain, hands, permissions, skills, who it may ask and its missions](screenshots/settings-agents.png)
 
-The **Lead agent** group names your agent and sets its hands; its brain is chosen in AI
-providers. Below it, **Your agents** shows each specialist on one card:
+The **Lead agent** group names your agent, sets its **look** and its hands; its brain is
+chosen in AI providers. Below it, **Your agents** shows each specialist on one card:
+
+- **Look**: its character, the same one in Chat, the Office and the Crew stage. **Change…**
+  opens the editor, **✦ Describe it** opens it on the box where you say what you want in
+  words. Tapping the face on the card does the same. (From a terminal: `bento avatar`.)
+
+  ![An agent card in Settings → Agents with its Look row: Change… and ✦ Describe it](screenshots/settings-agents-look.png)
 
 - **Brain**: what it answers on right now, and why when that is not its own pick.
 - **Hands**: which executor it has. Changing it applies at once and is recorded.
@@ -98,6 +104,25 @@ may message each other (ask me / swarm / off), the limits, who may ask whom, and
 teams.
 
 ![The same page on a 390px phone](screenshots/settings-agents-phone.png)
+
+### Your lead hands work to them, whatever its brain
+
+Your lead is told who its specialists are: each one's name and the first sentence of its
+soul, which is how you described the job. When you ask for one of those jobs ("build me a
+tool" with a toolsmith on the roster), it hands the work over with `delegate` and reports
+what they did, instead of doing it itself.
+
+This holds when the lead's brain is Claude Code. A chat turn forwarded to Claude Code keeps
+its own tools and also gets exactly two of this OS's: `delegate` and `huddle`, over the same
+bridge missions use. Every hand-over passes this OS's permission check, asks you when a
+built-in turn would, and is in the audit log. The same applies to a message sent from
+Telegram or WhatsApp. A scheduled turn does not get it; a mission is how a schedule gets a
+team.
+
+Addressing someone directly always wins: `@toolsmith build a VCP scanner` goes to the
+toolsmith, `@researcher @validator is this right?` starts a huddle, whatever the brain.
+Before this, with Claude Code as the brain, even an `@toolsmith` message was answered by
+Claude Code itself.
 
 ## The map
 

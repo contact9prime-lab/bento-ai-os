@@ -105,6 +105,11 @@ function avatarSprite(key,px){
    editing changes in Chat, in Logs and on the stage behind the dialog while you
    pick. The options are the server's own closed set (`palette`), so nothing can be
    offered here that the server would then refuse. */
+/* The same editor, opened on its "describe it" box — the Agents page's ✦ button. */
+async function avatarDesignAsk(key){
+  await avatarEdit(key);
+  const d=document.querySelector('.dlg-scrim .ave-desc');if(d)d.focus();
+}
 async function avatarEdit(key){
   await avatarsLoad();
   const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}

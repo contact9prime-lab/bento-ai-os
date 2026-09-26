@@ -256,3 +256,8 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .agn-hands{border-left:3px solid color-mix(in srgb,var(--txt) 55%,transparent)}
 .agn-team{border-left:3px solid #60a5fa}.agn-mission{border-left:3px solid #fbbf24}
 .agraph-cols{display:none}
+
+/* the face on an agent's card is the door to its look (Settings → Agents) */
+.ag-face{display:inline-flex;padding:0;border-radius:8px;background:none;border:1px solid transparent;cursor:pointer}
+.ag-face:hover{border-color:var(--acc)}
+body.dev-touch .ag-face{min-width:var(--tap);min-height:var(--tap);align-items:center;justify-content:center}
