@@ -87,13 +87,38 @@ body.dock-hide.dock-peek #taskbar{transform:translateX(-50%) translateY(0);opaci
 .palitem.act .pl{color:var(--acc)}
 .palitem.act.sel .pl{color:var(--txt)}
 
-/* toasts: a real stack, newest on top */
+/* toasts: a real stack, newest on top. Each one says what KIND of news it is (an icon in
+   the kind's colour — toastKind in 00-core.js), can be dismissed, and shows its time
+   running out as a bar that pauses while the pointer is on it. The stack itself lets
+   clicks through; only the cards take them. */
 #toasts{position:fixed;right:14px;bottom:calc(var(--tbh) + 12px);z-index:11000;display:flex;flex-direction:column;gap:8px;
   align-items:flex-end;pointer-events:none}
-#toasts .toast{position:static;animation:none}
-#toasts .toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:10px}
+#toasts .toast{position:relative;inset:auto;animation:none;pointer-events:auto;display:flex;align-items:center;gap:10px;
+  max-width:min(420px,calc(100vw - 28px));padding:9px 8px 9px 11px;overflow:hidden}
 #toasts .toast-act{flex:none}
-body.dev-touch #toasts .toast-act{min-height:var(--tap)}
+.toast-ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--acc);color:var(--on-acc)}
+.toast.k-ok .toast-ic{background:var(--ok);color:#052e16}
+.toast.k-warn .toast-ic{background:var(--warn);color:#2a1d00}
+.toast.k-err .toast-ic{background:var(--err);color:#fff}
+.toast.k-err{border-color:var(--err)}
+.toast-t{flex:1;min-width:0;line-height:1.35;overflow-wrap:anywhere}
+.toast-x{flex:none;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:11px;color:var(--dim);opacity:.7}
+.toast-x:hover{opacity:1;background:color-mix(in srgb,var(--txt) 10%,transparent);color:var(--txt)}
+.toast-bar{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--acc);opacity:.55;transform-origin:left center;
+  animation:toastbar var(--toast-ms,3800ms) linear forwards}
+.toast.k-ok .toast-bar{background:var(--ok)}.toast.k-warn .toast-bar{background:var(--warn)}.toast.k-err .toast-bar{background:var(--err)}
+.toast.held .toast-bar{animation-play-state:paused}
+@keyframes toastbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){.toast-bar{display:none}}
+body.dev-touch #toasts .toast-act,body.dev-touch .toast-x{min-height:var(--tap)}
+body.dev-touch .toast-x{min-width:var(--tap)}
+/* notifications: nothing waiting is a state, not an absence */
+.np-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 16px 18px;text-align:center;color:var(--dim)}
+.np-empty b{color:var(--txt);font-size:var(--fs-md)}.np-empty span{font-size:var(--fs-xs);max-width:240px}
+/* control centre tiles carry an icon beside their name */
+.cc-tile .ptitle{justify-content:flex-start}
+.cc-ic{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;flex:none;
+  background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
 
 /* control center popover (tray) */
 #ccpop{position:fixed;top:calc(var(--mbh) + 8px);right:10px;width:380px;max-height:min(72vh,640px);overflow:auto;z-index:10500;

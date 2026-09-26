@@ -22,6 +22,12 @@ own wallpaper. **Themes → Build a theme** builds your own look and feel, previ
 - corners, depth, glass, font and text size;
 - a wallpaper made from your colours.
 
+**Toasts and panels that read at a glance.** A toast now shows what kind of news it is — done,
+warning, failure or just information — with an icon, a ✕ and a bar that runs down while it waits;
+hover holds it, and a failure stays twice as long. The notification centre is a stack of cards
+that says "all caught up" when it is empty, and every control-centre tile has an icon and says why
+when this machine cannot offer its control. On a phone a toast is the full width of the screen.
+
 **A team, not a single agent.** Each specialist can answer on its own AI provider
 (Settings → AI providers → Team, `bento team`). Several can talk in a **huddle**.
 One can ask another mid-task through a permission **matrix** that you fill in, or

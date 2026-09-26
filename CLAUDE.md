@@ -1225,6 +1225,14 @@ view-transition crossfade, and one per slider step painted the previous screen o
 The unblurred active-window tint (`glass-lite`) is 98%, measured: over Chat's text, 10 grey levels
 of contrast showed through at 94%, 5 at 98%, 0 opaque.
 
+**A toast states its kind, and the kind is read from the sentence.** `toastKind()` (`00-core.js`)
+sorts every toast into ok / warn / err / info from how it starts ("saved…", "could not…", "✓", "✗")
+unless the caller passes `{kind}` — hundreds of call sites got an icon without an edit, so do not
+"fix" it by threading a kind through each one. An error stays 7s against 3.8s, hover holds it, and
+at most five are kept. `#toasts .toast` must keep `inset:auto`: the base `.toast` in
+`12-overlays.css` is `position:fixed; right:14px`, and once the stack made it `relative` that
+`right` shifted every card 14px left (off a 390px screen). `tests/test_panels.py` pins it.
+
 ## Characters: one painter, one recipe, every surface
 
 `agentos/avatars.py` is the only place a character exists. You, your agent (`@agent`) and every

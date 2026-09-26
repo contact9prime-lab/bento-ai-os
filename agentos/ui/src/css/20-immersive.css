@@ -93,6 +93,19 @@ body.immersive #ccpop{width:400px;padding:0}
 body.immersive #ccpop .pad{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
 body.immersive #ccpop .cc-owned,body.immersive #ccpop .provbox:nth-of-type(1),body.immersive #ccpop .provbox:nth-of-type(2),body.immersive #ccpop > .pad > .row{grid-column:1/-1}
 body.immersive #ccpop .provbox{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent)}
+/* Control centre: tiles of one height with an icon chip, the shared note as a quiet
+   banner, and the slider in the accent. Like macOS's, it reads as controls first. */
+body.immersive #ccpop .pad{grid-template-columns:repeat(2,minmax(0,1fr))}
+body.immersive #ccpop .provbox{border-radius:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.07);min-height:92px}
+body.immersive #ccpop .provbox.cc-wide{grid-column:1/-1;min-height:0}
+body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);gap:10px}
+body.immersive #ccpop .cc-ic{width:30px;height:30px;border-radius:10px;background:var(--acc-grad);color:var(--on-acc);
+  box-shadow:0 4px 12px color-mix(in srgb,var(--acc) 35%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body.immersive #ccpop .provbox .mut{font-size:var(--fs-xs)}
+body.immersive #ccpop .cc-owned{margin:0;padding:10px 12px;border-radius:14px;font-size:var(--fs-xs);
+  background:color-mix(in srgb,var(--txt) 5%,transparent);border:1px dashed color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive #ccpop input[type=range]{accent-color:var(--acc)}
+body.immersive #ccpop > .pad > .row .endbtn{border-radius:12px;flex:1}
 body.immersive #ccpop .provbox .ptitle{font-size:var(--fs-sm);font-weight:650}
 body.immersive #ccpop .cc-owned{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:var(--fs-xs)}
 body.immersive #ccpop > .pad > .row{flex-wrap:wrap}
@@ -417,10 +430,49 @@ body.immersive .np-item{border-radius:12px;background:color-mix(in srgb,var(--tx
 body.immersive .palitem{border-radius:10px}
 body.immersive .palitem.sel{background:var(--acc);color:var(--on-acc);outline:none}
 body.immersive .palitem.sel .pl,body.immersive .palitem.sel .ph,body.immersive .palitem.sel .ok{color:var(--on-acc)}
-body.immersive .toast{background:color-mix(in srgb,var(--bg2) 70%,transparent);
+/* Toasts: a small glass card with the kind's colour as a lit icon and a soft wash on its
+   leading edge, rather than a 3px rule. The words stay the brightest thing on it. */
+body.immersive .toast{background:
+    linear-gradient(90deg,color-mix(in srgb,var(--k,var(--acc)) 16%,transparent),transparent 42%),
+    color-mix(in srgb,var(--bg2) 78%,transparent);
   backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
-  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-left:3px solid var(--acc);border-radius:14px;
-  box-shadow:0 18px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);border-radius:16px;padding:10px 8px 10px 10px;
+  min-width:min(300px,calc(100vw - 28px));
+  font-size:var(--fs-sm);font-weight:500;
+  box-shadow:0 18px 44px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12)}
+body.immersive .toast.k-info{--k:var(--acc)}body.immersive .toast.k-ok{--k:var(--ok)}
+body.immersive .toast.k-warn{--k:var(--warn)}body.immersive .toast.k-err{--k:var(--err)}
+body.immersive .toast.k-err{border-color:color-mix(in srgb,var(--err) 45%,transparent)}
+body.immersive .toast-ic{width:28px;height:28px;border-radius:9px;
+  box-shadow:0 4px 12px color-mix(in srgb,var(--k,var(--acc)) 45%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body.immersive .toast.k-info .toast-ic{background:var(--acc-grad)}
+body.immersive .toast .toast-act{border-radius:10px;background:var(--acc-grad);color:var(--on-acc);border:none;font-weight:600}
+body.immersive .toast-bar{height:2px;left:12px;right:12px;bottom:3px;border-radius:2px;opacity:.7}
+
+/* The notification centre: a header with weight, each notification its own lit card,
+   the dismiss appearing where the pointer is (always there on touch), and an empty
+   state that says so like a finished inbox rather than a missing list. */
+body.immersive #notifpanel{width:370px;padding:8px}
+body.immersive #notifpanel .np-head{font-size:var(--fs-md);font-weight:700;padding:6px 8px 10px;letter-spacing:-.01em}
+body.immersive #notifpanel .np-head button{border-radius:9px;padding:4px 10px;font-weight:600;
+  background:color-mix(in srgb,var(--txt) 7%,transparent)}
+body.immersive #notifpanel .np-head button:hover{background:color-mix(in srgb,var(--txt) 14%,transparent)}
+body.immersive .np-group{border-bottom:none;margin-bottom:4px}
+body.immersive .np-gapp{padding:6px 8px 4px;color:color-mix(in srgb,var(--txt) 50%,transparent)}
+body.immersive .np-item{padding:10px 36px 10px 12px;margin:0 0 6px;border-radius:14px;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);border:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);transition:background var(--d-fast) var(--ease-out)}
+body.immersive .np-item:hover{background:color-mix(in srgb,var(--txt) 10%,transparent)}
+body.immersive .np-item.imp{box-shadow:inset 3px 0 0 var(--acc),inset 0 1px 0 rgba(255,255,255,.06)}
+body.immersive .np-item.crit{border-color:color-mix(in srgb,var(--err) 50%,transparent);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--err) 14%,transparent),transparent 60%),color-mix(in srgb,var(--txt) 6%,transparent)}
+body.immersive .np-item .np-sum{font-size:var(--fs-sm);margin:2px 0}
+body.immersive .np-item .np-x{top:8px;right:8px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;opacity:0}
+body.immersive .np-item:hover .np-x,body.immersive .np-item .np-x:focus-visible,body.immersive.dev-touch .np-item .np-x{opacity:.8}
+body.immersive .np-item .np-x:hover{background:color-mix(in srgb,var(--txt) 12%,transparent);color:var(--txt)}
+body.immersive .np-foryou{margin:0 0 8px;border-radius:14px}
+body.immersive .np-empty svg{width:40px;height:40px;padding:9px;border-radius:14px;color:var(--acc);
+  background:color-mix(in srgb,var(--acc) 14%,transparent);box-sizing:border-box}
 body.immersive .dlg{border-radius:20px}
 body.immersive .dlg-b button{border-radius:11px}
 

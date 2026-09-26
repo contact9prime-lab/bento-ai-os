@@ -269,6 +269,26 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   would be telling you something untrue about what you have.
 
   ![The same scene on a machine with no specialists: the agent alone, under the line "No specialists yet — ask for one and they take a place here"](screenshots/crew-scene-empty.png)
+- **Toasts and panels.** A toast says what KIND of news it is before you read it: a green tick
+  for something done, amber for a warning, red for a failure, the accent for anything else — worked
+  out from the sentence itself, so every one of the few hundred toasts in the apps got it without an
+  edit. Each has a ✕, and a thin bar that runs down while it waits; hovering holds it, and a failure
+  stays on screen twice as long as a success, because it is the one you need to read. The newest is
+  on top and at most five are kept. The notification centre is a stack of cards with a hover ✕ (always
+  shown on a touch screen), an important one lit on its edge and a critical one washed red, and "all
+  caught up" when there is nothing. The control centre is a set of tiles with an icon each —
+  sound and brightness across, network and power side by side, notifications along the bottom — and a
+  tile whose control this machine cannot offer says so instead of standing empty. On a phone a toast is the full width of the screen.
+
+  ![Toasts in the immersive look: a green done, an accent request with a Review button, a red failure and an amber warning, each with a dismiss button and a timer bar](screenshots/panels-toasts.png)
+
+  ![The notification centre: cards for each notification, an important one lit on its edge and a stopped mission washed red](screenshots/panels-notif.png)
+
+  ![The notification centre with nothing in it, saying you are all caught up](screenshots/panels-notif-empty.png)
+
+  ![The control centre: sound, brightness, network and power tiles with icons, brightness saying it is not available here, and Notifications along the bottom](screenshots/panels-control.png)
+
+  ![Toasts on a 390px phone, each the full width of the screen](screenshots/panels-toasts-phone.png)
 - **A phone gets the same system.** Home is the greeting and the prompt bar; the wall, the drawer
   and the kit all work at 390px, and every new control meets the 44px tap floor.
 

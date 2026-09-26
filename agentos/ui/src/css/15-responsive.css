@@ -350,7 +350,8 @@ body.dev-mobile .two-pane .row{flex-wrap:wrap}
 body.dev-mobile .two-pane .row>*{flex:1 1 100%;min-width:0}
 /* toasts: `body.deck-open #toasts` lifts them by the deck's height, and on a
    phone the deck is the screen — the toast came out at y=-18, over the clock */
-body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px}
+body.dev-mobile #toasts{bottom:calc(var(--chrome-b) + 8px);top:auto;left:10px;right:10px;align-items:stretch}
+body.dev-mobile #toasts .toast{max-width:none;min-width:0}
 /* the dock rests on a whole icon at its LEFT edge; `end` snapping kept the
    right edge whole and left the first icon half clipped instead */
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:start}

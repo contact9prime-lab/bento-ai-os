@@ -61,7 +61,7 @@ async function renderControl(body){
     .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
     ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
-    <div class="provbox"><div class="ptitle">Sound</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('volume',16)}</span>Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
         <input type="range" id="c-vol" min="0" max="100" value="${a.volume??50}" style="flex:1">
@@ -69,17 +69,17 @@ async function renderControl(body){
       </div>
       <div id="c-sinks"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Brightness</div><div id="c-bright"><p class="mut" style="margin-top:6px">…</p></div></div>
-    <div class="provbox"><div class="ptitle">Network</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('sun',16)}</span>Brightness</div><div id="c-bright"><p class="mut" style="margin-top:6px">…</p></div></div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('wifi',16)}</span>Network</div>
       <p class="mut" style="margin-top:6px" id="c-net">${n.online?n.connections.map(c=>`${c.type==='wifi'?'Wi-Fi':'wired'} · ${esc(c.name)}`).join(', '):'offline'}</p>
       <div class="row" style="margin-top:8px" id="c-radios"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Power</div>
+    <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('battery',16)}</span>Power</div>
       <p class="mut" style="margin-top:6px">${b.percent!=null?`${b.percent}% · ${esc(b.state||'')}`:'no battery — mains powered'}</p>
       ${b.percent!=null?`<div class="bar" style="margin-top:6px"><i style="width:${b.percent}%" class="${b.percent<20?'hot':''}"></i></div>`:''}
       <div class="row" style="margin-top:8px" id="c-profile"></div>
     </div>
-    <div class="provbox"><div class="ptitle">Notifications</div><div class="row" style="margin-top:8px" id="c-dnd"></div></div>
+    <div class="provbox cc-tile cc-wide"><div class="ptitle"><span class="cc-ic">${uiIcon('bell',16)}</span>Notifications</div><div class="row" style="margin-top:8px" id="c-dnd"></div></div>
     <div class="row" style="margin-top:4px">
       <button class="endbtn" onclick="openApp('syssettings')">⚙ System Settings</button>
       ${cap('settings.open').available?`<button class="endbtn" onclick="ctlSettings('')">Open ${esc(PLATFORM.platform||'host')} Settings ↗</button>`:''}
@@ -115,7 +115,8 @@ async function renderControl(body){
             onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
-  }else br.innerHTML=ccNote('brightness.set');
+  // the shared reason is said once at the top; the tile says so rather than going blank
+  }else br.innerHTML=ccNote('brightness.set')||'<p class="mut" style="margin-top:6px">Not available here — see above</p>';
 
   // radios: wifi + bluetooth quick toggles
   const radios=$('#c-radios');let rhtml='';
