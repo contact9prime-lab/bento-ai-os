@@ -1,6 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-26
+
+**A team, not a single agent.** Each specialist can answer on its own AI provider
+(Settings → AI providers → Team, `bento team`). Several can talk in a **huddle**.
+One can ask another mid-task through a permission **matrix** that you fill in, or
+through **swarm**, which opens the empty cells. Every character, your own agent
+included, has a face drawn from a stored recipe. Your agent is the lead, in a
+blazer. You can describe a look in words and have AI design it, and Undo puts back
+the look it replaced. (`docs/team.md`, `docs/desktop.md` → Characters.)
+
+**Linked teams.** Link with another Bento over mutual TLS, or with another account
+on this machine. One side asks, the other approves, and both screens show the same
+six digits. Your agents can then ask theirs (`analyst@office`), each answering under
+its own side's permissions. The people on both sides can write to each other in
+Team Chat, which no agent ever reads. A link grants nothing by itself: not even
+names, and never a way to act on the other machine.
+
+**A question from somewhere else can never change something without a person.**
+A linked team's question, a web page or an email marks the run as untrusted. From
+then on, every step that would change something asks a person, at full autonomy
+too. When nobody can be asked, the answer is no. The one exception is a narrow
+**standing permission** you give a linked team: one agent, one action, one folder
+(`bento link let`).
+
+**Missions can use an agent on a linked team, and that team keeps its own record.**
+A scheduled mission can list `analyst@office` on its roster. Office records the
+mission on its side, can see how often it asked, and can stop it
+(`bento link missions`, `bento link stop`).
+
+**The version number moves with the code.** Every change that ships raises
+`agentos/VERSION`. Pull requests are checked, and a push that forgets gets a patch
+bump from CI. `bento update` and Settings now show the build next to the number
+(`0.5.0 (d2717b0)`), so an update never looks like it did nothing.
+(`bento version`, `agentos/versioning.py`.)
 
 **Your agent is now something you can share — and fork.** `bento agent share`
 (GUI: Settings → Agent) packages the agent you shaped — skills, teammates, flows,

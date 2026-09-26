@@ -1,0 +1,70 @@
+# The version number moves with the code. `bento update` on a machine reads
+# agentos/VERSION to say what it is running, and for months that file was
+# written only at a release — so a machine that pulled forty commits still said
+# 0.4.0 and the update looked like it had done nothing. (agentos/versioning.py)
+#
+#   pull request  → a change that ships (agentos/, pyproject.toml, uv.lock,
+#                   install.sh, packaging/) must raise the version above the
+#                   base's. Red with the one command to run: `bento version bump`.
+#   push to master → the safety net for a push that went straight to the branch:
+#                   if shipped files changed since the previous tip and the
+#                   version did not, CI bumps the patch number and commits it.
+#                   A person's bump is preferred (it comes with notes), but the
+#                   number never stays behind the code.
+#
+# Plain python3, no install: the check and the bump are stdlib-only, so this job
+# costs seconds and cannot fail on a dependency.
+name: Version
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+concurrency:
+  group: version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: the version moves with the code
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Shipped changes raise the version
+        run: python3 -m agentos version check "origin/${{ github.base_ref }}"
+
+  bump:
+    name: bump a push that forgot
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Bump the patch number when the push shipped code under an old one
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A new branch or a force-push has no usable "before"; nothing to compare.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "no previous tip to compare with — skipping"; exit 0
+          fi
+          if python3 -m agentos version check "$BEFORE"; then exit 0; fi
+          python3 -m agentos version bump patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agentos/VERSION pyproject.toml uv.lock CHANGELOG.md
+          git commit -m "Version $(cat agentos/VERSION): the code moved, so the number does" \
+                     -m "Bumped by .github/workflows/version.yml: shipped files changed since ${BEFORE::8} without a version bump."
+          # A push made with GITHUB_TOKEN does not start another workflow run, so this
+          # cannot loop. A protected branch that refuses it fails this job, loudly.
+          git push origin "HEAD:${GITHUB_REF_NAME}"

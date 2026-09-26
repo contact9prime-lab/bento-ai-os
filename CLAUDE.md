@@ -1545,6 +1545,22 @@ Four things that have to stay true:
 Say what it is up to date WITH. A checkout sitting on another branch is the
 commonest reason a push looks like it did nothing, and every surface now names it.
 
+**And the NUMBER moves with the code too** (`agentos/versioning.py`). Reported as "`bento
+update` still shows the old version": VERSION had not moved since 0.4.0 while forty commits
+landed. Now a change that ships (`versioning.SHIPPED`) must raise it:
+`.github/workflows/version.yml` refuses a PR that does not (`bento version check
+origin/<base>`), and bumps the patch on a direct push that forgot. `bento version bump` is
+the one writer, moving VERSION, pyproject.toml and the top changelog heading together.
+Three things to keep:
+- **The check runs on a bare `python3`.** `versioning` and `__main__`'s top level are stdlib
+  only (`test_versioning` runs it with `-I -S`); a version gate that needs `uv sync` is one a
+  dependency outage turns red.
+- **Docs and tests never demand a bump.** A rule that fires on a typo in a guide gets
+  bypassed, not followed.
+- **The build is shown beside the number, and it is the RUNNING one.** `server._running_build`
+  is pinned at startup, because the checkout can move under a server that has not restarted
+  yet; `bento update` prints "version A → B (build X)", read from disk after the pull.
+
 **The verify gate refuses REGRESSIONS, not a fragile machine.** `apply()` runs the
 suite on the new code, and if anything fails, runs those same tests on the OLD
 code before deciding. A test already red on this machine — pytest's temp dir

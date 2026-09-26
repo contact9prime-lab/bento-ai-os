@@ -3779,6 +3779,43 @@ def _link_cli(args):
                   + (" (stopped)" if m["stopped"] else ""))
 
 
+def _version_cli(args):
+    """`bento version` — the number and the build; `bump` moves it (VERSION,
+    pyproject.toml and the changelog heading together); `check BASE` is what CI runs:
+    exit 1 when something that ships changed since BASE and the number did not."""
+    from . import versioning as vmod
+    if args.action == "bump":
+        try:
+            got = vmod.bump(args.arg or "patch", to=args.to)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        print(f"✓ {got['from']} → {got['to']}  ({', '.join(got['files'])})")
+        print("  write what changed under the new heading in CHANGELOG.md, then commit all three")
+        return 0
+    if args.action == "check":
+        base = args.arg or "origin/master"
+        r = vmod.needs_bump(base)
+        if r["error"]:
+            print(f"✗ {r['error']}")
+            return 2
+        if r["needed"]:
+            print(f"✗ {len(r['shipped'])} shipped file(s) changed since {base}, and the version is "
+                  f"still {r['head_version'] or '?'} (it was {r['base_version'] or '?'} there).")
+            for p in r["shipped"][:12]:
+                print(f"    {p}")
+            if len(r["shipped"]) > 12:
+                print(f"    … and {len(r['shipped']) - 12} more")
+            print("  Every change that ships moves the version, so `bento update` on a machine\n"
+                  "  says something new arrived. Run:  bento version bump patch   (or minor)")
+            return 1
+        print(f"✓ version {r['head_version']}"
+              + (f" (was {r['base_version']} on {base})" if r["shipped"] else " — nothing that ships changed"))
+        return 0
+    print(f"Bento Box AI {vmod.label()}")
+    return 0
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -4485,7 +4522,8 @@ def _update_cli(args) -> int:
     remote = state.get("remote") or "origin"
     tracked = f"{remote}/{state.get('tracks')}"
 
-    print(f"Bento Box AI {upd.current()}")
+    from . import versioning as _vmod
+    print(f"Bento Box AI {_vmod.label() or upd.current()}")
     print(f"  checkout:  {root or '(not a git checkout — installed some other way)'}")
     print(f"  source:    github.com/{state.get('repo') or upd.DEFAULT_REPO} @ {state.get('tracks')}"
           + ("" if remote == "origin" else f"  — a fork; `bento update --official` goes back"))
@@ -4529,8 +4567,8 @@ def _update_cli(args) -> int:
         # The number in VERSION moves only at a release; the code moves every
         # push. "Same version" was read as "nothing new" — say what it means.
         print(f"\n▲ {n} change{'s' if n != 1 else ''} waiting on {tracked} — "
-              f"still version {upd.current()} (that number only moves at a release), "
-              f"but newer code")
+              f"newer code, still published as {upd.current()} (the version moves with the "
+              f"next bump; the build hash shows the code moved)")
 
     # The changelog nobody maintains by hand: the commits themselves, already
     # fetched by the check rather than fetched a second time here.
@@ -4616,9 +4654,17 @@ def _update_cli(args) -> int:
         return 0
     if result.get("switched"):
         print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
+    was = upd.current()
+    now = result.get("version") or "?"
     print(f"✓ updated {result['from']} → {result['to']} "
-          f"({result['files']} files, now {result.get('version') or '?'}, "
-          f"from {result.get('source') or tracked})")
+          f"({result['files']} files, from {result.get('source') or tracked})")
+    # The number a person reads, before and after — read from disk AFTER the pull,
+    # because this process imported the old one. Same number means the changes
+    # landed without a release bump (a push the version workflow has not caught up
+    # with yet), and saying so beats letting it read as "nothing happened".
+    print(f"  version {was} → {now} (build {result['to']})" if now != was else
+          f"  version {now}, build {result['from']} → {result['to']} — new code under the "
+          f"same number; the next release moves it")
     # What actually landed. Printed after the fact as well as before it, because
     # an unattended update (a watcher, a cron line) is one nobody read the preview
     # of — this is the only place that machine's operator ever sees what changed.
@@ -5074,6 +5120,14 @@ def main():
     # is asking the user to know which OS they are on to control their own agent.
     # Checking is the default and changes nothing; installing is an explicit flag.
     # A bare verb must not rewrite the code that is answering the user's turns.
+    # Hidden (no help=): a release chore, not an everyday verb. `bento help --all`
+    # lists it. Terminal-only by nature — there is no GUI for bumping a version,
+    # and the GUI/SUI face of the result is the version + build on the update card.
+    p_ver = verb("version")
+    p_ver.add_argument("action", nargs="?", default="show", choices=["show", "bump", "check"])
+    p_ver.add_argument("arg", nargs="?", default="",
+                       help="bump: patch|minor|major (or --to) · check: the base, e.g. origin/master")
+    p_ver.add_argument("--to", default="", help="bump to exactly this version")
     p_upd = verb("update",
                            help="check for a newer AgentOS, and pull it with --apply")
     p_upd.add_argument("--apply", action="store_true",
@@ -5551,6 +5605,8 @@ def main():
         desktop.uninstall()
     elif args.cmd == "update":
         raise SystemExit(_update_cli(args))
+    elif args.cmd == "version":
+        raise SystemExit(_version_cli(args))
     elif args.cmd == "service":
         raise SystemExit(_service_cli(args))
     elif args.cmd == "restart":

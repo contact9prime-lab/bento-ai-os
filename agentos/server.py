@@ -135,6 +135,7 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
 async def startup():
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
+    _running_build()        # pinned now: the build that is answering, not the one on disk later
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
     clients: set[WebSocket] = set()
@@ -966,6 +967,19 @@ def _pending_sync(cfg: dict) -> list:
     return asyncio.run(updmod.pending(cfg, limit=15))
 
 
+_BUILD: list = []
+
+
+def _running_build() -> str:
+    """The commit THIS process was started from — read once, because the checkout
+    on disk can move under a running server (an update not yet restarted into), and
+    the card must name the code that is answering, not the code that is waiting."""
+    if not _BUILD:
+        from . import versioning
+        _BUILD.append(versioning.build())
+    return _BUILD[0]
+
+
 @app.get("/api/update")
 async def api_update_status(check: bool = False):
     """What version this is, and whether there is a newer one.
@@ -1004,6 +1018,7 @@ async def api_update_status(check: bool = False):
     # panel that looks exactly like "check for updates does nothing".
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
+            "build": _running_build(),
             "branch": updmod.conf(cfg).get("branch"),
             "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
             "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
