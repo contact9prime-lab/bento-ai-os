@@ -196,7 +196,6 @@ class WhatsAppBridge(usersmod.Scoped):
         #: None on the Cloud API path, where Meta calls us and there is nothing to
         #: supervise.
         self.link = None
-        self._exec_sessions: dict[str, str] = {}
 
     # -- outbound ------------------------------------------------------------
 
@@ -579,6 +578,7 @@ class WhatsAppBridge(usersmod.Scoped):
         history, _info = await _history.build(self.store, cid, self.cfg,
                                               self.cfg.get("default_model", ""))
         self.store.add_message(cid, "user", text)
+        exec_meta: dict = {}          # the executor session a forwarded reply was given in
         await self.broadcast({"type": "whatsapp_in", "conversation_id": cid,
                               "text": text[:160]})
         history.append({"role": "user", "content":
@@ -621,11 +621,15 @@ class WhatsAppBridge(usersmod.Scoped):
             try:
                 reply, run = await execmod.forward(
                     engine, text, self.cfg, execmod.default_workspace(self.cfg),
-                    session_id=self._exec_sessions.get(cid, ""),
+                    session_id=self.store.exec_session(cid),
+                    prior=self.store.get_messages(cid)[:-1],
                     team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
                           "conversation_id": cid, "surface": "whatsapp"})
                 if run and run.session_id:
-                    self._exec_sessions[cid] = run.session_id
+                    # kept in the conversation row, so a restart does not make every
+                    # phone thread a stranger (an in-memory dict did)
+                    self.store.set_exec_session(cid, run.session_id)
+                    exec_meta = {"engine": engine, "exec_session": run.session_id}
             finally:
                 _k.turn_ended()
             reply = reply or "(done — no text output)"
@@ -640,7 +644,7 @@ class WhatsAppBridge(usersmod.Scoped):
                 _k.turn_ended()
             reply = result["content"] or "(done — no text output)"
 
-        self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
+        self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
         self.store.touch_conversation(cid)
         _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
                       surface="whatsapp", conversation_id=cid)

@@ -97,6 +97,9 @@ interactive buttons; and only **direct messages** are read — groups and status
 updates are ignored.
 
 ## What the Cloud API needs
+
+![The WhatsApp channel in Settings: the four Cloud API fields, the callback URL to paste into Meta's console, the paired number, and whether the 24-hour window is open](screenshots/channels-whatsapp.png)
+
 Four values from [developers.facebook.com](https://developers.facebook.com) — create
 an app, add the **WhatsApp** product, and it hands you a test number to start with:
 

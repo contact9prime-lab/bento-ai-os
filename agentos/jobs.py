@@ -788,11 +788,16 @@ def readiness(cfg: dict) -> dict:
                 "fix": ""}
     why = ("No provider model is set" if not model else
            f"The model '{model}' belongs to a provider that is not enabled")
-    if engine != "aria":
+    if engine == "codex":
+        why += (f", and {title} (your brain) answers chats but cannot run a mission: it "
+                f"keeps a read-only shell of its own that cannot be switched off, and a "
+                f"mission promises what every step can reach (Claude Code and Gemini CLI can "
+                f"run one)")
+    elif engine != "aria":
         why += (f", and {title} — your brain — answers chats but cannot run a mission "
                 f"yet: a mission is a flow, run step by step through this OS's "
                 f"permissions, which needs an agent that can take this OS's tools over "
-                f"MCP (Claude Code can; {title} cannot yet)")
+                f"MCP (Claude Code and Gemini CLI can; {title} cannot yet)")
     return {"ok": False, "model": model, "engine": engine,
             "note": why + ".",
             "fix": "Settings → AI providers: enable a provider (Ollama is free and local) "

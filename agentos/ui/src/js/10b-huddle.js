@@ -33,10 +33,22 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]})});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+    // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
+    const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
 }
+/* The team's vote, as a strip under the conversation: agreed or not, the tally, and
+   who said what. Live it carries the ballots; after a reload it is the stored line. */
+function huddleVoteRow(e){
+  const v=e.vote&&e.vote!==true?e.vote:null;
+  const ok=v?v.approved:/^agreed/.test(e.text||'');
+  const who=v?(v.ballots||[]).map(b=>`<span class="hv-b ${b.yes?'yes':'no'}" title="${esc(b.why||'')}">${avatarImg(b.key||b.agent,'av-tool')}${esc(b.agent)} ${b.yes?'yes':'no'}</span>`).join('')
+    :`<span>${esc((e.text||'').replace(/^(not )?agreed,\s*/,''))}</span>`;
+  return `<div class="hud-vote ${ok?'yes':'no'}"><b>${ok?'The team agreed':'No agreement'}${v?` · ${v.yes} of ${v.of}`:''}</b>${who}</div>`;
+}
 function huddleRow(e){
+  if(e.vote)return huddleVoteRow(e);
   return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
@@ -44,7 +56,7 @@ function huddleRow(e){
 /* `bare`: the message header above already names the room (a huddle started from
    the chat box), so the card does not say it a second time. */
 function huddleCard(entries,agents,bare,kind){
-  const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
+  const who=(agents||[...new Set(entries.map(e=>e.speaker).filter(Boolean))]);
   return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
     <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
 }
@@ -57,9 +69,9 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
-  scenePulse('say',ev.speaker,Object.assign({kind},ev));
+  if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
-  if(typeof actMove==='function'&&ev.conversation_id)
+  if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
@@ -76,7 +88,7 @@ function huddleLive(ev,isCur,kind){
     msg.insertBefore(card,curBody);
   }
   card.insertAdjacentHTML('beforeend',huddleRow(ev));
-  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
+  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))].filter(Boolean);
   if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
   if(typeof scrollDown==='function')scrollDown();
 }

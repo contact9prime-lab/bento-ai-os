@@ -38,7 +38,7 @@
    `var`, not `let`: the bundle is one script. */
 var OFFICE={w:null,cv:null,ctx:null,raf:0,last:0,t:0,view:null,brains:{},L:null,bg:null,
   people:{},papers:[],bursts:[],pops:[],runs:{},convWho:{},missions:{},handed:{},flowRuns:{},meet:{},meeting:null,huddle:null,
-  pet:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
+  pet:null,extras:[],ball:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
 var OF_K=3;               // world units per sprite pixel: a 16x26 character is 48x78 units
 var OF_INK='#191827';     // the comic line: one ink for every outline
 var OF_SPEED=170;         // walking, world units a second
@@ -272,6 +272,7 @@ function officeSeat(){
   });
   O.people=seen;
   if(!O.pet||O.pet.kind!==O.view.office.pet)O.pet=O.view.office.pet!=='none'?officePetNew():null;
+  officeExtrasPlace();
 }
 function officePerson(p,key,label,room,x,y,lead){
   const home={x,y};
@@ -616,7 +617,7 @@ function officeSnooze(){
 function officeMoving(){
   const O=OFFICE;
   return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
-    ||(O.pet&&O.pet.walking);
+    ||(O.pet&&O.pet.walking)||!!O.ball;
 }
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
@@ -653,6 +654,7 @@ function officeStep(dt){
   O.pops=O.pops.filter(b=>now-b.at<1100);
   if(O.huddle&&O.huddle.until<now&&!O.huddle.cid)officeHuddleEnd();
   if(O.pet)officePetStep(dt);
+  officeExtrasStep(dt);
   officeLine();
 }
 function officeLine(){
@@ -873,7 +875,9 @@ function officeDraw(){
   ps.forEach(p=>officeDesk(ctx,p));
   // everybody on their feet, back to front
   Object.values(O.people).filter(p=>p.mode!=='seat').sort((a,b)=>a.y-b.y).forEach(p=>officeSprite(ctx,p,p.x,p.y,false));
+  officeExtrasDraw(ctx);
   if(O.pet)officePetDraw(ctx);
+  if(O.ball)officeBallDraw(ctx);
   officeCabinetDraw(ctx);
   officeMeetingDraw(ctx);
   Object.values(O.people).forEach(p=>{if(p.stuck)officeStuckDraw(ctx,p)});
@@ -947,7 +951,7 @@ function officeDesk(ctx,p){
 /* A character from the server's sheet: stand, blink, one arm up, the other. Whole
    device pixels per sprite pixel, smoothing off — or it is not pixel art. */
 function officeSprite(ctx,p,x,feet,seated){
-  const O=OFFICE,img=officeSheet(p.key);
+  const O=OFFICE,img=p.recipe?officeExtraSheet(p):officeSheet(p.key);
   const u=Math.max(2,Math.round(OF_K*O.s*O.dpr*(p.lead?1.1:1)));
   const t=O.t,still=O.static,ph=p.phase;
   const walking=p.mode==='walk'&&!still;
@@ -962,7 +966,7 @@ function officeSprite(ctx,p,x,feet,seated){
   if(!img)return;
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
   ctx.drawImage(img,frame*16,0,16,26,dx,dy,16*u,26*u);ctx.restore();
-  if(!seated){ofFont(ctx,10,800);ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
+  if(!seated){ofFont(ctx,10,p.recipe?600:800,!!p.recipe);ctx.fillStyle=p.recipe?'#64748b':OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
     ctx.fillText(p.label.length>14?p.label.slice(0,13)+'…':p.label,x,feet+5)}
 }
 /* A comic balloon: white, inked, a tail to the speaker's head. Thoughts are clouds. */
@@ -1039,6 +1043,7 @@ function officePetNew(){
 function officePetStep(dt){
   const p=OFFICE.pet,r=p.room;if(!r||OFFICE.static)return;
   if(!OFFICE.L.rooms.includes(r)){OFFICE.pet=officePetNew();return}
+  if(officeExtra('sitter'))return officeFetchStep(dt);
   if(p.walking){const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy);
     if(l<2){p.walking=false;p.wait=3+Math.random()*6}else{p.x+=dx/l*40*dt;p.y+=dy/l*40*dt;p.dir=dx<0?-1:1}}
   else if((p.wait-=dt)<=0){p.tx=r.x+30+Math.random()*(r.w-60);p.ty=r.y+OF_WALL+60+Math.random()*(r.h-OF_WALL-80);p.walking=true}
@@ -1057,6 +1062,104 @@ function officePetDraw(ctx){
   else{ctx.beginPath();ctx.ellipse(6,-13,2.5,5,.4,0,6.283);ctx.fill();ofInk(ctx,1.6);ctx.beginPath();ctx.moveTo(-13,-10);ctx.lineTo(-19,-15);ofInk(ctx,2.4)}
   ctx.fillStyle=OF_INK;ctx.fillRect(11,-15,1.8,1.8);
   ctx.restore();
+}
+
+/* ---------------- the lounge regulars: people who are visibly not agents ----------------
+   Asked for as "the lounge needs someone just sitting around, like a security guard or a
+   person playing with the dog or cat". They are decor, like the pet, and the rules that
+   keep the office honest hold for them too:
+   - they are not the crew. Nobody here is in /api/office, a tap on them asks nobody, and
+     their tag is grey and italic under their feet, never a nameplate on a desk.
+   - they do not wander. The guard sits in the armchair with the paper; the pet sitter
+     stands in one spot. Only the pet runs, fetching what it is thrown.
+   - one painter. Their look is a fixed recipe drawn by the server's painter through
+     avatarRecipeSrc, the same door a linked team's face uses. The guard's cap and badge
+     are props drawn over the sprite, like a desk's mug.
+   They come with the lounge: switch the lounge off and they go. The sitter needs a pet. */
+var OF_EXTRAS={
+  guard:{label:'security',recipe:{skin:3,hair:0,style:'short',pants:3,glasses:false,blush:false,hue:202,outfit:'shirt'}},
+  sitter:{label:'pet sitter',recipe:{skin:1,hair:4,style:'bun',pants:0,glasses:true,blush:true,hue:96,outfit:'hoodie'}}};
+function officeExtra(role){return OFFICE.extras.find(e=>e.role===role)}
+function officeExtraSheet(p){
+  const k='x:'+p.role;let e=OFFICE.sheets[k];
+  if(!e){const img=new Image();img.decoding='async';img.onload=officeKick;
+    img.src=avatarRecipeSrc(p.recipe,{sheet:1});e=OFFICE.sheets[k]={img,v:0}}
+  return e.img.complete&&e.img.naturalWidth?e.img:null;
+}
+function officeExtrasPlace(){
+  const O=OFFICE,r=officeRoomOf('lounge');
+  if(!r){O.extras=[];O.ball=null;return}
+  const floor=r.y+r.h-46, mk=(role,x,y)=>{const was=officeExtra(role);
+    return {...OF_EXTRAS[role],role,key:'extra:'+role,room:r,x,y,home:{x,y},mode:role==='guard'?'seat':'stand',path:[],phase:was?was.phase:Math.random()*6.28,
+      wait:was?was.wait:3+Math.random()*4,page:was?was.page:0}};
+  O.extras=[mk('guard',r.x+r.w-96,floor-4)];
+  if(O.pet)O.extras.push(mk('sitter',r.x+96,floor));
+  else O.ball=null;
+}
+function officeExtrasStep(dt){
+  const g=officeExtra('guard');
+  // the guard turns a page now and then, and looks up over the paper
+  if(g&&!OFFICE.static&&(g.wait-=dt)<=0){g.page=(g.page+1)%4;g.wait=6+Math.random()*9}
+}
+/* Fetch: the sitter throws, the pet runs to it and brings it back (a cat bats it back
+   instead, and the ball rolls home on its own). */
+function officeFetchStep(dt){
+  const O=OFFICE,p=O.pet,s=officeExtra('sitter'),r=p.room,now=performance.now();if(!s)return;
+  const b=O.ball;
+  if(!b){
+    if(s.hand&&now-s.hand>380)s.hand=0;
+    if(!p.walking&&(p.wait-=dt)<=0){
+      const tx=r.x+r.w*(.45+Math.random()*.35), ty=r.y+OF_WALL+70+Math.random()*(r.h-OF_WALL-100);
+      O.ball={x0:s.x+14,y0:s.y-30,x:s.x+14,y:s.y-30,tx,ty,at:now,ms:850,state:'fly'};s.hand=now;
+    }else if(!p.walking&&Math.hypot(p.x-(s.x+26),p.y-s.y)>6){p.tx=s.x+26;p.ty=s.y;p.walking=true}
+  }else if(b.state==='fly'){
+    const a=Math.min(1,(now-b.at)/b.ms);
+    b.x=b.x0+(b.tx-b.x0)*a;b.y=b.y0+(b.ty-b.y0)*a-Math.sin(a*Math.PI)*60;
+    if(a>=1)b.state='wait';
+    if(!p.walking){p.tx=b.tx;p.ty=b.ty;p.walking=true}
+  }else if(b.state==='roll'){
+    const dx=s.x+10-b.x,dy=s.y-b.y,l=Math.hypot(dx,dy);
+    if(l<4){O.ball=null;p.wait=4+Math.random()*6}else{b.x+=dx/l*90*dt;b.y+=dy/l*90*dt}
+  }
+  if(p.walking){
+    const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy),sp=b&&b.state!=='carry'?95:70;
+    if(l<3){p.walking=false;
+      if(b&&b.state==='wait'){
+        if(p.kind==='cat'){b.state='roll';p.wait=2}
+        else{b.state='carry';p.tx=s.x+26;p.ty=s.y;p.walking=true}
+      }else if(b&&b.state==='carry'){O.ball=null;p.wait=4+Math.random()*6;officePop(s,'good!')}
+    }else{p.x+=dx/l*sp*dt;p.y+=dy/l*sp*dt;p.dir=dx<0?-1:1}
+  }
+  if(O.ball&&O.ball.state==='carry'){O.ball.x=p.x+12*p.dir;O.ball.y=p.y-12}
+}
+function officeBallDraw(ctx){
+  const b=OFFICE.ball,cat=OFFICE.pet&&OFFICE.pet.kind==='cat';
+  if(b.state==='fly'){ctx.fillStyle='#00000026';ctx.beginPath();ctx.ellipse(b.x0+(b.tx-b.x0)*Math.min(1,(performance.now()-b.at)/b.ms),
+    b.y0+(b.ty-b.y0)*Math.min(1,(performance.now()-b.at)/b.ms)+4,5,1.6,0,0,6.283);ctx.fill()}
+  ctx.fillStyle=cat?'#f472b6':'#facc15';ctx.beginPath();ctx.arc(b.x,b.y,4.5,0,6.283);ctx.fill();ofInk(ctx,1.6);
+  if(cat){ctx.beginPath();ctx.moveTo(b.x-3,b.y-1);ctx.quadraticCurveTo(b.x,b.y+2,b.x+3,b.y-1);ofInk(ctx,1)}
+}
+function officeExtrasDraw(ctx){
+  const O=OFFICE;
+  O.extras.forEach(e=>{
+    if(e.role==='guard'){
+      const x=e.x,y=e.y;
+      // the armchair back, the guard, then the arms and seat in front of the legs
+      ctx.fillStyle='#475569';ofRR(ctx,x-26,y-58,52,46,12);ctx.fill();ofInk(ctx,2.2);
+      officeSprite(ctx,e,x,y,true);
+      const top=y-78;
+      ctx.fillStyle='#1e3a8a';ofRR(ctx,x-19,top+4,38,11,5);ctx.fill();ofInk(ctx,1.8);          // the cap
+      ctx.fillStyle='#172554';ofRR(ctx,x-4,top+13,26,4,2);ctx.fill();ofInk(ctx,1.4);            // its brim
+      ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(x-9,y-40,3,0,6.283);ctx.fill();ofInk(ctx,1.2); // the badge
+      ctx.fillStyle='#64748b';ofRR(ctx,x-30,y-26,60,18,6);ctx.fill();ofInk(ctx,2.2);
+      ofRR(ctx,x-32,y-40,10,32,5);ctx.fill();ofInk(ctx,2);ofRR(ctx,x+22,y-40,10,32,5);ctx.fill();ofInk(ctx,2);
+      // the paper, lowered for a moment on every other page to look over it
+      if(e.page%2===0){ctx.fillStyle='#f8fafc';ofRR(ctx,x-20,y-44,40,22,2);ctx.fill();ofInk(ctx,1.6);
+        ctx.fillStyle='#94a3b8';for(let i=0;i<3;i++)ctx.fillRect(x-16,y-39+i*5,i===0?32:22,2)}
+      else{ctx.fillStyle='#f8fafc';ofRR(ctx,x-18,y-30,36,8,2);ctx.fill();ofInk(ctx,1.6)}
+      ofFont(ctx,10,600,true);ctx.fillStyle='#64748b';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(e.label,x,y-4);
+    }else officeSprite(ctx,e,e.x,e.y,false);
+  });
 }
 
 /* ---------------- a tap: who is this, and ask them ---------------- */

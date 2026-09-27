@@ -168,9 +168,10 @@ class _FakeCLI:
         self.runs = []
 
     async def __call__(self, task, system, url, token, emit, budget_usd=0.0, model="",
-                       cwd="", run=None):
+                       cwd="", run=None, engine="claude-code"):
         run = run or executors.Run()
-        self.runs.append({"task": task, "system": system, "url": url, "budget": budget_usd})
+        self.runs.append({"task": task, "system": system, "url": url, "budget": budget_usd,
+                          "engine": engine, "model": model})
         assert url.endswith("/api/mcp/run/" + token)
         assert "mcp__bento__" in system                 # the note that names our tools
         _, listed = await _rpc(token, "tools/list")
@@ -242,7 +243,7 @@ def test_readiness_is_green_on_an_executor_that_takes_the_bridge(monkeypatch):
     assert r["ok"] and "MCP" in r["note"] and not r["fix"]
     monkeypatch.setattr(executors, "resolve_engine", lambda cfg, requested="": "hermes")
     r = jobs.readiness({"engine": "hermes", "default_model": "", "providers": {}})
-    assert r["ok"] is False and "Hermes" in r["note"] and "Claude Code can" in r["note"]
+    assert r["ok"] is False and "Hermes" in r["note"] and "Claude Code and Gemini CLI can" in r["note"]
 
 
 # ---------------------------------------------------------------------------
@@ -298,14 +299,14 @@ def test_a_master_that_neither_delegates_nor_finishes_is_not_ok(tmp_path, monkey
                                  "permissions": {"tools": [], "memory": "read-space"}, "sinks": []})
     monkeypatch.setattr(executors, "resolve_engine", lambda cfg, requested="": "claude-code")
 
-    async def silent(task, system, url, token, emit, budget_usd=0.0, model="", cwd="", run=None):
+    async def silent(task, system, url, token, emit, budget_usd=0.0, model="", cwd="", run=None, engine="claude-code"):
         await emit({"type": "text_delta", "text": "delegate"})
         return run or executors.Run()
     monkeypatch.setattr(executors, "run_on_bridge", silent)
     res = asyncio.run(cp.run_flow(flow, origin={"surface": "task"}))
     assert res["status"] == "error" and "without delegating" in res["fault"]
 
-    async def unconnected(task, system, url, token, emit, budget_usd=0.0, model="", cwd="", run=None):
+    async def unconnected(task, system, url, token, emit, budget_usd=0.0, model="", cwd="", run=None, engine="claude-code"):
         await emit({"type": "engine_info", "engine": "claude-code", "model": "m", "tools": [],
                     "mcp": [{"name": "bento", "status": "failed"}]})
         await emit({"type": "text_delta", "text": "delegate"})

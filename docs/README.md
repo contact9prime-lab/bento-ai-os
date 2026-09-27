@@ -16,10 +16,11 @@ The overview is translated by AI (not yet proofread — the English README is th
 The guides below are English only.
 </sub></p>
 
-**Your machine, with a brain.** AgentOS is a local-first *agentic operating system*: a complete
-desktop environment, driven by an AI agent that takes real actions on your computer — running
-commands, managing files, building its own apps, and integrating with the host desktop. It runs
-locally with Ollama or connects to cloud models, and everything happens with your approval.
+**Your machine, with a team.** Bento Box AI is a local-first agentic operating system: a desktop
+with real windows, files and a terminal, run by a lead agent and specialists that act on your
+machine with your approval. The brain can be a local model through Ollama, a cloud model, or Claude
+Code, Gemini CLI or Codex, and each specialist can run on a different one. The
+[front page](../README.md) is the tour; the guides below go deeper.
 
 ---
 
@@ -30,7 +31,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Installation](installation.md) | Requirements, running from source, the `.deb` package, boot & login autostart |
 | [Getting Started](getting-started.md) | First launch, choosing a model, autonomy, your first tasks |
 | [The Lifecycle](lifecycle.md) | **Train · Test · Operate · Build · Ship · Manage** — the six pillars and Mission Control |
-| [The Desktop](desktop.md) | Windows, taskbar, dock, virtual desktops, widgets, themes, keyboard shortcuts, the app catalog |
+| [The Desktop](desktop.md) | Windows, the dock, the prompt bar and the places it finds inside apps, virtual desktops, widgets, themes and the immersive look, characters, keyboard shortcuts, the app catalog |
 | [The session UI (SUI)](session-ui.md) | AgentOS **as** your Linux desktop: the layer-shell surface, native window management, installing applications, and what to install |
 | [AgentOS as your DE](desktop-environment.md) | The AgentOS **login session** — boot into AgentOS, run modes, System Settings, notifications, lock screen, licences |
 | [Licensing & trademarks](licensing.md) | What AgentOS ships and what it only *asks for*; why it redistributes no distribution; where the Ubuntu/Canonical trademark line sits |
@@ -39,7 +40,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Files your agents make](files.md) | Open a deck or a report from the chat that mentions it, get it on your phone, or find it in the Office's filing cabinet |
 | [The Office](office.md) | A comic-strip office where you watch your agents work: papers to desks, agents walking over to ask each other, huddles round the meeting table, and a designer for the look |
 | [Agents](agents.md) | Every agent's brain (AI providers), hands (executors: tools, folders, web, MCP), permissions and skills — and the map of who reaches what |
-| [The team](team.md) | Each agent on its own AI provider (a researcher on a local model, a validator on Claude), the provider badge, and huddles — agents talking a question through with each other |
+| [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (2 of 3 decide), and linked teams |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: Sign in with Google or Microsoft, an MCP server, or an app password; what is never touched; the missions built on them |
 | [The vault](vault.md) | Where every account secret lives: encrypted, keyed by the keyring where there is one, read only by the system for its job and written down each time, never printed |
 | [The Brief](brief.md) | How a mission delivers: things to act on, not a message — one living page a day, on the desktop, the phone, Telegram and out loud, where a decision is one tap and the reply comes back to the item |
@@ -69,12 +70,13 @@ locally with Ollama or connects to cloud models, and everything happens with you
 ## In one minute
 
 ```bash
-uv sync            # install
-uv run agentos     # launch the desktop at http://127.0.0.1:8321
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+bento              # or, from a checkout: uv sync && uv run bento
 ```
 
-Then open **Settings**, pick a model, and start giving instructions in **Agent Chat** — or press
-**Alt+Space** anywhere to launch an app or ask the agent directly.
+Open http://127.0.0.1:8321 and setup walks you through a brain, your agent, the crew and a first
+mission. `bento setup` does the same in a terminal. After that, ask from the prompt bar
+(**Ctrl+Space**) or open Agent Chat.
 
 > **Model note:** the agent uses tools to do real work. Choose a tool-capable model — any `qwen`
 > model locally, or a cloud model. Some small local models won't reliably call tools.

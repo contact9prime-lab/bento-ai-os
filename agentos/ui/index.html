@@ -1885,6 +1885,9 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
    scattering. The top hit carries a ring because Enter opens it. */
 #deck.filtering .deck-tile.nomatch,#deck.filtering .deck-group.nomatch,
 #deck.filtering .deck-new,#deck.filtering .deck-wgroup{display:none}
+/* places inside apps (05b-places.js) are for a search only */
+#deck:not(.filtering) .deck-places{display:none}
+.deck-place .dp-where{display:block;font-size:var(--fs-xs,11px);color:var(--dim);margin-top:-2px}
 .deck-tile.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);
   box-shadow:0 0 0 1.5px color-mix(in srgb,var(--acc) 65%,transparent)}
 .deck-none{display:none;grid-column:1/-1;flex-direction:column;align-items:flex-start;gap:10px;
@@ -3774,6 +3777,15 @@ body.dev-touch .team-row select{min-height:var(--tap)}
 .tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
 .tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
 .tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-cell.vote{color:color-mix(in srgb,var(--acc) 70%,var(--dim));border-style:dotted}
+/* a huddle's vote (democracy mode): the tally under the conversation */
+.hud-vote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 2px;padding:7px 10px;
+  border-radius:var(--r-md,10px);border:1px solid var(--line);font-size:var(--fs-sm,13px);
+  background:color-mix(in srgb,var(--ok,#34d399) 9%,transparent)}
+.hud-vote.no{background:color-mix(in srgb,var(--err,#f87171) 9%,transparent)}
+.hud-vote .hv-b{display:inline-flex;align-items:center;gap:4px;color:var(--dim)}
+.hud-vote .hv-b.yes{color:var(--ok,#34d399)}
+.hud-vote .hv-b.no{color:var(--err,#f87171)}
 .tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -6555,7 +6567,9 @@ function buildJarvisShell(){
   const inp=$('#js-input');
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const q=inp.value.trim();if(!q)return;
     const app=Object.keys(APPS).find(k=>APPS[k].title.toLowerCase()===q.toLowerCase());
-    if(app){openApp(app)}else{openApp('chat');if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}}
+    // a place inside an app by the word people use for it ("channel", "flow")
+    const pl=!app&&typeof placesFind==='function'&&q.split(/\s+/).length<=3?placesFind(q,1)[0]:null;
+    if(app){openApp(app)}else if(pl){pl.go()}else{openApp('chat');if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}}
     inp.value='';}});
   jarvisShellRefresh();
   clearInterval(sh._t);sh._t=setInterval(jarvisShellRefresh,4000);
@@ -7400,7 +7414,7 @@ function mfPaint(){
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
 function miniFeed(box,opts){
   opts=opts||{};
-  let body=null,text='',think=null,working=null;
+  let body=null,text='',think=null,working=null,hud=null;
   const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
@@ -7480,6 +7494,23 @@ function miniFeed(box,opts){
       if(opts.onTool)opts.onTool(ev);
     },
     approval(apBox){box.insertBefore(apBox,working);scroll();return true},
+    /* A huddle's turn (or its closing vote), the same card Chat draws (10b-huddle.js).
+       Found by starting a huddle from the Office's own chat: the agents met at the
+       table, and the panel said nothing but "replied". */
+    say(ev){
+      bind(ev);body=null;text='';
+      if(typeof huddleCard!=='function')return;
+      if(!hud||!hud.isConnected){
+        const h=document.createElement('div');h.innerHTML=huddleCard([],[],false,'huddle');
+        hud=h.firstElementChild;const m=hud.querySelector('.mut');if(m)m.remove();
+        box.insertBefore(hud,working&&working.isConnected?working:null);
+      }
+      hud.insertAdjacentHTML('beforeend',huddleRow(ev));
+      const who=[...new Set([...hud.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))].filter(Boolean);
+      const hd=hud.querySelector('.hud-head');
+      if(hd)hd.innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>huddle · ${esc(who.join(', '))}</span>`;
+      scroll();
+    },
     /* Built something? The door to it, right here — a card on the desktop is
        often the only place the turn is visible at all. */
     handoff(h){
@@ -7492,7 +7523,7 @@ function miniFeed(box,opts){
       clearWorking();
       box.appendChild(errBox(ev));scroll();
     },
-    end(ev){clearWorking();actSync();if(body&&typeof fileChips==='function')fileChips(body);body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
+    end(ev){clearWorking();actSync();hud=null;if(body&&typeof fileChips==='function')fileChips(body);body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
 }
 
@@ -7586,7 +7617,7 @@ async function initCopilot(w,panel){
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
     <div class="cp-inbar"><div class="att-strip cp-att"></div>
-      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
+      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea>
       <button class="cp-attach cp-snap" data-ic="camera" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
       <button class="cp-attach cp-pick" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
       <button class="cp-send" data-ic="send">↑</button></div>`;
@@ -7632,7 +7663,9 @@ async function initCopilot(w,panel){
       const msgs=(d.messages||[]).slice(-12);
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
-        :m.role==='assistant'?`<div class="mf-body body">${md(m.content||'')}</div>`:'').join('');
+        :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
+          ?huddleCard(huddleParse(m.content),null,false,'huddle')
+          :`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
       if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
@@ -8512,6 +8545,95 @@ function smRender(q){
   }
   if(!own.length&&!nat.length)sm.innerHTML='<p class="mut" style="grid-column:1/-1;padding:14px 6px">nothing matches</p>';
 }
+/* ================= places: the parts inside apps, findable by the words people use =================
+   Reported as: "when I type something like channel it is not indexed; I say flow and it
+   should relate to jobs". The launchers only knew app NAMES, and half of what a person
+   looks for lives inside an app: Telegram and WhatsApp are a pane in Settings called
+   Channels, flows are a tab in Missions, a model is a pane in Settings. Typing "channel"
+   found nothing, and typing "flow" found nothing better than a description that happened
+   to contain the word.
+
+   PLACES is that index: each entry is one place inside an app, the words people use for
+   it (including the old names: workflow, fabric, jobs), and how to go there. It is read
+   by every launcher, so they cannot disagree about what a word finds:
+   - the prompt bar (palActions / omniScore, 29 and 28a), under "In apps";
+   - the wall launcher (deckPlacesHTML in 06a), shown only while you search;
+   - the Jarvis shell's box (02), which opens the best match on Enter.
+   Apps get words too (APP_WORDS), so "flow" finds Missions itself as well as its tab.
+
+   A word only counts whole or as the start of a word ("chan" finds Channels, "annel"
+   does not), which keeps this a launcher rather than a full-text search.
+
+   Faces: GUI and SUI (this page). TUI: not applicable. The terminal's own index is
+   `bento help --all`, and each place here has a verb there (bento telegram, bento flow,
+   bento job, bento mail…). `var`, not `let`: the bundle is one script. */
+var APP_WORDS={
+  jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
+  settings:['preferences','prefs','config','configuration','options'],
+  office:['crew','team','playground','floor','lounge','meeting room'],
+  brief:['inbox','today','digest','summary'],
+  tasks:['cron','schedule','scheduled','timer'],
+  permissions:['grants','grant','allow','deny','matrix','consent'],
+  audit:['ledger','decisions','history of decisions'],
+  mcp:['tools','tool server','connectors'],
+  telegram:['bot'],
+  teamchat:['messages','linked team','people'],
+  files:['documents','folder','workspace','downloads','deck','pptx'],
+  chat:['conversation','conversations','talk','ask'],
+  store:['install','marketplace','extensions'],
+  studio:['build an app','make an app','editor'],
+  models:['ollama','gpu','local model','llm'],
+  logs:['diary','events','errors'],
+  quarantine:['held','stopped','blocked','suspended'],
+  tokens:['usage','cost','spend','billing'],
+};
+function placeSettings(tab){return ()=>{
+  SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  openApp('settings');
+  // an open Settings window is already painted on another pane: move it
+  setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
+}}
+function placeMissions(tab,sub){return ()=>{
+  if(typeof JOBS!=='undefined')JOBS.tab=tab;
+  if(sub&&typeof fabTab!=='undefined')fabTab=sub;
+  openApp('jobs');refreshApp('jobs');
+}}
+// [label, the app it lives in, where it is in words, words, go]
+var PLACES=[
+  ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
+  ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona','team','swarm','huddle','talk','working together'],placeSettings('agent')],
+  ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
+  ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
+  ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
+  ['Locale','settings','Settings → Locale',['language','country','timezone','time zone','units','clock','region'],placeSettings('locale')],
+  ['Shortcuts','settings','Settings → Shortcuts',['shortcut','shortcuts','keyboard','keys','hotkey','hotkeys','key binding'],placeSettings('keys')],
+  ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
+  ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look'],placeSettings('look')],
+  ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
+  ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
+  ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
+  ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
+  ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
+].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
+
+/* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the
+   start of one. The same scale as palScore, so a word hit ranks with a name hit. */
+function placeWordScore(q,words){
+  q=String(q||'').toLowerCase().trim();if(q.length<2||!words)return 0;
+  let best=0;
+  for(const w of words){
+    if(w===q)return 2.6;
+    if(w.startsWith(q)||w.split(' ').some(p=>p.startsWith(q)))best=Math.max(best,2.2);
+    else if(q.length>=4&&q.startsWith(w)&&w.length>=4)best=Math.max(best,2.1);   // "flows?" "channels!"
+  }
+  return best;
+}
+function placeScore(q,p){return Math.max(typeof palScore==='function'?(palScore(q,p.label)>=2?palScore(q,p.label):0):0,placeWordScore(q,p.words))}
+/* The places a query finds, best first. */
+function placesFind(q,max){
+  return PLACES.map(p=>({p,s:placeScore(q,p)})).filter(x=>x.s>=2).sort((a,b)=>b.s-a.s)
+    .slice(0,max||5).map(x=>x.p);
+}
 /* ===== icon layout engine: grid snap, multi-select, marquee, arrangements ===== */
 const GRID={ox:14,oy:14,cx:96,cy:104};
 const SEL=new Set();          // selected icon ids
@@ -8981,6 +9103,7 @@ function buildDeck(fresh){
       :`${DECKFULL?deckNoneHTML():''}
       ${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
       ${deckNativeHTML()}
+      ${DECKFULL?deckPlacesHTML():''}
       ${deckWidgetsHTML()}
       <button class="deck-new" title="New group"><b data-ic="plus">＋</b><span>New group</span></button>`}
     </div>`;
@@ -9014,6 +9137,9 @@ function buildDeck(fresh){
       null,
       {label:'Hide system apps from the deck',fn:deckToggleNative},
     ])};
+  });
+  box.querySelectorAll('.deck-place').forEach(t=>{
+    t.onclick=()=>{const pl=PLACES[+t.dataset.place];deckFull(false);if(pl)pl.go()};
   });
   const more=box.querySelector('.deck-natmore');
   if(more)more.onclick=()=>deckFull(true);   // "+N more" is the wall, one click instead of a scroll
@@ -9098,7 +9224,8 @@ function deckFilter(q,quiet){
   const scored=tiles.map(t=>({t,s:s?deckTileScore(s,t):3}));
   const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
   const floor=best>=2?2:1;                  // drop the scattered tail once there is a real hit
-  scored.forEach(x=>x.t.classList.toggle('nomatch',s?x.s<floor:false));
+  // a place inside an app is only shown for a search: on an unfiltered wall it is noise
+  scored.forEach(x=>x.t.classList.toggle('nomatch',s?x.s<floor:x.t.classList.contains('deck-place')));
   box.querySelectorAll('.deck-group').forEach(g=>{
     const any=[...g.querySelectorAll('.deck-tile')].some(t=>!t.classList.contains('nomatch'));
     g.classList.toggle('nomatch',!!s&&!any);
@@ -9111,10 +9238,15 @@ function deckFilter(q,quiet){
   box.classList.toggle('noresults',!!s&&!hits.length);
 }
 function deckTileScore(q,t){
-  const label=(t.querySelector('span')||{}).textContent||'';
+  // the name is the tile's own label span; the first span in a tile is its ICON
+  // (appIcon's .aicon), which made the wall match names only by app id
+  const label=(t.querySelector(':scope > span:not([class])')||{}).textContent||'';
   return Math.max(palScore(q,label),
                   t.dataset.app?palScore(q,t.dataset.app):0,
-                  t.title?(String(t.title).toLowerCase().includes(q.toLowerCase())?1.5:0):0);
+                  t.title?(String(t.title).toLowerCase().includes(q.toLowerCase())?1.5:0):0,
+                  // the words people use for it (05b-places.js): "flow" finds Missions
+                  typeof placeWordScore==='function'?placeWordScore(q,
+                    t.dataset.place?(PLACES[+t.dataset.place]||{}).words:APP_WORDS[t.dataset.app]):0);
 }
 /* "nothing matches" is a sentence with a way forward, not an empty screen: the
    thing you typed goes to the agent, which is the one search that can't miss. */
@@ -9271,6 +9403,18 @@ function deckNativeHTML(){
               title="${esc(a.comment||a.name)}">${nativeIcon(a,px)}<span>${esc(a.name)}</span></button>`).join('')}
       ${rest>0?`<button class="deck-tile deck-natmore" title="Every installed application">
         ${appIcon('apps',px)}<span>+${rest} more</span></button>`:''}</div>
+  </div>`;
+}
+/* The places inside apps (05b-places.js), as tiles that only a search shows: typing
+   "channel" on the wall finds Settings → Channels, "flow" finds Missions → Build. */
+function deckPlacesHTML(){
+  if(typeof PLACES==='undefined')return '';
+  const px=deckIconPx();
+  return `<div class="deck-group deck-places">
+    <div class="deck-gname">In apps</div>
+    <div class="deck-tiles">${PLACES.map((pl,i)=>APPS[pl.app]?`
+      <button class="deck-tile deck-place nomatch" data-place="${i}" title="${esc(pl.hint)}">
+        ${appIcon(pl.app,px)}<span>${esc(pl.label)}</span><small class="dp-where">${esc(pl.hint.split(' → ')[0])}</small></button>`:'').join('')}</div>
   </div>`;
 }
 function deckWidgetsHTML(){
@@ -10761,6 +10905,8 @@ function handle(ev){
       break;
     case 'agent_say':   // one turn of a huddle (10b-huddle.js)
       if(typeof huddleLive==='function')huddleLive(ev,_cur);
+      // and in an app's agent panel or the prompt bar's card, when the turn is theirs
+      if(_sk&&_sk.say)_sk.say(ev);
       break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
@@ -10900,8 +11046,8 @@ function onWake(){
   },4000);
 }
 /* ================= chat app ================= */
-const PLACEHOLDER_IDLE='Ask, tell it what to do, paste an image — or @subagent to address a team member directly';
-const PLACEHOLDER_BUSY='Say what comes next — it decides whether that changes the run in flight or waits its turn';
+const PLACEHOLDER_IDLE='Ask or tell it anything. @name a teammate to ask them';
+const PLACEHOLDER_BUSY='Say what comes next. It joins this run or waits its turn';
 function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
@@ -11548,10 +11694,22 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]})});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+    // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
+    const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
 }
+/* The team's vote, as a strip under the conversation: agreed or not, the tally, and
+   who said what. Live it carries the ballots; after a reload it is the stored line. */
+function huddleVoteRow(e){
+  const v=e.vote&&e.vote!==true?e.vote:null;
+  const ok=v?v.approved:/^agreed/.test(e.text||'');
+  const who=v?(v.ballots||[]).map(b=>`<span class="hv-b ${b.yes?'yes':'no'}" title="${esc(b.why||'')}">${avatarImg(b.key||b.agent,'av-tool')}${esc(b.agent)} ${b.yes?'yes':'no'}</span>`).join('')
+    :`<span>${esc((e.text||'').replace(/^(not )?agreed,\s*/,''))}</span>`;
+  return `<div class="hud-vote ${ok?'yes':'no'}"><b>${ok?'The team agreed':'No agreement'}${v?` · ${v.yes} of ${v.of}`:''}</b>${who}</div>`;
+}
 function huddleRow(e){
+  if(e.vote)return huddleVoteRow(e);
   return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
@@ -11559,7 +11717,7 @@ function huddleRow(e){
 /* `bare`: the message header above already names the room (a huddle started from
    the chat box), so the card does not say it a second time. */
 function huddleCard(entries,agents,bare,kind){
-  const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
+  const who=(agents||[...new Set(entries.map(e=>e.speaker).filter(Boolean))]);
   return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
     <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
 }
@@ -11572,9 +11730,9 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
-  scenePulse('say',ev.speaker,Object.assign({kind},ev));
+  if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
-  if(typeof actMove==='function'&&ev.conversation_id)
+  if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
@@ -11591,7 +11749,7 @@ function huddleLive(ev,isCur,kind){
     msg.insertBefore(card,curBody);
   }
   card.insertAdjacentHTML('beforeend',huddleRow(ev));
-  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
+  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))].filter(Boolean);
   if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
   if(typeof scrollDown==='function')scrollDown();
 }
@@ -12011,10 +12169,11 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
+          ['democracy','Democracy: 2 of 3 decide'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. Loops are refused and each task has a question limit.',
-         f:'team agents message talk each other swarm matrix permission ask'}),
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
@@ -12855,17 +13014,19 @@ async function chanSave(id){
 async function paintTeamBrains(){
   const box=document.getElementById('s-team-list');if(!box)return;
   let sa={},mods={};
-  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),brainChoices()])}catch(e){}
   const list=(sa.subagents||[]);
   if(!list.length){box.textContent='No specialists yet. Ask for one, or create one in Missions → Build → Agents.';return}
-  const models=(mods.models||[]).map(m=>m.id);
+  // provider models and the agent CLIs installed here (Claude Code, Gemini CLI, Codex)
+  const models=((mods||{}).models||[]).map(m=>m.id);
+  const names={};((mods||{}).models||[]).forEach(m=>names[m.id]=m.name||m.id);
   box.classList.remove('mut');
   box.innerHTML=list.map(s=>{
     const b=s.brain||{}, pin=s.model||'';
     const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
     return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
       <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
-        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(names[m]||m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
       <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
   }).join('');
   box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
@@ -12884,15 +13045,16 @@ async function paintTeamMatrix(){
   let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
   const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
-  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first” or “Swarm” above to turn it on.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
   box.classList.remove('mut');
-  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
     ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
-      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
@@ -14697,12 +14859,28 @@ const SAW_PRESETS={
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
 var SAW_MODELS=null;   // the Brain list from the last open: shown at once next time
+/* The agent CLIs installed here, as brains an agent can be pinned to ("gemini-cli/…",
+   "codex/…", "claude-code/…"). That pin is how Claude Code, Gemini CLI and Codex work
+   on one team: the agent answers on its CLI through the run bridge, with this OS's
+   tools and gate (fabric.agent_brain). Read from /api/brains, which says which CLIs
+   are installed and can be driven; each offers its own documented models. */
+async function cliBrainChoices(){
+  let d;try{d=await apiJSON('/api/brains')}catch(e){return []}
+  const out=[];
+  (d.executors||[]).filter(e=>e.kind==='agent'&&e.available).forEach(e=>(e.models||[]).forEach(m=>
+    out.push({id:e.id+'/'+(m.id||'default'),name:e.name+' · '+(m.id||'its own setting')})));
+  return out;
+}
+async function brainChoices(){
+  const [m,c]=await Promise.all([fetch('/api/models').then(r=>r.json()).catch(()=>null),cliBrainChoices()]);
+  return m?{models:[...(m.models||[]),...c]}:(c.length?{models:c}:null);
+}
 async function openSAW(name,opts){
   // Tools and skills are this machine's own lists and answer in milliseconds. The
   // MODELS ask every provider, and the editor used to wait for them before drawing:
   // "the agent UI takes a lot of time to open". It opens now, and the Brain list is
   // filled in when it arrives (sawModelsArrive), without touching what was typed.
-  const modelsP=fetch('/api/models').then(r=>r.json()).catch(()=>null);
+  const modelsP=brainChoices();
   const [tools,skills]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]}))]);
@@ -14732,7 +14910,7 @@ function sawModelsArrive(list){
   const sel=document.getElementById('sw-model');if(!sel)return;
   const keep=sel.value||SAW.d.model||'';
   sel.innerHTML=['<option value="">this machine\'s brain (the default)</option>']
-    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}</option>`)).join('');
+    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`)).join('');
   if(keep&&!list.some(m=>m.id===keep))sel.insertAdjacentHTML('beforeend',`<option value="${esc(keep)}">${esc(keep)} (not offered now)</option>`);
   sel.value=keep;
 }
@@ -14819,7 +14997,7 @@ function drawSAW(){
   let inner='';
   if(st===1){
     const opts=['<option value="">this machine\'s brain (the default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`))
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`))
       // its own pin, even before the list has arrived — or Next would unpin it
       .concat(d.model&&!SAW.models.some(m=>m.id===d.model)?[`<option value="${esc(d.model)}" selected>${esc(d.model)}</option>`]:[]).join('');
     inner=`<div class="saw-ai">
@@ -22106,7 +22284,7 @@ function teamChatEvent(ev){
    `var`, not `let`: the bundle is one script. */
 var OFFICE={w:null,cv:null,ctx:null,raf:0,last:0,t:0,view:null,brains:{},L:null,bg:null,
   people:{},papers:[],bursts:[],pops:[],runs:{},convWho:{},missions:{},handed:{},flowRuns:{},meet:{},meeting:null,huddle:null,
-  pet:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
+  pet:null,extras:[],ball:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
 var OF_K=3;               // world units per sprite pixel: a 16x26 character is 48x78 units
 var OF_INK='#191827';     // the comic line: one ink for every outline
 var OF_SPEED=170;         // walking, world units a second
@@ -22340,6 +22518,7 @@ function officeSeat(){
   });
   O.people=seen;
   if(!O.pet||O.pet.kind!==O.view.office.pet)O.pet=O.view.office.pet!=='none'?officePetNew():null;
+  officeExtrasPlace();
 }
 function officePerson(p,key,label,room,x,y,lead){
   const home={x,y};
@@ -22684,7 +22863,7 @@ function officeSnooze(){
 function officeMoving(){
   const O=OFFICE;
   return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
-    ||(O.pet&&O.pet.walking);
+    ||(O.pet&&O.pet.walking)||!!O.ball;
 }
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
@@ -22721,6 +22900,7 @@ function officeStep(dt){
   O.pops=O.pops.filter(b=>now-b.at<1100);
   if(O.huddle&&O.huddle.until<now&&!O.huddle.cid)officeHuddleEnd();
   if(O.pet)officePetStep(dt);
+  officeExtrasStep(dt);
   officeLine();
 }
 function officeLine(){
@@ -22941,7 +23121,9 @@ function officeDraw(){
   ps.forEach(p=>officeDesk(ctx,p));
   // everybody on their feet, back to front
   Object.values(O.people).filter(p=>p.mode!=='seat').sort((a,b)=>a.y-b.y).forEach(p=>officeSprite(ctx,p,p.x,p.y,false));
+  officeExtrasDraw(ctx);
   if(O.pet)officePetDraw(ctx);
+  if(O.ball)officeBallDraw(ctx);
   officeCabinetDraw(ctx);
   officeMeetingDraw(ctx);
   Object.values(O.people).forEach(p=>{if(p.stuck)officeStuckDraw(ctx,p)});
@@ -23015,7 +23197,7 @@ function officeDesk(ctx,p){
 /* A character from the server's sheet: stand, blink, one arm up, the other. Whole
    device pixels per sprite pixel, smoothing off — or it is not pixel art. */
 function officeSprite(ctx,p,x,feet,seated){
-  const O=OFFICE,img=officeSheet(p.key);
+  const O=OFFICE,img=p.recipe?officeExtraSheet(p):officeSheet(p.key);
   const u=Math.max(2,Math.round(OF_K*O.s*O.dpr*(p.lead?1.1:1)));
   const t=O.t,still=O.static,ph=p.phase;
   const walking=p.mode==='walk'&&!still;
@@ -23030,7 +23212,7 @@ function officeSprite(ctx,p,x,feet,seated){
   if(!img)return;
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
   ctx.drawImage(img,frame*16,0,16,26,dx,dy,16*u,26*u);ctx.restore();
-  if(!seated){ofFont(ctx,10,800);ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
+  if(!seated){ofFont(ctx,10,p.recipe?600:800,!!p.recipe);ctx.fillStyle=p.recipe?'#64748b':OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
     ctx.fillText(p.label.length>14?p.label.slice(0,13)+'…':p.label,x,feet+5)}
 }
 /* A comic balloon: white, inked, a tail to the speaker's head. Thoughts are clouds. */
@@ -23107,6 +23289,7 @@ function officePetNew(){
 function officePetStep(dt){
   const p=OFFICE.pet,r=p.room;if(!r||OFFICE.static)return;
   if(!OFFICE.L.rooms.includes(r)){OFFICE.pet=officePetNew();return}
+  if(officeExtra('sitter'))return officeFetchStep(dt);
   if(p.walking){const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy);
     if(l<2){p.walking=false;p.wait=3+Math.random()*6}else{p.x+=dx/l*40*dt;p.y+=dy/l*40*dt;p.dir=dx<0?-1:1}}
   else if((p.wait-=dt)<=0){p.tx=r.x+30+Math.random()*(r.w-60);p.ty=r.y+OF_WALL+60+Math.random()*(r.h-OF_WALL-80);p.walking=true}
@@ -23125,6 +23308,104 @@ function officePetDraw(ctx){
   else{ctx.beginPath();ctx.ellipse(6,-13,2.5,5,.4,0,6.283);ctx.fill();ofInk(ctx,1.6);ctx.beginPath();ctx.moveTo(-13,-10);ctx.lineTo(-19,-15);ofInk(ctx,2.4)}
   ctx.fillStyle=OF_INK;ctx.fillRect(11,-15,1.8,1.8);
   ctx.restore();
+}
+
+/* ---------------- the lounge regulars: people who are visibly not agents ----------------
+   Asked for as "the lounge needs someone just sitting around, like a security guard or a
+   person playing with the dog or cat". They are decor, like the pet, and the rules that
+   keep the office honest hold for them too:
+   - they are not the crew. Nobody here is in /api/office, a tap on them asks nobody, and
+     their tag is grey and italic under their feet, never a nameplate on a desk.
+   - they do not wander. The guard sits in the armchair with the paper; the pet sitter
+     stands in one spot. Only the pet runs, fetching what it is thrown.
+   - one painter. Their look is a fixed recipe drawn by the server's painter through
+     avatarRecipeSrc, the same door a linked team's face uses. The guard's cap and badge
+     are props drawn over the sprite, like a desk's mug.
+   They come with the lounge: switch the lounge off and they go. The sitter needs a pet. */
+var OF_EXTRAS={
+  guard:{label:'security',recipe:{skin:3,hair:0,style:'short',pants:3,glasses:false,blush:false,hue:202,outfit:'shirt'}},
+  sitter:{label:'pet sitter',recipe:{skin:1,hair:4,style:'bun',pants:0,glasses:true,blush:true,hue:96,outfit:'hoodie'}}};
+function officeExtra(role){return OFFICE.extras.find(e=>e.role===role)}
+function officeExtraSheet(p){
+  const k='x:'+p.role;let e=OFFICE.sheets[k];
+  if(!e){const img=new Image();img.decoding='async';img.onload=officeKick;
+    img.src=avatarRecipeSrc(p.recipe,{sheet:1});e=OFFICE.sheets[k]={img,v:0}}
+  return e.img.complete&&e.img.naturalWidth?e.img:null;
+}
+function officeExtrasPlace(){
+  const O=OFFICE,r=officeRoomOf('lounge');
+  if(!r){O.extras=[];O.ball=null;return}
+  const floor=r.y+r.h-46, mk=(role,x,y)=>{const was=officeExtra(role);
+    return {...OF_EXTRAS[role],role,key:'extra:'+role,room:r,x,y,home:{x,y},mode:role==='guard'?'seat':'stand',path:[],phase:was?was.phase:Math.random()*6.28,
+      wait:was?was.wait:3+Math.random()*4,page:was?was.page:0}};
+  O.extras=[mk('guard',r.x+r.w-96,floor-4)];
+  if(O.pet)O.extras.push(mk('sitter',r.x+96,floor));
+  else O.ball=null;
+}
+function officeExtrasStep(dt){
+  const g=officeExtra('guard');
+  // the guard turns a page now and then, and looks up over the paper
+  if(g&&!OFFICE.static&&(g.wait-=dt)<=0){g.page=(g.page+1)%4;g.wait=6+Math.random()*9}
+}
+/* Fetch: the sitter throws, the pet runs to it and brings it back (a cat bats it back
+   instead, and the ball rolls home on its own). */
+function officeFetchStep(dt){
+  const O=OFFICE,p=O.pet,s=officeExtra('sitter'),r=p.room,now=performance.now();if(!s)return;
+  const b=O.ball;
+  if(!b){
+    if(s.hand&&now-s.hand>380)s.hand=0;
+    if(!p.walking&&(p.wait-=dt)<=0){
+      const tx=r.x+r.w*(.45+Math.random()*.35), ty=r.y+OF_WALL+70+Math.random()*(r.h-OF_WALL-100);
+      O.ball={x0:s.x+14,y0:s.y-30,x:s.x+14,y:s.y-30,tx,ty,at:now,ms:850,state:'fly'};s.hand=now;
+    }else if(!p.walking&&Math.hypot(p.x-(s.x+26),p.y-s.y)>6){p.tx=s.x+26;p.ty=s.y;p.walking=true}
+  }else if(b.state==='fly'){
+    const a=Math.min(1,(now-b.at)/b.ms);
+    b.x=b.x0+(b.tx-b.x0)*a;b.y=b.y0+(b.ty-b.y0)*a-Math.sin(a*Math.PI)*60;
+    if(a>=1)b.state='wait';
+    if(!p.walking){p.tx=b.tx;p.ty=b.ty;p.walking=true}
+  }else if(b.state==='roll'){
+    const dx=s.x+10-b.x,dy=s.y-b.y,l=Math.hypot(dx,dy);
+    if(l<4){O.ball=null;p.wait=4+Math.random()*6}else{b.x+=dx/l*90*dt;b.y+=dy/l*90*dt}
+  }
+  if(p.walking){
+    const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy),sp=b&&b.state!=='carry'?95:70;
+    if(l<3){p.walking=false;
+      if(b&&b.state==='wait'){
+        if(p.kind==='cat'){b.state='roll';p.wait=2}
+        else{b.state='carry';p.tx=s.x+26;p.ty=s.y;p.walking=true}
+      }else if(b&&b.state==='carry'){O.ball=null;p.wait=4+Math.random()*6;officePop(s,'good!')}
+    }else{p.x+=dx/l*sp*dt;p.y+=dy/l*sp*dt;p.dir=dx<0?-1:1}
+  }
+  if(O.ball&&O.ball.state==='carry'){O.ball.x=p.x+12*p.dir;O.ball.y=p.y-12}
+}
+function officeBallDraw(ctx){
+  const b=OFFICE.ball,cat=OFFICE.pet&&OFFICE.pet.kind==='cat';
+  if(b.state==='fly'){ctx.fillStyle='#00000026';ctx.beginPath();ctx.ellipse(b.x0+(b.tx-b.x0)*Math.min(1,(performance.now()-b.at)/b.ms),
+    b.y0+(b.ty-b.y0)*Math.min(1,(performance.now()-b.at)/b.ms)+4,5,1.6,0,0,6.283);ctx.fill()}
+  ctx.fillStyle=cat?'#f472b6':'#facc15';ctx.beginPath();ctx.arc(b.x,b.y,4.5,0,6.283);ctx.fill();ofInk(ctx,1.6);
+  if(cat){ctx.beginPath();ctx.moveTo(b.x-3,b.y-1);ctx.quadraticCurveTo(b.x,b.y+2,b.x+3,b.y-1);ofInk(ctx,1)}
+}
+function officeExtrasDraw(ctx){
+  const O=OFFICE;
+  O.extras.forEach(e=>{
+    if(e.role==='guard'){
+      const x=e.x,y=e.y;
+      // the armchair back, the guard, then the arms and seat in front of the legs
+      ctx.fillStyle='#475569';ofRR(ctx,x-26,y-58,52,46,12);ctx.fill();ofInk(ctx,2.2);
+      officeSprite(ctx,e,x,y,true);
+      const top=y-78;
+      ctx.fillStyle='#1e3a8a';ofRR(ctx,x-19,top+4,38,11,5);ctx.fill();ofInk(ctx,1.8);          // the cap
+      ctx.fillStyle='#172554';ofRR(ctx,x-4,top+13,26,4,2);ctx.fill();ofInk(ctx,1.4);            // its brim
+      ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(x-9,y-40,3,0,6.283);ctx.fill();ofInk(ctx,1.2); // the badge
+      ctx.fillStyle='#64748b';ofRR(ctx,x-30,y-26,60,18,6);ctx.fill();ofInk(ctx,2.2);
+      ofRR(ctx,x-32,y-40,10,32,5);ctx.fill();ofInk(ctx,2);ofRR(ctx,x+22,y-40,10,32,5);ctx.fill();ofInk(ctx,2);
+      // the paper, lowered for a moment on every other page to look over it
+      if(e.page%2===0){ctx.fillStyle='#f8fafc';ofRR(ctx,x-20,y-44,40,22,2);ctx.fill();ofInk(ctx,1.6);
+        ctx.fillStyle='#94a3b8';for(let i=0;i<3;i++)ctx.fillRect(x-16,y-39+i*5,i===0?32:22,2)}
+      else{ctx.fillStyle='#f8fafc';ofRR(ctx,x-18,y-30,36,8,2);ctx.fill();ofInk(ctx,1.6)}
+      ofFont(ctx,10,600,true);ctx.fillStyle='#64748b';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(e.label,x,y-4);
+    }else officeSprite(ctx,e,e.x,e.y,false);
+  });
 }
 
 /* ---------------- a tap: who is this, and ask them ---------------- */
@@ -24945,7 +25226,9 @@ function omniOpen(){return OMNI.pop}
 function omniScore(q,it){
   const ql=q.toLowerCase();
   const t=palScore(q,it.label);                       // 3 prefix · 2 substring · 1 scattered
-  if(t>=2)return t;
+  // a word people use for it: "flow" is Missions, "channel" is Settings → Channels
+  const w=typeof placeWordScore==='function'?placeWordScore(q,it.words):0;
+  if(t>=2||w>=2)return Math.max(t,w);
   if((it.hint||'').toLowerCase().includes(ql))return 1.5;
   return t;                                           // 1 (scattered) or 0
 }
@@ -24959,7 +25242,7 @@ function omniRender(q){
     const scored=items.map(it=>({it,s:omniScore(q,it)})).filter(x=>x.s>0);
     const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
     const kept=best>=1.5?scored.filter(x=>x.s>=1.5):scored;     // drop the scattered tail
-    const rank=x=>x.s+(x.it.id?0.4:x.it.nat?0:0.2);             // apps > actions > host apps
+    const rank=x=>x.s+(x.it.id?0.4:x.it.place?0.3:x.it.nat?0:0.2);   // apps > places > actions > host apps
     fuzzy=kept.sort((a,b)=>rank(b)-rank(a)).slice(0,Math.max(3,7-direct.length));
     fuzzy.forEach(x=>x.it._t=x.s);
     fuzzy=fuzzy.map(x=>x.it);
@@ -24986,10 +25269,10 @@ function omniPaint(){
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
   // section labels between groups (actions · apps · on this machine · ask):
   // emitted always, shown by the immersive look — see .omni-sec
-  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.nat?'On this machine':'More';
+  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.place?'In apps':it.nat?'On this machine':'More';
   let last='';
   list.innerHTML=OMNI.matches.map((it,i)=>{const k=kind(it);const sec=k!==last?`<div class="omni-sec">${k}</div>`:'';last=k;return sec+`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
-    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
+    ${it.id?appIcon(it.id,32):it.pid?appIcon(it.pid,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
     ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`}).join('')
     +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');
@@ -25396,7 +25679,11 @@ $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keys
 function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
 function paletteOpen(){return omniOpen()}
 function palActions(){
-  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
+  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
+    words:typeof APP_WORDS!=='undefined'?APP_WORDS[id]:null,run:()=>openApp(id)}));
+  // the places inside apps (05b-places.js): "channel" finds Settings → Channels
+  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app])items.push(
+    {place:true,pid:pl.app,label:pl.label,hint:pl.hint,words:pl.words,run:pl.go})});
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
   items.push(
     {icon:'＋',label:'New chat',hint:'start a fresh conversation',run:()=>{openApp('chat');newChat()}},

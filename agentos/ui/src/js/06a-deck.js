@@ -143,6 +143,7 @@ function buildDeck(fresh){
       :`${DECKFULL?deckNoneHTML():''}
       ${DECK.groups.map(g=>deckGroupHTML(g)).join('')}
       ${deckNativeHTML()}
+      ${DECKFULL?deckPlacesHTML():''}
       ${deckWidgetsHTML()}
       <button class="deck-new" title="New group"><b data-ic="plus">＋</b><span>New group</span></button>`}
     </div>`;
@@ -176,6 +177,9 @@ function buildDeck(fresh){
       null,
       {label:'Hide system apps from the deck',fn:deckToggleNative},
     ])};
+  });
+  box.querySelectorAll('.deck-place').forEach(t=>{
+    t.onclick=()=>{const pl=PLACES[+t.dataset.place];deckFull(false);if(pl)pl.go()};
   });
   const more=box.querySelector('.deck-natmore');
   if(more)more.onclick=()=>deckFull(true);   // "+N more" is the wall, one click instead of a scroll
@@ -260,7 +264,8 @@ function deckFilter(q,quiet){
   const scored=tiles.map(t=>({t,s:s?deckTileScore(s,t):3}));
   const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
   const floor=best>=2?2:1;                  // drop the scattered tail once there is a real hit
-  scored.forEach(x=>x.t.classList.toggle('nomatch',s?x.s<floor:false));
+  // a place inside an app is only shown for a search: on an unfiltered wall it is noise
+  scored.forEach(x=>x.t.classList.toggle('nomatch',s?x.s<floor:x.t.classList.contains('deck-place')));
   box.querySelectorAll('.deck-group').forEach(g=>{
     const any=[...g.querySelectorAll('.deck-tile')].some(t=>!t.classList.contains('nomatch'));
     g.classList.toggle('nomatch',!!s&&!any);
@@ -273,10 +278,15 @@ function deckFilter(q,quiet){
   box.classList.toggle('noresults',!!s&&!hits.length);
 }
 function deckTileScore(q,t){
-  const label=(t.querySelector('span')||{}).textContent||'';
+  // the name is the tile's own label span; the first span in a tile is its ICON
+  // (appIcon's .aicon), which made the wall match names only by app id
+  const label=(t.querySelector(':scope > span:not([class])')||{}).textContent||'';
   return Math.max(palScore(q,label),
                   t.dataset.app?palScore(q,t.dataset.app):0,
-                  t.title?(String(t.title).toLowerCase().includes(q.toLowerCase())?1.5:0):0);
+                  t.title?(String(t.title).toLowerCase().includes(q.toLowerCase())?1.5:0):0,
+                  // the words people use for it (05b-places.js): "flow" finds Missions
+                  typeof placeWordScore==='function'?placeWordScore(q,
+                    t.dataset.place?(PLACES[+t.dataset.place]||{}).words:APP_WORDS[t.dataset.app]):0);
 }
 /* "nothing matches" is a sentence with a way forward, not an empty screen: the
    thing you typed goes to the agent, which is the one search that can't miss. */
@@ -433,6 +443,18 @@ function deckNativeHTML(){
               title="${esc(a.comment||a.name)}">${nativeIcon(a,px)}<span>${esc(a.name)}</span></button>`).join('')}
       ${rest>0?`<button class="deck-tile deck-natmore" title="Every installed application">
         ${appIcon('apps',px)}<span>+${rest} more</span></button>`:''}</div>
+  </div>`;
+}
+/* The places inside apps (05b-places.js), as tiles that only a search shows: typing
+   "channel" on the wall finds Settings → Channels, "flow" finds Missions → Build. */
+function deckPlacesHTML(){
+  if(typeof PLACES==='undefined')return '';
+  const px=deckIconPx();
+  return `<div class="deck-group deck-places">
+    <div class="deck-gname">In apps</div>
+    <div class="deck-tiles">${PLACES.map((pl,i)=>APPS[pl.app]?`
+      <button class="deck-tile deck-place nomatch" data-place="${i}" title="${esc(pl.hint)}">
+        ${appIcon(pl.app,px)}<span>${esc(pl.label)}</span><small class="dp-where">${esc(pl.hint.split(' → ')[0])}</small></button>`:'').join('')}</div>
   </div>`;
 }
 function deckWidgetsHTML(){

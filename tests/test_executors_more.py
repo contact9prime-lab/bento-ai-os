@@ -52,8 +52,13 @@ def test_the_engine_lists_agree_with_the_catalogue():
     assert set(execmod.ENGINES) == set(ids)
     assert tuple(cfgmod.ENGINE_NAMES) == execmod.ENGINES
     assert set(execmod.DRIVEN) == {"claude-code", "gemini-cli", "codex"}
-    assert execmod.MCP_ENGINES == ("claude-code",), \
-        "a mission runs only where the bridge can serve this OS's tools"
+    # every driven CLI can be handed this OS's tools over the bridge...
+    assert execmod.MCP_ENGINES == ("claude-code", "gemini-cli", "codex")
+    # ...but a mission runs only where the CLI's OWN tools can all be switched off:
+    # Codex keeps `unified_exec` whatever it is told (measured on 0.157)
+    assert execmod.FENCED_ENGINES == ("claude-code", "gemini-cli"), \
+        "a mission promises what every step can reach"
+    assert not execmod.runs_missions("codex") and execmod.runs_missions("gemini-cli")
 
 
 def test_the_page_names_every_driven_executor():
@@ -231,13 +236,14 @@ def test_drafting_a_mission_works_on_gemini(fake_gemini, tmp_path, monkeypatch):
 
 
 def test_a_team_without_a_door_is_still_named(tmp_path):
-    """No per-run MCP config for these, so no door — but the executor is told who the
-    specialists are and to send the person to `@name`, rather than doing the
-    toolsmith's job in silence."""
+    """An executor with no MCP door gets no door, but is told who the specialists are
+    and to send the person to `@name`, rather than doing the toolsmith's job in
+    silence. (Every driven CLI has a door now; this is the rule for the next one.)"""
     class Store:
         def list_subagents(self):
             return [{"name": "toolsmith", "soul": "You build tools. Carefully."}]
     e = env("gemini-cli")
+    e.engine = "openclaw"
     token = execmod.open_team_door(e, {}, object(), Store(), None, None)
     assert token == "" and not e.team_mcp
     assert "toolsmith: You build tools." in e.context and "@name" in e.context

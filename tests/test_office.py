@@ -275,3 +275,17 @@ def test_the_rooms_mean_something_a_mission_meets_escalation_walks_a_stall_is_sa
     # a failed or timed-out step stays said at its own desk until it runs again
     assert "p.stuck=performance.now()" in fab and "p.stuck=0" in fab and "OF_STUCK_MS" in step
     assert "officeMeetingDraw(ctx)" in of and "officeStuckDraw(ctx,p)" in of
+
+
+def test_the_lounge_has_regulars_who_are_visibly_not_agents():
+    """Asked for as "the lounge needs someone just sitting around, like a security guard
+    or a person playing with the dog or cat". They are decor like the pet: not the crew,
+    they stay put (only the pet runs, fetching), and the server's painter draws them."""
+    of = _js("24d-office.js")
+    assert "function officeExtrasPlace" in of and "officeRoomOf('lounge')" in of.split("function officeExtrasPlace")[1][:200]
+    body = of.split("var OF_EXTRAS=")[1].split("/* ---------------- a tap")[0]
+    assert "avatarRecipeSrc(p.recipe,{sheet:1})" in body, "one painter: a fixed recipe through the server"
+    assert "O.people" not in body, "they are not the crew, so they are never in OFFICE.people"
+    assert "officeWalk" not in body, "they do not walk about; the pet fetches"
+    assert "if(officeExtra('sitter'))return officeFetchStep(dt)" in of
+    assert "p.kind==='cat'" in body, "a cat bats the ball back rather than carrying it"

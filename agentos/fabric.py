@@ -44,10 +44,10 @@ MASTER_READONLY = ["recall", "kg_query", "brief_item"]
 # Appended to the system prompt of a run on the bridge: the executor sees our tools
 # under its MCP naming, and it must not go looking for the native ones it has not got.
 BRIDGE_NOTE = ("\n\nYOUR TOOLS: every tool you have is served by the MCP server "
-               "'bento' and appears as mcp__bento__<name> (for example "
-               "mcp__bento__delegate is `delegate`). You have NO file, shell or web "
-               "tools of your own in this run — only these. Use them by those names, "
-               "and when the mission is done, stop.")
+               "'bento'. Your CLI may show one as mcp__bento__<name>, bento.<name> or "
+               "just <name> (so mcp__bento__delegate is `delegate`). You have NO file, "
+               "shell or web tools of your own in this run, only these. Use them, and "
+               "when the task is done, stop.")
 CONTEXT_BUDGET = 24_000     # chars of handle content handed to one child
 BOARD_BUDGET = 1_200        # chars of board index appended to every tool result
 
@@ -81,8 +81,22 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
     own_ok = bool((cfg.get("team") or {}).get("own_brains", True))
     names = {pid: name.split(" — ")[0] for pid, name, _ in executors.PROVIDER_EXECUTORS}
     names["custom"] = "Custom server"      # the catalogue's name lists three products
-    own, note = False, ""
-    if pinned:
+    own, note, cli = False, "", ""
+    if pinned and pinned.split("/", 1)[0] in executors.DRIVEN:
+        # An agent CLI as this agent's own brain ("gemini-cli/gemini-2.5-pro",
+        # "codex/default"): that is how Claude Code, Gemini CLI and Codex work on one
+        # team. It answers through the run bridge, with this OS's tools and gate.
+        pid = pinned.split("/", 1)[0]
+        title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
+        if not own_ok:
+            note = "every agent uses this machine's brain (Agents → Working together)"
+        elif pid not in executors.MCP_ENGINES:
+            note = f"{title} cannot be handed this OS's tools yet"
+        elif not executors.probe(pid).get("installed"):
+            note = f"{title} is not installed on this machine"
+        else:
+            own, cli = True, pid
+    elif pinned:
         pid, _m = providers.parse_model_id(pinned)
         conf = (cfg.get("providers") or {}).get(pid)
         label = names.get(pid, pid)
@@ -97,7 +111,9 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         else:
             own = True
     engine = executors.resolve_engine(cfg)
-    if own:
+    if own and cli:
+        model, engine = pinned, cli
+    elif own:
         model, engine = pinned, "aria"
     elif executors.runs_missions(engine):
         model = f"{engine}/{executors.executor_model(cfg, engine) or 'default'}"
@@ -108,8 +124,10 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         provider_name = names.get(provider, provider) if model else "No brain yet"
     else:
         provider = engine
-        provider_name = {"claude-code": "Claude Code"}.get(engine, engine)
+        provider_name = executors.EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
     return {"model": model, "pinned": pinned, "own": own, "engine": engine,
+            # can this brain be given ONLY this OS's tools (what a mission needs)?
+            "fenced": engine == "aria" or engine in executors.FENCED_ENGINES,
             "provider": provider, "provider_name": provider_name,
             "short": (model.split("/", 1)[1] if "/" in model else model) or "not set",
             "note": note}
@@ -123,12 +141,22 @@ def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
     that is switched off or has no key — the pin is remembered and the badge says the
     agent is on the machine's brain until the provider is turned on, which is the
     honest reading of both states."""
-    from . import providers
+    from . import executors, providers
     defn = store.get_subagent(name)
     if not defn:
         raise KeyError(name)
     model = (model or "").strip()
-    if model:
+    cli = model.split("/", 1)[0] if model else ""
+    if cli in executors.DRIVEN:
+        # one of the agent CLIs: its documented aliases, or "default" (its own setting)
+        m = model.split("/", 1)[1] if "/" in model else ""
+        ok = {i for i, _n in executors.AGENT_MODELS.get(cli, ()) if i} | {"default"}
+        if cli not in executors.MCP_ENGINES:
+            raise ValueError(f"{cli} cannot be handed this OS's tools yet")
+        if m not in ok:
+            raise ValueError(f"{executors.EXECUTORS_BY_ID[cli]['title']} does not offer '{m}' "
+                             f"— choose one of: {', '.join(sorted(ok))}")
+    elif model:
         pid, m = providers.parse_model_id(model)
         known = sorted((cfg.get("providers") or {}).keys())
         if pid not in known or not m:
@@ -208,6 +236,9 @@ def set_limits(cfg: dict, patch: dict) -> dict:
 # A as if B had written it — that is prompt injection travelling one hop.
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"
 HUDDLE_WORDS = 120          # per turn: long enough to argue, short enough to read
+# Democracy mode (team.talk == "democracy"): a council of this many of your agents
+# votes, and a majority decides — 2 of 3, as it was asked for ("the quorum agrees").
+COUNCIL_SIZE = 3
 HUDDLE_CONTEXT = 6_000      # chars of transcript handed to each turn
 
 
@@ -517,13 +548,30 @@ def forget_link_grants(store, label: str) -> int:
     return n
 
 
-def huddle_text(agents: list, rounds: int, transcript: list) -> str:
+def read_vote(text: str):
+    """YES / NO from a ballot's first line (True, False, or None when it is neither)."""
+    first = (str(text or "").strip().splitlines() or [""])[0]
+    m = re.match(r"\W*(yes|no)\b", first, re.I) or re.search(r"\b(yes|no)\b", first, re.I)
+    return None if not m else m.group(1).lower() == "yes"
+
+
+def vote_line(vote: dict) -> str:
+    """A huddle's vote as ONE line of its stored text: `[vote] agreed, 2 of 3: …`.
+    The page's turn pattern (`@name (model): text`) does not match it, so older pages
+    skip it and newer ones draw it as the vote (10b-huddle.js)."""
+    tally = ", ".join(f"{b['agent']} {'yes' if b['yes'] else 'no'}" for b in vote.get("ballots", []))
+    return (f"[vote] {'agreed' if vote.get('approved') else 'not agreed'}, "
+            f"{vote.get('yes', 0)} of {vote.get('of', 0)}: {tally}")
+
+
+def huddle_text(agents: list, rounds: int, transcript: list, vote: dict | None = None) -> str:
     """The transcript as the model and the chat both read it: a header line, then one
     line per turn, `@name (model): text`. One line per turn is what lets the chat draw
     each one as its own bubble on reload without a second storage format."""
     head = f"[huddle · {', '.join(agents)} · {rounds} round{'s' if rounds != 1 else ''}]"
     lines = [f"@{e['speaker']} ({e['model']}): {e['text']}" for e in transcript]
-    return "\n".join([head] + (lines or ["(nobody had anything to say)"]))
+    return "\n".join([head] + (lines or ["(nobody had anything to say)"])
+                     + ([vote_line(vote)] if vote else []))
 
 
 class Budget:
@@ -634,7 +682,8 @@ class ControlPlane(usersmod.Scoped):
         from . import executors
         return f"{engine}/{executors.executor_model(self.cfg, engine) or 'default'}"
 
-    async def _run_on_executor(self, agent, task: str, run_id: str, engine: str) -> dict:
+    async def _run_on_executor(self, agent, task: str, run_id: str, engine: str,
+                               model: str | None = None) -> dict:
         """One agent turn — master or specialist — on the executor, through the bridge.
 
         The Agent is built exactly as for the built-in loop (its principal, its
@@ -676,11 +725,15 @@ class ControlPlane(usersmod.Scoped):
                 bridge = next((m for m in (ev.get("mcp") or [])
                                if m.get("name") == executors.BRIDGE_SERVER), None)
                 status = (bridge or {}).get("status") or "absent"
+                if engine != "claude-code":
+                    # Gemini CLI and Codex name no MCP servers when they start; whether
+                    # the bridge was reached is read from the bridge after the run
+                    status = "checked after the run"
                 await self._emit(run_id, "log", {
                     "node_id": run_id, "level": "info" if status == "connected" else "error",
                     "text": (f"{engine} {ev.get('model') or ''} · bridge {status} · "
                              f"{len(ev.get('tools') or [])} tools")[:240]})
-                if status != "connected":
+                if status not in ("connected", "checked after the run"):
                     errors.append(f"the run bridge did not connect (status: {status}) — "
                                   f"{engine} had none of this OS's tools, so nothing it "
                                   f"said could have been done")
@@ -715,11 +768,18 @@ class ControlPlane(usersmod.Scoped):
             env = executors.envelope_from(self.cfg, self.cfg.get("workspace", ""))
             await executors.run_on_bridge(task, system, url, token, sink,
                                           budget_usd=env.budget_usd,
-                                          model=executors.executor_model(self.cfg, engine),
-                                          cwd=env.workspace, run=run)
+                                          model=(executors.executor_model(self.cfg, engine)
+                                                 if model is None else model),
+                                          cwd=env.workspace, run=run, engine=engine)
         finally:
             watcher.cancel()
-            mcpbridge.close_session(token)
+            sess = mcpbridge.close_session(token)
+        if engine != "claude-code" and sess is not None and not sess.listed and not run.stopped:
+            # the CLI never asked the bridge for its tools, so nothing it said it did
+            # was done through this OS: an error, never "ok" with prose as the result
+            errors.append(f"{executors.EXECUTORS_BY_ID.get(engine, {}).get('title', engine)} "
+                          f"never connected to the run bridge, so it had none of this "
+                          f"OS's tools")
         tokens = {"input": int(run.tokens_in or 0), "output": int(run.tokens_out or 0)}
         label = f"{engine}/{run.model}" if run.model else self._executor_label(engine)
         if tokens["input"] or tokens["output"] or run.cost_usd:
@@ -738,7 +798,8 @@ class ControlPlane(usersmod.Scoped):
         brain = agent_brain(self.cfg, defn, step_override)
         # the agent's own pin when it may use it, else the provider default; an
         # executor label is decided by the caller, which knows whether it can bridge
-        model = brain["model"] if brain["own"] else self.cfg.get("default_model", "")
+        model = (brain["model"] if brain["own"] and brain["engine"] == "aria"
+                 else self.cfg.get("default_model", ""))
         pdp = getattr(self.toolbox, "pdp", None)
         if pdp and defn.get("name"):
             # per-subagent model restrictions (deny grants on model.use); a denied
@@ -875,9 +936,25 @@ class ControlPlane(usersmod.Scoped):
         # A specialist pinned to a provider it may use answers THERE, even when the
         # machine's brain is an executor: that is how agents on different providers
         # work together. Everybody else runs where the machine's brain runs.
-        engine = "" if agent_brain(self.cfg, defn, model_override)["own"] else self._executor()
+        brain = agent_brain(self.cfg, defn, model_override)
+        exec_model = None               # None = the executor's own configured model
+        cli_note = ""
+        if brain["own"] and brain["engine"] != "aria":
+            # pinned to an agent CLI: it answers there, whatever the machine's brain is
+            engine = brain["engine"]
+            m = brain["model"].split("/", 1)[1] if "/" in brain["model"] else ""
+            exec_model = "" if m in ("", "default") else m
+            if flow and not brain["fenced"]:
+                # a mission promises what every step can reach, and this CLI keeps a
+                # shell of its own; the mission runs this agent on the machine's brain
+                cli_note = (f"{brain['provider_name']} keeps its own read-only shell, so this "
+                            f"mission runs {defn['name']} on the machine's brain instead")
+                engine, exec_model = self._executor(), None
+        else:
+            engine = "" if brain["own"] else self._executor()
         if engine:
-            model = self._executor_label(engine)
+            model = (f"{engine}/{exec_model or 'default'}" if exec_model is not None
+                     else self._executor_label(engine))
         # a child that was not told its space inherits the delegating conversation's
         if not space_id and conversation_id:
             try:
@@ -894,6 +971,8 @@ class ControlPlane(usersmod.Scoped):
                                                             origin.get("chat_id", "") or ""))
         await self._emit(run_id, "status", {"status": "running", "ref": defn["name"],
                                             "model": model, "parent_run": parent_run})
+        if cli_note:
+            await self._emit(run_id, "log", {"node_id": run_id, "level": "info", "text": cli_note})
         eff_autonomy = min_autonomy(self.cfg.get("autonomy", "balanced"),
                                     defn.get("autonomy_cap", "balanced"))
         child_cfg = {**self.cfg, "max_steps": int(defn.get("max_steps", 12)),
@@ -965,7 +1044,7 @@ class ControlPlane(usersmod.Scoped):
         # that mission's grants there), and never inside a huddle turn, which is already
         # a conversation.
         from .policy import team_talk
-        talks = team_talk(self.cfg) != "off" and kind != "huddle"
+        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote")
         if talks and flow:
             # inside a mission only if the mission declared it — its consent screen said so
             try:
@@ -974,6 +1053,10 @@ class ControlPlane(usersmod.Scoped):
                 talks = False
         if talks and "ask_agent" not in tools:
             tools.append("ask_agent")
+        if kind == "vote":
+            # a ballot is an opinion, not work: no tools, so a vote can never act,
+            # message a colleague or start another vote
+            tools = []
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
@@ -1007,7 +1090,7 @@ class ControlPlane(usersmod.Scoped):
             # The approval window is only added when this run can actually pause; a run
             # that cannot ask a human keeps its old, tighter ceiling.
             result = await asyncio.wait_for(
-                (self._run_on_executor(agent, task, run_id, engine) if engine
+                (self._run_on_executor(agent, task, run_id, engine, exec_model) if engine
                  else agent.run([{"role": "user", "content": task}])),
                 timeout=budget.limit + (self._approval_ceiling() if escalate else 0) + 60)
             content = result.get("content") or ""
@@ -1490,8 +1573,127 @@ class ControlPlane(usersmod.Scoped):
                         pass
             if not spoke:
                 break
+        vote = None
+        from .policy import team_talk
+        if team_talk(self.cfg) == "democracy" and transcript:
+            # Democracy ends a conversation with a decision: everybody in the room votes
+            # on the last word said (the latest proposal), and a majority adopts it.
+            last = transcript[-1]
+            ballots = await self.ballot(
+                cast, (f"Your team decides by majority vote. After talking about: "
+                       f"{topic.strip()[:600]}\n\n{last['speaker']} said last: "
+                       f"\"{last['text']}\"\n\nVote YES to adopt that as the team's answer, "
+                       f"NO if it is wrong or leaves out something important. Reply with YES "
+                       f"or NO on the first line and one short reason on the second."),
+                conversation_id, space_id)
+            yes = sum(1 for b in ballots if b["yes"])
+            vote = {"proposal": last["text"], "by": last["speaker"], "ballots": ballots,
+                    "yes": yes, "of": len(ballots), "need": len(ballots) // 2 + 1,
+                    "approved": yes >= len(ballots) // 2 + 1}
+            if say:
+                try:
+                    await say({"vote": vote, "speaker": "", "text": vote_line(vote)})
+                except Exception:
+                    pass
         return {"agents": [d["name"] for d in cast], "rounds": r, "transcript": transcript,
-                "text": huddle_text([d["name"] for d in cast], r, transcript)}
+                "vote": vote,
+                "text": huddle_text([d["name"] for d in cast], r, transcript, vote)}
+
+    # -- democracy: the team votes, and a majority decides ----------------------------
+
+    def council_of(self, exclude=(), lead: bool = True) -> list[dict]:
+        """Who votes: up to COUNCIL_SIZE seats, never the one proposing (its stake is
+        the question). Your lead agent takes a seat when it is not the proposer and the
+        machine has a brain to answer with; the rest are your specialists, the one being
+        asked included (it knows best whether it can help), on DIFFERENT brains first,
+        so a vote is not one model asked three times. That is where a team of Claude
+        Code, Gemini CLI and Codex earns its keep. With the usual three specialists a
+        specialist's question still gets three voters: the lead and the other two."""
+        from . import executors
+        lead_out = any(str(x) == "@agent" for x in exclude or ())
+        skip = {str(x).lower().lstrip("@") for x in exclude or () if x and str(x) != "@agent"}
+        seats: list[dict] = []
+        name = str(self.cfg.get("agent_name") or "your agent")
+        has_brain = executors.resolve_engine(self.cfg) != "aria" or bool(self.cfg.get("default_model"))
+        if lead and has_brain and not lead_out and name.lower() not in skip:
+            seats.append({"name": name, "key": "@agent", "lead": True})
+        pool = [d for d in self.store.list_subagents()
+                if d.get("enabled") is not False and d["name"].lower() not in skip
+                and "@" not in d["name"]]
+        picked, brains = [], set()
+        for d in pool:                                   # one per brain first...
+            b = agent_brain(self.cfg, d)
+            key = (b["engine"], b["provider"])
+            if key not in brains:
+                brains.add(key)
+                picked.append(d)
+        for d in pool:                                   # ...then fill the seats
+            if d not in picked:
+                picked.append(d)
+        return (seats + picked)[:COUNCIL_SIZE]
+
+    async def ballot(self, voters: list, question: str, conversation_id: str = "",
+                     space_id: str = "") -> list[dict]:
+        """Every voter answers `question` at once, each on its own brain, as a run of
+        kind `vote` (no tools). A reply that is neither yes nor no counts as no: a vote
+        that could not be read is not consent."""
+        async def lead_vote(d):
+            # the lead answers on the machine's brain, one answer and no tools
+            from . import executors
+            text, who, why = await executors.ask_brain(
+                self.cfg, f"You are {d['name']}, the lead agent of this team.", question, timeout=120)
+            return {"content": text, "model": who}
+        runs = await asyncio.gather(*[
+            (lead_vote(d) if d.get("lead") else
+             self.run_subagent(d, question, kind="vote", conversation_id=conversation_id,
+                               space_id=space_id)) for d in voters], return_exceptions=True)
+        out = []
+        for d, r in zip(voters, runs):
+            text = "" if isinstance(r, Exception) else str(r.get("content") or "")
+            yes = read_vote(text)
+            why = " ".join(text.split("\n", 1)[1].split()) if "\n" in text.strip() else ""
+            out.append({"agent": d["name"], "key": d.get("key") or d["name"],
+                        "yes": yes is True, "read": yes is not None,
+                        "why": why[:200],
+                        "model": "" if isinstance(r, Exception) else r.get("model", "")})
+        return out
+
+    async def council(self, proposer: str, what: str, targets=(), request: str = "",
+                      conversation_id: str = "", space_id: str = "") -> dict:
+        """Put one step to the team: `proposer` wants to do `what`. Returns
+        {decided, approved, yes, of, need, ballots, line}. With fewer than two agents to
+        vote there is no council (`decided` False) and the caller asks the person, as
+        the matrix would. The tally goes in the ledger, as the team's decision."""
+        voters = self.council_of(exclude=[proposer])
+        if len(voters) < 2:
+            return {"decided": False, "ballots": [],
+                    "line": "not enough agents to hold a vote, so you are asked"}
+        said = (str(self.cfg.get("agent_name") or "your lead agent") if proposer == "@agent"
+                else proposer)
+        question = (f"Your team decides by majority vote. {said} wants to {what}"
+                    + (f"\n\nThe person's request it is working on: {request[:600]}" if request else "")
+                    + "\n\nVote YES if this is a sensible step for that work, NO if it looks "
+                      "wrong, wasteful or risky. A step the person asked for in their own "
+                      "words is sensible unless it would do harm; a vote is not a way to "
+                      "overrule them on style. Reply with YES or NO on the first line and "
+                      "one short reason on the second. Nothing else.")
+        ballots = await self.ballot(voters, question, conversation_id, space_id)
+        yes = sum(1 for b in ballots if b["yes"])
+        need = len(voters) // 2 + 1
+        approved = yes >= need
+        line = (f"the team voted {'yes' if approved else 'no'}, {yes} of {len(voters)}: "
+                + ", ".join(f"{b['agent']} {'yes' if b['yes'] else 'no'}" for b in ballots))
+        try:
+            from . import users as _users
+            self.store.audit_add(uid=_users.current() or "", principal_kind="council",
+                                 principal_id="team", action="team.vote",
+                                 resource=f"agent:{proposer}", effect="allow" if approved else "deny",
+                                 rule="democracy", outcome="ok",
+                                 detail=f"{said} wants to {what[:300]} · {line}"[:1000])
+        except Exception:
+            pass
+        return {"decided": True, "approved": approved, "yes": yes, "of": len(voters),
+                "need": need, "ballots": ballots, "line": line}
 
     # -- flows: a master orchestrator with a roster and a blackboard --------------
 

@@ -320,7 +320,9 @@ function buildJarvisShell(){
   const inp=$('#js-input');
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const q=inp.value.trim();if(!q)return;
     const app=Object.keys(APPS).find(k=>APPS[k].title.toLowerCase()===q.toLowerCase());
-    if(app){openApp(app)}else{openApp('chat');if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}}
+    // a place inside an app by the word people use for it ("channel", "flow")
+    const pl=!app&&typeof placesFind==='function'&&q.split(/\s+/).length<=3?placesFind(q,1)[0]:null;
+    if(app){openApp(app)}else if(pl){pl.go()}else{openApp('chat');if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}}
     inp.value='';}});
   jarvisShellRefresh();
   clearInterval(sh._t);sh._t=setInterval(jarvisShellRefresh,4000);

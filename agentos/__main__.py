@@ -3615,11 +3615,13 @@ def _team_cli(args):
         return
     if act == "talk":
         want = (args.name or "").strip().lower()
-        if want not in ("off", "matrix", "swarm"):
+        if want not in ("off", "matrix", "swarm", "democracy"):
             from .policy import team_talk
             print(f"  agents message each other: {team_talk(cfg)}\n"
-                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first. "
-                  f"swarm: they work together, and your agent hands them work, without asking)")
+                  f"  bento team talk matrix|swarm|democracy|off\n"
+                  f"    matrix: each pair asks you first\n"
+                  f"    swarm: they work together, and your agent hands them work, without asking\n"
+                  f"    democracy: the same steps go to a vote of three of your agents, and 2 of 3 decide")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want
@@ -3657,7 +3659,7 @@ def _team_cli(args):
         if len(names) < 2:
             print("  two or more specialists are needed before any of them can message another")
             return
-        blank = "swarm" if m["talk"] == "swarm" else "ask"
+        blank = {"swarm": "swarm", "democracy": "vote"}.get(m["talk"], "ask")
         w = max(len(n) for n in names) + 2
         print(f"  agents message each other: {m['talk']}   (rows ask, columns answer)\n")
         print(" " * (w + 2) + "".join(f"{n[:9]:<10}" for n in names))
@@ -5900,10 +5902,12 @@ def main():
                         choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits",
                                  "draft"])
     p_team.add_argument("name", nargs="?", default="",
-                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker "
+                        help="set: the agent · own: on|off · talk: matrix|swarm|democracy|off · allow/block/ask: the asker "
                              "· draft: what the new agent should do, in words")
     p_team.add_argument("model", nargs="?", default="",
-                        help="set: provider/model ('' = this machine's brain) · allow/block/ask: the one asked")
+                        help="set: provider/model, or an agent CLI such as gemini-cli/gemini-2.5-pro, "
+                             "codex/default or claude-code/sonnet ('' = this machine's brain) "
+                             "· allow/block/ask: the one asked")
     p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
     p_team.add_argument("--yes", action="store_true", help="draft: save what was drafted without asking")

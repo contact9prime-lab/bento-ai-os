@@ -8,6 +8,9 @@ taskbar, virtual desktops, widgets, themes, shortcuts — and the catalog of bui
 ## The shell
 
 ### Windows
+
+![Four Bento windows stacked on the desktop: the focused one carries an accent ring and the full shadow, the rest recede](screenshots/windows.png)
+
 Every app opens in a draggable, resizable window with minimize / maximize / close and proper
 z-ordering. Double-click a title bar to maximize. The **taskbar** at the bottom tracks open windows.
 
@@ -101,6 +104,15 @@ Press **Alt+Space** or **Ctrl+Space** anywhere for a fast launcher: fuzzy-search
 an action (new chat, clear session, toggle voice, reset wallpaper), or choose **"Ask …"** to send
 your text straight to the agent.
 
+It also finds the places inside apps by the words people use for them. Type **channel**,
+**telegram** or **whatsapp** and you get Settings → Channels. **flow**, **workflow** or
+**trigger** gives Missions → Build → Flows, **job** gives Missions, **api key** gives AI
+providers, **mail** gives Accounts. They are listed under "In apps", and Enter opens the pane
+itself, not just the app. The app wall's search finds them too, but only while you are
+searching, so the wall itself stays a wall of apps.
+
+![The prompt bar with "channel" typed: Channels under "In apps", Settings → Channels](screenshots/prompt-bar-places.png)
+
 ### Fullscreen
 Press **F11** (or use the Settings button) to toggle fullscreen. Launched via `agentos app`, the
 desktop opens fullscreen automatically, hiding the host taskbar.
@@ -182,6 +194,9 @@ sunset theme" uses the same names (the `create_theme` tool). A terminal has no p
 glass, so the builder has no terminal face; asking in chat is the words-only way to build one.
 
 ### Design-language themes
+
+![The five built-in design-language themes: Bento, Liquid Glass, Spatial, Claymorphism and Minimalism](screenshots/themes.png)
+
 
 Five themes go further than a palette — each one re-cuts the whole shell (surfaces, radii,
 elevation, blur and type) into a different visual language:
@@ -427,6 +442,9 @@ running, and on phones, which have no pointer to rest.
 ---
 
 ## Automations
+
+![The Automations app with saved routines, the hot-corner map and the step builder](screenshots/automations.png)
+
 
 An automation is a **named, repeatable sequence of desktop steps**. Set one up
 once, and from then on it does exactly that — every time, from anywhere.

@@ -322,6 +322,27 @@ _STEER_PREFACE = (
 #   steer, turn_end, error
 
 
+
+def _council_ask(agent, name: str, args: dict) -> dict:
+    """What a council is asked about one tool call: who proposes it, in words, who it
+    involves (they do not vote on themselves) and the request it serves."""
+    who = (agent.principal.id if agent.principal.kind == "subagent"
+           else "@agent")                     # the lead: council_of never seats the proposer
+    if name == "ask_agent":
+        tgt = [str(args.get("agent") or "")]
+        what = f"ask {tgt[0]} this question: \"{str(args.get('question') or '')[:500]}\""
+    elif name == "delegate":
+        tgt = [str(args.get("subagent") or "")]
+        what = f"hand {tgt[0]} this task: \"{str(args.get('task') or '')[:500]}\""
+    else:
+        raw = args.get("agents") or []
+        tgt = [str(x).lstrip("@") for x in (raw if isinstance(raw, list) else str(raw).split(","))]
+        topic = args.get("topic") or args.get("question") or ""
+        what = f"start a huddle with {', '.join(tgt)} about: \"{str(topic)[:500]}\""
+    return {"proposer": who, "what": what, "targets": [t for t in tgt if t],
+            "request": str(getattr(agent, "_task_text", "") or "")[:600],
+            "conversation_id": agent.conversation_id or "", "space_id": agent.space_id or ""}
+
 class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
@@ -795,19 +816,45 @@ class Agent:
         if dec.effect == "deny":
             output = f"[denied] {dec.reason or reason}"
         elif dec.effect == "ask":
-            await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
-                             "args": args, "detail": tool_detail(name, args),
-                             "pending_approval": True})
-            from .policy import _NEEDS_PERSON
-            tok = _NEEDS_PERSON.set(must_person) if must_person else None
-            try:
-                approved = await self.approver(name, args, dec.reason or reason,
-                                               dec.grant_offer)
-            finally:
-                if tok is not None:
-                    _NEEDS_PERSON.reset(tok)
+            verdict = None
+            fab = getattr(self.toolbox, "fabric", None)
+            if dec.rule == "democracy" and not must_person and fab is not None:
+                # Democracy mode: the step swarm would have opened is put to a council
+                # of the team, and a majority decides. Never a step that must be a
+                # person's (must_person): the PDP only says `democracy` where swarm
+                # would open, and this check keeps it that way if that ever changes.
+                await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
+                                 "args": args, "detail": tool_detail(name, args),
+                                 "pending_approval": False})
+                await self.emit({"type": "status", "message": "the team is voting on this"})
+                verdict = await fab.council(**_council_ask(self, name, args))
+                if verdict.get("decided"):
+                    approved = bool(verdict.get("approved"))
+                    await self.emit({"type": "status", "message": verdict["line"]})
+                else:
+                    await self.emit({"type": "status", "message": verdict["line"]})
+                    verdict = None
+            if verdict is None:
+                await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
+                                 "args": args, "detail": tool_detail(name, args),
+                                 "pending_approval": True})
+                from .policy import _NEEDS_PERSON
+                tok = _NEEDS_PERSON.set(must_person) if must_person else None
+                try:
+                    approved = await self.approver(name, args, dec.reason or reason,
+                                                   dec.grant_offer)
+                finally:
+                    if tok is not None:
+                        _NEEDS_PERSON.reset(tok)
             if approved:
                 output = await self.toolbox.execute(name, args)
+            elif verdict is not None:
+                why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
+                                if not b["yes"] and b["why"])
+                output = (f"[denied] Your team voted this down ({verdict['yes']} of "
+                          f"{verdict['of']} said yes, {verdict['need']} needed)."
+                          + (f" Their reasons: {why}." if why else "")
+                          + " Carry on without it, or tell the user what you wanted and why.")
             elif must_person:
                 output = (f"[denied] This step needs a person to say yes ({must_person}), and "
                           f"nobody said yes. Autonomy does not answer it. Try a read-only "

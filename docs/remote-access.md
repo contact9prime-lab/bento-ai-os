@@ -103,6 +103,9 @@ it. That is a picture, not a video, and you cannot click on it — but it answer
 
 ### Actually using a native app: Remote Desktop
 
+![Bento's Remote Desktop open in a phone browser, showing the machine's real screen with a native app on it and a toolbar of keys a phone keyboard lacks](screenshots/phone-remote-desktop.png)
+
+
 Seeing is not using. To click and type inside a native app you need pixels streamed *and* input
 sent back. AgentOS does that **through its own authenticated connection**, which is what makes it
 safe and what makes it work from a phone with nothing installed on the phone:

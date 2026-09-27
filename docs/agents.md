@@ -53,13 +53,38 @@ a spend ceiling, so for the other two the envelope says "no spend ceiling of its
 Claude Code continues its own session between turns. Gemini CLI and Codex are sent the
 conversation so far with each turn.
 
-Two things only Claude Code can do today, because it is the one CLI this OS can start
-with its own MCP server for one run:
+A conversation can hold more than Claude Code's session saw: a turn you stopped, an answer
+from another brain before you switched, a specialist you addressed with `@name`. Each reply
+Claude Code gives is marked with its session, and whatever came after the last marked reply
+is sent along with your next message. If the session itself is gone (its files were deleted,
+or a backup was restored on another machine), the turn starts a new one and is sent the
+conversation so far instead of failing. This works the same in Chat, in every app's agent
+panel, and over Telegram and WhatsApp, and it survives a restart.
 
-- **Run a mission.** With Gemini CLI or Codex as the brain, the Missions app says
-  missions need a provider model, before the Run button.
-- **Hand work to your specialists.** Claude Code gets `delegate` and `huddle`. Gemini CLI
-  and Codex are told who your specialists are and to send you to `@name`.
+All three can be started with this OS's own tools for one run, over MCP (the run
+bridge), so what they do through those tools passes the permission gate and lands in the
+ledger. Each is told in its own way: Claude Code a flag, Gemini CLI a settings file for that
+run only, Codex `-c` overrides with its token read from the environment.
+
+- **Hand work to your specialists.** In a chat, all three get `delegate` and `huddle`.
+- **Run a mission.** Claude Code and Gemini CLI can: their own tools are switched off for
+  the run, so the mission's promise about what each step can reach holds. Codex can't.
+  Its built-in shell can't be switched off (checked on Codex 0.157), so it keeps a
+  read-only shell of its own, and the Missions app says so before the Run button.
+
+### A team of Claude Code, Gemini CLI and Codex
+
+Any agent can be pinned to one of these CLIs instead of a provider model: pick "Gemini CLI ·
+gemini-2.5-pro" or "Codex CLI · gpt-5" in its Brain picker, or run
+`bento team set researcher gemini-cli/gemini-2.5-pro`. It then answers on that CLI whatever
+your lead runs on, with this OS's tools and gate. So your lead can be on Claude Code, hand
+the research to a specialist on Gemini CLI, and have one on Codex check the code, and they
+can huddle and vote together.
+
+![Settings → Agents: researcher on Gemini CLI, validator on Claude Code, writer on Codex CLI](screenshots/team-three-clis.png)
+
+A mission promises what every step can reach, so a Codex specialist on a mission runs on the
+machine's brain instead, and the run's log says so. At the desk it works on Codex.
 
 Hermes and OpenClaw are detected but not yet driven: AgentOS does not know their headless
 output. They are listed with that sentence and cannot be chosen as the brain. Before this

@@ -39,6 +39,11 @@ This holds when your agent runs on another installed agent too. With Claude Code
 machine's brain, a specialist pinned to OpenAI still answers on OpenAI, through AgentOS's own
 loop and permission gate. Unpinned specialists run where the machine's brain runs.
 
+An agent can also be pinned to an installed agent CLI: Claude Code, Gemini CLI or Codex
+(`bento team set writer codex/gpt-5`). That is how several CLIs work on one team. Each such
+agent answers on its CLI, started with this OS's tools over the run bridge
+([agents.md](agents.md#a-team-of-claude-code-gemini-cli-and-codex)).
+
 ![The roster: each agent's card shows the provider and model it answers on](screenshots/team-roster.png)
 
 ## Huddles: agents talking to each other
@@ -137,12 +142,13 @@ mission only the mission's own rules count.
 
 ![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
 
-**The mode switch** (Settings, or `bento team talk`) has three settings:
+**The mode switch** (Settings, or `bento team talk`) has four settings:
 
 | | An empty cell | A cell you allowed | A cell you blocked |
 |---|---|---|---|
 | **Ask me** (the default) | asks you; nobody there = no | talks | refused |
 | **Swarm** | talks, without asking | talks | refused |
+| **Democracy** | the team votes; 2 of 3 decide | talks | refused |
 | **Off** | refused | refused | refused |
 
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
@@ -154,6 +160,39 @@ ask: an agent on a linked team, starting a mission, and anything that runs on a 
 from a webhook, because nobody is there to watch it. Blocking a specialist in Permissions
 still stops it. Under *Ask me* your lead asks once per specialist, and *Allow & remember*
 makes that stick.
+
+### Democracy: the team votes, and 2 of 3 decide
+
+Democracy is swarm with a vote. The same steps swarm lets through without asking go to a
+council instead: a specialist asking a colleague, and your lead handing work over or
+starting a huddle, on a surface somebody is at. Three agents vote and a majority decides.
+
+- **Who votes.** Your lead agent, when it has a brain to answer with and isn't the one
+  asking, plus your specialists, the one being asked included (it knows best whether it can
+  help). Agents on different brains get seats first, so the vote isn't one model asked three
+  times. That is where a team of Claude Code, Gemini CLI and Codex is worth having. The one
+  proposing the step never votes.
+- **How it's read.** Each voter answers YES or NO with one reason. Anything else counts as
+  no. A vote that goes against the step is a refusal that carries the team's reasons back to
+  the agent that asked.
+- **A step you asked for** counts in its favour unless it would do harm. The voters see your
+  request, and the question tells them a vote is not a way to overrule you on style. Found by
+  running it: three real voters turned down a hand-over the person had asked for as "too
+  simple to delegate".
+- **When there's no council** (fewer than two agents to vote), you're asked, as in *Ask me*.
+- **What a vote never decides:** anything that must be yours. A step after untrusted content,
+  the actions confirmed every time, a linked team's agent, a mission and anything unattended
+  are asked or refused exactly as before. A cell you blocked stays blocked.
+- **Every vote is a ledger row** (`team.vote`, with the tally), and each ballot is a run of its
+  own with no tools, so a vote can't act, message anyone or call another vote.
+
+**A huddle ends with a vote** in democracy mode. Everybody in the room votes on the last thing
+said, and the card shows whether the team agreed and who said what:
+
+![A huddle on Gemini CLI, Claude Code and Codex, ending "The team agreed · 2 of 3"](screenshots/huddle-vote.png)
+
+A vote costs one short run per voter, so democracy spends a little more than swarm. It is off
+unless you choose it.
 
 ### The shape of a conversation, and the limits you set
 
@@ -596,7 +635,8 @@ the link's own name, which you chose, is what is verified.
 | A huddle | `ControlPlane.huddle` — the `huddle` tool, a `@a @b …` chat message, `agent_say` events |
 | A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
 | The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
-| The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
+| The mode | `team.talk` = `matrix` \| `swarm` \| `democracy` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
+| The vote | `ControlPlane.council` / `council_of` / `ballot`, `fabric.read_vote`; the agent loop hands a `democracy` ask to it (`agent._council_ask`); a huddle's vote is `vote_line` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
 | People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |

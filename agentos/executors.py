@@ -94,6 +94,14 @@ class Envelope:
     # The conversation so far, for a CLI this OS cannot resume a session of: without
     # it every follow-up reached Gemini CLI / Codex as a stranger's first message.
     transcript: str = ""
+    # The whole recent thread, used only when a resumed session turns out to be gone
+    # (its files deleted, another machine's home): the run is started again without
+    # it and this is what it is told instead (`carry_over`).
+    fallback: str = ""
+    # Environment a CLI needs for this run only (a Gemini settings file, Codex's
+    # bridge token) and the scratch folder holding those files, removed afterwards.
+    extra_env: dict = field(default_factory=dict)
+    scratch: str = ""
 
     def describe(self) -> str:
         """One sentence a person can approve or refuse."""
@@ -129,7 +137,9 @@ class Envelope:
                         budget_usd=budget, session_id=self.session_id, context=ctx,
                         allow_source=bool(self.allow_source), team_mcp=tuple(self.team_mcp or ()),
                         engine=self.engine if self.engine in DRIVEN else "claude-code",
-                        transcript=str(self.transcript or "")[-6000:])
+                        transcript=str(self.transcript or "")[-6000:],
+                        fallback=str(self.fallback or "")[-6000:],
+                        extra_env=dict(self.extra_env or {}), scratch=self.scratch)
 
 
 @dataclass
@@ -138,6 +148,8 @@ class Run:
 
     proc: asyncio.subprocess.Process | None = None
     session_id: str = ""
+    # set by the translator when `--resume` named a session the CLI no longer has
+    resume_missing: bool = False
     model: str = ""                # what actually answered, reported by the CLI
     cost_usd: float = 0.0
     turns: int = 0
@@ -187,22 +199,69 @@ DRIVEN = ("claude-code", "gemini-cli", "codex")
 # Which of them can take a session id back and continue it. The others are handed
 # the conversation so far in the prompt (`Envelope.transcript`).
 RESUMES = ("claude-code",)
+#: How many earlier messages a forwarded turn is handed when it has to be told.
+CARRY_MESSAGES = 8
+
+
+def _said(msgs: list[dict]) -> str:
+    return "\n".join(
+        f"{'Person' if m.get('role') == 'user' else 'You'}: {str(m.get('content') or '')[:1500]}"
+        for m in msgs if m.get("role") in ("user", "assistant") and str(m.get("content") or "").strip())
+
+
+def carry_over(prior: list[dict], session_id: str, engine: str) -> tuple[str, str, str]:
+    """What a forwarded turn needs to know of its own conversation.
+
+    Returns (session to resume, what to tell it now, what to tell it if the resume
+    fails). `prior` is the conversation's stored messages before this turn, each with
+    its `meta`.
+
+    Reported as "the chat is losing context": in an app's agent panel, "write a ppt for
+    it" came back as "I don't know what 'it' refers to", right under the answer it
+    referred to. A resumed session only knows the turns that ran IN it, and a thread
+    holds others: a turn stopped before the session id was saved, a turn answered on
+    another brain before the switch, a specialist or a huddle. So every executor reply
+    is stamped with its session (`meta.exec_session`), and whatever came after the last
+    stamped reply is handed over as text. A thread with no stamps yet (older rows)
+    counts the replies this engine gave as seen.
+    """
+    msgs = [m for m in (prior or []) if m.get("role") in ("user", "assistant")]
+    full = _said(msgs[-CARRY_MESSAGES:])
+    if engine not in RESUMES or not session_id:
+        return "", full, ""
+    meta = [m.get("meta") or {} for m in msgs]
+    stamped = any(x.get("exec_session") for x in meta)
+    seen = -1
+    for i, x in enumerate(meta):
+        if (x.get("exec_session") == session_id) if stamped else (x.get("engine") == engine):
+            seen = i
+    unseen = msgs[seen + 1:]
+    return session_id, _said(unseen[-CARRY_MESSAGES:]), full
 
 
 def drives(engine: str) -> bool:
     """Can this OS run a turn on this executor (not just detect it)?"""
     return engine in DRIVEN
-# Executors that can run a MISSION: started with their native tools off and this
-# OS's tools served to them over MCP (mcpbridge.py), so every call passes the PDP.
-# Needs a CLI that takes an MCP config, a strict flag for it, and a tool allow-list
-# by server name — which is Claude Code today. Hermes and OpenClaw answer chats
-# only until they can be driven the same way; jobs.readiness() says so.
-MCP_ENGINES = ("claude-code",)
+# Executors that can be handed this OS's tools over MCP for one run (mcpbridge.py),
+# so every call they make passes the PDP: the team door in a chat turn, and a
+# specialist pinned to that CLI. Each takes the server its own way
+# (`bridge_parts`): Claude Code a JSON flag, Gemini CLI a per-run settings file,
+# Codex `-c mcp_servers.*` overrides. Hermes and OpenClaw have no such door yet.
+MCP_ENGINES = ("claude-code", "gemini-cli", "codex")
+# ...and the ones whose OWN tools can be switched off completely for that run, which
+# is what a MISSION needs: its consent block promises what every step can reach, and
+# a native tool never reaches this PDP. Claude Code: `--tools ""`. Gemini CLI:
+# `tools.core: []` (an empty allow-list registers no built-in tool, read from its
+# tool registry). Codex is NOT here, measured on 0.157: `shell_tool` can be disabled
+# but `unified_exec` stays on through `--disable`, `features.*=false` and the legacy
+# key, so a read-only shell remains. A Codex specialist therefore works at the desk
+# (hand-overs, huddles, votes) and a mission runs it on the machine's brain instead.
+FENCED_ENGINES = ("claude-code", "gemini-cli")
 
 
 def runs_missions(engine: str) -> bool:
-    """Can this executor be the brain of a flow, with our tools over the bridge?"""
-    return engine in MCP_ENGINES
+    """Can this executor be the brain of a flow, with only our tools, over the bridge?"""
+    return engine in FENCED_ENGINES
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
@@ -272,7 +331,8 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
 
 async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
-                  context: str = "", team: dict | None = None) -> tuple[str, "Run | None"]:
+                  context: str = "", team: dict | None = None,
+                  prior: list | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -298,6 +358,10 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                 f"choose another brain in Settings → AI providers"), None
     env = envelope_from(cfg, workspace_default, engine)
     env.session_id = session_id if engine in RESUMES else ""
+    if prior is not None:
+        # the conversation's stored messages before this one: what the session has
+        # not seen is handed over, and a CLI with no session gets the thread so far
+        env.session_id, env.transcript, env.fallback = carry_over(prior, session_id, engine)
     # Always, even when the surface supplies nothing of its own: a forwarded
     # Telegram or scheduled turn otherwise arrives believing it owns the desktop.
     env.context = context_for(context)
@@ -1424,10 +1488,9 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     if toolbox is None:
         return ""
     if env.engine not in MCP_ENGINES:
-        # Gemini CLI and Codex are not started with a per-run MCP config here, so
-        # there is no door to open — but the person's team is still THEIRS: say who
-        # does what and how to reach them, rather than letting the executor do the
-        # toolsmith's job in silence (the report that started the team door).
+        # an executor with no MCP door (none today among the driven ones) still
+        # hears who is on the team and how to reach them, rather than doing the
+        # toolsmith's job in silence (the report that started the team door)
         env.context = (env.context or "") + team_hint(subs)
         return ""
     # a machine with no specialists still gets the door: missions need no team
@@ -1510,7 +1573,7 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.engine == "codex":
         return _codex_command(task, env)
     exe = claude_exe() or "claude"
-    cmd = [exe, "--print", as_prose(task),
+    cmd = [exe, "--print", _claude_prompt(task, env),
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
            *(("--add-dir", source_root()) if env.allow_source else ()),
@@ -1538,6 +1601,17 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.session_id:
         cmd += ["--resume", env.session_id]
     return cmd
+
+
+def _claude_prompt(task: str, env: Envelope) -> str:
+    """The task, and before it whatever of the conversation the session has not seen
+    (`carry_over`). With nothing to carry it is the task alone, exactly as before."""
+    if not env.transcript:
+        return as_prose(task)
+    label = ("SAID IN THIS CONVERSATION SINCE YOUR LAST ANSWER (answered elsewhere, "
+             "so your session does not have it):" if env.session_id
+             else "THE CONVERSATION SO FAR:")
+    return f" {label}\n{env.transcript}\n\nTHE REQUEST:\n{as_prose(task).lstrip()}"
 
 
 def _prompt_for(task: str, env: Envelope) -> str:
@@ -1570,6 +1644,11 @@ def _gemini_command(task: str, env: Envelope) -> list[str]:
         cmd += ["--include-directories", source_root()]
     if env.model:
         cmd += ["--model", env.model]
+    if env.team_mcp:
+        extra, envv = bridge_parts("gemini-cli", *env.team_mcp, scratch=_scratch(env),
+                                   cwd=env.workspace)
+        cmd += extra
+        env.extra_env.update(envv)
     return cmd
 
 
@@ -1587,7 +1666,95 @@ def _codex_command(task: str, env: Envelope) -> list[str]:
            "--cd", env.workspace]
     if env.model:
         cmd += ["--model", env.model]
+    if env.team_mcp:
+        extra, envv = bridge_parts("codex", *env.team_mcp, scratch=_scratch(env))
+        cmd += extra
+        env.extra_env.update(envv)
     return cmd + [_prompt_for(task, env)]
+
+
+def _mkscratch() -> str:
+    """A 0700 folder for one run's own files, under the AgentOS home.
+
+    Not the system temp folder: Gemini CLI refuses a settings file when any folder
+    above it is writable by others ("Parent directory '/tmp' is insecure", found by
+    pointing the real CLI at one), and a file skipped there is a run with no bridge."""
+    import tempfile
+    from . import config as _cfgmod
+    base = Path(_cfgmod.AGENTOS_HOME) / "run"
+    base.mkdir(parents=True, exist_ok=True)
+    os.chmod(base, 0o700)
+    return tempfile.mkdtemp(prefix="bento-run-", dir=str(base))
+
+
+def _scratch(env: "Envelope") -> str:
+    """This run's scratch folder (settings, a system prompt), made once."""
+    if not env.scratch:
+        env.scratch = _mkscratch()
+    return env.scratch
+
+
+def _toml(s: str) -> str:
+    """A TOML basic string for a Codex `-c key=value` override."""
+    return json.dumps(str(s))
+
+
+def bridge_parts(engine: str, url: str, token: str, scratch: str = "",
+                 system: str = "", fence: bool = False, cwd: str = "") -> tuple[list[str], dict]:
+    """The extra argv and environment that give `engine` the one MCP server `bento`
+    for this run, and (with `fence`) nothing else to act with.
+
+    Each CLI is told in its own words, checked against the real CLIs:
+    - Gemini CLI reads a settings file named by GEMINI_CLI_SYSTEM_SETTINGS_PATH: the
+      server with its Bearer header and `trust` (no confirmation prompt in headless),
+      and, fenced, `tools.core: []` and `--allowed-mcp-server-names bento`. A
+      replacement system prompt goes through GEMINI_SYSTEM_MD. Two things the real
+      CLI (0.61) refuses, found by pointing it at a live bridge: a settings file under
+      a folder others can write (so the scratch folder is in the AgentOS home), and
+      any MCP server in a folder it does not trust (so GEMINI_CLI_TRUSTED_FOLDERS_PATH
+      names a file trusting this run's working folder, and nothing else). With both,
+      `gemini mcp list` reports the bridge Connected.
+    - Codex takes `-c mcp_servers.bento.*`: the URL, the token read from an
+      environment variable (never on the command line, where `ps` shows it) and
+      `default_tools_approval_mode="approve"` (its parser refuses a value it does
+      not know, so these were tried). Fenced, its shell tool is disabled and the
+      sandbox is read-only; `unified_exec` cannot be switched off, which is why
+      Codex is not in FENCED_ENGINES. `model_instructions_file` replaces its prompt.
+    """
+    argv: list[str] = []
+    envv: dict = {}
+    if engine == "gemini-cli":
+        settings: dict = {"mcpServers": {BRIDGE_SERVER: {
+            "httpUrl": url, "headers": {"Authorization": f"Bearer {token}"}, "trust": True}}}
+        if fence:
+            settings["tools"] = {"core": []}
+            settings["mcp"] = {"allowed": [BRIDGE_SERVER]}
+            argv += ["--allowed-mcp-server-names", BRIDGE_SERVER]
+        path = Path(scratch) / "gemini-settings.json"
+        path.write_text(json.dumps(settings))
+        os.chmod(path, 0o600)
+        envv["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] = str(path)
+        trust = Path(scratch) / "trusted-folders.json"
+        trust.write_text(json.dumps({str(Path(cwd or os.getcwd()).resolve()): "TRUST_FOLDER"}))
+        os.chmod(trust, 0o600)
+        envv["GEMINI_CLI_TRUSTED_FOLDERS_PATH"] = str(trust)
+        if system:
+            sp = Path(scratch) / "system.md"
+            sp.write_text(system)
+            envv["GEMINI_SYSTEM_MD"] = str(sp)
+    elif engine == "codex":
+        argv += ["-c", f"mcp_servers.{BRIDGE_SERVER}.url={_toml(url)}",
+                 "-c", f"mcp_servers.{BRIDGE_SERVER}.bearer_token_env_var={_toml('BENTO_RUN_TOKEN')}",
+                 "-c", f"mcp_servers.{BRIDGE_SERVER}.default_tools_approval_mode={_toml('approve')}"]
+        envv["BENTO_RUN_TOKEN"] = token
+        if fence:
+            for feat in ("shell_tool", "apps", "browser_use", "computer_use", "image_generation"):
+                argv += ["--disable", feat]
+        if system:
+            sp = Path(scratch) / "instructions.md"
+            sp.write_text(system)
+            argv += ["-c", f"model_instructions_file={_toml(str(sp))}"]
+    return argv, envv
 
 
 # Credentials that make the Claude Code CLI bill per token against an API
@@ -1601,9 +1768,18 @@ API_BILLING_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
                     "CLAUDE_CODE_USE_VERTEX")
 
 
+#: Set when AgentOS itself was started from inside a Claude Code session. Inherited,
+#: the CLI adopts that session's id for every run it starts (measured: a fresh
+#: `claude --print` reported the parent's id), so every conversation here would be
+#: saved as, and resumed into, one session that belongs to somebody's terminal.
+PARENT_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+                       "CLAUDE_CODE_REMOTE_SESSION_ID", "CLAUDE_AFTER_LAST_COMPACT")
+
+
 def child_env() -> dict:
     """The environment a delegated run gets: this one, minus the API credentials."""
-    env = {k: v for k, v in os.environ.items() if k not in API_BILLING_VARS}
+    env = {k: v for k, v in os.environ.items()
+           if k not in API_BILLING_VARS and k not in PARENT_SESSION_VARS}
     env["CLAUDE_CODE_ENTRYPOINT"] = "agentos"
     # The CLI shells out to its own helpers (node, ripgrep, git). Under systemd
     # this process's PATH lacks ~/.local/bin, so hand the child the same extended
@@ -1796,6 +1972,12 @@ def translate(event: dict, run: Run) -> list[dict]:
                             "ok": not block.get("is_error")})
 
     elif kind == "result":
+        if any("No conversation found" in str(e) for e in (event.get("errors") or [])):
+            # `--resume` named a session this CLI no longer has. `run_task` starts
+            # again without it and hands the thread over as text instead.
+            run.resume_missing = True
+            run.reported_error = True
+            return out
         run.cost_usd = float(event.get("total_cost_usd") or 0.0)
         run.turns = int(event.get("num_turns") or 0)
         usage = event.get("usage") or {}
@@ -2046,10 +2228,32 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     await emit({"type": "status",
                 "message": "starting up — waking the agent and its tools"})
 
-    return await _drive(build_command(task, env), env.workspace, emit, run)
+    try:
+        cmd = build_command(task, env)
+        run = await _drive(cmd, env.workspace, emit, run, env.extra_env)
+    finally:
+        _drop_scratch(env.scratch)
+    if run.resume_missing and not run.stopped:
+        # The saved session is gone (its files deleted, a restored backup, another
+        # home). Say so once and run again as a new session told the thread so far,
+        # rather than failing a turn the person can do nothing about.
+        await emit({"type": "status",
+                    "message": "the earlier session is gone, so it gets the conversation so far"})
+        env = Envelope(**{**env.__dict__, "session_id": "", "transcript": env.fallback})
+        run.resume_missing = run.reported_error = False
+        run.session_id = ""
+        run = await _drive(build_command(task, env), env.workspace, emit, run)
+    return run
 
 
-async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:
+def _drop_scratch(path: str) -> None:
+    """Remove a run's scratch folder (it can hold a bridge token)."""
+    if path:
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+
+
+async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | None = None) -> Run:
     """Start the CLI with `cmd` and stream its events through `emit` until it exits.
 
     The one subprocess loop for both kinds of run — a chat turn inside an envelope
@@ -2063,7 +2267,7 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env=child_env(),
+        env={**child_env(), **(extra_env or {})},
         limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
@@ -2172,18 +2376,52 @@ def build_bridge_command(task: str, system: str, url: str, token: str,
     return cmd
 
 
+def build_bridge_run(engine: str, task: str, system: str, url: str, token: str,
+                     budget_usd: float, model: str = "", cwd: str = "",
+                     scratch: str = "") -> tuple[list[str], dict]:
+    """(argv, extra env) for one bridge run on `engine`. Claude Code is
+    `build_bridge_command`; Gemini CLI and Codex get the bridge through
+    `bridge_parts`, fenced as far as each allows, with the system prompt REPLACING
+    their own (the `--system-prompt` rule). Neither has a spend flag: the bridge's
+    call ceiling and the run's working seconds are what bound them."""
+    if engine == "gemini-cli":
+        extra, envv = bridge_parts(engine, url, token, scratch=scratch, system=system,
+                                   fence=True, cwd=cwd)
+        cmd = [_find_bin(("gemini",)) or "gemini", "--prompt", as_prose(task),
+               "--output-format", "stream-json", *extra]
+        if model:
+            cmd += ["--model", model]
+        return cmd, envv
+    if engine == "codex":
+        extra, envv = bridge_parts(engine, url, token, scratch=scratch, system=system, fence=True)
+        cmd = [_find_bin(("codex",)) or "codex", "exec", "--json", "--skip-git-repo-check",
+               "--sandbox", "read-only", "--cd", cwd or os.getcwd(), *extra]
+        if model:
+            cmd += ["--model", model]
+        return cmd + [as_prose(task)], envv
+    return build_bridge_command(task, system, url, token, budget_usd, model), {}
+
+
 async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
                         budget_usd: float = 0.0, model: str = "", cwd: str = "",
-                        run: Run | None = None) -> Run:
+                        run: Run | None = None, engine: str = "claude-code") -> Run:
     """Run one agent turn on the executor with the bridge as its only tool source."""
     run = run or Run()
+    run.engine = engine if engine in DRIVEN else "claude-code"
     cwd = cwd or os.getcwd()
     Path(cwd).mkdir(parents=True, exist_ok=True)
-    await emit({"type": "status",
-                "message": "starting Claude Code with this OS's tools — its own are off"})
-    return await _drive(build_bridge_command(task, system, url, token,
-                                             budget_usd or default_budget(), model),
-                        cwd, emit, run)
+    title = EXECUTORS_BY_ID.get(run.engine, {}).get("title", run.engine)
+    await emit({"type": "status", "message": (
+        f"starting {title} with this OS's tools, its own switched off"
+        if run.engine in FENCED_ENGINES else
+        f"starting {title} with this OS's tools; its own shell stays on, read-only")})
+    scratch = _mkscratch() if run.engine != "claude-code" else ""
+    try:
+        cmd, envv = build_bridge_run(run.engine, task, system, url, token,
+                                     budget_usd or default_budget(), model, cwd, scratch)
+        return await _drive(cmd, cwd, emit, run, envv)
+    finally:
+        _drop_scratch(scratch)
 
 
 def stop(run: Run) -> bool:

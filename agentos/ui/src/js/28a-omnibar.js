@@ -73,7 +73,9 @@ function omniOpen(){return OMNI.pop}
 function omniScore(q,it){
   const ql=q.toLowerCase();
   const t=palScore(q,it.label);                       // 3 prefix · 2 substring · 1 scattered
-  if(t>=2)return t;
+  // a word people use for it: "flow" is Missions, "channel" is Settings → Channels
+  const w=typeof placeWordScore==='function'?placeWordScore(q,it.words):0;
+  if(t>=2||w>=2)return Math.max(t,w);
   if((it.hint||'').toLowerCase().includes(ql))return 1.5;
   return t;                                           // 1 (scattered) or 0
 }
@@ -87,7 +89,7 @@ function omniRender(q){
     const scored=items.map(it=>({it,s:omniScore(q,it)})).filter(x=>x.s>0);
     const best=scored.reduce((m,x)=>Math.max(m,x.s),0);
     const kept=best>=1.5?scored.filter(x=>x.s>=1.5):scored;     // drop the scattered tail
-    const rank=x=>x.s+(x.it.id?0.4:x.it.nat?0:0.2);             // apps > actions > host apps
+    const rank=x=>x.s+(x.it.id?0.4:x.it.place?0.3:x.it.nat?0:0.2);   // apps > places > actions > host apps
     fuzzy=kept.sort((a,b)=>rank(b)-rank(a)).slice(0,Math.max(3,7-direct.length));
     fuzzy.forEach(x=>x.it._t=x.s);
     fuzzy=fuzzy.map(x=>x.it);
@@ -114,10 +116,10 @@ function omniPaint(){
   if(!OMNI.matches.length){list.classList.remove('on');list.innerHTML='';return}
   // section labels between groups (actions · apps · on this machine · ask):
   // emitted always, shown by the immersive look — see .omni-sec
-  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.nat?'On this machine':'More';
+  const kind=it=>it.ask?'Ask':it.intent?'Actions':it.id?'Apps':it.place?'In apps':it.nat?'On this machine':'More';
   let last='';
   list.innerHTML=OMNI.matches.map((it,i)=>{const k=kind(it);const sec=k!==last?`<div class="omni-sec">${k}</div>`:'';last=k;return sec+`<div class="palitem${i===OMNI.idx?' sel':''}${it.intent?' act':''}${it.ask?' ask':''}" data-i="${i}">
-    ${it.id?appIcon(it.id,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
+    ${it.id?appIcon(it.id,32):it.pid?appIcon(it.pid,32):it.nat?nativeIcon(it.nat,32):`<span class="pi">${it.icon||'▸'}</span>`}<span class="ptext"><div class="pl">${esc(it.label)}</div><div class="ph">${esc(it.hint||'')}</div></span>
     ${i<9?`<kbd class="ok">alt+${i+1}</kbd>`:''}</div>`}).join('')
     +`<div class="omni-hint"><span><kbd>⏎</kbd> ${OMNI.matches[OMNI.idx]&&OMNI.matches[OMNI.idx].ask?'ask':'launch'}</span><span><kbd>⇧⏎</kbd> always ask</span><span><kbd>alt+1…9</kbd> quick launch</span><span><kbd>↑↓</kbd> pick</span></div>`;
   list.classList.add('on');

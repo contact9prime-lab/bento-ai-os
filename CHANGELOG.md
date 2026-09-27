@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.6.6 — 2026-09-27
+
+**Claude Code, Gemini CLI and Codex can work on one team.** Any agent can now be pinned to
+one of the installed agent CLIs instead of a provider model: "Gemini CLI · gemini-2.5-pro" in
+its Brain picker, or `bento team set researcher gemini-cli/gemini-2.5-pro`. It answers on that
+CLI whatever your lead runs on, with this OS's tools and permission gate, so a lead on Claude
+Code can hand research to a specialist on Gemini CLI and have one on Codex check the code.
+Gemini CLI and Codex now also get your team in a chat (`delegate` and `huddle`), and Gemini
+CLI can run missions, with its own tools switched off. Codex can't run a mission: its
+built-in shell can't be switched off, so a Codex specialist on a mission runs on the
+machine's brain and the run says so. Each CLI's setup was checked against the real one:
+Gemini CLI reported the bridge "Connected", and Codex asked it for its tools.
+
+**Democracy mode: the team votes, and 2 of 3 decide.** A fourth setting for how your agents
+work together (Settings → Agents, or `bento team talk democracy`). The steps swarm lets
+through without asking go to a vote instead: your lead and two other agents, on different
+brains where they can be. A majority decides, the team's reasons come back when it says no,
+and you're asked only when there aren't enough agents to hold a vote. A vote never decides
+anything that must be yours, and every vote is in the ledger. Huddles end with a vote on the
+last thing said, and the card shows whether the team agreed. Tried live on Claude Code: a
+huddle ended "agreed, 2 of 2", and a hand-over went through 3 of 3.
+
+**Chats keep their context when Claude Code answers.** In an app's agent panel, "write a ppt
+for it" could come back as "I don't know what 'it' refers to", right under the answer it
+meant. Claude Code only remembers the turns that ran in its own session, and a conversation
+can hold others: a turn you stopped, an answer from another brain before you switched, a
+specialist you asked by name. Now whatever the session did not see is sent along with your
+next message. If the session is gone entirely, the turn starts a fresh one with the
+conversation so far instead of failing. Telegram and WhatsApp keep their sessions across a
+restart now too; they used to forget every thread when the server restarted. And an AgentOS
+started from inside a Claude Code terminal no longer has every chat written into that
+terminal's own session.
+
+**The lounge has regulars.** A security guard reads the paper in the armchair, and a pet
+sitter plays fetch with the office pet. The dog brings the ball back. A cat bats its yarn
+back. Neither of them is an agent, and neither wanders about.
+
+**The launchers find places inside apps.** Typing "channel" in the prompt bar gives
+Settings → Channels, "flow" or "workflow" gives Missions → Build → Flows, "api key" gives AI
+providers, "mail" gives Accounts. Enter opens that pane. The app wall's search finds them
+too. The wall also matches app names properly again: it had been reading each tile's icon as
+its name, so a title only matched through the app's id or description.
+
+**A huddle started from an app's agent panel shows up in that panel.** Asking two agents a
+question from the Office's chat moved them to the meeting table, but the panel itself stayed
+empty until the end. The turns now appear there as they're said, ending with the vote.
+
+**A reloaded Claude Code answer keeps its paragraphs.** When the answer had a tool call in the
+middle, the saved text ran the two halves together ("…for you.Here are…"). The chat boxes'
+placeholder text is also short enough to fit now.
+
+**A new README, with new pictures.** The front page now covers the whole OS as it is today:
+the Brief, Missions, a team across Claude Code, Gemini CLI and Codex, huddles and democracy,
+the Office, accounts and the vault, linked teams, the terminal and the Linux session. Every
+picture on it was taken from a running machine this week, and the eleven translations were
+redone from it. The docs index and Getting Started were brought up to date too.
+
 ## 0.6.5 — 2026-09-27
 
 **Settings says less.** Every setting now has one short line under its name. The rest is

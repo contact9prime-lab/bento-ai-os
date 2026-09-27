@@ -69,6 +69,10 @@ class Session:
     created: float = field(default_factory=time.time)
     last: float = field(default_factory=time.time)
     seen: list = field(default_factory=list)      # tool names, in order — for the tests and the log
+    # the CLI asked for this run's tools: the one sign every CLI gives that it
+    # reached the bridge (Claude Code also names its servers at start; Gemini CLI and
+    # Codex say nothing, so the fabric reads this instead)
+    listed: bool = False
 
 
 def open_session(agent, schemas: list, run_id: str = "", label: str = "",
@@ -138,6 +142,7 @@ async def handle(token: str, msg: dict) -> tuple[int, dict | None]:
     if method == "ping":
         return 200, {"jsonrpc": "2.0", "id": rid, "result": {}}
     if method == "tools/list":
+        s.listed = True
         return 200, {"jsonrpc": "2.0", "id": rid, "result": {"tools": mcp_tools(s.schemas)}}
     if method != "tools/call":
         return 200, _err(rid, -32601, f"unknown method '{method}'")

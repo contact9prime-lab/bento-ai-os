@@ -1,6 +1,6 @@
 /* ================= chat app ================= */
-const PLACEHOLDER_IDLE='Ask, tell it what to do, paste an image — or @subagent to address a team member directly';
-const PLACEHOLDER_BUSY='Say what comes next — it decides whether that changes the run in flight or waits its turn';
+const PLACEHOLDER_IDLE='Ask or tell it anything. @name a teammate to ask them';
+const PLACEHOLDER_BUSY='Say what comes next. It joins this run or waits its turn';
 function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">

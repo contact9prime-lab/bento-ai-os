@@ -304,10 +304,11 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
+          ['democracy','Democracy: 2 of 3 decide'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. Loops are refused and each task has a question limit.',
-         f:'team agents message talk each other swarm matrix permission ask'}),
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
@@ -1148,17 +1149,19 @@ async function chanSave(id){
 async function paintTeamBrains(){
   const box=document.getElementById('s-team-list');if(!box)return;
   let sa={},mods={};
-  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),brainChoices()])}catch(e){}
   const list=(sa.subagents||[]);
   if(!list.length){box.textContent='No specialists yet. Ask for one, or create one in Missions → Build → Agents.';return}
-  const models=(mods.models||[]).map(m=>m.id);
+  // provider models and the agent CLIs installed here (Claude Code, Gemini CLI, Codex)
+  const models=((mods||{}).models||[]).map(m=>m.id);
+  const names={};((mods||{}).models||[]).forEach(m=>names[m.id]=m.name||m.id);
   box.classList.remove('mut');
   box.innerHTML=list.map(s=>{
     const b=s.brain||{}, pin=s.model||'';
     const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
     return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
       <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
-        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(names[m]||m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
       <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
   }).join('');
   box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
@@ -1177,15 +1180,16 @@ async function paintTeamMatrix(){
   let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
   const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
-  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first” or “Swarm” above to turn it on.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
   box.classList.remove('mut');
-  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
     ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
-      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},

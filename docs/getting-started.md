@@ -116,8 +116,13 @@ Open **Settings** and configure a provider:
 - **Ollama (local)** — detected automatically if Ollama is running. Nothing leaves your machine.
 - **Anthropic**, **OpenAI**, **OpenRouter**, or any **OpenAI-compatible** endpoint — paste a key and
   list the models you want.
+- **Claude Code**, **Gemini CLI** or **Codex** — if one is installed and signed in here, it can be
+  the brain. Bento never passes it a key.
 
-Pick the active model from the dropdown at the top of the chat window at any time.
+The brain is one choice, shown in the menu bar and the chat header, and you can change it at any
+time. Each specialist can also run on its own brain (Settings → Agents), so a researcher on Gemini
+CLI, a validator on Claude Code and a writer on Codex can work on one question. See
+[The team](team.md).
 
 > **Important:** the agent works by calling tools. Use a **tool-capable model** — any `qwen` model
 > locally, or a cloud model. Small models like `gemma` often won't call tools reliably, so tasks may
@@ -153,6 +158,8 @@ Things to try:
 - *"Build me a pomodoro timer and pin it to the desktop."*
 - *"Every morning at 9, check disk space and message me on Telegram if it's low."*
 - *"Remember that I prefer concise answers."*
+- *"@researcher @validator should our newsletter go out weekly or monthly?"* (a huddle)
+- *"Every morning at 8, brief me on my market."* (a mission that fills your [Brief](brief.md))
 
 The agent will use its tools, show you what it's doing, ask approval where needed, and report the
 real result.
@@ -161,13 +168,16 @@ real result.
 
 ## 5. Explore the desktop
 
-- **Start menu / dock** — launch any built-in app.
-- **Applications ()** — launch any installed program on your computer.
-- **Store ()** — install ready-made apps in one click, add tool channels, or build a new app
-  with AI.
-- **Quick Settings ()** — sound, network, battery, and shortcuts to native settings.
-- **Files ()** — browse your workspace; click a file to open it in your system browser.
-- **Terminal ()** — a real shell on your machine.
+- **Start menu / dock** — launch any built-in app. The prompt bar also finds places inside apps:
+  type *channel* for Telegram and WhatsApp, *flow* or *job* for Missions.
+- **Brief** — what your missions found today, with a button on each item.
+- **Missions** — the standing work this machine does for you, and under Build the flows and
+  specialists behind it.
+- **Office** — watch your agents work, and talk to them from its panel.
+- **Applications** — launch any installed program on your computer.
+- **Store** — install ready-made apps, skills and MCP servers, or build a new app with AI.
+- **Files** — your workspace and what your agents made.
+- **Terminal** — a real shell on your machine.
 
 See [The Desktop](desktop.md) for everything.
 
@@ -176,7 +186,7 @@ See [The Desktop](desktop.md) for everything.
 ## 6. Make it permanent (optional)
 
 ```bash
-uv run agentos install
+bento install
 ```
 
 Adds a menu entry, starts AgentOS at boot, and opens it automatically at login. Log out and back in

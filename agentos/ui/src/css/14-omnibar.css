@@ -239,6 +239,9 @@ body.deck-full .deck-new{align-self:start;width:auto;height:auto;min-height:118p
    scattering. The top hit carries a ring because Enter opens it. */
 #deck.filtering .deck-tile.nomatch,#deck.filtering .deck-group.nomatch,
 #deck.filtering .deck-new,#deck.filtering .deck-wgroup{display:none}
+/* places inside apps (05b-places.js) are for a search only */
+#deck:not(.filtering) .deck-places{display:none}
+.deck-place .dp-where{display:block;font-size:var(--fs-xs,11px);color:var(--dim);margin-top:-2px}
 .deck-tile.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);
   box-shadow:0 0 0 1.5px color-mix(in srgb,var(--acc) 65%,transparent)}
 .deck-none{display:none;grid-column:1/-1;flex-direction:column;align-items:flex-start;gap:10px;

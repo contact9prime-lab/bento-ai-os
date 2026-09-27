@@ -183,7 +183,11 @@ $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keys
 function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
 function paletteOpen(){return omniOpen()}
 function palActions(){
-  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,run:()=>openApp(id)}));
+  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
+    words:typeof APP_WORDS!=='undefined'?APP_WORDS[id]:null,run:()=>openApp(id)}));
+  // the places inside apps (05b-places.js): "channel" finds Settings → Channels
+  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app])items.push(
+    {place:true,pid:pl.app,label:pl.label,hint:pl.hint,words:pl.words,run:pl.go})});
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
   items.push(
     {icon:'＋',label:'New chat',hint:'start a fresh conversation',run:()=>{openApp('chat');newChat()}},

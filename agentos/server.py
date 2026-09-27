@@ -2846,7 +2846,7 @@ async def api_put_config(patch: dict):
             return JSONResponse({"error": str(e)}, status_code=400)
         fabricmod.audit_team(state["store"], "team.write", "team:limits",
                              "limits: " + ", ".join(f"{k}={v}" for k, v in got.items()))
-    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm"):
+    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm", "democracy"):
         cfg.setdefault("team", {})["talk"] = patch["team"]["talk"]
         fabricmod.audit_team(state["store"], "team.write", "team:talk",
                              f"agents message each other: {cfg['team']['talk']}")
@@ -10817,6 +10817,7 @@ async def _run_chat(cid: str, data: dict):
     if engine != "aria":
         model = engine
     result = {"content": "", "steps": [], "tokens": {"input": 0, "output": 0}}
+    exec_sid = ""        # the executor session this reply was given in (carry_over)
     # Nothing set to answer is a state of the machine, not a failure of the
     # turn: say so in a sentence with a door, before anything is saved, billed
     # or logged. Without this the empty model fell through to Ollama on
@@ -10895,14 +10896,11 @@ async def _run_chat(cid: str, data: dict):
             # From the conversation row, not a dict on the server: a restart used to
             # drop every chat's executor session, so a machine that had been running
             # for a week came back with every conversation a stranger.
-            if model in execmod.RESUMES:
-                env.session_id = store.exec_session(cid)
-            else:
-                # a CLI with no session this OS can resume gets the conversation so far
-                # in its prompt, or every follow-up reaches it as a first message
-                env.transcript = "\n".join(
-                    f"{'Person' if h.get('role') == 'user' else 'You'}: {str(h.get('content') or '')[:1500]}"
-                    for h in history[:-1][-8:] if h.get("role") in ("user", "assistant"))
+            # A resumed session knows only the turns that ran in it; whatever else the
+            # thread holds (a stopped turn, another brain's answer, a specialist) is
+            # handed over as text, and all of it if the session turns out to be gone.
+            env.session_id, env.transcript, env.fallback = execmod.carry_over(
+                store.get_messages(cid)[:-1], store.exec_session(cid), model)
             # The same per-surface context the built-in agent gets as extra_system.
             # Without it a delegated copilot turn arrived as a bare sentence with
             # no idea which app it was about — the executor is sanitizing it.
@@ -10967,6 +10965,12 @@ async def _run_chat(cid: str, data: dict):
             async def _relay(ev: dict):
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
+                elif ev.get("type") == "tool_start" and collected and \
+                        not collected[-1].endswith("\n\n"):
+                    # The page draws the tool between the two halves of the answer;
+                    # the stored reply has no tool in it, so keep the paragraph
+                    # break. Without it a reload read "for you.Here are".
+                    collected.append("\n\n")
                 # A team-door call is shown by the GATE (the Agent emits tool_start /
                 # tool_end as `delegate`); the CLI's own copy of it would be a second
                 # card for the same step — the rule the flow bridge learned first.
@@ -10982,10 +10986,13 @@ async def _run_chat(cid: str, data: dict):
                 if team_token:
                     from . import mcpbridge as _bridge
                     _bridge.close_session(team_token)
-            if run.session_id and model in execmod.RESUMES:
-                # Keep the executor's own session so the next turn in this chat is a
-                # continuation rather than a stranger with no memory of the last one.
-                store.set_exec_session(cid, run.session_id)
+                if run.session_id and model in execmod.RESUMES:
+                    # Keep the executor's own session so the next turn in this chat is
+                    # a continuation. Saved here, in `finally`: a stopped or failed turn
+                    # still ran in that session, and skipping the save made the next
+                    # turn resume an older one that never saw it.
+                    store.set_exec_session(cid, run.session_id)
+                    exec_sid = run.session_id
             if checkout:
                 # Write the edit back as a new app version, and SAY so — a change
                 # that appears without a word is indistinguishable from a bug.
@@ -11121,6 +11128,9 @@ async def _run_chat(cid: str, data: dict):
                               {"steps": result["steps"],
                                # a reloaded conversation must still say who answered
                                **({"engine": result["engine"]} if result.get("engine") else {}),
+                               # the session that saw this reply: what the next turn
+                               # resumes, and where it knows it must start telling
+                               **({"exec_session": exec_sid} if exec_sid else {}),
                                **({"engine_model": result["engine_model"]}
                                   if result.get("engine_model") else {}),
                                **({"model": model} if model and not result.get("engine") else {}),

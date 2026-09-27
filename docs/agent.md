@@ -40,6 +40,9 @@ off in Settings → Agent, in which case old turns are dropped and you are told 
 
 ## Talking while it works
 
+![A turn in flight: the finished Read call kept its duration, the running Bash call ages in place, and the row underneath says which step and how long the turn has taken](screenshots/agent-working.png)
+
+
 You never have to wait for a turn to finish before typing the next thing. Send it and the message is
 **queued** — it appears in the *Up next* strip above the composer, this chat's visible to-do list.
 (With the composer empty, the same button is still the stop button.)
