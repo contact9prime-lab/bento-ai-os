@@ -95,7 +95,10 @@ def test_the_server_prechecks_the_brain_before_the_turn_runs():
     assert "turnerrors.no_brain()" in body, "the no-brain precheck left _run_chat"
     # and the precheck comes BEFORE the user message is saved or anything is billed
     assert body.index("turnerrors.no_brain()") < body.index("store.add_message(cid")
-    assert "turnerrors.explain(" in src[i:i + 20000]
+    # the whole function, not a fixed window: a window broke every time the handler grew
+    end = min((j for j in (src.find("\nasync def ", i + 1), src.find("\ndef ", i + 1)) if j > 0),
+              default=len(src))
+    assert "turnerrors.explain(" in src[i:end]
 
 
 def test_the_page_renders_the_door_everywhere_an_error_lands():

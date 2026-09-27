@@ -37,6 +37,7 @@ from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
+from . import world as worldmod
 from . import vault as vaultmod
 from . import signin as signinmod
 from . import mail as mailmod
@@ -163,6 +164,9 @@ async def startup():
         # agents talking, collected for whoever listens off the desktop (a Telegram
         # turn's comic strip) — the one place every such event already passes
         playgroundmod.observe(event)
+        # the World scene feels it, for the account whose work this is, and only while
+        # that account has a world live (returns at once otherwise)
+        worldmod.observe(event, usersmod.current())
         dead = []
         for ws in clients:
             try:
@@ -180,6 +184,7 @@ async def startup():
         person's OWN sessions, not across accounts. On a single-user machine
         every uid is '' and this is exactly `broadcast`."""
         playgroundmod.observe(event)
+        worldmod.observe(event, uid)
         dead = []
         for ws in clients:
             if client_uids.get(ws, "") != uid:
@@ -8677,6 +8682,153 @@ async def api_office_design(body: dict):
                      "No brain is set up, so this matched the words you used.")}
 
 
+# ---------------------------------------------------------------- the World scene
+# Experimental, and alive only while its scene is on (world.py says why). Every route
+# but the list of worlds answers about the LIVE world of the account asking, so a
+# page that is not showing the scene has nothing to read. No capability is granted or
+# checked here: a feeling is not an action, and the gate is never consulted differently.
+
+def _world_cast(store) -> list[str]:
+    return [d["name"] for d in store.list_subagents() if d.get("enabled", 1)]
+
+
+@app.get("/api/worlds")
+async def api_worlds():
+    store = state["store"]
+    return {"worlds": [{k: w.get(k) for k in ("id", "name", "kit", "blurb", "builtin")}
+                       | {"emotions": [{k: e[k] for k in ("name", "emoji", "valence")}
+                                       for e in w["emotions"]],
+                          "ladder": [s["name"] for s in w["growth"]["ladder"]]}
+                       for w in worldmod.worlds(store)],
+            "live": worldmod.live_world(usersmod.current() or "")}
+
+
+@app.post("/api/world/enter")
+async def api_world_enter(body: dict):
+    store = state["store"]
+    try:
+        return worldmod.enter(usersmod.current() or "", store, str((body or {}).get("world") or
+                                                                   worldmod.DEFAULT), _world_cast(store))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/world/beat")
+async def api_world_beat(body: dict):
+    return {"live": worldmod.beat(usersmod.current() or "", str((body or {}).get("world") or ""))}
+
+
+@app.post("/api/world/leave")
+async def api_world_leave():
+    worldmod.leave(usersmod.current() or "")
+    return {"ok": True, "live": False}
+
+
+@app.get("/api/world/state")
+async def api_world_state():
+    return worldmod.view(usersmod.current() or "")
+
+
+@app.post("/api/world/pat")
+async def api_world_pat(body: dict):
+    uid = usersmod.current() or ""
+    if not worldmod.praise(uid, str((body or {}).get("agent") or "")):
+        return JSONResponse({"error": "the world is asleep"}, status_code=409)
+    return worldmod.view(uid)
+
+
+@app.post("/api/world/inner")
+async def api_world_inner(body: dict):
+    uid = usersmod.current() or ""
+    if not worldmod.set_inner(uid, bool((body or {}).get("on"))):
+        return JSONResponse({"error": "the world is asleep"}, status_code=409)
+    return worldmod.view(uid)
+
+
+@app.post("/api/world/checkin")
+async def api_world_checkin(body: dict):
+    """The lead asked how you are. Kept in this world only; the lead answers with the
+    machine's brain in the world's voice, or with the world's own words when nothing
+    answers (`how` says which)."""
+    from . import executors as execmod, teamlink
+    uid, cfg, b = usersmod.current() or "", state["cfg"], body or {}
+    try:
+        you = worldmod.checkin(uid, str(b.get("choice") or ""),
+                               teamlink.plain(b.get("words"), 280, newlines=False),
+                               skipped=bool(b.get("skip")))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=409 if "asleep" in str(e) else 400)
+    if you.get("skipped"):
+        return worldmod.view(uid)
+    v = worldmod.view(uid)
+    w = v["world"]
+    system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Aria", you)
+    raw, who = await execmod.ask_once(cfg, system, prompt, timeout=60)
+    reply = " ".join(str(raw or "").split())[:400]
+    how = "brain" if reply else "words"
+    worldmod.set_reply(uid, reply or worldmod.reply_fallback(w, int(you.get("valence") or 0)), how)
+    return worldmod.view(uid)
+
+
+@app.delete("/api/world/checkin")
+async def api_world_forget_checkin():
+    uid = usersmod.current() or ""
+    if not worldmod.forget_you(uid):
+        return JSONResponse({"error": "the world is asleep"}, status_code=409)
+    return worldmod.view(uid)
+
+
+@app.post("/api/world/reset")
+async def api_world_reset(body: dict):
+    uid = usersmod.current() or ""
+    wid = str((body or {}).get("world") or worldmod.live_world(uid))
+    if not worldmod.world(state["store"], wid):
+        return JSONResponse({"error": f"no world called {wid!r}"}, status_code=404)
+    worldmod.reset(uid, state["store"], wid)
+    return worldmod.view(uid)
+
+
+@app.post("/api/world/design")
+async def api_world_design(body: dict):
+    """Build a world from a description. The machine's brain picks from the closed
+    sets; with nothing answering, the closest built-in world is renamed for the words,
+    and `said` says so."""
+    from . import executors as execmod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    desc = teamlink.plain((body or {}).get("description"), 400, newlines=False)
+    if len(desc) < 3:
+        return JSONResponse({"error": "describe your world first, a few words is enough"}, status_code=400)
+    system, prompt = worldmod.design_prompt(desc)
+    raw, who = await execmod.ask_once(cfg, system, prompt)
+    defn, dropped, how = None, [], "brain"
+    if raw:
+        try:
+            defn, dropped = worldmod.read_design(raw)
+        except ValueError:
+            defn = None
+    if defn is None:
+        defn, how = worldmod.from_words(desc), "words"
+    try:
+        saved, more = worldmod.save_custom(store, defn)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "world": saved, "how": how, "who": who if how == "brain" else "",
+            "dropped": dropped + more,
+            "said": ("" if how == "brain" else
+                     "Nothing answered, so this is the closest built-in world, renamed for your words."
+                     if execmod.has_brain(cfg) else
+                     "No brain is set up, so this is the closest built-in world, renamed for your words.")}
+
+
+@app.delete("/api/world/{wid}")
+async def api_world_delete(wid: str):
+    try:
+        worldmod.delete_custom(state["store"], wid)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True}
+
+
 @app.post("/api/office/setup")
 async def api_office_setup(body: dict):
     """The setup arc's crew step (onboarding.crew): every character generated and
@@ -10905,6 +11057,11 @@ async def _run_chat(cid: str, data: dict):
             # Without it a delegated copilot turn arrived as a bare sentence with
             # no idea which app it was about — the executor is sanitizing it.
             env.context = execmod.context_for(str(data.get("context") or ""))
+            # the World scene's "agents feel it" reaches a forwarded lead too; empty
+            # unless this person's world is live and they turned it on
+            _feel = worldmod.inner_note(owner or "", worldmod.LEAD)
+            if _feel:
+                env.context = (env.context + "\n\n" + _feel).strip()
             # A copilot turn names its app in the origin. If it is a user app,
             # check it out to a real file first: an executor that only understands
             # files could otherwise never touch an app that lives in a DB row, and

@@ -916,6 +916,9 @@ class ControlPlane(usersmod.Scoped):
                 parts.append(f"=== skill: {sk['name']} ===\n{sk['content'][:4000]}")
         if context:
             parts.append(f"=== context from the control plane ===\n{context[:6000]}")
+        # the World scene's "agents feel it": empty unless that world is live and on
+        from . import users as _users, world as _world
+        parts.append(_world.inner_note(_users.current() or "", defn["name"]))
         return "\n\n".join(p for p in parts if p)
 
     async def run_subagent(self, defn: dict, task: str, context: str = "",
@@ -992,8 +995,14 @@ class ControlPlane(usersmod.Scoped):
                 nsteps["n"] += 1
                 await self._emit(run_id, "step", {"tool": ev["name"], "status": "start"})
             elif ev["type"] == "tool_end":
+                # why a step did not go through (the gate, you, the team, a breakage) and
+                # whether it read untrusted content: the World scene's feelings read these
+                from .world import step_outcome
                 await self._emit(run_id, "step", {"tool": ev["name"], "status": "end",
-                                                  "ok": ev.get("ok", True)})
+                                                  "ok": ev.get("ok", True),
+                                                  **({"outcome": step_outcome(ev.get("output", ""))}
+                                                     if ev.get("ok") is False else {}),
+                                                  **({"untrusted": True} if ev.get("untrusted") else {})})
             elif ev["type"] == "error":
                 await self._emit(run_id, "fault", {"message": ev.get("message", "")[:500]})
             elif ev["type"] in ("thinking_delta", "text_delta"):

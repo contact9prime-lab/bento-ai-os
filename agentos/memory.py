@@ -59,6 +59,15 @@ CREATE INDEX IF NOT EXISTS idx_brief_day ON brief_items(day, state);
 -- per person, generated the first time they are seen and then KEPT, so an edit sticks
 -- and a specialist's colour does not move when a colleague is added. No space_id on
 -- purpose: who your colleagues look like does not change with the project you are in.
+-- The World scene (world.py): a person's own worlds and, per world, the feelings,
+-- growth and check-ins that exist only while that world's scene is on. Nothing but
+-- world.py reads these rows, and it reads them only when the scene enters the world.
+CREATE TABLE IF NOT EXISTS worlds (
+    id TEXT PRIMARY KEY,
+    defn TEXT DEFAULT '',        -- JSON of a world the person built; '' for a built-in one
+    state TEXT DEFAULT '',       -- JSON: agents' feelings and growth, the person's check-ins
+    updated_at REAL
+);
 CREATE TABLE IF NOT EXISTS avatars (
     key TEXT PRIMARY KEY,        -- '@agent', '@me', or a specialist's name
     recipe TEXT DEFAULT '{}',    -- JSON: skin, hair, style, pants, glasses, blush, hue
@@ -2440,6 +2449,28 @@ class Store:
     def avatar_all(self) -> list[dict]:
         return [self.avatar_get(r["key"]) for r in
                 self.db.execute("SELECT key FROM avatars ORDER BY key").fetchall()]
+
+    # ---- the World scene (world.py decides; this only keeps the rows) ----
+    def world_rows(self) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM worlds ORDER BY id").fetchall()]
+
+    def world_row(self, wid: str) -> dict | None:
+        r = self.db.execute("SELECT * FROM worlds WHERE id=?", (wid,)).fetchone()
+        return dict(r) if r else None
+
+    def world_put(self, wid: str, defn: str | None = None, state: str | None = None) -> None:
+        """Upsert one world, touching only the column given."""
+        self.db.execute("INSERT OR IGNORE INTO worlds(id, defn, state, updated_at) VALUES (?,?,?,?)",
+                        (wid, "", "", time.time()))
+        if defn is not None:
+            self.db.execute("UPDATE worlds SET defn=?, updated_at=? WHERE id=?", (defn, time.time(), wid))
+        if state is not None:
+            self.db.execute("UPDATE worlds SET state=?, updated_at=? WHERE id=?", (state, time.time(), wid))
+        self.db.commit()
+
+    def world_delete(self, wid: str) -> None:
+        self.db.execute("DELETE FROM worlds WHERE id=?", (wid,))
+        self.db.commit()
 
     # ---- people on linked teams (teamchat.py decides; this only keeps the rows) ----
     def team_msg_add(self, link: str, m: dict, direction: str, delivered: bool = False) -> bool:

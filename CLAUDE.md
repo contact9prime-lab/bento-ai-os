@@ -1517,6 +1517,41 @@ things keep it true:
   `@<your specialist> ask <name>@<link>: `, never sent, because a question to a linked team goes
   through one of YOUR agents under the matrix; there is no second path.
 
+## The World: feelings that exist only while their scene is on
+
+`agentos/world.py` + `01e-world.js` + `25-world.css` + the `worlds` table. An experimental scene
+where the team lives in a 3D place (three.js, vendored MIT at `ui/assets/three.module.min.js`,
+imported only by this scene) with feelings, growth and friendships, and the lead asks how the
+person is once a day. The owner's rule is the design: "the moment I leave the world scene it's
+all evaporated, and it comes back when I switch to that world. Scene matters." Full story in
+`docs/world.md`; `tests/test_world.py` pins what follows.
+
+- **A world is live only under the scene's LEASE** (`enter`/`beat`/`leave`, `LEASE_S`). Out of
+  it `observe` returns before reading anything, `inner_note` is empty and the state routes answer
+  `live: false`. The state sleeps in the person's own database and is loaded on the next enter.
+  Nothing but world.py and 01e call any of it; the test fails if the Office, Chat, Telegram,
+  WhatsApp, the TUI or another page file names it. Do not surface a feeling anywhere else.
+- **Every feeling is an event** (SIGNALS, a closed set with the words `why` shows), fed from the
+  two broadcasts (`worldmod.observe(event, uid)`), fabric's step events carrying `outcome` (the
+  one `step_outcome` function) and `untrusted`, chat turns attributed to the lead (a specialist's
+  chat turn is counted once, by its run). A run that finished after a refusal is muted pride
+  (`scale`), found live when the refused researcher came back "Proud".
+- **Your "no" is never guilt.** `GENTLE` signals (`declined`, `you_low`) may only trigger
+  valence ≥ 0; `validate` drops the mapping and names it, for built-in and designed worlds alike.
+- **Feelings never outrank the rules.** "Agents feel it" (`inner`, off by default) adds ONE
+  paragraph to the lead's `_system`, a specialist's `_persona` and a forwarded lead's context,
+  saying so in words. The person's own words go to the lead only. The gate is never consulted
+  differently; nothing here is a capability.
+- **Worlds are definitions over closed sets** (`KITS` the page can draw, `EXPRESSIONS` it can
+  animate, `SIGNALS`). A designed world is read field by field (`read_design`/`validate`, an
+  invented field dropped and NAMED); `from_words` answers when no brain does and the route says
+  so. Labels are cut at a word (`_cut`).
+- **The scene's traps, each found in a screenshot**: a rebuild needs a FRESH canvas (the old
+  context is lost on purpose and a new renderer on it fails, which came up white and flat);
+  characters start at their place (walking in from the origin took seconds on software
+  rendering); eight bubbles at once is a wall, so a whole-team change lets two speak; slow
+  frames halve the pixel ratio (`worldPace`); nothing draws under `crewCovered()`.
+
 **A server older than its page is the commonest failure after an update, so it is designed
 for.** Reported as: after `bento update`, the Office "could not load", Executors and the agents
 map sat on "loading…", and "＋ New agent" never appeared. The pull put a new `index.html` on disk
