@@ -557,15 +557,23 @@ async def available_models(cfg: dict) -> list[dict]:
     out: list[dict] = []
     for m in (results[0] if isinstance(results[0], list) else []):
         out.append({"id": f"ollama/{m}", "provider": "ollama", "name": m})
+    from . import modelcatalog as _mc
     for prov, fetched in zip(provs, results[1:]):
-        names = list(p[prov].get("models") or [])
-        names += [m for m in (fetched if isinstance(fetched, list) else []) if m not in names]
-        for m in names:
-            out.append({"id": f"{prov}/{m}", "provider": prov, "name": m})
+        names = list(p[prov].get("models") or [])       # the person's own, first and kept
+        got = fetched if isinstance(fetched, list) else []
+        names += [m for m in got if m not in names]
+        # Where the provider could not say what it runs (Anthropic has no listing, a
+        # listing can fail), this release's checked suggestions are offered AFTER the
+        # person's own — so a list saved in 2025 no longer means a 2025 picker. Nothing
+        # is written back to config: the selection list changes, nobody's choice does.
+        suggest = [] if got else [m for m in _mc.suggested(prov) if m not in names]
+        for m in names + suggest:
+            out.append({"id": f"{prov}/{m}", "provider": prov, "name": m,
+                        **({"suggested": True} if m in suggest else {})})
     # A pinned model is somebody's explicit choice and is never filtered; a
     # FETCHED one is a whole catalogue, and catalogues contain embedders, image
     # and speech models that cannot answer a turn.
-    out = [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p)]
+    out = [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p) or m.get("suggested")]
     _MODELS_CACHE.clear()          # one entry: the current settings
     _MODELS_CACHE[key] = (time.monotonic(), [dict(m) for m in out])
     return out

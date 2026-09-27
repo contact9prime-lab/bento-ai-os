@@ -85,10 +85,12 @@ function avatarsRepaint(){
     const a=AVATARS.by[el.dataset.av];if(a)el.style.backgroundImage=`url("${avatarSrc(el.dataset.av,{sheet:1})}")`;
   });
   if(typeof crewAvatarsChanged==='function')crewAvatarsChanged();
+  if(typeof paintLogo==='function')paintLogo();   // the brand mark is the agent's face
 }
 function avatarsChanged(){return avatarsLoad().then(avatarsRepaint)}
 function setAvatarsOff(off){
   AVATARS.off=!!off;try{localStorage.setItem('avatars.off',off?'1':'0')}catch(e){}
+  if(typeof paintLogo==='function')paintLogo();
   if(typeof refreshApp==='function'){refreshApp('chat');refreshApp('logs');refreshApp('settings')}
 }
 /* A full, animated figure: the four-frame sheet as a background, stepped by CSS —

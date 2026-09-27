@@ -3916,6 +3916,11 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .ag-face{display:inline-flex;padding:0;border-radius:8px;background:none;border:1px solid transparent;cursor:pointer}
 .ag-face:hover{border-color:var(--acc)}
 body.dev-touch .ag-face{min-width:var(--tap);min-height:var(--tap);align-items:center;justify-content:center}
+/* the brand mark is the lead agent's face (30-init.js brandMarkHTML): the face fills the
+   accent tile it has always sat in, at every size from the 17px menu bar to the wizard */
+.mark-face,.ob-mark:has(img.av-mark),.wiz-mark:has(img.av-mark){overflow:hidden;padding:0!important}
+img.av.av-mark{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;
+  border-radius:inherit;display:block;pointer-events:none}
 /* ================= Office: the playground (24d-office.js) =================
    Two columns on a wide window — the office, and the chat on the right — and one on a
    narrow one, where the chat is a sheet behind the Chat button. The canvas draws its
@@ -4797,10 +4802,12 @@ function avatarsRepaint(){
     const a=AVATARS.by[el.dataset.av];if(a)el.style.backgroundImage=`url("${avatarSrc(el.dataset.av,{sheet:1})}")`;
   });
   if(typeof crewAvatarsChanged==='function')crewAvatarsChanged();
+  if(typeof paintLogo==='function')paintLogo();   // the brand mark is the agent's face
 }
 function avatarsChanged(){return avatarsLoad().then(avatarsRepaint)}
 function setAvatarsOff(off){
   AVATARS.off=!!off;try{localStorage.setItem('avatars.off',off?'1':'0')}catch(e){}
+  if(typeof paintLogo==='function')paintLogo();
   if(typeof refreshApp==='function'){refreshApp('chat');refreshApp('logs');refreshApp('settings')}
 }
 /* A full, animated figure: the four-frame sheet as a background, stepped by CSS —
@@ -15940,7 +15947,7 @@ async function wizGo(step){
 function wizRender(){
   const stage=$('#wiz-stage'),s=WIZ.info||{};
   if(WIZ.step===1)stage.innerHTML=`<div class="wiz-step">
-    <div class="wiz-mark">▲</div>
+    <div class="wiz-mark">${brandMarkHTML()}</div>
     <h1 class="wiz-title">Welcome to Bento Box AI</h1>
     <p class="wiz-sub">Your machine, with a brain. Let's set it up together.</p>
     <label class="wiz-q">What should your agent be called?</label>
@@ -15950,7 +15957,7 @@ function wizRender(){
   else if(WIZ.step===2){
     const local=(s.ollama_models||[]).map(m=>`<label class="wiz-pick"><input type="radio" name="wz-model" value="ollama/${esc(m)}" ${WIZ.default_model==='ollama/'+m?'checked':''}><b>ollama/${esc(m)}</b><span>local — private and free</span></label>`).join('');
     stage.innerHTML=`<div class="wiz-step">
-    <div class="wiz-mark">▲</div>
+    <div class="wiz-mark">${brandMarkHTML()}</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
     <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. Bento Box AI can set that up, or you can bring a cloud key.'}</p>
     ${/* "install Ollama later" was the end of the road here: the first screen that
@@ -15978,7 +15985,7 @@ function wizRender(){
   }
   else{ // step 3+: the agent takes over — conversation with inline chips
     stage.innerHTML=`<div class="wiz-step wiz-convwrap">
-      <div class="wiz-mark wiz-mark-sm">▲</div>
+      <div class="wiz-mark wiz-mark-sm">${brandMarkHTML()}</div>
       <div class="wiz-convo" id="wiz-convo"></div></div>`;
     const de=PLATFORM.mode==='de';
     // de mode: autostart is meaningless (AgentOS IS the session) — replaced by a
@@ -16751,7 +16758,7 @@ function obRender(){
   const S=OB.state,agent=(typeof agentName==='function'&&agentName())||'your agent',
         inWin=!!(OB.host&&OB.host.classList&&OB.host.classList.contains('ob-inwin'));
   rail.innerHTML=`<div class="ob-head">
-      <div class="ob-mark">▲</div>
+      <div class="ob-mark">${brandMarkHTML()}</div>
       <b>Set up ${esc(agent)}</b>
       <span>${S.done} of ${S.total} done</span>
       <div class="ob-bar"><i style="width:${Math.round(S.done/S.total*100)}%"></i></div>
@@ -16998,17 +17005,19 @@ var OB_APP_IDEAS=[
      +'copy the hex, and a row of the last few colours I picked.'},
 ];
 
+/* each provider's first model mirrors modelcatalog.default() — the release's checked
+   catalogue; tests/test_modelcatalog.py keeps the two equal */
 var OB_CLOUD=[
   {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
    where:'console.anthropic.com'},
-  {id:'google',label:'Google (Gemini)',model:'gemini-2.5-flash',
+  {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
-  {id:'openai',label:'OpenAI',model:'gpt-4o',where:'platform.openai.com'},
-  {id:'deepseek',label:'DeepSeek',model:'deepseek-chat',where:'platform.deepseek.com'},
-  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k2-0711-preview',
+  {id:'openai',label:'OpenAI',model:'gpt-6-sol',where:'platform.openai.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
+  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',
-   model:'anthropic/claude-sonnet-4.5',where:'openrouter.ai/keys'},
+   model:'google/gemini-3.8-flash',where:'openrouter.ai/keys'},
 ];
 
 /* ---------- the wiring ---------- */
@@ -24969,15 +24978,33 @@ function sessionSwitcher(ev){
 }
 /* ================= logo ================= */
 // A refined AgentOS mark: a rounded upward triangle (agency/ascent) with an agent "eye" node.
-const LOGO_GLYPH=`<svg viewBox="0 0 24 24" width="64%" height="64%" style="display:block">
+var LOGO_GLYPH=`<svg viewBox="0 0 24 24" width="64%" height="64%" style="display:block">
   <path d="M12 4.3 L19.6 18.4 Q20.1 19.3 19.1 19.3 L4.9 19.3 Q3.9 19.3 4.4 18.4 Z" fill="#04211c"/>
   <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
   <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/>
 </svg>`;
-function paintLogo(){document.querySelectorAll('.mark').forEach(m=>{m.innerHTML=LOGO_GLYPH})}
+/* The mark is YOUR agent's face: the one you chose in setup, the one that answers in
+   Chat and sits in the Office. A generic triangle in the corner of every screen was
+   the one place the machine did not look like the agent you had just met ("it makes
+   it easier to connect"). The ▲ is kept for the boot screen, before faces have
+   loaded, and for anybody who switched faces off in Appearance. One door for the
+   face, as everywhere (avatarImg); `data-av` means a new look repaints it in place. */
+function brandMarkHTML(){
+  return (typeof AVATARS!=='undefined'&&AVATARS.loaded&&!AVATARS.off&&AVATARS.by['@agent']
+          &&typeof avatarImg==='function')?avatarImg('@agent','av-mark'):LOGO_GLYPH;
+}
+function paintLogo(){
+  const html=brandMarkHTML(),face=html!==LOGO_GLYPH;
+  document.querySelectorAll('.mark,.ob-mark,.wiz-mark').forEach(m=>{
+    if(m.closest('#boot'))return;                      // the page is not there yet
+    if(face&&m.querySelector('img.av-mark'))return;    // already the face; repaint updates it
+    m.innerHTML=html;m.classList.toggle('mark-face',face);
+  });
+}
 
 /* ================= init ================= */
 paintLogo();
+if(typeof avatarsLoad==='function')avatarsLoad().then(paintLogo);
 buildDesktop();
 buildPager();
 buildDock();

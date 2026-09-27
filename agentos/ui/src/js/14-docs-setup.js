@@ -123,7 +123,7 @@ async function wizGo(step){
 function wizRender(){
   const stage=$('#wiz-stage'),s=WIZ.info||{};
   if(WIZ.step===1)stage.innerHTML=`<div class="wiz-step">
-    <div class="wiz-mark">▲</div>
+    <div class="wiz-mark">${brandMarkHTML()}</div>
     <h1 class="wiz-title">Welcome to Bento Box AI</h1>
     <p class="wiz-sub">Your machine, with a brain. Let's set it up together.</p>
     <label class="wiz-q">What should your agent be called?</label>
@@ -133,7 +133,7 @@ function wizRender(){
   else if(WIZ.step===2){
     const local=(s.ollama_models||[]).map(m=>`<label class="wiz-pick"><input type="radio" name="wz-model" value="ollama/${esc(m)}" ${WIZ.default_model==='ollama/'+m?'checked':''}><b>ollama/${esc(m)}</b><span>local — private and free</span></label>`).join('');
     stage.innerHTML=`<div class="wiz-step">
-    <div class="wiz-mark">▲</div>
+    <div class="wiz-mark">${brandMarkHTML()}</div>
     <h1 class="wiz-title">Pick ${esc(WIZ.agent_name)}'s brain</h1>
     <p class="wiz-sub">${local?'Local models found on this machine — or bring a cloud key.':'Nothing runs locally on this machine yet. Bento Box AI can set that up, or you can bring a cloud key.'}</p>
     ${/* "install Ollama later" was the end of the road here: the first screen that
@@ -161,7 +161,7 @@ function wizRender(){
   }
   else{ // step 3+: the agent takes over — conversation with inline chips
     stage.innerHTML=`<div class="wiz-step wiz-convwrap">
-      <div class="wiz-mark wiz-mark-sm">▲</div>
+      <div class="wiz-mark wiz-mark-sm">${brandMarkHTML()}</div>
       <div class="wiz-convo" id="wiz-convo"></div></div>`;
     const de=PLATFORM.mode==='de';
     // de mode: autostart is meaningless (AgentOS IS the session) — replaced by a

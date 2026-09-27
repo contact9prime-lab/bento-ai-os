@@ -16,14 +16,18 @@ WALLPAPER_PRESETS = ("aurora", "dusk", "ember", "deep")
 #: browser's version of this step (`OB_CLOUD` in 14b-onboarding.js) is a second copy
 #: — the TUI drifting behind the desktop is how `bento setup` over SSH ends up
 #: offering three providers while the desktop offers six.
-CLOUD_PROVIDERS = (
-    ("anthropic", "Anthropic (Claude)", "claude-sonnet-5"),
-    ("google", "Google (Gemini)", "gemini-2.5-flash"),
-    ("openai", "OpenAI", "gpt-4o"),
-    ("deepseek", "DeepSeek", "deepseek-chat"),
-    ("moonshot", "Moonshot (Kimi)", "kimi-k2-0711-preview"),
-    ("openrouter", "OpenRouter — many models, one key", "anthropic/claude-sonnet-4.5"),
-)
+# The model each one offers first comes from the release's catalogue (modelcatalog.py),
+# checked against the providers' own pages at every release.
+from . import modelcatalog as _mc  # noqa: E402
+
+CLOUD_PROVIDERS = tuple((pid, label, _mc.default(pid)) for pid, label in (
+    ("anthropic", "Anthropic (Claude)"),
+    ("google", "Google (Gemini)"),
+    ("openai", "OpenAI"),
+    ("deepseek", "DeepSeek"),
+    ("moonshot", "Moonshot (Kimi)"),
+    ("openrouter", "OpenRouter — many models, one key"),
+))
 
 
 def apply_setup(cfg: dict, choices: dict) -> dict:

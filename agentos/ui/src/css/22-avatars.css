@@ -264,3 +264,8 @@ body.dev-touch .hands-top button{min-height:var(--tap)}
 .ag-face{display:inline-flex;padding:0;border-radius:8px;background:none;border:1px solid transparent;cursor:pointer}
 .ag-face:hover{border-color:var(--acc)}
 body.dev-touch .ag-face{min-width:var(--tap);min-height:var(--tap);align-items:center;justify-content:center}
+/* the brand mark is the lead agent's face (30-init.js brandMarkHTML): the face fills the
+   accent tile it has always sat in, at every size from the 17px menu bar to the wizard */
+.mark-face,.ob-mark:has(img.av-mark),.wiz-mark:has(img.av-mark){overflow:hidden;padding:0!important}
+img.av.av-mark{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;
+  border-radius:inherit;display:block;pointer-events:none}

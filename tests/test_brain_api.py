@@ -47,7 +47,10 @@ def ex(body, eid):
 def test_brains_lists_every_executor_with_its_own_models(client):
     d = client.get("/api/brains").json()
     assert [m["id"] for m in ex(d, "custom")["models"]] == ["custom/local-a", "custom/local-b"]
-    assert [m["id"] for m in ex(d, "google")["models"]] == ["google/gemini-x"]
+    # the person's own model first; Google's listing is unreachable here, so this
+    # release's suggestions (modelcatalog) follow it — offered, never saved
+    gm = [m["id"] for m in ex(d, "google")["models"]]
+    assert gm[0] == "google/gemini-x" and "google/gemini-3.8-flash" in gm[1:]
     assert d["current"] == {"executor": "custom", "model": "custom/local-a"}
     # the agents are in the same list, so one question has one answer
     assert {"claude-code", "hermes", "openclaw"} <= {e["id"] for e in d["executors"]}

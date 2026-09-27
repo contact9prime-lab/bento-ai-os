@@ -4172,6 +4172,12 @@ def _version_cli(args):
             return 2
         print(f"✓ {got['from']} → {got['to']}  ({', '.join(got['files'])})")
         print("  write what changed under the new heading in CHANGELOG.md, then commit all three")
+        # the model names go stale faster than anything else: a release refreshes them
+        # like the docs (CLAUDE.md, "Every release"). A reminder, never a refusal.
+        from . import modelcatalog as _mc
+        note = _mc.stale_note()
+        if note:
+            print("  ! " + note)
         return 0
     if args.action == "check":
         base = args.arg or "origin/master"

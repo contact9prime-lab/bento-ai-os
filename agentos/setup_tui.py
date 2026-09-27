@@ -129,8 +129,8 @@ def _step_model(cfg, store) -> None:
     if not key:
         print("  (nothing set — add one later with `bento setup` or in Settings)")
         return
-    defaults = {"anthropic": "claude-sonnet-5", "openai": "gpt-4o",
-                "openrouter": "anthropic/claude-sonnet-4.5"}
+    from . import modelcatalog as _mc
+    defaults = {p: _mc.default(p) for p in ("anthropic", "openai", "openrouter")}
     model = _ask("Model", defaults[prov])
     p = cfg.setdefault("providers", {}).setdefault(prov, {})
     p["api_key"], p["enabled"] = key, True

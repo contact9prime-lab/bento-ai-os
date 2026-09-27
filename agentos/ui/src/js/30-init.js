@@ -1,14 +1,32 @@
 /* ================= logo ================= */
 // A refined AgentOS mark: a rounded upward triangle (agency/ascent) with an agent "eye" node.
-const LOGO_GLYPH=`<svg viewBox="0 0 24 24" width="64%" height="64%" style="display:block">
+var LOGO_GLYPH=`<svg viewBox="0 0 24 24" width="64%" height="64%" style="display:block">
   <path d="M12 4.3 L19.6 18.4 Q20.1 19.3 19.1 19.3 L4.9 19.3 Q3.9 19.3 4.4 18.4 Z" fill="#04211c"/>
   <path d="M12 10.2 L15.9 17.6 L8.1 17.6 Z" fill="rgba(255,255,255,.22)"/>
   <circle cx="12" cy="8.6" r="1.5" fill="#04211c"/>
 </svg>`;
-function paintLogo(){document.querySelectorAll('.mark').forEach(m=>{m.innerHTML=LOGO_GLYPH})}
+/* The mark is YOUR agent's face: the one you chose in setup, the one that answers in
+   Chat and sits in the Office. A generic triangle in the corner of every screen was
+   the one place the machine did not look like the agent you had just met ("it makes
+   it easier to connect"). The ▲ is kept for the boot screen, before faces have
+   loaded, and for anybody who switched faces off in Appearance. One door for the
+   face, as everywhere (avatarImg); `data-av` means a new look repaints it in place. */
+function brandMarkHTML(){
+  return (typeof AVATARS!=='undefined'&&AVATARS.loaded&&!AVATARS.off&&AVATARS.by['@agent']
+          &&typeof avatarImg==='function')?avatarImg('@agent','av-mark'):LOGO_GLYPH;
+}
+function paintLogo(){
+  const html=brandMarkHTML(),face=html!==LOGO_GLYPH;
+  document.querySelectorAll('.mark,.ob-mark,.wiz-mark').forEach(m=>{
+    if(m.closest('#boot'))return;                      // the page is not there yet
+    if(face&&m.querySelector('img.av-mark'))return;    // already the face; repaint updates it
+    m.innerHTML=html;m.classList.toggle('mark-face',face);
+  });
+}
 
 /* ================= init ================= */
 paintLogo();
+if(typeof avatarsLoad==='function')avatarsLoad().then(paintLogo);
 buildDesktop();
 buildPager();
 buildDock();

@@ -132,7 +132,7 @@ function obRender(){
   const S=OB.state,agent=(typeof agentName==='function'&&agentName())||'your agent',
         inWin=!!(OB.host&&OB.host.classList&&OB.host.classList.contains('ob-inwin'));
   rail.innerHTML=`<div class="ob-head">
-      <div class="ob-mark">▲</div>
+      <div class="ob-mark">${brandMarkHTML()}</div>
       <b>Set up ${esc(agent)}</b>
       <span>${S.done} of ${S.total} done</span>
       <div class="ob-bar"><i style="width:${Math.round(S.done/S.total*100)}%"></i></div>
@@ -379,17 +379,19 @@ var OB_APP_IDEAS=[
      +'copy the hex, and a row of the last few colours I picked.'},
 ];
 
+/* each provider's first model mirrors modelcatalog.default() — the release's checked
+   catalogue; tests/test_modelcatalog.py keeps the two equal */
 var OB_CLOUD=[
   {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
    where:'console.anthropic.com'},
-  {id:'google',label:'Google (Gemini)',model:'gemini-2.5-flash',
+  {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
-  {id:'openai',label:'OpenAI',model:'gpt-4o',where:'platform.openai.com'},
-  {id:'deepseek',label:'DeepSeek',model:'deepseek-chat',where:'platform.deepseek.com'},
-  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k2-0711-preview',
+  {id:'openai',label:'OpenAI',model:'gpt-6-sol',where:'platform.openai.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
+  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',
-   model:'anthropic/claude-sonnet-4.5',where:'openrouter.ai/keys'},
+   model:'google/gemini-3.8-flash',where:'openrouter.ai/keys'},
 ];
 
 /* ---------- the wiring ---------- */
