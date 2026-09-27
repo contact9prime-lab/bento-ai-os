@@ -137,7 +137,11 @@ def test_the_dependency_sync_does_not_rewrite_the_lockfile():
     src = Path(upd.__file__).read_text()
     i = src.index("async def apply(")
     body = src[i:]
-    assert '"uv", "sync", "--frozen"' in body
+    # the sync itself lives in install_deps (uv found where it installs itself, then
+    # pip); --frozen is tried first so the lock is installed, not re-resolved
+    deps = src[src.index("def install_deps("):]
+    assert '[uv, "sync", "--frozen"]' in deps
+    assert body.index("install_deps(root)") < body.index("restore_derived(root)          #")
     assert body.index("restore_derived(root)") < body.index('"git", "fetch"'), \
         "derived files are restored before the pull, or the pull refuses over them"
     assert "restore_derived(root)          # whatever the sync rewrote" in body
