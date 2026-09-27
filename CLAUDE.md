@@ -1533,6 +1533,12 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
 - **Taint crosses the hop both ways**: the asker's taint goes with the question, and a
   tainted colleague's answer comes back prefixed `TAINTED_REPLY` (the same string in
   agent.py and fabric.py; a test pins that). The agent loop strips it and marks its own turn.
+- **A remembered permission lasts until it is revoked, and not past its agent.** "Allow &
+  remember" writes an ordinary grant (no expiry, surfaces `*`), so it survives restarts and
+  applies on every channel. `Store.delete_subagent` revokes the person-made rows naming that
+  agent (its own and `agent:subagent/<name>`) through `_forget_agent_grants`: a new agent
+  under the same name inherited consent nobody gave it. Definition rows are left to the
+  mission's reconciliation. `tests/test_remember_sticks.py`.
 - **Every permission CHANGE is an audit row**, not only every decision: `Store._audit_grant`
   runs inside `add_grant`/`update_grant`/`set_grant_surfaces`/`revoke_grant`/
   `revoke_grants_for`/`delete_app`, attributed to the person or to the system by source.

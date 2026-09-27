@@ -128,6 +128,13 @@ card the first time a pair talks:
 **Allow & remember** fills that cell, so the matrix builds itself from your answers. Cells are
 ordinary permissions, so the **Permissions** app lists and revokes the same rows.
 
+A remembered answer lasts until you take it back. It has no expiry, survives a restart and
+applies wherever you talk to your agent (the desk, Telegram, WhatsApp, the terminal). The same
+goes for *Allow & remember* when your agent hands a specialist a task. It ends when you
+revoke it in Permissions, set the cell back to *ask*, or delete the agent: a deleted agent's
+permissions go with it, so a new agent with the same name starts from nothing. Inside a
+mission only the mission's own rules count.
+
 ![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
 
 **The mode switch** (Settings, or `bento team talk`) has three settings:

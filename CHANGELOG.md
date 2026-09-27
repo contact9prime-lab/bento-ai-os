@@ -11,6 +11,11 @@ tasks to your specialists and pulls them into huddles without an approval card. 
 linked team, starting a mission, and scheduled or webhook runs still ask. A specialist you
 blocked in Permissions stays blocked.
 
+**Deleting an agent removes its permissions.** "Allow & remember" lasts until you revoke it,
+and that used to include outliving the agent: a new agent created later under the same name
+inherited what you had allowed the old one. Deleting an agent now revokes what it was given
+and who could start or ask it, and says so in the ledger.
+
 **The Run Inspector tells you what happened.** Open a mission's run and you see when it
 started, what started it, how long it has been going, and whether it is waiting for you. The
 runs before it are dots you can step through. Below that is the run as a story with faces:
