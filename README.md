@@ -301,7 +301,7 @@ a question, two specialists on the same mission meet at the table, and someone w
 approval stands outside the lead's office with a hand up. A failed step leaves a red sign under a
 desk until that agent runs again. The lounge has a guard and a pet sitter, who are decoration.
 
-![The Office during a huddle: the researcher and the validator at the meeting-room table, the lead in her office, the open floor of desks, and the guard and pet sitter in the lounge. The chat panel on the right shows the researcher's answer](docs/screenshots/readme-office.png)
+![The Office during a huddle: the researcher and the validator at the meeting-room table, your lead agent in the corner office, the open floor of desks, and the guard and pet sitter in the lounge. The chat panel on the right shows the researcher's answer](docs/screenshots/readme-office.png)
 
 The chat on the right is the Office's own agent panel, and a huddle started there is drawn there,
 ending with the team's vote. You can describe the look you want in words ("a cosy greenhouse"), take

@@ -317,7 +317,7 @@ reunião, e quem está esperando a sua aprovação fica na porta da sala do líd
 passo que falhou deixa uma placa vermelha embaixo da mesa até aquele agente rodar de novo. A sala de
 descanso tem um segurança e uma cuidadora de pets, que são só decoração.
 
-![O Office durante um huddle: o pesquisador e o validador na mesa da sala de reunião, a líder na sala dela, o salão aberto com as mesas, e o segurança e a cuidadora de pets na sala de descanso. O painel de chat à direita mostra a resposta do pesquisador](../screenshots/readme-office.png)
+![O Office durante um huddle: o pesquisador e o validador na mesa da sala de reunião, seu agente principal na sala do canto, o salão aberto com as mesas, e o segurança e a cuidadora de pets na sala de descanso. O painel de chat à direita mostra a resposta do pesquisador](../screenshots/readme-office.png)
 
 O chat à direita é o painel de agente do próprio Office, e um huddle começado ali é desenhado ali,
 terminando com a votação da equipe. Você pode descrever em palavras o visual que quer ("uma estufa

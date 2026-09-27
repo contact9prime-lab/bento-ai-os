@@ -320,7 +320,7 @@ tu aprobación se queda de pie delante del despacho del agente principal con la 
 fallido deja un cartel rojo bajo un escritorio hasta que ese agente vuelve a ejecutarse. En la sala de
 descanso hay un guardia y una cuidadora de mascotas, que son decoración.
 
-![La Office durante un huddle: el investigador y el validador en la mesa de la sala de reuniones, la agente principal en su despacho, la planta abierta de escritorios, y el guardia y la cuidadora de mascotas en la sala de descanso. El panel de chat de la derecha muestra la respuesta del investigador](../screenshots/readme-office.png)
+![La Office durante un huddle: el investigador y el validador en la mesa de la sala de reuniones, tu agente principal en el despacho de la esquina, la planta abierta de escritorios, y el guardia y la cuidadora de mascotas en la sala de descanso. El panel de chat de la derecha muestra la respuesta del investigador](../screenshots/readme-office.png)
 
 El chat de la derecha es el panel de agente propio de la Office, y un huddle que empieza ahí se dibuja
 ahí, terminando con la votación del equipo. Puedes describir con palabras el aspecto que quieres ("un
