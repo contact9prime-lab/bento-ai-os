@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.5 — 2026-09-27
+
+**Settings says less.** Every setting now has one short line under its name. The rest is
+behind an ⓘ beside it: hover, click or tap to read it. The wording is plainer too. Appearance
+went from about 2,500 characters on screen to under 600, and System from 1,900 to under 700.
+
+**The Run Inspector tells you what happened.** Open a mission's run and you see when it
+started, what started it, how long it has been going, and whether it is waiting for you. The
+runs before it are dots you can step through. Below that is the run as a story with faces:
+who was handed what, the tools they used, what they asked each other and what came back.
+Questions between agents are now saved with the run, so a replay shows them too.
+`bento flow events` shows them as well.
+
+**The Office moves when work moves.** When your agent hands a task to a specialist, it gets
+up, walks the work over and comes back. When the task is done, the specialist walks the result
+back. Tap an agent and it hops and answers in its own voice. The whiteboard shows everything
+running at once, and your agent gets a ×2 badge when it is in two chats.
+
+**The Office can be your desktop.** Settings → Appearance → Scene → *Office* draws your office
+under the greeting, behind your windows. Opening the Office app takes it over, and closing the
+app gives it back.
+
+**Full screen no longer blanks the Office.** On a large Retina screen the Office could come up
+empty in full screen. It now steps its resolution down past a size where WebKit stops drawing,
+and one bad frame can no longer stop it for good.
+
+**Updating from the desktop installs dependencies again.** It failed with "No module named pip"
+on installs made with uv. The updater now finds uv where it installs itself, falls back to pip
+after setting pip up, and says what each attempt reported if all of them fail.
+
+**Your agent's face is the mark** in the corner of the setup wizard and the menu bar, in place
+of the triangle.
+
+**AI providers suggest this month's models.** The suggestions come from a dated list checked
+against each provider's own pages, refreshed every release. Your saved models are never
+changed. The list only fills a new install and the picker's suggestions.
+
 ## 0.6.4 — 2026-09-26
 
 **The approval card for a hand-over can always be found.** Asked from the prompt bar and then

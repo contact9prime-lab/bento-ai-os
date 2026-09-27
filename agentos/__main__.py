@@ -2689,6 +2689,10 @@ def _flow_cli(args):
                       or pay.get("status") or pay.get("message") or "")
             if not detail and pay:
                 detail = json.dumps(pay)[:90]
+            if e.get("type") == "talk":
+                # agents talking inside the mission: who asked whom, then what was said
+                verb = "answered" if pay.get("phase") == "reply" else "asked"
+                detail = f"{pay.get('from', '?')} {verb} {pay.get('to', '?')}: {pay.get('text', '')}"
             print(f"  {when}  {(e.get('type') or '')[:16]:16} {str(detail)[:90]}")
         if not evs:
             print("  (no events recorded for that run)")

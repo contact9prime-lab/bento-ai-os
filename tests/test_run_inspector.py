@@ -119,3 +119,13 @@ def test_the_tap_floor_holds_on_the_inspector():
     assert "body.dev-touch .fr-run{" in css and "var(--tap)" in css
     assert "body.dev-touch .fr-link" in css
     assert "prefers-reduced-motion" in css
+
+
+def test_the_terminal_says_who_asked_whom(tmp_path, monkeypatch, capsys):
+    store, cp, _ = _cp(tmp_path)
+    flow_run = store.fabric_run_start("flow", "morning-brief", "go", flow="morning-brief")
+    child = store.fabric_run_start("delegate", "researcher", "t", parent_run=flow_run)
+    asyncio.run(cp.message("researcher", "validator", "is it right?", ["researcher"], parent_run=child))
+    src = (ROOT / "agentos/__main__.py").read_text()
+    block = src.split('if e.get("type") == "talk":')[1][:400]
+    assert "pay.get('from'" in block and "answered" in block and "asked" in block
