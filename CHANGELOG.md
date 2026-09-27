@@ -27,6 +27,20 @@ return. Tried live on Claude Code: a real refusal made the researcher throw its 
 lead answered "choppy, big launch tomorrow" in the canal's voice, and a world was built
 from "a night bakery where the bread rises at 3am".
 
+**And it looks like a place.** The canal is a town at the head of a waterway, with timber
+houses, a vermilion bridge, a pagoda, willows and cherry trees. Lanterns hang over the water
+and each one's light streaks across it at night. The sky follows the real hour with its sun,
+moon, stars and drifting clouds. Kestrel Station is an observation deck over a planet, and the
+garden is a pond in a clearing with stone lanterns and fireflies. Each agent wears a mood
+crystal that goes from green to red with how the feeling sits, and each feeling has its own
+effect: steam for a tantrum, a rain cloud for gloom, Zs for dozing, hearts, stars and a sweat
+drop. Tap a person to open their card.
+
+Measured on software rendering (SwiftShader, 1440x900 at half resolution): the canal town is
+drawn in 182 calls, because its static parts are merged (1,086 without that). A frame costs 182
+to 196 ms, where an empty scene costs 111 to 128. So software rendering and phones get a lighter
+version: no shadows, cheaper water and sky, and 5 frames a second at rest instead of 12.
+
 ## 0.6.6 — 2026-09-27
 
 **Claude Code, Gemini CLI and Codex can work on one team.** Any agent can now be pinned to

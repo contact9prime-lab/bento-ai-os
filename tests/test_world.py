@@ -346,3 +346,32 @@ def test_the_scene_is_a_scene_and_nothing_else():
             assert "/api/world" not in f.read_text(), f.name
     for mod in ("tui_app.py", "clitui.py", "telegram.py", "whatsapp.py", "office.py", "playground.py"):
         assert "world" not in (ROOT / "agentos" / mod).read_text().lower().replace("hello world", ""), mod
+
+
+def test_every_world_is_drawn_and_every_feeling_shows():
+    """The look lives in 01f. Each kit the engine can name is drawn, says where the team
+    stands and where the camera goes on a wide and a tall screen, and every expression
+    the engine can pick has a pose (and the effects name only real expressions)."""
+    js = ROOT / "agentos" / "ui" / "src" / "js"
+    look = (js / "01f-world-look.js").read_text()
+    scene = (js / "01e-world.js").read_text()
+    kits = look.split("var WORLD_KITS={", 1)[1]
+    for kit in world.KITS:
+        body = kits.split(f"  {kit}(T,scene,cam){{", 1)[1].split("\n  }", 1)[0]
+        assert "spots:[" in body and "camWide:" in body and "camTall:" in body, kit
+        assert body.count("],[") >= 7, f"{kit}: room for a team of eight"
+        # static props are baked into a few meshes: 1,086 draw calls became 182
+        assert "wlBake(" in body, kit
+    pose = scene.split("function worldPose(", 1)[1].split("\n}", 1)[0]
+    for e in world.EXPRESSIONS:
+        if e != "calm":
+            assert f"e==='{e}'" in pose, e
+    fx = scene.split("var WORLD_FX={", 1)[1].split("};", 1)[0]
+    import re
+    for key in re.findall(r"^\s*(\w+):\[\[", fx, re.M):
+        assert key in world.EXPRESSIONS, key
+    # software rendering gets the light version, and one fog is recoloured, never renewed
+    assert "swiftshader|llvmpipe|software" in scene
+    assert look.count("new T.Fog(") == 1
+    # a hidden tab or a covered desktop draws nothing
+    assert "worldCovered()" in scene.split("function worldFrame(", 1)[1].split("\n}", 1)[0]

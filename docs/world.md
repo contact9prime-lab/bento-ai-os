@@ -7,7 +7,7 @@ sleep until you come back.
 
 Turn it on in **Settings → Appearance → Scene → World**.
 
-![Lantern Canal at night: the team on the quay, the researcher mid-tantrum with papers flying, and its card on the right listing why: the rules said no to read_file, it had started on a task, you said today is hard](screenshots/world-canal.png)
+![Lantern Canal at night: the team on the stone landing at the head of the canal, lanterns strung over the water, hearts over the agents who feel tender after the lead's check-in, and the researcher gloomy under a rain cloud saying "That didn't float." Its card on the right lists why: a step went wrong in read_file, it finished a task after a snag](screenshots/world-canal.png)
 
 ---
 
@@ -18,17 +18,20 @@ actually did, and tapping an agent's name tag shows the causes, with how long ag
 
 | What happens | What it can feel like (in Lantern Canal) |
 |---|---|
-| A step is refused by the rules | Flustered: a tantrum, papers flying |
-| A step or a run fails | Gloomy: slumped |
-| It waits for your yes | Restless: pacing |
+| A step is refused by the rules | Flustered: a tantrum, steam and papers flying |
+| A step or a run fails | Gloomy: slumped under a rain cloud |
+| It waits for your yes | Restless: pacing, a bead of sweat |
 | It reads mail or a web page it can't fully trust | Wary: a nervous shiver |
-| Its AI provider asks it to slow down | Breathless: dozing |
-| It finishes a task | Proud: a little hop |
-| It asks a colleague, or helps one | Neighbourly: a wave |
+| Its AI provider asks it to slow down | Breathless: dozing, Zs rising |
+| It finishes a task | Proud: a hop and a burst of stars |
+| It asks a colleague, or helps one | Neighbourly: a wave and a heart |
 | The team adopts its idea in a vote | Proud |
-| It votes the other way and loses | Sulky: turned away |
+| It votes the other way and loses | Sulky: turned away, a scribble overhead |
 | You give it a pat on the back | Tender or merry |
 | Nothing at all | Serene, the world's resting mood |
+
+Over each head floats a mood crystal. Its colour says how the feeling sits, from green
+(happy) through yellow to red (upset), so you can read the whole team at a glance.
 
 Feelings fade: each one halves every fifteen minutes. A run that finished after a
 refusal isn't a proud one, so its pride is muted.
@@ -53,9 +56,9 @@ Three are built in, and they're unlike each other on purpose:
 | **Kestrel Station** | a ring station over a planet | Nominal, Overheating, Holding pattern, Low oxygen | Cadet → Specialist → Flight officer → Commander → Station legend |
 | **The Wild Garden** | a garden that grows | Rooted, Thorny, Thirsty, Wilting | Seed → Sprout → Sapling → Tall tree → Old oak |
 
-![Kestrel Station: the crew on the observation deck, the station's ring turning over a blue planet, and the lead asking "Status report, crew member. How are you today?"](screenshots/world-station.png)
+![Kestrel Station: the crew on a lit observation deck, holo consoles along the window, the station's ring turning over a blue planet, and the lead asking "Status report, crew member. How are you today?"](screenshots/world-station.png)
 
-![The Wild Garden at night: fireflies, low-poly trees, a pond, and the lead asking "How's the weather inside you today?"](screenshots/world-garden.png)
+![The Wild Garden at night: the team in a clearing before a pond ringed with stones, stone lanterns glowing, flowers and fireflies, and the lead asking "How's the weather inside you today?"](screenshots/world-garden.png)
 
 Agents grow by finishing tasks, helping colleagues, winning votes and being thanked. In the
 garden the flowers grow with the whole team.
@@ -69,7 +72,7 @@ ladder and how your lead asks after you. Anything outside those sets is left out
 named. With no brain answering, you get the closest built-in world under your name, and it
 says so.
 
-![A world built from "a night bakery where the bread rises at 3am": Midnight Hearth, with the lead asking "How's the baking life treating you tonight?"](screenshots/world-built.png)
+![A world built from "a night bakery where the bread rises at 3am": The Proving Hour, drawn in the garden setting, with feelings like Vigil, Rising and Warmth](screenshots/world-built.png)
 
 ## Your lead asks how you are
 
@@ -78,7 +81,7 @@ few words if you like. The lead replies with your machine's brain, or with the w
 words when no brain answers. Your answer stays in that world only. "Not today" skips it,
 and **Ask me again** in the menu forgets today's answer.
 
-![The lead's reply to "choppy, big launch tomorrow": "The water's always a bit rough before a big push, we'll make sure the boat's steady beneath you", with the whole team leaning in](screenshots/world-lead-replies.png)
+![The lead's reply to "choppy, big launch tomorrow": "The waters are rough before any crossing, and we've charted this route together", while two of the team say "I'll keep the lantern lit for you" and "Take your time, the river waits"](screenshots/world-lead-replies.png)
 
 ## Agents feel it
 
@@ -110,11 +113,11 @@ built can also be deleted.
 
 ## On a phone, and without 3D
 
-On a phone the team stands in rows on the quay and the cards sit above the dock. A screen
-with no 3D graphics (some Linux sessions on software rendering) gets a flat drawing of the
-same world, and the menu says why.
+On a phone the team gathers just under the prompt bar with the canal behind them, and the
+cards sit below, above the world's chip. A screen with no 3D graphics (some Linux sessions on
+software rendering) gets a flat drawing of the same world, and the menu says why.
 
-![The World on a phone: the canal, the team in two rows, and the lead's reply above the world's chip](screenshots/world-phone.png)
+![The World on a phone: the team at the head of the canal under the prompt bar, hearts over most of them and a rain cloud over the researcher, with the world's chip above the dock](screenshots/world-phone.png)
 
 ## What it costs
 
@@ -123,8 +126,11 @@ same world, and the menu says why.
   while a window is maximised, the tab is hidden or the phone shows an app.
 - A slow machine draws at a lower resolution instead of dropping frames: ten slow frames
   in a row halve the pixel ratio.
+- Software rendering and phones get a lighter version: no shadows, simpler water and sky,
+  and 5 frames a second at rest.
 - Reduced motion gets a still world.
-- Each world is about 5,500 to 7,800 triangles.
+- Each world is 16,500 to 24,000 triangles in 49 to 182 draw calls. The town's fixed parts
+  are merged, which is what keeps the canal at 182.
 - The lead's reply and building a world are one brain call each, and only when you ask.
 
 ## Faces

@@ -11,23 +11,28 @@
 #world-scene.flat[data-kit="orbit"]{background:radial-gradient(circle at 20% 110%,#2e6fd8 0 34%,transparent 35%),#03040b}
 #world-scene.flat[data-kit="garden"]{background:linear-gradient(#9fd3ff,#cfe9ff 50%,#6aa84f 51%,#4f8a3a)}
 body.imm-world #wall.has::after{display:none}
+/* a soft shade under the greeting and the prompt bar: a noon sky is brighter than any
+   wallpaper, and the white words over it must still read */
+#world-scene::after{content:"";position:absolute;inset:0 0 auto;height:55%;pointer-events:none;
+  background:linear-gradient(rgba(6,10,26,.46),rgba(6,10,26,.18) 60%,transparent)}
 #world-ui{position:absolute;inset:0;z-index:5;pointer-events:none;transition:opacity var(--d-slow,.3s) var(--ease-out,ease)}
 body.has-win #world-ui,body.deck-full #world-ui,body.exposing #world-ui{opacity:0}
 body.has-win #world-ui *{pointer-events:none!important}
 #world-ui .wd-tags{position:absolute;inset:0}
 
-.wd-tag{position:absolute;left:0;top:0;pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:4px;
-  background:none;border:0;padding:0;cursor:pointer;color:var(--txt);font:inherit;min-width:var(--tap,32px);min-height:var(--tap,28px)}
-.wd-tag .wd-name{display:flex;align-items:center;gap:5px;padding:4px 10px 4px 7px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;
-  background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  box-shadow:0 0 0 2px hsl(var(--mh,200) 70% 60% / .85),0 4px 14px rgba(0,0,0,.28)}
-.wd-tag .wd-name b{font-weight:400;font-size:14px}
+.wd-tag{position:absolute;left:0;top:0;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;
+  background:none;border:0;padding:var(--ch,0) 0 0;cursor:pointer;color:var(--txt);font:inherit;min-width:max(var(--tap,32px),calc(var(--ch,0px)*.55));min-height:var(--tap,28px)}
+.wd-tag .wd-name{display:flex;align-items:center;gap:4px;margin-top:2px;padding:2px 8px 2px 6px;border-radius:7px;font-size:11.5px;font-weight:600;white-space:nowrap;
+  color:#fff;background:rgba(10,14,28,.58);text-shadow:0 1px 2px rgba(0,0,0,.5);
+  box-shadow:inset 0 -2px 0 hsl(var(--mh,200) 75% 62% / .9),0 3px 10px rgba(0,0,0,.25)}
+.wd-tag .wd-name b{font-weight:400;font-size:12px}
 .wd-tag.busy .wd-name::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc);animation:wdPulse 1.2s ease-in-out infinite}
 .wd-tag:focus-visible .wd-name{outline:2px solid var(--acc);outline-offset:2px}
-.wd-say{max-width:210px;padding:7px 11px;border-radius:14px;font-size:12.5px;line-height:1.3;white-space:normal;text-align:center;
-  background:var(--txt);color:var(--bg);box-shadow:0 6px 18px rgba(0,0,0,.3);position:relative;animation:wdPop .25s var(--ease-out,ease)}
+.wd-say{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:210px;
+  padding:7px 11px;border-radius:14px;font-size:12.5px;line-height:1.3;white-space:normal;text-align:center;
+  background:#fffdf7;color:#1d1a26;box-shadow:0 6px 18px rgba(0,0,0,.3);animation:wdPop .25s var(--ease-out,ease)}
 .wd-say::after{content:"";position:absolute;left:50%;bottom:-5px;width:10px;height:10px;background:inherit;transform:translateX(-50%) rotate(45deg)}
-.wd-tag.flat{top:auto;bottom:124px;transform:translateX(-50%)}
+.wd-tag.flat{top:auto;bottom:124px;transform:translateX(-50%);padding-top:0}
 .wd-flatav{width:40px;height:65px;image-rendering:pixelated}
 .wd-tag.flat.wx-tantrum .wd-flatav{animation:wdShake .25s infinite}
 .wd-tag.flat.wx-cheer .wd-flatav,.wd-tag.flat.wx-sparkle .wd-flatav{animation:wdHop .6s infinite}
@@ -99,7 +104,7 @@ body.dev-mobile .wd-side{top:auto;bottom:150px;right:auto;left:50%;transform:tra
 body.dev-mobile .wd-menu{max-height:60vh}
 /* the office chip is the Office app's door; in the World it only covers the people */
 body.imm-world .hm-play{display:none!important}
-body.dev-mobile .wd-tag .wd-name{font-size:11px;padding:3px 8px 3px 6px;max-width:92px;overflow:hidden;text-overflow:ellipsis}
+body.dev-mobile .wd-tag .wd-name{font-size:10.5px;padding:2px 6px 2px 5px;max-width:84px;overflow:hidden;text-overflow:ellipsis}
 body.dev-mobile .wd-say{max-width:150px;font-size:11.5px}
 /* a phone has room for the greeting, the bar and the world; the suggestions step aside */
 body.imm-world.dev-mobile .hm-chips,body.imm-world.dev-mobile .hm-now{display:none!important}

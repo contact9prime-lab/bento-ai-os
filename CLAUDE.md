@@ -1519,7 +1519,8 @@ things keep it true:
 
 ## The World: feelings that exist only while their scene is on
 
-`agentos/world.py` + `01e-world.js` + `25-world.css` + the `worlds` table. An experimental scene
+`agentos/world.py` + `01e-world.js` (lease, state, cards) + `01f-world-look.js` (everything the
+eye sees) + `25-world.css` + the `worlds` table. An experimental scene
 where the team lives in a 3D place (three.js, vendored MIT at `ui/assets/three.module.min.js`,
 imported only by this scene) with feelings, growth and friendships, and the lead asks how the
 person is once a day. The owner's rule is the design: "the moment I leave the world scene it's
@@ -1551,6 +1552,33 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   characters start at their place (walking in from the origin took seconds on software
   rendering); eight bubbles at once is a wall, so a whole-team change lets two speak; slow
   frames halve the pixel ratio (`worldPace`); nothing draws under `crewCovered()`.
+- **The look is 01f, and a kit is a contract.** Each `WORLD_KITS` entry builds a place and returns
+  `spots` (nearest first, the lead takes the first), `camWide`/`camTall`, `busy`, `vessel`,
+  `light(day)` and `tick(t,dt)`, called in that order (tick reads what light worked out). The
+  first cut was boxes and a flat sky, and the owner's word was "blah"; what carries it now is a
+  water shader (Fresnel sky, sun glints, lamp streaks at night), a sky shader that follows the
+  real hour, halos instead of bloom, and a mood crystal over each head coloured by valence. Four
+  things keep it affordable, each measured on SwiftShader:
+  - **Static props are BAKED** (`wlBake`): meshes sharing a material merge into one. The canal
+    town went from 1,086 draw calls to 182. That only works because materials are SHARED by key
+    within a build (`wlMat`, reset with `WL_MAT={}` at the top of each kit). A prop that makes
+    its own `new MeshStandardMaterial` is a draw call per copy again.
+  - **`WORLD.hq` is decided once per build** (`worldQuality`): software rendering (SwiftShader,
+    llvmpipe) and phones get no shadows, three noise octaves instead of five, four lamp
+    streaks instead of eight, and 5 frames a second at rest instead of 12. `world.quality` in
+    localStorage overrides it, which is how the doc screenshots are taken.
+  - **One fog per scene, recoloured** (`wlFog`). `light()` runs every frame, and a `new Fog` there
+    was garbage per frame.
+  - **Measured at the same size** (1440x900 at pixel ratio .5, SwiftShader): an empty scene
+    111-128 ms, the old worlds 127-161, these 182-196. On a real GPU all of it is noise.
+- **A name tag is anchored at the agent's SPOT, not the sprite** (`worldPlaceTags` uses
+  `c.home`). It spans the character from the crystal to the feet so tapping the person opens the
+  card, and it must not hop with a cheer or pace with a restless agent: a target that moves every
+  frame is one a finger misses (Playwright refused to click it as "not stable", which is the
+  same finding). A busy agent's tag goes with it.
+- **The mood effects are sprites from one painted set** (`wlFxTex`, `WORLD_FX`), keyed by
+  expression, so a new expression is a row there and a pose in `worldPose`. The effect table
+  names only real `EXPRESSIONS`; the test checks it.
 
 **A server older than its page is the commonest failure after an update, so it is designed
 for.** Reported as: after `bento update`, the Office "could not load", Executors and the agents

@@ -120,10 +120,14 @@ async function worldBuild(){
     WORLD.r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'low-power'});
     WORLD.r.setPixelRatio(Math.min(devicePixelRatio||1,document.body.classList.contains('dev-mobile')?1:1.5));
     WORLD.r.outputColorSpace=T.SRGBColorSpace;
+    WORLD.r.toneMapping=T.ACESFilmicToneMapping;
+    WORLD.hq=worldQuality(WORLD.r);
+    if(WORLD.hq){WORLD.r.shadowMap.enabled=true;WORLD.r.shadowMap.type=T.PCFSoftShadowMap}
   }catch(e){WORLD.flat=true;WORLD.r=null;
     WORLD.why='This screen has no 3D graphics, so the world is drawn flat.'}
   WORLD.host.classList.toggle('flat',WORLD.flat);
   WORLD.host.dataset.kit=WORLD.v.world.kit;
+  WORLD.fx=[];
   if(!WORLD.flat){
     const T=WORLD.T;
     WORLD.scene=new T.Scene();
@@ -134,229 +138,55 @@ async function worldBuild(){
   worldSync();
   worldKick();
 }
+/* Shadows and the busier particle counts are for a real GPU. Software rendering (the
+   SUI on llvmpipe, a headless box) and phones get the light version, decided once per
+   build. localStorage 'world.quality' = high or low overrides it. */
+function worldQuality(r){
+  try{const o=localStorage.getItem('world.quality');if(o)return o==='high'}catch(e){}
+  if(document.body.classList.contains('dev-mobile'))return false;
+  try{const gl=r.getContext(),x=gl.getExtension('WEBGL_debug_renderer_info');
+    if(x&&/swiftshader|llvmpipe|software/i.test(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)))return false}catch(e){}
+  return true;
+}
 function worldDispose(){
   cancelAnimationFrame(WORLD.raf);WORLD.raf=0;
   if(WORLD.scene)WORLD.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();
     const m=o.material;if(m){(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})}});
   if(WORLD.r){try{WORLD.r.dispose();WORLD.r.forceContextLoss()}catch(e){}}
-  WORLD.r=null;WORLD.scene=null;WORLD.kit=null;WORLD.chars={};WORLD.camWide=null;
+  WORLD.r=null;WORLD.scene=null;WORLD.kit=null;WORLD.chars={};WORLD.fx=[];WORLD.camBase=null;
   if(WORLD.ui){const t=WORLD.ui.querySelector('.wd-tags');if(t)t.innerHTML=''}
 }
 function worldResize(){
   if(!WORLD.r||!WORLD.cam)return;
   WORLD.r.setSize(innerWidth,innerHeight,false);
   WORLD.cam.aspect=innerWidth/innerHeight;
-  // a tall phone screen: a wider lens, and the camera looks down on the quay so the
-  // team's two rows sit above the cards instead of under them
-  const tall=innerWidth<innerHeight;
+  // a tall phone screen: a wider lens, and the kit's own higher camera so the team
+  // sits above the cards instead of under them
+  const tall=innerWidth<innerHeight,k=WORLD.kit;
   WORLD.cam.fov=tall?58:42;
-  if(!WORLD.camWide)WORLD.camWide={p:WORLD.cam.position.clone(),q:WORLD.cam.quaternion.clone()};
-  if(tall){WORLD.cam.position.set(0,12,31);WORLD.cam.lookAt(0,-1.5,4)}
-  else{WORLD.cam.position.copy(WORLD.camWide.p);WORLD.cam.quaternion.copy(WORLD.camWide.q)}
+  WORLD.camBase=(k&&(tall?k.camTall:k.camWide))||[[0,6,30],[0,3,-20]];
+  worldAim(0);
   WORLD.cam.updateProjectionMatrix();
-  Object.values(WORLD.chars).forEach(c=>{if(WORLD.kit)c.home=WORLD.kit.stand(c.i,worldCast().length)});
+  Object.values(WORLD.chars).forEach(c=>{if(k)c.home=worldSpot(c.i)});
   worldKick();
 }
-/* The real hour decides the light: 0 at midnight, 1 at noon. */
-function worldDaylight(){
-  const d=new Date(),h=d.getHours()+d.getMinutes()/60;
-  return Math.max(0,Math.sin((h-6)/12*Math.PI));
+/* The places, the light and the mood effects are drawn by 01f-world-look.js. */
+/* The camera breathes: a slow drift of a metre or so, which is what makes a still
+   place read as a place rather than a picture. None under reduced motion. */
+function worldAim(t){
+  const b=WORLD.camBase;if(!b||!WORLD.cam)return;
+  const d=WORLD.still?0:1;
+  WORLD.cam.position.set(b[0][0]+Math.sin(t*.045)*.9*d,b[0][1]+Math.sin(t*.07)*.12*d,b[0][2]+Math.cos(t*.03)*.4*d);
+  WORLD.cam.lookAt(b[1][0],b[1][1],b[1][2]);
 }
-function worldMix(T,a,b,t){return new T.Color(a).lerp(new T.Color(b),Math.max(0,Math.min(1,t)))}
-function worldBox(T,w,h,d,color,o){
-  const m=new T.Mesh(new T.BoxGeometry(w,h,d),new T.MeshStandardMaterial(Object.assign({color,roughness:.85},o||{})));
-  return m;
+/* Where each agent stands: the kit's spots, nearest first, so the lead is in front.
+   A team bigger than the kit has spots for stands a row further back. */
+function worldSpot(i){
+  const s=WORLD.kit.spots,n=s.length,p=s[i%n];
+  // a phone sees a narrow slice of the place, so the crescent closes up
+  const sx=innerWidth<innerHeight?(WORLD.kit.tallX||.55):1;
+  return new WORLD.T.Vector3(p[0]*sx,p[1],p[2]-Math.floor(i/n)*3.2);
 }
-/* A sky that fades from the horizon to the zenith, recoloured with the hour. */
-function worldSky(T,scene){
-  const g=new T.SphereGeometry(260,32,16),n=g.attributes.position.count,col=new Float32Array(n*3);
-  g.setAttribute('color',new T.BufferAttribute(col,3));
-  const m=new T.Mesh(g,new T.MeshBasicMaterial({vertexColors:true,side:T.BackSide,fog:false,depthWrite:false}));
-  scene.add(m);
-  return {paint(horizon,zenith){const h=new T.Color(horizon),z=new T.Color(zenith),c=new T.Color();
-    const p=g.attributes.position.array;
-    for(let i=0;i<n;i++){const t=Math.max(0,Math.min(1,p[i*3+1]/140));c.copy(h).lerp(z,Math.pow(t,.6));
-      col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b}
-    g.attributes.color.needsUpdate=true}};
-}
-function worldHills(T,scene,z,color,n){
-  const m=new T.MeshStandardMaterial({color,flatShading:true,roughness:1});
-  for(let i=0;i<n;i++){const h=18+((i*37)%11)*2.2,r=16+((i*23)%7)*3;
-    const c=new T.Mesh(new T.ConeGeometry(r,h,6,1),m);c.position.set(-150+i*(300/(n-1))+((i*17)%9),h/2-2,z-((i*13)%5)*6);scene.add(c)}
-  return m;
-}
-/* Where the team stands: one row across a wide screen, rows of four on a tall one (a
-   phone), nearer rows closer to the camera so nobody hides behind a colleague. */
-function worldStand(T,i,n,y,z){
-  const tall=innerWidth<innerHeight,per=tall?4:n,rows=Math.ceil(n/per);
-  const row=Math.floor(i/per),col=i%per,inRow=row<rows-1?per:n-per*(rows-1);
-  const span=tall?Math.min(7.6,inRow*2.2):Math.min(21,inRow*2.9);
-  return new T.Vector3(-span/2+span*(inRow>1?col/(inRow-1):.5),y,z+row*3.6);
-}
-function worldStars(T,scene,n,r){
-  const g=new T.BufferGeometry(),p=new Float32Array(n*3);
-  for(let i=0;i<n;i++){const th=Math.random()*Math.PI*2,ph=Math.random()*Math.PI*.48;
-    p[i*3]=r*Math.cos(th)*Math.cos(ph);p[i*3+1]=r*Math.sin(ph)+4;p[i*3+2]=-Math.abs(r*Math.sin(th)*Math.cos(ph))}
-  g.setAttribute('position',new T.BufferAttribute(p,3));
-  const m=new T.PointsMaterial({color:0xffffff,size:.6,sizeAttenuation:true,transparent:true,opacity:0});
-  const pts=new T.Points(g,m);scene.add(pts);return pts;
-}
-/* Each kit draws a place and says where people stand, where busy people go, and how
-   the light moves. They are deliberately unlike each other: the world IS the setting. */
-var WORLD_KITS={
-  canal(T,scene,cam){
-    cam.position.set(0,6.4,29);cam.lookAt(0,4.6,-6);
-    const sky=worldSky(T,scene);
-    const hemi=new T.HemisphereLight(0xdfefff,0x3a5a40,.9);scene.add(hemi);
-    const sun=new T.DirectionalLight(0xffffff,1.6);sun.position.set(-20,30,10);scene.add(sun);
-    const stars=worldStars(T,scene,500,150);
-    const hills=worldHills(T,scene,-95,0x40614f,9);
-    // water: a wide plane whose vertices ripple, between the two quays
-    const wg=new T.PlaneGeometry(140,17,90,16);wg.rotateX(-Math.PI/2);
-    const water=new T.Mesh(wg,new T.MeshStandardMaterial({color:0x1fa39a,roughness:.12,metalness:.35,emissive:0x0a3a44,emissiveIntensity:0}));
-    water.position.set(0,0,-.5);scene.add(water);
-    const base=wg.attributes.position.array.slice();
-    const stone=0x8d8a82,grass=0x6d9b57;
-    const far=worldBox(T,140,1.8,3,stone);far.position.set(0,.3,-10.5);scene.add(far);
-    const farLawn=worldBox(T,140,.3,16,grass);farLawn.position.set(0,1.25,-19.5);scene.add(farLawn);
-    const near=worldBox(T,140,1.8,3,stone);near.position.set(0,.3,9.5);scene.add(near);
-    const path=worldBox(T,140,.3,12,0xb9a88a);path.position.set(0,1.25,17);scene.add(path);
-    // the far bank's houses: cream walls, dark roofs, windows that light at night
-    const wins=[];const roofM=new T.MeshStandardMaterial({color:0x2f3640,roughness:.7});
-    for(let i=-11;i<=11;i++){
-      const w=3+(i*7%3+3)%3*.6,h=2.4+((i*5)%4+4)%4*.5,x=i*5.2+((i*13)%3);
-      const house=worldBox(T,w,h,3.2,i%3?0xf1e6cf:0x6b4f3a);house.position.set(x,1.4+h/2,-15.5);scene.add(house);
-      const roof=new T.Mesh(new T.ConeGeometry(w*.78,1.5,4,1),roofM);roof.rotation.y=Math.PI/4;
-      roof.scale.set(1,1,.7);roof.position.set(x,1.4+h+.72,-15.5);scene.add(roof);
-      const wm=new T.MeshStandardMaterial({color:0x332b22,emissive:0xffb347,emissiveIntensity:0});
-      const win=new T.Mesh(new T.PlaneGeometry(.8,.7),wm);win.position.set(x,1.4+h*.55,-13.88);scene.add(win);wins.push(wm);
-    }
-    // the red bridge
-    const bridge=new T.Mesh(new T.TorusGeometry(9.5,.45,8,40,Math.PI),new T.MeshStandardMaterial({color:0xc0392b,roughness:.5}));
-    bridge.position.set(24,-4.6,-.5);bridge.rotation.y=Math.PI/2;bridge.scale.set(1,.72,1);scene.add(bridge);
-    const deck=worldBox(T,2.2,.25,24,0xa93226);deck.position.set(24,2.2,-.5);scene.add(deck);
-    // lanterns on poles along the water's edge, behind the people
-    const lanterns=[];
-    for(let i=-6;i<=6;i++){
-      const c=i%2?0xe74c3c:0xf39c12;
-      const lm=new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.2});
-      const l=new T.Mesh(new T.SphereGeometry(.16,10,8),lm);l.scale.y=1.3;l.position.set(i*5.6+2.8,3.6,8.4);scene.add(l);lanterns.push(lm);
-      const pole=worldBox(T,.06,2.5,.06,0x4a3b2a);pole.position.set(i*5.6+2.8,2.35,8.4);scene.add(pole);
-    }
-    const glows=[-14,0,14].map(x=>{const g=new T.PointLight(0xffa94d,0,26,1.6);g.position.set(x,4.2,7.5);scene.add(g);return g});
-    // two boats moored at the far quay: scenery, like the houses; they do not move
-    function boat(){
-      const g=new T.Group();
-      const hull=worldBox(T,2.8,.5,1.1,0x8b5a2b);hull.position.y=.1;g.add(hull);
-      const rim=worldBox(T,2.9,.12,1.2,0xc0392b);rim.position.y=.38;g.add(rim);
-      const roof=new T.Mesh(new T.CylinderGeometry(.6,.6,1.4,10,1,true,0,Math.PI),new T.MeshStandardMaterial({color:0xc8a96a,side:T.DoubleSide,roughness:.9}));
-      roof.rotation.z=Math.PI/2;roof.position.set(-.5,.5,0);g.add(roof);
-      scene.add(g);return g;
-    }
-    [[-19,-8],[11,-8.2]].forEach(([x,z])=>{const b=boat();b.position.set(x,.2,z)});
-    return {
-      stand(i,n){return worldStand(T,i,n,1.2,10.6)},
-      // busy agents take a boat out on the water
-      busy(i,t){return new T.Vector3(((t*.6+i*9)%64)-32,.3+Math.sin(t*1.3+i)*.08,-3.5+(i%3)*2.8)},
-      vessel(){return boat()},
-      tick(t){
-        const p=wg.attributes.position.array;
-        for(let i=0;i<p.length;i+=3){const x=base[i],z=base[i+2];
-          p[i+1]=Math.sin(x*.35+t*1.1)*.12+Math.cos(z*.9+t*.8)*.08}
-        wg.attributes.position.needsUpdate=true;
-        if((WORLD.waterT=(WORLD.waterT||0)+1)%3===0)wg.computeVertexNormals();
-      },
-      light(day){
-        const dusk=day<.35;
-        sky.paint(worldMix(T,0x1a2447,dusk?0xf6a57a:0xcfe8ff,day*2.2),worldMix(T,0x05081a,0x5aa8f0,day*1.5));
-        scene.fog=new T.Fog(worldMix(T,0x10183a,dusk?0xe9b58f:0xcfe8ff,day*2),70,230);
-        sun.intensity=.12+day*1.6;hemi.intensity=.35+day*.65;
-        stars.material.opacity=Math.max(0,.9-day*3);
-        const night=1-Math.min(1,day*2.5);
-        lanterns.forEach(m=>m.emissiveIntensity=.25+night*2.2);wins.forEach(m=>m.emissiveIntensity=night*1.6);
-        glows.forEach(g=>g.intensity=night*22);
-        water.material.color=worldMix(T,0x1b5f6e,0x1fa39a,day*1.4);
-        water.material.emissiveIntensity=night*.5;
-        hills.color=worldMix(T,0x1c2b34,0x40614f,day*1.5);
-      }};
-  },
-  orbit(T,scene,cam){
-    cam.position.set(0,6.8,31);cam.lookAt(0,4.8,-8);
-    scene.background=new T.Color(0x03040b);
-    const amb=new T.AmbientLight(0x8899ff,.35);scene.add(amb);
-    const sun=new T.DirectionalLight(0xffffff,2);sun.position.set(40,20,10);scene.add(sun);
-    const stars=worldStars(T,scene,1400,160);stars.material.opacity=1;
-    const planet=new T.Mesh(new T.SphereGeometry(42,48,32),new T.MeshStandardMaterial({color:0x2e6fd8,roughness:.9}));
-    planet.position.set(-30,-44,-70);scene.add(planet);
-    const air=new T.Mesh(new T.SphereGeometry(43.6,48,32),new T.MeshBasicMaterial({color:0x6fb7ff,transparent:true,opacity:.18,side:T.BackSide}));
-    air.position.copy(planet.position);scene.add(air);
-    const ring=new T.Group();ring.position.set(12,9,-38);scene.add(ring);
-    const rim=new T.Mesh(new T.TorusGeometry(14,1.2,12,64),new T.MeshStandardMaterial({color:0xcfd6e6,metalness:.6,roughness:.35}));ring.add(rim);
-    for(let i=0;i<6;i++){const s=worldBox(T,.5,28,.5,0x9aa4b8,{metalness:.5});s.rotation.z=i*Math.PI/6;ring.add(s)}
-    const hub=new T.Mesh(new T.CylinderGeometry(2.4,2.4,4,20),new T.MeshStandardMaterial({color:0xe8ecf4,metalness:.5,roughness:.3}));hub.rotation.x=Math.PI/2;ring.add(hub);
-    ring.rotation.x=.35;
-    // the observation deck the crew stands on, with a glowing rail
-    const deck=worldBox(T,40,.6,9,0x5d6778,{metalness:.4,roughness:.5});deck.position.set(0,.8,9.5);scene.add(deck);
-    const railM=new T.MeshStandardMaterial({color:0x2de2e6,emissive:0x2de2e6,emissiveIntensity:.8});
-    const rail=new T.Mesh(new T.BoxGeometry(40,.12,.12),railM);rail.position.set(0,2.6,5.2);scene.add(rail);
-    const panels=[];
-    for(let i=-4;i<=4;i++){const pm=new T.MeshStandardMaterial({color:0x10141f,emissive:0x3a86ff,emissiveIntensity:.5});
-      const p=new T.Mesh(new T.BoxGeometry(2.2,1.2,.3),pm);p.position.set(i*4.4+2.2,1.8,6.4);p.rotation.x=-.25;scene.add(p);panels.push(pm)}
-    const pods=[];
-    return {
-      stand(i,n){return worldStand(T,i,n,1.1,10)},
-      // busy crew fly a pod around the station
-      busy(i,t){const a=t*.35+i*1.3;return new T.Vector3(12+Math.cos(a)*18,9+Math.sin(a*1.3)*3,-38+Math.sin(a)*18+22)},
-      vessel(){const g=new T.Group();
-        const body=new T.Mesh(new T.SphereGeometry(.9,16,12),new T.MeshStandardMaterial({color:0xf5f7fb,metalness:.4,roughness:.3}));body.scale.set(1.4,.8,1);g.add(body);
-        const jet=new T.Mesh(new T.ConeGeometry(.35,.9,10),new T.MeshBasicMaterial({color:0x7df9ff}));jet.rotation.z=Math.PI/2;jet.position.x=-1.5;g.add(jet);
-        scene.add(g);pods.push(g);return g},
-      tick(t){ring.rotation.z=t*.05;planet.rotation.y=t*.01;panels.forEach((m,i)=>m.emissiveIntensity=.35+Math.sin(t*2+i)*.15)},
-      light(day){sun.position.set(Math.cos(day*Math.PI)*40,20,10);amb.intensity=.3+day*.25}};
-  },
-  garden(T,scene,cam){
-    cam.position.set(0,6.6,30);cam.lookAt(0,4.2,-6);
-    const hemi=new T.HemisphereLight(0xfff8e1,0x355e3b,1);scene.add(hemi);
-    const sun=new T.DirectionalLight(0xfff1c1,1.6);sun.position.set(-15,30,12);scene.add(sun);
-    const stars=worldStars(T,scene,500,150);
-    const gg=new T.PlaneGeometry(140,70,70,35);gg.rotateX(-Math.PI/2);
-    const gp=gg.attributes.position.array;
-    for(let i=0;i<gp.length;i+=3){const x=gp[i],z=gp[i+2];gp[i+1]=Math.sin(x*.12)*.8+Math.cos(z*.2)*.6-(z<-10?0:1.2)*0+(z<-14?Math.sin(x*.08)*2+2:0)}
-    gg.computeVertexNormals();
-    const ground=new T.Mesh(gg,new T.MeshStandardMaterial({color:0x6aa84f,roughness:1}));ground.position.y=0;scene.add(ground);
-    const pond=new T.Mesh(new T.CircleGeometry(6,40),new T.MeshStandardMaterial({color:0x3fa7d6,roughness:.15,metalness:.2}));
-    pond.rotation.x=-Math.PI/2;pond.position.set(-12,.35,-3);pond.scale.set(1.4,1,1);scene.add(pond);
-    const trees=[];
-    [[-26,-12],[-18,-18],[18,-15],[27,-8],[8,-22],[-6,-20],[32,-20]].forEach(([x,z],i)=>{
-      const trunk=worldBox(T,.6,3,.6,0x6b4423);trunk.position.set(x,1.8,z);scene.add(trunk);
-      const top=new T.Mesh(new T.IcosahedronGeometry(2.4+(i%3)*.5,0),new T.MeshStandardMaterial({color:i%2?0x3f7d3a:0x4f9a45,flatShading:true}));
-      top.position.set(x,4.4+(i%3)*.4,z);scene.add(top);trees.push(top)});
-    // flowers: the garden grows with the team. More of the ladder climbed, more blooms.
-    const flowers=new T.Group();scene.add(flowers);
-    const petals=[0xf368e0,0xffd32a,0xff6b6b,0xffffff,0x9b59b6,0xff9f43];
-    let shown=-1;
-    const fireflies=worldStars(T,scene,60,18);fireflies.position.set(0,-2,6);fireflies.material.color=new T.Color(0xfff275);fireflies.material.size=.35;
-    return {
-      stand(i,n){return worldStand(T,i,n,.4,10)},
-      // busy gardeners go and tend the beds
-      busy(i,t){return new T.Vector3(-14+(i%5)*7+Math.sin(t*.5+i)*1.5,.4,1-(i%2)*4)},
-      vessel(){return null},
-      grow(total){const n=Math.min(160,8+Math.floor(total/2));if(n===shown)return;shown=n;
-        while(flowers.children.length)flowers.remove(flowers.children[0]);
-        for(let k=0;k<n;k++){const a=k*2.399,r=4+Math.sqrt(k)*2.2,x=Math.cos(a)*r*1.6,z=-4+Math.sin(a)*r*.7;
-          if(z>7)continue;
-          const f=new T.Mesh(new T.SphereGeometry(.22,6,5),new T.MeshStandardMaterial({color:petals[k%petals.length],roughness:.6}));
-          f.position.set(x,.6+Math.random()*.3,z);flowers.add(f)}},
-      tick(t){trees.forEach((tr,i)=>tr.rotation.y=Math.sin(t*.3+i)*.05)},
-      light(day){
-        scene.background=worldMix(T,0x0d1b2a,day>.35?0xbfe6ff:0xffc8a2,day*1.6);
-        scene.fog=new T.Fog(scene.background,60,170);
-        sun.intensity=.12+day*1.6;hemi.intensity=.25+day*.8;
-        stars.material.opacity=Math.max(0,.9-day*3);
-        fireflies.material.opacity=Math.max(0,.9-day*3);
-      }};
-  }
-};
 
 /* ---------------- the people ---------------- */
 function worldCast(){return (WORLD.v&&WORLD.v.agents)||[]}
@@ -367,22 +197,29 @@ function worldSync(){
   if(!WORLD.flat&&WORLD.scene){
     const T=WORLD.T;
     const keep=new Set(cast.map(a=>a.name));
-    Object.keys(WORLD.chars).forEach(n=>{if(!keep.has(n)){const c=WORLD.chars[n];WORLD.scene.remove(c.sprite);if(c.vessel)WORLD.scene.remove(c.vessel);delete WORLD.chars[n]}});
+    Object.keys(WORLD.chars).forEach(n=>{if(!keep.has(n)){const c=WORLD.chars[n];
+      [c.sprite,c.shadow,c.crystal,c.vessel].forEach(o=>{if(o)WORLD.scene.remove(o)});delete WORLD.chars[n]}});
     cast.forEach((a,i)=>{
       let c=WORLD.chars[a.name];
       if(!c){
         const tex=new T.TextureLoader().load(avatarSrc(a.name,{sheet:1}),()=>worldKick());
         tex.magFilter=T.NearestFilter;tex.minFilter=T.NearestFilter;tex.colorSpace=T.SRGBColorSpace;
         tex.repeat.set(.25,1);
-        const sp=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true}));
-        sp.scale.set(1.2,1.95,1);sp.center.set(.5,0);
+        const sp=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,alphaTest:.5}));
+        sp.scale.set(1.5,2.45,1);sp.center.set(.5,0);
         WORLD.scene.add(sp);
         // everyone starts at their place: walking in from the middle of the world
         // took seconds on software rendering, and read as the team wandering
-        sp.position.copy(WORLD.kit.stand(i,cast.length));
-        c=WORLD.chars[a.name]={sprite:sp,tex,i,vessel:null,home:null,phase:Math.random()*6};
+        sp.position.copy(worldSpot(i));
+        // a soft shadow under the feet, and the mood crystal over the head
+        const sh=new T.Mesh(new T.PlaneGeometry(1.5,.75),new T.MeshBasicMaterial({map:wlShadowTex(T),transparent:true,depthWrite:false}));
+        sh.rotation.x=-Math.PI/2;WORLD.scene.add(sh);
+        const cr=wlCrystal(T);WORLD.scene.add(cr);
+        c=WORLD.chars[a.name]={sprite:sp,tex,shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
       }
-      c.i=i;c.a=a;c.home=WORLD.kit.stand(i,cast.length);
+      c.i=i;c.a=a;c.home=worldSpot(i);
+      const vc=WL_VALENCE[a.mood.valence]!=null?WL_VALENCE[a.mood.valence]:WL_VALENCE[0];
+      c.crystal.material.color.setHex(vc);c.crystal.material.emissive.setHex(vc);
       if(a.busy&&!c.vessel)c.vessel=WORLD.kit.vessel();
       if(!a.busy&&c.vessel){WORLD.scene.remove(c.vessel);c.vessel=null}
     });
@@ -443,14 +280,18 @@ function worldFrame(now){
   if(worldCovered()){clearTimeout(WORLD.snooze);WORLD.snooze=setTimeout(worldKick,1000);return}
   const lively=worldCast().some(a=>a.busy||['calm','think'].indexOf(a.mood.expression)<0)||
     Object.keys(WORLD.bubbles).length;
-  const gap=lively?.033:.083;
+  // at rest the only motion is scenery (water, drifting camera), so the light version
+  // draws it at 5 frames a second: on software rendering a frame is a real cost
+  const gap=lively?(WORLD.hq?.033:.066):(WORLD.hq?.083:.2);
   const dt=(now-WORLD.last)/1000;
   if(!WORLD.still&&dt<gap){WORLD.raf=requestAnimationFrame(worldFrame);return}
   WORLD.last=now;
   const t=(now-WORLD.t0)/1000;
+  // light first: the kit's tick reads what light worked out for this hour
   WORLD.kit.light(worldDaylight());
-  if(!WORLD.still)WORLD.kit.tick(t,dt);
-  worldPose(t);
+  WORLD.kit.tick(t,WORLD.still?0:Math.min(dt,.1));
+  worldAim(t);
+  worldPose(t,Math.min(dt,.1));
   const t0=performance.now();
   WORLD.r.render(WORLD.scene,WORLD.cam);
   worldPace(performance.now()-t0);
@@ -467,16 +308,28 @@ function worldPace(ms){
   const pr=WORLD.r.getPixelRatio();
   if(pr>.26){WORLD.r.setPixelRatio(pr/2);WORLD.r.setSize(innerWidth,innerHeight,false)}
 }
-/* A feeling is a pose. Every EXPRESSION world.py lists has one here. */
-function worldPose(t){
+/* A feeling is a pose, and most feelings have an effect over the head as well. Every
+   EXPRESSION world.py lists has one here; calm and think are the quiet ones. */
+var WORLD_FX={
+  tantrum:[['puff',3.5,{dy:2.5,v:[0,1.6,0],grow:1.6,life:1.1,size:.8,jit:.5}],['paper',2.5,{dy:2.1,v:[2.6,2.8,1.2],g:6,spin:6,life:1.3,size:.5}]],
+  slump:[['cloud',1.1,{dy:3.35,v:[.08,0,0],life:2.6,size:1.5,jit:.3}],['rain',7,{dy:3.05,v:[0,-2.6,0],life:.5,size:.55,jit:.8}]],
+  doze:[['z',1,{dy:2.7,dx:.35,v:[.4,.6,0],grow:1,life:2.2,size:.5}]],
+  cheer:[['star',4,{dy:2.3,v:[1.8,2.4,.6],g:3,spin:4,life:1.1,size:.5}]],
+  sparkle:[['star',1.6,{dy:1.7,v:[0,.5,0],life:1.3,size:.42,jit:1}]],
+  shiver:[['drop',.9,{dy:2.35,dx:.5,v:[.15,-.3,0],g:1.2,life:1,size:.4}]],
+  wave:[['heart',1,{dy:2.6,v:[0,.8,0],grow:.4,life:1.8,size:.5,jit:.4}]],
+  care:[['heart',1.4,{dy:2.6,v:[0,.8,0],grow:.4,life:1.8,size:.5,jit:.4}]],
+  sulk:[['scribble',.9,{dy:3.1,v:[0,.1,0],life:1.6,size:.75,spin:1}]],
+  pace:[['drop',.5,{dy:2.35,dx:-.45,v:[-.1,-.3,0],g:1.2,life:1,size:.36}]]};
+function worldPose(t,dt){
+  const T=WORLD.T;
   Object.values(WORLD.chars).forEach(c=>{
     const a=c.a;if(!a)return;
     const s=c.sprite,m=s.material,e=a.mood.expression,k=t+c.phase;
     let x=0,y=0,rot=0,frame=((k%4)<.12)?1:0,sy=1,flip=false;
     const target=a.busy?WORLD.kit.busy(c.i,t):c.home;
     if(e==='cheer'){y=Math.abs(Math.sin(k*6))*.5;frame=2+(Math.floor(k*4)%2)}
-    else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25;x=Math.sin(k*40)*.08;rot=Math.sin(k*20)*.15;
-      if(!WORLD.still&&Math.random()<.08)worldPaper(s.position)}
+    else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25;x=Math.sin(k*40)*.08;rot=Math.sin(k*20)*.15}
     else if(e==='slump'){sy=.86;y=-.12}
     else if(e==='pace'){x=Math.sin(k*1.1)*1.1;flip=Math.cos(k*1.1)<0}
     else if(e==='sulk'){flip=true;y=-.18;rot=.08;sy=.9}
@@ -487,32 +340,56 @@ function worldPose(t){
     else if(e==='care'){rot=c.home.x>0?.12:-.12;y=Math.sin(k*1.2)*.03}
     else if(e==='think'){rot=Math.sin(k*.8)*.07}
     else{y=Math.sin(k*1.5)*.03}
-    if(WORLD.still){x=0;rot=0}
+    if(WORLD.still){x=0;rot=0;y=Math.max(0,y)}
     s.position.lerp(target,a.busy?.08:.12);
     s.position.x+=x;s.position.y=target.y+y;
-    m.rotation=rot;s.scale.y=1.95*sy;
+    m.rotation=rot;s.scale.y=2.45*sy;
     c.tex.offset.x=frame*.25;c.tex.repeat.x=flip?-.25:.25;if(flip)c.tex.offset.x=(frame+1)*.25;
+    const ground=a.busy&&c.vessel?target.y+.25:target.y;
+    c.shadow.position.set(s.position.x,ground+.04,s.position.z);c.shadow.visible=!(a.busy&&!c.vessel&&target.y>3);
+    const cr=c.crystal;
+    cr.position.set(s.position.x,s.position.y+s.scale.y+.55+(WORLD.still?0:Math.sin(k*2)*.06),s.position.z);
+    cr.rotation.y=WORLD.still?.6:k*1.6;
+    cr.material.emissiveIntensity=.45+(WORLD.still?0:Math.sin(k*3)*.12);
     if(c.vessel){c.vessel.position.set(s.position.x,a.busy?s.position.y-.35:-99,s.position.z)}
+    // the feeling's effect: spawned at a rate, never faster than the frame allows
+    (WORLD_FX[e]||[]).forEach(([kind,rate,o])=>{if(Math.random()<rate*dt)worldFx(kind,s.position,o)});
   });
-  WORLD.fx=WORLD.fx.filter(p=>{p.life-=.033;p.m.position.addScaledVector(p.v,.033);p.v.y-=.2;p.m.rotation.z+=.2;
-    if(p.life<=0){WORLD.scene.remove(p.m);p.m.geometry.dispose();p.m.material.dispose();return false}return true});
+  WORLD.fx=WORLD.fx.filter(p=>{p.life-=dt;
+    p.m.position.addScaledVector(p.v,dt);p.v.y-=p.g*dt;p.m.material.rotation+=p.spin*dt;
+    const f=p.life/p.max;p.m.material.opacity=Math.min(1,f*2.5);
+    const sc=p.size*(1+(1-f)*p.grow);p.m.scale.set(sc,sc,1);
+    if(p.life<=0){WORLD.scene.remove(p.m);p.m.material.dispose();return false}return true});
 }
-function worldPaper(at){
-  if(WORLD.fx.length>40)return;
-  const T=WORLD.T;
-  const m=new T.Mesh(new T.PlaneGeometry(.3,.38),new T.MeshBasicMaterial({color:0xffffff,side:T.DoubleSide}));
-  m.position.set(at.x,at.y+1.8,at.z);WORLD.scene.add(m);
-  WORLD.fx.push({m,v:new T.Vector3((Math.random()-.5)*3,2+Math.random()*2,(Math.random()-.5)*1.5),life:1.2});
+/* One effect: a painted sprite that rises, falls or drifts, and fades. Textures are
+   painted once (wlFxTex) and shared, so an effect costs a material and nothing more. */
+function worldFx(kind,at,o){
+  if(WORLD.still||WORLD.fx.length>80||!WORLD.scene)return;
+  const T=WORLD.T,j=o.jit||0;
+  const m=new T.Sprite(new T.SpriteMaterial({map:wlFxTex(T,kind),transparent:true,depthWrite:false}));
+  m.position.set(at.x+(o.dx||0)+(Math.random()-.5)*j,at.y+(o.dy||2.4)+(Math.random()-.5)*j*.4,at.z+.05);
+  const v=o.v||[0,.6,0],side=Math.random()<.5?-1:1;
+  WORLD.scene.add(m);
+  WORLD.fx.push({m,v:new T.Vector3(v[0]*(o.g||o.spin?side*(.5+Math.random()*.7):1),v[1]*(.8+Math.random()*.4),v[2]*(Math.random()-.3)),
+    g:o.g||0,spin:(o.spin||0)*side,life:o.life||1.5,max:o.life||1.5,size:o.size||.4,grow:o.grow||0});
 }
+/* Each tag is a button that spans the character, crystal to feet, with the name plate
+   under the feet and a bubble above the crystal: tapping the person opens the card. */
 function worldPlaceTags(){
   const box=WORLD.ui&&WORLD.ui.querySelector('.wd-tags');if(!box||!WORLD.cam)return;
   const T=WORLD.T,v=new T.Vector3();
   Object.entries(WORLD.chars).forEach(([name,c])=>{
     const el=box.querySelector(`[data-wa="${CSS.escape(name)}"]`);if(!el)return;
-    v.copy(c.sprite.position);v.y+=c.sprite.scale.y+.15;v.project(WORLD.cam);
-    const x=Math.round((v.x*.5+.5)*innerWidth),y=Math.round((-v.y*.5+.5)*innerHeight);
-    const off=v.z>1||x<-60||x>innerWidth+60;
-    if(el._x!==x||el._y!==y){el.style.transform=`translate(${x}px,${y}px) translate(-50%,-100%)`;el._x=x;el._y=y}
+    // anchored where the agent stands, not where it hops or paces: a tag that jumps
+    // with a cheer is a target a finger misses. A busy agent's tag goes with it.
+    const at=c.a&&c.a.busy||!c.home?c.sprite.position:c.home;
+    v.copy(at);v.project(WORLD.cam);
+    const x=Math.round((v.x*.5+.5)*innerWidth),yf=Math.round((-v.y*.5+.5)*innerHeight),z=v.z;
+    v.copy(at);v.y+=2.45+.85;v.project(WORLD.cam);
+    const yh=Math.round((-v.y*.5+.5)*innerHeight),hgt=Math.max(0,yf-yh);
+    const off=z>1||x<-60||x>innerWidth+60;
+    if(el._x!==x||el._y!==yh||el._hg!==hgt){el.style.transform=`translate(${x}px,${yh}px) translateX(-50%)`;
+      el.style.setProperty('--ch',hgt+'px');el._x=x;el._y=yh;el._hg=hgt}
     el.hidden=off;
   });
 }
