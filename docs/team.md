@@ -95,8 +95,16 @@ a window, or you are in another chat) a copy of the card floats at the top right
 either one closes both, on every screen. You can also reach it these ways:
 
 - **Review** on the "approval needed" toast;
-- tapping the "waiting for you to approve …" line in Chat or an app's agent panel;
+- **Review** on the "waiting for you to approve …" line in Chat or an app's agent panel;
 - tapping the "replied" bubble.
+
+![Chat after a question asked in the prompt bar was opened in Chat: the delegate step, the
+approval card for it with Allow, Deny and Allow & remember, and Review on the waiting
+line](screenshots/approval-in-chat.png)
+
+A waiting card keeps checking that you can see it. If a window covers it, or the prompt bar's
+answer card is closed by its own **Open in Chat**, the card is drawn in Chat when that
+conversation is open there, and floats top right otherwise.
 
 Before, a turn from the prompt bar put its card inside the bar's answer card, which hides when a
 window opens. The hand-over then waited for five minutes on a question nobody could see.

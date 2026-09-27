@@ -165,7 +165,20 @@ function actSync() {
 function actTick() {
   // a turn waiting on a person: its "waiting for you to approve …" rows become doors
   // to the card (approvalReveal, 09-websocket.js) — see the click listener below
-  document.body.classList.toggle('act-approving', Object.values(ACT).some(a => a.phase === 'approve'));
+  const approving = Object.values(ACT).some(a => a.phase === 'approve');
+  document.body.classList.toggle('act-approving', approving);
+  // "Waiting for you to approve …" carries its own button: a line that happens to be
+  // tappable is a door nobody finds (reported with the card nowhere in sight)
+  document.querySelectorAll('#working, .mf-working').forEach(el => {
+    let b = el.querySelector(':scope > .ap-review');
+    const want = approving && typeof APPROVALS !== 'undefined' && Object.keys(APPROVALS).length > 0;
+    if (want && !b) {
+      b = document.createElement('button');
+      b.className = 'ap-review pact'; b.type = 'button'; b.textContent = 'Review';
+      b.onclick = e => { e.stopPropagation(); if (typeof approvalReveal === 'function') approvalReveal(); };
+      el.appendChild(b);
+    } else if (!want && b) b.remove();
+  });
   actPaintTimers();
   if (typeof tickWorking === 'function') tickWorking();
   if (typeof mfPaint === 'function') mfPaint();

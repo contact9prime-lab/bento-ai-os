@@ -129,17 +129,25 @@ def test_an_approval_can_always_be_reached():
     ws = (SRC / "09-websocket.js").read_text()
     case = ws[ws.index("case 'approval_request'"):ws.index("case 'error'")]
     assert "APPROVALS[ev.id]=ev" in case
-    assert "approvalVisible(ev.id)" in case and "approvalFloat(ev)" in case, \
-        "placed is not SEEN: a hidden card floats a copy"
+    assert "approvalHome(ev.id)" in case and "approvalWatch()" in case, \
+        "placed is not SEEN: a card is re-homed while it waits"
+    home = ws[ws.index("function approvalHome"):ws.index("function approvalShownArea")]
+    # "Open in Chat" closes the bar's answer card and took the approval with it: the
+    # open conversation draws it, anything else floats it
+    assert "ev.conversation_id===currentConv" in home and "approvalFloat(ev)" in home
+    watch = ws[ws.index("function approvalWatch"):ws.index("function approvalReveal")]
+    assert "clearInterval" in watch and "document.hidden" in watch, "it stops itself, and sleeps"
     assert "label:'Review'" in case and "approvalReveal(ev.id)" in case, \
         "the toast is a door to the card, not a notice"
     # offsetParent is null for a position:fixed card, so it cannot be the test
     shown = ws[ws.index("function approvalShown"):ws.index("function approvalVisible")]
     assert "offsetParent" not in shown.split("*/")[-1]
+    assert "elementFromPoint" in shown, "a card under a window is not seen"
     assert "delete APPROVALS[ev.id]" in ws, "an answered card stops being offered"
     act = (SRC / "08b-activity.js").read_text()
     assert "act-approving" in act and "approvalReveal()" in act, \
         "the 'waiting for you' line opens the card"
+    assert "ap-review" in act and "'Review'" in act, "and says so with a button"
 
 
 def test_each_question_from_the_bar_is_its_own_thread():
@@ -279,3 +287,59 @@ def test_a_terminal_can_draft_one_and_nothing_is_saved_without_a_yes(store, full
     args.yes = True
     assert climod._team_draft(args, {}, store, False) == 0
     assert store.get_subagent("invoice-clerk") and store.get_skill("invoice-filing")
+
+
+# ---------------------------------------------------------------------------
+# "The agent UI takes a lot of time to open; the New agent button is out of place"
+# ---------------------------------------------------------------------------
+
+from agentos import providers as provmod                           # noqa: E402
+
+
+def test_the_model_list_asks_every_provider_at_once_and_keeps_it(monkeypatch):
+    """Measured with four endpoints answering in 2s each: 8.35s on every call before
+    (one after another, nothing kept), 2.0s the first time after, ~0 for a minute."""
+    calls = []
+
+    async def slow_ollama(base):
+        calls.append("ollama"); await asyncio.sleep(0.3); return ["llama3"]
+
+    async def slow_openai(base, key=""):
+        calls.append(base); await asyncio.sleep(0.3); return ["gpt-x"]
+    monkeypatch.setattr(provmod, "ollama_models", slow_ollama)
+    monkeypatch.setattr(provmod, "openai_models", slow_openai)
+    provmod.forget_models()
+    cfg = {"providers": {"ollama": {"enabled": True, "base_url": "o"},
+                         "openai": {"enabled": True, "api_key": "k", "base_url": "http://a/v1"},
+                         "openrouter": {"enabled": True, "api_key": "k", "base_url": "http://b/v1"},
+                         "custom": {"enabled": True, "base_url": "http://c/v1"}}}
+    import time as _t
+    t0 = _t.monotonic()
+    first = asyncio.run(provmod.available_models(cfg))
+    took = _t.monotonic() - t0
+    assert took < 0.8, f"asked one after another ({took:.2f}s for four 0.3s answers)"
+    assert len(calls) == 4 and {m["provider"] for m in first} == {"ollama", "openai", "openrouter", "custom"}
+    asyncio.run(provmod.available_models(cfg))
+    assert len(calls) == 4, "kept for a minute"
+    cfg["providers"]["custom"]["models"] = ["pinned"]          # a settings change is seen at once
+    asyncio.run(provmod.available_models(cfg))
+    assert len(calls) == 8
+    provmod.forget_models()
+
+
+def test_the_editor_opens_before_the_models_arrive():
+    js = (SRC / "13-fabric.js").read_text()
+    open_ = js[js.index("async function openSAW"):js.index("function sawModelsArrive")]
+    waited = open_[open_.index("await Promise.all"):open_.index("drawSAW()")]
+    assert "/api/models" not in waited, "the editor must not wait on every provider to draw"
+    assert "sawModelsArrive" in open_
+    draw = js[js.index("function drawSAW"):js.index("function sawRefreshList")]
+    assert "!SAW.models.some(m=>m.id===d.model)" in draw, "a pinned model survives the list arriving late"
+
+
+def test_new_agent_is_in_the_list_header():
+    js = (SRC / "11e-hands.js").read_text()
+    lst = js[js.index("async function renderAgentsList"):js.index("async function agentEdit")]
+    assert 'class="ag-head"' in lst and "ag-new" in lst
+    assert lst.count("agentEdit('')") + lst.count("agentEdit(\\'\\')") == 2, \
+        "the header, and the could-not-load fallback — and not a third at the end of the list"

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.4 — 2026-09-26
+
+**The approval card for a hand-over can always be found.** Asked from the prompt bar and then
+opened in Chat, a hand-over said "waiting for you to approve delegate" with no card anywhere:
+*Open in Chat* closed the prompt bar's answer card, and the approval card went with it. A
+waiting card now checks every second that it can be seen. It is drawn in Chat when that
+conversation is open, and floats top right otherwise, including when a window covers it. The
+waiting line has a **Review** button.
+
+**The agent editor opens at once.** It waited for every AI provider to list its models before
+drawing. It now opens straight away and fills in the Brain list when it arrives. The providers
+are asked all at once, and the list is kept for a minute. Measured with four providers that
+each take 2 seconds: 8.35s on every open before, 2.0s the first time and instant after.
+
+**＋ New agent is at the top of Settings → Agents**, in the list's header, instead of after the
+last agent's card.
+
 ## 0.6.3 — 2026-09-26
 
 **Gemini CLI and Codex can be the brain, like Claude Code.** Settings → AI providers offers

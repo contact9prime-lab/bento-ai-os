@@ -218,6 +218,7 @@
 .approval{border:1px solid var(--warn);border-radius:var(--r-lg);background:rgba(251,191,36,.06);padding:13px;margin:0 0 12px}
 /* a card floated because the one placed in a feed is hidden (the prompt bar's card
    under an open window, a chat you are not looking at) — never off a phone's edge */
+.ap-review{margin-left:auto;flex:0 0 auto;min-height:var(--tap,32px);padding:0 16px;align-self:center}
 .approval.ap-float{position:fixed;right:18px;top:52px;z-index:9999;max-width:440px;width:calc(100vw - 36px);
   background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5)}
 /* top-right, clear of the toast stack (bottom-right) that announces it */

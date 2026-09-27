@@ -143,7 +143,10 @@ async function renderAgentsList(){
     if(lh)lh.innerHTML=opts(lead.hands.name);
   }
   const others=d.agents.filter(a=>!a.master);
-  box.innerHTML=`<div class="pgroup"><h3>Your agents</h3>
+  // The way to add one is in the list's own header, where the eye starts — it sat at
+  // the very end of a long list, against the last card, off screen when the page opened
+  box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
+      <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
     <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
@@ -160,8 +163,7 @@ async function renderAgentsList(){
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<p class="mut">No other agents yet.</p>'}
-    <div class="tlk-actions"><button class="pact" onclick="agentEdit('')">＋ New agent</button></div></div>`;
+      </div></div>`}).join('')||'<p class="mut">No other agents yet — press ＋ New agent and describe the first one in a sentence.</p>'}</div>`;
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two

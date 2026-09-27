@@ -754,6 +754,7 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 .approval{border:1px solid var(--warn);border-radius:var(--r-lg);background:rgba(251,191,36,.06);padding:13px;margin:0 0 12px}
 /* a card floated because the one placed in a feed is hidden (the prompt bar's card
    under an open window, a chat you are not looking at) — never off a phone's edge */
+.ap-review{margin-left:auto;flex:0 0 auto;min-height:var(--tap,32px);padding:0 16px;align-self:center}
 .approval.ap-float{position:fixed;right:18px;top:52px;z-index:9999;max-width:440px;width:calc(100vw - 36px);
   background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5)}
 /* top-right, clear of the toast stack (bottom-right) that announces it */
@@ -3764,6 +3765,9 @@ body.dev-touch .flw-linked input,body.dev-touch .flw-linked select,body.dev-touc
 /* Linked teams */
 .team-links{display:flex;flex-direction:column;gap:8px;width:100%}
 .tlk-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ag-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ag-head h3{margin:0;flex:1 1 auto}
+.ag-head .ag-new{flex:0 0 auto;margin:0;min-height:var(--tap,36px);padding:0 16px}
 .tlk-actions input{flex:1 1 220px;min-width:0}
 .pc .tlk-actions input,.pc .tlk-actions select{flex:1 1 220px;width:auto;min-width:0}
 .tlk-ask{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
@@ -9993,7 +9997,20 @@ function actSync() {
 function actTick() {
   // a turn waiting on a person: its "waiting for you to approve …" rows become doors
   // to the card (approvalReveal, 09-websocket.js) — see the click listener below
-  document.body.classList.toggle('act-approving', Object.values(ACT).some(a => a.phase === 'approve'));
+  const approving = Object.values(ACT).some(a => a.phase === 'approve');
+  document.body.classList.toggle('act-approving', approving);
+  // "Waiting for you to approve …" carries its own button: a line that happens to be
+  // tappable is a door nobody finds (reported with the card nowhere in sight)
+  document.querySelectorAll('#working, .mf-working').forEach(el => {
+    let b = el.querySelector(':scope > .ap-review');
+    const want = approving && typeof APPROVALS !== 'undefined' && Object.keys(APPROVALS).length > 0;
+    if (want && !b) {
+      b = document.createElement('button');
+      b.className = 'ap-review pact'; b.type = 'button'; b.textContent = 'Review';
+      b.onclick = e => { e.stopPropagation(); if (typeof approvalReveal === 'function') approvalReveal(); };
+      el.appendChild(b);
+    } else if (!want && b) b.remove();
+  });
   actPaintTimers();
   if (typeof tickWorking === 'function') tickWorking();
   if (typeof mfPaint === 'function') mfPaint();
@@ -10115,27 +10132,76 @@ var APPROVALS={};
    card has a box but nobody can see it. `offsetParent` is no test — a floating card is
    position:fixed and has none. */
 function approvalShown(b){
-  if(!b||b.classList.contains('resolved'))return false;
+  if(!b||b.classList.contains('resolved')||!b.isConnected)return false;
   const r=b.getBoundingClientRect();
   if(!(r.width>0&&r.height>0))return false;
-  if(b.checkVisibility)return b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-  return getComputedStyle(b).visibility!=='hidden';
+  if(r.bottom<=0||r.top>=innerHeight||r.right<=0||r.left>=innerWidth)return false;
+  if(b.checkVisibility&&!b.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}))return false;
+  if(!b.checkVisibility&&getComputedStyle(b).visibility==='hidden')return false;
+  // displayed is not SEEN: the prompt bar's answer card sits under any window, and a
+  // card inside it passed every test above while Chat covered it. Something of the
+  // card must be the topmost thing at a point on screen.
+  const x=Math.min(Math.max(r.left+r.width/2,0),innerWidth-1);
+  const pts=[[x,r.top+8],[x,r.top+r.height/2],[x,r.bottom-8]];
+  return pts.some(([px,py])=>{if(py<0||py>=innerHeight)return false;
+    const t=document.elementFromPoint(px,py);return !!(t&&b.contains(t))});
 }
 function approvalVisible(id){
   return [...document.querySelectorAll('[id="ap-'+id+'"]')].some(approvalShown);
 }
 function approvalFloat(ev){
-  if([...document.querySelectorAll('[id="ap-'+ev.id+'"].ap-float')].length)return;
+  // one float per approval; an existing one is brought back to the top of the page
+  const had=document.querySelector('[id="ap-'+ev.id+'"].ap-float');
+  if(had){if(had.nextSibling)document.body.appendChild(had);return had}
   const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
   document.body.appendChild(box);
   box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
   return box;
 }
+/* Where a waiting card belongs NOW. The place a card was put can stop existing (the
+   prompt bar's answer card is closed by its own "Open in Chat", taking the approval
+   with it) or be covered (a window opened over it). Reported as a hand-over "waiting
+   for you to approve delegate" in Chat with no card anywhere on the page. So while
+   anything waits, each card is checked: shown and on top → fine; its conversation
+   open in Chat → drawn there; otherwise → floated. Runs only while APPROVALS is not
+   empty, and stops itself. */
+var APPROVAL_WATCH=0;
+function approvalHome(id){
+  const ev=APPROVALS[id];if(!ev)return;
+  if(approvalVisible(id))return;
+  const feed=document.getElementById('feed');
+  const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
+  if(chatOpen&&!feed.querySelector('[id="ap-'+id+'"]')){
+    const box=buildApprovalBox(ev,true),w=document.getElementById('working');
+    if(w&&w.parentNode===feed)feed.insertBefore(box,w);else feed.appendChild(box);
+    box.scrollIntoView({block:'center'});
+    // the float, if there was one, is no longer the only door
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());
+    if(approvalVisible(id))return;
+  }
+  approvalFloat(ev);
+}
+function approvalShownArea(el){
+  const r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))return false;
+  const t=document.elementFromPoint(Math.min(Math.max(r.left+r.width/2,0),innerWidth-1),
+                                    Math.min(Math.max(r.top+r.height/2,0),innerHeight-1));
+  return !!(t&&el.contains(t));
+}
+function approvalWatch(){
+  if(APPROVAL_WATCH)return;
+  APPROVAL_WATCH=setInterval(()=>{
+    const ids=Object.keys(APPROVALS);
+    if(!ids.length){clearInterval(APPROVAL_WATCH);APPROVAL_WATCH=0;return}
+    if(document.hidden)return;
+    ids.forEach(approvalHome);
+  },1200);
+}
 function approvalReveal(id){
   const ev=id?APPROVALS[id]:APPROVALS[Object.keys(APPROVALS).pop()];
   if(!ev)return toast('nothing is waiting for you now');
-  const shown=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown);
-  const box=shown||approvalFloat(ev);if(!box)return;
+  approvalHome(ev.id);
+  const box=[...document.querySelectorAll('[id="ap-'+ev.id+'"]')].find(approvalShown)
+    ||document.querySelector('[id="ap-'+ev.id+'"].ap-float');if(!box)return;
   box.scrollIntoView({block:'center',behavior:'smooth'});
   box.classList.remove('ap-flash');void box.offsetWidth;box.classList.add('ap-flash');
 }
@@ -10430,7 +10496,8 @@ function handle(ev){
       // Placed is not SEEN: a turn from the prompt bar puts its card in the bar's
       // answer card, which hides the moment a window opens — found as a hand-over
       // to the toolsmith that waited five minutes on a question nobody could see.
-      requestAnimationFrame(()=>{if(APPROVALS[ev.id]&&!approvalVisible(ev.id))approvalFloat(ev)});
+      requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
+      approvalWatch();
       toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
       scrollDown(); break;}
     case 'error':{
@@ -13984,7 +14051,10 @@ async function renderAgentsList(){
     if(lh)lh.innerHTML=opts(lead.hands.name);
   }
   const others=d.agents.filter(a=>!a.master);
-  box.innerHTML=`<div class="pgroup"><h3>Your agents</h3>
+  // The way to add one is in the list's own header, where the eye starts — it sat at
+  // the very end of a long list, against the last card, off screen when the page opened
+  box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
+      <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
     <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
@@ -14001,8 +14071,7 @@ async function renderAgentsList(){
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<p class="mut">No other agents yet.</p>'}
-    <div class="tlk-actions"><button class="pact" onclick="agentEdit('')">＋ New agent</button></div></div>`;
+      </div></div>`}).join('')||'<p class="mut">No other agents yet — press ＋ New agent and describe the first one in a sentence.</p>'}</div>`;
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two
@@ -14367,11 +14436,17 @@ const SAW_PRESETS={
   'Files & shell':['run_command','read_file','write_file','list_dir','system_info'],
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
+var SAW_MODELS=null;   // the Brain list from the last open: shown at once next time
 async function openSAW(name,opts){
-  const [tools,skills,models]=await Promise.all([
+  // Tools and skills are this machine's own lists and answer in milliseconds. The
+  // MODELS ask every provider, and the editor used to wait for them before drawing:
+  // "the agent UI takes a lot of time to open". It opens now, and the Brain list is
+  // filled in when it arrives (sawModelsArrive), without touching what was typed.
+  const modelsP=fetch('/api/models').then(r=>r.json()).catch(()=>null);
+  const [tools,skills]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
-    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
-    fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]}))]);
+    fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]}))]);
+  const models={models:SAW_MODELS||[]};
   const ex=name?(window.__subagents||{})[name]:null;
   // onSaved/onCancel let another editor borrow this wizard: creating the specialist and
   // the flow that needs it is one thought, and making someone leave, create three
@@ -14387,6 +14462,19 @@ async function openSAW(name,opts){
           tools:[...((opts||{}).tools||[])],skills:[],autonomy_cap:'balanced',
           max_steps:12,max_seconds:300,builtin:0,target:'local'}};
   drawSAW();
+  const mine=SAW;
+  modelsP.then(m=>{if(m&&m.models){SAW_MODELS=m.models;if(SAW===mine)sawModelsArrive(m.models)}});
+}
+/* The Brain list arrived after the editor opened: refill the one select, keep the
+   choice, and leave every field somebody may be typing in alone. */
+function sawModelsArrive(list){
+  SAW.models=list;
+  const sel=document.getElementById('sw-model');if(!sel)return;
+  const keep=sel.value||SAW.d.model||'';
+  sel.innerHTML=['<option value="">this machine\'s brain (the default)</option>']
+    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}</option>`)).join('');
+  if(keep&&!list.some(m=>m.id===keep))sel.insertAdjacentHTML('beforeend',`<option value="${esc(keep)}">${esc(keep)} (not offered now)</option>`);
+  sel.value=keep;
 }
 function sawClose(){const cb=SAW&&SAW.onCancel;SAW=null;drawSAW();if(cb)cb()}
 /* Draft a specialist, or revise the one on screen. Same call either way — "make it also
@@ -14471,7 +14559,9 @@ function drawSAW(){
   let inner='';
   if(st===1){
     const opts=['<option value="">this machine\'s brain (the default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`))
+      // its own pin, even before the list has arrived — or Next would unpin it
+      .concat(d.model&&!SAW.models.some(m=>m.id===d.model)?[`<option value="${esc(d.model)}" selected>${esc(d.model)}</option>`]:[]).join('');
     inner=`<div class="saw-ai">
         <label for="sw-ai">✦ ${SAW.exists?'Ask for a change':'Describe it'}</label>
         <div class="sub">${SAW.exists
