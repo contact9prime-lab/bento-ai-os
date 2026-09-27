@@ -94,6 +94,10 @@ class Envelope:
     # The conversation so far, for a CLI this OS cannot resume a session of: without
     # it every follow-up reached Gemini CLI / Codex as a stranger's first message.
     transcript: str = ""
+    # The whole recent thread, used only when a resumed session turns out to be gone
+    # (its files deleted, another machine's home): the run is started again without
+    # it and this is what it is told instead (`carry_over`).
+    fallback: str = ""
 
     def describe(self) -> str:
         """One sentence a person can approve or refuse."""
@@ -129,7 +133,8 @@ class Envelope:
                         budget_usd=budget, session_id=self.session_id, context=ctx,
                         allow_source=bool(self.allow_source), team_mcp=tuple(self.team_mcp or ()),
                         engine=self.engine if self.engine in DRIVEN else "claude-code",
-                        transcript=str(self.transcript or "")[-6000:])
+                        transcript=str(self.transcript or "")[-6000:],
+                        fallback=str(self.fallback or "")[-6000:])
 
 
 @dataclass
@@ -138,6 +143,8 @@ class Run:
 
     proc: asyncio.subprocess.Process | None = None
     session_id: str = ""
+    # set by the translator when `--resume` named a session the CLI no longer has
+    resume_missing: bool = False
     model: str = ""                # what actually answered, reported by the CLI
     cost_usd: float = 0.0
     turns: int = 0
@@ -187,6 +194,44 @@ DRIVEN = ("claude-code", "gemini-cli", "codex")
 # Which of them can take a session id back and continue it. The others are handed
 # the conversation so far in the prompt (`Envelope.transcript`).
 RESUMES = ("claude-code",)
+#: How many earlier messages a forwarded turn is handed when it has to be told.
+CARRY_MESSAGES = 8
+
+
+def _said(msgs: list[dict]) -> str:
+    return "\n".join(
+        f"{'Person' if m.get('role') == 'user' else 'You'}: {str(m.get('content') or '')[:1500]}"
+        for m in msgs if m.get("role") in ("user", "assistant") and str(m.get("content") or "").strip())
+
+
+def carry_over(prior: list[dict], session_id: str, engine: str) -> tuple[str, str, str]:
+    """What a forwarded turn needs to know of its own conversation.
+
+    Returns (session to resume, what to tell it now, what to tell it if the resume
+    fails). `prior` is the conversation's stored messages before this turn, each with
+    its `meta`.
+
+    Reported as "the chat is losing context": in an app's agent panel, "write a ppt for
+    it" came back as "I don't know what 'it' refers to", right under the answer it
+    referred to. A resumed session only knows the turns that ran IN it, and a thread
+    holds others: a turn stopped before the session id was saved, a turn answered on
+    another brain before the switch, a specialist or a huddle. So every executor reply
+    is stamped with its session (`meta.exec_session`), and whatever came after the last
+    stamped reply is handed over as text. A thread with no stamps yet (older rows)
+    counts the replies this engine gave as seen.
+    """
+    msgs = [m for m in (prior or []) if m.get("role") in ("user", "assistant")]
+    full = _said(msgs[-CARRY_MESSAGES:])
+    if engine not in RESUMES or not session_id:
+        return "", full, ""
+    meta = [m.get("meta") or {} for m in msgs]
+    stamped = any(x.get("exec_session") for x in meta)
+    seen = -1
+    for i, x in enumerate(meta):
+        if (x.get("exec_session") == session_id) if stamped else (x.get("engine") == engine):
+            seen = i
+    unseen = msgs[seen + 1:]
+    return session_id, _said(unseen[-CARRY_MESSAGES:]), full
 
 
 def drives(engine: str) -> bool:
@@ -272,7 +317,8 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
 
 async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
-                  context: str = "", team: dict | None = None) -> tuple[str, "Run | None"]:
+                  context: str = "", team: dict | None = None,
+                  prior: list | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -298,6 +344,10 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                 f"choose another brain in Settings → AI providers"), None
     env = envelope_from(cfg, workspace_default, engine)
     env.session_id = session_id if engine in RESUMES else ""
+    if prior is not None:
+        # the conversation's stored messages before this one: what the session has
+        # not seen is handed over, and a CLI with no session gets the thread so far
+        env.session_id, env.transcript, env.fallback = carry_over(prior, session_id, engine)
     # Always, even when the surface supplies nothing of its own: a forwarded
     # Telegram or scheduled turn otherwise arrives believing it owns the desktop.
     env.context = context_for(context)
@@ -1510,7 +1560,7 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.engine == "codex":
         return _codex_command(task, env)
     exe = claude_exe() or "claude"
-    cmd = [exe, "--print", as_prose(task),
+    cmd = [exe, "--print", _claude_prompt(task, env),
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
            *(("--add-dir", source_root()) if env.allow_source else ()),
@@ -1538,6 +1588,17 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.session_id:
         cmd += ["--resume", env.session_id]
     return cmd
+
+
+def _claude_prompt(task: str, env: Envelope) -> str:
+    """The task, and before it whatever of the conversation the session has not seen
+    (`carry_over`). With nothing to carry it is the task alone, exactly as before."""
+    if not env.transcript:
+        return as_prose(task)
+    label = ("SAID IN THIS CONVERSATION SINCE YOUR LAST ANSWER (answered elsewhere, "
+             "so your session does not have it):" if env.session_id
+             else "THE CONVERSATION SO FAR:")
+    return f" {label}\n{env.transcript}\n\nTHE REQUEST:\n{as_prose(task).lstrip()}"
 
 
 def _prompt_for(task: str, env: Envelope) -> str:
@@ -1601,9 +1662,18 @@ API_BILLING_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
                     "CLAUDE_CODE_USE_VERTEX")
 
 
+#: Set when AgentOS itself was started from inside a Claude Code session. Inherited,
+#: the CLI adopts that session's id for every run it starts (measured: a fresh
+#: `claude --print` reported the parent's id), so every conversation here would be
+#: saved as, and resumed into, one session that belongs to somebody's terminal.
+PARENT_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+                       "CLAUDE_CODE_REMOTE_SESSION_ID", "CLAUDE_AFTER_LAST_COMPACT")
+
+
 def child_env() -> dict:
     """The environment a delegated run gets: this one, minus the API credentials."""
-    env = {k: v for k, v in os.environ.items() if k not in API_BILLING_VARS}
+    env = {k: v for k, v in os.environ.items()
+           if k not in API_BILLING_VARS and k not in PARENT_SESSION_VARS}
     env["CLAUDE_CODE_ENTRYPOINT"] = "agentos"
     # The CLI shells out to its own helpers (node, ripgrep, git). Under systemd
     # this process's PATH lacks ~/.local/bin, so hand the child the same extended
@@ -1796,6 +1866,12 @@ def translate(event: dict, run: Run) -> list[dict]:
                             "ok": not block.get("is_error")})
 
     elif kind == "result":
+        if any("No conversation found" in str(e) for e in (event.get("errors") or [])):
+            # `--resume` named a session this CLI no longer has. `run_task` starts
+            # again without it and hands the thread over as text instead.
+            run.resume_missing = True
+            run.reported_error = True
+            return out
         run.cost_usd = float(event.get("total_cost_usd") or 0.0)
         run.turns = int(event.get("num_turns") or 0)
         usage = event.get("usage") or {}
@@ -2046,7 +2122,18 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     await emit({"type": "status",
                 "message": "starting up — waking the agent and its tools"})
 
-    return await _drive(build_command(task, env), env.workspace, emit, run)
+    run = await _drive(build_command(task, env), env.workspace, emit, run)
+    if run.resume_missing and not run.stopped:
+        # The saved session is gone (its files deleted, a restored backup, another
+        # home). Say so once and run again as a new session told the thread so far,
+        # rather than failing a turn the person can do nothing about.
+        await emit({"type": "status",
+                    "message": "the earlier session is gone, so it gets the conversation so far"})
+        env = Envelope(**{**env.__dict__, "session_id": "", "transcript": env.fallback})
+        run.resume_missing = run.reported_error = False
+        run.session_id = ""
+        run = await _drive(build_command(task, env), env.workspace, emit, run)
+    return run
 
 
 async def _drive(cmd: list[str], cwd: str, emit, run: Run) -> Run:

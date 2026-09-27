@@ -53,6 +53,14 @@ a spend ceiling, so for the other two the envelope says "no spend ceiling of its
 Claude Code continues its own session between turns. Gemini CLI and Codex are sent the
 conversation so far with each turn.
 
+A conversation can hold more than Claude Code's session saw: a turn you stopped, an answer
+from another brain before you switched, a specialist you addressed with `@name`. Each reply
+Claude Code gives is marked with its session, and whatever came after the last marked reply
+is sent along with your next message. If the session itself is gone (its files were deleted,
+or a backup was restored on another machine), the turn starts a new one and is sent the
+conversation so far instead of failing. This works the same in Chat, in every app's agent
+panel, and over Telegram and WhatsApp, and it survives a restart.
+
 Two things only Claude Code can do today, because it is the one CLI this OS can start
 with its own MCP server for one run:
 

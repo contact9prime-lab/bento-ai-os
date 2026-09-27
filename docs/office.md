@@ -50,6 +50,15 @@ not wander about for show.** An office where everybody strolls around would look
 when nothing is running, and this OS never shows activity that is not real. The pet
 wanders. It is decoration, and it is clearly not an agent.
 
+The lounge has two regulars who are not agents either. A security guard sits in the
+armchair reading the paper, looking up over it now and then. A pet sitter plays fetch
+with the office pet: the dog brings the ball back, and a cat bats its yarn back instead.
+Their name tags are grey and under their feet rather than on a desk, tapping them asks
+nobody anything, and they never walk about. Switch the lounge off and they go home. With
+no pet there is no pet sitter.
+
+![The lounge: the pet sitter by the sofa with the dog, and the security guard in the armchair with the paper](screenshots/office-lounge.png)
+
 Under the picture, a four-line log says the same things in words ("analyst asked writer:
 …"). A screen reader reads that log. It is also the quickest way to catch up after
 looking away.

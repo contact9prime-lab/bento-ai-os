@@ -53,9 +53,6 @@ class TelegramBridge(usersmod.Scoped):
         self.bot_username = ""
         self._busy = False
         self._pending: dict[str, asyncio.Future] = {}   # approval id -> future
-        # When forwarding, keep the executor's own session per conversation so a
-        # follow-up over Telegram continues rather than starting from nothing.
-        self._exec_sessions: dict[str, str] = {}
         # Operating the machine from the phone — owner-only, and every command
         # that DOES something goes through the same PDP the desktop uses.
         self._console = telegram_admin.Console(self)
@@ -328,6 +325,7 @@ class TelegramBridge(usersmod.Scoped):
             history, _hinfo = await _history.build(
                 self.store, cid, self.cfg, self.cfg.get("default_model", ""))
             self.store.add_message(cid, "user", text)
+            exec_meta: dict = {}      # the executor session a forwarded reply was given in
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             history.append({"role": "user", "content":
                             "[Message arriving via Telegram — the user is away from the machine. "
@@ -369,13 +367,17 @@ class TelegramBridge(usersmod.Scoped):
                         reply, _run = await execmod.forward(
                             engine, text, self.cfg,
                             execmod.default_workspace(self.cfg),
-                            session_id=self._exec_sessions.get(cid, ""),
+                            session_id=self.store.exec_session(cid),
+                            prior=self.store.get_messages(cid)[:-1],
                             # the team door: "build me a tool" from the phone reaches
                             # the toolsmith as it does at the desk
                             team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
                                   "conversation_id": cid, "surface": "telegram"})
                         if _run and _run.session_id:
-                            self._exec_sessions[cid] = _run.session_id
+                            # kept in the conversation row, so a restart does not make every
+                            # phone thread a stranger (an in-memory dict did)
+                            self.store.set_exec_session(cid, _run.session_id)
+                            exec_meta = {"engine": engine, "exec_session": _run.session_id}
                     finally:
                         _k.turn_ended()
                     reply = reply or "(done — no text output)"
@@ -389,7 +391,7 @@ class TelegramBridge(usersmod.Scoped):
                     finally:
                         _k.turn_ended()
                     reply = result["content"] or "(done — no text output)"
-            self.store.add_message(cid, "assistant", reply, {"steps": result["steps"]})
+            self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
             self.store.touch_conversation(cid)
             from . import usage as _usage
             _usage.record(self.store, self.cfg, model, result.get("tokens") or {},

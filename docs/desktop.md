@@ -101,6 +101,15 @@ Press **Alt+Space** or **Ctrl+Space** anywhere for a fast launcher: fuzzy-search
 an action (new chat, clear session, toggle voice, reset wallpaper), or choose **"Ask …"** to send
 your text straight to the agent.
 
+It also finds the places inside apps by the words people use for them. Type **channel**,
+**telegram** or **whatsapp** and you get Settings → Channels. **flow**, **workflow** or
+**trigger** gives Missions → Build → Flows, **job** gives Missions, **api key** gives AI
+providers, **mail** gives Accounts. They are listed under "In apps", and Enter opens the pane
+itself, not just the app. The app wall's search finds them too, but only while you are
+searching, so the wall itself stays a wall of apps.
+
+![The prompt bar with "channel" typed: Channels under "In apps", Settings → Channels](screenshots/prompt-bar-places.png)
+
 ### Fullscreen
 Press **F11** (or use the Settings button) to toggle fullscreen. Launched via `agentos app`, the
 desktop opens fullscreen automatically, hiding the host taskbar.

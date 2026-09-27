@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.6 — 2026-09-27
+
+**Chats keep their context when Claude Code answers.** In an app's agent panel, "write a ppt
+for it" could come back as "I don't know what 'it' refers to", right under the answer it
+meant. Claude Code only remembers the turns that ran in its own session, and a conversation
+can hold others: a turn you stopped, an answer from another brain before you switched, a
+specialist you asked by name. Now whatever the session did not see is sent along with your
+next message. If the session is gone entirely, the turn starts a fresh one with the
+conversation so far instead of failing. Telegram and WhatsApp keep their sessions across a
+restart now too; they used to forget every thread when the server restarted. And an AgentOS
+started from inside a Claude Code terminal no longer has every chat written into that
+terminal's own session.
+
+**The lounge has regulars.** A security guard reads the paper in the armchair, and a pet
+sitter plays fetch with the office pet. The dog brings the ball back. A cat bats its yarn
+back. Neither of them is an agent, and neither wanders about.
+
+**The launchers find places inside apps.** Typing "channel" in the prompt bar gives
+Settings → Channels, "flow" or "workflow" gives Missions → Build → Flows, "api key" gives AI
+providers, "mail" gives Accounts. Enter opens that pane. The app wall's search finds them
+too. The wall also matches app names properly again: it had been reading each tile's icon as
+its name, so a title only matched through the app's id or description.
+
 ## 0.6.5 — 2026-09-27
 
 **Settings says less.** Every setting now has one short line under its name. The rest is

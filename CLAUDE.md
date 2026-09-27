@@ -616,6 +616,17 @@ Three things that will bite whoever touches this next:
   and `describe()` says "no spend ceiling of its own" for the others rather than promising
   one. Only Claude Code resumes a session (`RESUMES`); the others get
   `Envelope.transcript`, the conversation so far, in the prompt.
+- **A resumed session knows only the turns that ran IN it.** Reported as "the chat is losing
+  context": "write a ppt for it" in the Office's panel came back "I don't know what 'it' refers
+  to". A thread holds turns the session never saw (a stopped turn, another brain's answer, a
+  specialist), so every executor reply is stamped `meta.exec_session`, and `carry_over` hands
+  over whatever came after the last stamp (`_claude_prompt`). The session is saved in `finally`,
+  because a stopped turn still ran in it. A session the CLI no longer has ("No conversation
+  found", measured on 2.1.283) is retried once as a new session told `Envelope.fallback`, never
+  shown as the person's error. Chat, Telegram and WhatsApp read the session from the
+  conversation row (an in-memory dict lost every phone thread on restart). And `child_env`
+  drops `PARENT_SESSION_VARS`: started from a Claude Code terminal, every run adopted THAT
+  session's id. `tests/test_exec_context.py`.
 - **Only an MCP engine gets the team door.** Gemini CLI and Codex are not started with a
   per-run MCP config, so `open_team_door` gives them `team_hint()`: the same roster, and
   "tell the person to write `@name`". Nothing invented, and the specialists do not go idle.
@@ -959,6 +970,19 @@ sense" when it was missing:
   `tool_end` in the stream, so every live surface — Chat, the omnibar card, a
   copilot panel — gets it from one place. A tool that is not in that map
   deliberately gets NO handoff: an invented door is worse than no door.
+
+## Places: the launchers find what is inside apps
+
+`05b-places.js` is one index of the places inside apps (Settings panes, the Missions tabs),
+each with the words people use for it, plus `APP_WORDS` for the apps themselves. Reported as
+"I type channel and it is not indexed; flow should relate to jobs": Telegram and WhatsApp
+live in a pane called Channels, and flows in a Missions tab. The prompt bar (`palActions` /
+`omniScore`), the wall's search (`deckPlacesHTML`, shown only while searching) and the Jarvis
+box all read it, so they cannot disagree about what a word finds. A word counts whole or as
+the start of a word, which keeps this a launcher. A place is a door to a pane that exists;
+`tests/test_places.py` checks every Settings tab and app it names. The TUI's equivalent is
+`bento help --all`. The wall read a tile's ICON span as its name for a long time; the label is
+`:scope > span:not([class])`.
 
 ## WhatsApp is one channel with two transports
 
@@ -1405,6 +1429,11 @@ things keep it true:
   first). Waiting for approval walks to the lead's office, hand up, minutes counting
   (`officeEscalate`). A failed or timed-out step leaves a red sign under that desk until the
   agent runs again. The filing cabinet takes a paper on every `OF_WRITES` tool.
+- **The lounge regulars are decor, like the pet** (`OF_EXTRAS`): a guard in the armchair and a
+  pet sitter playing fetch, with the lounge and (for the sitter) a pet. They are never in
+  `OFFICE.people`, a tap asks nobody, their tag is grey under their feet, and they stay put;
+  only the pet runs. Their look is a fixed recipe through `avatarRecipeSrc`, so there is still
+  one painter; the cap and badge are props, like a desk's mug.
 - **One seam.** `scenePulse()` in `01c-movement.js` feeds the Crew stage and the Office; nothing
   else calls `officePulse`. `tool_start`/`turn_start` pass their event on, because the Office
   attributes a tool to the conversation's speaker (`convWho`) and a bare `step` to its run
