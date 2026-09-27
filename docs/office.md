@@ -17,6 +17,9 @@ Open it from the dock, the app deck (Essentials), or ask your agent to "open the
 
 ## What moves, and why
 
+![The Office after a huddle in democracy mode: the validator walking back to its desk, the researcher at the meeting table, and the panel ending with "The team agreed · 2 of 2"](screenshots/readme-office-vote.png)
+
+
 Everything in the office moves because something really happened on this machine.
 
 | You see | Because |

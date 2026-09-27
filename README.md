@@ -184,7 +184,7 @@ Codex is installed and signed in, it's offered as a brain too. Cloud keys go in 
 
 ## Setup ends by giving it a job
 
-Setup is a short list of steps, and each one leaves something real behind: a model that answers,
+Setup is twelve steps, and each one leaves something real behind: a model that answers,
 an agent with a name and a face, a crew and an office, a mission that runs. A step is ticked because
 the machine really has the thing, so it's safe to run again, and Setup is also an app you can open
 later. `bento setup` is the same steps in a terminal.
@@ -340,7 +340,7 @@ at the bottom, and every control is at least a fingertip wide. *Add to Home Scre
 full-screen app.
 
 <p>
-<img src="docs/screenshots/readme-phone-home.png" alt="The home screen on a phone" width="260">
+<img src="docs/screenshots/readme-phone-home.png" alt="The home screen on a phone: the greeting, the prompt bar, the Brief in one line and the crew" width="260">
 <img src="docs/screenshots/readme-phone-brief.png" alt="The Brief on a phone, one item at a time with Done, Later and Send draft" width="260">
 </p>
 

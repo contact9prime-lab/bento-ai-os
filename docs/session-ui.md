@@ -12,6 +12,9 @@ There are three ways to run AgentOS, and they are the same program:
 
 ## What changed, in one picture
 
+![A native Wayland application above the Bento desktop, with the menu bar reserved above it and the dock reserved below it](screenshots/session-native-window.png)
+
+
 The desktop used to be drawn in a Chromium **window**. A window is a peer of
 every other window, so "the desktop is behind the apps" had to be faked — the
 shell was pinned as the only tiled window, apps were forced to float above it,
@@ -121,6 +124,8 @@ maximise, full screen, move between desktops, and snap:
 
 Snapping uses the compositor's *usable* area, so a snapped window lands between
 the menu bar and the dock rather than underneath them.
+
+![The Applications app searching the machine's package catalogue, with an install button on each result](screenshots/app-store.png)
 
 **Installing applications.** *Applications → Get apps…* searches the machine's
 own catalogue — `appstreamcli` for real applications with summaries, flatpak,

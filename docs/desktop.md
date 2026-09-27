@@ -8,6 +8,9 @@ taskbar, virtual desktops, widgets, themes, shortcuts — and the catalog of bui
 ## The shell
 
 ### Windows
+
+![Four Bento windows stacked on the desktop: the focused one carries an accent ring and the full shadow, the rest recede](screenshots/windows.png)
+
 Every app opens in a draggable, resizable window with minimize / maximize / close and proper
 z-ordering. Double-click a title bar to maximize. The **taskbar** at the bottom tracks open windows.
 
@@ -191,6 +194,9 @@ sunset theme" uses the same names (the `create_theme` tool). A terminal has no p
 glass, so the builder has no terminal face; asking in chat is the words-only way to build one.
 
 ### Design-language themes
+
+![The five built-in design-language themes: Bento, Liquid Glass, Spatial, Claymorphism and Minimalism](screenshots/themes.png)
+
 
 Five themes go further than a palette — each one re-cuts the whole shell (surfaces, radii,
 elevation, blur and type) into a different visual language:
@@ -436,6 +442,9 @@ running, and on phones, which have no pointer to rest.
 ---
 
 ## Automations
+
+![The Automations app with saved routines, the hot-corner map and the step builder](screenshots/automations.png)
+
 
 An automation is a **named, repeatable sequence of desktop steps**. Set one up
 once, and from then on it does exactly that — every time, from anywhere.

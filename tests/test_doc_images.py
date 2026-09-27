@@ -19,12 +19,16 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 IMAGE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<src>[^)\s]+)\)")
+# An <img> tag is how a README sets a width (two phone screenshots side by side),
+# and it is held to the same rules: the file exists and the alt says what it shows.
+IMG_TAG = re.compile(r"<img\s+src=\"(?P<src>[^\"]+)\"\s+alt=\"(?P<alt>[^\"]*)\"")
 DOCS = sorted(ROOT.glob("docs/*.md")) + [ROOT / "README.md"]
 
 
 def refs():
     for md in DOCS:
-        for m in IMAGE.finditer(md.read_text()):
+        text = md.read_text()
+        for m in [*IMAGE.finditer(text), *IMG_TAG.finditer(text)]:
             src = m.group("src")
             if src.startswith("http"):
                 continue                     # badges; not ours to keep alive
