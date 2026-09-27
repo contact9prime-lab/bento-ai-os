@@ -275,3 +275,16 @@ def test_every_surface_offers_it():
     assert '("off", "matrix", "swarm", "democracy")' in main
     srv = (ROOT / "agentos/server.py").read_text()
     assert '("off", "matrix", "swarm", "democracy")' in srv
+
+
+def test_a_huddle_started_from_an_app_panel_is_drawn_there():
+    """Found taking the README's pictures: a huddle typed into the Office's own chat
+    met at the table and the panel showed nothing but "replied". The panel's feed
+    draws each turn and the vote with Chat's card, live and from history."""
+    ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
+    case = ws[ws.index("case 'agent_say':"):ws.index("case 'avatars':")]
+    assert "_sk.say(ev)" in case
+    cp = (ROOT / "agentos/ui/src/js/04a-copilot.js").read_text()
+    feed = cp[cp.index("function miniFeed"):cp.index("function errBox")]
+    assert "say(ev){" in feed and "huddleRow(ev)" in feed
+    assert "huddleCard(huddleParse(m.content)" in cp, "a stored huddle replays as a card"

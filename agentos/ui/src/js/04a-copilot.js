@@ -104,7 +104,7 @@ function mfPaint(){
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
 function miniFeed(box,opts){
   opts=opts||{};
-  let body=null,text='',think=null,working=null;
+  let body=null,text='',think=null,working=null,hud=null;
   const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
@@ -184,6 +184,23 @@ function miniFeed(box,opts){
       if(opts.onTool)opts.onTool(ev);
     },
     approval(apBox){box.insertBefore(apBox,working);scroll();return true},
+    /* A huddle's turn (or its closing vote), the same card Chat draws (10b-huddle.js).
+       Found by starting a huddle from the Office's own chat: the agents met at the
+       table, and the panel said nothing but "replied". */
+    say(ev){
+      bind(ev);body=null;text='';
+      if(typeof huddleCard!=='function')return;
+      if(!hud||!hud.isConnected){
+        const h=document.createElement('div');h.innerHTML=huddleCard([],[],false,'huddle');
+        hud=h.firstElementChild;const m=hud.querySelector('.mut');if(m)m.remove();
+        box.insertBefore(hud,working&&working.isConnected?working:null);
+      }
+      hud.insertAdjacentHTML('beforeend',huddleRow(ev));
+      const who=[...new Set([...hud.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))].filter(Boolean);
+      const hd=hud.querySelector('.hud-head');
+      if(hd)hd.innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>huddle · ${esc(who.join(', '))}</span>`;
+      scroll();
+    },
     /* Built something? The door to it, right here — a card on the desktop is
        often the only place the turn is visible at all. */
     handoff(h){
@@ -196,7 +213,7 @@ function miniFeed(box,opts){
       clearWorking();
       box.appendChild(errBox(ev));scroll();
     },
-    end(ev){clearWorking();actSync();if(body&&typeof fileChips==='function')fileChips(body);body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
+    end(ev){clearWorking();actSync();hud=null;if(body&&typeof fileChips==='function')fileChips(body);body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
 }
 
@@ -290,7 +307,7 @@ async function initCopilot(w,panel){
     <div class="cp-feed"></div>
     <div class="cp-starters"></div>
     <div class="cp-inbar"><div class="att-strip cp-att"></div>
-      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())} — paste a screenshot too…"></textarea>
+      <textarea class="cp-in" rows="1" placeholder="Ask about ${esc(w.app.title.toLowerCase())}…"></textarea>
       <button class="cp-attach cp-snap" data-ic="camera" title="Snap this app — attach a screenshot of the screen so it can see the problem">▣</button>
       <button class="cp-attach cp-pick" data-ic="image" title="Add an image — or paste one (Ctrl+V), or drop it here">＋</button>
       <button class="cp-send" data-ic="send">↑</button></div>`;
@@ -336,7 +353,9 @@ async function initCopilot(w,panel){
       const msgs=(d.messages||[]).slice(-12);
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
-        :m.role==='assistant'?`<div class="mf-body body">${md(m.content||'')}</div>`:'').join('');
+        :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
+          ?huddleCard(huddleParse(m.content),null,false,'huddle')
+          :`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
       if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}

@@ -587,6 +587,8 @@ function handle(ev){
       break;
     case 'agent_say':   // one turn of a huddle (10b-huddle.js)
       if(typeof huddleLive==='function')huddleLive(ev,_cur);
+      // and in an app's agent panel or the prompt bar's card, when the turn is theirs
+      if(_sk&&_sk.say)_sk.say(ev);
       break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':

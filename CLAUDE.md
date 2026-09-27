@@ -1463,7 +1463,9 @@ things keep it true:
   dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
   USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
 - **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
-  and the window's ✦ is hidden — a second copy of the same thread would be two chats.
+  and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
+  huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
+  Chat, or the panel sat empty while the agents met at the table.
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a

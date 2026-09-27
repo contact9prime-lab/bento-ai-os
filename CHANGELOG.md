@@ -43,6 +43,20 @@ providers, "mail" gives Accounts. Enter opens that pane. The app wall's search f
 too. The wall also matches app names properly again: it had been reading each tile's icon as
 its name, so a title only matched through the app's id or description.
 
+**A huddle started from an app's agent panel shows up in that panel.** Asking two agents a
+question from the Office's chat moved them to the meeting table, but the panel itself stayed
+empty until the end. The turns now appear there as they're said, ending with the vote.
+
+**A reloaded Claude Code answer keeps its paragraphs.** When the answer had a tool call in the
+middle, the saved text ran the two halves together ("…for you.Here are…"). The chat boxes'
+placeholder text is also short enough to fit now.
+
+**A new README, with new pictures.** The front page now covers the whole OS as it is today:
+the Brief, Missions, a team across Claude Code, Gemini CLI and Codex, huddles and democracy,
+the Office, accounts and the vault, linked teams, the terminal and the Linux session. Every
+picture on it was taken from a running machine this week, and the eleven translations were
+redone from it. The docs index and Getting Started were brought up to date too.
+
 ## 0.6.5 — 2026-09-27
 
 **Settings says less.** Every setting now has one short line under its name. The rest is

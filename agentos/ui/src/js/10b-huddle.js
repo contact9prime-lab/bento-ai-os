@@ -56,7 +56,7 @@ function huddleRow(e){
 /* `bare`: the message header above already names the room (a huddle started from
    the chat box), so the card does not say it a second time. */
 function huddleCard(entries,agents,bare,kind){
-  const who=(agents||[...new Set(entries.map(e=>e.speaker))]);
+  const who=(agents||[...new Set(entries.map(e=>e.speaker).filter(Boolean))]);
   return `<div class="huddle"${kind?` data-kind="${esc(kind)}"`:''}>${bare?'':`<div class="hud-head">${who.map(n=>avatarImg(n,'av-tool')).join('')}
     <span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span></div>`}${entries.map(huddleRow).join('')||'<div class="mut">nobody had anything to say</div>'}</div>`;
 }
@@ -71,7 +71,7 @@ function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
   if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
-  if(typeof actMove==='function'&&ev.conversation_id)
+  if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();

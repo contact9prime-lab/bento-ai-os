@@ -156,3 +156,13 @@ def test_every_surface_that_forwards_a_thread_carries_it():
         assert "_exec_sessions" not in src
         assert "prior=self.store.get_messages(cid)[:-1]" in src
         assert re.search(r'"exec_session": \w*run\.session_id', src)
+
+
+def test_a_stored_reply_keeps_the_break_where_a_tool_ran():
+    """The page draws the tool card between the two halves of a forwarded answer; the
+    stored reply has no card, and a reload read "for you.Here are the three points"."""
+    srv = (ROOT / "agentos/server.py").read_text()
+    relay = srv[srv.index("async def _relay(ev: dict):"):srv.index("await execmod.run_task(text, env, _relay, run)")]
+    brk = relay.index('collected.append("\\n\\n")')
+    assert relay.index('"tool_start"') < brk < relay.index("BRIDGE_SERVER"), \
+        "the break is kept for the bridge's own tool events too, before they are dropped"

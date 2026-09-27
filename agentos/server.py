@@ -10965,6 +10965,12 @@ async def _run_chat(cid: str, data: dict):
             async def _relay(ev: dict):
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
+                elif ev.get("type") == "tool_start" and collected and \
+                        not collected[-1].endswith("\n\n"):
+                    # The page draws the tool between the two halves of the answer;
+                    # the stored reply has no tool in it, so keep the paragraph
+                    # break. Without it a reload read "for you.Here are".
+                    collected.append("\n\n")
                 # A team-door call is shown by the GATE (the Agent emits tool_start /
                 # tool_end as `delegate`); the CLI's own copy of it would be a second
                 # card for the same step — the rule the flow bridge learned first.
